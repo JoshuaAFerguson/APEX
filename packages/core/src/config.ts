@@ -1,0 +1,302 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as yaml from 'yaml';
+import {
+  ApexConfig,
+  ApexConfigSchema,
+  AgentDefinition,
+  AgentDefinitionSchema,
+  WorkflowDefinition,
+  WorkflowDefinitionSchema,
+} from './types';
+
+const APEX_DIR = '.apex';
+const CONFIG_FILE = 'config.yaml';
+const AGENTS_DIR = 'agents';
+const WORKFLOWS_DIR = 'workflows';
+const SKILLS_DIR = 'skills';
+const SCRIPTS_DIR = 'scripts';
+
+/**
+ * Check if APEX is initialized in the given directory
+ */
+export async function isApexInitialized(projectPath: string): Promise<boolean> {
+  const apexDir = path.join(projectPath, APEX_DIR);
+  try {
+    await fs.access(apexDir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Load the APEX configuration from a project
+ */
+export async function loadConfig(projectPath: string): Promise<ApexConfig> {
+  const configPath = path.join(projectPath, APEX_DIR, CONFIG_FILE);
+
+  try {
+    const content = await fs.readFile(configPath, 'utf-8');
+    const rawConfig = yaml.parse(content);
+    return ApexConfigSchema.parse(rawConfig);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`APEX not initialized in ${projectPath}. Run 'apex init' first.`);
+    }
+    throw new Error(`Failed to load APEX config: ${error}`);
+  }
+}
+
+/**
+ * Save the APEX configuration
+ */
+export async function saveConfig(projectPath: string, config: ApexConfig): Promise<void> {
+  const configPath = path.join(projectPath, APEX_DIR, CONFIG_FILE);
+  const content = yaml.stringify(config, { indent: 2 });
+  await fs.writeFile(configPath, content, 'utf-8');
+}
+
+/**
+ * Load all agent definitions from the project
+ */
+export async function loadAgents(
+  projectPath: string
+): Promise<Record<string, AgentDefinition>> {
+  const agentsDir = path.join(projectPath, APEX_DIR, AGENTS_DIR);
+  const agents: Record<string, AgentDefinition> = {};
+
+  try {
+    const files = await fs.readdir(agentsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
+
+      const filePath = path.join(agentsDir, file);
+      const content = await fs.readFile(filePath, 'utf-8');
+      const agent = parseAgentMarkdown(content);
+
+      if (agent) {
+        agents[agent.name] = agent;
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return agents;
+}
+
+/**
+ * Parse agent definition from markdown with YAML frontmatter
+ */
+export function parseAgentMarkdown(content: string): AgentDefinition | null {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+
+  if (!frontmatterMatch) {
+    return null;
+  }
+
+  const [, frontmatter, body] = frontmatterMatch;
+  const metadata = yaml.parse(frontmatter);
+
+  // Parse tools from comma-separated string if needed
+  let tools = metadata.tools;
+  if (typeof tools === 'string') {
+    tools = tools.split(',').map((t: string) => t.trim());
+  }
+
+  // Parse skills from comma-separated string if needed
+  let skills = metadata.skills;
+  if (typeof skills === 'string') {
+    skills = skills.split(',').map((s: string) => s.trim());
+  }
+
+  const agentDef = {
+    name: metadata.name,
+    description: metadata.description,
+    prompt: body.trim(),
+    tools,
+    model: metadata.model,
+    skills,
+  };
+
+  return AgentDefinitionSchema.parse(agentDef);
+}
+
+/**
+ * Load all workflow definitions from the project
+ */
+export async function loadWorkflows(
+  projectPath: string
+): Promise<Record<string, WorkflowDefinition>> {
+  const workflowsDir = path.join(projectPath, APEX_DIR, WORKFLOWS_DIR);
+  const workflows: Record<string, WorkflowDefinition> = {};
+
+  try {
+    const files = await fs.readdir(workflowsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue;
+
+      const filePath = path.join(workflowsDir, file);
+      const content = await fs.readFile(filePath, 'utf-8');
+      const workflow = WorkflowDefinitionSchema.parse(yaml.parse(content));
+      workflows[workflow.name] = workflow;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return workflows;
+}
+
+/**
+ * Load a specific workflow by name
+ */
+export async function loadWorkflow(
+  projectPath: string,
+  workflowName: string
+): Promise<WorkflowDefinition | null> {
+  const workflows = await loadWorkflows(projectPath);
+  return workflows[workflowName] || null;
+}
+
+/**
+ * Get the path to a skill directory
+ */
+export function getSkillPath(projectPath: string, skillName: string): string {
+  return path.join(projectPath, APEX_DIR, SKILLS_DIR, skillName, 'SKILL.md');
+}
+
+/**
+ * Load a skill's content
+ */
+export async function loadSkill(projectPath: string, skillName: string): Promise<string | null> {
+  const skillPath = getSkillPath(projectPath, skillName);
+
+  try {
+    return await fs.readFile(skillPath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the scripts directory path
+ */
+export function getScriptsDir(projectPath: string): string {
+  return path.join(projectPath, APEX_DIR, SCRIPTS_DIR);
+}
+
+/**
+ * List available scripts
+ */
+export async function listScripts(projectPath: string): Promise<string[]> {
+  const scriptsDir = getScriptsDir(projectPath);
+
+  try {
+    const files = await fs.readdir(scriptsDir);
+    return files.filter((f) => f.endsWith('.sh') || f.endsWith('.js') || f.endsWith('.ts'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Initialize APEX in a project directory
+ */
+export async function initializeApex(
+  projectPath: string,
+  options: {
+    projectName: string;
+    language?: string;
+    framework?: string;
+  }
+): Promise<void> {
+  const apexDir = path.join(projectPath, APEX_DIR);
+
+  // Create directory structure
+  await fs.mkdir(path.join(apexDir, AGENTS_DIR), { recursive: true });
+  await fs.mkdir(path.join(apexDir, WORKFLOWS_DIR), { recursive: true });
+  await fs.mkdir(path.join(apexDir, SKILLS_DIR), { recursive: true });
+  await fs.mkdir(path.join(apexDir, SCRIPTS_DIR), { recursive: true });
+
+  // Create default config
+  const defaultConfig: ApexConfig = {
+    version: '1.0',
+    project: {
+      name: options.projectName,
+      language: options.language,
+      framework: options.framework,
+    },
+    autonomy: {
+      default: 'review-before-merge',
+    },
+    agents: {
+      enabled: ['planner', 'architect', 'developer', 'reviewer', 'tester'],
+    },
+    models: {
+      planning: 'opus',
+      implementation: 'sonnet',
+      review: 'haiku',
+    },
+    git: {
+      branchPrefix: 'apex/',
+      commitFormat: 'conventional',
+      autoPush: true,
+    },
+    limits: {
+      maxTokensPerTask: 500000,
+      maxCostPerTask: 10.0,
+      dailyBudget: 100.0,
+    },
+  };
+
+  await saveConfig(projectPath, defaultConfig);
+}
+
+/**
+ * Get effective configuration by merging defaults with project config
+ */
+export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
+  return {
+    version: config.version,
+    project: config.project,
+    autonomy: {
+      default: config.autonomy?.default || 'review-before-merge',
+      overrides: config.autonomy?.overrides || {},
+    },
+    agents: {
+      enabled: config.agents?.enabled || [],
+      disabled: config.agents?.disabled || [],
+    },
+    models: {
+      planning: config.models?.planning || 'opus',
+      implementation: config.models?.implementation || 'sonnet',
+      review: config.models?.review || 'haiku',
+    },
+    gates: config.gates || [],
+    git: {
+      branchPrefix: config.git?.branchPrefix || 'apex/',
+      commitFormat: config.git?.commitFormat || 'conventional',
+      autoPush: config.git?.autoPush ?? true,
+      defaultBranch: config.git?.defaultBranch || 'main',
+    },
+    limits: {
+      maxTokensPerTask: config.limits?.maxTokensPerTask || 500000,
+      maxCostPerTask: config.limits?.maxCostPerTask || 10.0,
+      dailyBudget: config.limits?.dailyBudget || 100.0,
+      maxTurns: config.limits?.maxTurns || 100,
+      maxConcurrentTasks: config.limits?.maxConcurrentTasks || 3,
+    },
+    api: {
+      url: config.api?.url || 'http://localhost:3000',
+      port: config.api?.port || 3000,
+    },
+  };
+}

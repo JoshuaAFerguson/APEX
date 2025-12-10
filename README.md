@@ -1,0 +1,246 @@
+# APEX - Autonomous Product Engineering eXecutor
+
+<p align="center">
+  <img src="docs/logo.svg" alt="APEX Logo" width="200"/>
+</p>
+
+<p align="center">
+  <strong>AI-powered development team automation built on the Claude Agent SDK</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#documentation">Documentation</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#contributing">Contributing</a>
+</p>
+
+---
+
+APEX is an open-source platform that orchestrates a team of specialized AI agents to automate software development workflows. Built on Anthropic's Claude Agent SDK, it provides a complete "product team in a box" that can plan, implement, test, and review code changes.
+
+## Features
+
+- **🤖 Specialized Agents** - Purpose-built agents for planning, architecture, implementation, testing, code review, and DevOps
+- **🔄 Configurable Workflows** - Define custom development workflows with stages, dependencies, and approval gates
+- **🎛️ Autonomy Levels** - From fully autonomous to human-in-the-loop approval at each stage
+- **📊 Real-time Monitoring** - Web UI and WebSocket API for live task tracking
+- **💰 Cost Controls** - Built-in token budgets and usage tracking
+- **🔌 Extensible** - Add custom agents, skills, and workflows
+- **🏢 Enterprise Ready** - Scales from individual developers to large teams
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+
+- Anthropic API key
+- Git
+
+### Installation
+
+```bash
+# Install globally
+npm install -g @apex/cli
+
+# Or use npx
+npx @apex/cli init
+```
+
+### Initialize a Project
+
+```bash
+cd your-project
+
+# Initialize APEX
+apex init
+
+# Follow the prompts to configure your project
+```
+
+### Run Your First Task
+
+```bash
+# Set your API key
+export ANTHROPIC_API_KEY=your_key_here
+
+# Run a development task
+apex run "Add user authentication with JWT tokens"
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting-started.md) | Installation and first steps |
+| [Configuration](docs/configuration.md) | Project configuration options |
+| [Agents](docs/agents.md) | Built-in agents and customization |
+| [Workflows](docs/workflows.md) | Defining development workflows |
+| [API Reference](docs/api-reference.md) | REST API documentation |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        APEX Platform                          │
+├──────────────────────────────────────────────────────────────┤
+│  CLI / Web UI / VS Code Extension                            │
+│          │                                                    │
+│          ▼                                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │                    APEX API Server                      │  │
+│  │  REST endpoints + WebSocket for real-time streaming     │  │
+│  └────────────────────────────────────────────────────────┘  │
+│          │                                                    │
+│          ▼                                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │                  APEX Orchestrator                      │  │
+│  │         (Claude Agent SDK Integration)                  │  │
+│  │                                                         │  │
+│  │   ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐     │  │
+│  │   │ Planner │ │Architect│ │Developer│ │ Tester  │     │  │
+│  │   └─────────┘ └─────────┘ └─────────┘ └─────────┘     │  │
+│  │   ┌─────────┐ ┌─────────┐                              │  │
+│  │   │Reviewer │ │ DevOps  │  ... Custom Agents           │  │
+│  │   └─────────┘ └─────────┘                              │  │
+│  └────────────────────────────────────────────────────────┘  │
+│          │                                                    │
+│          ▼                                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │                  Project Repository                     │  │
+│  │  .apex/config.yaml  .apex/agents/  .apex/workflows/    │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Built-in Agents
+
+| Agent | Description | Model |
+|-------|-------------|-------|
+| **planner** | Creates implementation plans and breaks down tasks | opus |
+| **architect** | Designs system architecture and makes technical decisions | opus |
+| **developer** | Implements features and writes production code | sonnet |
+| **reviewer** | Reviews code for quality, bugs, and security issues | haiku |
+| **tester** | Creates and runs tests, analyzes coverage | sonnet |
+| **devops** | Handles infrastructure, CI/CD, and deployment | sonnet |
+
+## Workflows
+
+APEX includes pre-built workflows for common development patterns:
+
+- **feature** - Full feature implementation (plan → design → implement → test → review)
+- **bugfix** - Bug investigation and fix (investigate → fix → test → review)
+- **refactor** - Code refactoring (analyze → refactor → test → review)
+
+Create custom workflows in `.apex/workflows/` to match your team's process.
+
+## Configuration
+
+```yaml
+# .apex/config.yaml
+version: "1.0"
+project:
+  name: "my-project"
+  language: "typescript"
+  framework: "nextjs"
+
+autonomy:
+  default: "review-before-merge"
+  overrides:
+    documentation: "full"
+    database-migrations: "manual"
+
+models:
+  planning: "opus"
+  implementation: "sonnet"
+  review: "haiku"
+
+limits:
+  max_tokens_per_task: 500000
+  max_cost_per_task: 10.00
+  daily_budget: 100.00
+```
+
+## API Server
+
+Start the API server for web UI and programmatic access:
+
+```bash
+# Start the server
+apex serve
+
+# Or with custom options
+apex serve --port 3000 --host 0.0.0.0
+```
+
+### REST Endpoints
+
+```
+POST   /tasks              - Create a new task
+GET    /tasks              - List tasks
+GET    /tasks/:id          - Get task details
+POST   /tasks/:id/status   - Update task status
+GET    /agents             - List available agents
+WS     /stream/:taskId     - Real-time task updates
+```
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/JoshuaAFerguson/apex.git
+cd apex
+
+# Install dependencies
+npm install
+
+# Build all packages
+npm run build
+
+# Run in development mode
+npm run dev
+```
+
+## Project Structure
+
+```
+apex/
+├── packages/
+│   ├── core/           # Shared types and utilities
+│   ├── orchestrator/   # Claude Agent SDK orchestration
+│   ├── cli/            # Command-line interface
+│   ├── api/            # REST + WebSocket server
+│   ├── web-ui/         # Dashboard (coming soon)
+│   └── vscode/         # VS Code extension (coming soon)
+├── templates/          # Default agent/workflow templates
+├── docs/               # Documentation
+└── examples/           # Example projects
+```
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests: `npm test`
+5. Submit a pull request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- Built on [Claude Agent SDK](https://docs.anthropic.com/en/agent-sdk) by Anthropic
+- Inspired by the vision of AI-assisted software development
+
+---
+
+<p align="center">
+  Made with 🤖 by <a href="https://github.com/JoshuaAFerguson">Joshua A. Ferguson</a>
+</p>

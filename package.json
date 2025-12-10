@@ -1,0 +1,45 @@
+{
+  "name": "apex",
+  "version": "0.1.0",
+  "description": "Autonomous Product Engineering eXecutor - AI-powered development team automation",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "apex": "node packages/cli/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "prettier": "^3.1.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "npm@10.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoshuaAFerguson/apex.git"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "automation",
+    "development",
+    "claude",
+    "anthropic",
+    "devops",
+    "ci-cd"
+  ],
+  "author": "Joshua A. Ferguson",
+  "license": "MIT"
+}

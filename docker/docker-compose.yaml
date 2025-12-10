@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  apex-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - APEX_PROJECT=/workspace
+    volumes:
+      - workspace:/workspace
+      - apex-data:/app/.apex
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis for distributed task queue (future)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   restart: unless-stopped
+
+volumes:
+  workspace:
+    driver: local
+  apex-data:
+    driver: local
+  # redis-data:
+  #   driver: local
+
+networks:
+  default:
+    name: apex-network
