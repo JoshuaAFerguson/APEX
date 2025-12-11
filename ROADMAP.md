@@ -63,17 +63,18 @@ This document outlines the planned development roadmap for APEX. Features are or
 - ⚪ Load testing
 
 ### CLI Enhancements
-- ⚪ `apex serve` - Start API server from CLI
-- ⚪ `apex cancel <taskId>` - Cancel running tasks
-- ⚪ `apex retry <taskId>` - Retry failed tasks
-- ⚪ `apex config` - View/edit configuration
+- 🟢 `apex serve` - Start API server from CLI
+- 🟢 `apex cancel <taskId>` - Cancel running tasks
+- 🟢 `apex retry <taskId>` - Retry failed tasks
+- 🟢 `apex config` - View/edit configuration
+- 🟢 `apex pr <taskId>` - Create pull requests
 - ⚪ `apex upgrade` - Self-update CLI
 - ⚪ Interactive mode with prompts
 - ⚪ Progress bars and spinners
 - ⚪ Color theme customization
 
 ### Orchestrator Improvements
-- ⚪ Task queue with priorities
+- 🟢 Task queue with priorities
 - ⚪ Concurrent task execution
 - ⚪ Task dependencies
 - ⚪ Automatic retries with backoff
@@ -81,8 +82,8 @@ This document outlines the planned development roadmap for APEX. Features are or
 - ⚪ Context compaction strategies
 
 ### Git Integration
-- ⚪ Automatic PR creation via `gh` CLI
-- ⚪ PR description generation
+- 🟢 Automatic PR creation via `gh` CLI
+- 🟢 PR description generation
 - ⚪ Commit message improvements
 - ⚪ Branch cleanup after merge
 - ⚪ Conflict detection and resolution suggestions

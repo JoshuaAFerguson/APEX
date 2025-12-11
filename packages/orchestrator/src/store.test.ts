@@ -15,6 +15,7 @@ describe('TaskStore', () => {
     workflow: 'feature',
     autonomy: 'full',
     status: 'pending',
+    priority: 'normal',
     projectPath: testDir,
     branchName: 'apex/test-branch',
     createdAt: new Date(),
@@ -65,6 +66,79 @@ describe('TaskStore', () => {
       const updated = await store.getTask(task.id);
       expect(updated?.status).toBe('in-progress');
       expect(updated?.currentStage).toBe('planning');
+    });
+
+    it('should update task prUrl', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.updateTask(task.id, {
+        prUrl: 'https://github.com/test/repo/pull/123',
+        updatedAt: new Date(),
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.prUrl).toBe('https://github.com/test/repo/pull/123');
+    });
+
+    it('should update task error', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.updateTask(task.id, {
+        status: 'failed',
+        error: 'Something went wrong',
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('failed');
+      expect(updated?.error).toBe('Something went wrong');
+    });
+
+    it('should update task usage', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.updateTask(task.id, {
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          estimatedCost: 0.015,
+        },
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.usage.inputTokens).toBe(1000);
+      expect(updated?.usage.outputTokens).toBe(500);
+      expect(updated?.usage.totalTokens).toBe(1500);
+      expect(updated?.usage.estimatedCost).toBe(0.015);
+    });
+
+    it('should update completedAt', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const completedAt = new Date();
+      await store.updateTask(task.id, {
+        status: 'completed',
+        completedAt,
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('completed');
+      expect(updated?.completedAt).toBeDefined();
+    });
+
+    it('should handle empty updates', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Empty update should not throw
+      await store.updateTask(task.id, {});
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('pending');
     });
 
     it('should list tasks with filters', async () => {
@@ -169,6 +243,65 @@ describe('TaskStore', () => {
       expect(updated?.status).toBe('approved');
       expect(updated?.approver).toBe('test-user');
     });
+
+    it('should return null for non-existent gate', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const gate = await store.getGate(task.id, 'non-existent-gate');
+      expect(gate).toBeNull();
+    });
+
+    it('should update existing gate with setGate', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Create initial gate
+      await store.setGate(task.id, {
+        name: 'review-gate',
+        status: 'pending',
+        requiredAt: new Date(),
+      });
+
+      // Update gate status via setGate
+      await store.setGate(task.id, {
+        name: 'review-gate',
+        status: 'rejected',
+        requiredAt: new Date(),
+        respondedAt: new Date(),
+        approver: 'reviewer',
+        comment: 'Needs changes',
+      });
+
+      const gate = await store.getGate(task.id, 'review-gate');
+      expect(gate?.status).toBe('rejected');
+      expect(gate?.comment).toBe('Needs changes');
+    });
+
+    it('should store gate with optional fields', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const requiredAt = new Date();
+      const respondedAt = new Date();
+
+      await store.setGate(task.id, {
+        name: 'test-gate',
+        status: 'approved',
+        requiredAt,
+        respondedAt,
+        approver: 'admin',
+        comment: 'All good',
+      });
+
+      const gate = await store.getGate(task.id, 'test-gate');
+      expect(gate?.taskId).toBe(task.id);
+      expect(gate?.name).toBe('test-gate');
+      expect(gate?.status).toBe('approved');
+      expect(gate?.approver).toBe('admin');
+      expect(gate?.comment).toBe('All good');
+      expect(gate?.respondedAt).toBeDefined();
+    });
   });
 
   describe('Command Logging', () => {
@@ -182,6 +315,93 @@ describe('TaskStore', () => {
       // Commands should be logged successfully (no assertion needed for internal logging)
       const retrieved = await store.getTask(task.id);
       expect(retrieved).not.toBeNull();
+    });
+  });
+
+  describe('Task Queue with Priority', () => {
+    it('should create task with priority', async () => {
+      const task = createTestTask();
+      task.priority = 'high';
+      await store.createTask(task);
+
+      const retrieved = await store.getTask(task.id);
+      expect(retrieved?.priority).toBe('high');
+    });
+
+    it('should update task priority', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.updateTask(task.id, { priority: 'urgent' });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.priority).toBe('urgent');
+    });
+
+    it('should list tasks ordered by priority', async () => {
+      // Create tasks with different priorities
+      const lowTask = createTestTask();
+      lowTask.id = 'task_low';
+      lowTask.priority = 'low';
+
+      const normalTask = createTestTask();
+      normalTask.id = 'task_normal';
+      normalTask.priority = 'normal';
+
+      const highTask = createTestTask();
+      highTask.id = 'task_high';
+      highTask.priority = 'high';
+
+      const urgentTask = createTestTask();
+      urgentTask.id = 'task_urgent';
+      urgentTask.priority = 'urgent';
+
+      // Insert in random order
+      await store.createTask(normalTask);
+      await store.createTask(lowTask);
+      await store.createTask(urgentTask);
+      await store.createTask(highTask);
+
+      // Get tasks ordered by priority
+      const tasks = await store.listTasks({ orderByPriority: true });
+
+      expect(tasks[0].id).toBe('task_urgent');
+      expect(tasks[1].id).toBe('task_high');
+      expect(tasks[2].id).toBe('task_normal');
+      expect(tasks[3].id).toBe('task_low');
+    });
+
+    it('should get next queued task by priority', async () => {
+      const lowTask = createTestTask();
+      lowTask.id = 'task_low';
+      lowTask.priority = 'low';
+
+      const highTask = createTestTask();
+      highTask.id = 'task_high';
+      highTask.priority = 'high';
+
+      await store.createTask(lowTask);
+      await store.createTask(highTask);
+
+      const nextTask = await store.getNextQueuedTask();
+      expect(nextTask?.id).toBe('task_high');
+    });
+
+    it('should queue task with new priority', async () => {
+      const task = createTestTask();
+      task.status = 'failed';
+      await store.createTask(task);
+
+      await store.queueTask(task.id, 'urgent');
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('pending');
+      expect(updated?.priority).toBe('urgent');
+    });
+
+    it('should return null when no tasks in queue', async () => {
+      const nextTask = await store.getNextQueuedTask();
+      expect(nextTask).toBeNull();
     });
   });
 });

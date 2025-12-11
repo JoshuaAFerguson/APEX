@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus } from '@apex/core';
+import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus } from '@apex/core';
 
 export class TaskStore {
   private db!: Database.Database;
@@ -36,9 +36,11 @@ export class TaskStore {
         workflow TEXT NOT NULL,
         autonomy TEXT NOT NULL,
         status TEXT NOT NULL,
+        priority TEXT DEFAULT 'normal',
         current_stage TEXT,
         project_path TEXT NOT NULL,
         branch_name TEXT,
+        pr_url TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         completed_at TEXT,
@@ -106,11 +108,11 @@ export class TaskStore {
   async createTask(task: Task): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
-        id, description, acceptance_criteria, workflow, autonomy, status,
+        id, description, acceptance_criteria, workflow, autonomy, status, priority,
         current_stage, project_path, branch_name, created_at, updated_at,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost
       ) VALUES (
-        @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status,
+        @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
         @currentStage, @projectPath, @branchName, @createdAt, @updatedAt,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost
       )
@@ -123,6 +125,7 @@ export class TaskStore {
       workflow: task.workflow,
       autonomy: task.autonomy,
       status: task.status,
+      priority: task.priority || 'normal',
       currentStage: task.currentStage || null,
       projectPath: task.projectPath,
       branchName: task.branchName || null,
@@ -157,11 +160,13 @@ export class TaskStore {
     taskId: string,
     updates: Partial<{
       status: TaskStatus;
+      priority: TaskPriority;
       currentStage: string;
       error: string;
       usage: TaskUsage;
       updatedAt: Date;
       completedAt: Date;
+      prUrl: string;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -170,6 +175,11 @@ export class TaskStore {
     if (updates.status !== undefined) {
       setClauses.push('status = @status');
       params.status = updates.status;
+    }
+
+    if (updates.priority !== undefined) {
+      setClauses.push('priority = @priority');
+      params.priority = updates.priority;
     }
 
     if (updates.currentStage !== undefined) {
@@ -203,6 +213,11 @@ export class TaskStore {
       params.completedAt = updates.completedAt.toISOString();
     }
 
+    if (updates.prUrl !== undefined) {
+      setClauses.push('pr_url = @prUrl');
+      params.prUrl = updates.prUrl;
+    }
+
     if (setClauses.length === 0) return;
 
     const sql = `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = @id`;
@@ -212,7 +227,7 @@ export class TaskStore {
   /**
    * List tasks
    */
-  async listTasks(options?: { status?: TaskStatus; limit?: number }): Promise<Task[]> {
+  async listTasks(options?: { status?: TaskStatus; limit?: number; orderByPriority?: boolean }): Promise<Task[]> {
     let sql = 'SELECT * FROM tasks';
     const params: unknown[] = [];
 
@@ -221,7 +236,18 @@ export class TaskStore {
       params.push(options.status);
     }
 
-    sql += ' ORDER BY created_at DESC';
+    if (options?.orderByPriority) {
+      // Order by priority (urgent > high > normal > low), then by creation date
+      sql += ` ORDER BY CASE priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'normal' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END ASC, created_at ASC`;
+    } else {
+      sql += ' ORDER BY created_at DESC';
+    }
 
     if (options?.limit) {
       sql += ' LIMIT ?';
@@ -239,6 +265,35 @@ export class TaskStore {
     }
 
     return tasks;
+  }
+
+  /**
+   * Get the next pending task from the queue based on priority
+   */
+  async getNextQueuedTask(): Promise<Task | null> {
+    const tasks = await this.listTasks({
+      status: 'pending',
+      limit: 1,
+      orderByPriority: true,
+    });
+
+    return tasks[0] || null;
+  }
+
+  /**
+   * Queue a task (set to pending with optional priority)
+   */
+  async queueTask(taskId: string, priority?: TaskPriority): Promise<void> {
+    const updates: Partial<{ status: TaskStatus; priority: TaskPriority; updatedAt: Date }> = {
+      status: 'pending',
+      updatedAt: new Date(),
+    };
+
+    if (priority) {
+      updates.priority = priority;
+    }
+
+    await this.updateTask(taskId, updates);
   }
 
   /**
@@ -403,9 +458,11 @@ export class TaskStore {
       workflow: row.workflow,
       autonomy: row.autonomy as Task['autonomy'],
       status: row.status as TaskStatus,
+      priority: (row.priority || 'normal') as Task['priority'],
       currentStage: row.current_stage || undefined,
       projectPath: row.project_path,
       branchName: row.branch_name || undefined,
+      prUrl: row.pr_url || undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -437,9 +494,11 @@ interface TaskRow {
   workflow: string;
   autonomy: string;
   status: string;
+  priority: string | null;
   current_stage: string | null;
   project_path: string;
   branch_name: string | null;
+  pr_url: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

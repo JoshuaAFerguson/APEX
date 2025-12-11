@@ -11,13 +11,17 @@ import {
   isApexInitialized,
   initializeApex,
   loadConfig,
+  saveConfig,
   loadAgents,
   loadWorkflows,
   formatCost,
   formatTokens,
   formatDuration,
+  getEffectiveConfig,
+  ApexConfig,
 } from '@apex/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
+import { startServer } from '@apex/api';
 
 const VERSION = '0.1.0';
 
@@ -146,6 +150,7 @@ program
   .description('Execute a development task')
   .option('-w, --workflow <name>', 'Workflow to use', 'feature')
   .option('-a, --autonomy <level>', 'Autonomy level (full, review-before-commit, review-before-merge, manual)')
+  .option('-p, --priority <level>', 'Task priority (low, normal, high, urgent)', 'normal')
   .option('-c, --criteria <criteria>', 'Acceptance criteria')
   .option('--dry-run', 'Plan the task without executing')
   .option('--verbose', 'Show detailed output')
@@ -170,11 +175,13 @@ program
         acceptanceCriteria: options.criteria,
         workflow: options.workflow,
         autonomy: options.autonomy,
+        priority: options.priority,
       });
 
       console.log(chalk.green(`Task created: ${task.id}`));
       console.log(chalk.gray(`Branch: ${task.branchName}`));
       console.log(chalk.gray(`Workflow: ${task.workflow}`));
+      console.log(chalk.gray(`Priority: ${task.priority}`));
       console.log(chalk.gray(`Autonomy: ${task.autonomy}\n`));
 
       if (options.dryRun) {
@@ -386,6 +393,362 @@ program
       const agent = log.agent ? `[${log.agent}]` : '';
 
       console.log(`${chalk.gray(time)} ${level} ${agent} ${log.message}`);
+    }
+  });
+
+// ============================================================================
+// SERVE Command
+// ============================================================================
+
+program
+  .command('serve')
+  .description('Start the APEX API server')
+  .option('-p, --port <port>', 'Port to listen on', '3000')
+  .option('-H, --host <host>', 'Host to bind to', '0.0.0.0')
+  .action(async (options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const port = parseInt(options.port, 10);
+    const host = options.host;
+
+    console.log(chalk.cyan(banner));
+
+    try {
+      await startServer({ projectPath: cwd, port, host });
+    } catch (error) {
+      console.error(chalk.red(`Failed to start server: ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
+// CANCEL Command
+// ============================================================================
+
+program
+  .command('cancel <taskId>')
+  .description('Cancel a running task')
+  .option('-f, --force', 'Force cancel without confirmation')
+  .action(async (taskId, options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const store = new TaskStore(cwd);
+    await store.initialize();
+
+    const task = await store.getTask(taskId);
+    if (!task) {
+      console.log(chalk.red(`Task not found: ${taskId}`));
+      store.close();
+      process.exit(1);
+    }
+
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+      console.log(chalk.yellow(`Task is already ${task.status}.`));
+      store.close();
+      return;
+    }
+
+    if (!options.force) {
+      const { confirm } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: `Cancel task ${taskId}?`,
+          default: false,
+        },
+      ]);
+
+      if (!confirm) {
+        console.log(chalk.gray('Cancelled.'));
+        store.close();
+        return;
+      }
+    }
+
+    await store.updateTask(taskId, {
+      status: 'cancelled',
+      error: 'Cancelled by user',
+      updatedAt: new Date(),
+    });
+
+    console.log(chalk.green(`Task ${taskId} cancelled.`));
+    store.close();
+  });
+
+// ============================================================================
+// RETRY Command
+// ============================================================================
+
+program
+  .command('retry <taskId>')
+  .description('Retry a failed task')
+  .option('-w, --workflow <name>', 'Use different workflow')
+  .action(async (taskId, options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const orchestrator = new ApexOrchestrator({ projectPath: cwd });
+    await orchestrator.initialize();
+
+    const originalTask = await orchestrator.getTask(taskId);
+    if (!originalTask) {
+      console.log(chalk.red(`Task not found: ${taskId}`));
+      process.exit(1);
+    }
+
+    if (originalTask.status !== 'failed' && originalTask.status !== 'cancelled') {
+      console.log(chalk.yellow(`Task is ${originalTask.status}. Only failed or cancelled tasks can be retried.`));
+      process.exit(1);
+    }
+
+    console.log(chalk.cyan('\n🔄 Retrying task...\n'));
+    console.log(chalk.gray(`Original task: ${taskId}`));
+    console.log(chalk.gray(`Description: ${originalTask.description}`));
+
+    // Create a new task with the same parameters
+    const newTask = await orchestrator.createTask({
+      description: originalTask.description,
+      acceptanceCriteria: originalTask.acceptanceCriteria,
+      workflow: options.workflow || originalTask.workflow,
+      autonomy: originalTask.autonomy,
+    });
+
+    console.log(chalk.green(`\nNew task created: ${newTask.id}`));
+    console.log(chalk.gray(`Branch: ${newTask.branchName}`));
+
+    // Set up event handlers
+    orchestrator.on('agent:tool-use', (tId, tool) => {
+      console.log(chalk.gray(`  🔧 ${tool}`));
+    });
+
+    // Execute the new task
+    const spinner = ora('Executing task...').start();
+
+    try {
+      await orchestrator.executeTask(newTask.id);
+      spinner.succeed('Task completed!');
+
+      const completedTask = await orchestrator.getTask(newTask.id);
+      if (completedTask) {
+        console.log(
+          boxen(
+            `${chalk.green('✅ Task Completed')}\n\n` +
+              `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
+              `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
+              `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
+            { padding: 1, borderColor: 'green', borderStyle: 'round' }
+          )
+        );
+      }
+    } catch (error) {
+      spinner.fail('Task failed');
+      console.error(chalk.red(`\n❌ ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
+// CONFIG Command
+// ============================================================================
+
+program
+  .command('config')
+  .description('View or edit APEX configuration')
+  .option('-g, --get <key>', 'Get a specific config value')
+  .option('-s, --set <key=value>', 'Set a config value')
+  .option('--json', 'Output as JSON')
+  .option('-e, --edit', 'Open config in editor')
+  .action(async (options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const config = await loadConfig(cwd);
+
+    if (options.edit) {
+      const editor = process.env.EDITOR || 'vim';
+      const configPath = path.join(cwd, '.apex', 'config.yaml');
+      const { spawn } = await import('child_process');
+
+      const child = spawn(editor, [configPath], { stdio: 'inherit' });
+      child.on('exit', (code) => {
+        process.exit(code || 0);
+      });
+      return;
+    }
+
+    if (options.set) {
+      const [key, value] = options.set.split('=');
+      if (!key || value === undefined) {
+        console.log(chalk.red('Invalid format. Use --set key=value'));
+        process.exit(1);
+      }
+
+      // Parse nested keys (e.g., "limits.maxCostPerTask")
+      const keys = key.split('.');
+      let current: Record<string, unknown> = config as unknown as Record<string, unknown>;
+
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!(keys[i] in current)) {
+          current[keys[i]] = {};
+        }
+        current = current[keys[i]] as Record<string, unknown>;
+      }
+
+      // Parse value (try to detect type)
+      let parsedValue: unknown = value;
+      if (value === 'true') parsedValue = true;
+      else if (value === 'false') parsedValue = false;
+      else if (!isNaN(Number(value))) parsedValue = Number(value);
+
+      current[keys[keys.length - 1]] = parsedValue;
+
+      await saveConfig(cwd, config);
+      console.log(chalk.green(`Set ${key} = ${value}`));
+      return;
+    }
+
+    if (options.get) {
+      const keys = options.get.split('.');
+      let current: unknown = config;
+
+      for (const k of keys) {
+        if (current && typeof current === 'object' && k in current) {
+          current = (current as Record<string, unknown>)[k];
+        } else {
+          console.log(chalk.red(`Key not found: ${options.get}`));
+          process.exit(1);
+        }
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(current, null, 2));
+      } else {
+        console.log(current);
+      }
+      return;
+    }
+
+    // Show full config
+    if (options.json) {
+      console.log(JSON.stringify(config, null, 2));
+    } else {
+      const effective = getEffectiveConfig(config);
+
+      console.log(chalk.cyan('\nAPEX Configuration\n'));
+
+      console.log(chalk.bold('Project:'));
+      console.log(`  Name: ${effective.project.name}`);
+      if (effective.project.language) console.log(`  Language: ${effective.project.language}`);
+      if (effective.project.framework) console.log(`  Framework: ${effective.project.framework}`);
+
+      console.log(chalk.bold('\nAutonomy:'));
+      console.log(`  Default: ${effective.autonomy.default}`);
+
+      console.log(chalk.bold('\nModels:'));
+      console.log(`  Planning: ${effective.models.planning}`);
+      console.log(`  Implementation: ${effective.models.implementation}`);
+      console.log(`  Review: ${effective.models.review}`);
+
+      console.log(chalk.bold('\nGit:'));
+      console.log(`  Branch Prefix: ${effective.git.branchPrefix}`);
+      console.log(`  Commit Format: ${effective.git.commitFormat}`);
+      console.log(`  Auto Push: ${effective.git.autoPush}`);
+      console.log(`  Default Branch: ${effective.git.defaultBranch}`);
+
+      console.log(chalk.bold('\nLimits:'));
+      console.log(`  Max Tokens/Task: ${formatTokens(effective.limits.maxTokensPerTask)}`);
+      console.log(`  Max Cost/Task: ${formatCost(effective.limits.maxCostPerTask)}`);
+      console.log(`  Daily Budget: ${formatCost(effective.limits.dailyBudget)}`);
+      console.log(`  Max Turns: ${effective.limits.maxTurns}`);
+      console.log(`  Max Concurrent Tasks: ${effective.limits.maxConcurrentTasks}`);
+
+      console.log(chalk.bold('\nAPI:'));
+      console.log(`  URL: ${effective.api.url}`);
+      console.log(`  Port: ${effective.api.port}`);
+
+      console.log(chalk.gray('\nConfig file: .apex/config.yaml'));
+    }
+  });
+
+// ============================================================================
+// PR Command
+// ============================================================================
+
+program
+  .command('pr <taskId>')
+  .description('Create a pull request for a completed task')
+  .option('-d, --draft', 'Create as draft PR')
+  .option('-t, --title <title>', 'Custom PR title')
+  .option('-b, --body <body>', 'Custom PR body')
+  .action(async (taskId, options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const orchestrator = new ApexOrchestrator({ projectPath: cwd });
+    await orchestrator.initialize();
+
+    const task = await orchestrator.getTask(taskId);
+    if (!task) {
+      console.log(chalk.red(`Task not found: ${taskId}`));
+      process.exit(1);
+    }
+
+    if (task.status !== 'completed') {
+      console.log(chalk.yellow(`Task is ${task.status}. PRs can only be created for completed tasks.`));
+      process.exit(1);
+    }
+
+    if (task.prUrl) {
+      console.log(chalk.yellow(`PR already exists: ${task.prUrl}`));
+      return;
+    }
+
+    console.log(chalk.cyan('\n📝 Creating pull request...\n'));
+
+    const spinner = ora('Creating PR...').start();
+
+    const result = await orchestrator.createPullRequest(taskId, {
+      draft: options.draft,
+      title: options.title,
+      body: options.body,
+    });
+
+    if (result.success) {
+      spinner.succeed('Pull request created!');
+      console.log(
+        boxen(
+          `${chalk.green('✅ PR Created')}\n\n` +
+            `${chalk.cyan(result.prUrl)}\n\n` +
+            `Task: ${task.description.substring(0, 50)}`,
+          { padding: 1, borderColor: 'green', borderStyle: 'round' }
+        )
+      );
+    } else {
+      spinner.fail('Failed to create PR');
+      console.error(chalk.red(`\n❌ ${result.error}`));
+      process.exit(1);
     }
   });
 

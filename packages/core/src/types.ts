@@ -157,6 +157,8 @@ export const TaskStatusSchema = z.enum([
 ]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
 export interface Task {
   id: string;
   description: string;
@@ -164,9 +166,11 @@ export interface Task {
   workflow: string;
   autonomy: AutonomyLevel;
   status: TaskStatus;
+  priority: TaskPriority;
   currentStage?: string;
   projectPath: string;
   branchName?: string;
+  prUrl?: string;
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
@@ -226,6 +230,7 @@ export interface CreateTaskRequest {
   acceptanceCriteria?: string;
   workflow?: string;
   autonomy?: AutonomyLevel;
+  priority?: TaskPriority;
   projectPath: string;
 }
 

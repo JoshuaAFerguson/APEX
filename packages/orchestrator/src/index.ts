@@ -1,5 +1,7 @@
 import { query, type AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'eventemitter3';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import {
   ApexConfig,
   AgentDefinition,
@@ -21,6 +23,8 @@ import { TaskStore } from './store';
 import { buildOrchestratorPrompt, buildAgentDefinitions } from './prompts';
 import { createHooks } from './hooks';
 
+const execAsync = promisify(exec);
+
 export interface OrchestratorOptions {
   projectPath: string;
   apiUrl?: string;
@@ -36,6 +40,14 @@ export interface OrchestratorEvents {
   'agent:message': (taskId: string, message: unknown) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
+  'pr:created': (taskId: string, prUrl: string) => void;
+  'pr:failed': (taskId: string, error: string) => void;
+}
+
+export interface PRResult {
+  success: boolean;
+  prUrl?: string;
+  error?: string;
 }
 
 export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
@@ -81,12 +93,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     acceptanceCriteria?: string;
     workflow?: string;
     autonomy?: Task['autonomy'];
+    priority?: Task['priority'];
   }): Promise<Task> {
     await this.ensureInitialized();
 
     const taskId = generateTaskId();
     const workflow = options.workflow || 'feature';
     const autonomy = options.autonomy || this.effectiveConfig.autonomy.default;
+    const priority = options.priority || 'normal';
 
     const branchName = generateBranchName(
       this.effectiveConfig.git.branchPrefix,
@@ -101,6 +115,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       workflow,
       autonomy,
       status: 'pending',
+      priority,
       projectPath: this.projectPath,
       branchName,
       createdAt: new Date(),
@@ -311,6 +326,141 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getConfig(): Promise<ApexConfig> {
     await this.ensureInitialized();
     return this.config;
+  }
+
+  /**
+   * Check if gh CLI is available
+   */
+  async isGitHubCliAvailable(): Promise<boolean> {
+    try {
+      await execAsync('gh --version', { cwd: this.projectPath });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if the current directory is in a GitHub repo
+   */
+  async isGitHubRepo(): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync('git remote get-url origin', { cwd: this.projectPath });
+      return stdout.includes('github.com');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Create a pull request for a task
+   */
+  async createPullRequest(taskId: string, options?: {
+    draft?: boolean;
+    title?: string;
+    body?: string;
+  }): Promise<PRResult> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return { success: false, error: `Task not found: ${taskId}` };
+    }
+
+    if (!task.branchName) {
+      return { success: false, error: 'Task has no branch name' };
+    }
+
+    // Check prerequisites
+    const ghAvailable = await this.isGitHubCliAvailable();
+    if (!ghAvailable) {
+      return { success: false, error: 'GitHub CLI (gh) not installed or not authenticated. Install from https://cli.github.com/' };
+    }
+
+    const isGitHub = await this.isGitHubRepo();
+    if (!isGitHub) {
+      return { success: false, error: 'Not a GitHub repository' };
+    }
+
+    try {
+      // Ensure branch is pushed
+      await execAsync(`git push -u origin ${task.branchName}`, { cwd: this.projectPath });
+
+      // Generate PR title and body
+      const prTitle = options?.title || this.generatePRTitle(task);
+      const prBody = options?.body || this.generatePRBody(task);
+
+      // Create PR using gh CLI
+      const draftFlag = options?.draft ? '--draft' : '';
+      const baseBranch = this.effectiveConfig.git.defaultBranch;
+
+      const { stdout } = await execAsync(
+        `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"')}" --base ${baseBranch} ${draftFlag}`,
+        { cwd: this.projectPath }
+      );
+
+      const prUrl = stdout.trim();
+
+      // Update task with PR URL
+      await this.store.updateTask(taskId, {
+        prUrl,
+        updatedAt: new Date(),
+      });
+
+      this.emit('pr:created', taskId, prUrl);
+      return { success: true, prUrl };
+    } catch (error) {
+      const errorMessage = (error as Error).message;
+      this.emit('pr:failed', taskId, errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Generate PR title from task
+   */
+  private generatePRTitle(task: Task): string {
+    // Extract type from workflow
+    const typeMap: Record<string, string> = {
+      feature: 'feat',
+      bugfix: 'fix',
+      refactor: 'refactor',
+      docs: 'docs',
+      test: 'test',
+    };
+    const type = typeMap[task.workflow] || 'feat';
+
+    // Clean up description for title
+    const description = task.description
+      .toLowerCase()
+      .replace(/^(add|fix|update|implement|create)\s+/i, '')
+      .substring(0, 60);
+
+    return `${type}: ${description}`;
+  }
+
+  /**
+   * Generate PR body from task
+   */
+  private generatePRBody(task: Task): string {
+    let body = `## Summary\n\n`;
+    body += `${task.description}\n\n`;
+
+    if (task.acceptanceCriteria) {
+      body += `## Acceptance Criteria\n\n${task.acceptanceCriteria}\n\n`;
+    }
+
+    body += `## Task Details\n\n`;
+    body += `- **Task ID:** \`${task.id}\`\n`;
+    body += `- **Workflow:** ${task.workflow}\n`;
+    body += `- **Branch:** \`${task.branchName}\`\n`;
+    body += `- **Tokens Used:** ${task.usage.totalTokens.toLocaleString()}\n`;
+    body += `- **Estimated Cost:** $${task.usage.estimatedCost.toFixed(4)}\n\n`;
+
+    body += `---\n\n`;
+    body += `🤖 Generated by [APEX](https://github.com/JoshuaAFerguson/apex) - Autonomous Product Engineering eXecutor`;
+
+    return body;
   }
 
   /**
