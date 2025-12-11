@@ -1,0 +1,620 @@
+openapi: 3.0.3
+info:
+  title: APEX API
+  description: |
+    REST API for APEX - Autonomous Product Engineering eXecutor.
+
+    APEX provides AI-powered development automation with task management,
+    agent orchestration, and real-time streaming capabilities.
+  version: 0.1.0
+  contact:
+    url: https://github.com/JoshuaAFerguson/apex
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: Health
+    description: Server health checks
+  - name: Tasks
+    description: Task management operations
+  - name: Gates
+    description: Approval gate operations
+  - name: Agents
+    description: Agent information
+  - name: Configuration
+    description: APEX configuration
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the server is running
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks
+      description: List all tasks with optional filtering
+      operationId: listTasks
+      parameters:
+        - name: status
+          in: query
+          description: Filter by task status
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: limit
+          in: query
+          description: Maximum number of tasks to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+
+    post:
+      tags:
+        - Tasks
+      summary: Create task
+      description: Create a new development task and start execution
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTaskResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get task
+      description: Retrieve details for a specific task
+      operationId: getTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/status:
+    post:
+      tags:
+        - Tasks
+      summary: Update task status
+      description: Update the status of a task
+      operationId: updateTaskStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskStatusRequest'
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/log:
+    post:
+      tags:
+        - Tasks
+      summary: Add log entry
+      description: Add a log entry to a task
+      operationId: addTaskLog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddLogRequest'
+      responses:
+        '200':
+          description: Log entry added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/gates/{gateName}:
+    get:
+      tags:
+        - Gates
+      summary: Get gate status
+      description: Check the status of an approval gate
+      operationId: getGateStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+        - name: gateName
+          in: path
+          required: true
+          description: Gate name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Gate status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateStatusResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/gates/{gateName}/approve:
+    post:
+      tags:
+        - Gates
+      summary: Approve gate
+      description: Approve a gate to continue task execution
+      operationId: approveGate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+        - name: gateName
+          in: path
+          required: true
+          description: Gate name
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveGateRequest'
+      responses:
+        '200':
+          description: Gate approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /agents:
+    get:
+      tags:
+        - Agents
+      summary: List agents
+      description: Get all available agents
+      operationId: listAgents
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentsResponse'
+
+  /config:
+    get:
+      tags:
+        - Configuration
+      summary: Get configuration
+      description: Get the current APEX configuration
+      operationId: getConfig
+      responses:
+        '200':
+          description: Configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 0.1.0
+      required:
+        - status
+        - version
+
+    TaskStatus:
+      type: string
+      enum:
+        - pending
+        - queued
+        - planning
+        - in-progress
+        - waiting-approval
+        - paused
+        - completed
+        - failed
+        - cancelled
+
+    AutonomyLevel:
+      type: string
+      enum:
+        - full
+        - review-before-commit
+        - review-before-merge
+        - manual
+
+    Priority:
+      type: string
+      enum:
+        - low
+        - normal
+        - high
+        - urgent
+
+    LogLevel:
+      type: string
+      enum:
+        - debug
+        - info
+        - warn
+        - error
+
+    TaskUsage:
+      type: object
+      properties:
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        totalTokens:
+          type: integer
+        estimatedCost:
+          type: number
+      required:
+        - inputTokens
+        - outputTokens
+        - totalTokens
+        - estimatedCost
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        message:
+          type: string
+        agent:
+          type: string
+        stage:
+          type: string
+        metadata:
+          type: object
+      required:
+        - timestamp
+        - level
+        - message
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        acceptanceCriteria:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        workflow:
+          type: string
+        autonomy:
+          $ref: '#/components/schemas/AutonomyLevel'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        branchName:
+          type: string
+        currentStage:
+          type: string
+        retryCount:
+          type: integer
+        maxRetries:
+          type: integer
+        error:
+          type: string
+        prUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        usage:
+          $ref: '#/components/schemas/TaskUsage'
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+        artifacts:
+          type: array
+          items:
+            type: object
+      required:
+        - id
+        - description
+        - status
+        - workflow
+        - autonomy
+        - priority
+        - createdAt
+        - updatedAt
+        - usage
+
+    CreateTaskRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          description: Task description
+        acceptanceCriteria:
+          type: string
+          description: Acceptance criteria
+        workflow:
+          type: string
+          description: Workflow to use
+          default: feature
+        autonomy:
+          $ref: '#/components/schemas/AutonomyLevel'
+      required:
+        - description
+
+    CreateTaskResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        message:
+          type: string
+      required:
+        - taskId
+        - status
+        - message
+
+    TaskListResponse:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        count:
+          type: integer
+      required:
+        - tasks
+        - count
+
+    UpdateTaskStatusRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        stage:
+          type: string
+        message:
+          type: string
+      required:
+        - status
+
+    AddLogRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        agent:
+          type: string
+      required:
+        - message
+
+    GateStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - not-required
+            - pending
+            - approved
+            - rejected
+      required:
+        - status
+
+    ApproveGateRequest:
+      type: object
+      properties:
+        approver:
+          type: string
+        comment:
+          type: string
+
+    Agent:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+          enum:
+            - opus
+            - sonnet
+            - haiku
+      required:
+        - name
+        - description
+
+    AgentsResponse:
+      type: object
+      properties:
+        agents:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Agent'
+      required:
+        - agents
+
+    ConfigResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        project:
+          type: object
+          properties:
+            name:
+              type: string
+            language:
+              type: string
+            framework:
+              type: string
+        autonomy:
+          type: object
+          properties:
+            default:
+              $ref: '#/components/schemas/AutonomyLevel'
+        models:
+          type: object
+          properties:
+            planning:
+              type: string
+            implementation:
+              type: string
+            review:
+              type: string
+        limits:
+          type: object
+          properties:
+            maxTokensPerTask:
+              type: integer
+            maxCostPerTask:
+              type: number
+            dailyBudget:
+              type: number
+
+    SuccessResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+        - ok
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

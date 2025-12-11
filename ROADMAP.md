@@ -85,17 +85,17 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 Automatic PR creation via `gh` CLI
 - 🟢 PR description generation
 - ⚪ Commit message improvements
-- ⚪ Branch cleanup after merge
+- 🟢 Branch cleanup after merge - *`apex clean` command*
 - ⚪ Conflict detection and resolution suggestions
 - ⚪ Conventional changelog generation
 - ⚪ Git hooks for pre-commit checks
 
 ### Documentation
-- ⚪ API reference (OpenAPI/Swagger)
+- 🟢 API reference (OpenAPI/Swagger)
 - 🟢 Agent authoring guide
 - 🟢 Workflow authoring guide
-- ⚪ Best practices guide
-- ⚪ Troubleshooting guide
+- 🟢 Best practices guide
+- 🟢 Troubleshooting guide
 - ⚪ Video tutorials
 
 ---

@@ -753,6 +753,143 @@ program
   });
 
 // ============================================================================
+// CLEAN Command
+// ============================================================================
+
+program
+  .command('clean')
+  .description('Clean up merged APEX branches')
+  .option('-r, --remote', 'Also delete remote branches')
+  .option('-f, --force', 'Delete without confirmation')
+  .option('-a, --all', 'Clean all APEX branches (not just merged)')
+  .action(async (options) => {
+    const cwd = process.cwd();
+
+    if (!(await isApexInitialized(cwd))) {
+      console.log(chalk.red('APEX not initialized. Run "apex init" first.'));
+      process.exit(1);
+    }
+
+    const config = await loadConfig(cwd);
+    const branchPrefix = config.git?.branchPrefix || 'apex/';
+
+    console.log(chalk.cyan('\n🧹 Cleaning APEX branches...\n'));
+
+    const { execSync } = await import('child_process');
+
+    try {
+      // Get current branch
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        encoding: 'utf-8',
+        cwd,
+      }).trim();
+
+      // Get merged branches matching the prefix
+      let branchListCmd = options.all
+        ? `git branch --list '${branchPrefix}*'`
+        : `git branch --merged | grep '${branchPrefix}'`;
+
+      let branches: string[];
+      try {
+        const output = execSync(branchListCmd, {
+          encoding: 'utf-8',
+          cwd,
+        });
+        branches = output
+          .split('\n')
+          .map((b) => b.trim().replace(/^\*\s*/, ''))
+          .filter((b) => b && b !== currentBranch);
+      } catch {
+        branches = [];
+      }
+
+      if (branches.length === 0) {
+        console.log(chalk.green('No APEX branches to clean.'));
+        return;
+      }
+
+      console.log(chalk.bold('Branches to delete:'));
+      for (const branch of branches) {
+        console.log(`  ${chalk.yellow(branch)}`);
+      }
+      console.log();
+
+      if (!options.force) {
+        const { confirm } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirm',
+            message: `Delete ${branches.length} branch(es)?`,
+            default: false,
+          },
+        ]);
+
+        if (!confirm) {
+          console.log(chalk.gray('Cancelled.'));
+          return;
+        }
+      }
+
+      const spinner = ora('Deleting branches...').start();
+
+      let deletedCount = 0;
+      let failedCount = 0;
+
+      for (const branch of branches) {
+        try {
+          // Delete local branch
+          execSync(`git branch -d "${branch}"`, { cwd, stdio: 'pipe' });
+          deletedCount++;
+
+          // Delete remote branch if requested
+          if (options.remote) {
+            try {
+              execSync(`git push origin --delete "${branch}"`, {
+                cwd,
+                stdio: 'pipe',
+              });
+            } catch {
+              // Remote branch may not exist
+            }
+          }
+        } catch {
+          // Try force delete if regular delete fails
+          try {
+            execSync(`git branch -D "${branch}"`, { cwd, stdio: 'pipe' });
+            deletedCount++;
+
+            if (options.remote) {
+              try {
+                execSync(`git push origin --delete "${branch}"`, {
+                  cwd,
+                  stdio: 'pipe',
+                });
+              } catch {
+                // Ignore remote errors
+              }
+            }
+          } catch {
+            failedCount++;
+          }
+        }
+      }
+
+      spinner.succeed(`Cleaned ${deletedCount} branch(es)`);
+
+      if (failedCount > 0) {
+        console.log(chalk.yellow(`  ${failedCount} branch(es) could not be deleted (may contain unmerged changes)`));
+      }
+
+      if (options.remote) {
+        console.log(chalk.gray('  Remote branches also deleted where available'));
+      }
+    } catch (error) {
+      console.error(chalk.red(`\n❌ ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
 // UPGRADE Command
 // ============================================================================
 
