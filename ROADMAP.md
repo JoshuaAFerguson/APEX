@@ -79,7 +79,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 Task dependencies
 - 🟢 Automatic retries with backoff
 - 🟢 Checkpoint/resume for long tasks
-- ⚪ Context compaction strategies
+- 🟢 Context compaction strategies
 
 ### Git Integration
 - 🟢 Automatic PR creation via `gh` CLI

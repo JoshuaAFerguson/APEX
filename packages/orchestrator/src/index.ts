@@ -1003,3 +1003,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 export { TaskStore } from './store';
 export { buildOrchestratorPrompt, buildAgentDefinitions } from './prompts';
 export { createHooks } from './hooks';
+export {
+  estimateTokens,
+  estimateMessageTokens,
+  estimateConversationTokens,
+  truncateToolResult,
+  summarizeMessage,
+  compactConversation,
+  pruneToolResults,
+  createContextSummary,
+  analyzeConversation,
+  type ContextCompactionOptions,
+} from './context';
