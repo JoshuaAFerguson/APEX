@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { TaskStore } from './store';
-import type { Task, TaskLog, TaskArtifact, GateStatus } from '@apex/core';
+import type { Task, TaskLog, TaskArtifact, GateStatus, TaskCheckpoint, AgentMessage } from '@apex/core';
 
 describe('TaskStore', () => {
   let testDir: string;
@@ -734,6 +734,216 @@ describe('TaskStore', () => {
 
       const deps = await store.getTaskDependencies('task_dup_main');
       expect(deps).toEqual(['task_dup_dep']);
+    });
+  });
+
+  describe('Task Checkpoints', () => {
+    it('should save and retrieve a checkpoint', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const checkpoint: TaskCheckpoint = {
+        taskId: task.id,
+        checkpointId: 'checkpoint_1',
+        stage: 'planning',
+        stageIndex: 0,
+        createdAt: new Date(),
+      };
+
+      await store.saveCheckpoint(checkpoint);
+
+      const retrieved = await store.getCheckpoint(task.id, 'checkpoint_1');
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.taskId).toBe(task.id);
+      expect(retrieved?.checkpointId).toBe('checkpoint_1');
+      expect(retrieved?.stage).toBe('planning');
+      expect(retrieved?.stageIndex).toBe(0);
+    });
+
+    it('should get the latest checkpoint', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Save multiple checkpoints
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'checkpoint_1',
+        stage: 'planning',
+        stageIndex: 0,
+        createdAt: new Date('2024-01-01'),
+      });
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'checkpoint_2',
+        stage: 'implementation',
+        stageIndex: 1,
+        createdAt: new Date('2024-01-02'),
+      });
+
+      const latest = await store.getLatestCheckpoint(task.id);
+      expect(latest?.checkpointId).toBe('checkpoint_2');
+      expect(latest?.stage).toBe('implementation');
+    });
+
+    it('should list all checkpoints for a task', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_1',
+        stageIndex: 0,
+        createdAt: new Date(),
+      });
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_2',
+        stageIndex: 1,
+        createdAt: new Date(),
+      });
+
+      const checkpoints = await store.listCheckpoints(task.id);
+      expect(checkpoints).toHaveLength(2);
+    });
+
+    it('should save checkpoint with conversation state', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const conversationState: AgentMessage[] = [
+        {
+          type: 'user',
+          content: [{ type: 'text', text: 'Hello' }],
+        },
+        {
+          type: 'assistant',
+          content: [{ type: 'text', text: 'Hi there!' }],
+        },
+      ];
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_with_state',
+        stage: 'planning',
+        stageIndex: 0,
+        conversationState,
+        createdAt: new Date(),
+      });
+
+      const retrieved = await store.getCheckpoint(task.id, 'cp_with_state');
+      expect(retrieved?.conversationState).toEqual(conversationState);
+    });
+
+    it('should save checkpoint with metadata', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const metadata = {
+        filesProcessed: ['src/index.ts', 'src/utils.ts'],
+        lastToolUsed: 'Read',
+        customData: { key: 'value' },
+      };
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_with_meta',
+        stageIndex: 0,
+        metadata,
+        createdAt: new Date(),
+      });
+
+      const retrieved = await store.getCheckpoint(task.id, 'cp_with_meta');
+      expect(retrieved?.metadata).toEqual(metadata);
+    });
+
+    it('should update existing checkpoint', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Save initial checkpoint
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_update',
+        stage: 'planning',
+        stageIndex: 0,
+        createdAt: new Date(),
+      });
+
+      // Update the same checkpoint
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_update',
+        stage: 'implementation',
+        stageIndex: 1,
+        createdAt: new Date(),
+      });
+
+      const retrieved = await store.getCheckpoint(task.id, 'cp_update');
+      expect(retrieved?.stage).toBe('implementation');
+      expect(retrieved?.stageIndex).toBe(1);
+
+      // Should still be just one checkpoint
+      const all = await store.listCheckpoints(task.id);
+      expect(all.filter(c => c.checkpointId === 'cp_update')).toHaveLength(1);
+    });
+
+    it('should delete a checkpoint', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_to_delete',
+        stageIndex: 0,
+        createdAt: new Date(),
+      });
+
+      await store.deleteCheckpoint(task.id, 'cp_to_delete');
+
+      const retrieved = await store.getCheckpoint(task.id, 'cp_to_delete');
+      expect(retrieved).toBeNull();
+    });
+
+    it('should delete all checkpoints for a task', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_1',
+        stageIndex: 0,
+        createdAt: new Date(),
+      });
+
+      await store.saveCheckpoint({
+        taskId: task.id,
+        checkpointId: 'cp_2',
+        stageIndex: 1,
+        createdAt: new Date(),
+      });
+
+      await store.deleteAllCheckpoints(task.id);
+
+      const checkpoints = await store.listCheckpoints(task.id);
+      expect(checkpoints).toHaveLength(0);
+    });
+
+    it('should return null for non-existent checkpoint', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const checkpoint = await store.getCheckpoint(task.id, 'non_existent');
+      expect(checkpoint).toBeNull();
+    });
+
+    it('should return null when no checkpoints exist', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const latest = await store.getLatestCheckpoint(task.id);
+      expect(latest).toBeNull();
     });
   });
 });

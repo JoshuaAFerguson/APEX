@@ -1288,4 +1288,158 @@ You are a developer agent that implements code changes.
       expect(task.blockedBy).toEqual([]);
     });
   });
+
+  describe('checkpoint management', () => {
+    it('should save and retrieve checkpoint', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Checkpoint test task',
+      });
+
+      const checkpointId = await orchestrator.saveCheckpoint(task.id, {
+        stage: 'planning',
+        stageIndex: 0,
+        metadata: { filesProcessed: ['file1.ts'] },
+      });
+
+      expect(checkpointId).toMatch(/^cp_/);
+
+      const checkpoint = await orchestrator.getLatestCheckpoint(task.id);
+      expect(checkpoint).not.toBeNull();
+      expect(checkpoint?.stage).toBe('planning');
+      expect(checkpoint?.stageIndex).toBe(0);
+      expect(checkpoint?.metadata?.filesProcessed).toEqual(['file1.ts']);
+    });
+
+    it('should get specific checkpoint by ID', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Multi-checkpoint task',
+      });
+
+      const cp1 = await orchestrator.saveCheckpoint(task.id, {
+        stage: 'planning',
+        stageIndex: 0,
+      });
+
+      const cp2 = await orchestrator.saveCheckpoint(task.id, {
+        stage: 'implementation',
+        stageIndex: 1,
+      });
+
+      const checkpoint = await orchestrator.getCheckpoint(task.id, cp1);
+      expect(checkpoint?.stage).toBe('planning');
+
+      const checkpoint2 = await orchestrator.getCheckpoint(task.id, cp2);
+      expect(checkpoint2?.stage).toBe('implementation');
+    });
+
+    it('should list all checkpoints for a task', async () => {
+      const task = await orchestrator.createTask({
+        description: 'List checkpoints task',
+      });
+
+      await orchestrator.saveCheckpoint(task.id, { stageIndex: 0 });
+      await orchestrator.saveCheckpoint(task.id, { stageIndex: 1 });
+      await orchestrator.saveCheckpoint(task.id, { stageIndex: 2 });
+
+      const checkpoints = await orchestrator.listCheckpoints(task.id);
+      expect(checkpoints).toHaveLength(3);
+    });
+
+    it('should delete all checkpoints', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Delete checkpoints task',
+      });
+
+      await orchestrator.saveCheckpoint(task.id, { stageIndex: 0 });
+      await orchestrator.saveCheckpoint(task.id, { stageIndex: 1 });
+
+      await orchestrator.deleteCheckpoints(task.id);
+
+      const checkpoints = await orchestrator.listCheckpoints(task.id);
+      expect(checkpoints).toHaveLength(0);
+    });
+
+    it('should return null for non-existent checkpoint', async () => {
+      const task = await orchestrator.createTask({
+        description: 'No checkpoint task',
+      });
+
+      const checkpoint = await orchestrator.getLatestCheckpoint(task.id);
+      expect(checkpoint).toBeNull();
+    });
+
+    it('should resume task from latest checkpoint', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const task = await orchestrator.createTask({
+        description: 'Resume test task',
+        workflow: 'feature',
+      });
+
+      // Save a checkpoint at the last stage (index >= workflow stages length means completion)
+      await orchestrator.saveCheckpoint(task.id, {
+        stage: 'implementation',
+        stageIndex: 2, // Beyond the 2 stages in our test workflow
+      });
+
+      // Mark task as paused/failed
+      await orchestrator.updateTaskStatus(task.id, 'paused');
+
+      // Resume should work - with stageIndex=2, there are no remaining stages
+      const resumed = await orchestrator.resumeTask(task.id);
+      expect(resumed).toBe(true);
+
+      // Task should be marked completed since no stages left
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('completed');
+    });
+
+    it('should return false when resuming task with no checkpoint', async () => {
+      const task = await orchestrator.createTask({
+        description: 'No checkpoint resume task',
+        workflow: 'feature',
+      });
+
+      const resumed = await orchestrator.resumeTask(task.id);
+      expect(resumed).toBe(false);
+    });
+
+    it('should resume from specific checkpoint', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const task = await orchestrator.createTask({
+        description: 'Specific checkpoint task',
+        workflow: 'feature',
+      });
+
+      // Create checkpoint that skips all stages
+      const cp1 = await orchestrator.saveCheckpoint(task.id, {
+        stage: 'done',
+        stageIndex: 10, // Beyond all stages
+      });
+
+      await orchestrator.saveCheckpoint(task.id, {
+        stage: 'implementation',
+        stageIndex: 10, // Also beyond all stages
+      });
+
+      // Resume from first checkpoint (not latest) - should complete immediately with no stages to run
+      const resumed = await orchestrator.resumeTask(task.id, { checkpointId: cp1 });
+      expect(resumed).toBe(true);
+
+      // Task should be completed
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('completed');
+    });
+
+    it('should throw error when resuming non-existent task', async () => {
+      await expect(orchestrator.resumeTask('non-existent-task')).rejects.toThrow('Task not found');
+    });
+  });
 });

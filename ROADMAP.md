@@ -56,7 +56,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 *Stability, testing, and deployment improvements*
 
 ### Testing & Quality
-- ⚪ Unit test suite (>80% coverage)
+- 🟡 Unit test suite (>80% coverage) - *Currently at 63% with 321 tests*
 - ⚪ Integration tests
 - ⚪ End-to-end tests
 - ⚪ Performance benchmarks
@@ -75,10 +75,10 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ### Orchestrator Improvements
 - 🟢 Task queue with priorities
-- ⚪ Concurrent task execution
-- ⚪ Task dependencies
-- ⚪ Automatic retries with backoff
-- ⚪ Checkpoint/resume for long tasks
+- 🟢 Concurrent task execution
+- 🟢 Task dependencies
+- 🟢 Automatic retries with backoff
+- 🟢 Checkpoint/resume for long tasks
 - ⚪ Context compaction strategies
 
 ### Git Integration

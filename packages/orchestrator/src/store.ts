@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus } from '@apex/core';
+import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint } from '@apex/core';
 
 export class TaskStore {
   private db!: Database.Database;
@@ -106,12 +106,26 @@ export class TaskStore {
         UNIQUE(task_id, depends_on_task_id)
       );
 
+      CREATE TABLE IF NOT EXISTS task_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        checkpoint_id TEXT NOT NULL,
+        stage TEXT,
+        stage_index INTEGER DEFAULT 0,
+        conversation_state TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        UNIQUE(task_id, checkpoint_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
       CREATE INDEX IF NOT EXISTS idx_gates_task_id ON gates(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_checkpoints_task_id ON task_checkpoints(task_id);
     `);
   }
 
@@ -656,6 +670,118 @@ export class TaskStore {
     return tasks;
   }
 
+  // ============================================================================
+  // Task Checkpoints
+  // ============================================================================
+
+  /**
+   * Save a checkpoint for a task
+   */
+  async saveCheckpoint(checkpoint: TaskCheckpoint): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO task_checkpoints (task_id, checkpoint_id, stage, stage_index, conversation_state, metadata, created_at)
+      VALUES (@taskId, @checkpointId, @stage, @stageIndex, @conversationState, @metadata, @createdAt)
+      ON CONFLICT(task_id, checkpoint_id) DO UPDATE SET
+        stage = @stage,
+        stage_index = @stageIndex,
+        conversation_state = @conversationState,
+        metadata = @metadata,
+        created_at = @createdAt
+    `);
+    stmt.run({
+      taskId: checkpoint.taskId,
+      checkpointId: checkpoint.checkpointId,
+      stage: checkpoint.stage || null,
+      stageIndex: checkpoint.stageIndex,
+      conversationState: checkpoint.conversationState ? JSON.stringify(checkpoint.conversationState) : null,
+      metadata: checkpoint.metadata ? JSON.stringify(checkpoint.metadata) : null,
+      createdAt: checkpoint.createdAt.toISOString(),
+    });
+  }
+
+  /**
+   * Get the latest checkpoint for a task
+   */
+  async getLatestCheckpoint(taskId: string): Promise<TaskCheckpoint | null> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_checkpoints
+      WHERE task_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+    const row = stmt.get(taskId) as CheckpointRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToCheckpoint(row);
+  }
+
+  /**
+   * Get a specific checkpoint by ID
+   */
+  async getCheckpoint(taskId: string, checkpointId: string): Promise<TaskCheckpoint | null> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_checkpoints
+      WHERE task_id = ? AND checkpoint_id = ?
+    `);
+    const row = stmt.get(taskId, checkpointId) as CheckpointRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToCheckpoint(row);
+  }
+
+  /**
+   * List all checkpoints for a task
+   */
+  async listCheckpoints(taskId: string): Promise<TaskCheckpoint[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_checkpoints
+      WHERE task_id = ?
+      ORDER BY created_at DESC
+    `);
+    const rows = stmt.all(taskId) as CheckpointRow[];
+
+    return rows.map(row => this.rowToCheckpoint(row));
+  }
+
+  /**
+   * Delete a checkpoint
+   */
+  async deleteCheckpoint(taskId: string, checkpointId: string): Promise<void> {
+    const stmt = this.db.prepare(`
+      DELETE FROM task_checkpoints
+      WHERE task_id = ? AND checkpoint_id = ?
+    `);
+    stmt.run(taskId, checkpointId);
+  }
+
+  /**
+   * Delete all checkpoints for a task
+   */
+  async deleteAllCheckpoints(taskId: string): Promise<void> {
+    const stmt = this.db.prepare(`
+      DELETE FROM task_checkpoints
+      WHERE task_id = ?
+    `);
+    stmt.run(taskId);
+  }
+
+  /**
+   * Convert a checkpoint row to a TaskCheckpoint
+   */
+  private rowToCheckpoint(row: CheckpointRow): TaskCheckpoint {
+    return {
+      taskId: row.task_id,
+      checkpointId: row.checkpoint_id,
+      stage: row.stage || undefined,
+      stageIndex: row.stage_index || 0,
+      conversationState: row.conversation_state ? JSON.parse(row.conversation_state) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      createdAt: new Date(row.created_at),
+    };
+  }
+
   /**
    * Close the database connection
    */
@@ -719,4 +845,15 @@ interface GateRow {
   responded_at: string | null;
   approver: string | null;
   comment: string | null;
+}
+
+interface CheckpointRow {
+  id: number;
+  task_id: string;
+  checkpoint_id: string;
+  stage: string | null;
+  stage_index: number | null;
+  conversation_state: string | null;
+  metadata: string | null;
+  created_at: string;
 }

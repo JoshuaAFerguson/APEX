@@ -229,6 +229,20 @@ export interface Gate {
 }
 
 // ============================================================================
+// Checkpoint Management
+// ============================================================================
+
+export interface TaskCheckpoint {
+  taskId: string;
+  checkpointId: string;
+  stage?: string;
+  stageIndex: number;
+  conversationState?: AgentMessage[];
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+// ============================================================================
 // API Types
 // ============================================================================
 

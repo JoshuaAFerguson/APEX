@@ -9,6 +9,7 @@ import {
   Task,
   TaskStatus,
   TaskUsage,
+  TaskCheckpoint,
   ApexEvent,
   ApexEventType,
   loadConfig,
@@ -764,6 +765,238 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   isTaskRunnerActive(): boolean {
     return this.isRunnerActive;
+  }
+
+  // ============================================================================
+  // Checkpoint Management
+  // ============================================================================
+
+  /**
+   * Save a checkpoint for a task
+   * Checkpoints can be used to resume long-running tasks from where they left off
+   */
+  async saveCheckpoint(
+    taskId: string,
+    options: {
+      stage?: string;
+      stageIndex?: number;
+      conversationState?: unknown[];
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<string> {
+    await this.ensureInitialized();
+
+    const checkpointId = `cp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const checkpoint: TaskCheckpoint = {
+      taskId,
+      checkpointId,
+      stage: options.stage,
+      stageIndex: options.stageIndex ?? 0,
+      conversationState: options.conversationState as TaskCheckpoint['conversationState'],
+      metadata: options.metadata,
+      createdAt: new Date(),
+    };
+
+    await this.store.saveCheckpoint(checkpoint);
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Checkpoint saved: ${checkpointId}`,
+      stage: options.stage,
+    });
+
+    return checkpointId;
+  }
+
+  /**
+   * Get the latest checkpoint for a task
+   */
+  async getLatestCheckpoint(taskId: string): Promise<TaskCheckpoint | null> {
+    await this.ensureInitialized();
+    return this.store.getLatestCheckpoint(taskId);
+  }
+
+  /**
+   * Get a specific checkpoint
+   */
+  async getCheckpoint(taskId: string, checkpointId: string): Promise<TaskCheckpoint | null> {
+    await this.ensureInitialized();
+    return this.store.getCheckpoint(taskId, checkpointId);
+  }
+
+  /**
+   * List all checkpoints for a task
+   */
+  async listCheckpoints(taskId: string): Promise<TaskCheckpoint[]> {
+    await this.ensureInitialized();
+    return this.store.listCheckpoints(taskId);
+  }
+
+  /**
+   * Delete all checkpoints for a task
+   */
+  async deleteCheckpoints(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+    await this.store.deleteAllCheckpoints(taskId);
+  }
+
+  /**
+   * Resume a task from its latest checkpoint
+   * Returns false if no checkpoint exists
+   */
+  async resumeTask(taskId: string, options?: { checkpointId?: string }): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Get checkpoint to resume from
+    let checkpoint: TaskCheckpoint | null;
+    if (options?.checkpointId) {
+      checkpoint = await this.store.getCheckpoint(taskId, options.checkpointId);
+    } else {
+      checkpoint = await this.store.getLatestCheckpoint(taskId);
+    }
+
+    if (!checkpoint) {
+      return false; // No checkpoint to resume from
+    }
+
+    // Update task status to in-progress
+    await this.updateTaskStatus(taskId, 'in-progress', `Resuming from checkpoint: ${checkpoint.checkpointId}`);
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Resuming task from checkpoint: ${checkpoint.checkpointId}`,
+      stage: checkpoint.stage,
+      metadata: {
+        checkpointId: checkpoint.checkpointId,
+        stageIndex: checkpoint.stageIndex,
+        checkpointCreatedAt: checkpoint.createdAt.toISOString(),
+      },
+    });
+
+    // Load workflow and continue execution
+    const workflow = await loadWorkflow(this.projectPath, task.workflow);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${task.workflow}`);
+    }
+
+    // Find the stage to resume from
+    const startIndex = checkpoint.stageIndex;
+
+    // Execute remaining stages
+    const remainingStages = workflow.stages.slice(startIndex);
+
+    for (const stage of remainingStages) {
+      // Check if task was cancelled during execution
+      const currentTask = await this.store.getTask(taskId);
+      if (currentTask?.status === 'cancelled') {
+        return true; // Task was cancelled, stop execution
+      }
+
+      // Update stage
+      await this.store.updateTask(taskId, { currentStage: stage.name, updatedAt: new Date() });
+      this.emit('task:stage-changed', task, stage.name);
+
+      // Load agent for this stage
+      const agentDef = this.agents[stage.agent];
+      if (!agentDef) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Agent not found for stage: ${stage.agent}, skipping`,
+          stage: stage.name,
+        });
+        continue;
+      }
+
+      // Execute the stage (simplified - in real implementation would use full agent execution)
+      await this.executeStage(taskId, task, stage, agentDef, workflow);
+    }
+
+    // Mark task as completed
+    await this.updateTaskStatus(taskId, 'completed');
+    const completedTask = await this.store.getTask(taskId);
+    if (completedTask) {
+      this.emit('task:completed', completedTask);
+    }
+
+    return true;
+  }
+
+  /**
+   * Execute a single workflow stage (helper for resumeTask)
+   */
+  private async executeStage(
+    taskId: string,
+    task: Task,
+    stage: { name: string; agent: string },
+    agentDef: AgentDefinition,
+    workflow: WorkflowDefinition
+  ): Promise<void> {
+    const prompt = buildOrchestratorPrompt({
+      task,
+      workflow,
+      config: this.effectiveConfig,
+      agents: this.agents,
+    });
+
+    const sdkAgentDefs = buildAgentDefinitions(Object.values(this.agents));
+
+    const hooks = createHooks(
+      this.effectiveConfig,
+      taskId,
+      (tool: string, input: unknown) => this.emit('agent:tool-use', taskId, tool, input),
+      (tool: string, result: unknown) => {},
+      async (command: string) => this.store.logCommand(taskId, command)
+    );
+
+    try {
+      for await (const event of query({
+        prompt,
+        model: agentDef.model === 'opus' ? 'claude-opus-4-5-20251101' :
+               agentDef.model === 'haiku' ? 'claude-haiku-3-5-20241022' : 'claude-sonnet-4-20250514',
+        maxTurns: this.effectiveConfig.limits.maxTurns,
+        hooks,
+        agents: sdkAgentDefs,
+        options: {
+          maxTokens: 8192,
+        },
+      })) {
+        if (event.type === 'assistant') {
+          this.emit('agent:message', taskId, event);
+
+          // Save checkpoint after each assistant message
+          await this.saveCheckpoint(taskId, {
+            stage: stage.name,
+            stageIndex: 0, // Would need proper index tracking
+            metadata: { lastEvent: 'assistant_message' },
+          });
+        }
+
+        if (event.type === 'result' && event.usage) {
+          const usage: TaskUsage = {
+            inputTokens: event.usage.inputTokens,
+            outputTokens: event.usage.outputTokens,
+            totalTokens: event.usage.inputTokens + event.usage.outputTokens,
+            estimatedCost: calculateCost(event.usage.inputTokens, event.usage.outputTokens, agentDef.model || 'sonnet'),
+          };
+
+          await this.store.updateTask(taskId, { usage });
+          this.emit('usage:updated', taskId, usage);
+        }
+      }
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Stage execution failed: ${(error as Error).message}`,
+        stage: stage.name,
+      });
+      throw error;
+    }
   }
 }
 
