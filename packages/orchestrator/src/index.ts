@@ -944,26 +944,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       agents: this.agents,
     });
 
-    const sdkAgentDefs = buildAgentDefinitions(Object.values(this.agents));
+    const sdkAgentDefs = buildAgentDefinitions(this.agents, this.effectiveConfig);
 
-    const hooks = createHooks(
-      this.effectiveConfig,
+    const hooks = createHooks({
       taskId,
-      (tool: string, input: unknown) => this.emit('agent:tool-use', taskId, tool, input),
-      (tool: string, result: unknown) => {},
-      async (command: string) => this.store.logCommand(taskId, command)
-    );
+      store: this.store,
+      onToolUse: (tool: string, input: unknown) => this.emit('agent:tool-use', taskId, tool, input),
+    });
 
     try {
       for await (const event of query({
         prompt,
-        model: agentDef.model === 'opus' ? 'claude-opus-4-5-20251101' :
-               agentDef.model === 'haiku' ? 'claude-haiku-3-5-20241022' : 'claude-sonnet-4-20250514',
-        maxTurns: this.effectiveConfig.limits.maxTurns,
-        hooks,
-        agents: sdkAgentDefs,
         options: {
-          maxTokens: 8192,
+          model: agentDef.model === 'opus' ? 'claude-opus-4-5-20251101' :
+                 agentDef.model === 'haiku' ? 'claude-haiku-3-5-20241022' : 'claude-sonnet-4-20250514',
+          maxTurns: this.effectiveConfig.limits.maxTurns,
+          hooks,
+          agents: sdkAgentDefs,
         },
       })) {
         if (event.type === 'assistant') {
@@ -982,7 +979,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             inputTokens: event.usage.inputTokens,
             outputTokens: event.usage.outputTokens,
             totalTokens: event.usage.inputTokens + event.usage.outputTokens,
-            estimatedCost: calculateCost(event.usage.inputTokens, event.usage.outputTokens, agentDef.model || 'sonnet'),
+            estimatedCost: calculateCost(event.usage.inputTokens, event.usage.outputTokens),
           };
 
           await this.store.updateTask(taskId, { usage });

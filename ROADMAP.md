@@ -56,9 +56,9 @@ This document outlines the planned development roadmap for APEX. Features are or
 *Stability, testing, and deployment improvements*
 
 ### Testing & Quality
-- 🟢 Unit test suite (>80% coverage) - *Currently at 89% with 378 tests*
+- 🟢 Unit test suite (>80% coverage) - *Currently at 89% with 399 tests*
 - 🟢 Integration tests
-- ⚪ End-to-end tests
+- 🟢 End-to-end tests - *21 CLI E2E tests*
 - ⚪ Performance benchmarks
 - ⚪ Load testing
 
@@ -68,9 +68,9 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 `apex retry <taskId>` - Retry failed tasks
 - 🟢 `apex config` - View/edit configuration
 - 🟢 `apex pr <taskId>` - Create pull requests
-- ⚪ `apex upgrade` - Self-update CLI
+- 🟢 `apex upgrade` - Self-update CLI
 - ⚪ Interactive mode with prompts
-- ⚪ Progress bars and spinners
+- 🟢 Progress bars and spinners - *Using ora spinners*
 - ⚪ Color theme customization
 
 ### Orchestrator Improvements
@@ -92,8 +92,8 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ### Documentation
 - ⚪ API reference (OpenAPI/Swagger)
-- ⚪ Agent authoring guide
-- ⚪ Workflow authoring guide
+- 🟢 Agent authoring guide
+- 🟢 Workflow authoring guide
 - ⚪ Best practices guide
 - ⚪ Troubleshooting guide
 - ⚪ Video tutorials

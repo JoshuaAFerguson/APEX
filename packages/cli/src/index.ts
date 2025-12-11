@@ -753,8 +753,182 @@ program
   });
 
 // ============================================================================
+// UPGRADE Command
+// ============================================================================
+
+program
+  .command('upgrade')
+  .description('Check for and install APEX updates')
+  .option('-c, --check', 'Check for updates without installing')
+  .option('--pre', 'Include pre-release versions')
+  .action(async (options) => {
+    const packageName = '@apex/cli';
+
+    console.log(chalk.cyan('\n🔍 Checking for updates...\n'));
+
+    const spinner = ora('Fetching latest version...').start();
+
+    try {
+      // Get current version
+      const currentVersion = VERSION;
+
+      // Get latest version from npm
+      const { execSync } = await import('child_process');
+      const npmTag = options.pre ? 'next' : 'latest';
+
+      let latestVersion: string;
+      try {
+        const npmInfo = execSync(`npm info ${packageName}@${npmTag} version 2>/dev/null`, {
+          encoding: 'utf-8',
+        }).trim();
+        latestVersion = npmInfo;
+      } catch {
+        // Package not published yet, use current version
+        spinner.info('Package not yet published to npm. Using local version.');
+        console.log(chalk.gray(`Current version: ${currentVersion}`));
+        console.log(chalk.gray('\nTo publish: npm publish'));
+        return;
+      }
+
+      spinner.stop();
+
+      // Compare versions
+      const current = parseVersion(currentVersion);
+      const latest = parseVersion(latestVersion);
+
+      if (compareVersions(current, latest) >= 0) {
+        console.log(chalk.green('✓ You are using the latest version!'));
+        console.log(chalk.gray(`  Current: ${currentVersion}`));
+        return;
+      }
+
+      // Update available
+      console.log(
+        boxen(
+          `${chalk.yellow('Update available!')}\n\n` +
+            `Current: ${chalk.red(currentVersion)}\n` +
+            `Latest:  ${chalk.green(latestVersion)}\n\n` +
+            `Run ${chalk.cyan('apex upgrade')} to update`,
+          { padding: 1, borderColor: 'yellow', borderStyle: 'round' }
+        )
+      );
+
+      if (options.check) {
+        return;
+      }
+
+      // Ask for confirmation
+      const { confirm } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: `Upgrade APEX from ${currentVersion} to ${latestVersion}?`,
+          default: true,
+        },
+      ]);
+
+      if (!confirm) {
+        console.log(chalk.gray('Upgrade cancelled.'));
+        return;
+      }
+
+      // Perform upgrade
+      const upgradeSpinner = ora('Upgrading APEX...').start();
+
+      try {
+        // Detect package manager
+        const packageManager = detectPackageManager();
+
+        let upgradeCmd: string;
+        switch (packageManager) {
+          case 'yarn':
+            upgradeCmd = `yarn global add ${packageName}@${npmTag}`;
+            break;
+          case 'pnpm':
+            upgradeCmd = `pnpm add -g ${packageName}@${npmTag}`;
+            break;
+          case 'bun':
+            upgradeCmd = `bun add -g ${packageName}@${npmTag}`;
+            break;
+          default:
+            upgradeCmd = `npm install -g ${packageName}@${npmTag}`;
+        }
+
+        execSync(upgradeCmd, { stdio: 'pipe' });
+
+        upgradeSpinner.succeed('APEX upgraded successfully!');
+        console.log(chalk.green(`\nNow running APEX ${latestVersion}`));
+        console.log(chalk.gray('Run "apex --version" to verify.'));
+      } catch (error) {
+        upgradeSpinner.fail('Upgrade failed');
+        console.error(chalk.red(`\n${(error as Error).message}`));
+        console.log(chalk.gray('\nTry upgrading manually:'));
+        console.log(chalk.cyan(`  npm install -g ${packageName}@${npmTag}`));
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail('Failed to check for updates');
+      console.error(chalk.red(`\n${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
+
+interface Version {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: string;
+}
+
+function parseVersion(version: string): Version {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+  if (!match) {
+    return { major: 0, minor: 0, patch: 0 };
+  }
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10),
+    prerelease: match[4],
+  };
+}
+
+function compareVersions(a: Version, b: Version): number {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  if (a.patch !== b.patch) return a.patch - b.patch;
+
+  // Pre-release versions are lower than release versions
+  if (a.prerelease && !b.prerelease) return -1;
+  if (!a.prerelease && b.prerelease) return 1;
+
+  return 0;
+}
+
+function detectPackageManager(): string {
+  const { execSync } = require('child_process');
+
+  try {
+    execSync('bun --version', { stdio: 'pipe' });
+    return 'bun';
+  } catch {}
+
+  try {
+    execSync('pnpm --version', { stdio: 'pipe' });
+    return 'pnpm';
+  } catch {}
+
+  try {
+    execSync('yarn --version', { stdio: 'pipe' });
+    return 'yarn';
+  } catch {}
+
+  return 'npm';
+}
 
 function getStatusEmoji(status: string): string {
   const emojis: Record<string, string> = {
