@@ -56,8 +56,8 @@ This document outlines the planned development roadmap for APEX. Features are or
 *Stability, testing, and deployment improvements*
 
 ### Testing & Quality
-- 🟡 Unit test suite (>80% coverage) - *Currently at 63% with 321 tests*
-- ⚪ Integration tests
+- 🟡 Unit test suite (>80% coverage) - *Currently at 66% with 378 tests*
+- 🟢 Integration tests
 - ⚪ End-to-end tests
 - ⚪ Performance benchmarks
 - ⚪ Load testing
