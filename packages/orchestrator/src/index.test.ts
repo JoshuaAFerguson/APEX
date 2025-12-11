@@ -908,4 +908,203 @@ You are a developer agent that implements code changes.
       expect((orch as unknown as { apiUrl: string }).apiUrl).toBe('http://custom:8080');
     });
   });
+
+  describe('concurrent task execution', () => {
+    it('should track running task count', async () => {
+      expect(orchestrator.getRunningTaskCount()).toBe(0);
+    });
+
+    it('should check if task is running', async () => {
+      const task = await orchestrator.createTask({ description: 'Test' });
+      expect(orchestrator.isTaskRunning(task.id)).toBe(false);
+    });
+
+    it('should return running task IDs', async () => {
+      expect(orchestrator.getRunningTaskIds()).toEqual([]);
+    });
+
+    it('should get max concurrent tasks from config', async () => {
+      await orchestrator.initialize();
+      expect(orchestrator.getMaxConcurrentTasks()).toBe(3);
+    });
+
+    it('should start and stop task runner', async () => {
+      expect(orchestrator.isTaskRunnerActive()).toBe(false);
+
+      await orchestrator.startTaskRunner({ pollIntervalMs: 100 });
+      expect(orchestrator.isTaskRunnerActive()).toBe(true);
+
+      // Starting again should be a no-op
+      await orchestrator.startTaskRunner();
+      expect(orchestrator.isTaskRunnerActive()).toBe(true);
+
+      orchestrator.stopTaskRunner();
+      expect(orchestrator.isTaskRunnerActive()).toBe(false);
+    });
+
+    it('should process task queue when runner starts', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {
+          // Success
+        },
+      } as unknown as ReturnType<typeof query>);
+
+      // Create a pending task
+      const task = await orchestrator.createTask({
+        description: 'Auto-run task',
+        workflow: 'feature',
+      });
+
+      // Start the runner
+      await orchestrator.startTaskRunner({ pollIntervalMs: 50 });
+
+      // Wait for task to be picked up
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      orchestrator.stopTaskRunner();
+      await orchestrator.waitForAllTasks();
+
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('completed');
+    });
+
+    it('should cancel a pending task', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Cancel me',
+      });
+
+      const cancelled = await orchestrator.cancelTask(task.id);
+      expect(cancelled).toBe(true);
+
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('cancelled');
+    });
+
+    it('should not cancel a completed task', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const task = await orchestrator.createTask({
+        description: 'Complete me',
+        workflow: 'feature',
+      });
+
+      await orchestrator.executeTask(task.id);
+
+      const cancelled = await orchestrator.cancelTask(task.id);
+      expect(cancelled).toBe(false);
+    });
+
+    it('should return false when cancelling non-existent task', async () => {
+      const cancelled = await orchestrator.cancelTask('non-existent');
+      expect(cancelled).toBe(false);
+    });
+
+    it('should queue task with priority', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Queue me',
+      });
+
+      await orchestrator.updateTaskStatus(task.id, 'failed');
+      await orchestrator.queueTask(task.id, 'urgent');
+
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('pending');
+      expect(updatedTask?.priority).toBe('urgent');
+    });
+
+    it('should execute multiple tasks concurrently', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const task1 = await orchestrator.createTask({
+        description: 'Task 1',
+        workflow: 'feature',
+      });
+      const task2 = await orchestrator.createTask({
+        description: 'Task 2',
+        workflow: 'feature',
+      });
+
+      const results = await orchestrator.executeTasksConcurrently(
+        [task1.id, task2.id],
+        { maxConcurrent: 2 }
+      );
+
+      expect(results.get(task1.id)?.success).toBe(true);
+      expect(results.get(task2.id)?.success).toBe(true);
+    });
+
+    it('should handle failures in concurrent execution', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockImplementation(() => ({
+        [Symbol.asyncIterator]: async function* () {
+          // Both tasks throw, but second one is retryable - will retry and succeed
+          throw new Error('Task exceeded budget'); // Non-retryable error
+        },
+      } as unknown as ReturnType<typeof query>));
+
+      const task1 = await orchestrator.createTask({
+        description: 'Failing task 1',
+        workflow: 'feature',
+        maxRetries: 0,
+      });
+      const task2 = await orchestrator.createTask({
+        description: 'Failing task 2',
+        workflow: 'feature',
+        maxRetries: 0,
+      });
+
+      const results = await orchestrator.executeTasksConcurrently(
+        [task1.id, task2.id],
+        { maxConcurrent: 2 }
+      );
+
+      expect(results.get(task1.id)?.success).toBe(false);
+      expect(results.get(task1.id)?.error).toContain('exceeded budget');
+      expect(results.get(task2.id)?.success).toBe(false);
+      expect(results.get(task2.id)?.error).toContain('exceeded budget');
+    });
+
+    it('should wait for all running tasks', async () => {
+      // With no running tasks, should resolve immediately
+      await orchestrator.waitForAllTasks();
+      expect(true).toBe(true); // Just ensuring no hang
+    });
+
+    it('should respect concurrency limit in batch processing', async () => {
+      const mockQuery = vi.mocked(query);
+      let concurrentCount = 0;
+      let maxConcurrent = 0;
+
+      mockQuery.mockImplementation(() => ({
+        [Symbol.asyncIterator]: async function* () {
+          concurrentCount++;
+          maxConcurrent = Math.max(maxConcurrent, concurrentCount);
+          await new Promise(resolve => setTimeout(resolve, 50));
+          concurrentCount--;
+        },
+      } as unknown as ReturnType<typeof query>));
+
+      const tasks = await Promise.all([
+        orchestrator.createTask({ description: 'Task 1', workflow: 'feature' }),
+        orchestrator.createTask({ description: 'Task 2', workflow: 'feature' }),
+        orchestrator.createTask({ description: 'Task 3', workflow: 'feature' }),
+        orchestrator.createTask({ description: 'Task 4', workflow: 'feature' }),
+      ]);
+
+      await orchestrator.executeTasksConcurrently(
+        tasks.map(t => t.id),
+        { maxConcurrent: 2 }
+      );
+
+      // Max concurrent should never exceed 2
+      expect(maxConcurrent).toBeLessThanOrEqual(2);
+    });
+  });
 });

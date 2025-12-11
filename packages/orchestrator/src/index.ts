@@ -59,6 +59,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private apiUrl: string;
   private initialized = false;
 
+  // Concurrent execution state
+  private runningTasks: Map<string, Promise<void>> = new Map();
+  private taskRunnerInterval: ReturnType<typeof setInterval> | null = null;
+  private isRunnerActive = false;
+
   constructor(options: OrchestratorOptions) {
     super();
     this.projectPath = options.projectPath;
@@ -545,6 +550,217 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     if (!this.initialized) {
       await this.initialize();
     }
+  }
+
+  // ============================================================================
+  // Concurrent Task Execution
+  // ============================================================================
+
+  /**
+   * Get the number of currently running tasks
+   */
+  getRunningTaskCount(): number {
+    return this.runningTasks.size;
+  }
+
+  /**
+   * Check if a specific task is currently running
+   */
+  isTaskRunning(taskId: string): boolean {
+    return this.runningTasks.has(taskId);
+  }
+
+  /**
+   * Get all running task IDs
+   */
+  getRunningTaskIds(): string[] {
+    return Array.from(this.runningTasks.keys());
+  }
+
+  /**
+   * Start the background task runner
+   * Continuously picks up pending tasks and executes them up to the concurrency limit
+   */
+  async startTaskRunner(options?: { pollIntervalMs?: number }): Promise<void> {
+    await this.ensureInitialized();
+
+    if (this.isRunnerActive) {
+      return; // Already running
+    }
+
+    this.isRunnerActive = true;
+    const pollInterval = options?.pollIntervalMs ?? 1000;
+
+    // Initial check
+    await this.processTaskQueue();
+
+    // Set up polling interval
+    this.taskRunnerInterval = setInterval(async () => {
+      if (this.isRunnerActive) {
+        await this.processTaskQueue();
+      }
+    }, pollInterval);
+  }
+
+  /**
+   * Stop the background task runner
+   * Note: This does not cancel currently running tasks
+   */
+  stopTaskRunner(): void {
+    this.isRunnerActive = false;
+    if (this.taskRunnerInterval) {
+      clearInterval(this.taskRunnerInterval);
+      this.taskRunnerInterval = null;
+    }
+  }
+
+  /**
+   * Process the task queue, starting new tasks up to the concurrency limit
+   */
+  private async processTaskQueue(): Promise<void> {
+    const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
+    const availableSlots = maxConcurrent - this.runningTasks.size;
+
+    if (availableSlots <= 0) {
+      return; // At capacity
+    }
+
+    // Get pending tasks ordered by priority
+    const pendingTasks = await this.store.listTasks({
+      status: 'pending',
+      orderByPriority: true,
+    });
+
+    // Start tasks up to available capacity
+    for (const task of pendingTasks.slice(0, availableSlots)) {
+      if (!this.runningTasks.has(task.id)) {
+        this.startTaskExecution(task.id);
+      }
+    }
+  }
+
+  /**
+   * Start executing a task in the background
+   * The task promise is tracked and cleaned up on completion
+   */
+  private startTaskExecution(taskId: string): void {
+    const taskPromise = this.executeTask(taskId)
+      .finally(() => {
+        // Remove from running tasks when done (success or failure)
+        this.runningTasks.delete(taskId);
+      });
+
+    this.runningTasks.set(taskId, taskPromise);
+  }
+
+  /**
+   * Wait for all currently running tasks to complete
+   */
+  async waitForAllTasks(): Promise<void> {
+    const promises = Array.from(this.runningTasks.values());
+    await Promise.allSettled(promises);
+  }
+
+  /**
+   * Cancel a running task
+   * Note: This marks the task as cancelled but cannot interrupt the Claude SDK call
+   */
+  async cancelTask(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return false;
+    }
+
+    // Only cancel if task is running or pending
+    if (task.status !== 'in-progress' && task.status !== 'pending') {
+      return false;
+    }
+
+    await this.updateTaskStatus(taskId, 'cancelled', 'Task was cancelled by user');
+
+    // If it's in our running map, we can't actually stop the SDK call,
+    // but we mark it cancelled so subsequent processing knows to stop
+    if (this.runningTasks.has(taskId)) {
+      // The task will complete and see the cancelled status
+      this.runningTasks.delete(taskId);
+    }
+
+    return true;
+  }
+
+  /**
+   * Queue a task for execution with optional priority override
+   * The task will be picked up by the task runner
+   */
+  async queueTask(taskId: string, priority?: Task['priority']): Promise<void> {
+    await this.ensureInitialized();
+
+    const updates: Partial<{ status: TaskStatus; priority: Task['priority']; updatedAt: Date }> = {
+      status: 'pending',
+      updatedAt: new Date(),
+    };
+
+    if (priority) {
+      updates.priority = priority;
+    }
+
+    await this.store.updateTask(taskId, updates);
+
+    // Trigger immediate queue processing if runner is active
+    if (this.isRunnerActive) {
+      await this.processTaskQueue();
+    }
+  }
+
+  /**
+   * Execute multiple tasks concurrently
+   * Returns when all tasks are complete (or failed)
+   */
+  async executeTasksConcurrently(
+    taskIds: string[],
+    options?: { maxConcurrent?: number }
+  ): Promise<Map<string, { success: boolean; error?: string }>> {
+    await this.ensureInitialized();
+
+    const maxConcurrent = options?.maxConcurrent ?? this.effectiveConfig.limits.maxConcurrentTasks;
+    const results = new Map<string, { success: boolean; error?: string }>();
+
+    // Process in batches
+    for (let i = 0; i < taskIds.length; i += maxConcurrent) {
+      const batch = taskIds.slice(i, i + maxConcurrent);
+
+      const batchPromises = batch.map(async (taskId) => {
+        try {
+          await this.executeTask(taskId);
+          results.set(taskId, { success: true });
+        } catch (error) {
+          results.set(taskId, {
+            success: false,
+            error: (error as Error).message,
+          });
+        }
+      });
+
+      await Promise.allSettled(batchPromises);
+    }
+
+    return results;
+  }
+
+  /**
+   * Get the maximum concurrent task limit from config
+   */
+  getMaxConcurrentTasks(): number {
+    return this.effectiveConfig?.limits?.maxConcurrentTasks ?? 3;
+  }
+
+  /**
+   * Check if the task runner is active
+   */
+  isTaskRunnerActive(): boolean {
+    return this.isRunnerActive;
   }
 }
 
