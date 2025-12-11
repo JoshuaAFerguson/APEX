@@ -447,7 +447,7 @@ Date:   Mon Jan 15 10:00:00 2025 -0800
     const entries = parseGitLog(logOutput);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].conventional).toBeNull();
+    expect(entries[0].conventional).toBeUndefined();
   });
 
   it('should handle empty log', () => {

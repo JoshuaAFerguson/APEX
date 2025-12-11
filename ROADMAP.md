@@ -69,7 +69,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 `apex config` - View/edit configuration
 - 🟢 `apex pr <taskId>` - Create pull requests
 - 🟢 `apex upgrade` - Self-update CLI
-- ⚪ Interactive mode with prompts
+- 🟢 Interactive mode with prompts - *`apex run -i` and auto-prompt when no args*
 - 🟢 Progress bars and spinners - *Using ora spinners*
 - ⚪ Color theme customization
 

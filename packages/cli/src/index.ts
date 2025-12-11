@@ -146,12 +146,13 @@ program
 // ============================================================================
 
 program
-  .command('run <description>')
+  .command('run [description]')
   .description('Execute a development task')
-  .option('-w, --workflow <name>', 'Workflow to use', 'feature')
+  .option('-w, --workflow <name>', 'Workflow to use')
   .option('-a, --autonomy <level>', 'Autonomy level (full, review-before-commit, review-before-merge, manual)')
-  .option('-p, --priority <level>', 'Task priority (low, normal, high, urgent)', 'normal')
+  .option('-p, --priority <level>', 'Task priority (low, normal, high, urgent)')
   .option('-c, --criteria <criteria>', 'Acceptance criteria')
+  .option('-i, --interactive', 'Use interactive mode for all options')
   .option('--dry-run', 'Plan the task without executing')
   .option('--verbose', 'Show detailed output')
   .action(async (description, options) => {
@@ -162,6 +163,82 @@ program
       process.exit(1);
     }
 
+    // Interactive mode: prompt for missing values
+    const interactive = options.interactive || !description;
+    let taskDescription = description;
+    let taskWorkflow = options.workflow;
+    let taskAutonomy = options.autonomy;
+    let taskPriority = options.priority;
+    let taskCriteria = options.criteria;
+
+    if (interactive) {
+      const workflowsMap = await loadWorkflows(cwd);
+      const workflowChoices = Object.values(workflowsMap).map((w) => ({
+        name: `${w.name} - ${w.description}`,
+        value: w.name,
+      }));
+
+      const answers = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'description',
+          message: 'What would you like to do?',
+          when: !taskDescription,
+          validate: (input: string) => (input.trim() ? true : 'Description is required'),
+        },
+        {
+          type: 'list',
+          name: 'workflow',
+          message: 'Select a workflow:',
+          choices: workflowChoices,
+          default: 'feature',
+          when: !taskWorkflow,
+        },
+        {
+          type: 'list',
+          name: 'autonomy',
+          message: 'Select autonomy level:',
+          choices: [
+            { name: 'Full - Execute without human intervention', value: 'full' },
+            { name: 'Review before commit - Pause for review before commits', value: 'review-before-commit' },
+            { name: 'Review before merge - Pause for review before merging', value: 'review-before-merge' },
+            { name: 'Manual - Require approval for each step', value: 'manual' },
+          ],
+          default: 'full',
+          when: !taskAutonomy,
+        },
+        {
+          type: 'list',
+          name: 'priority',
+          message: 'Select task priority:',
+          choices: [
+            { name: 'Urgent - Execute immediately', value: 'urgent' },
+            { name: 'High - Prioritize over other tasks', value: 'high' },
+            { name: 'Normal - Standard priority', value: 'normal' },
+            { name: 'Low - Execute when resources available', value: 'low' },
+          ],
+          default: 'normal',
+          when: !taskPriority,
+        },
+        {
+          type: 'input',
+          name: 'criteria',
+          message: 'Acceptance criteria (optional):',
+          when: !taskCriteria,
+        },
+      ]);
+
+      taskDescription = taskDescription || answers.description;
+      taskWorkflow = taskWorkflow || answers.workflow;
+      taskAutonomy = taskAutonomy || answers.autonomy;
+      taskPriority = taskPriority || answers.priority;
+      taskCriteria = taskCriteria || answers.criteria;
+    }
+
+    // Apply defaults for non-interactive mode
+    taskWorkflow = taskWorkflow || 'feature';
+    taskPriority = taskPriority || 'normal';
+
     console.log(chalk.cyan('\n🚀 Starting APEX task...\n'));
 
     const orchestrator = new ApexOrchestrator({ projectPath: cwd });
@@ -171,11 +248,11 @@ program
 
       // Create task
       const task = await orchestrator.createTask({
-        description,
-        acceptanceCriteria: options.criteria,
-        workflow: options.workflow,
-        autonomy: options.autonomy,
-        priority: options.priority,
+        description: taskDescription!,
+        acceptanceCriteria: taskCriteria,
+        workflow: taskWorkflow,
+        autonomy: taskAutonomy,
+        priority: taskPriority,
       });
 
       console.log(chalk.green(`Task created: ${task.id}`));
