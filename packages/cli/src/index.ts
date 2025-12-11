@@ -37,15 +37,7 @@ const banner = `
 program
   .name('apex')
   .description('AI-powered development team automation')
-  .version(VERSION)
-  .hook('preAction', () => {
-    // Check for API key
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.log(
-        chalk.yellow('Warning: ANTHROPIC_API_KEY not set. Set it before running tasks.')
-      );
-    }
-  });
+  .version(VERSION);
 
 // ============================================================================
 // INIT Command
@@ -165,11 +157,6 @@ program
       process.exit(1);
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.log(chalk.red('ANTHROPIC_API_KEY environment variable is required.'));
-      process.exit(1);
-    }
-
     console.log(chalk.cyan('\n🚀 Starting APEX task...\n'));
 
     const orchestrator = new ApexOrchestrator({ projectPath: cwd });
@@ -233,7 +220,7 @@ program
             `${chalk.green('✅ Task Completed')}\n\n` +
               `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
               `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
-              `Duration: ${formatDuration(completedTask.createdAt.getTime(), Date.now())}`,
+              `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
             { padding: 1, borderColor: 'green', borderStyle: 'round' }
           )
         );
@@ -577,7 +564,7 @@ async function copyDefaultWorkflows(projectPath: string): Promise<void> {
 description: Full feature implementation workflow
 trigger:
   - manual
-  - label: "apex:feature"
+  - apex:feature
 
 stages:
   - name: planning
@@ -622,7 +609,7 @@ stages:
 description: Bug investigation and fix workflow
 trigger:
   - manual
-  - label: "apex:bugfix"
+  - apex:bugfix
 
 stages:
   - name: investigation
@@ -658,7 +645,7 @@ stages:
 description: Code refactoring workflow
 trigger:
   - manual
-  - label: "apex:refactor"
+  - apex:refactor
 
 stages:
   - name: analysis

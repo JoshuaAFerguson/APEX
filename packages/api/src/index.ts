@@ -25,8 +25,9 @@ export interface ServerOptions {
 export async function createServer(options: ServerOptions): Promise<FastifyInstance> {
   const { port = 3000, host = '0.0.0.0', projectPath } = options;
 
+  const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST;
   const app = Fastify({
-    logger: {
+    logger: isTest ? false : {
       level: 'info',
       transport: {
         target: 'pino-pretty',
@@ -309,7 +310,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       type: 'task:created',
       taskId: task.id,
       timestamp: new Date(),
-      data: task,
+      data: { ...task } as Record<string, unknown>,
     });
   });
 
@@ -318,7 +319,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       type: 'task:started',
       taskId: task.id,
       timestamp: new Date(),
-      data: task,
+      data: { ...task } as Record<string, unknown>,
     });
   });
 
@@ -327,7 +328,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       type: 'task:completed',
       taskId: task.id,
       timestamp: new Date(),
-      data: task,
+      data: { ...task } as Record<string, unknown>,
     });
   });
 
@@ -336,7 +337,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       type: 'task:failed',
       taskId: task.id,
       timestamp: new Date(),
-      data: { task, error: error.message },
+      data: { task: { ...task }, error: error.message },
     });
   });
 
@@ -363,7 +364,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       type: 'usage:updated',
       taskId,
       timestamp: new Date(),
-      data: usage,
+      data: { ...usage },
     });
   });
 }

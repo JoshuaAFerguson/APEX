@@ -1,4 +1,15 @@
+import type {
+  HookCallback,
+  HookCallbackMatcher,
+  HookInput,
+  HookJSONOutput,
+  HookEvent,
+  PreToolUseHookInput,
+  PostToolUseHookInput,
+} from '@anthropic-ai/claude-agent-sdk';
 import { TaskStore } from './store';
+
+export type { HookInput };
 
 export interface HookContext {
   taskId: string;
@@ -6,35 +17,7 @@ export interface HookContext {
   onToolUse?: (tool: string, input: unknown) => void;
 }
 
-export interface HookInput {
-  tool_name: string;
-  tool_input: Record<string, unknown>;
-}
-
-export interface HookResult {
-  hookSpecificOutput?: {
-    hookEventName: string;
-    permissionDecision?: 'allow' | 'deny';
-    permissionDecisionReason?: string;
-  };
-}
-
-type HookFunction = (
-  input: HookInput,
-  toolUseId: string | null,
-  context: HookContext
-) => Promise<HookResult>;
-
-interface HookMatcher {
-  matcher?: string;
-  hooks: HookFunction[];
-  timeout?: number;
-}
-
-interface HooksConfig {
-  PreToolUse?: HookMatcher[];
-  PostToolUse?: HookMatcher[];
-}
+export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
 
 // Dangerous command patterns to block
 const DANGEROUS_PATTERNS = [
@@ -47,8 +30,8 @@ const DANGEROUS_PATTERNS = [
   'chmod -R 777 /',
   '> /dev/sda',
   'mv ~ /dev/null',
-  'wget .* | sh',
-  'curl .* | sh',
+  '| sh',
+  '| bash',
   'DROP DATABASE',
   'DROP TABLE',
   'TRUNCATE TABLE',
@@ -72,6 +55,18 @@ const SENSITIVE_PATHS = [
 ];
 
 /**
+ * Create a hook callback that wraps our internal function with context
+ */
+function createHookCallback(
+  context: HookContext,
+  fn: (input: HookInput, toolUseId: string | undefined, context: HookContext) => Promise<HookJSONOutput>
+): HookCallback {
+  return async (input: HookInput, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
+    return fn(input, toolUseId, context);
+  };
+}
+
+/**
  * Create hooks for the orchestrator
  */
 export function createHooks(context: HookContext): HooksConfig {
@@ -81,41 +76,63 @@ export function createHooks(context: HookContext): HooksConfig {
       {
         matcher: 'Bash',
         hooks: [
-          (input, toolUseId, ctx) => auditBashCommand(input, toolUseId, ctx),
-          (input, toolUseId, ctx) => blockDangerousCommands(input, toolUseId, ctx),
+          createHookCallback(context, auditBashCommand),
+          createHookCallback(context, blockDangerousCommands),
         ],
-        timeout: 5000,
+        timeout: 5,
       },
       // Audit file writes
       {
         matcher: 'Write',
-        hooks: [(input, toolUseId, ctx) => auditFileWrite(input, toolUseId, ctx)],
-        timeout: 5000,
+        hooks: [createHookCallback(context, auditFileWrite)],
+        timeout: 5,
       },
       {
         matcher: 'Edit',
-        hooks: [(input, toolUseId, ctx) => auditFileWrite(input, toolUseId, ctx)],
-        timeout: 5000,
+        hooks: [createHookCallback(context, auditFileWrite)],
+        timeout: 5,
       },
       {
         matcher: 'MultiEdit',
-        hooks: [(input, toolUseId, ctx) => auditFileWrite(input, toolUseId, ctx)],
-        timeout: 5000,
+        hooks: [createHookCallback(context, auditFileWrite)],
+        timeout: 5,
       },
       // Log all tool usage
       {
-        hooks: [(input, toolUseId, ctx) => logToolUsage(input, toolUseId, ctx)],
-        timeout: 1000,
+        hooks: [createHookCallback(context, logToolUsage)],
+        timeout: 1,
       },
     ],
     PostToolUse: [
       // Log results
       {
-        hooks: [(input, toolUseId, ctx) => logToolResult(input, toolUseId, ctx)],
-        timeout: 1000,
+        hooks: [createHookCallback(context, logToolResult)],
+        timeout: 1,
       },
     ],
   };
+}
+
+/**
+ * Get tool input safely handling different input types
+ */
+function getToolInput(input: HookInput): Record<string, unknown> {
+  if ('tool_input' in input && input.tool_input != null) {
+    if (typeof input.tool_input === 'object') {
+      return input.tool_input as Record<string, unknown>;
+    }
+  }
+  return {};
+}
+
+/**
+ * Get tool name from hook input
+ */
+function getToolName(input: HookInput): string {
+  if ('tool_name' in input) {
+    return input.tool_name;
+  }
+  return 'unknown';
 }
 
 /**
@@ -123,10 +140,11 @@ export function createHooks(context: HookContext): HooksConfig {
  */
 async function auditBashCommand(
   input: HookInput,
-  _toolUseId: string | null,
+  _toolUseId: string | undefined,
   context: HookContext
-): Promise<HookResult> {
-  const command = (input.tool_input?.command as string) || '';
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const command = (toolInput.command as string) || '';
 
   // Log the command
   await context.store.logCommand(context.taskId, command);
@@ -142,10 +160,11 @@ async function auditBashCommand(
  */
 async function blockDangerousCommands(
   input: HookInput,
-  _toolUseId: string | null,
+  _toolUseId: string | undefined,
   context: HookContext
-): Promise<HookResult> {
-  const command = (input.tool_input?.command as string) || '';
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const command = (toolInput.command as string) || '';
   const lowerCommand = command.toLowerCase();
 
   // Check for dangerous patterns
@@ -187,11 +206,13 @@ async function blockDangerousCommands(
  */
 async function auditFileWrite(
   input: HookInput,
-  _toolUseId: string | null,
+  _toolUseId: string | undefined,
   context: HookContext
-): Promise<HookResult> {
-  const filePath = (input.tool_input?.file_path as string) || 
-                   (input.tool_input?.path as string) || '';
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const filePath = (toolInput.file_path as string) ||
+                   (toolInput.path as string) || '';
+  const toolName = getToolName(input);
 
   // Check for sensitive files
   for (const sensitive of SENSITIVE_PATHS) {
@@ -213,7 +234,7 @@ async function auditFileWrite(
   }
 
   // Notify callback
-  context.onToolUse?.(input.tool_name, { filePath });
+  context.onToolUse?.(toolName, { filePath });
 
   return {};
 }
@@ -223,15 +244,18 @@ async function auditFileWrite(
  */
 async function logToolUsage(
   input: HookInput,
-  _toolUseId: string | null,
+  _toolUseId: string | undefined,
   context: HookContext
-): Promise<HookResult> {
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const toolName = getToolName(input);
+
   await context.store.addLog(context.taskId, {
     level: 'debug',
-    message: `Tool: ${input.tool_name}`,
+    message: `Tool: ${toolName}`,
     metadata: {
-      tool: input.tool_name,
-      input: summarizeInput(input.tool_input),
+      tool: toolName,
+      input: summarizeInput(toolInput),
     },
   });
 
@@ -243,13 +267,15 @@ async function logToolUsage(
  */
 async function logToolResult(
   input: HookInput,
-  _toolUseId: string | null,
+  _toolUseId: string | undefined,
   context: HookContext
-): Promise<HookResult> {
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+
   // PostToolUse hook - just log completion
   await context.store.addLog(context.taskId, {
     level: 'debug',
-    message: `Completed: ${input.tool_name}`,
+    message: `Completed: ${toolName}`,
   });
 
   return {};
@@ -289,14 +315,15 @@ export function createCustomHooks(
   }>,
   context: HookContext
 ): HooksConfig {
-  const preToolUseHooks: HookMatcher[] = [];
+  const preToolUseHooks: HookCallbackMatcher[] = [];
 
   for (const hook of customHooks) {
     preToolUseHooks.push({
       matcher: hook.tool,
       hooks: [
-        async (input: HookInput) => {
-          const inputStr = JSON.stringify(input.tool_input);
+        async (input: HookInput, _toolUseId: string | undefined, _options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
+          const toolInput = getToolInput(input);
+          const inputStr = JSON.stringify(toolInput);
           const matches = hook.pattern ? new RegExp(hook.pattern).test(inputStr) : true;
 
           if (matches) {

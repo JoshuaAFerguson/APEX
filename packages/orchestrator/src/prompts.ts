@@ -1,3 +1,4 @@
+import type { AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import {
   ApexConfig,
   AgentDefinition,
@@ -129,15 +130,15 @@ function getAutonomyInstructions(autonomy: Task['autonomy']): string {
 export function buildAgentDefinitions(
   agents: Record<string, AgentDefinition>,
   config: ReturnType<typeof getEffectiveConfig>
-): Record<string, { description: string; prompt: string; tools?: string[]; model?: string }> {
-  const result: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }> = {};
+): Record<string, SDKAgentDefinition> {
+  const result: Record<string, SDKAgentDefinition> = {};
 
   for (const [name, agent] of Object.entries(agents)) {
     // Skip disabled agents
-    if (config.agents.disabled.includes(name)) continue;
+    if (config.agents.disabled?.includes(name)) continue;
 
     // Only include enabled agents (if specified)
-    if (config.agents.enabled.length > 0 && !config.agents.enabled.includes(name)) continue;
+    if (config.agents.enabled && config.agents.enabled.length > 0 && !config.agents.enabled.includes(name)) continue;
 
     // Enhance the agent prompt with APEX-specific instructions
     const enhancedPrompt = `${agent.prompt}
@@ -147,11 +148,14 @@ export function buildAgentDefinitions(
 - Log progress: \`curl -X POST "$APEX_API/tasks/$APEX_TASK_ID/log" -H "Content-Type: application/json" -d '{"level": "info", "agent": "${name}", "message": "..."}'\`
 - Environment: APEX_TASK_ID, APEX_PROJECT, APEX_BRANCH are available`;
 
+    // Convert our model type to SDK model type
+    const sdkModel = agent.model as SDKAgentDefinition['model'];
+
     result[name] = {
       description: agent.description,
       prompt: enhancedPrompt,
       tools: agent.tools,
-      model: agent.model,
+      model: sdkModel,
     };
   }
 

@@ -226,8 +226,8 @@ export async function initializeApex(
   await fs.mkdir(path.join(apexDir, SKILLS_DIR), { recursive: true });
   await fs.mkdir(path.join(apexDir, SCRIPTS_DIR), { recursive: true });
 
-  // Create default config
-  const defaultConfig: ApexConfig = {
+  // Create default config - use schema.parse() to apply defaults
+  const defaultConfig = ApexConfigSchema.parse({
     version: '1.0',
     project: {
       name: options.projectName,
@@ -249,13 +249,16 @@ export async function initializeApex(
       branchPrefix: 'apex/',
       commitFormat: 'conventional',
       autoPush: true,
+      defaultBranch: 'main',
     },
     limits: {
       maxTokensPerTask: 500000,
       maxCostPerTask: 10.0,
       dailyBudget: 100.0,
+      maxTurns: 100,
+      maxConcurrentTasks: 3,
     },
-  };
+  });
 
   await saveConfig(projectPath, defaultConfig);
 }

@@ -1,4 +1,4 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'eventemitter3';
 import {
   ApexConfig,
@@ -192,11 +192,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         settingSources: ['project'],
         cwd: this.projectPath,
         env: {
+          ...process.env,
           APEX_API: this.apiUrl,
           APEX_TASK_ID: task.id,
           APEX_PROJECT: this.projectPath,
           APEX_BRANCH: task.branchName || '',
-          GH_TOKEN: process.env.GH_TOKEN || '',
         },
         hooks,
       },
