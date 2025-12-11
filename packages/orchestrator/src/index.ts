@@ -94,6 +94,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     workflow?: string;
     autonomy?: Task['autonomy'];
     priority?: Task['priority'];
+    maxRetries?: number;
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -101,6 +102,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const workflow = options.workflow || 'feature';
     const autonomy = options.autonomy || this.effectiveConfig.autonomy.default;
     const priority = options.priority || 'normal';
+    const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
 
     const branchName = generateBranchName(
       this.effectiveConfig.git.branchPrefix,
@@ -118,6 +120,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       priority,
       projectPath: this.projectPath,
       branchName,
+      retryCount: 0,
+      maxRetries,
       createdAt: new Date(),
       updatedAt: new Date(),
       usage: {
@@ -137,9 +141,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Execute a task
+   * Execute a task with automatic retries
    */
-  async executeTask(taskId: string): Promise<void> {
+  async executeTask(taskId: string, options?: { autoRetry?: boolean }): Promise<void> {
     await this.ensureInitialized();
 
     const task = await this.store.getTask(taskId);
@@ -157,17 +161,88 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.updateTaskStatus(taskId, 'in-progress');
     this.emit('task:started', task);
 
-    try {
-      await this.runWorkflow(task, workflow);
-      await this.updateTaskStatus(taskId, 'completed');
-      const completedTask = await this.store.getTask(taskId);
-      this.emit('task:completed', completedTask!);
-    } catch (error) {
-      await this.updateTaskStatus(taskId, 'failed', (error as Error).message);
-      const failedTask = await this.store.getTask(taskId);
-      this.emit('task:failed', failedTask!, error as Error);
-      throw error;
+    const autoRetry = options?.autoRetry ?? true;
+    const maxRetries = task.maxRetries;
+    const retryDelayMs = this.effectiveConfig.limits.retryDelayMs;
+    const backoffFactor = this.effectiveConfig.limits.retryBackoffFactor;
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Calculate backoff delay: retryDelayMs * (backoffFactor ^ (attempt - 1))
+          const delay = retryDelayMs * Math.pow(backoffFactor, attempt - 1);
+          await this.sleep(delay);
+
+          // Update retry count
+          await this.store.updateTask(taskId, {
+            retryCount: attempt,
+            updatedAt: new Date(),
+          });
+
+          // Log retry attempt
+          await this.store.addLog(taskId, {
+            level: 'info',
+            message: `Retry attempt ${attempt}/${maxRetries} after ${delay}ms delay`,
+          });
+        }
+
+        await this.runWorkflow(task, workflow);
+        await this.updateTaskStatus(taskId, 'completed');
+        const completedTask = await this.store.getTask(taskId);
+        this.emit('task:completed', completedTask!);
+        return; // Success - exit the retry loop
+      } catch (error) {
+        lastError = error as Error;
+
+        // Check if we should retry
+        const canRetry = autoRetry && attempt < maxRetries && this.isRetryableError(lastError);
+
+        if (!canRetry) {
+          // No more retries - fail the task
+          await this.updateTaskStatus(taskId, 'failed', lastError.message);
+          const failedTask = await this.store.getTask(taskId);
+          this.emit('task:failed', failedTask!, lastError);
+          throw lastError;
+        }
+
+        // Log the failure before retry
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Task failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying...`,
+        });
+      }
     }
+
+    // This shouldn't be reached, but just in case
+    if (lastError) {
+      throw lastError;
+    }
+  }
+
+  /**
+   * Check if an error is retryable
+   */
+  private isRetryableError(error: Error): boolean {
+    const nonRetryablePatterns = [
+      'Task not found',
+      'Workflow not found',
+      'exceeded budget',
+      'cancelled',
+      'Invalid',
+    ];
+
+    return !nonRetryablePatterns.some(pattern =>
+      error.message.toLowerCase().includes(pattern.toLowerCase())
+    );
+  }
+
+  /**
+   * Sleep for a given number of milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

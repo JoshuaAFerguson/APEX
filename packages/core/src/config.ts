@@ -296,6 +296,9 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       dailyBudget: config.limits?.dailyBudget || 100.0,
       maxTurns: config.limits?.maxTurns || 100,
       maxConcurrentTasks: config.limits?.maxConcurrentTasks || 3,
+      maxRetries: config.limits?.maxRetries ?? 3,
+      retryDelayMs: config.limits?.retryDelayMs ?? 1000,
+      retryBackoffFactor: config.limits?.retryBackoffFactor ?? 2,
     },
     api: {
       url: config.api?.url || 'http://localhost:3000',

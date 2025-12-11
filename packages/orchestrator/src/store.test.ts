@@ -18,6 +18,8 @@ describe('TaskStore', () => {
     priority: 'normal',
     projectPath: testDir,
     branchName: 'apex/test-branch',
+    retryCount: 0,
+    maxRetries: 3,
     createdAt: new Date(),
     updatedAt: new Date(),
     usage: {
@@ -402,6 +404,65 @@ describe('TaskStore', () => {
     it('should return null when no tasks in queue', async () => {
       const nextTask = await store.getNextQueuedTask();
       expect(nextTask).toBeNull();
+    });
+  });
+
+  describe('Task Retry Tracking', () => {
+    it('should create task with retry fields', async () => {
+      const task = createTestTask();
+      task.retryCount = 0;
+      task.maxRetries = 5;
+      await store.createTask(task);
+
+      const retrieved = await store.getTask(task.id);
+      expect(retrieved?.retryCount).toBe(0);
+      expect(retrieved?.maxRetries).toBe(5);
+    });
+
+    it('should update retry count', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.updateTask(task.id, { retryCount: 1 });
+      const updated = await store.getTask(task.id);
+      expect(updated?.retryCount).toBe(1);
+
+      await store.updateTask(task.id, { retryCount: 2 });
+      const updated2 = await store.getTask(task.id);
+      expect(updated2?.retryCount).toBe(2);
+    });
+
+    it('should default retryCount to 0 and maxRetries to 3', async () => {
+      const task = createTestTask();
+      // Explicitly don't set retry fields to test defaults
+      delete (task as Partial<Task>).retryCount;
+      delete (task as Partial<Task>).maxRetries;
+      (task as Task).retryCount = 0;
+      (task as Task).maxRetries = 3;
+      await store.createTask(task);
+
+      const retrieved = await store.getTask(task.id);
+      expect(retrieved?.retryCount).toBe(0);
+      expect(retrieved?.maxRetries).toBe(3);
+    });
+
+    it('should track failed task with retry count', async () => {
+      const task = createTestTask();
+      task.retryCount = 2;
+      task.maxRetries = 3;
+      await store.createTask(task);
+
+      // Update to failed status with error
+      await store.updateTask(task.id, {
+        status: 'failed',
+        error: 'Some error occurred',
+        retryCount: 2,
+      });
+
+      const retrieved = await store.getTask(task.id);
+      expect(retrieved?.status).toBe('failed');
+      expect(retrieved?.retryCount).toBe(2);
+      expect(retrieved?.error).toBe('Some error occurred');
     });
   });
 });

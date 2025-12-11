@@ -41,6 +41,8 @@ export class TaskStore {
         project_path TEXT NOT NULL,
         branch_name TEXT,
         pr_url TEXT,
+        retry_count INTEGER DEFAULT 0,
+        max_retries INTEGER DEFAULT 3,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         completed_at TEXT,
@@ -109,11 +111,11 @@ export class TaskStore {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
-        current_stage, project_path, branch_name, created_at, updated_at,
+        current_stage, project_path, branch_name, retry_count, max_retries, created_at, updated_at,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
-        @currentStage, @projectPath, @branchName, @createdAt, @updatedAt,
+        @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @createdAt, @updatedAt,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost
       )
     `);
@@ -129,6 +131,8 @@ export class TaskStore {
       currentStage: task.currentStage || null,
       projectPath: task.projectPath,
       branchName: task.branchName || null,
+      retryCount: task.retryCount || 0,
+      maxRetries: task.maxRetries || 3,
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),
       inputTokens: task.usage.inputTokens,
@@ -167,6 +171,7 @@ export class TaskStore {
       updatedAt: Date;
       completedAt: Date;
       prUrl: string;
+      retryCount: number;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -216,6 +221,11 @@ export class TaskStore {
     if (updates.prUrl !== undefined) {
       setClauses.push('pr_url = @prUrl');
       params.prUrl = updates.prUrl;
+    }
+
+    if (updates.retryCount !== undefined) {
+      setClauses.push('retry_count = @retryCount');
+      params.retryCount = updates.retryCount;
     }
 
     if (setClauses.length === 0) return;
@@ -463,6 +473,8 @@ export class TaskStore {
       projectPath: row.project_path,
       branchName: row.branch_name || undefined,
       prUrl: row.pr_url || undefined,
+      retryCount: row.retry_count || 0,
+      maxRetries: row.max_retries || 3,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -499,6 +511,8 @@ interface TaskRow {
   project_path: string;
   branch_name: string | null;
   pr_url: string | null;
+  retry_count: number | null;
+  max_retries: number | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

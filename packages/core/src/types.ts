@@ -102,6 +102,9 @@ export const LimitsConfigSchema = z.object({
   dailyBudget: z.number().optional().default(100.0),
   maxTurns: z.number().optional().default(100),
   maxConcurrentTasks: z.number().optional().default(3),
+  maxRetries: z.number().optional().default(3),
+  retryDelayMs: z.number().optional().default(1000),
+  retryBackoffFactor: z.number().optional().default(2),
 });
 export type LimitsConfig = z.infer<typeof LimitsConfigSchema>;
 
@@ -171,6 +174,8 @@ export interface Task {
   projectPath: string;
   branchName?: string;
   prUrl?: string;
+  retryCount: number;
+  maxRetries: number;
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
