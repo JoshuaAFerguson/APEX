@@ -465,4 +465,275 @@ describe('TaskStore', () => {
       expect(retrieved?.error).toBe('Some error occurred');
     });
   });
+
+  describe('Task Dependencies', () => {
+    it('should create task with dependencies', async () => {
+      // Create prerequisite tasks
+      const task1 = createTestTask();
+      task1.id = 'task_prereq_1';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_prereq_2';
+      await store.createTask(task2);
+
+      // Create task with dependencies
+      const dependentTask = createTestTask();
+      dependentTask.id = 'task_dependent';
+      dependentTask.dependsOn = ['task_prereq_1', 'task_prereq_2'];
+      await store.createTask(dependentTask);
+
+      const retrieved = await store.getTask('task_dependent');
+      expect(retrieved?.dependsOn).toEqual(['task_prereq_1', 'task_prereq_2']);
+    });
+
+    it('should get task dependencies', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_a';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_b';
+      task2.dependsOn = ['task_a'];
+      await store.createTask(task2);
+
+      const deps = await store.getTaskDependencies('task_b');
+      expect(deps).toEqual(['task_a']);
+    });
+
+    it('should get blocking tasks (incomplete dependencies)', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_blocker';
+      task1.status = 'pending';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_blocked';
+      task2.dependsOn = ['task_blocker'];
+      await store.createTask(task2);
+
+      const blockers = await store.getBlockingTasks('task_blocked');
+      expect(blockers).toEqual(['task_blocker']);
+
+      // Complete the blocker
+      await store.updateTask('task_blocker', { status: 'completed' });
+
+      const blockersAfter = await store.getBlockingTasks('task_blocked');
+      expect(blockersAfter).toEqual([]);
+    });
+
+    it('should check if task is ready (no blockers)', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_dep';
+      task1.status = 'pending';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_main';
+      task2.dependsOn = ['task_dep'];
+      await store.createTask(task2);
+
+      // Task is not ready because dependency is not complete
+      const isReady1 = await store.isTaskReady('task_main');
+      expect(isReady1).toBe(false);
+
+      // Complete the dependency
+      await store.updateTask('task_dep', { status: 'completed' });
+
+      // Now task should be ready
+      const isReady2 = await store.isTaskReady('task_main');
+      expect(isReady2).toBe(true);
+    });
+
+    it('should add dependency to existing task', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_new_dep';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_needs_dep';
+      await store.createTask(task2);
+
+      // Add dependency after creation
+      await store.addDependency('task_needs_dep', 'task_new_dep');
+
+      const deps = await store.getTaskDependencies('task_needs_dep');
+      expect(deps).toContain('task_new_dep');
+    });
+
+    it('should remove dependency from task', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_to_remove';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_with_dep';
+      task2.dependsOn = ['task_to_remove'];
+      await store.createTask(task2);
+
+      // Verify dependency exists
+      let deps = await store.getTaskDependencies('task_with_dep');
+      expect(deps).toContain('task_to_remove');
+
+      // Remove dependency
+      await store.removeDependency('task_with_dep', 'task_to_remove');
+
+      // Verify it's gone
+      deps = await store.getTaskDependencies('task_with_dep');
+      expect(deps).not.toContain('task_to_remove');
+    });
+
+    it('should get dependent tasks (tasks that depend on a given task)', async () => {
+      const parentTask = createTestTask();
+      parentTask.id = 'task_parent';
+      await store.createTask(parentTask);
+
+      const child1 = createTestTask();
+      child1.id = 'task_child_1';
+      child1.dependsOn = ['task_parent'];
+      await store.createTask(child1);
+
+      const child2 = createTestTask();
+      child2.id = 'task_child_2';
+      child2.dependsOn = ['task_parent'];
+      await store.createTask(child2);
+
+      const dependents = await store.getDependentTasks('task_parent');
+      expect(dependents).toHaveLength(2);
+      expect(dependents).toContain('task_child_1');
+      expect(dependents).toContain('task_child_2');
+    });
+
+    it('should get ready tasks (pending with no blockers)', async () => {
+      // Create a completed task
+      const completedTask = createTestTask();
+      completedTask.id = 'task_completed';
+      completedTask.status = 'completed';
+      await store.createTask(completedTask);
+
+      // Create a pending task with no dependencies
+      const readyTask = createTestTask();
+      readyTask.id = 'task_ready';
+      readyTask.status = 'pending';
+      await store.createTask(readyTask);
+
+      // Create a pending task that depends on non-complete task
+      const pendingDep = createTestTask();
+      pendingDep.id = 'task_pending_dep';
+      pendingDep.status = 'pending';
+      await store.createTask(pendingDep);
+
+      const blockedTask = createTestTask();
+      blockedTask.id = 'task_blocked';
+      blockedTask.status = 'pending';
+      blockedTask.dependsOn = ['task_pending_dep'];
+      await store.createTask(blockedTask);
+
+      // Create a pending task with completed dependency
+      const unblockedTask = createTestTask();
+      unblockedTask.id = 'task_unblocked';
+      unblockedTask.status = 'pending';
+      unblockedTask.dependsOn = ['task_completed'];
+      await store.createTask(unblockedTask);
+
+      const readyTasks = await store.getReadyTasks();
+
+      // Should include: task_ready, task_pending_dep, task_unblocked
+      // Should NOT include: task_blocked (has pending dependency)
+      expect(readyTasks.map(t => t.id)).toContain('task_ready');
+      expect(readyTasks.map(t => t.id)).toContain('task_pending_dep');
+      expect(readyTasks.map(t => t.id)).toContain('task_unblocked');
+      expect(readyTasks.map(t => t.id)).not.toContain('task_blocked');
+    });
+
+    it('should get ready tasks ordered by priority', async () => {
+      const lowTask = createTestTask();
+      lowTask.id = 'task_low_priority';
+      lowTask.priority = 'low';
+      await store.createTask(lowTask);
+
+      const urgentTask = createTestTask();
+      urgentTask.id = 'task_urgent_priority';
+      urgentTask.priority = 'urgent';
+      await store.createTask(urgentTask);
+
+      const readyTasks = await store.getReadyTasks({ orderByPriority: true });
+
+      const urgentIdx = readyTasks.findIndex(t => t.id === 'task_urgent_priority');
+      const lowIdx = readyTasks.findIndex(t => t.id === 'task_low_priority');
+      expect(urgentIdx).toBeLessThan(lowIdx);
+    });
+
+    it('should respect limit when getting ready tasks', async () => {
+      for (let i = 0; i < 5; i++) {
+        const task = createTestTask();
+        task.id = `task_limit_${i}`;
+        await store.createTask(task);
+      }
+
+      const readyTasks = await store.getReadyTasks({ limit: 2 });
+      expect(readyTasks).toHaveLength(2);
+    });
+
+    it('should only get next queued task that is ready', async () => {
+      // Create a blocked task with high priority
+      const blockerTask = createTestTask();
+      blockerTask.id = 'task_blocker_high';
+      blockerTask.status = 'pending';
+      blockerTask.priority = 'normal';
+      await store.createTask(blockerTask);
+
+      const blockedTask = createTestTask();
+      blockedTask.id = 'task_blocked_urgent';
+      blockedTask.status = 'pending';
+      blockedTask.priority = 'urgent';
+      blockedTask.dependsOn = ['task_blocker_high'];
+      await store.createTask(blockedTask);
+
+      // Create a ready task with lower priority
+      const readyTask = createTestTask();
+      readyTask.id = 'task_ready_low';
+      readyTask.status = 'pending';
+      readyTask.priority = 'low';
+      await store.createTask(readyTask);
+
+      // Should get the ready task even though blocked task has higher priority
+      const nextTask = await store.getNextQueuedTask();
+      // The blocker_high should be picked first since it's ready and has higher priority than low
+      expect(nextTask?.id).toBe('task_blocker_high');
+
+      // Complete the blocker
+      await store.updateTask('task_blocker_high', { status: 'completed' });
+
+      // Now the urgent blocked task should be picked
+      const nextTask2 = await store.getNextQueuedTask();
+      expect(nextTask2?.id).toBe('task_blocked_urgent');
+    });
+
+    it('should return empty dependsOn for task without dependencies', async () => {
+      const task = createTestTask();
+      task.id = 'task_no_deps';
+      await store.createTask(task);
+
+      const retrieved = await store.getTask('task_no_deps');
+      expect(retrieved?.dependsOn).toEqual([]);
+    });
+
+    it('should not fail when adding duplicate dependency', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_dup_dep';
+      await store.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task_dup_main';
+      task2.dependsOn = ['task_dup_dep'];
+      await store.createTask(task2);
+
+      // Try adding the same dependency again - should not throw
+      await store.addDependency('task_dup_main', 'task_dup_dep');
+
+      const deps = await store.getTaskDependencies('task_dup_main');
+      expect(deps).toEqual(['task_dup_dep']);
+    });
+  });
 });

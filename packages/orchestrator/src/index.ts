@@ -100,6 +100,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     autonomy?: Task['autonomy'];
     priority?: Task['priority'];
     maxRetries?: number;
+    dependsOn?: string[];
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -127,6 +128,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       branchName,
       retryCount: 0,
       maxRetries,
+      dependsOn: options.dependsOn || [],
+      blockedBy: options.dependsOn || [], // Initially blocked by all dependencies
       createdAt: new Date(),
       updatedAt: new Date(),
       usage: {

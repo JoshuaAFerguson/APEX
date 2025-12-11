@@ -97,10 +97,21 @@ export class TaskStore {
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
+      CREATE TABLE IF NOT EXISTS task_dependencies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        depends_on_task_id TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id),
+        UNIQUE(task_id, depends_on_task_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
       CREATE INDEX IF NOT EXISTS idx_gates_task_id ON gates(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id);
     `);
   }
 
@@ -140,6 +151,18 @@ export class TaskStore {
       totalTokens: task.usage.totalTokens,
       estimatedCost: task.usage.estimatedCost,
     });
+
+    // Insert dependencies if any
+    if (task.dependsOn && task.dependsOn.length > 0) {
+      const depStmt = this.db.prepare(`
+        INSERT INTO task_dependencies (task_id, depends_on_task_id)
+        VALUES (@taskId, @dependsOnTaskId)
+      `);
+
+      for (const depId of task.dependsOn) {
+        depStmt.run({ taskId: task.id, dependsOnTaskId: depId });
+      }
+    }
   }
 
   /**
@@ -153,8 +176,10 @@ export class TaskStore {
 
     const logs = await this.getTaskLogs(taskId);
     const artifacts = await this.getTaskArtifacts(taskId);
+    const dependsOn = await this.getTaskDependencies(taskId);
+    const blockedBy = await this.getBlockingTasks(taskId);
 
-    return this.rowToTask(row, logs, artifacts);
+    return this.rowToTask(row, logs, artifacts, dependsOn, blockedBy);
   }
 
   /**
@@ -271,7 +296,9 @@ export class TaskStore {
     for (const row of rows) {
       const logs = await this.getTaskLogs(row.id);
       const artifacts = await this.getTaskArtifacts(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts));
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
     }
 
     return tasks;
@@ -279,8 +306,21 @@ export class TaskStore {
 
   /**
    * Get the next pending task from the queue based on priority
+   * Respects task dependencies - only returns tasks with no blockers
    */
   async getNextQueuedTask(): Promise<Task | null> {
+    const readyTasks = await this.getReadyTasks({
+      limit: 1,
+      orderByPriority: true,
+    });
+
+    return readyTasks[0] || null;
+  }
+
+  /**
+   * Get the next pending task (legacy - ignores dependencies)
+   */
+  async getNextQueuedTaskIgnoreDeps(): Promise<Task | null> {
     const tasks = await this.listTasks({
       status: 'pending',
       limit: 1,
@@ -460,7 +500,13 @@ export class TaskStore {
   /**
    * Convert database row to Task object
    */
-  private rowToTask(row: TaskRow, logs: TaskLog[], artifacts: TaskArtifact[]): Task {
+  private rowToTask(
+    row: TaskRow,
+    logs: TaskLog[],
+    artifacts: TaskArtifact[],
+    dependsOn?: string[],
+    blockedBy?: string[]
+  ): Task {
     return {
       id: row.id,
       description: row.description,
@@ -475,6 +521,8 @@ export class TaskStore {
       prUrl: row.pr_url || undefined,
       retryCount: row.retry_count || 0,
       maxRetries: row.max_retries || 3,
+      dependsOn: dependsOn || [],
+      blockedBy: blockedBy || [],
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -488,6 +536,124 @@ export class TaskStore {
       artifacts,
       error: row.error || undefined,
     };
+  }
+
+  // ============================================================================
+  // Task Dependencies
+  // ============================================================================
+
+  /**
+   * Get task dependencies (task IDs this task depends on)
+   */
+  async getTaskDependencies(taskId: string): Promise<string[]> {
+    const stmt = this.db.prepare(
+      'SELECT depends_on_task_id FROM task_dependencies WHERE task_id = ?'
+    );
+    const rows = stmt.all(taskId) as { depends_on_task_id: string }[];
+    return rows.map(r => r.depends_on_task_id);
+  }
+
+  /**
+   * Get blocking tasks (incomplete tasks that this task depends on)
+   */
+  async getBlockingTasks(taskId: string): Promise<string[]> {
+    const stmt = this.db.prepare(`
+      SELECT d.depends_on_task_id
+      FROM task_dependencies d
+      JOIN tasks t ON t.id = d.depends_on_task_id
+      WHERE d.task_id = ?
+      AND t.status NOT IN ('completed', 'cancelled')
+    `);
+    const rows = stmt.all(taskId) as { depends_on_task_id: string }[];
+    return rows.map(r => r.depends_on_task_id);
+  }
+
+  /**
+   * Check if a task is ready to run (all dependencies completed)
+   */
+  async isTaskReady(taskId: string): Promise<boolean> {
+    const blockers = await this.getBlockingTasks(taskId);
+    return blockers.length === 0;
+  }
+
+  /**
+   * Add a dependency to a task
+   */
+  async addDependency(taskId: string, dependsOnTaskId: string): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id)
+      VALUES (@taskId, @dependsOnTaskId)
+    `);
+    stmt.run({ taskId, dependsOnTaskId });
+  }
+
+  /**
+   * Remove a dependency from a task
+   */
+  async removeDependency(taskId: string, dependsOnTaskId: string): Promise<void> {
+    const stmt = this.db.prepare(`
+      DELETE FROM task_dependencies
+      WHERE task_id = ? AND depends_on_task_id = ?
+    `);
+    stmt.run(taskId, dependsOnTaskId);
+  }
+
+  /**
+   * Get dependent tasks (tasks that depend on this task)
+   */
+  async getDependentTasks(taskId: string): Promise<string[]> {
+    const stmt = this.db.prepare(
+      'SELECT task_id FROM task_dependencies WHERE depends_on_task_id = ?'
+    );
+    const rows = stmt.all(taskId) as { task_id: string }[];
+    return rows.map(r => r.task_id);
+  }
+
+  /**
+   * Get tasks that are ready to run (pending with no blockers)
+   */
+  async getReadyTasks(options?: { limit?: number; orderByPriority?: boolean }): Promise<Task[]> {
+    let sql = `
+      SELECT t.*
+      FROM tasks t
+      WHERE t.status = 'pending'
+      AND NOT EXISTS (
+        SELECT 1 FROM task_dependencies d
+        JOIN tasks dep ON dep.id = d.depends_on_task_id
+        WHERE d.task_id = t.id
+        AND dep.status NOT IN ('completed', 'cancelled')
+      )
+    `;
+
+    if (options?.orderByPriority) {
+      sql += ` ORDER BY CASE t.priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'normal' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END ASC, t.created_at ASC`;
+    } else {
+      sql += ' ORDER BY t.created_at ASC';
+    }
+
+    if (options?.limit) {
+      sql += ` LIMIT ${options.limit}`;
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all() as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+    }
+
+    return tasks;
   }
 
   /**

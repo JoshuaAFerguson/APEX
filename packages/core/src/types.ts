@@ -176,6 +176,8 @@ export interface Task {
   prUrl?: string;
   retryCount: number;
   maxRetries: number;
+  dependsOn?: string[];  // Task IDs this task depends on
+  blockedBy?: string[];  // Computed: tasks that are blocking this one
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;

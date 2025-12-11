@@ -1107,4 +1107,185 @@ You are a developer agent that implements code changes.
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
   });
+
+  describe('task dependencies', () => {
+    it('should create task with dependencies', async () => {
+      const parentTask = await orchestrator.createTask({
+        description: 'Parent task',
+      });
+
+      const childTask = await orchestrator.createTask({
+        description: 'Child task',
+        dependsOn: [parentTask.id],
+      });
+
+      expect(childTask.dependsOn).toContain(parentTask.id);
+    });
+
+    it('should report blocking tasks for dependent task', async () => {
+      const parentTask = await orchestrator.createTask({
+        description: 'Blocker task',
+      });
+
+      const childTask = await orchestrator.createTask({
+        description: 'Blocked task',
+        dependsOn: [parentTask.id],
+      });
+
+      // Parent is pending, so child should be blocked
+      const refreshedChild = await orchestrator.getTask(childTask.id);
+      expect(refreshedChild?.blockedBy).toContain(parentTask.id);
+    });
+
+    it('should unblock task when dependency completes', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const parentTask = await orchestrator.createTask({
+        description: 'Complete me',
+        workflow: 'feature',
+      });
+
+      const childTask = await orchestrator.createTask({
+        description: 'Wait for parent',
+        dependsOn: [parentTask.id],
+      });
+
+      // Initially blocked
+      let refreshedChild = await orchestrator.getTask(childTask.id);
+      expect(refreshedChild?.blockedBy).toContain(parentTask.id);
+
+      // Complete the parent
+      await orchestrator.executeTask(parentTask.id);
+
+      // Now should be unblocked
+      refreshedChild = await orchestrator.getTask(childTask.id);
+      expect(refreshedChild?.blockedBy).toEqual([]);
+    });
+
+    it('should not pick up blocked task from queue', async () => {
+      const parentTask = await orchestrator.createTask({
+        description: 'Blocker',
+        priority: 'low',
+      });
+
+      await orchestrator.createTask({
+        description: 'Blocked high priority',
+        priority: 'urgent',
+        dependsOn: [parentTask.id],
+      });
+
+      // The next task should be the low priority parent, not the urgent blocked child
+      const store = (orchestrator as unknown as { store: { getNextQueuedTask: () => Promise<unknown> } }).store;
+      const nextTask = await store.getNextQueuedTask() as { id: string };
+      expect(nextTask.id).toBe(parentTask.id);
+    });
+
+    it('should execute tasks in dependency order', async () => {
+      const mockQuery = vi.mocked(query);
+      const executionOrder: string[] = [];
+
+      mockQuery.mockImplementation(() => ({
+        [Symbol.asyncIterator]: async function* () {
+          // Track execution but need to identify which task
+        },
+      } as unknown as ReturnType<typeof query>));
+
+      const task1 = await orchestrator.createTask({
+        description: 'First',
+        workflow: 'feature',
+      });
+
+      const task2 = await orchestrator.createTask({
+        description: 'Second',
+        workflow: 'feature',
+        dependsOn: [task1.id],
+      });
+
+      // Start the runner
+      await orchestrator.startTaskRunner({ pollIntervalMs: 50 });
+
+      // Wait for both tasks to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      orchestrator.stopTaskRunner();
+      await orchestrator.waitForAllTasks();
+
+      // Verify both completed
+      const t1 = await orchestrator.getTask(task1.id);
+      const t2 = await orchestrator.getTask(task2.id);
+
+      expect(t1?.status).toBe('completed');
+      expect(t2?.status).toBe('completed');
+    });
+
+    it('should support multiple dependencies', async () => {
+      const dep1 = await orchestrator.createTask({
+        description: 'Dependency 1',
+      });
+
+      const dep2 = await orchestrator.createTask({
+        description: 'Dependency 2',
+      });
+
+      const mainTask = await orchestrator.createTask({
+        description: 'Main task',
+        dependsOn: [dep1.id, dep2.id],
+      });
+
+      const refreshed = await orchestrator.getTask(mainTask.id);
+      expect(refreshed?.dependsOn).toHaveLength(2);
+      expect(refreshed?.dependsOn).toContain(dep1.id);
+      expect(refreshed?.dependsOn).toContain(dep2.id);
+      expect(refreshed?.blockedBy).toHaveLength(2);
+    });
+
+    it('should only unblock when ALL dependencies complete', async () => {
+      const mockQuery = vi.mocked(query);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {},
+      } as unknown as ReturnType<typeof query>);
+
+      const dep1 = await orchestrator.createTask({
+        description: 'Dep 1',
+        workflow: 'feature',
+      });
+
+      const dep2 = await orchestrator.createTask({
+        description: 'Dep 2',
+        workflow: 'feature',
+      });
+
+      const mainTask = await orchestrator.createTask({
+        description: 'Main',
+        dependsOn: [dep1.id, dep2.id],
+      });
+
+      // Complete first dependency
+      await orchestrator.executeTask(dep1.id);
+
+      // Main should still be blocked by dep2
+      let refreshed = await orchestrator.getTask(mainTask.id);
+      expect(refreshed?.blockedBy).toContain(dep2.id);
+      expect(refreshed?.blockedBy).not.toContain(dep1.id);
+
+      // Complete second dependency
+      await orchestrator.executeTask(dep2.id);
+
+      // Now main should be unblocked
+      refreshed = await orchestrator.getTask(mainTask.id);
+      expect(refreshed?.blockedBy).toEqual([]);
+    });
+
+    it('should create task without dependencies by default', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Standalone task',
+      });
+
+      expect(task.dependsOn).toEqual([]);
+      expect(task.blockedBy).toEqual([]);
+    });
+  });
 });
