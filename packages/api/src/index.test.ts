@@ -486,4 +486,36 @@ describe('API Server', () => {
       expect(response.headers['access-control-allow-origin']).toBeDefined();
     });
   });
+
+  describe('Task status filter', () => {
+    it('GET /tasks?status=pending should filter by status', async () => {
+      // Create a task (will have status 'pending')
+      await server.inject({
+        method: 'POST',
+        url: '/tasks',
+        headers: { 'Content-Type': 'application/json' },
+        payload: { description: 'Task 1' },
+      });
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/tasks?status=pending',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.tasks).toBeInstanceOf(Array);
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should return 404 for unknown routes', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/unknown-route',
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
 });
