@@ -86,7 +86,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 PR description generation
 - 🟢 Commit message improvements - *Conventional commit utilities*
 - 🟢 Branch cleanup after merge - *`apex clean` command*
-- ⚪ Conflict detection and resolution suggestions
+- 🟢 Conflict detection and resolution suggestions - *`apex conflicts` command*
 - 🟢 Conventional changelog generation - *`apex changelog` command*
 - ⚪ Git hooks for pre-commit checks
 

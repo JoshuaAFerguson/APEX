@@ -20,6 +20,9 @@ import {
   groupCommitsByType,
   generateChangelogMarkdown,
   suggestCommitType,
+  detectConflicts,
+  suggestConflictResolution,
+  formatConflictReport,
 } from './utils';
 
 describe('generateTaskId', () => {
@@ -646,5 +649,199 @@ describe('suggestCommitType', () => {
   it('should suggest feat for files without path separators', () => {
     const files = ['newFeature.ts', 'component.tsx'];
     expect(suggestCommitType(files)).toBe('feat');
+  });
+});
+
+// ============================================================================
+// CONFLICT DETECTION TESTS
+// ============================================================================
+
+describe('detectConflicts', () => {
+  it('should detect simple conflict markers', () => {
+    const content = `line 1
+<<<<<<< HEAD
+current content
+=======
+incoming content
+>>>>>>> feature-branch
+line 2`;
+
+    const result = detectConflicts(content, 'test.ts');
+
+    expect(result).not.toBeNull();
+    expect(result!.file).toBe('test.ts');
+    expect(result!.conflictMarkers).toHaveLength(1);
+    expect(result!.conflictMarkers[0].currentContent).toBe('current content');
+    expect(result!.conflictMarkers[0].incomingContent).toBe('incoming content');
+    expect(result!.baseBranch).toBe('HEAD');
+    expect(result!.incomingBranch).toBe('feature-branch');
+  });
+
+  it('should detect multiple conflicts', () => {
+    const content = `<<<<<<< HEAD
+content1
+=======
+incoming1
+>>>>>>> branch
+middle
+<<<<<<< HEAD
+content2
+=======
+incoming2
+>>>>>>> branch`;
+
+    const result = detectConflicts(content, 'test.ts');
+
+    expect(result).not.toBeNull();
+    expect(result!.conflictMarkers).toHaveLength(2);
+  });
+
+  it('should handle diff3 style conflicts with base', () => {
+    const content = `<<<<<<< HEAD
+current
+||||||| merged common ancestors
+base content
+=======
+incoming
+>>>>>>> branch`;
+
+    const result = detectConflicts(content, 'test.ts');
+
+    expect(result).not.toBeNull();
+    expect(result!.conflictMarkers[0].currentContent).toBe('current');
+    expect(result!.conflictMarkers[0].baseContent).toBe('base content');
+    expect(result!.conflictMarkers[0].incomingContent).toBe('incoming');
+  });
+
+  it('should return null for files without conflicts', () => {
+    const content = `normal file content
+no conflicts here
+just regular code`;
+
+    const result = detectConflicts(content, 'test.ts');
+    expect(result).toBeNull();
+  });
+
+  it('should track line numbers correctly', () => {
+    const content = `line 1
+line 2
+<<<<<<< HEAD
+conflict
+=======
+other
+>>>>>>> branch
+line 8`;
+
+    const result = detectConflicts(content, 'test.ts');
+
+    expect(result!.conflictMarkers[0].startLine).toBe(3);
+    expect(result!.conflictMarkers[0].endLine).toBe(7);
+  });
+});
+
+describe('suggestConflictResolution', () => {
+  it('should suggest keep-incoming when current is empty', () => {
+    const marker = {
+      startLine: 1,
+      endLine: 5,
+      currentContent: '',
+      incomingContent: 'new content',
+    };
+
+    const suggestions = suggestConflictResolution(marker);
+
+    expect(suggestions[0].type).toBe('keep-incoming');
+    expect(suggestions[0].confidence).toBe('high');
+  });
+
+  it('should suggest keep-current when incoming is empty', () => {
+    const marker = {
+      startLine: 1,
+      endLine: 5,
+      currentContent: 'existing content',
+      incomingContent: '',
+    };
+
+    const suggestions = suggestConflictResolution(marker);
+
+    expect(suggestions[0].type).toBe('keep-current');
+    expect(suggestions[0].confidence).toBe('high');
+  });
+
+  it('should suggest keep-either when contents are identical', () => {
+    const marker = {
+      startLine: 1,
+      endLine: 5,
+      currentContent: 'same content',
+      incomingContent: 'same content',
+    };
+
+    const suggestions = suggestConflictResolution(marker);
+
+    expect(suggestions[0].type).toBe('keep-current');
+    expect(suggestions[0].description).toContain('identical');
+    expect(suggestions[0].confidence).toBe('high');
+  });
+
+  it('should suggest keep-incoming when it includes current content', () => {
+    const marker = {
+      startLine: 1,
+      endLine: 5,
+      currentContent: 'original',
+      incomingContent: 'original\nplus more',
+    };
+
+    const suggestions = suggestConflictResolution(marker);
+    const incomingSuggestion = suggestions.find((s) => s.type === 'keep-incoming');
+
+    expect(incomingSuggestion).toBeDefined();
+    expect(incomingSuggestion!.confidence).toBe('medium');
+  });
+
+  it('should always include keep-both and manual options', () => {
+    const marker = {
+      startLine: 1,
+      endLine: 5,
+      currentContent: 'completely different',
+      incomingContent: 'nothing in common',
+    };
+
+    const suggestions = suggestConflictResolution(marker);
+    const types = suggestions.map((s) => s.type);
+
+    expect(types).toContain('keep-both');
+    expect(types).toContain('manual');
+  });
+});
+
+describe('formatConflictReport', () => {
+  it('should return no conflicts message for empty array', () => {
+    const report = formatConflictReport([]);
+    expect(report).toBe('No conflicts detected.');
+  });
+
+  it('should format conflict information', () => {
+    const conflicts = [
+      {
+        file: 'src/test.ts',
+        baseBranch: 'main',
+        incomingBranch: 'feature',
+        conflictMarkers: [
+          {
+            startLine: 10,
+            endLine: 15,
+            currentContent: 'current',
+            incomingContent: 'incoming',
+          },
+        ],
+      },
+    ];
+
+    const report = formatConflictReport(conflicts);
+
+    expect(report).toContain('src/test.ts');
+    expect(report).toContain('main');
+    expect(report).toContain('feature');
+    expect(report).toContain('lines 10-15');
   });
 });

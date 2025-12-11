@@ -1063,6 +1063,105 @@ program
   });
 
 // ============================================================================
+// CONFLICTS Command
+// ============================================================================
+
+program
+  .command('conflicts')
+  .description('Detect and suggest resolutions for merge conflicts')
+  .option('-f, --file <path>', 'Check specific file for conflicts')
+  .option('--json', 'Output results as JSON')
+  .action(async (options) => {
+    const cwd = process.cwd();
+
+    console.log(chalk.cyan('\n🔍 Checking for merge conflicts...\n'));
+
+    const { execSync } = await import('child_process');
+
+    try {
+      // Get list of files with conflicts
+      let filesToCheck: string[] = [];
+
+      if (options.file) {
+        filesToCheck = [options.file];
+      } else {
+        // Check for unmerged paths
+        try {
+          const unmergedOutput = execSync('git diff --name-only --diff-filter=U', {
+            encoding: 'utf-8',
+            cwd,
+          }).trim();
+
+          if (unmergedOutput) {
+            filesToCheck = unmergedOutput.split('\n').filter(Boolean);
+          }
+        } catch {
+          // Not in a git repo or no conflicts
+        }
+
+        // Also check all tracked files if no unmerged paths found
+        if (filesToCheck.length === 0) {
+          console.log(chalk.gray('No unmerged paths detected. Checking working directory...\n'));
+        }
+      }
+
+      // Import conflict detection utilities
+      const { detectConflicts, formatConflictReport } = await import('@apex/core');
+
+      const allConflicts: Array<{
+        file: string;
+        conflictMarkers: Array<{
+          startLine: number;
+          endLine: number;
+          currentContent: string;
+          incomingContent: string;
+          baseContent?: string;
+        }>;
+        baseBranch?: string;
+        incomingBranch?: string;
+      }> = [];
+
+      for (const file of filesToCheck) {
+        const filePath = path.isAbsolute(file) ? file : path.join(cwd, file);
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          const conflicts = detectConflicts(content, file);
+          if (conflicts) {
+            allConflicts.push(conflicts);
+          }
+        } catch (error) {
+          console.log(chalk.yellow(`Could not read ${file}: ${(error as Error).message}`));
+        }
+      }
+
+      // Output results
+      if (options.json) {
+        console.log(JSON.stringify(allConflicts, null, 2));
+      } else if (allConflicts.length === 0) {
+        console.log(chalk.green('✅ No merge conflicts detected!'));
+      } else {
+        const report = formatConflictReport(allConflicts);
+        console.log(report);
+
+        // Summary
+        const totalConflicts = allConflicts.reduce((sum, c) => sum + c.conflictMarkers.length, 0);
+        console.log(
+          boxen(
+            `${chalk.yellow('⚠️  Conflicts Found')}\n\n` +
+              `Files: ${allConflicts.length}\n` +
+              `Conflict regions: ${totalConflicts}\n\n` +
+              `Run ${chalk.cyan('git mergetool')} or manually resolve conflicts`,
+            { padding: 1, borderColor: 'yellow', borderStyle: 'round' }
+          )
+        );
+      }
+    } catch (error) {
+      console.error(chalk.red(`\n❌ ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
 // UPGRADE Command
 // ============================================================================
 

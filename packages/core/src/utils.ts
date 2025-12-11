@@ -289,6 +289,230 @@ export const COMMIT_TYPES = {
 export type CommitType = keyof typeof COMMIT_TYPES;
 
 /**
+ * Git conflict detection types
+ */
+export interface ConflictInfo {
+  file: string;
+  conflictMarkers: ConflictMarker[];
+  baseBranch?: string;
+  incomingBranch?: string;
+}
+
+export interface ConflictMarker {
+  startLine: number;
+  endLine: number;
+  currentContent: string;
+  incomingContent: string;
+  baseContent?: string;
+}
+
+/**
+ * Detect merge conflicts in a file's content
+ */
+export function detectConflicts(fileContent: string, filePath: string): ConflictInfo | null {
+  const lines = fileContent.split('\n');
+  const conflictMarkers: ConflictMarker[] = [];
+  let currentStart: number | null = null;
+  let currentContent: string[] = [];
+  let baseContent: string[] | null = null;
+  let incomingContent: string[] = [];
+  let isInCurrent = false;
+  let isInBase = false;
+  let isInIncoming = false;
+  let baseBranch: string | undefined;
+  let incomingBranch: string | undefined;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+
+    // Start of conflict marker: <<<<<<< branch-name
+    if (line.startsWith('<<<<<<<')) {
+      currentStart = lineNum;
+      baseBranch = line.substring(7).trim() || 'HEAD';
+      isInCurrent = true;
+      currentContent = [];
+      baseContent = null;
+      incomingContent = [];
+      continue;
+    }
+
+    // Optional base marker (for diff3 style): ||||||| branch-name
+    if (line.startsWith('|||||||') && isInCurrent) {
+      isInCurrent = false;
+      isInBase = true;
+      baseContent = [];
+      continue;
+    }
+
+    // Separator: =======
+    if (line === '=======' && (isInCurrent || isInBase)) {
+      isInCurrent = false;
+      isInBase = false;
+      isInIncoming = true;
+      continue;
+    }
+
+    // End of conflict: >>>>>>> branch-name
+    if (line.startsWith('>>>>>>>') && isInIncoming && currentStart !== null) {
+      incomingBranch = line.substring(7).trim() || 'incoming';
+      conflictMarkers.push({
+        startLine: currentStart,
+        endLine: lineNum,
+        currentContent: currentContent.join('\n'),
+        incomingContent: incomingContent.join('\n'),
+        baseContent: baseContent?.join('\n'),
+      });
+      currentStart = null;
+      isInIncoming = false;
+      continue;
+    }
+
+    // Collect content based on current state
+    if (isInCurrent) {
+      currentContent.push(line);
+    } else if (isInBase && baseContent) {
+      baseContent.push(line);
+    } else if (isInIncoming) {
+      incomingContent.push(line);
+    }
+  }
+
+  if (conflictMarkers.length === 0) {
+    return null;
+  }
+
+  return {
+    file: filePath,
+    conflictMarkers,
+    baseBranch,
+    incomingBranch,
+  };
+}
+
+/**
+ * Resolution suggestion for a conflict
+ */
+export interface ConflictSuggestion {
+  type: 'keep-current' | 'keep-incoming' | 'keep-both' | 'manual';
+  description: string;
+  resolvedContent: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
+/**
+ * Suggest resolution for a conflict marker
+ */
+export function suggestConflictResolution(marker: ConflictMarker): ConflictSuggestion[] {
+  const suggestions: ConflictSuggestion[] = [];
+  const currentTrimmed = marker.currentContent.trim();
+  const incomingTrimmed = marker.incomingContent.trim();
+
+  // Check if one side is empty
+  if (!currentTrimmed && incomingTrimmed) {
+    suggestions.push({
+      type: 'keep-incoming',
+      description: 'Accept incoming changes (current side is empty)',
+      resolvedContent: marker.incomingContent,
+      confidence: 'high',
+      reason: 'Current branch removed this content, incoming branch has additions',
+    });
+  } else if (currentTrimmed && !incomingTrimmed) {
+    suggestions.push({
+      type: 'keep-current',
+      description: 'Keep current changes (incoming side is empty)',
+      resolvedContent: marker.currentContent,
+      confidence: 'high',
+      reason: 'Current branch has content, incoming branch removed it',
+    });
+  }
+
+  // Check if contents are identical (whitespace differences only)
+  if (currentTrimmed === incomingTrimmed) {
+    suggestions.push({
+      type: 'keep-current',
+      description: 'Keep either (contents are identical)',
+      resolvedContent: marker.currentContent,
+      confidence: 'high',
+      reason: 'Both sides have identical content (possible whitespace differences)',
+    });
+  }
+
+  // Check if one is a superset of the other (additive changes)
+  if (incomingTrimmed.includes(currentTrimmed) && currentTrimmed !== incomingTrimmed) {
+    suggestions.push({
+      type: 'keep-incoming',
+      description: 'Accept incoming (includes current content plus additions)',
+      resolvedContent: marker.incomingContent,
+      confidence: 'medium',
+      reason: 'Incoming changes include all current content with additions',
+    });
+  } else if (currentTrimmed.includes(incomingTrimmed) && currentTrimmed !== incomingTrimmed) {
+    suggestions.push({
+      type: 'keep-current',
+      description: 'Keep current (includes incoming content plus additions)',
+      resolvedContent: marker.currentContent,
+      confidence: 'medium',
+      reason: 'Current changes include all incoming content with additions',
+    });
+  }
+
+  // Offer combined option for non-overlapping changes
+  const combinedContent = marker.currentContent + '\n' + marker.incomingContent;
+  suggestions.push({
+    type: 'keep-both',
+    description: 'Keep both changes (concatenate)',
+    resolvedContent: combinedContent,
+    confidence: 'low',
+    reason: 'Combine both changes - requires manual review',
+  });
+
+  // Always offer manual resolution
+  suggestions.push({
+    type: 'manual',
+    description: 'Manual resolution required',
+    resolvedContent: marker.currentContent, // Placeholder
+    confidence: 'low',
+    reason: 'Complex conflict that needs human review',
+  });
+
+  return suggestions;
+}
+
+/**
+ * Format conflict detection results for display
+ */
+export function formatConflictReport(conflicts: ConflictInfo[]): string {
+  if (conflicts.length === 0) {
+    return 'No conflicts detected.';
+  }
+
+  let report = `Found ${conflicts.length} file(s) with conflicts:\n\n`;
+
+  for (const conflict of conflicts) {
+    report += `📄 ${conflict.file}\n`;
+    report += `   Branches: ${conflict.baseBranch || 'HEAD'} ← ${conflict.incomingBranch || 'incoming'}\n`;
+    report += `   Conflicts: ${conflict.conflictMarkers.length}\n`;
+
+    for (let i = 0; i < conflict.conflictMarkers.length; i++) {
+      const marker = conflict.conflictMarkers[i];
+      report += `\n   Conflict ${i + 1} (lines ${marker.startLine}-${marker.endLine}):\n`;
+
+      const suggestions = suggestConflictResolution(marker);
+      const topSuggestion = suggestions.find((s) => s.confidence === 'high') || suggestions[0];
+
+      report += `   Suggestion: ${topSuggestion.description}\n`;
+      report += `   Confidence: ${topSuggestion.confidence}\n`;
+      report += `   Reason: ${topSuggestion.reason}\n`;
+    }
+    report += '\n';
+  }
+
+  return report;
+}
+
+/**
  * Parsed git log entry
  */
 export interface GitLogEntry {
