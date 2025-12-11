@@ -15,6 +15,11 @@ import {
   extractCodeBlocks,
   retry,
   createDeferred,
+  COMMIT_TYPES,
+  parseGitLog,
+  groupCommitsByType,
+  generateChangelogMarkdown,
+  suggestCommitType,
 } from './utils';
 
 describe('generateTaskId', () => {
@@ -381,5 +386,265 @@ describe('createDeferred', () => {
 
     const result = await deferred.promise;
     expect(result).toBe(42);
+  });
+});
+
+describe('COMMIT_TYPES', () => {
+  it('should have all standard commit types', () => {
+    expect(COMMIT_TYPES.feat).toBeDefined();
+    expect(COMMIT_TYPES.fix).toBeDefined();
+    expect(COMMIT_TYPES.docs).toBeDefined();
+    expect(COMMIT_TYPES.refactor).toBeDefined();
+    expect(COMMIT_TYPES.test).toBeDefined();
+    expect(COMMIT_TYPES.chore).toBeDefined();
+  });
+
+  it('should have title and emoji for each type', () => {
+    for (const type of Object.values(COMMIT_TYPES)) {
+      expect(type.title).toBeDefined();
+      expect(type.emoji).toBeDefined();
+      expect(type.description).toBeDefined();
+    }
+  });
+});
+
+describe('parseGitLog', () => {
+  it('should parse git log output', () => {
+    const logOutput = `commit abc123def456789
+Author: John Doe <john@example.com>
+Date:   Mon Jan 15 10:30:00 2025 -0800
+
+    feat: add new feature
+
+commit 789abc123456def
+Author: Jane Smith <jane@example.com>
+Date:   Sun Jan 14 15:00:00 2025 -0800
+
+    fix(api): fix bug in endpoint
+`;
+
+    const entries = parseGitLog(logOutput);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].hash).toBe('abc123def456789');
+    expect(entries[0].shortHash).toBe('abc123d');
+    expect(entries[0].author).toBe('John Doe <john@example.com>');
+    expect(entries[0].message).toBe('feat: add new feature');
+    expect(entries[0].conventional?.type).toBe('feat');
+
+    expect(entries[1].conventional?.type).toBe('fix');
+    expect(entries[1].conventional?.scope).toBe('api');
+  });
+
+  it('should handle non-conventional commits', () => {
+    const logOutput = `commit abc123
+Author: User <user@example.com>
+Date:   Mon Jan 15 10:00:00 2025 -0800
+
+    random commit message
+`;
+
+    const entries = parseGitLog(logOutput);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].conventional).toBeNull();
+  });
+
+  it('should handle empty log', () => {
+    const entries = parseGitLog('');
+    expect(entries).toHaveLength(0);
+  });
+});
+
+describe('groupCommitsByType', () => {
+  it('should group commits by conventional type', () => {
+    const entries = [
+      {
+        hash: 'abc123',
+        shortHash: 'abc123',
+        author: 'User',
+        date: new Date(),
+        message: 'feat: feature 1',
+        conventional: { type: 'feat', description: 'feature 1', breaking: false },
+      },
+      {
+        hash: 'def456',
+        shortHash: 'def456',
+        author: 'User',
+        date: new Date(),
+        message: 'feat: feature 2',
+        conventional: { type: 'feat', description: 'feature 2', breaking: false },
+      },
+      {
+        hash: 'ghi789',
+        shortHash: 'ghi789',
+        author: 'User',
+        date: new Date(),
+        message: 'fix: bug fix',
+        conventional: { type: 'fix', description: 'bug fix', breaking: false },
+      },
+    ];
+
+    const groups = groupCommitsByType(entries);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].type).toBe('feat');
+    expect(groups[0].commits).toHaveLength(2);
+    expect(groups[1].type).toBe('fix');
+    expect(groups[1].commits).toHaveLength(1);
+  });
+
+  it('should put non-conventional commits in "other" group', () => {
+    const entries = [
+      {
+        hash: 'abc123',
+        shortHash: 'abc123',
+        author: 'User',
+        date: new Date(),
+        message: 'random message',
+        conventional: undefined,
+      },
+    ];
+
+    const groups = groupCommitsByType(entries);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].type).toBe('other');
+  });
+});
+
+describe('generateChangelogMarkdown', () => {
+  it('should generate markdown changelog', () => {
+    const groups = [
+      {
+        type: 'feat' as const,
+        title: 'Features',
+        commits: [
+          {
+            hash: 'abc123full',
+            shortHash: 'abc123f',
+            author: 'User',
+            date: new Date(),
+            message: 'feat: add feature',
+            conventional: { type: 'feat', description: 'add feature', breaking: false },
+          },
+        ],
+      },
+    ];
+
+    const markdown = generateChangelogMarkdown('1.0.0', new Date('2025-01-15'), groups);
+
+    expect(markdown).toContain('## [1.0.0] - 2025-01-15');
+    expect(markdown).toContain('### ✨ Features');
+    expect(markdown).toContain('- add feature');
+    expect(markdown).toContain('(abc123f)');
+  });
+
+  it('should include repo links when URL provided', () => {
+    const groups = [
+      {
+        type: 'fix' as const,
+        title: 'Bug Fixes',
+        commits: [
+          {
+            hash: 'abc123full',
+            shortHash: 'abc123f',
+            author: 'User',
+            date: new Date(),
+            message: 'fix: fix bug',
+            conventional: { type: 'fix', description: 'fix bug', breaking: false },
+          },
+        ],
+      },
+    ];
+
+    const markdown = generateChangelogMarkdown('1.0.0', new Date(), groups, {
+      repoUrl: 'https://github.com/user/repo',
+    });
+
+    expect(markdown).toContain('[abc123f](https://github.com/user/repo/commit/abc123full)');
+  });
+
+  it('should mark breaking changes', () => {
+    const groups = [
+      {
+        type: 'feat' as const,
+        title: 'Features',
+        commits: [
+          {
+            hash: 'abc123',
+            shortHash: 'abc123',
+            author: 'User',
+            date: new Date(),
+            message: 'feat!: breaking change',
+            conventional: { type: 'feat', description: 'breaking change', breaking: true },
+          },
+        ],
+      },
+    ];
+
+    const markdown = generateChangelogMarkdown('2.0.0', new Date(), groups);
+
+    expect(markdown).toContain('⚠️ BREAKING:');
+  });
+
+  it('should include scope in output', () => {
+    const groups = [
+      {
+        type: 'fix' as const,
+        title: 'Bug Fixes',
+        commits: [
+          {
+            hash: 'abc123',
+            shortHash: 'abc123',
+            author: 'User',
+            date: new Date(),
+            message: 'fix(api): fix endpoint',
+            conventional: { type: 'fix', scope: 'api', description: 'fix endpoint', breaking: false },
+          },
+        ],
+      },
+    ];
+
+    const markdown = generateChangelogMarkdown('1.0.1', new Date(), groups);
+
+    expect(markdown).toContain('**api:**');
+  });
+});
+
+describe('suggestCommitType', () => {
+  it('should suggest test type for test files', () => {
+    const files = ['src/utils.test.ts', 'tests/integration.spec.js'];
+    expect(suggestCommitType(files)).toBe('test');
+  });
+
+  it('should suggest docs type for documentation', () => {
+    const files = ['README.md', 'docs/guide.md'];
+    expect(suggestCommitType(files)).toBe('docs');
+  });
+
+  it('should suggest build type for package files', () => {
+    const files = ['package.json', 'package-lock.json'];
+    expect(suggestCommitType(files)).toBe('build');
+  });
+
+  it('should suggest ci type for CI files', () => {
+    const files = ['.github/workflows/ci.yml'];
+    expect(suggestCommitType(files)).toBe('ci');
+  });
+
+  it('should suggest style for CSS files', () => {
+    const files = ['src/styles.css', 'components/Button.scss'];
+    expect(suggestCommitType(files)).toBe('style');
+  });
+
+  it('should suggest chore for files with paths that do not match patterns', () => {
+    const files = ['src/newFeature.ts', 'lib/component.tsx'];
+    expect(suggestCommitType(files)).toBe('chore');
+  });
+
+  it('should suggest feat for files without path separators', () => {
+    const files = ['newFeature.ts', 'component.tsx'];
+    expect(suggestCommitType(files)).toBe('feat');
   });
 });

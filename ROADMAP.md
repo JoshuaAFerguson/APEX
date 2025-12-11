@@ -84,10 +84,10 @@ This document outlines the planned development roadmap for APEX. Features are or
 ### Git Integration
 - 🟢 Automatic PR creation via `gh` CLI
 - 🟢 PR description generation
-- ⚪ Commit message improvements
+- 🟢 Commit message improvements - *Conventional commit utilities*
 - 🟢 Branch cleanup after merge - *`apex clean` command*
 - ⚪ Conflict detection and resolution suggestions
-- ⚪ Conventional changelog generation
+- 🟢 Conventional changelog generation - *`apex changelog` command*
 - ⚪ Git hooks for pre-commit checks
 
 ### Documentation

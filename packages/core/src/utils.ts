@@ -268,3 +268,204 @@ export function extractCodeBlocks(markdown: string): CodeBlock[] {
 
   return blocks;
 }
+
+/**
+ * Commit type configuration for conventional commits
+ */
+export const COMMIT_TYPES = {
+  feat: { title: 'Features', emoji: '✨', description: 'New features' },
+  fix: { title: 'Bug Fixes', emoji: '🐛', description: 'Bug fixes' },
+  docs: { title: 'Documentation', emoji: '📚', description: 'Documentation changes' },
+  style: { title: 'Styles', emoji: '💎', description: 'Code style changes' },
+  refactor: { title: 'Code Refactoring', emoji: '♻️', description: 'Code refactoring' },
+  perf: { title: 'Performance', emoji: '🚀', description: 'Performance improvements' },
+  test: { title: 'Tests', emoji: '🧪', description: 'Test additions/changes' },
+  build: { title: 'Build', emoji: '📦', description: 'Build system changes' },
+  ci: { title: 'CI', emoji: '👷', description: 'CI configuration changes' },
+  chore: { title: 'Chores', emoji: '🔧', description: 'Maintenance tasks' },
+  revert: { title: 'Reverts', emoji: '⏪', description: 'Reverted changes' },
+} as const;
+
+export type CommitType = keyof typeof COMMIT_TYPES;
+
+/**
+ * Parsed git log entry
+ */
+export interface GitLogEntry {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: Date;
+  message: string;
+  conventional?: ConventionalCommit;
+}
+
+/**
+ * Parse git log output into structured entries
+ */
+export function parseGitLog(logOutput: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  const commitRegex = /commit\s+([a-f0-9]+)\nAuthor:\s*(.+)\nDate:\s*(.+)\n\n([\s\S]*?)(?=commit\s+[a-f0-9]+|$)/g;
+  let match;
+
+  while ((match = commitRegex.exec(logOutput)) !== null) {
+    const [, hash, author, dateStr, messageBlock] = match;
+    const message = messageBlock.trim();
+
+    entries.push({
+      hash,
+      shortHash: hash.substring(0, 7),
+      author: author.trim(),
+      date: new Date(dateStr.trim()),
+      message,
+      conventional: parseConventionalCommit(message.split('\n')[0]) ?? undefined,
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * Group commits by type for changelog generation
+ */
+export interface ChangelogGroup {
+  type: CommitType | 'other';
+  title: string;
+  commits: GitLogEntry[];
+}
+
+export function groupCommitsByType(entries: GitLogEntry[]): ChangelogGroup[] {
+  const groups = new Map<CommitType | 'other', GitLogEntry[]>();
+
+  for (const entry of entries) {
+    const type = entry.conventional?.type as CommitType;
+    const groupType = type && type in COMMIT_TYPES ? type : 'other';
+
+    if (!groups.has(groupType)) {
+      groups.set(groupType, []);
+    }
+    groups.get(groupType)!.push(entry);
+  }
+
+  const result: ChangelogGroup[] = [];
+
+  // Add groups in order of COMMIT_TYPES
+  for (const type of Object.keys(COMMIT_TYPES) as CommitType[]) {
+    const commits = groups.get(type);
+    if (commits && commits.length > 0) {
+      result.push({
+        type,
+        title: COMMIT_TYPES[type].title,
+        commits,
+      });
+    }
+  }
+
+  // Add 'other' at the end
+  const other = groups.get('other');
+  if (other && other.length > 0) {
+    result.push({
+      type: 'other',
+      title: 'Other Changes',
+      commits: other,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Generate changelog markdown from grouped commits
+ */
+export function generateChangelogMarkdown(
+  version: string,
+  date: Date,
+  groups: ChangelogGroup[],
+  options?: {
+    includeHashes?: boolean;
+    includeAuthors?: boolean;
+    repoUrl?: string;
+  }
+): string {
+  const { includeHashes = true, includeAuthors = false, repoUrl } = options || {};
+
+  let markdown = `## [${version}] - ${date.toISOString().split('T')[0]}\n\n`;
+
+  for (const group of groups) {
+    if (group.commits.length === 0) continue;
+
+    const typeConfig = group.type !== 'other' ? COMMIT_TYPES[group.type] : null;
+    const emoji = typeConfig?.emoji || '📝';
+
+    markdown += `### ${emoji} ${group.title}\n\n`;
+
+    for (const commit of group.commits) {
+      const description = commit.conventional?.description || commit.message.split('\n')[0];
+      const scope = commit.conventional?.scope ? `**${commit.conventional.scope}:** ` : '';
+      const breaking = commit.conventional?.breaking ? '⚠️ BREAKING: ' : '';
+
+      let line = `- ${breaking}${scope}${description}`;
+
+      if (includeHashes && repoUrl) {
+        line += ` ([${commit.shortHash}](${repoUrl}/commit/${commit.hash}))`;
+      } else if (includeHashes) {
+        line += ` (${commit.shortHash})`;
+      }
+
+      if (includeAuthors) {
+        line += ` - ${commit.author}`;
+      }
+
+      markdown += line + '\n';
+    }
+
+    markdown += '\n';
+  }
+
+  return markdown;
+}
+
+/**
+ * Suggest commit type based on file changes
+ */
+export function suggestCommitType(files: string[]): CommitType {
+  const patterns: Array<{ pattern: RegExp; type: CommitType }> = [
+    { pattern: /\.test\.|\.spec\.|__tests__|\/tests?\//i, type: 'test' },
+    { pattern: /\.md$|docs\//i, type: 'docs' },
+    { pattern: /\.css$|\.scss$|\.less$|\.styled\./i, type: 'style' },
+    { pattern: /package\.json$|yarn\.lock$|package-lock\.json$/i, type: 'build' },
+    { pattern: /\.github\/|\.gitlab-ci|\.circleci|jenkinsfile/i, type: 'ci' },
+    { pattern: /\.eslint|\.prettier|\.editorconfig|tsconfig/i, type: 'chore' },
+  ];
+
+  // Count matches for each type
+  const counts = new Map<CommitType, number>();
+
+  for (const file of files) {
+    for (const { pattern, type } of patterns) {
+      if (pattern.test(file)) {
+        counts.set(type, (counts.get(type) || 0) + 1);
+        break;
+      }
+    }
+  }
+
+  // Find the most common type
+  let maxCount = 0;
+  let suggestedType: CommitType = 'feat';
+
+  for (const [type, count] of counts) {
+    if (count > maxCount) {
+      maxCount = count;
+      suggestedType = type;
+    }
+  }
+
+  // Default to 'feat' for new features or 'fix' if files suggest bug fixes
+  if (maxCount === 0) {
+    const hasNewFiles = files.some((f) => !f.includes('/'));
+    return hasNewFiles ? 'feat' : 'chore';
+  }
+
+  return suggestedType;
+}

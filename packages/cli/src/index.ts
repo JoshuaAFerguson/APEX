@@ -890,6 +890,102 @@ program
   });
 
 // ============================================================================
+// CHANGELOG Command
+// ============================================================================
+
+program
+  .command('changelog')
+  .description('Generate changelog from conventional commits')
+  .option('-f, --from <ref>', 'Starting ref (tag or commit)', 'HEAD~20')
+  .option('-t, --to <ref>', 'Ending ref', 'HEAD')
+  .option('-v, --version <version>', 'Version number for changelog', 'Unreleased')
+  .option('-o, --output <file>', 'Write to file instead of stdout')
+  .option('--repo-url <url>', 'Repository URL for commit links')
+  .option('--no-hashes', 'Exclude commit hashes')
+  .option('--authors', 'Include author names')
+  .action(async (options) => {
+    const cwd = process.cwd();
+
+    console.log(chalk.cyan('\n📋 Generating changelog...\n'));
+
+    const { execSync } = await import('child_process');
+
+    try {
+      // Get git log
+      const logOutput = execSync(`git log ${options.from}..${options.to} --format=medium`, {
+        encoding: 'utf-8',
+        cwd,
+      });
+
+      if (!logOutput.trim()) {
+        console.log(chalk.yellow('No commits found in the specified range.'));
+        return;
+      }
+
+      // Import changelog utilities
+      const { parseGitLog, groupCommitsByType, generateChangelogMarkdown } = await import('@apex/core');
+
+      // Parse commits
+      const entries = parseGitLog(logOutput);
+      const groups = groupCommitsByType(entries);
+
+      // Get repo URL from git remote if not provided
+      let repoUrl = options.repoUrl;
+      if (!repoUrl) {
+        try {
+          const remoteUrl = execSync('git remote get-url origin', {
+            encoding: 'utf-8',
+            cwd,
+          }).trim();
+
+          // Convert SSH URL to HTTPS if needed
+          if (remoteUrl.startsWith('git@')) {
+            repoUrl = remoteUrl
+              .replace('git@', 'https://')
+              .replace(':', '/')
+              .replace(/\.git$/, '');
+          } else if (remoteUrl.startsWith('https://')) {
+            repoUrl = remoteUrl.replace(/\.git$/, '');
+          }
+        } catch {
+          // No remote URL available
+        }
+      }
+
+      // Generate changelog
+      const markdown = generateChangelogMarkdown(options.version, new Date(), groups, {
+        includeHashes: options.hashes !== false,
+        includeAuthors: options.authors,
+        repoUrl,
+      });
+
+      // Output
+      if (options.output) {
+        await fs.writeFile(options.output, markdown);
+        console.log(chalk.green(`Changelog written to ${options.output}`));
+      } else {
+        console.log(markdown);
+      }
+
+      // Summary
+      const totalCommits = entries.length;
+      const conventionalCount = entries.filter((e) => e.conventional).length;
+
+      console.log(chalk.gray(`\nProcessed ${totalCommits} commits (${conventionalCount} conventional)`));
+
+      if (conventionalCount < totalCommits * 0.5) {
+        console.log(
+          chalk.yellow(`\n⚠️  Only ${Math.round((conventionalCount / totalCommits) * 100)}% of commits follow conventional format.`)
+        );
+        console.log(chalk.gray('   Consider using conventional commits for better changelogs.'));
+      }
+    } catch (error) {
+      console.error(chalk.red(`\n❌ ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
 // UPGRADE Command
 // ============================================================================
 
