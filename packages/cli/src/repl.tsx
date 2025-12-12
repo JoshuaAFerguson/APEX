@@ -1314,6 +1314,64 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
+      // Stream agent messages to the UI in real-time
+      ctx.orchestrator.on('agent:message', (taskId, message) => {
+        // Extract text content from the message
+        let textContent = '';
+
+        if (message && typeof message === 'object') {
+          const msg = message as Record<string, unknown>;
+
+          if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
+            // Assistant messages have content as array of blocks
+            const apiMessage = msg.message as { content?: Array<{ type: string; text?: string }> };
+            if (Array.isArray(apiMessage.content)) {
+              for (const block of apiMessage.content) {
+                if (block.type === 'text' && block.text) {
+                  textContent += block.text;
+                }
+              }
+            }
+          } else if (msg.type === 'result' && typeof msg.result === 'string') {
+            textContent = msg.result;
+          }
+        }
+
+        // Only display non-empty text content
+        if (textContent.trim().length > 0) {
+          // Truncate very long messages for display
+          const displayText = textContent.length > 1000
+            ? textContent.substring(0, 1000) + '...'
+            : textContent;
+
+          ctx.app?.addMessage({
+            type: 'assistant',
+            content: displayText,
+          });
+        }
+      });
+
+      // Stream tool use events to the UI
+      ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+        // Display tool usage in a compact format
+        const toolDisplay = typeof input === 'object' && input !== null
+          ? `${tool}: ${JSON.stringify(input).substring(0, 100)}${JSON.stringify(input).length > 100 ? '...' : ''}`
+          : `${tool}`;
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: `Tool: ${toolDisplay}`,
+        });
+      });
+
+      // Update token/cost display in real-time
+      ctx.orchestrator.on('usage:updated', (taskId, usage) => {
+        ctx.app?.updateState({
+          tokens: { input: usage.inputTokens, output: usage.outputTokens },
+          cost: usage.estimatedCost,
+        });
+      });
+
       // Initialize session management
       ctx.sessionStore = new SessionStore(ctx.cwd);
       await ctx.sessionStore.initialize();

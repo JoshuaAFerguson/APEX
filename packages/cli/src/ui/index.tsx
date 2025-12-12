@@ -60,20 +60,41 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
     />
   );
 
-  // Wait a tick for the app to initialize
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Wait for the app to initialize with polling (max 2 seconds)
+  const maxWaitTime = 2000;
+  const pollInterval = 10;
+  let waited = 0;
 
-  // Get the app instance from global
-  const appInstance = (globalThis as Record<string, unknown>).__apexApp as {
+  while (waited < maxWaitTime) {
+    const appInstance = (globalThis as Record<string, unknown>).__apexApp;
+    if (appInstance) break;
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    waited += pollInterval;
+  }
+
+  // Helper to get the current app instance (may change during lifecycle)
+  const getAppInstance = () => (globalThis as Record<string, unknown>).__apexApp as {
     addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void;
     updateState: (updates: Partial<AppState>) => void;
     getState: () => AppState;
   } | undefined;
 
   return {
-    addMessage: (message) => appInstance?.addMessage(message),
-    updateState: (updates) => appInstance?.updateState(updates),
-    getState: () => appInstance?.getState() || initialState,
+    addMessage: (message) => {
+      const instance = getAppInstance();
+      if (instance) {
+        instance.addMessage(message);
+      } else {
+        console.error('App not initialized - message dropped:', message.type);
+      }
+    },
+    updateState: (updates) => {
+      const instance = getAppInstance();
+      if (instance) {
+        instance.updateState(updates);
+      }
+    },
+    getState: () => getAppInstance()?.getState() || initialState,
     waitUntilExit,
     unmount,
   };

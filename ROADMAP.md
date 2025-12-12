@@ -139,7 +139,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 ### Input Experience
 - 🟢 **Tab completion** - CompletionEngine integrated with AdvancedInput (debounced, fuzzy search)
 - 🟢 **History navigation** - Up/down arrows for command history
-- 🟡 **History search** - ShortcutManager event defined, needs HistorySearch UI component
+- 🟢 **History search** - Ctrl+R search implemented via ShortcutManager
 - 🟢 **Multi-line input** - Shift+Enter support in AdvancedInput
 - 🟢 **Inline editing** - Edit previous input before sending
 - ⚪ **Input preview** - Show what will be sent before execution
@@ -186,29 +186,29 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 > **Architecture Review**: See [ADR-010: Feature Development Technical Design](/docs/adr/010-v030-feature-development-technical-design.md) for detailed implementation specifications.
 
-**Phase 1: Integration Work (HIGH PRIORITY) - 2-3 days**
+**Phase 1: Integration Work (COMPLETE)**
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
 | Wire CompletionEngine to AdvancedInput | 🟢 | Complete | `cli/src/ui/components/AdvancedInput.tsx` |
-| Integrate ConversationManager with REPL | 🟡 | 1 day | `cli/src/repl.tsx` |
+| Integrate ConversationManager with REPL | 🟢 | Complete | `cli/src/repl.tsx` |
 | StatusBar session timer + subtask progress | 🟢 | Complete | `cli/src/ui/components/StatusBar.tsx` |
-| Wire ShortcutManager event handlers | 🟡 | 0.5 day | `cli/src/repl.tsx`, `App.tsx` |
+| Wire ShortcutManager event handlers | 🟢 | Complete | `cli/src/repl.tsx`, `App.tsx` |
+| Real-time streaming to UI | 🟢 | Complete | `cli/src/repl.tsx` (agent:message, agent:tool-use, usage:updated events) |
 
-**Phase 2: Missing Components (HIGH PRIORITY) - 3-4 days**
+**Phase 2: Enhancements (IN PROGRESS)**
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
-| HistorySearch component (Ctrl+R UI) | ⚪ | 1.5 days | `cli/src/ui/components/input/HistorySearch.tsx` |
 | AgentPanel enhancements (handoff, parallel) | 🟡 | 1 day | `cli/src/ui/components/agents/AgentPanel.tsx` |
 | SubtaskTree enhancements (collapse/expand) | 🟡 | 1 day | `cli/src/ui/components/agents/SubtaskTree.tsx` |
 | Display modes (compact/verbose) | ⚪ | 0.5 day | `cli/src/repl.tsx` |
 
-**Phase 3: Polish & Testing (MEDIUM PRIORITY) - 2-3 days**
+**Phase 3: Polish & Testing (MEDIUM PRIORITY)**
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
 | Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
 | Documentation updates | ⚪ | 1 day | `docs/` |
 
-**Estimated Remaining**: 1-2 weeks (7-10 days)
+**Estimated Remaining**: 3-5 days
 
 > **Key Finding**: Most core services (SessionStore, CompletionEngine, ShortcutManager, ConversationManager) are already implemented. Primary remaining work is **integration** and **UI component enhancements**.
 
@@ -656,13 +656,13 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Syntax highlighting | ✅ | ✅ | ✅ | 🟢 |
 | Markdown rendering | ✅ | ✅ | ✅ | 🟢 |
 | Diff views | ✅ | ✅ | ✅ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | 🟡 |
+| Tab completion | ✅ | ✅ | ✅ | 🟢 |
 | History navigation | ✅ | ✅ | ✅ | 🟢 |
-| History search (Ctrl+R) | ✅ | ✅ | ✅ | ⚪ |
+| History search (Ctrl+R) | ✅ | ✅ | ✅ | 🟢 |
 | Tool approval workflow | ✅ | ✅ | ✅ | ⚪ |
 | Cost/token tracking | ✅ | ✅ | ✅ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | 🟡 |
-| Session persistence | ✅ | ✅ | ✅ | ⚪ |
+| Multi-turn conversations | ✅ | ✅ | ✅ | 🟢 |
+| Session persistence | ✅ | ✅ | ✅ | 🟢 |
 | Git awareness | ✅ | ✅ | ✅ | 🟢 |
 | Theme support | ✅ | ✅ | ✅ | 🟢 |
 | **Multi-agent orchestration** | ❌ | ❌ | ❌ | 🟢 |
