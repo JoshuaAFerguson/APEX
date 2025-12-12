@@ -3,9 +3,23 @@ import {
   ApexConfig,
   AgentDefinition,
   WorkflowDefinition,
+  WorkflowStage,
   Task,
+  StageResult,
+  SubtaskDefinition,
+  SubtaskStrategy,
   getEffectiveConfig,
 } from '@apex/core';
+
+/**
+ * Parsed decomposition request from planner output
+ */
+export interface DecompositionRequest {
+  shouldDecompose: boolean;
+  subtasks: SubtaskDefinition[];
+  strategy: SubtaskStrategy;
+  reason?: string;
+}
 
 export interface PromptContext {
   config: ReturnType<typeof getEffectiveConfig>;
@@ -202,4 +216,359 @@ function formatDuration(start: Date, end: Date): string {
   } else {
     return `${seconds}s`;
   }
+}
+
+// ============================================================================
+// Stage-Specific Prompts for Multi-Agent Orchestration
+// ============================================================================
+
+export interface StagePromptContext {
+  task: Task;
+  stage: WorkflowStage;
+  agent: AgentDefinition;
+  workflow: WorkflowDefinition;
+  config: ReturnType<typeof getEffectiveConfig>;
+  previousStageResults: Map<string, StageResult>;
+}
+
+/**
+ * Build a focused prompt for a specific workflow stage
+ * This replaces the monolithic orchestrator prompt with targeted agent prompts
+ */
+export function buildStagePrompt(context: StagePromptContext): string {
+  const { task, stage, agent, workflow, config, previousStageResults } = context;
+
+  // Get inputs from previous stages
+  const inputs = getStageInputs(stage, previousStageResults);
+
+  // Format previous stage summaries for context
+  const previousWork = formatPreviousStages(stage, workflow, previousStageResults);
+
+  return `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - ${stage.name} Stage
+
+You are the **${agent.name}** agent working on the **${stage.name}** stage of a ${workflow.name} workflow.
+
+## Your Role
+${agent.description}
+
+## Task Overview
+${task.description}
+${task.acceptanceCriteria ? `\n### Acceptance Criteria\n${task.acceptanceCriteria}` : ''}
+
+## Your Stage: ${stage.name}
+${stage.description || `Execute the ${stage.name} stage of the workflow`}
+
+${inputs ? `## Inputs from Previous Stages\n${inputs}\n` : ''}
+${previousWork ? `## Previous Work Completed\n${previousWork}\n` : ''}
+## Expected Outputs
+${formatExpectedOutputs(stage)}
+
+## Project Context
+- **Project**: ${config.project.name}
+${config.project.language ? `- **Language**: ${config.project.language}` : ''}
+${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
+- **Branch**: ${task.branchName || 'main'}
+
+## Instructions
+1. Focus ONLY on your assigned stage: **${stage.name}**
+2. Do not attempt work belonging to other stages
+3. When complete, provide a clear summary of what you accomplished
+4. List any files created or modified
+5. If you identify issues for later stages, note them but don't act on them
+
+${agent.prompt}
+
+## Output Format
+When you complete your work, end with a structured summary:
+
+\`\`\`
+### Stage Summary: ${stage.name}
+**Status**: completed | failed
+**Summary**: <Brief description of what was accomplished>
+**Files Modified**: <List of files created/modified>
+**Outputs**: <Key outputs for next stages>
+**Notes for Next Stages**: <Any important context>
+\`\`\`
+
+Begin your work on the ${stage.name} stage now.`;
+}
+
+/**
+ * Get formatted inputs from previous stages based on dependencies
+ */
+function getStageInputs(
+  stage: WorkflowStage,
+  previousResults: Map<string, StageResult>
+): string | null {
+  if (!stage.dependsOn || stage.dependsOn.length === 0) {
+    return null;
+  }
+
+  const inputs: string[] = [];
+
+  for (const depName of stage.dependsOn) {
+    const result = previousResults.get(depName);
+    if (result && result.status === 'completed') {
+      inputs.push(`### From ${depName} stage (${result.agent}):`);
+      inputs.push(`**Summary**: ${result.summary}`);
+
+      if (Object.keys(result.outputs).length > 0) {
+        inputs.push(`**Outputs**:`);
+        for (const [key, value] of Object.entries(result.outputs)) {
+          const valueStr = typeof value === 'string'
+            ? value
+            : JSON.stringify(value, null, 2);
+          inputs.push(`- ${key}: ${valueStr.substring(0, 500)}${valueStr.length > 500 ? '...' : ''}`);
+        }
+      }
+
+      if (result.artifacts.length > 0) {
+        inputs.push(`**Files**: ${result.artifacts.join(', ')}`);
+      }
+      inputs.push('');
+    }
+  }
+
+  return inputs.length > 0 ? inputs.join('\n') : null;
+}
+
+/**
+ * Format previous stages that have completed
+ */
+function formatPreviousStages(
+  currentStage: WorkflowStage,
+  workflow: WorkflowDefinition,
+  previousResults: Map<string, StageResult>
+): string | null {
+  const completed: string[] = [];
+
+  for (const stage of workflow.stages) {
+    if (stage.name === currentStage.name) break;
+
+    const result = previousResults.get(stage.name);
+    if (result) {
+      completed.push(`- **${stage.name}** (${result.agent}): ${result.status} - ${result.summary.substring(0, 100)}${result.summary.length > 100 ? '...' : ''}`);
+    }
+  }
+
+  return completed.length > 0 ? completed.join('\n') : null;
+}
+
+/**
+ * Format expected outputs for a stage
+ */
+function formatExpectedOutputs(stage: WorkflowStage): string {
+  if (!stage.outputs || stage.outputs.length === 0) {
+    return 'Complete your assigned work for this stage.';
+  }
+
+  return stage.outputs.map(output => `- **${output}**: Provide this in your summary`).join('\n');
+}
+
+/**
+ * Build a specialized prompt for the planning stage
+ * Includes instructions for task decomposition when appropriate
+ */
+export function buildPlannerStagePrompt(context: StagePromptContext): string {
+  const { task, stage, agent, workflow, config, previousStageResults } = context;
+
+  return `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - Planning Stage
+
+You are the **${agent.name}** agent responsible for planning the implementation of a task.
+
+## Your Role
+${agent.description}
+
+## Task to Plan
+${task.description}
+${task.acceptanceCriteria ? `\n### Acceptance Criteria\n${task.acceptanceCriteria}` : ''}
+
+## Project Context
+- **Project**: ${config.project.name}
+${config.project.language ? `- **Language**: ${config.project.language}` : ''}
+${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
+- **Workflow**: ${workflow.name}
+
+## CRITICAL: Task Analysis and Decomposition
+
+**IMPORTANT**: Most tasks should be DECOMPOSED into subtasks. Only truly simple tasks (single function, minor bug fix, small config change) should skip decomposition.
+
+### You MUST DECOMPOSE if the task:
+- References a ROADMAP, epic, or multi-item list
+- Involves multiple features or components
+- Spans different areas (backend + frontend + tests + docs)
+- Would require more than ~500 lines of code changes
+- Contains words like "implement", "add all", "complete", "full"
+
+### Decomposition Format (REQUIRED for complex tasks):
+
+\`\`\`decompose
+{
+  "reason": "Brief explanation of why decomposition is needed",
+  "strategy": "sequential|parallel|dependency-based",
+  "subtasks": [
+    {
+      "description": "Clear, specific subtask description",
+      "acceptanceCriteria": "How to verify this subtask is complete",
+      "workflow": "feature",
+      "dependsOn": []
+    },
+    {
+      "description": "Another subtask",
+      "acceptanceCriteria": "Verification criteria",
+      "dependsOn": ["Clear, specific subtask description"]
+    }
+  ]
+}
+\`\`\`
+
+### Decomposition Strategies:
+- **sequential**: Subtasks must run in order (most common)
+- **parallel**: Independent subtasks can run simultaneously
+- **dependency-based**: Subtasks run when their explicit dependencies complete
+
+### Only for SIMPLE tasks (rare):
+If the task is truly simple (single small change):
+- Create a brief implementation plan
+- Do NOT use the decompose block
+
+${agent.prompt}
+
+## Output Format
+
+If NOT decomposing (simple task):
+\`\`\`
+### Planning Summary
+**Approach**: <High-level approach>
+**Key Files**: <Files to modify>
+**Steps**:
+1. Step one
+2. Step two
+...
+**Risks**: <Any concerns>
+\`\`\`
+
+If DECOMPOSING (complex task):
+1. First provide a brief analysis explaining why decomposition is appropriate
+2. Then include the decompose block with your subtask definitions
+3. The system will create subtasks and execute them according to the strategy
+
+Begin your analysis now.`;
+}
+
+/**
+ * Parse the planner's output to extract decomposition request
+ */
+export function parseDecompositionRequest(output: string): DecompositionRequest {
+  const decomposeMatch = output.match(/```decompose\s*([\s\S]*?)```/);
+
+  if (!decomposeMatch) {
+    return {
+      shouldDecompose: false,
+      subtasks: [],
+      strategy: 'sequential',
+    };
+  }
+
+  try {
+    const jsonStr = decomposeMatch[1].trim();
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate the structure
+    if (!parsed.subtasks || !Array.isArray(parsed.subtasks) || parsed.subtasks.length === 0) {
+      return {
+        shouldDecompose: false,
+        subtasks: [],
+        strategy: 'sequential',
+      };
+    }
+
+    // Validate and normalize subtasks
+    const subtasks: SubtaskDefinition[] = parsed.subtasks.map((s: Record<string, unknown>) => ({
+      description: String(s.description || ''),
+      acceptanceCriteria: s.acceptanceCriteria ? String(s.acceptanceCriteria) : undefined,
+      workflow: s.workflow ? String(s.workflow) : undefined,
+      dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.map(String) : undefined,
+    })).filter((s: SubtaskDefinition) => s.description.length > 0);
+
+    if (subtasks.length === 0) {
+      return {
+        shouldDecompose: false,
+        subtasks: [],
+        strategy: 'sequential',
+      };
+    }
+
+    // Validate strategy
+    const validStrategies: SubtaskStrategy[] = ['sequential', 'parallel', 'dependency-based'];
+    const strategy = validStrategies.includes(parsed.strategy)
+      ? parsed.strategy as SubtaskStrategy
+      : 'sequential';
+
+    return {
+      shouldDecompose: true,
+      subtasks,
+      strategy,
+      reason: parsed.reason ? String(parsed.reason) : undefined,
+    };
+  } catch {
+    // JSON parsing failed, no decomposition
+    return {
+      shouldDecompose: false,
+      subtasks: [],
+      strategy: 'sequential',
+    };
+  }
+}
+
+/**
+ * Check if a stage is a planning stage that supports decomposition
+ */
+export function isPlanningStage(stage: WorkflowStage): boolean {
+  return stage.name === 'planning' || stage.name === 'plan' || stage.agent === 'planner';
+}
+
+/**
+ * Build a prompt for the orchestrator to coordinate stages
+ * Used when deciding what to do next or handling errors
+ */
+export function buildCoordinatorPrompt(
+  task: Task,
+  workflow: WorkflowDefinition,
+  completedStages: Map<string, StageResult>,
+  currentStage?: WorkflowStage,
+  error?: string
+): string {
+  const stageStatus = workflow.stages.map(s => {
+    const result = completedStages.get(s.name);
+    if (result) {
+      return `- ${s.name}: ${result.status}`;
+    } else if (currentStage?.name === s.name) {
+      return `- ${s.name}: IN PROGRESS`;
+    } else {
+      return `- ${s.name}: pending`;
+    }
+  }).join('\n');
+
+  return `# Workflow Coordination
+
+## Task: ${task.description}
+
+## Workflow: ${workflow.name}
+${workflow.description}
+
+## Stage Status
+${stageStatus}
+
+${error ? `## Error in Current Stage\n${error}\n` : ''}
+
+## Decision Required
+Based on the current state, determine the next action:
+1. Continue to next stage
+2. Retry failed stage
+3. Skip optional stage
+4. Mark workflow complete
+5. Mark workflow failed
+
+Provide your decision and reasoning.`;
 }

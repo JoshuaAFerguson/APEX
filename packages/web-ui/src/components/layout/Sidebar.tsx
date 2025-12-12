@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, ListTodo, Users, Settings } from 'lucide-react'
+import { LayoutDashboard, ListTodo, Users, Settings, BarChart3 } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme'
 
 const navigationItems = [
   {
@@ -15,6 +16,11 @@ const navigationItems = [
     name: 'Tasks',
     href: '/tasks',
     icon: ListTodo,
+  },
+  {
+    name: 'Analytics',
+    href: '/analytics',
+    icon: BarChart3,
   },
   {
     name: 'Agents',
@@ -48,7 +54,8 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1 p-4">
           {navigationItems.map((item) => {
             const Icon = item.icon
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href ||
+              (item.href !== '/' && pathname.startsWith(item.href))
 
             return (
               <Link
@@ -70,9 +77,12 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="border-t border-border p-4">
-          <div className="text-xs text-foreground-tertiary">
-            <p>APEX v0.1.0</p>
-            <p className="mt-1">Autonomous Engineering</p>
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-foreground-tertiary">
+              <p>APEX v0.3.0</p>
+              <p className="mt-1">Autonomous Engineering</p>
+            </div>
+            <ThemeToggle />
           </div>
         </div>
       </div>

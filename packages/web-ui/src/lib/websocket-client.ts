@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ApexEvent, Task } from '@apex/core'
+import { getApiUrl } from './config'
 
 type WebSocketEventHandler = (event: ApexEvent) => void
 type StateEventHandler = (tasks: Task[]) => void
@@ -48,7 +49,7 @@ export class ApexWebSocketClient {
   private shouldReconnect = true
 
   constructor(url?: string) {
-    const baseUrl = url || process.env.NEXT_PUBLIC_APEX_API_URL || 'http://localhost:3000'
+    const baseUrl = url || getApiUrl()
     this.url = toWebSocketUrl(baseUrl)
   }
 

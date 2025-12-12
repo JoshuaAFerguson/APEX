@@ -1,0 +1,1458 @@
+#!/usr/bin/env node
+
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import { spawn, ChildProcess } from 'child_process';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+import {
+  isApexInitialized,
+  initializeApex,
+  loadConfig,
+  saveConfig,
+  loadAgents,
+  loadWorkflows,
+  formatCost,
+  formatTokens,
+  formatDuration,
+  getEffectiveConfig,
+  ApexConfig,
+} from '@apex/core';
+import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
+import { startInkApp, type InkAppInstance } from './ui/index.js';
+import { SessionStore } from './services/SessionStore.js';
+import { SessionAutoSaver } from './services/SessionAutoSaver.js';
+import { ConversationManager } from './services/ConversationManager.js';
+
+// ============================================================================
+// Context
+// ============================================================================
+
+interface ApexContext {
+  cwd: string;
+  initialized: boolean;
+  config: ApexConfig | null;
+  orchestrator: ApexOrchestrator | null;
+  apiProcess: ChildProcess | null;
+  webUIProcess: ChildProcess | null;
+  apiPort: number | undefined;
+  webUIPort: number | undefined;
+  app: InkAppInstance | null;
+  sessionStore: SessionStore | null;
+  sessionAutoSaver: SessionAutoSaver | null;
+  conversationManager: ConversationManager | null;
+}
+
+const ctx: ApexContext = {
+  cwd: process.cwd(),
+  initialized: false,
+  config: null,
+  orchestrator: null,
+  apiProcess: null,
+  webUIProcess: null,
+  apiPort: 3000,
+  webUIPort: 3001,
+  app: null,
+  sessionStore: null,
+  sessionAutoSaver: null,
+  conversationManager: null,
+};
+
+// ============================================================================
+// Git Utilities
+// ============================================================================
+
+function getGitBranch(): string | undefined {
+  try {
+    const branch = execSync('git branch --show-current', {
+      cwd: ctx.cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    return branch || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// ============================================================================
+// Command Handlers
+// ============================================================================
+
+async function handleInit(args: string[]): Promise<void> {
+  if (ctx.initialized) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'APEX is already initialized in this directory.',
+    });
+    return;
+  }
+
+  const options = {
+    skipPrompts: args.includes('--yes') || args.includes('-y'),
+    name: '',
+    language: 'typescript',
+    framework: '',
+  };
+
+  // Parse arguments
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--name' || args[i] === '-n') {
+      options.name = args[++i];
+    } else if (args[i] === '--language' || args[i] === '-l') {
+      options.language = args[++i];
+    } else if (args[i] === '--framework' || args[i] === '-f') {
+      options.framework = args[++i];
+    }
+  }
+
+  if (!options.name) {
+    options.name = path.basename(ctx.cwd);
+  }
+
+  ctx.app?.addMessage({
+    type: 'system',
+    content: 'Initializing APEX...',
+  });
+
+  try {
+    await initializeApex(ctx.cwd, {
+      projectName: options.name,
+      language: options.language,
+      framework: options.framework,
+    });
+
+    ctx.initialized = true;
+    ctx.config = await loadConfig(ctx.cwd);
+    ctx.orchestrator = new ApexOrchestrator({ projectPath: ctx.cwd });
+    await ctx.orchestrator.initialize();
+
+    // Initialize session management
+    ctx.sessionStore = new SessionStore(ctx.cwd);
+    await ctx.sessionStore.initialize();
+    ctx.sessionAutoSaver = new SessionAutoSaver(ctx.sessionStore);
+
+    // Try to restore the last active session or create a new one
+    const activeSessionId = await ctx.sessionStore.getActiveSessionId();
+    await ctx.sessionAutoSaver.start(activeSessionId || undefined);
+
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `APEX initialized successfully!\n\n  Configuration: .apex/config.yaml\n  Agents: .apex/agents/\n  Workflows: .apex/workflows/`,
+    });
+
+    ctx.app?.updateState({
+      initialized: true,
+      config: ctx.config,
+      orchestrator: ctx.orchestrator,
+    });
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to initialize: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleStatus(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const taskId = args[0];
+
+  if (taskId) {
+    const task = await ctx.orchestrator.getTask(taskId);
+    if (!task) {
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Task not found: ${taskId}`,
+      });
+      return;
+    }
+
+    const lines = [
+      `**Task:** ${task.id}`,
+      `**Status:** ${task.status}`,
+      `**Description:** ${task.description}`,
+      `**Workflow:** ${task.workflow || 'default'}`,
+      `**Created:** ${task.createdAt.toISOString()}`,
+    ];
+
+    if (task.usage) {
+      lines.push(`**Tokens:** ${formatTokens(task.usage.inputTokens + task.usage.outputTokens)}`);
+      lines.push(`**Cost:** ${formatCost(task.usage.estimatedCost)}`);
+    }
+
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: lines.join('\n'),
+    });
+  } else {
+    const tasks = await ctx.orchestrator.listTasks({ limit: 10 });
+
+    if (tasks.length === 0) {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'No tasks found.',
+      });
+      return;
+    }
+
+    const lines = ['**Recent Tasks:**\n'];
+    for (const task of tasks) {
+      const statusIcon = getStatusIcon(task.status);
+      const cost = task.usage ? formatCost(task.usage.estimatedCost) : '$0.00';
+      const desc =
+        task.description.length > 50 ? task.description.slice(0, 47) + '...' : task.description;
+      lines.push(`  ${task.id.slice(0, 12)} ${statusIcon} ${task.status.padEnd(14)} ${cost.padStart(7)}  ${desc}`);
+    }
+
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: lines.join('\n'),
+    });
+  }
+}
+
+async function handleAgents(): Promise<void> {
+  if (!ctx.initialized) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const agentsRecord = await loadAgents(ctx.cwd);
+  const agents = Object.values(agentsRecord);
+
+  if (agents.length === 0) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'No agents found.',
+    });
+    return;
+  }
+
+  const lines = ['**Available Agents:**\n'];
+  for (const agent of agents) {
+    lines.push(`  **${agent.name}** - ${agent.description}`);
+    lines.push(`    Model: ${agent.model || 'default'}, Tools: ${agent.tools?.join(', ') || 'none'}`);
+  }
+
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: lines.join('\n'),
+  });
+}
+
+async function handleWorkflows(): Promise<void> {
+  if (!ctx.initialized) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const workflowsRecord = await loadWorkflows(ctx.cwd);
+  const workflows = Object.values(workflowsRecord);
+
+  if (workflows.length === 0) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'No workflows found.',
+    });
+    return;
+  }
+
+  const lines = ['**Available Workflows:**\n'];
+  for (const workflow of workflows) {
+    lines.push(`  **${workflow.name}** - ${workflow.description || 'No description'}`);
+    const stages = workflow.stages?.map((s: { name?: string; agent: string }) => s.name || s.agent).join(' → ') || 'No stages';
+    lines.push(`    Stages: ${stages}`);
+  }
+
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: lines.join('\n'),
+  });
+}
+
+async function handleConfig(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.config) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const action = args[0];
+
+  if (action === 'get' && args[1]) {
+    const key = args[1];
+    const value = getConfigValue(ctx.config, key);
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `${key} = ${JSON.stringify(value)}`,
+    });
+  } else if (action === 'set' && args[1] && args[2]) {
+    const key = args[1];
+    const value = args[2];
+    setConfigValue(ctx.config, key, value);
+    await saveConfig(ctx.cwd, ctx.config);
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Configuration updated: ${key} = ${value}`,
+    });
+  } else {
+    // Show full config
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: '```yaml\n' + JSON.stringify(ctx.config, null, 2) + '\n```',
+    });
+  }
+}
+
+async function handleServe(args: string[]): Promise<void> {
+  if (!ctx.initialized) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  if (ctx.apiProcess) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'API server is already running.',
+    });
+    return;
+  }
+
+  let port = ctx.apiPort ?? 3000;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--port' || args[i] === '-p') {
+      port = parseInt(args[++i], 10);
+    }
+  }
+
+  ctx.app?.addMessage({
+    type: 'system',
+    content: `Starting API server on port ${port}...`,
+  });
+
+  try {
+    // Find the API package path
+    const apiPath = path.resolve(__dirname, '../../api');
+
+    // Spawn the API server as a background process
+    const proc = spawn('node', [path.join(apiPath, 'dist/index.js')], {
+      cwd: ctx.cwd,
+      env: {
+        ...process.env,
+        PORT: port.toString(),
+        APEX_PROJECT: ctx.cwd,
+        APEX_SILENT: '1',
+      },
+      stdio: 'ignore',
+      detached: true,
+    });
+
+    proc.unref();
+    ctx.apiProcess = proc;
+    ctx.apiPort = port;
+    const apiUrl = `http://localhost:${port}`;
+
+    // Wait for server to start
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    ctx.app?.updateState({ apiUrl });
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `API server running at ${apiUrl}`,
+    });
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to start API server: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleWeb(args: string[]): Promise<void> {
+  if (!ctx.initialized) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  let port = ctx.webUIPort ?? 3001;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--port' || args[i] === '-p') {
+      port = parseInt(args[++i], 10);
+    }
+  }
+
+  ctx.app?.addMessage({
+    type: 'system',
+    content: `Starting Web UI on port ${port}...`,
+  });
+
+  // Start web UI as detached process
+  const webUIPath = path.resolve(__dirname, '../../web-ui');
+
+  try {
+    await fs.access(webUIPath);
+  } catch {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Web UI package not found.',
+    });
+    return;
+  }
+
+  const apiUrl = ctx.config?.api?.url || `http://localhost:${ctx.apiPort ?? 3000}`;
+  const proc = spawn('npx', ['next', 'dev', '-p', String(port)], {
+    cwd: webUIPath,
+    env: { ...process.env, PORT: String(port), NEXT_PUBLIC_APEX_API_URL: apiUrl },
+    stdio: 'ignore',
+    detached: true,
+  });
+
+  proc.unref();
+  ctx.webUIProcess = proc;
+  ctx.webUIPort = port;
+  const webUrl = `http://localhost:${port}`;
+
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  ctx.app?.updateState({ webUrl });
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: `Web UI running at ${webUrl}`,
+  });
+}
+
+async function handleStop(): Promise<void> {
+  const stopped: string[] = [];
+  const stateUpdates: { apiUrl?: undefined; webUrl?: undefined } = {};
+
+  if (ctx.apiProcess) {
+    ctx.apiProcess.kill();
+    ctx.apiProcess = null;
+    stopped.push('API server');
+    stateUpdates.apiUrl = undefined;
+  }
+
+  if (ctx.webUIProcess) {
+    ctx.webUIProcess.kill();
+    ctx.webUIProcess = null;
+    stopped.push('Web UI');
+    stateUpdates.webUrl = undefined;
+  }
+
+  if (stopped.length > 0) {
+    ctx.app?.updateState(stateUpdates);
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Stopped: ${stopped.join(', ')}`,
+    });
+  } else {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'No services running.',
+    });
+  }
+}
+
+async function handleCancel(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const taskId = args[0];
+  if (!taskId) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Usage: /cancel <task_id>',
+    });
+    return;
+  }
+
+  const cancelled = await ctx.orchestrator.cancelTask(taskId);
+  if (cancelled) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Task ${taskId} cancelled.`,
+    });
+  } else {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Could not cancel task ${taskId}. It may already be completed or not exist.`,
+    });
+  }
+}
+
+async function handleRetry(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const taskId = args[0];
+  if (!taskId) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Usage: /retry <task_id>',
+    });
+    return;
+  }
+
+  const task = await ctx.orchestrator.getTask(taskId);
+  if (!task) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Task not found: ${taskId}`,
+    });
+    return;
+  }
+
+  // Allow retry for failed, cancelled, or stuck in-progress tasks
+  const retryableStatuses = ['failed', 'cancelled', 'in-progress', 'planning'];
+  if (!retryableStatuses.includes(task.status)) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Only failed, cancelled, or stuck tasks can be retried.',
+    });
+    return;
+  }
+
+  await ctx.orchestrator.updateTaskStatus(taskId, 'pending');
+  ctx.orchestrator.executeTask(taskId).catch((error) => {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Task failed: ${error.message}`,
+    });
+  });
+
+  ctx.app?.addMessage({
+    type: 'system',
+    content: `Retrying task ${taskId}...`,
+  });
+}
+
+async function handleLogs(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const taskId = args[0];
+  if (!taskId) {
+    // Show logs for the most recent task
+    const tasks = await ctx.orchestrator.listTasks({ limit: 1 });
+    if (tasks.length === 0) {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'No tasks found. Usage: /logs [task_id] [--level <level>] [--limit <n>]',
+      });
+      return;
+    }
+    args[0] = tasks[0].id;
+  }
+
+  // Parse options
+  let level: string | undefined;
+  let limit = 20;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--level' || args[i] === '-l') {
+      level = args[++i];
+    } else if (args[i] === '--limit' || args[i] === '-n') {
+      limit = parseInt(args[++i], 10) || 20;
+    }
+  }
+
+  const logs = await ctx.orchestrator.getTaskLogs(args[0], { level, limit });
+
+  if (logs.length === 0) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `No logs found for task ${args[0]}`,
+    });
+    return;
+  }
+
+  const lines = [`**Logs for task ${args[0].slice(0, 12)}** (${logs.length} entries)\n`];
+
+  for (const log of logs.reverse()) {
+    const time = log.timestamp.toLocaleTimeString();
+    const levelIcon = getLevelIcon(log.level);
+    const stage = log.stage ? `[${log.stage}]` : '';
+    const agent = log.agent ? `(${log.agent})` : '';
+    lines.push(`  ${time} ${levelIcon} ${stage}${agent} ${log.message}`);
+  }
+
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: lines.join('\n'),
+  });
+}
+
+function getLevelIcon(level: string): string {
+  const icons: Record<string, string> = {
+    debug: '🔍',
+    info: 'ℹ️',
+    warn: '⚠️',
+    error: '❌',
+  };
+  return icons[level] || '•';
+}
+
+// ============================================================================
+// Session Command Handlers
+// ============================================================================
+
+async function handleSession(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.sessionStore) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const subcommand = args[0];
+
+  switch (subcommand) {
+    case 'list':
+      await handleSessionList(args.slice(1));
+      break;
+    case 'load':
+      await handleSessionLoad(args[1]);
+      break;
+    case 'save':
+      await handleSessionSave(args.slice(1));
+      break;
+    case 'branch':
+      await handleSessionBranch(args.slice(1));
+      break;
+    case 'export':
+      await handleSessionExport(args.slice(1));
+      break;
+    case 'delete':
+      await handleSessionDelete(args[1]);
+      break;
+    case 'info':
+      await handleSessionInfo();
+      break;
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Unknown session command: ${subcommand || 'none'}\n\nUsage:\n  /session list [--all] [--search <query>]\n  /session load <id|name>\n  /session save <name> [--tags <tags>]\n  /session branch [<name>] [--from <index>]\n  /session export [--format md|json|html] [--output <file>]\n  /session delete <id>\n  /session info`,
+      });
+  }
+}
+
+async function handleSessionList(args: string[]): Promise<void> {
+  if (!ctx.sessionStore) return;
+
+  const all = args.includes('--all');
+  const searchIndex = args.indexOf('--search');
+  const search = searchIndex >= 0 ? args[searchIndex + 1] : undefined;
+
+  const sessions = await ctx.sessionStore.listSessions({ all, search, limit: 20 });
+
+  if (sessions.length === 0) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'No sessions found.',
+    });
+    return;
+  }
+
+  const lines = ['**Sessions:**\n'];
+  for (const session of sessions) {
+    const name = session.name || 'Unnamed';
+    const date = new Date(session.updatedAt).toLocaleDateString();
+    const archived = session.isArchived ? ' (archived)' : '';
+    lines.push(`  ${session.id.slice(0, 12)} │ ${name.padEnd(20)} │ ${session.messageCount} msgs │ $${session.totalCost.toFixed(2)} │ ${date}${archived}`);
+  }
+
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: lines.join('\n'),
+  });
+}
+
+async function handleSessionLoad(sessionId: string): Promise<void> {
+  if (!ctx.sessionStore || !ctx.sessionAutoSaver || !sessionId) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Usage: /session load <session_id>',
+    });
+    return;
+  }
+
+  try {
+    const session = await ctx.sessionStore.getSession(sessionId);
+    if (!session) {
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Session not found: ${sessionId}`,
+      });
+      return;
+    }
+
+    // Save current session before switching
+    await ctx.sessionAutoSaver.save();
+
+    // Load the new session
+    await ctx.sessionAutoSaver.start(sessionId);
+    await ctx.sessionStore.setActiveSession(sessionId);
+
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Loaded session: ${session.name || sessionId}\nMessages: ${session.messages.length}, Cost: $${session.state.totalCost.toFixed(4)}`,
+    });
+
+    // Update app state with session info
+    ctx.app?.updateState({
+      sessionName: session.name,
+      sessionStartTime: session.lastAccessedAt,
+    });
+
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to load session: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleSessionSave(args: string[]): Promise<void> {
+  if (!ctx.sessionAutoSaver || !args[0]) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Usage: /session save <name> [--tags tag1,tag2]',
+    });
+    return;
+  }
+
+  const name = args[0];
+  const tagsIndex = args.indexOf('--tags');
+  const tags = tagsIndex >= 0 ? args[tagsIndex + 1]?.split(',') || [] : [];
+
+  try {
+    await ctx.sessionAutoSaver.updateSessionInfo({ name, tags });
+    await ctx.sessionAutoSaver.save();
+
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Session saved as "${name}"${tags.length > 0 ? ` with tags: ${tags.join(', ')}` : ''}`,
+    });
+
+    ctx.app?.updateState({ sessionName: name });
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to save session: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleSessionBranch(args: string[]): Promise<void> {
+  if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
+
+  const currentSession = ctx.sessionAutoSaver.getSession();
+  if (!currentSession) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'No active session to branch from.',
+    });
+    return;
+  }
+
+  const name = args[0];
+  const fromIndex = args.includes('--from') ?
+    parseInt(args[args.indexOf('--from') + 1], 10) :
+    currentSession.messages.length - 1;
+
+  if (isNaN(fromIndex) || fromIndex < 0 || fromIndex >= currentSession.messages.length) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Invalid message index: ${fromIndex}. Must be between 0 and ${currentSession.messages.length - 1}`,
+    });
+    return;
+  }
+
+  try {
+    const branchedSession = await ctx.sessionStore.branchSession(
+      currentSession.id,
+      fromIndex,
+      name
+    );
+
+    // Switch to the new branch
+    await ctx.sessionAutoSaver.start(branchedSession.id);
+    await ctx.sessionStore.setActiveSession(branchedSession.id);
+
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Created and switched to branch: ${branchedSession.name}\nBranched from message ${fromIndex + 1} of ${currentSession.messages.length}`,
+    });
+
+    ctx.app?.updateState({
+      sessionName: branchedSession.name,
+      sessionStartTime: branchedSession.createdAt,
+    });
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to create branch: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleSessionExport(args: string[]): Promise<void> {
+  if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
+
+  const currentSession = ctx.sessionAutoSaver.getSession();
+  if (!currentSession) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'No active session to export.',
+    });
+    return;
+  }
+
+  const formatIndex = args.indexOf('--format');
+  const format = (formatIndex >= 0 ? args[formatIndex + 1] : 'md') as 'md' | 'json' | 'html';
+
+  const outputIndex = args.indexOf('--output');
+  const outputFile = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
+
+  try {
+    const exported = await ctx.sessionStore.exportSession(currentSession.id, format);
+
+    if (outputFile) {
+      await fs.writeFile(outputFile, exported, 'utf-8');
+      ctx.app?.addMessage({
+        type: 'system',
+        content: `Session exported to ${outputFile} (${format.toUpperCase()} format)`,
+      });
+    } else {
+      // Show first 500 characters as preview
+      const preview = exported.length > 500 ? exported.slice(0, 500) + '...' : exported;
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `**Session Export (${format.toUpperCase()}):**\n\`\`\`${format}\n${preview}\n\`\`\``,
+      });
+    }
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to export session: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleSessionDelete(sessionId: string): Promise<void> {
+  if (!ctx.sessionStore || !sessionId) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'Usage: /session delete <session_id>',
+    });
+    return;
+  }
+
+  try {
+    const session = await ctx.sessionStore.getSession(sessionId);
+    if (!session) {
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Session not found: ${sessionId}`,
+      });
+      return;
+    }
+
+    await ctx.sessionStore.deleteSession(sessionId);
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Deleted session: ${session.name || sessionId}`,
+    });
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to delete session: ${(error as Error).message}`,
+    });
+  }
+}
+
+async function handleSessionInfo(): Promise<void> {
+  if (!ctx.sessionAutoSaver) return;
+
+  const currentSession = ctx.sessionAutoSaver.getSession();
+  if (!currentSession) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'No active session.',
+    });
+    return;
+  }
+
+  const lines = [
+    `**Current Session:**`,
+    `  ID: ${currentSession.id}`,
+    `  Name: ${currentSession.name || 'Unnamed'}`,
+    `  Messages: ${currentSession.messages.length}`,
+    `  Created: ${currentSession.createdAt.toLocaleString()}`,
+    `  Updated: ${currentSession.updatedAt.toLocaleString()}`,
+    `  Total Cost: $${currentSession.state.totalCost.toFixed(4)}`,
+    `  Tokens: ${formatTokens(currentSession.state.totalTokens.input + currentSession.state.totalTokens.output)}`,
+  ];
+
+  if (currentSession.tags.length > 0) {
+    lines.push(`  Tags: ${currentSession.tags.join(', ')}`);
+  }
+
+  if (currentSession.parentSessionId) {
+    lines.push(`  Branched from: ${currentSession.parentSessionId}`);
+  }
+
+  if (currentSession.childSessionIds.length > 0) {
+    lines.push(`  Branches: ${currentSession.childSessionIds.length}`);
+  }
+
+  const unsavedChanges = ctx.sessionAutoSaver.getUnsavedChangesCount();
+  if (unsavedChanges > 0) {
+    lines.push(`  Unsaved changes: ${unsavedChanges}`);
+  }
+
+  ctx.app?.addMessage({
+    type: 'assistant',
+    content: lines.join('\n'),
+  });
+}
+
+// ============================================================================
+// Task Execution
+// ============================================================================
+
+async function executeTask(description: string): Promise<void> {
+  if (!ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized.',
+    });
+    return;
+  }
+
+  // Track user input in conversation context
+  if (ctx.conversationManager) {
+    ctx.conversationManager.addMessage({
+      role: 'user',
+      content: description,
+    });
+  }
+
+  // Track user input in session
+  if (ctx.sessionAutoSaver) {
+    await ctx.sessionAutoSaver.addInputToHistory(description);
+    await ctx.sessionAutoSaver.addMessage({
+      role: 'user',
+      content: description,
+    });
+  }
+
+  ctx.app?.addMessage({
+    type: 'system',
+    content: 'Creating task...',
+  });
+
+  try {
+    const task = await ctx.orchestrator.createTask({ description });
+
+    // Track task in conversation context
+    if (ctx.conversationManager) {
+      ctx.conversationManager.setTask(task.id);
+      ctx.conversationManager.setAgent('planner');
+      ctx.conversationManager.addMessage({
+        role: 'assistant',
+        content: `Task created: ${task.id}\nStarting execution...`,
+      });
+    }
+
+    ctx.app?.updateState({
+      currentTask: task,
+      activeAgent: 'planner',
+    });
+
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `Task created: ${task.id}\nStarting execution...`,
+    });
+
+    // Track task creation in session
+    if (ctx.sessionAutoSaver) {
+      await ctx.sessionAutoSaver.addMessage({
+        role: 'assistant',
+        content: `Task created: ${task.id}`,
+        taskId: task.id,
+        agent: 'system',
+      });
+      await ctx.sessionAutoSaver.updateState({
+        tasksCreated: [...(ctx.sessionAutoSaver.getSession()?.state.tasksCreated || []), task.id],
+        currentTaskId: task.id,
+      });
+    }
+
+    // Start execution
+    ctx.orchestrator.executeTask(task.id).then(async () => {
+      // Fetch the completed task to get its final status
+      const completedTask = await ctx.orchestrator?.getTask(task.id);
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `Task completed: ${completedTask?.status || 'unknown'}`,
+      });
+
+      // Track completion in session
+      if (ctx.sessionAutoSaver && completedTask?.status === 'completed') {
+        await ctx.sessionAutoSaver.addMessage({
+          role: 'assistant',
+          content: `Task completed: ${completedTask.status}`,
+          taskId: task.id,
+          agent: 'system',
+        });
+        await ctx.sessionAutoSaver.updateState({
+          tasksCompleted: [...(ctx.sessionAutoSaver.getSession()?.state.tasksCompleted || []), task.id],
+          currentTaskId: undefined,
+        });
+      }
+
+      ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
+    }).catch(async (error) => {
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Task failed: ${error.message}`,
+      });
+
+      // Track failure in session
+      if (ctx.sessionAutoSaver) {
+        await ctx.sessionAutoSaver.addMessage({
+          role: 'assistant',
+          content: `Task failed: ${error.message}`,
+          taskId: task.id,
+          agent: 'system',
+        });
+        await ctx.sessionAutoSaver.updateState({
+          currentTaskId: undefined,
+        });
+      }
+
+      ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
+    });
+  } catch (error) {
+    const errorMessage = `Failed to create task: ${(error as Error).message}`;
+    ctx.app?.addMessage({
+      type: 'error',
+      content: errorMessage,
+    });
+
+    // Track error in session
+    if (ctx.sessionAutoSaver) {
+      await ctx.sessionAutoSaver.addMessage({
+        role: 'assistant',
+        content: errorMessage,
+        agent: 'system',
+      });
+    }
+  }
+}
+
+// ============================================================================
+// Utilities
+// ============================================================================
+
+function getStatusIcon(status: string): string {
+  const icons: Record<string, string> = {
+    pending: '○',
+    queued: '◐',
+    planning: '◑',
+    'in-progress': '●',
+    'waiting-approval': '◎',
+    paused: '◫',
+    completed: '✓',
+    failed: '✗',
+    cancelled: '⊘',
+  };
+  return icons[status] || '?';
+}
+
+function getConfigValue(config: ApexConfig, key: string): unknown {
+  const parts = key.split('.');
+  let current: unknown = config;
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = (current as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+function setConfigValue(config: ApexConfig, key: string, value: string): void {
+  const parts = key.split('.');
+  let current: Record<string, unknown> = config as Record<string, unknown>;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!(parts[i] in current)) {
+      current[parts[i]] = {};
+    }
+    current = current[parts[i]] as Record<string, unknown>;
+  }
+
+  // Try to parse as JSON, otherwise use as string
+  try {
+    current[parts[parts.length - 1]] = JSON.parse(value);
+  } catch {
+    current[parts[parts.length - 1]] = value;
+  }
+}
+
+// ============================================================================
+// Command Router
+// ============================================================================
+
+async function handleCommand(command: string, args: string[]): Promise<void> {
+  switch (command) {
+    case 'init':
+      await handleInit(args);
+      break;
+    case 'status':
+    case 's':
+      await handleStatus(args);
+      break;
+    case 'agents':
+      await handleAgents();
+      break;
+    case 'workflows':
+      await handleWorkflows();
+      break;
+    case 'config':
+      await handleConfig(args);
+      break;
+    case 'serve':
+      await handleServe(args);
+      break;
+    case 'web':
+      await handleWeb(args);
+      break;
+    case 'stop':
+      await handleStop();
+      break;
+    case 'cancel':
+      await handleCancel(args);
+      break;
+    case 'retry':
+      await handleRetry(args);
+      break;
+    case 'logs':
+    case 'log':
+      await handleLogs(args);
+      break;
+    case 'session':
+      await handleSession(args);
+      break;
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: `Unknown command: ${command}. Type /help for available commands.`,
+      });
+  }
+}
+
+// ============================================================================
+// Auto-Start Services
+// ============================================================================
+
+async function checkAutoStart(): Promise<void> {
+  if (!ctx.config) return;
+
+  const effective = getEffectiveConfig(ctx.config);
+  const apiConfig = effective.api as { autoStart?: boolean; port?: number };
+  const webUIConfig = (effective as { webUI?: { autoStart?: boolean; port?: number } }).webUI;
+
+  if (apiConfig?.autoStart) {
+    try {
+      const port = apiConfig.port || 3000;
+      const apiPath = path.resolve(__dirname, '../../api');
+
+      const proc = spawn('node', [path.join(apiPath, 'dist/index.js')], {
+        cwd: ctx.cwd,
+        env: {
+          ...process.env,
+          PORT: port.toString(),
+          APEX_PROJECT: ctx.cwd,
+          APEX_SILENT: '1',
+        },
+        stdio: 'ignore',
+        detached: true,
+      });
+      proc.unref();
+      ctx.apiProcess = proc;
+      ctx.apiPort = port;
+      ctx.app?.updateState({ apiUrl: `http://localhost:${port}` });
+    } catch {
+      // Ignore errors - port might be in use
+    }
+  }
+
+  if (webUIConfig?.autoStart) {
+    const webUIPath = path.resolve(__dirname, '../../web-ui');
+    try {
+      await fs.access(webUIPath);
+      const apiUrl = ctx.config?.api?.url || `http://localhost:${ctx.apiPort}`;
+      const port = webUIConfig.port || 3001;
+
+      const proc = spawn('npx', ['next', 'dev', '-p', port.toString()], {
+        cwd: webUIPath,
+        env: { ...process.env, PORT: port.toString(), NEXT_PUBLIC_APEX_API_URL: apiUrl },
+        stdio: 'ignore',
+        detached: true,
+      });
+      proc.unref();
+      ctx.webUIProcess = proc;
+      ctx.webUIPort = port;
+      ctx.app?.updateState({ webUrl: `http://localhost:${port}` });
+    } catch {
+      // Ignore errors
+    }
+  }
+}
+
+// ============================================================================
+// Console Utilities
+// ============================================================================
+
+/**
+ * Clear the console screen
+ */
+function clearConsole(): void {
+  // ANSI escape codes to clear screen and move cursor to top-left
+  process.stdout.write('\x1b[2J\x1b[H');
+}
+
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
+export async function startInkREPL(): Promise<void> {
+  // Clear console on startup for clean UI
+  clearConsole();
+
+  // Initialize context
+  ctx.initialized = await isApexInitialized(ctx.cwd);
+
+  if (ctx.initialized) {
+    try {
+      ctx.config = await loadConfig(ctx.cwd);
+      ctx.orchestrator = new ApexOrchestrator({ projectPath: ctx.cwd });
+      await ctx.orchestrator.initialize();
+
+      // Set up orchestrator event listeners for subtask progress tracking
+      ctx.orchestrator.on('subtask:created', (subtask, parentTaskId) => {
+        // Update subtask progress in app state
+        const currentProgress = ctx.app?.getState()?.subtaskProgress || { completed: 0, total: 0 };
+        ctx.app?.updateState({
+          subtaskProgress: { completed: currentProgress.completed, total: currentProgress.total + 1 },
+        });
+      });
+
+      ctx.orchestrator.on('subtask:completed', (subtask, parentTaskId) => {
+        // Update subtask progress in app state
+        const currentProgress = ctx.app?.getState()?.subtaskProgress || { completed: 0, total: 0 };
+        ctx.app?.updateState({
+          subtaskProgress: { completed: currentProgress.completed + 1, total: currentProgress.total },
+        });
+      });
+
+      ctx.orchestrator.on('task:started', (task) => {
+        // Reset subtask progress when a new task starts
+        ctx.app?.updateState({
+          subtaskProgress: { completed: 0, total: 0 },
+        });
+      });
+
+      ctx.orchestrator.on('task:completed', (task) => {
+        // Clear subtask progress when task completes
+        ctx.app?.updateState({
+          subtaskProgress: undefined,
+        });
+      });
+
+      // Initialize session management
+      ctx.sessionStore = new SessionStore(ctx.cwd);
+      await ctx.sessionStore.initialize();
+      ctx.sessionAutoSaver = new SessionAutoSaver(ctx.sessionStore);
+
+      // Initialize conversation management
+      ctx.conversationManager = new ConversationManager();
+
+      // Try to restore the last active session or create a new one
+      const activeSessionId = await ctx.sessionStore.getActiveSessionId();
+      await ctx.sessionAutoSaver.start(activeSessionId || undefined);
+
+      await checkAutoStart();
+    } catch {
+      // Ignore initialization errors
+    }
+  }
+
+  const gitBranch = getGitBranch();
+
+  // Start the Ink app
+  ctx.app = await startInkApp({
+    projectPath: ctx.cwd,
+    initialized: ctx.initialized,
+    config: ctx.config,
+    orchestrator: ctx.orchestrator,
+    gitBranch,
+    onCommand: handleCommand,
+    onTask: executeTask,
+    onExit: async () => {
+      if (ctx.sessionAutoSaver) {
+        await ctx.sessionAutoSaver.stop();
+      }
+      cleanupProcesses();
+    },
+  });
+
+  // Update session info in app state after app is started
+  if (ctx.initialized && ctx.sessionAutoSaver) {
+    const session = ctx.sessionAutoSaver.getSession();
+    if (session) {
+      ctx.app.updateState({
+        sessionStartTime: session.createdAt,
+        sessionName: session.name,
+      });
+    }
+  }
+
+  // Handle process signals for cleanup
+  process.on('SIGINT', async () => {
+    if (ctx.sessionAutoSaver) {
+      await ctx.sessionAutoSaver.stop();
+    }
+    cleanupProcesses();
+    clearConsole();
+    process.exit(0);
+  });
+  process.on('SIGTERM', async () => {
+    if (ctx.sessionAutoSaver) {
+      await ctx.sessionAutoSaver.stop();
+    }
+    cleanupProcesses();
+    clearConsole();
+    process.exit(0);
+  });
+
+  // Wait for the app to exit
+  await ctx.app.waitUntilExit();
+
+  // Final cleanup and clear console
+  if (ctx.sessionAutoSaver) {
+    await ctx.sessionAutoSaver.stop();
+  }
+  cleanupProcesses();
+  clearConsole();
+}
+
+/**
+ * Kill a process listening on a specific port
+ */
+function killProcessOnPort(port: number): void {
+  try {
+    // Get PID of process listening on port (works on macOS and Linux)
+    const result = execSync(`lsof -ti :${port} 2>/dev/null || true`, { encoding: 'utf-8' });
+    const pids = result.trim().split('\n').filter(Boolean);
+    for (const pid of pids) {
+      try {
+        process.kill(parseInt(pid, 10), 'SIGTERM');
+      } catch {
+        // Process already dead
+      }
+    }
+  } catch {
+    // lsof not available or other error
+  }
+}
+
+/**
+ * Kill spawned processes (API server, Web UI)
+ */
+function cleanupProcesses(): void {
+  // Kill API process by reference
+  if (ctx.apiProcess && ctx.apiProcess.pid) {
+    try {
+      // Kill the process group (negative PID) for detached processes
+      process.kill(-ctx.apiProcess.pid, 'SIGTERM');
+    } catch {
+      try {
+        ctx.apiProcess.kill('SIGTERM');
+      } catch {
+        // Process already dead
+      }
+    }
+    ctx.apiProcess = null;
+  }
+
+  // Kill Web UI process by reference
+  if (ctx.webUIProcess && ctx.webUIProcess.pid) {
+    try {
+      // Kill the process group (negative PID) for detached processes
+      process.kill(-ctx.webUIProcess.pid, 'SIGTERM');
+    } catch {
+      try {
+        ctx.webUIProcess.kill('SIGTERM');
+      } catch {
+        // Process already dead
+      }
+    }
+    ctx.webUIProcess = null;
+  }
+
+  // Fallback: Kill any orphaned APEX processes by port
+  // This handles cases where process references were lost (crash, new session)
+  if (ctx.apiPort) {
+    killProcessOnPort(ctx.apiPort);
+    ctx.apiPort = undefined;
+  }
+  if (ctx.webUIPort) {
+    killProcessOnPort(ctx.webUIPort);
+    ctx.webUIPort = undefined;
+  }
+}

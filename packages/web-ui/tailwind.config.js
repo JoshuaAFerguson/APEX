@@ -5,6 +5,7 @@ module.exports = {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -21,19 +22,20 @@ module.exports = {
           900: '#0c4a6e',
           950: '#082f49',
         },
+        // CSS variable-based colors for theme support
         background: {
-          DEFAULT: '#0a0a0a',
-          secondary: '#141414',
-          tertiary: '#1e1e1e',
+          DEFAULT: 'var(--background)',
+          secondary: 'var(--background-secondary)',
+          tertiary: 'var(--background-tertiary)',
         },
         foreground: {
-          DEFAULT: '#fafafa',
-          secondary: '#a1a1aa',
-          tertiary: '#71717a',
+          DEFAULT: 'var(--foreground)',
+          secondary: 'var(--foreground-secondary)',
+          tertiary: 'var(--foreground-tertiary)',
         },
         border: {
-          DEFAULT: '#27272a',
-          secondary: '#3f3f46',
+          DEFAULT: 'var(--border)',
+          secondary: 'var(--border-secondary)',
         },
       },
       borderRadius: {

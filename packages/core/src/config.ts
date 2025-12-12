@@ -303,6 +303,11 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     api: {
       url: config.api?.url || 'http://localhost:3000',
       port: config.api?.port || 3000,
+      autoStart: config.api?.autoStart ?? false,
+    },
+    webUI: {
+      port: config.webUI?.port || 3001,
+      autoStart: config.webUI?.autoStart ?? false,
     },
   };
 }
