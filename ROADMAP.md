@@ -1,6 +1,6 @@
 # APEX Roadmap
 
-This document outlines the planned development roadmap for APEX. Features are organized by release milestone and priority.
+This document outlines the planned development roadmap for APEX. Our goal is to create an AI coding assistant experience on par with Claude Code, Codex CLI, and Gemini CLI, while adding powerful multi-agent orchestration and autonomous workflow capabilities.
 
 > **Legend:**
 > - 🟢 Complete
@@ -10,7 +10,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.1.0 - Foundation (Current)
+## v0.1.0 - Foundation (Complete)
 
 *Core infrastructure and MVP functionality*
 
@@ -51,12 +51,12 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.2.0 - Production Ready
+## v0.2.0 - Production Ready (Complete)
 
 *Stability, testing, and deployment improvements*
 
 ### Testing & Quality
-- 🟢 Unit test suite (>80% coverage) - *Currently at 89% with 429 tests*
+- 🟢 Unit test suite (>80% coverage) - *560 tests, 89% coverage*
 - 🟢 Integration tests
 - 🟢 End-to-end tests - *21 CLI E2E tests*
 - ⚪ Performance benchmarks
@@ -68,27 +68,27 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 `apex retry <taskId>` - Retry failed tasks
 - 🟢 `apex config` - View/edit configuration
 - 🟢 `apex pr <taskId>` - Create pull requests
-- 🟢 `apex upgrade` - Self-update CLI
-- 🟢 Interactive mode with prompts - *`apex run -i` and auto-prompt when no args*
-- 🟢 Progress bars and spinners - *Using ora spinners*
-- ⚪ Color theme customization
+- 🟢 Interactive REPL mode (Claude Code-style)
+- 🟢 `/commands` system for special operations
+- 🟢 Background service auto-start (API & Web UI)
+- 🟢 Silent mode for background services
+- 🟢 Progress bars and spinners
 
 ### Orchestrator Improvements
 - 🟢 Task queue with priorities
 - 🟢 Concurrent task execution
 - 🟢 Task dependencies
 - 🟢 Automatic retries with backoff
-- 🟢 Checkpoint/resume for long tasks
+- 🟢 Subtask decomposition and execution
 - 🟢 Context compaction strategies
 
 ### Git Integration
 - 🟢 Automatic PR creation via `gh` CLI
 - 🟢 PR description generation
-- 🟢 Commit message improvements - *Conventional commit utilities*
-- 🟢 Branch cleanup after merge - *`apex clean` command*
-- 🟢 Conflict detection and resolution suggestions - *`apex conflicts` command*
-- 🟢 Conventional changelog generation - *`apex changelog` command*
-- ⚪ Git hooks for pre-commit checks
+- 🟢 Commit message improvements
+- 🟢 Branch cleanup after merge
+- 🟢 Conflict detection and resolution suggestions
+- 🟢 Conventional changelog generation
 
 ### Documentation
 - 🟢 API reference (OpenAPI/Swagger)
@@ -96,37 +96,263 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 🟢 Workflow authoring guide
 - 🟢 Best practices guide
 - 🟢 Troubleshooting guide
-- ⚪ Video tutorials
 
 ---
 
-## v0.3.0 - Web Dashboard
+## v0.3.0 - Claude Code-like Interactive Experience (In Progress)
+
+*Transform APEX into a world-class AI coding assistant CLI*
+
+The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code, Codex CLI, and Gemini CLI while maintaining our unique multi-agent orchestration capabilities.
+
+> **Technical Design**: See [ADR-008: Comprehensive Technical Design](/docs/adr/008-v030-comprehensive-technical-design.md) for detailed implementation specifications.
+> **Implementation Plan**: See [ADR-009: Implementation Plan](/docs/adr/009-v030-implementation-plan.md) for detailed remaining work.
+
+### Rich Terminal UI (`@apex/cli`)
+- 🟢 **Ink-based UI framework** - React for CLI for complex layouts
+- 🟢 **Streaming response rendering** - Character-by-character output (`StreamingText.tsx`)
+- 🟢 **Markdown rendering** - Full CommonMark support (`MarkdownRenderer.tsx`)
+- 🟢 **Syntax-highlighted code blocks** - Language-aware highlighting (`SyntaxHighlighter.tsx`)
+- 🟢 **Diff views** - Unified, split, and inline modes (`DiffViewer.tsx`)
+- 🟢 **Boxed UI elements** - Panels, cards, and bordered sections
+- 🟡 **Responsive layouts** - Basic support, needs enhancement
+- 🟢 **Theme support** - Dark/light modes with ThemeContext
+
+### Status Bar & Information Display
+- 🟢 **Persistent status bar** - Always visible at bottom (`StatusBar.tsx`)
+- 🟢 **Token usage counter** - Real-time input/output token display
+- 🟢 **Cost tracker** - Running cost with session total
+- 🟢 **Model indicator** - Show which model is active
+- 🟢 **Session timer** - Integrated in StatusBar with elapsed time display
+- 🟢 **Git branch display** - Current branch in prompt
+- 🟢 **Agent indicator** - Which agent is currently active
+- 🟢 **Workflow stage display** - Current stage in multi-stage workflows
+- 🟢 **Subtask progress** - StatusBar supports props with responsive layout
+
+### Natural Language Interface
+- 🟢 **Natural language first** - Type tasks directly without commands
+- 🟢 **Smart intent detection** - Distinguish commands from tasks (`IntentDetector.tsx`)
+- 🟢 **Conversational context** - ConversationManager implemented, needs REPL integration
+- 🟢 **Task refinement** - Clarification flow in ConversationManager
+- 🟢 **Suggested actions** - Contextual suggestions (`SmartSuggestions`)
+
+### Input Experience
+- 🟢 **Tab completion** - CompletionEngine integrated with AdvancedInput (debounced, fuzzy search)
+- 🟢 **History navigation** - Up/down arrows for command history
+- 🟡 **History search** - ShortcutManager event defined, needs HistorySearch UI component
+- 🟢 **Multi-line input** - Shift+Enter support in AdvancedInput
+- 🟢 **Inline editing** - Edit previous input before sending
+- ⚪ **Input preview** - Show what will be sent before execution
+
+### Output & Feedback
+- 🟢 **Streaming output** - Real-time character streaming
+- 🟢 **Progress indicators** - Spinners, progress bars, percentage (`ProgressIndicators.tsx`)
+- 🟢 **Activity log** - Collapsible log of actions (`ActivityLog.tsx`)
+- 🟢 **Error formatting** - Clear, actionable error messages (`ErrorDisplay.tsx`)
+- 🟢 **Success celebration** - Visual feedback on task completion (`SuccessCelebration.tsx`)
+- ⚪ **Compact mode** - Condensed output for experienced users
+- ⚪ **Verbose mode** - Detailed output for debugging
+
+### Keyboard Shortcuts
+- 🟢 **Ctrl+C** - Cancel current operation
+- 🟢 **Ctrl+D** - Exit REPL
+- 🟢 **Ctrl+L** - ShortcutManager registered, needs handler wiring
+- 🟢 **Ctrl+U** - Clear current line (registered)
+- 🟢 **Ctrl+W** - Delete word (registered)
+- 🟢 **Ctrl+A/E** - Beginning/end of line (registered)
+- 🟢 **Ctrl+P/N** - Previous/next history (registered)
+- 🟢 **Tab** - Complete suggestion (registered)
+- 🟢 **Escape** - Dismiss (registered)
+- 🟢 **Full ShortcutManager** - Context-aware shortcut system implemented
+
+### Multi-Agent Visualization
+- 🟢 **Agent activity panel** - AgentPanel.tsx exists, needs enhancements
+- 🟡 **Agent handoff animation** - Need to add to AgentPanel
+- ⚪ **Parallel execution view** - Show agents working simultaneously
+- 🟢 **Subtask tree** - SubtaskTree.tsx exists, needs enhancements
+- 🟢 **Workflow progress** - Visual workflow stage progression
+- ⚪ **Agent thought display** - Show agent reasoning (collapsible)
+
+### Session Management
+- 🟢 **Session persistence** - SessionStore fully implemented with CRUD
+- 🟢 **Session export** - Export to markdown/JSON/HTML implemented
+- 🟢 **Session branching** - branchSession() implemented
+- 🟢 **Named sessions** - Save and load named sessions implemented
+- 🟢 **Session search** - listSessions() with search filter
+- 🟢 **Auto-save** - SessionAutoSaver with interval + threshold triggers
+- 🟢 **Session commands** - All commands implemented in repl.tsx
+
+### v0.3.0 Development Plan (Updated December 2024)
+
+> **Architecture Review**: See [ADR-010: Feature Development Technical Design](/docs/adr/010-v030-feature-development-technical-design.md) for detailed implementation specifications.
+
+**Phase 1: Integration Work (HIGH PRIORITY) - 2-3 days**
+| Task | Status | Effort | Files |
+|------|--------|--------|-------|
+| Wire CompletionEngine to AdvancedInput | 🟢 | Complete | `cli/src/ui/components/AdvancedInput.tsx` |
+| Integrate ConversationManager with REPL | 🟡 | 1 day | `cli/src/repl.tsx` |
+| StatusBar session timer + subtask progress | 🟢 | Complete | `cli/src/ui/components/StatusBar.tsx` |
+| Wire ShortcutManager event handlers | 🟡 | 0.5 day | `cli/src/repl.tsx`, `App.tsx` |
+
+**Phase 2: Missing Components (HIGH PRIORITY) - 3-4 days**
+| Task | Status | Effort | Files |
+|------|--------|--------|-------|
+| HistorySearch component (Ctrl+R UI) | ⚪ | 1.5 days | `cli/src/ui/components/input/HistorySearch.tsx` |
+| AgentPanel enhancements (handoff, parallel) | 🟡 | 1 day | `cli/src/ui/components/agents/AgentPanel.tsx` |
+| SubtaskTree enhancements (collapse/expand) | 🟡 | 1 day | `cli/src/ui/components/agents/SubtaskTree.tsx` |
+| Display modes (compact/verbose) | ⚪ | 0.5 day | `cli/src/repl.tsx` |
+
+**Phase 3: Polish & Testing (MEDIUM PRIORITY) - 2-3 days**
+| Task | Status | Effort | Files |
+|------|--------|--------|-------|
+| Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
+| Documentation updates | ⚪ | 1 day | `docs/` |
+
+**Estimated Remaining**: 1-2 weeks (7-10 days)
+
+> **Key Finding**: Most core services (SessionStore, CompletionEngine, ShortcutManager, ConversationManager) are already implemented. Primary remaining work is **integration** and **UI component enhancements**.
+
+### Dependencies (Already Installed)
+- `ink` - React for CLI
+- `ink-syntax-highlight`, `shiki`, `prism-react-renderer` - Syntax highlighting
+- `marked`, `marked-terminal` - Markdown rendering
+- `diff`, `fast-diff` - Diff computation
+- `fuse.js` - Fuzzy search for completion
+- `terminal-kit` - Advanced terminal features
+
+---
+
+## v0.4.0 - Tool System & Autonomy
+
+*Powerful tool system with fine-grained permission controls*
+
+### Built-in Tools (Claude Code parity)
+- ⚪ **Read** - Read file contents with line numbers
+- ⚪ **Write** - Create new files
+- ⚪ **Edit** - Surgical edits with old_string/new_string
+- ⚪ **MultiEdit** - Multiple edits in single operation
+- ⚪ **Bash** - Execute shell commands
+- ⚪ **Glob** - Fast file pattern matching
+- ⚪ **Grep** - Content search with ripgrep
+- ⚪ **WebFetch** - Fetch and analyze web content
+- ⚪ **WebSearch** - Search the web for information
+- ⚪ **NotebookEdit** - Edit Jupyter notebooks
+- ⚪ **TodoWrite** - Manage task lists
+
+### Tool Visualization
+- ⚪ **Tool call display** - Show tool name, parameters in real-time
+- ⚪ **Tool output formatting** - Syntax highlighted, truncated large outputs
+- ⚪ **Tool timing** - Show execution duration
+- ⚪ **Tool error display** - Clear error messages with context
+- ⚪ **Diff preview** - Show changes before applying
+- ⚪ **Undo capability** - Revert tool actions
+
+### Permission System
+- ⚪ **Permission levels** - Allow always, allow once, deny
+- ⚪ **Per-tool permissions** - Different settings per tool
+- ⚪ **Per-directory permissions** - Restrict access to certain paths
+- ⚪ **Dangerous operation warnings** - Extra confirmation for risky actions
+- ⚪ **Permission presets** - "Autonomous", "Review all", "Read-only"
+- ⚪ **Permission persistence** - Remember choices across sessions
+
+### Autonomy Controls
+- ⚪ **Autonomy levels** - Full auto, review before commit, review all
+- ⚪ **Approval gates** - Configurable checkpoints requiring approval
+- ⚪ **Budget limits** - Pause when cost threshold reached
+- ⚪ **Token limits** - Pause when token threshold reached
+- ⚪ **Time limits** - Maximum task duration
+- ⚪ **Change limits** - Maximum files/lines changed without approval
+
+### Tool Extensions
+- ⚪ **Custom tools** - Define project-specific tools
+- ⚪ **Tool hooks** - Pre/post execution hooks
+- ⚪ **Tool aliases** - Shortcuts for common tool patterns
+- ⚪ **MCP server support** - Model Context Protocol integration
+
+---
+
+## v0.5.0 - Context & Memory
+
+*Intelligent context management and project understanding*
+
+### Project Context
+- ⚪ **Git status awareness** - Branch, uncommitted changes, recent commits
+- ⚪ **Project structure analysis** - Understand directory layout
+- ⚪ **Dependency detection** - Identify project dependencies
+- ⚪ **Framework detection** - Auto-detect frameworks and conventions
+- ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
+- ⚪ **Test framework detection** - Know how to run tests
+
+### Codebase Intelligence
+- ⚪ **Codebase indexing** - Build searchable index of code
+- ⚪ **Semantic code search** - Find code by meaning, not just text
+- ⚪ **Symbol resolution** - Understand function/class definitions and usages
+- ⚪ **Import graph** - Understand module dependencies
+- ⚪ **Type awareness** - Leverage TypeScript/type information
+- ⚪ **Documentation extraction** - Parse JSDoc, docstrings, comments
+
+### Conversation Memory
+- ⚪ **Session context** - Remember everything in current session
+- ⚪ **Context summarization** - Compress old context intelligently
+- ⚪ **Memory persistence** - Remember across sessions
+- ⚪ **Explicit memory** - User can tell APEX to remember things
+- ⚪ **Memory search** - Search through remembered information
+- ⚪ **Memory management UI** - View, edit, delete memories
+
+### Cross-Task Context
+- ⚪ **Task history** - Learn from previous tasks
+- ⚪ **Pattern learning** - Recognize repeated patterns
+- ⚪ **Preference learning** - Remember user preferences
+- ⚪ **Style learning** - Adapt to coding style over time
+- ⚪ **Project conventions** - Learn and follow project conventions
+
+### Smart Context Management
+- ⚪ **Relevant file detection** - Auto-include relevant files
+- ⚪ **Context prioritization** - Most relevant context first
+- ⚪ **Token-aware truncation** - Smart truncation when context is full
+- ⚪ **Context refresh** - Detect when files have changed externally
+- ⚪ **Context visualization** - Show what's in current context
+
+---
+
+## v0.6.0 - Web Dashboard
 
 *Visual interface for monitoring and management*
 
-### Web UI (`@apex/web-ui`)
-- ⚪ React + Next.js dashboard
-- ⚪ Real-time task monitoring
-- ⚪ Live log streaming
-- ⚪ Token usage visualization
-- ⚪ Cost analytics charts
-- ⚪ Task history browser
-- ⚪ Agent configuration editor
-- ⚪ Workflow visual editor (drag-and-drop)
-- ⚪ Diff viewer for code changes
-- ⚪ Approval gate interface
-- ⚪ Dark/light theme
+### Dashboard Core (`@apex/web-ui`)
+- 🟢 React + Next.js dashboard foundation
+- 🟢 Real-time task monitoring via WebSocket
+- 🟢 Live log streaming
+- 🟢 Token usage visualization
+- 🟢 Cost analytics display
+- 🟢 Task history browser
+- 🟢 Agent list view
+- 🟢 Configuration viewer
+- 🟢 Dark/light theme
+- ⚪ Drag-and-drop workflow editor
+- ⚪ Visual agent configuration editor
+- ⚪ Rich diff viewer with syntax highlighting
+- ⚪ Interactive approval gate interface
 
 ### Dashboard Features
-- ⚪ Project overview
-- ⚪ Active tasks panel
+- ⚪ Project overview with health metrics
+- ⚪ Active tasks panel with real-time updates
 - ⚪ Recent activity feed
-- ⚪ Performance metrics
+- ⚪ Performance metrics and charts
 - ⚪ Budget utilization gauge
-- ⚪ Agent utilization stats
+- ⚪ Agent utilization statistics
+- ⚪ Task dependency visualization
+- ⚪ Subtask hierarchy view
+
+### Task Management UI
+- ⚪ Create tasks from web interface
+- ⚪ Task templates and quick actions
+- ⚪ Bulk task operations
+- ⚪ Task filtering and search
+- ⚪ Export task reports
 
 ### Notifications
-- ⚪ In-app notifications
+- ⚪ In-app notification center
 - ⚪ Browser push notifications
 - ⚪ Email notifications
 - ⚪ Slack integration
@@ -136,20 +362,23 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.4.0 - IDE Integration
+## v0.7.0 - IDE Integration
 
 *Deep integration with development environments*
 
 ### VS Code Extension (`@apex/vscode`)
-- ⚪ Task creation from editor
-- ⚪ Inline task status
-- ⚪ Code diff previews
-- ⚪ Approval actions in editor
-- ⚪ Log panel integration
+- ⚪ APEX sidebar panel
+- ⚪ Task creation from editor context
+- ⚪ Inline task status indicators
+- ⚪ Code diff previews in editor
+- ⚪ Approval actions via editor UI
+- ⚪ Integrated log panel
 - ⚪ Configuration IntelliSense
-- ⚪ Agent/workflow snippets
-- ⚪ Context menu actions
+- ⚪ Agent/workflow file snippets
+- ⚪ Context menu actions (select code → create task)
 - ⚪ Status bar integration
+- ⚪ CodeLens for APEX suggestions
+- ⚪ Inline chat mode
 
 ### JetBrains Plugin
 - 💡 IntelliJ IDEA support
@@ -157,22 +386,22 @@ This document outlines the planned development roadmap for APEX. Features are or
 - 💡 PyCharm support
 
 ### Other IDEs
-- 💡 Neovim plugin
-- 💡 Emacs package
+- 💡 Neovim plugin (Lua)
+- 💡 Emacs package (elisp)
 - 💡 Sublime Text plugin
 
 ---
 
-## v0.5.0 - Advanced Workflows
+## v0.8.0 - Advanced Workflows
 
 *Complex workflow capabilities and automation*
 
 ### Workflow Engine
-- ⚪ Conditional stage execution
+- ⚪ Conditional stage execution (if/else)
 - ⚪ Parallel stage execution
 - ⚪ Dynamic stage generation
 - ⚪ Loop/iteration support
-- ⚪ Error handling stages
+- ⚪ Error handling stages (catch/finally)
 - ⚪ Rollback stages
 - ⚪ Sub-workflow composition
 - ⚪ Workflow templates library
@@ -182,14 +411,14 @@ This document outlines the planned development roadmap for APEX. Features are or
 - ⚪ GitLab webhook triggers
 - ⚪ Issue-to-task automation
 - ⚪ PR comment commands (`/apex fix`, `/apex test`)
-- ⚪ Scheduled tasks (cron)
+- ⚪ Scheduled tasks (cron-style)
 - ⚪ File change watchers
 - ⚪ CI/CD pipeline integration
 
 ### GitHub Integration
 - ⚪ GitHub App for seamless auth
 - ⚪ Issue analysis and task creation
-- ⚪ PR review comments
+- ⚪ PR review comments from agents
 - ⚪ Check runs integration
 - ⚪ Actions workflow integration
 - ⚪ Project board updates
@@ -202,17 +431,9 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.6.0 - Intelligence & Learning
+## v0.9.0 - Intelligence & Learning
 
 *Smarter agents and continuous improvement*
-
-### Context & Memory
-- ⚪ Project knowledge base
-- ⚪ Codebase indexing (embeddings)
-- ⚪ Semantic code search
-- ⚪ Cross-task context sharing
-- ⚪ Team conventions learning
-- ⚪ Historical decision tracking
 
 ### Agent Intelligence
 - ⚪ Agent performance analytics
@@ -239,7 +460,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.7.0 - Enterprise Features
+## v0.10.0 - Enterprise Features
 
 *Features for team and enterprise adoption*
 
@@ -270,7 +491,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 - ⚪ Policy enforcement
 
 ### Deployment Options
-- ⚪ Docker Compose (current)
+- ⚪ Docker Compose
 - ⚪ Kubernetes Helm chart
 - ⚪ AWS deployment (ECS/EKS)
 - ⚪ GCP deployment (Cloud Run/GKE)
@@ -280,7 +501,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.8.0 - Ecosystem & Extensibility
+## v0.11.0 - Ecosystem & Extensibility
 
 *Plugin system and community features*
 
@@ -316,7 +537,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ---
 
-## v0.9.0 - Scale & Performance
+## v0.12.0 - Scale & Performance
 
 *Optimization for large-scale usage*
 
@@ -384,7 +605,7 @@ This document outlines the planned development roadmap for APEX. Features are or
 *Long-term vision and experimental features*
 
 ### Advanced AI Features
-- 💡 Multi-model orchestration (Claude + GPT + local models)
+- 💡 Multi-model orchestration (Claude + GPT + Gemini + local models)
 - 💡 Fine-tuned models for specific tasks
 - 💡 RAG integration for documentation
 - 💡 Code generation benchmarking
@@ -420,10 +641,37 @@ This document outlines the planned development roadmap for APEX. Features are or
 
 ### Experimental
 - 💡 Browser automation agent
-- 💡 Design-to-code agent
+- 💡 Design-to-code agent (Figma → code)
 - 💡 Natural language to SQL agent
 - 💡 Legacy code modernization
 - 💡 Automated refactoring suggestions
+
+---
+
+## CLI Feature Comparison
+
+| Feature | Claude Code | Codex CLI | Gemini CLI | APEX (v0.3) |
+|---------|-------------|-----------|------------|-------------|
+| Streaming responses | ✅ | ✅ | ✅ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | 🟡 |
+| History navigation | ✅ | ✅ | ✅ | 🟢 |
+| History search (Ctrl+R) | ✅ | ✅ | ✅ | ⚪ |
+| Tool approval workflow | ✅ | ✅ | ✅ | ⚪ |
+| Cost/token tracking | ✅ | ✅ | ✅ | 🟢 |
+| Multi-turn conversations | ✅ | ✅ | ✅ | 🟡 |
+| Session persistence | ✅ | ✅ | ✅ | ⚪ |
+| Git awareness | ✅ | ✅ | ✅ | 🟢 |
+| Theme support | ✅ | ✅ | ✅ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | 🟢 |
+| **Workflow system** | ❌ | ❌ | ❌ | 🟢 |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | 🟢 |
+| **Agent marketplace** | ❌ | ❌ | ❌ | ⚪ |
+
+> **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | ✅ Has feature | ❌ No feature
 
 ---
 
@@ -432,11 +680,12 @@ This document outlines the planned development roadmap for APEX. Features are or
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Priority Areas
-1. **Testing** - Unit and integration tests
-2. **Documentation** - Guides and examples
-3. **Agents** - New specialized agents
-4. **Workflows** - Workflow templates
-5. **Integrations** - Third-party connections
+1. **CLI UX** - Rich terminal UI, streaming, completions
+2. **Tool System** - Built-in tools and permissions
+3. **Testing** - Unit and integration tests
+4. **Documentation** - Guides and examples
+5. **Agents** - New specialized agents
+6. **Workflows** - Workflow templates
 
 ### Feature Requests
 
@@ -448,15 +697,18 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 
 | Version | Target Date | Focus |
 |---------|-------------|-------|
-| v0.1.0 | Q1 2025 | Foundation |
-| v0.2.0 | Q1 2025 | Production Ready |
-| v0.3.0 | Q2 2025 | Web Dashboard |
-| v0.4.0 | Q2 2025 | IDE Integration |
-| v0.5.0 | Q3 2025 | Advanced Workflows |
-| v0.6.0 | Q3 2025 | Intelligence & Learning |
-| v0.7.0 | Q4 2025 | Enterprise Features |
-| v0.8.0 | Q4 2025 | Ecosystem |
-| v0.9.0 | Q1 2026 | Scale & Performance |
+| v0.1.0 | Q1 2025 | Foundation ✅ |
+| v0.2.0 | Q1 2025 | Production Ready ✅ |
+| v0.3.0 | Q2 2025 | Claude Code-like CLI Experience |
+| v0.4.0 | Q2 2025 | Tool System & Autonomy |
+| v0.5.0 | Q2 2025 | Context & Memory |
+| v0.6.0 | Q3 2025 | Web Dashboard |
+| v0.7.0 | Q3 2025 | IDE Integration |
+| v0.8.0 | Q3 2025 | Advanced Workflows |
+| v0.9.0 | Q4 2025 | Intelligence & Learning |
+| v0.10.0 | Q4 2025 | Enterprise Features |
+| v0.11.0 | Q1 2026 | Ecosystem |
+| v0.12.0 | Q1 2026 | Scale & Performance |
 | v1.0.0 | Q2 2026 | General Availability |
 
 *Dates are tentative and subject to change based on community feedback and priorities.*
@@ -464,5 +716,5 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 ---
 
 <p align="center">
-  <em>Building the future of AI-assisted development, one feature at a time.</em>
+  <em>Building the future of AI-assisted development with autonomous multi-agent orchestration.</em>
 </p>

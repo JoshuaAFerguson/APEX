@@ -3,9 +3,14 @@ import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
   buildCompletionSummary,
+  buildStagePrompt,
+  buildPlannerStagePrompt,
+  parseDecompositionRequest,
+  isPlanningStage,
   PromptContext,
+  StagePromptContext,
 } from './prompts';
-import type { AgentDefinition, WorkflowDefinition, Task } from '@apex/core';
+import type { AgentDefinition, WorkflowDefinition, Task, WorkflowStage, StageResult } from '@apex/core';
 import { getEffectiveConfig, ApexConfigSchema } from '@apex/core';
 
 describe('Prompts', () => {
@@ -457,6 +462,382 @@ describe('Prompts', () => {
       const summary = buildCompletionSummary(task);
 
       expect(summary).toContain('1h 30m');
+    });
+  });
+
+  describe('buildStagePrompt', () => {
+    const createStagePromptContext = (
+      stageName: string = 'implementation',
+      previousResults: Map<string, StageResult> = new Map()
+    ): StagePromptContext => {
+      const workflow = createMockWorkflow();
+      const stage = workflow.stages.find(s => s.name === stageName) || workflow.stages[1];
+      const agents = createMockAgents();
+
+      return {
+        task: createMockTask(),
+        stage,
+        agent: agents[stage.agent],
+        workflow,
+        config: createMockConfig(),
+        previousStageResults: previousResults,
+      };
+    };
+
+    it('should include agent role and description', () => {
+      const context = createStagePromptContext();
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('developer');
+      expect(prompt).toContain('Implements features');
+    });
+
+    it('should include task description', () => {
+      const context = createStagePromptContext();
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('Add user authentication');
+    });
+
+    it('should include stage information', () => {
+      const context = createStagePromptContext();
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('implementation');
+      expect(prompt).toContain('Your Stage: implementation');
+    });
+
+    it('should include project context', () => {
+      const context = createStagePromptContext();
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('test-project');
+      expect(prompt).toContain('typescript');
+      expect(prompt).toContain('nextjs');
+    });
+
+    it('should include output format instructions', () => {
+      const context = createStagePromptContext();
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('### Stage Summary:');
+      expect(prompt).toContain('**Status**: completed | failed');
+      expect(prompt).toContain('**Files Modified**:');
+    });
+
+    it('should include inputs from previous stages when dependencies exist', () => {
+      const planningResult: StageResult = {
+        stageName: 'planning',
+        agent: 'planner',
+        status: 'completed',
+        outputs: { plan: 'Implementation plan here' },
+        artifacts: ['docs/plan.md'],
+        summary: 'Created implementation plan',
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, estimatedCost: 0.001 },
+        startedAt: new Date(),
+        completedAt: new Date(),
+      };
+      const previousResults = new Map([['planning', planningResult]]);
+      const context = createStagePromptContext('implementation', previousResults);
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).toContain('From planning stage');
+      expect(prompt).toContain('Created implementation plan');
+      expect(prompt).toContain('docs/plan.md');
+    });
+
+    it('should not include inputs section when no dependencies', () => {
+      const context = createStagePromptContext('planning');
+      const prompt = buildStagePrompt(context);
+
+      expect(prompt).not.toContain('Inputs from Previous Stages');
+    });
+  });
+
+  describe('buildPlannerStagePrompt', () => {
+    const createPlannerContext = (): StagePromptContext => {
+      const workflow = createMockWorkflow();
+      const stage = workflow.stages.find(s => s.name === 'planning')!;
+      const agents = createMockAgents();
+
+      return {
+        task: createMockTask(),
+        stage,
+        agent: agents.planner,
+        workflow,
+        config: createMockConfig(),
+        previousStageResults: new Map(),
+      };
+    };
+
+    it('should include decomposition instructions', () => {
+      const context = createPlannerContext();
+      const prompt = buildPlannerStagePrompt(context);
+
+      // Updated to match the new prompt format - uses "Decomposition" not "DECOMPOSITION"
+      expect(prompt).toContain('Decomposition');
+      expect(prompt).toContain('```decompose');
+      expect(prompt).toContain('subtasks');
+    });
+
+    it('should explain decomposition strategies', () => {
+      const context = createPlannerContext();
+      const prompt = buildPlannerStagePrompt(context);
+
+      expect(prompt).toContain('sequential');
+      expect(prompt).toContain('parallel');
+      expect(prompt).toContain('dependency-based');
+    });
+
+    it('should include guidance on when to decompose', () => {
+      const context = createPlannerContext();
+      const prompt = buildPlannerStagePrompt(context);
+
+      // Updated to match the new assertive decomposition guidance
+      expect(prompt).toContain('You MUST DECOMPOSE if the task');
+      expect(prompt).toContain('multiple features or components');
+      expect(prompt).toContain('Independent subtasks can run simultaneously');
+    });
+
+    it('should include task details', () => {
+      const context = createPlannerContext();
+      const prompt = buildPlannerStagePrompt(context);
+
+      expect(prompt).toContain('Add user authentication');
+    });
+
+    it('should include project context', () => {
+      const context = createPlannerContext();
+      const prompt = buildPlannerStagePrompt(context);
+
+      expect(prompt).toContain('test-project');
+      expect(prompt).toContain('typescript');
+    });
+  });
+
+  describe('parseDecompositionRequest', () => {
+    it('should return shouldDecompose: false when no decompose block', () => {
+      const output = `
+### Planning Summary
+**Approach**: Implement user auth with JWT
+**Steps**:
+1. Create auth service
+2. Add login endpoint
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(false);
+      expect(result.subtasks).toHaveLength(0);
+    });
+
+    it('should parse valid decomposition request', () => {
+      const output = `
+This task should be decomposed into multiple subtasks.
+
+\`\`\`decompose
+{
+  "reason": "Task spans backend and frontend",
+  "strategy": "sequential",
+  "subtasks": [
+    {
+      "description": "Implement backend auth service",
+      "acceptanceCriteria": "JWT authentication working",
+      "workflow": "feature"
+    },
+    {
+      "description": "Add frontend login form",
+      "dependsOn": ["Implement backend auth service"]
+    }
+  ]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.subtasks).toHaveLength(2);
+      expect(result.strategy).toBe('sequential');
+      expect(result.reason).toBe('Task spans backend and frontend');
+      expect(result.subtasks[0].description).toBe('Implement backend auth service');
+      expect(result.subtasks[0].acceptanceCriteria).toBe('JWT authentication working');
+      expect(result.subtasks[1].dependsOn).toContain('Implement backend auth service');
+    });
+
+    it('should parse parallel strategy', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "parallel",
+  "subtasks": [
+    { "description": "Task A" },
+    { "description": "Task B" }
+  ]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.strategy).toBe('parallel');
+    });
+
+    it('should parse dependency-based strategy', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "dependency-based",
+  "subtasks": [
+    { "description": "Base task" },
+    { "description": "Dependent task", "dependsOn": ["Base task"] }
+  ]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.strategy).toBe('dependency-based');
+    });
+
+    it('should default to sequential strategy when invalid', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "invalid-strategy",
+  "subtasks": [
+    { "description": "Task A" }
+  ]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.strategy).toBe('sequential');
+    });
+
+    it('should return shouldDecompose: false for empty subtasks', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "sequential",
+  "subtasks": []
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(false);
+    });
+
+    it('should filter out subtasks with empty descriptions', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "sequential",
+  "subtasks": [
+    { "description": "Valid task" },
+    { "description": "" },
+    { "description": "Another valid task" }
+  ]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.subtasks).toHaveLength(2);
+      expect(result.subtasks[0].description).toBe('Valid task');
+      expect(result.subtasks[1].description).toBe('Another valid task');
+    });
+
+    it('should handle invalid JSON gracefully', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "sequential",
+  "subtasks": [invalid json here]
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(false);
+      expect(result.subtasks).toHaveLength(0);
+    });
+
+    it('should handle missing subtasks array', () => {
+      const output = `
+\`\`\`decompose
+{
+  "strategy": "sequential"
+}
+\`\`\`
+      `;
+
+      const result = parseDecompositionRequest(output);
+
+      expect(result.shouldDecompose).toBe(false);
+    });
+  });
+
+  describe('isPlanningStage', () => {
+    it('should return true for stage named "planning"', () => {
+      const stage: WorkflowStage = {
+        name: 'planning',
+        agent: 'developer',
+        maxRetries: 2,
+      };
+
+      expect(isPlanningStage(stage)).toBe(true);
+    });
+
+    it('should return true for stage named "plan"', () => {
+      const stage: WorkflowStage = {
+        name: 'plan',
+        agent: 'developer',
+        maxRetries: 2,
+      };
+
+      expect(isPlanningStage(stage)).toBe(true);
+    });
+
+    it('should return true for stage using planner agent', () => {
+      const stage: WorkflowStage = {
+        name: 'analysis',
+        agent: 'planner',
+        maxRetries: 2,
+      };
+
+      expect(isPlanningStage(stage)).toBe(true);
+    });
+
+    it('should return false for non-planning stages', () => {
+      const stage: WorkflowStage = {
+        name: 'implementation',
+        agent: 'developer',
+        maxRetries: 2,
+      };
+
+      expect(isPlanningStage(stage)).toBe(false);
+    });
+
+    it('should return false for testing stage', () => {
+      const stage: WorkflowStage = {
+        name: 'testing',
+        agent: 'tester',
+        maxRetries: 2,
+      };
+
+      expect(isPlanningStage(stage)).toBe(false);
     });
   });
 });

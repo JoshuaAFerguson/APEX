@@ -7,13 +7,74 @@ import type {
   ApproveGateRequest,
   AgentDefinition,
   ApexConfig,
+  SubtaskStrategy,
+  SubtaskDefinition,
 } from '@apex/core'
+import { getApiUrl } from './config'
+
+/**
+ * Response for decompose task endpoint
+ */
+interface DecomposeTaskResponse {
+  ok: boolean
+  parentTaskId: string
+  subtasks: Array<{
+    id: string
+    description: string
+    status: string
+  }>
+  strategy: SubtaskStrategy
+}
+
+/**
+ * Response for get subtasks endpoint
+ */
+interface GetSubtasksResponse {
+  parentTaskId: string
+  subtasks: Task[]
+  count: number
+}
+
+/**
+ * Response for subtask status endpoint
+ */
+interface SubtaskStatusResponse {
+  parentTaskId: string
+  total: number
+  completed: number
+  failed: number
+  pending: number
+  inProgress: number
+}
+
+/**
+ * Response for is-subtask endpoint
+ */
+interface IsSubtaskResponse {
+  taskId: string
+  isSubtask: boolean
+  parentTaskId: string | null
+}
 
 export class ApexApiClient {
   private baseUrl: string
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || process.env.NEXT_PUBLIC_APEX_API_URL || 'http://localhost:3000'
+    this.baseUrl = baseUrl || getApiUrl()
+  }
+
+  /**
+   * Update the base URL (useful for runtime configuration)
+   */
+  setBaseUrl(url: string): void {
+    this.baseUrl = url
+  }
+
+  /**
+   * Get the current base URL
+   */
+  getBaseUrl(): string {
+    return this.baseUrl
   }
 
   /**
@@ -80,6 +141,7 @@ export class ApexApiClient {
   async cancelTask(taskId: string): Promise<Task> {
     const response = await this.fetch(`/tasks/${taskId}/cancel`, {
       method: 'POST',
+      body: JSON.stringify({}),
     })
     return response.json()
   }
@@ -90,6 +152,7 @@ export class ApexApiClient {
   async retryTask(taskId: string): Promise<Task> {
     const response = await this.fetch(`/tasks/${taskId}/retry`, {
       method: 'POST',
+      body: JSON.stringify({}),
     })
     return response.json()
   }
@@ -112,6 +175,67 @@ export class ApexApiClient {
       method: 'POST',
       body: JSON.stringify(request),
     })
+  }
+
+  // ============================================================================
+  // Subtask API Methods
+  // ============================================================================
+
+  /**
+   * Decompose a task into subtasks
+   */
+  async decomposeTask(
+    taskId: string,
+    subtasks: SubtaskDefinition[],
+    strategy: SubtaskStrategy = 'sequential'
+  ): Promise<DecomposeTaskResponse> {
+    const response = await this.fetch(`/tasks/${taskId}/decompose`, {
+      method: 'POST',
+      body: JSON.stringify({ subtasks, strategy }),
+    })
+    return response.json()
+  }
+
+  /**
+   * Get subtasks for a parent task
+   */
+  async getSubtasks(taskId: string): Promise<GetSubtasksResponse> {
+    const response = await this.fetch(`/tasks/${taskId}/subtasks`)
+    return response.json()
+  }
+
+  /**
+   * Get subtask status summary for a parent task
+   */
+  async getSubtaskStatus(taskId: string): Promise<SubtaskStatusResponse> {
+    const response = await this.fetch(`/tasks/${taskId}/subtasks/status`)
+    return response.json()
+  }
+
+  /**
+   * Execute subtasks for a parent task
+   */
+  async executeSubtasks(taskId: string): Promise<{ ok: boolean; message: string; parentTaskId: string }> {
+    const response = await this.fetch(`/tasks/${taskId}/subtasks/execute`, {
+      method: 'POST',
+    })
+    return response.json()
+  }
+
+  /**
+   * Get parent task for a subtask
+   */
+  async getParentTask(taskId: string): Promise<Task> {
+    const response = await this.fetch(`/tasks/${taskId}/parent`)
+    return response.json()
+  }
+
+  /**
+   * Check if a task is a subtask
+   */
+  async isSubtask(taskId: string): Promise<IsSubtaskResponse> {
+    const response = await this.fetch(`/tasks/${taskId}/is-subtask`)
+    return response.json()
   }
 
   /**

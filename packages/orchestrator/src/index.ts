@@ -6,12 +6,17 @@ import {
   ApexConfig,
   AgentDefinition,
   WorkflowDefinition,
+  WorkflowStage,
   Task,
   TaskStatus,
   TaskUsage,
   TaskCheckpoint,
+  StageResult,
   ApexEvent,
   ApexEventType,
+  SubtaskStrategy,
+  SubtaskDefinition,
+  TaskDecomposition,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -21,7 +26,15 @@ import {
   calculateCost,
 } from '@apex/core';
 import { TaskStore } from './store';
-import { buildOrchestratorPrompt, buildAgentDefinitions } from './prompts';
+import {
+  buildOrchestratorPrompt,
+  buildAgentDefinitions,
+  buildStagePrompt,
+  buildPlannerStagePrompt,
+  parseDecompositionRequest,
+  isPlanningStage,
+  type DecompositionRequest,
+} from './prompts';
 import { createHooks } from './hooks';
 
 const execAsync = promisify(exec);
@@ -38,6 +51,10 @@ export interface OrchestratorEvents {
   'task:completed': (task: Task) => void;
   'task:failed': (task: Task, error: Error) => void;
   'task:paused': (task: Task, gate: string) => void;
+  'task:decomposed': (task: Task, subtaskIds: string[]) => void;
+  'subtask:created': (subtask: Task, parentTaskId: string) => void;
+  'subtask:completed': (subtask: Task, parentTaskId: string) => void;
+  'subtask:failed': (subtask: Task, parentTaskId: string, error: Error) => void;
   'agent:message': (taskId: string, message: unknown) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
@@ -102,6 +119,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     priority?: Task['priority'];
     maxRetries?: number;
     dependsOn?: string[];
+    parentTaskId?: string;
+    subtaskStrategy?: SubtaskStrategy;
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -111,11 +130,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const priority = options.priority || 'normal';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
 
-    const branchName = generateBranchName(
-      this.effectiveConfig.git.branchPrefix,
-      taskId,
-      options.description
-    );
+    // Subtasks share the parent's branch, parent tasks get a new branch
+    let branchName: string | undefined;
+    if (options.parentTaskId) {
+      const parentTask = await this.store.getTask(options.parentTaskId);
+      branchName = parentTask?.branchName;
+    } else {
+      branchName = generateBranchName(
+        this.effectiveConfig.git.branchPrefix,
+        taskId,
+        options.description
+      );
+    }
 
     const task: Task = {
       id: taskId,
@@ -131,6 +157,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       maxRetries,
       dependsOn: options.dependsOn || [],
       blockedBy: options.dependsOn || [], // Initially blocked by all dependencies
+      parentTaskId: options.parentTaskId,
+      subtaskIds: [],
+      subtaskStrategy: options.subtaskStrategy,
       createdAt: new Date(),
       updatedAt: new Date(),
       usage: {
@@ -145,6 +174,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     await this.store.createTask(task);
     this.emit('task:created', task);
+
+    // If this is a subtask, emit subtask:created and update parent
+    if (options.parentTaskId) {
+      this.emit('subtask:created', task, options.parentTaskId);
+
+      // Add this subtask ID to the parent's subtaskIds array
+      const parentTask = await this.store.getTask(options.parentTaskId);
+      if (parentTask) {
+        const updatedSubtaskIds = [...(parentTask.subtaskIds || []), taskId];
+        await this.store.updateTask(options.parentTaskId, {
+          subtaskIds: updatedSubtaskIds,
+          updatedAt: new Date(),
+        });
+      }
+    }
 
     return task;
   }
@@ -164,6 +208,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const workflow = await loadWorkflow(this.projectPath, task.workflow);
     if (!workflow) {
       throw new Error(`Workflow not found: ${task.workflow}`);
+    }
+
+    // Create feature branch before starting
+    if (task.branchName) {
+      await this.createFeatureBranch(task.branchName);
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Created feature branch: ${task.branchName}`,
+      });
     }
 
     // Update status
@@ -209,17 +262,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         const canRetry = autoRetry && attempt < maxRetries && this.isRetryableError(lastError);
 
         if (!canRetry) {
-          // No more retries - fail the task
-          await this.updateTaskStatus(taskId, 'failed', lastError.message);
+          // No more retries - fail the task with enhanced error message
+          const enhancedError = this.parseErrorMessage(lastError);
+          await this.updateTaskStatus(taskId, 'failed', enhancedError);
           const failedTask = await this.store.getTask(taskId);
           this.emit('task:failed', failedTask!, lastError);
           throw lastError;
         }
 
-        // Log the failure before retry
+        // Log the failure before retry with enhanced message
+        const enhancedRetryMessage = this.parseErrorMessage(lastError);
         await this.store.addLog(taskId, {
           level: 'warn',
-          message: `Task failed (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying...`,
+          message: `Task failed (attempt ${attempt + 1}/${maxRetries + 1}): ${enhancedRetryMessage}. Retrying...`,
         });
       }
     }
@@ -240,11 +295,93 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       'exceeded budget',
       'cancelled',
       'Invalid',
+      'token limit',
+      'context length',
+      'rate limit exceeded',
+      'authentication',
+      'unauthorized',
+      'forbidden',
     ];
 
     return !nonRetryablePatterns.some(pattern =>
       error.message.toLowerCase().includes(pattern.toLowerCase())
     );
+  }
+
+  /**
+   * Parse and enhance error messages from Claude SDK
+   * Extracts specific error types for better user feedback
+   */
+  private parseErrorMessage(error: Error): string {
+    const message = error.message || String(error);
+    const lowerMessage = message.toLowerCase();
+
+    // Token/context limit errors
+    if (lowerMessage.includes('token') || lowerMessage.includes('context length') ||
+        lowerMessage.includes('max_tokens') || lowerMessage.includes('context window')) {
+      return `Token limit exceeded: The conversation became too long. Consider breaking down the task into smaller subtasks. Original error: ${message}`;
+    }
+
+    // Rate limiting
+    if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many requests') ||
+        lowerMessage.includes('429')) {
+      return `Rate limit exceeded: Too many API requests. The task will be retried automatically after a delay. Original error: ${message}`;
+    }
+
+    // Authentication errors
+    if (lowerMessage.includes('unauthorized') || lowerMessage.includes('authentication') ||
+        lowerMessage.includes('api key') || lowerMessage.includes('401')) {
+      return `Authentication error: Invalid or missing API credentials. Please check your API key configuration. Original error: ${message}`;
+    }
+
+    // Permission/access errors
+    if (lowerMessage.includes('forbidden') || lowerMessage.includes('permission') ||
+        lowerMessage.includes('403')) {
+      return `Permission denied: You don't have access to the requested resource. Original error: ${message}`;
+    }
+
+    // Network errors
+    if (lowerMessage.includes('network') || lowerMessage.includes('connection') ||
+        lowerMessage.includes('econnrefused') || lowerMessage.includes('timeout')) {
+      return `Network error: Failed to connect to the API. Please check your internet connection and try again. Original error: ${message}`;
+    }
+
+    // Budget exceeded
+    if (lowerMessage.includes('budget') || lowerMessage.includes('cost limit')) {
+      return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${message}`;
+    }
+
+    // Process exit errors
+    if (lowerMessage.includes('exited with code') || lowerMessage.includes('process exit')) {
+      const codeMatch = message.match(/code\s*(\d+)/i);
+      const exitCode = codeMatch ? codeMatch[1] : 'unknown';
+
+      // Common exit codes
+      if (exitCode === '1') {
+        return `Process failed (exit code 1): The operation encountered an error. This could be due to token limits, API errors, or internal failures. Check the task logs for more details.`;
+      } else if (exitCode === '137') {
+        return `Process killed (exit code 137): The process was terminated, possibly due to memory limits or manual cancellation.`;
+      } else if (exitCode === '143') {
+        return `Process terminated (exit code 143): The process was gracefully terminated by a signal.`;
+      }
+
+      return `Process failed with exit code ${exitCode}. Original error: ${message}`;
+    }
+
+    // Server errors
+    if (lowerMessage.includes('500') || lowerMessage.includes('502') ||
+        lowerMessage.includes('503') || lowerMessage.includes('internal server error')) {
+      return `Server error: The API service encountered an internal error. This is usually temporary - please try again. Original error: ${message}`;
+    }
+
+    // Invalid request
+    if (lowerMessage.includes('invalid') || lowerMessage.includes('bad request') ||
+        lowerMessage.includes('400')) {
+      return `Invalid request: The request was malformed or contained invalid parameters. Original error: ${message}`;
+    }
+
+    // Default: return the original message but ensure it's informative
+    return message.length > 0 ? message : 'An unknown error occurred during task execution';
   }
 
   /**
@@ -255,21 +392,271 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Run the workflow for a task
+   * Create a feature branch for a task
+   */
+  private async createFeatureBranch(branchName: string): Promise<void> {
+    try {
+      // Check if branch already exists
+      const { stdout: existingBranches } = await execAsync(
+        `git branch --list "${branchName}"`,
+        { cwd: this.projectPath }
+      );
+
+      if (existingBranches.trim()) {
+        // Branch exists, just check it out
+        await execAsync(`git checkout "${branchName}"`, { cwd: this.projectPath });
+      } else {
+        // Create and checkout new branch
+        await execAsync(`git checkout -b "${branchName}"`, { cwd: this.projectPath });
+      }
+    } catch (error) {
+      // If checkout fails (e.g., uncommitted changes), log but don't fail
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(`Warning: Could not create/checkout branch ${branchName}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Run the workflow for a task - with parallel stage execution
    */
   private async runWorkflow(task: Task, workflow: WorkflowDefinition): Promise<void> {
-    // Build orchestrator prompt
-    const systemPrompt = buildOrchestratorPrompt({
-      config: this.effectiveConfig,
-      workflow,
-      task,
-      agents: this.agents,
+    const stageResults = new Map<string, StageResult>();
+    const completedStages = new Set<string>();
+    const inProgressStages = new Set<string>();
+    const allStages = new Set(workflow.stages.map(s => s.name));
+
+    await this.store.addLog(task.id, {
+      level: 'info',
+      message: `Starting workflow "${workflow.name}" with ${workflow.stages.length} stages`,
     });
 
-    // Build agent definitions for SDK
-    const agentDefinitions = buildAgentDefinitions(this.agents, this.effectiveConfig);
+    // Continue until all stages are complete
+    while (completedStages.size < allStages.size) {
+      // Check if task was cancelled
+      const currentTask = await this.store.getTask(task.id);
+      if (currentTask?.status === 'cancelled') {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: 'Task was cancelled, stopping workflow execution',
+        });
+        return;
+      }
 
-    // Create hooks
+      // Find all stages ready to run (dependencies met, not completed, not in progress)
+      const readyStages = workflow.stages.filter(stage =>
+        !completedStages.has(stage.name) &&
+        !inProgressStages.has(stage.name) &&
+        this.areDependenciesMet(stage, stageResults)
+      );
+
+      if (readyStages.length === 0) {
+        // No stages ready - check if we're stuck
+        if (inProgressStages.size === 0) {
+          // No stages in progress and none ready - we're stuck (circular dependency or all done)
+          const remaining = workflow.stages.filter(s => !completedStages.has(s.name));
+          if (remaining.length > 0) {
+            throw new Error(`Workflow stuck: stages ${remaining.map(s => s.name).join(', ')} cannot be executed (check dependencies)`);
+          }
+          break;
+        }
+        // Wait a bit for in-progress stages to complete
+        await this.sleep(100);
+        continue;
+      }
+
+      // Log parallel execution
+      if (readyStages.length > 1) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Running ${readyStages.length} stages in parallel: ${readyStages.map(s => s.name).join(', ')}`,
+        });
+      }
+
+      // Mark stages as in progress
+      for (const stage of readyStages) {
+        inProgressStages.add(stage.name);
+      }
+
+      // Execute ready stages in parallel
+      const stagePromises = readyStages.map(async (stage) => {
+        const agent = this.agents[stage.agent];
+        if (!agent) {
+          throw new Error(`Agent "${stage.agent}" not found for stage "${stage.name}"`);
+        }
+
+        // Update task stage (for single stage) or log parallel
+        if (readyStages.length === 1) {
+          await this.store.updateTask(task.id, {
+            currentStage: stage.name,
+            updatedAt: new Date(),
+          });
+        }
+        this.emit('task:stage-changed', task, stage.name);
+
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Starting stage "${stage.name}" with agent "${agent.name}"`,
+          stage: stage.name,
+          agent: agent.name,
+        });
+
+        try {
+          const result = await this.executeWorkflowStage(task, stage, agent, workflow, stageResults);
+
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `Stage "${stage.name}" completed: ${result.summary.substring(0, 200)}`,
+            stage: stage.name,
+            agent: agent.name,
+          });
+
+          return { stage, result, error: null, decompositionRequest: result.decompositionRequest };
+        } catch (error) {
+          // Parse and enhance the error message for better feedback
+          const rawError = error instanceof Error ? error : new Error(String(error));
+          const enhancedErrorMessage = this.parseErrorMessage(rawError);
+
+          await this.store.addLog(task.id, {
+            level: 'error',
+            message: `Stage "${stage.name}" failed: ${enhancedErrorMessage}`,
+            stage: stage.name,
+            agent: agent.name,
+          });
+
+          const failedResult: StageResult = {
+            stageName: stage.name,
+            agent: agent.name,
+            status: 'failed',
+            outputs: {},
+            artifacts: [],
+            summary: `Stage failed: ${enhancedErrorMessage}`,
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            error: enhancedErrorMessage,
+            startedAt: new Date(),
+            completedAt: new Date(),
+          };
+
+          return { stage, result: failedResult, error: rawError };
+        }
+      });
+
+      // Wait for all parallel stages to complete
+      const results = await Promise.all(stagePromises);
+
+      // Process results
+      let firstError: Error | null = null;
+      let decompositionRequest: DecompositionRequest | undefined;
+
+      for (const { stage, result, error, decompositionRequest: decompReq } of results) {
+        inProgressStages.delete(stage.name);
+        completedStages.add(stage.name);
+        stageResults.set(stage.name, result);
+
+        // Save checkpoint
+        await this.saveCheckpoint(task.id, {
+          stage: stage.name,
+          stageIndex: workflow.stages.findIndex(s => s.name === stage.name),
+          metadata: {
+            stageResult: result,
+            completedStages: Array.from(completedStages),
+          },
+        });
+
+        if (error && !firstError) {
+          firstError = error;
+        }
+
+        // Capture decomposition request from planning stage
+        if (decompReq?.shouldDecompose) {
+          decompositionRequest = decompReq;
+        }
+      }
+
+      // If any stage failed, throw the first error
+      if (firstError) {
+        throw firstError;
+      }
+
+      // Handle decomposition request from planner
+      if (decompositionRequest && decompositionRequest.shouldDecompose) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Task decomposition requested: creating ${decompositionRequest.subtasks.length} subtasks with ${decompositionRequest.strategy} strategy`,
+        });
+
+        // Create subtasks
+        const subtasks = await this.decomposeTask(
+          task.id,
+          decompositionRequest.subtasks,
+          decompositionRequest.strategy
+        );
+
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Created ${subtasks.length} subtasks. Switching to subtask execution mode.`,
+        });
+
+        // Update parent task status to indicate it's waiting on subtasks
+        await this.store.updateTask(task.id, {
+          status: 'in-progress',
+          currentStage: 'subtask-execution',
+          updatedAt: new Date(),
+        });
+
+        // Execute subtasks according to strategy
+        await this.executeSubtasks(task.id);
+
+        // All subtasks completed successfully - workflow is done
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `All subtasks completed. Workflow finished via decomposition.`,
+        });
+
+        return; // Exit workflow - subtasks handled the work
+      }
+    }
+
+    await this.store.addLog(task.id, {
+      level: 'info',
+      message: `Workflow "${workflow.name}" completed successfully. Stages completed: ${Array.from(completedStages).join(', ')}`,
+    });
+  }
+
+  /**
+   * Execute a single workflow stage with its designated agent
+   * Returns a StageResult, which may include a decomposition request for planning stages
+   */
+  private async executeWorkflowStage(
+    task: Task,
+    stage: WorkflowStage,
+    agent: AgentDefinition,
+    workflow: WorkflowDefinition,
+    previousResults: Map<string, StageResult>
+  ): Promise<StageResult & { decompositionRequest?: DecompositionRequest }> {
+    const startedAt = new Date();
+    const isPlanner = isPlanningStage(stage);
+
+    // Build focused prompt for this stage
+    // Use special planner prompt if this is a planning stage
+    const stagePrompt = isPlanner
+      ? buildPlannerStagePrompt({
+          task,
+          stage,
+          agent,
+          workflow,
+          config: this.effectiveConfig,
+          previousStageResults: previousResults,
+        })
+      : buildStagePrompt({
+          task,
+          stage,
+          agent,
+          workflow,
+          config: this.effectiveConfig,
+          previousStageResults: previousResults,
+        });
+
+    // Create hooks for this stage
     const hooks = createHooks({
       taskId: task.id,
       store: this.store,
@@ -278,16 +665,29 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
 
-    // Execute via Claude Agent SDK
-    const queryPrompt = this.buildTaskPrompt(task);
+    // Track usage for this stage
+    let stageUsage: TaskUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+    };
 
+    // Collect all messages to extract summary
+    const messages: string[] = [];
+
+    // Convert agent model to SDK model format
+    const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
+                     agent.model === 'haiku' ? 'claude-haiku-3-5-20241022' :
+                     'claude-sonnet-4-20250514';
+
+    // Execute stage via Claude Agent SDK
     for await (const message of query({
-      prompt: queryPrompt,
+      prompt: stagePrompt,
       options: {
-        systemPrompt,
-        agents: agentDefinitions,
+        model: sdkModel,
         permissionMode: 'acceptEdits',
-        maxTurns: this.effectiveConfig.limits.maxTurns,
+        maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
         cwd: this.projectPath,
         env: {
@@ -296,6 +696,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           APEX_TASK_ID: task.id,
           APEX_PROJECT: this.projectPath,
           APEX_BRANCH: task.branchName || '',
+          APEX_STAGE: stage.name,
+          APEX_AGENT: agent.name,
         },
         hooks,
       },
@@ -303,12 +705,63 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       // Emit message for streaming
       this.emit('agent:message', task.id, message);
 
+      // Collect text content for summary extraction and log AI responses
+      if (message && typeof message === 'object') {
+        // Extract text content from SDK message format
+        // SDK messages have type: 'assistant' with nested message.content array
+        // or type: 'result' with result string
+        let textContent = '';
+
+        const msg = message as Record<string, unknown>;
+
+        if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
+          // Assistant messages have content as array of blocks
+          const apiMessage = msg.message as { content?: Array<{ type: string; text?: string }> };
+          if (Array.isArray(apiMessage.content)) {
+            for (const block of apiMessage.content) {
+              if (block.type === 'text' && block.text) {
+                textContent += block.text + '\n';
+              }
+            }
+          }
+        } else if (msg.type === 'result' && typeof msg.result === 'string') {
+          textContent = msg.result;
+        } else if ('content' in msg && typeof msg.content === 'string') {
+          // Fallback for simple content string
+          textContent = msg.content;
+        }
+
+        if (textContent.trim().length > 0) {
+          messages.push(textContent);
+
+          // Log AI text responses (truncate long messages)
+          const truncated = textContent.length > 500
+            ? textContent.substring(0, 500) + '...'
+            : textContent;
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: truncated,
+            stage: stage.name,
+            agent: agent.name,
+          });
+        }
+      }
+
       // Track usage
       if (message && typeof message === 'object' && 'usage' in message) {
         const usage = message.usage as { input_tokens?: number; output_tokens?: number };
+        const inputDelta = usage.input_tokens || 0;
+        const outputDelta = usage.output_tokens || 0;
+
+        stageUsage.inputTokens += inputDelta;
+        stageUsage.outputTokens += outputDelta;
+        stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
+        stageUsage.estimatedCost = calculateCost(stageUsage.inputTokens, stageUsage.outputTokens);
+
+        // Update task-level usage
         await this.updateUsage(task.id, {
-          inputTokens: usage.input_tokens || 0,
-          outputTokens: usage.output_tokens || 0,
+          inputTokens: inputDelta,
+          outputTokens: outputDelta,
         });
       }
 
@@ -320,6 +773,149 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         );
       }
     }
+
+    // Extract stage summary and outputs from the final messages
+    const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
+
+    // For planning stages, check if the output contains a decomposition request
+    let decompositionRequest: DecompositionRequest | undefined;
+    if (isPlanner) {
+      const fullOutput = messages.join('\n');
+      decompositionRequest = parseDecompositionRequest(fullOutput);
+
+      if (decompositionRequest.shouldDecompose) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Planner requested decomposition: ${decompositionRequest.subtasks.length} subtasks (${decompositionRequest.strategy})`,
+          stage: stage.name,
+        });
+      }
+    }
+
+    return {
+      stageName: stage.name,
+      agent: agent.name,
+      status: 'completed',
+      outputs,
+      artifacts,
+      summary,
+      usage: stageUsage,
+      startedAt,
+      completedAt: new Date(),
+      decompositionRequest,
+    };
+  }
+
+  /**
+   * Parse the agent's output to extract summary, outputs, and artifacts
+   */
+  private parseStageOutput(
+    messages: string[],
+    stage: WorkflowStage
+  ): { summary: string; outputs: Record<string, unknown>; artifacts: string[] } {
+    const fullOutput = messages.join('\n');
+
+    // Try to find the structured summary block
+    const summaryMatch = fullOutput.match(/### Stage Summary:[\s\S]*?\*\*Status\*\*:\s*(completed|failed)[\s\S]*?\*\*Summary\*\*:\s*([^\n]+)[\s\S]*?(?:\*\*Files Modified\*\*:\s*([^\n]+))?[\s\S]*?(?:\*\*Outputs\*\*:\s*([^\n]+))?/i);
+
+    let summary = `Completed ${stage.name} stage`;
+    let artifacts: string[] = [];
+    const outputs: Record<string, unknown> = {};
+
+    if (summaryMatch) {
+      summary = summaryMatch[2]?.trim() || summary;
+
+      // Parse files modified
+      if (summaryMatch[3]) {
+        artifacts = summaryMatch[3].split(',').map(f => f.trim()).filter(Boolean);
+      }
+
+      // Parse outputs
+      if (summaryMatch[4]) {
+        outputs['result'] = summaryMatch[4].trim();
+      }
+    } else {
+      // Fallback: use the last substantive message as summary
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage) {
+        summary = lastMessage.substring(0, 500);
+      }
+    }
+
+    // Extract file paths mentioned in the output
+    const fileMatches = fullOutput.match(/(?:created|modified|wrote|edited|updated)[\s:]+([^\s,]+\.[a-z]+)/gi);
+    if (fileMatches) {
+      for (const match of fileMatches) {
+        const fileMatch = match.match(/([^\s,]+\.[a-z]+)/i);
+        if (fileMatch && fileMatch[1]) {
+          artifacts.push(fileMatch[1]);
+        }
+      }
+    }
+
+    // Populate expected outputs from stage definition
+    if (stage.outputs) {
+      for (const outputName of stage.outputs) {
+        if (!outputs[outputName]) {
+          // Try to find the output in the full text
+          const outputRegex = new RegExp(`${outputName}[:\\s]+([^\\n]+)`, 'i');
+          const outputMatch = fullOutput.match(outputRegex);
+          if (outputMatch) {
+            outputs[outputName] = outputMatch[1].trim();
+          }
+        }
+      }
+    }
+
+    return {
+      summary,
+      outputs,
+      artifacts: [...new Set(artifacts)], // Deduplicate
+    };
+  }
+
+  /**
+   * Get stages in execution order, respecting dependencies
+   */
+  private getStageExecutionOrder(stages: WorkflowStage[]): WorkflowStage[] {
+    const ordered: WorkflowStage[] = [];
+    const completed = new Set<string>();
+    const remaining = [...stages];
+
+    while (remaining.length > 0) {
+      const readyIndex = remaining.findIndex(stage => {
+        if (!stage.dependsOn || stage.dependsOn.length === 0) {
+          return true;
+        }
+        return stage.dependsOn.every(dep => completed.has(dep));
+      });
+
+      if (readyIndex === -1) {
+        // Circular dependency or unresolvable - add remaining in order
+        ordered.push(...remaining);
+        break;
+      }
+
+      const readyStage = remaining.splice(readyIndex, 1)[0];
+      ordered.push(readyStage);
+      completed.add(readyStage.name);
+    }
+
+    return ordered;
+  }
+
+  /**
+   * Check if a stage's dependencies are met
+   */
+  private areDependenciesMet(stage: WorkflowStage, completedResults: Map<string, StageResult>): boolean {
+    if (!stage.dependsOn || stage.dependsOn.length === 0) {
+      return true;
+    }
+
+    return stage.dependsOn.every(depName => {
+      const result = completedResults.get(depName);
+      return result && result.status === 'completed';
+    });
   }
 
   /**
@@ -333,11 +929,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     prompt += `## Instructions\n`;
-    prompt += `1. Create a new branch: \`git checkout -b ${task.branchName}\`\n`;
-    prompt += `2. Follow the workflow stages in order\n`;
-    prompt += `3. Delegate to appropriate subagents for each stage\n`;
-    prompt += `4. Run tests before completing\n`;
-    prompt += `5. Commit changes with conventional commit messages\n`;
+    prompt += `You are already on branch \`${task.branchName}\`.\n\n`;
+    prompt += `1. Follow the workflow stages in order\n`;
+    prompt += `2. Delegate to appropriate subagents for each stage\n`;
+    prompt += `3. Run tests before completing\n`;
+    prompt += `4. Commit changes with conventional commit messages\n`;
 
     return prompt;
   }
@@ -410,6 +1006,54 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getConfig(): Promise<ApexConfig> {
     await this.ensureInitialized();
     return this.config;
+  }
+
+  /**
+   * Get task logs
+   */
+  async getTaskLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<import('@apex/core').TaskLog[]> {
+    await this.ensureInitialized();
+    return this.store.getLogs(taskId, options);
+  }
+
+  /**
+   * Approve a gate
+   */
+  async approveGate(taskId: string, gateName: string, approver: string, comment?: string): Promise<void> {
+    await this.ensureInitialized();
+    await this.store.approveGate(taskId, gateName, approver, comment);
+  }
+
+  /**
+   * Reject a gate
+   */
+  async rejectGate(taskId: string, gateName: string, rejector: string, comment?: string): Promise<void> {
+    await this.ensureInitialized();
+    await this.store.rejectGate(taskId, gateName, rejector, comment);
+  }
+
+  /**
+   * Get a gate
+   */
+  async getGate(taskId: string, gateName: string): Promise<import('@apex/core').Gate | null> {
+    await this.ensureInitialized();
+    return this.store.getGate(taskId, gateName);
+  }
+
+  /**
+   * Get all gates for a task
+   */
+  async getAllGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+    await this.ensureInitialized();
+    return this.store.getAllGates(taskId);
+  }
+
+  /**
+   * Get pending gates for a task
+   */
+  async getPendingGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+    await this.ensureInitialized();
+    return this.store.getPendingGates(taskId);
   }
 
   /**
@@ -888,6 +1532,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Find the stage to resume from
     const startIndex = checkpoint.stageIndex;
 
+    // Get previously completed stages from checkpoint metadata
+    const stageResults = new Map<string, StageResult>();
+    const completedStageNames = (checkpoint.metadata?.completedStages as string[]) || [];
+
+    // Reconstruct stage results from checkpoint
+    for (const stageName of completedStageNames) {
+      const stageData = checkpoint.metadata?.[`stage_${stageName}`] as StageResult | undefined;
+      if (stageData) {
+        stageResults.set(stageName, stageData);
+      }
+    }
+
     // Execute remaining stages
     const remainingStages = workflow.stages.slice(startIndex);
 
@@ -896,6 +1552,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       const currentTask = await this.store.getTask(taskId);
       if (currentTask?.status === 'cancelled') {
         return true; // Task was cancelled, stop execution
+      }
+
+      // Check dependencies are met
+      if (!this.areDependenciesMet(stage, stageResults)) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Skipping stage "${stage.name}" - dependencies not met`,
+          stage: stage.name,
+        });
+        continue;
       }
 
       // Update stage
@@ -913,8 +1579,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         continue;
       }
 
-      // Execute the stage (simplified - in real implementation would use full agent execution)
-      await this.executeStage(taskId, task, stage, agentDef, workflow);
+      // Execute the stage using the new stage execution method
+      const result = await this.executeWorkflowStage(task, stage, agentDef, workflow, stageResults);
+      stageResults.set(stage.name, result);
+
+      // Save checkpoint after each stage
+      await this.saveCheckpoint(taskId, {
+        stage: stage.name,
+        stageIndex: workflow.stages.indexOf(stage),
+        metadata: {
+          completedStages: Array.from(stageResults.keys()),
+          ...Object.fromEntries(
+            Array.from(stageResults.entries()).map(([name, res]) => [`stage_${name}`, res])
+          ),
+        },
+      });
     }
 
     // Mark task as completed
@@ -927,78 +1606,419 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     return true;
   }
 
+  // ============================================================================
+  // Subtask Management
+  // ============================================================================
+
   /**
-   * Execute a single workflow stage (helper for resumeTask)
+   * Decompose a task into subtasks
+   * This creates subtasks from the provided definitions and links them to the parent
    */
-  private async executeStage(
-    taskId: string,
-    task: Task,
-    stage: { name: string; agent: string },
-    agentDef: AgentDefinition,
-    workflow: WorkflowDefinition
-  ): Promise<void> {
-    const prompt = buildOrchestratorPrompt({
-      task,
-      workflow,
-      config: this.effectiveConfig,
-      agents: this.agents,
+  async decomposeTask(
+    parentTaskId: string,
+    subtaskDefinitions: SubtaskDefinition[],
+    strategy: SubtaskStrategy = 'sequential'
+  ): Promise<Task[]> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) {
+      throw new Error(`Parent task not found: ${parentTaskId}`);
+    }
+
+    // Update parent task strategy
+    await this.store.updateTask(parentTaskId, {
+      subtaskStrategy: strategy,
+      updatedAt: new Date(),
     });
 
-    const sdkAgentDefs = buildAgentDefinitions(this.agents, this.effectiveConfig);
-
-    const hooks = createHooks({
-      taskId,
-      store: this.store,
-      onToolUse: (tool: string, input: unknown) => this.emit('agent:tool-use', taskId, tool, input),
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Decomposing task into ${subtaskDefinitions.length} subtasks (strategy: ${strategy})`,
     });
 
-    try {
-      for await (const event of query({
-        prompt,
-        options: {
-          model: agentDef.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                 agentDef.model === 'haiku' ? 'claude-haiku-3-5-20241022' : 'claude-sonnet-4-20250514',
-          maxTurns: this.effectiveConfig.limits.maxTurns,
-          hooks,
-          agents: sdkAgentDefs,
-        },
-      })) {
-        if (event.type === 'assistant') {
-          this.emit('agent:message', taskId, event);
+    // Create a map to resolve dependencies between subtasks
+    const subtaskMap = new Map<string, Task>();
+    const subtasks: Task[] = [];
 
-          // Save checkpoint after each assistant message
-          await this.saveCheckpoint(taskId, {
-            stage: stage.name,
-            stageIndex: 0, // Would need proper index tracking
-            metadata: { lastEvent: 'assistant_message' },
+    // First pass: create all subtasks
+    for (const definition of subtaskDefinitions) {
+      const subtask = await this.createTask({
+        description: definition.description,
+        acceptanceCriteria: definition.acceptanceCriteria,
+        workflow: definition.workflow || parentTask.workflow,
+        priority: definition.priority || parentTask.priority,
+        parentTaskId,
+        autonomy: parentTask.autonomy,
+      });
+
+      subtaskMap.set(definition.description, subtask);
+      subtasks.push(subtask);
+    }
+
+    // Second pass: resolve dependencies between subtasks
+    for (let i = 0; i < subtaskDefinitions.length; i++) {
+      const definition = subtaskDefinitions[i];
+      const subtask = subtasks[i];
+
+      if (definition.dependsOn && definition.dependsOn.length > 0) {
+        const resolvedDeps: string[] = [];
+
+        for (const dep of definition.dependsOn) {
+          // Check if dep is a subtask description
+          const depTask = subtaskMap.get(dep);
+          if (depTask) {
+            resolvedDeps.push(depTask.id);
+          } else if (dep.startsWith('task_')) {
+            // It's already a task ID
+            resolvedDeps.push(dep);
+          }
+        }
+
+        if (resolvedDeps.length > 0) {
+          await this.store.updateTask(subtask.id, {
+            dependsOn: resolvedDeps,
+            blockedBy: resolvedDeps,
+            updatedAt: new Date(),
           });
         }
+      }
+    }
 
-        if (event.type === 'result' && event.usage) {
-          const usage: TaskUsage = {
-            inputTokens: event.usage.inputTokens,
-            outputTokens: event.usage.outputTokens,
-            totalTokens: event.usage.inputTokens + event.usage.outputTokens,
-            estimatedCost: calculateCost(event.usage.inputTokens, event.usage.outputTokens),
-          };
+    // Emit decomposition event
+    const subtaskIds = subtasks.map(s => s.id);
+    this.emit('task:decomposed', parentTask, subtaskIds);
 
-          await this.store.updateTask(taskId, { usage });
-          this.emit('usage:updated', taskId, usage);
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Created ${subtasks.length} subtasks: ${subtaskIds.join(', ')}`,
+    });
+
+    return subtasks;
+  }
+
+  /**
+   * Execute subtasks according to their strategy
+   */
+  async executeSubtasks(parentTaskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) {
+      throw new Error(`Parent task not found: ${parentTaskId}`);
+    }
+
+    if (!parentTask.subtaskIds || parentTask.subtaskIds.length === 0) {
+      throw new Error(`Task ${parentTaskId} has no subtasks to execute`);
+    }
+
+    const strategy = parentTask.subtaskStrategy || 'sequential';
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Executing ${parentTask.subtaskIds.length} subtasks with strategy: ${strategy}`,
+    });
+
+    switch (strategy) {
+      case 'parallel':
+        await this.executeSubtasksParallel(parentTask);
+        break;
+      case 'dependency-based':
+        await this.executeSubtasksDependencyBased(parentTask);
+        break;
+      case 'sequential':
+      default:
+        await this.executeSubtasksSequential(parentTask);
+        break;
+    }
+
+    // After all subtasks complete, aggregate results and complete parent
+    await this.aggregateSubtaskResults(parentTaskId);
+  }
+
+  /**
+   * Execute subtasks sequentially
+   */
+  private async executeSubtasksSequential(parentTask: Task): Promise<void> {
+    for (const subtaskId of parentTask.subtaskIds || []) {
+      // Check if parent was cancelled
+      const currentParent = await this.store.getTask(parentTask.id);
+      if (currentParent?.status === 'cancelled') {
+        return;
+      }
+
+      try {
+        await this.executeTask(subtaskId);
+        const completedSubtask = await this.store.getTask(subtaskId);
+        if (completedSubtask) {
+          this.emit('subtask:completed', completedSubtask, parentTask.id);
+        }
+      } catch (error) {
+        const failedSubtask = await this.store.getTask(subtaskId);
+        if (failedSubtask) {
+          this.emit('subtask:failed', failedSubtask, parentTask.id, error as Error);
+        }
+        throw error; // Re-throw to fail the parent
+      }
+    }
+  }
+
+  /**
+   * Execute subtasks in parallel
+   */
+  private async executeSubtasksParallel(parentTask: Task): Promise<void> {
+    const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
+    const subtaskIds = parentTask.subtaskIds || [];
+
+    // Execute in batches up to max concurrent
+    for (let i = 0; i < subtaskIds.length; i += maxConcurrent) {
+      // Check if parent was cancelled
+      const currentParent = await this.store.getTask(parentTask.id);
+      if (currentParent?.status === 'cancelled') {
+        return;
+      }
+
+      const batch = subtaskIds.slice(i, i + maxConcurrent);
+      const results = await Promise.allSettled(
+        batch.map(async (subtaskId) => {
+          await this.executeTask(subtaskId);
+          const completedSubtask = await this.store.getTask(subtaskId);
+          if (completedSubtask) {
+            this.emit('subtask:completed', completedSubtask, parentTask.id);
+          }
+        })
+      );
+
+      // Check for failures
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failures.length > 0) {
+        // Emit failure events for failed subtasks
+        for (let j = 0; j < batch.length; j++) {
+          if (results[j].status === 'rejected') {
+            const failedSubtask = await this.store.getTask(batch[j]);
+            if (failedSubtask) {
+              this.emit('subtask:failed', failedSubtask, parentTask.id, failures[0].reason as Error);
+            }
+          }
+        }
+        throw failures[0].reason;
+      }
+    }
+  }
+
+  /**
+   * Execute subtasks based on their dependencies
+   */
+  private async executeSubtasksDependencyBased(parentTask: Task): Promise<void> {
+    const subtaskIds = new Set(parentTask.subtaskIds || []);
+    const completedSubtasks = new Set<string>();
+    const inProgressSubtasks = new Set<string>();
+
+    while (completedSubtasks.size < subtaskIds.size) {
+      // Check if parent was cancelled
+      const currentParent = await this.store.getTask(parentTask.id);
+      if (currentParent?.status === 'cancelled') {
+        return;
+      }
+
+      // Find subtasks ready to run (dependencies met, not completed, not in progress)
+      const readySubtasks: string[] = [];
+
+      for (const subtaskId of subtaskIds) {
+        if (completedSubtasks.has(subtaskId) || inProgressSubtasks.has(subtaskId)) {
+          continue;
+        }
+
+        const subtask = await this.store.getTask(subtaskId);
+        if (!subtask) continue;
+
+        // Check if all dependencies are completed
+        const deps = subtask.dependsOn || [];
+        const depsCompleted = deps.every(dep => completedSubtasks.has(dep));
+
+        if (depsCompleted) {
+          readySubtasks.push(subtaskId);
         }
       }
-    } catch (error) {
-      await this.store.addLog(taskId, {
-        level: 'error',
-        message: `Stage execution failed: ${(error as Error).message}`,
-        stage: stage.name,
-      });
-      throw error;
+
+      if (readySubtasks.length === 0) {
+        if (inProgressSubtasks.size === 0) {
+          // No ready subtasks and none in progress - we're stuck
+          throw new Error('Subtask dependencies cannot be resolved');
+        }
+        // Wait for in-progress subtasks
+        await this.sleep(100);
+        continue;
+      }
+
+      // Execute ready subtasks in parallel (up to max concurrent)
+      const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
+      const batch = readySubtasks.slice(0, maxConcurrent);
+
+      for (const subtaskId of batch) {
+        inProgressSubtasks.add(subtaskId);
+      }
+
+      const results = await Promise.allSettled(
+        batch.map(async (subtaskId) => {
+          try {
+            await this.executeTask(subtaskId);
+            const completedSubtask = await this.store.getTask(subtaskId);
+            if (completedSubtask) {
+              this.emit('subtask:completed', completedSubtask, parentTask.id);
+            }
+            return { subtaskId, success: true };
+          } catch (error) {
+            const failedSubtask = await this.store.getTask(subtaskId);
+            if (failedSubtask) {
+              this.emit('subtask:failed', failedSubtask, parentTask.id, error as Error);
+            }
+            throw error;
+          }
+        })
+      );
+
+      // Process results
+      for (let i = 0; i < batch.length; i++) {
+        const subtaskId = batch[i];
+        inProgressSubtasks.delete(subtaskId);
+        completedSubtasks.add(subtaskId);
+
+        if (results[i].status === 'rejected') {
+          throw (results[i] as PromiseRejectedResult).reason;
+        }
+      }
     }
+  }
+
+  /**
+   * Aggregate results from all subtasks into the parent task
+   */
+  private async aggregateSubtaskResults(parentTaskId: string): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) return;
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    const allArtifacts: string[] = [];
+    const subtaskSummaries: string[] = [];
+
+    for (const subtaskId of parentTask.subtaskIds || []) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (!subtask) continue;
+
+      totalInputTokens += subtask.usage.inputTokens;
+      totalOutputTokens += subtask.usage.outputTokens;
+
+      // Collect artifacts
+      for (const artifact of subtask.artifacts) {
+        if (artifact.path) {
+          allArtifacts.push(artifact.path);
+        }
+      }
+
+      subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+    }
+
+    // Update parent task with aggregated usage
+    await this.store.updateTask(parentTaskId, {
+      usage: {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens: totalInputTokens + totalOutputTokens,
+        estimatedCost: calculateCost(totalInputTokens, totalOutputTokens),
+      },
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Subtask execution complete:\n${subtaskSummaries.join('\n')}`,
+    });
+  }
+
+  /**
+   * Get all subtasks for a parent task
+   */
+  async getSubtasks(parentTaskId: string): Promise<Task[]> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || !parentTask.subtaskIds) {
+      return [];
+    }
+
+    const subtasks: Task[] = [];
+    for (const subtaskId of parentTask.subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask) {
+        subtasks.push(subtask);
+      }
+    }
+
+    return subtasks;
+  }
+
+  /**
+   * Get the parent task for a subtask
+   */
+  async getParentTask(subtaskId: string): Promise<Task | null> {
+    await this.ensureInitialized();
+
+    const subtask = await this.store.getTask(subtaskId);
+    if (!subtask || !subtask.parentTaskId) {
+      return null;
+    }
+
+    return this.store.getTask(subtask.parentTaskId);
+  }
+
+  /**
+   * Check if a task is a subtask
+   */
+  async isSubtask(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    return task?.parentTaskId != null;
+  }
+
+  /**
+   * Check if a task has subtasks
+   */
+  async hasSubtasks(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    return (task?.subtaskIds || []).length > 0;
+  }
+
+  /**
+   * Get the status summary of all subtasks
+   */
+  async getSubtaskStatus(parentTaskId: string): Promise<{
+    total: number;
+    completed: number;
+    failed: number;
+    pending: number;
+    inProgress: number;
+  }> {
+    await this.ensureInitialized();
+
+    const subtasks = await this.getSubtasks(parentTaskId);
+
+    return {
+      total: subtasks.length,
+      completed: subtasks.filter(s => s.status === 'completed').length,
+      failed: subtasks.filter(s => s.status === 'failed').length,
+      pending: subtasks.filter(s => s.status === 'pending').length,
+      inProgress: subtasks.filter(s => s.status === 'in-progress').length,
+    };
   }
 }
 
 export { TaskStore } from './store';
-export { buildOrchestratorPrompt, buildAgentDefinitions } from './prompts';
+export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt } from './prompts';
 export { createHooks } from './hooks';
 export {
   estimateTokens,

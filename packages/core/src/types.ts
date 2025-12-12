@@ -138,6 +138,13 @@ export const ApexConfigSchema = z.object({
     .object({
       url: z.string().optional().default('http://localhost:3000'),
       port: z.number().optional().default(3000),
+      autoStart: z.boolean().optional().default(false),
+    })
+    .optional(),
+  webUI: z
+    .object({
+      port: z.number().optional().default(3001),
+      autoStart: z.boolean().optional().default(false),
     })
     .optional(),
 });
@@ -178,6 +185,10 @@ export interface Task {
   maxRetries: number;
   dependsOn?: string[];  // Task IDs this task depends on
   blockedBy?: string[];  // Computed: tasks that are blocking this one
+  // Subtask support
+  parentTaskId?: string;   // If this is a subtask, the parent task ID
+  subtaskIds?: string[];   // If this is a parent task, IDs of its subtasks
+  subtaskStrategy?: SubtaskStrategy; // How subtasks should be executed
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
@@ -185,6 +196,31 @@ export interface Task {
   logs: TaskLog[];
   artifacts: TaskArtifact[];
   error?: string;
+}
+
+/**
+ * Strategy for how subtasks should be executed
+ */
+export type SubtaskStrategy = 'sequential' | 'parallel' | 'dependency-based';
+
+/**
+ * Request to decompose a task into subtasks
+ */
+export interface TaskDecomposition {
+  parentTaskId: string;
+  subtasks: SubtaskDefinition[];
+  strategy: SubtaskStrategy;
+}
+
+/**
+ * Definition for creating a subtask
+ */
+export interface SubtaskDefinition {
+  description: string;
+  acceptanceCriteria?: string;
+  workflow?: string;
+  priority?: TaskPriority;
+  dependsOn?: string[];  // References other subtask descriptions or IDs
 }
 
 export interface TaskUsage {
@@ -209,6 +245,23 @@ export interface TaskArtifact {
   path?: string;
   content?: string;
   createdAt: Date;
+}
+
+// ============================================================================
+// Stage Execution Results
+// ============================================================================
+
+export interface StageResult {
+  stageName: string;
+  agent: string;
+  status: 'completed' | 'failed' | 'skipped';
+  outputs: Record<string, unknown>;
+  artifacts: string[];  // File paths created/modified
+  summary: string;      // Agent's summary of what was done
+  usage: TaskUsage;
+  error?: string;
+  startedAt: Date;
+  completedAt: Date;
 }
 
 // ============================================================================
@@ -252,7 +305,7 @@ export interface CreateTaskRequest {
   workflow?: string;
   autonomy?: AutonomyLevel;
   priority?: TaskPriority;
-  projectPath: string;
+  projectPath?: string; // Optional when calling via API (server knows the project path)
 }
 
 export interface CreateTaskResponse {
@@ -288,6 +341,10 @@ export type ApexEventType =
   | 'task:completed'
   | 'task:failed'
   | 'task:paused'
+  | 'task:decomposed'
+  | 'subtask:created'
+  | 'subtask:completed'
+  | 'subtask:failed'
   | 'agent:message'
   | 'agent:tool-use'
   | 'agent:tool-result'

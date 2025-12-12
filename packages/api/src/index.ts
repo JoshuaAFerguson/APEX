@@ -10,8 +10,16 @@ import {
   UpdateTaskStatusRequest,
   ApproveGateRequest,
   ApexEvent,
+  SubtaskStrategy,
+  SubtaskDefinition,
 } from '@apex/core';
 import { ApexOrchestrator } from '@apex/orchestrator';
+
+// Subtask API request types
+interface DecomposeTaskRequest {
+  subtasks: SubtaskDefinition[];
+  strategy?: SubtaskStrategy;
+}
 
 // WebSocket client tracking
 const clients = new Map<string, Set<WebSocket>>();
@@ -20,14 +28,15 @@ export interface ServerOptions {
   port?: number;
   host?: string;
   projectPath: string;
+  silent?: boolean;
 }
 
 export async function createServer(options: ServerOptions): Promise<FastifyInstance> {
-  const { port = 3000, host = '0.0.0.0', projectPath } = options;
+  const { port = 3000, host = '0.0.0.0', projectPath, silent = false } = options;
 
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST;
   const app = Fastify({
-    logger: isTest ? false : {
+    logger: (isTest || silent) ? false : {
       level: 'info',
       transport: {
         target: 'pino-pretty',
@@ -167,6 +176,199 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   );
 
+  // Cancel a task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/cancel',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const cancelled = await orchestrator.cancelTask(id);
+      if (!cancelled) {
+        return reply.status(400).send({ error: 'Task cannot be cancelled (already completed or failed)' });
+      }
+
+      return { ok: true, message: 'Task cancelled' };
+    }
+  );
+
+  // Retry a failed/cancelled/stuck task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/retry',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      // Allow retry for failed, cancelled, or stuck in-progress tasks
+      const retryableStatuses = ['failed', 'cancelled', 'in-progress', 'planning'];
+      if (!retryableStatuses.includes(task.status)) {
+        return reply.status(400).send({ error: 'Only failed, cancelled, or stuck tasks can be retried' });
+      }
+
+      // Reset task and start execution
+      await orchestrator.updateTaskStatus(id, 'pending');
+      orchestrator.executeTask(id).catch((error) => {
+        app.log.error(`Task ${id} retry failed: ${error.message}`);
+      });
+
+      return { ok: true, message: 'Task retry started' };
+    }
+  );
+
+  // ============================================================================
+  // Subtasks API
+  // ============================================================================
+
+  // Decompose a task into subtasks
+  app.post<{ Params: { id: string }; Body: DecomposeTaskRequest }>(
+    '/tasks/:id/decompose',
+    async (request, reply) => {
+      const { id } = request.params;
+      const { subtasks: subtaskDefinitions, strategy = 'sequential' } = request.body;
+
+      if (!subtaskDefinitions || subtaskDefinitions.length === 0) {
+        return reply.status(400).send({ error: 'At least one subtask definition is required' });
+      }
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const subtasks = await orchestrator.decomposeTask(id, subtaskDefinitions, strategy);
+
+      return {
+        ok: true,
+        parentTaskId: id,
+        subtasks: subtasks.map(s => ({
+          id: s.id,
+          description: s.description,
+          status: s.status,
+        })),
+        strategy,
+      };
+    }
+  );
+
+  // Get subtasks for a task
+  app.get<{ Params: { id: string } }>(
+    '/tasks/:id/subtasks',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const subtasks = await orchestrator.getSubtasks(id);
+
+      return {
+        parentTaskId: id,
+        subtasks,
+        count: subtasks.length,
+      };
+    }
+  );
+
+  // Get subtask status summary
+  app.get<{ Params: { id: string } }>(
+    '/tasks/:id/subtasks/status',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const status = await orchestrator.getSubtaskStatus(id);
+
+      return {
+        parentTaskId: id,
+        ...status,
+      };
+    }
+  );
+
+  // Execute subtasks for a parent task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/subtasks/execute',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const hasSubtasks = await orchestrator.hasSubtasks(id);
+      if (!hasSubtasks) {
+        return reply.status(400).send({ error: 'Task has no subtasks to execute' });
+      }
+
+      // Start subtask execution in background
+      orchestrator.executeSubtasks(id).catch((error) => {
+        app.log.error(`Subtask execution for ${id} failed: ${error.message}`);
+      });
+
+      return {
+        ok: true,
+        message: 'Subtask execution started',
+        parentTaskId: id,
+      };
+    }
+  );
+
+  // Get parent task for a subtask
+  app.get<{ Params: { id: string } }>(
+    '/tasks/:id/parent',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const parent = await orchestrator.getParentTask(id);
+      if (!parent) {
+        return reply.status(404).send({ error: 'This task has no parent (not a subtask)' });
+      }
+
+      return parent;
+    }
+  );
+
+  // Check if task is a subtask
+  app.get<{ Params: { id: string } }>(
+    '/tasks/:id/is-subtask',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const isSubtask = await orchestrator.isSubtask(id);
+
+      return {
+        taskId: id,
+        isSubtask,
+        parentTaskId: task.parentTaskId || null,
+      };
+    }
+  );
+
   // ============================================================================
   // Gates API
   // ============================================================================
@@ -199,6 +401,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
+      // Store the approval
+      await orchestrator.approveGate(id, gateName, approver || 'anonymous', comment);
+
       // Broadcast approval
       broadcast(id, {
         type: 'gate:approved',
@@ -208,6 +413,50 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       });
 
       return { ok: true };
+    }
+  );
+
+  // Reject a gate
+  app.post<{ Params: { id: string; gateName: string }; Body: ApproveGateRequest }>(
+    '/tasks/:id/gates/:gateName/reject',
+    async (request, reply) => {
+      const { id, gateName } = request.params;
+      const { approver, comment } = request.body;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      // Store the rejection
+      await orchestrator.rejectGate(id, gateName, approver || 'anonymous', comment);
+
+      // Broadcast rejection
+      broadcast(id, {
+        type: 'gate:rejected',
+        taskId: id,
+        timestamp: new Date(),
+        data: { gateName, rejector: approver, comment },
+      });
+
+      return { ok: true };
+    }
+  );
+
+  // Get all gates for a task
+  app.get<{ Params: { id: string } }>(
+    '/tasks/:id/gates',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const gates = await orchestrator.getAllGates(id);
+
+      return { gates };
     }
   );
 
@@ -367,32 +616,90 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       data: { ...usage },
     });
   });
+
+  // Subtask events
+  orchestrator.on('task:decomposed', (task, subtaskIds) => {
+    broadcast(task.id, {
+      type: 'task:decomposed',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: { subtaskIds, strategy: task.subtaskStrategy },
+    });
+  });
+
+  orchestrator.on('subtask:created', (subtask, parentTaskId) => {
+    broadcast(parentTaskId, {
+      type: 'subtask:created',
+      taskId: parentTaskId,
+      timestamp: new Date(),
+      data: { subtask: { ...subtask } as Record<string, unknown> },
+    });
+  });
+
+  orchestrator.on('subtask:completed', (subtask, parentTaskId) => {
+    broadcast(parentTaskId, {
+      type: 'subtask:completed',
+      taskId: parentTaskId,
+      timestamp: new Date(),
+      data: { subtask: { ...subtask } as Record<string, unknown> },
+    });
+  });
+
+  orchestrator.on('subtask:failed', (subtask, parentTaskId, error) => {
+    broadcast(parentTaskId, {
+      type: 'subtask:failed',
+      taskId: parentTaskId,
+      timestamp: new Date(),
+      data: { subtask: { ...subtask } as Record<string, unknown>, error: error.message },
+    });
+  });
 }
 
 /**
  * Start the server
  */
 export async function startServer(options: ServerOptions): Promise<void> {
-  const { port = 3000, host = '0.0.0.0' } = options;
+  const { port = 3000, host = '0.0.0.0', silent = false } = options;
 
   const server = await createServer(options);
 
   try {
     await server.listen({ port, host });
-    console.log(`\n🚀 APEX API Server running at http://${host}:${port}\n`);
-    console.log('Endpoints:');
-    console.log(`  POST   /tasks              - Create a new task`);
-    console.log(`  GET    /tasks              - List tasks`);
-    console.log(`  GET    /tasks/:id          - Get task details`);
-    console.log(`  POST   /tasks/:id/status   - Update task status`);
-    console.log(`  POST   /tasks/:id/log      - Add log entry`);
-    console.log(`  GET    /tasks/:id/gates/:n - Check gate status`);
-    console.log(`  POST   /tasks/:id/gates/:n/approve - Approve gate`);
-    console.log(`  GET    /agents             - List agents`);
-    console.log(`  GET    /config             - Get configuration`);
-    console.log(`  WS     /stream/:taskId     - Real-time task updates\n`);
+
+    if (!silent) {
+      console.log(`\n🚀 APEX API Server running at http://${host}:${port}\n`);
+      console.log('Task Endpoints:');
+      console.log(`  POST   /tasks                    - Create a new task`);
+      console.log(`  GET    /tasks                    - List tasks`);
+      console.log(`  GET    /tasks/:id                - Get task details`);
+      console.log(`  POST   /tasks/:id/status         - Update task status`);
+      console.log(`  POST   /tasks/:id/log            - Add log entry`);
+      console.log(`  POST   /tasks/:id/cancel         - Cancel a task`);
+      console.log(`  POST   /tasks/:id/retry          - Retry a failed task`);
+      console.log('');
+      console.log('Subtask Endpoints:');
+      console.log(`  POST   /tasks/:id/decompose      - Decompose task into subtasks`);
+      console.log(`  GET    /tasks/:id/subtasks       - Get subtasks for a task`);
+      console.log(`  GET    /tasks/:id/subtasks/status- Get subtask status summary`);
+      console.log(`  POST   /tasks/:id/subtasks/execute - Execute subtasks`);
+      console.log(`  GET    /tasks/:id/parent         - Get parent task (for subtasks)`);
+      console.log(`  GET    /tasks/:id/is-subtask     - Check if task is a subtask`);
+      console.log('');
+      console.log('Gate Endpoints:');
+      console.log(`  GET    /tasks/:id/gates          - List all gates`);
+      console.log(`  GET    /tasks/:id/gates/:n       - Check gate status`);
+      console.log(`  POST   /tasks/:id/gates/:n/approve - Approve gate`);
+      console.log(`  POST   /tasks/:id/gates/:n/reject  - Reject gate`);
+      console.log('');
+      console.log('Other Endpoints:');
+      console.log(`  GET    /agents                   - List agents`);
+      console.log(`  GET    /config                   - Get configuration`);
+      console.log(`  WS     /stream/:taskId           - Real-time task updates\n`);
+    }
   } catch (error) {
-    server.log.error(error);
+    if (!silent) {
+      server.log.error(error);
+    }
     process.exit(1);
   }
 }
@@ -401,6 +708,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
 if (require.main === module) {
   const projectPath = process.env.APEX_PROJECT || process.cwd();
   const port = parseInt(process.env.PORT || '3000', 10);
+  const silent = process.env.APEX_SILENT === '1';
 
-  startServer({ projectPath, port }).catch(console.error);
+  startServer({ projectPath, port, silent }).catch(console.error);
 }

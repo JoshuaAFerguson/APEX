@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint } from '@apex/core';
+import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apex/core';
 
 export class TaskStore {
   private db!: Database.Database;
@@ -22,6 +22,36 @@ export class TaskStore {
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.createTables();
+    this.runMigrations();
+  }
+
+  /**
+   * Run database migrations
+   */
+  private runMigrations(): void {
+    // Get existing columns in tasks table
+    const columns = this.db
+      .prepare("PRAGMA table_info(tasks)")
+      .all() as { name: string }[];
+    const columnNames = new Set(columns.map((c) => c.name));
+
+    // Add missing columns
+    const migrations: { column: string; definition: string }[] = [
+      { column: 'parent_task_id', definition: 'TEXT' },
+      { column: 'subtask_ids', definition: 'TEXT' },
+      { column: 'subtask_strategy', definition: 'TEXT' },
+      { column: 'priority', definition: "TEXT DEFAULT 'normal'" },
+    ];
+
+    for (const { column, definition } of migrations) {
+      if (!columnNames.has(column)) {
+        try {
+          this.db.exec(`ALTER TABLE tasks ADD COLUMN ${column} ${definition}`);
+        } catch {
+          // Column might already exist or table doesn't exist yet
+        }
+      }
+    }
   }
 
   /**
@@ -50,7 +80,10 @@ export class TaskStore {
         usage_output_tokens INTEGER DEFAULT 0,
         usage_total_tokens INTEGER DEFAULT 0,
         usage_estimated_cost REAL DEFAULT 0,
-        error TEXT
+        error TEXT,
+        parent_task_id TEXT,
+        subtask_ids TEXT,
+        subtask_strategy TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -137,11 +170,13 @@ export class TaskStore {
       INSERT INTO tasks (
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
         current_stage, project_path, branch_name, retry_count, max_retries, created_at, updated_at,
-        usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost
+        usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
+        parent_task_id, subtask_ids, subtask_strategy
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
         @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @createdAt, @updatedAt,
-        @inputTokens, @outputTokens, @totalTokens, @estimatedCost
+        @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
+        @parentTaskId, @subtaskIds, @subtaskStrategy
       )
     `);
 
@@ -164,6 +199,9 @@ export class TaskStore {
       outputTokens: task.usage.outputTokens,
       totalTokens: task.usage.totalTokens,
       estimatedCost: task.usage.estimatedCost,
+      parentTaskId: task.parentTaskId || null,
+      subtaskIds: task.subtaskIds && task.subtaskIds.length > 0 ? JSON.stringify(task.subtaskIds) : null,
+      subtaskStrategy: task.subtaskStrategy || null,
     });
 
     // Insert dependencies if any
@@ -211,6 +249,11 @@ export class TaskStore {
       completedAt: Date;
       prUrl: string;
       retryCount: number;
+      parentTaskId: string;
+      subtaskIds: string[];
+      subtaskStrategy: SubtaskStrategy;
+      dependsOn: string[];
+      blockedBy: string[];
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -265,6 +308,38 @@ export class TaskStore {
     if (updates.retryCount !== undefined) {
       setClauses.push('retry_count = @retryCount');
       params.retryCount = updates.retryCount;
+    }
+
+    if (updates.parentTaskId !== undefined) {
+      setClauses.push('parent_task_id = @parentTaskId');
+      params.parentTaskId = updates.parentTaskId;
+    }
+
+    if (updates.subtaskIds !== undefined) {
+      setClauses.push('subtask_ids = @subtaskIds');
+      params.subtaskIds = updates.subtaskIds.length > 0 ? JSON.stringify(updates.subtaskIds) : null;
+    }
+
+    if (updates.subtaskStrategy !== undefined) {
+      setClauses.push('subtask_strategy = @subtaskStrategy');
+      params.subtaskStrategy = updates.subtaskStrategy;
+    }
+
+    // Handle dependency updates (update the task_dependencies table)
+    if (updates.dependsOn !== undefined) {
+      // Clear existing dependencies
+      this.db.prepare('DELETE FROM task_dependencies WHERE task_id = ?').run(taskId);
+
+      // Insert new dependencies
+      if (updates.dependsOn.length > 0) {
+        const depStmt = this.db.prepare(`
+          INSERT INTO task_dependencies (task_id, depends_on_task_id)
+          VALUES (@taskId, @dependsOnTaskId)
+        `);
+        for (const depId of updates.dependsOn) {
+          depStmt.run({ taskId, dependsOnTaskId: depId });
+        }
+      }
     }
 
     if (setClauses.length === 0) return;
@@ -381,13 +456,37 @@ export class TaskStore {
   }
 
   /**
-   * Get task logs
+   * Get task logs (internal)
    */
   private async getTaskLogs(taskId: string): Promise<TaskLog[]> {
-    const stmt = this.db.prepare(
-      'SELECT * FROM task_logs WHERE task_id = ? ORDER BY timestamp ASC'
-    );
-    const rows = stmt.all(taskId) as TaskLogRow[];
+    return this.getLogs(taskId);
+  }
+
+  /**
+   * Get task logs (public)
+   */
+  async getLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<TaskLog[]> {
+    let sql = 'SELECT * FROM task_logs WHERE task_id = ?';
+    const params: unknown[] = [taskId];
+
+    if (options?.level) {
+      sql += ' AND level = ?';
+      params.push(options.level);
+    }
+
+    sql += ' ORDER BY timestamp DESC';
+
+    if (options?.limit) {
+      sql += ' LIMIT ?';
+      params.push(options.limit);
+      if (options?.offset) {
+        sql += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as TaskLogRow[];
 
     return rows.map((row) => ({
       timestamp: new Date(row.timestamp),
@@ -512,6 +611,56 @@ export class TaskStore {
   }
 
   /**
+   * Reject a gate
+   */
+  async rejectGate(taskId: string, gateName: string, rejector: string, comment?: string): Promise<void> {
+    await this.setGate(taskId, {
+      name: gateName,
+      status: 'rejected',
+      requiredAt: new Date(), // Will be ignored due to ON CONFLICT
+      respondedAt: new Date(),
+      approver: rejector,
+      comment,
+    });
+  }
+
+  /**
+   * Get all pending gates for a task
+   */
+  async getPendingGates(taskId: string): Promise<Gate[]> {
+    const stmt = this.db.prepare('SELECT * FROM gates WHERE task_id = ? AND status = ?');
+    const rows = stmt.all(taskId, 'pending') as GateRow[];
+
+    return rows.map((row) => ({
+      taskId: row.task_id,
+      name: row.name,
+      status: row.status as GateStatus,
+      requiredAt: new Date(row.required_at),
+      respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
+      approver: row.approver || undefined,
+      comment: row.comment || undefined,
+    }));
+  }
+
+  /**
+   * Get all gates for a task
+   */
+  async getAllGates(taskId: string): Promise<Gate[]> {
+    const stmt = this.db.prepare('SELECT * FROM gates WHERE task_id = ? ORDER BY required_at DESC');
+    const rows = stmt.all(taskId) as GateRow[];
+
+    return rows.map((row) => ({
+      taskId: row.task_id,
+      name: row.name,
+      status: row.status as GateStatus,
+      requiredAt: new Date(row.required_at),
+      respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
+      approver: row.approver || undefined,
+      comment: row.comment || undefined,
+    }));
+  }
+
+  /**
    * Convert database row to Task object
    */
   private rowToTask(
@@ -537,6 +686,9 @@ export class TaskStore {
       maxRetries: row.max_retries || 3,
       dependsOn: dependsOn || [],
       blockedBy: blockedBy || [],
+      parentTaskId: row.parent_task_id || undefined,
+      subtaskIds: row.subtask_ids ? JSON.parse(row.subtask_ids) : [],
+      subtaskStrategy: row.subtask_strategy as SubtaskStrategy || undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -813,6 +965,9 @@ interface TaskRow {
   usage_total_tokens: number;
   usage_estimated_cost: number;
   error: string | null;
+  parent_task_id: string | null;
+  subtask_ids: string | null;
+  subtask_strategy: string | null;
 }
 
 interface TaskLogRow {
