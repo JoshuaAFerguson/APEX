@@ -93,6 +93,13 @@ export const GitConfigSchema = z.object({
   commitFormat: z.enum(['conventional', 'simple']).optional().default('conventional'),
   autoPush: z.boolean().optional().default(true),
   defaultBranch: z.string().optional().default('main'),
+  // New options for automatic git operations
+  commitAfterSubtask: z.boolean().optional().default(true),   // Commit after each subtask completes
+  pushAfterTask: z.boolean().optional().default(true),         // Push after parent task completes
+  createPR: z.enum(['always', 'never', 'ask']).optional().default('always'), // When to create PR
+  prDraft: z.boolean().optional().default(false),              // Create PR as draft
+  prLabels: z.array(z.string()).optional(),                    // Labels to add to PR
+  prReviewers: z.array(z.string()).optional(),                 // Reviewers to request
 });
 export type GitConfig = z.infer<typeof GitConfigSchema>;
 

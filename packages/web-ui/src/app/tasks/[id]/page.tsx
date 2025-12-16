@@ -14,7 +14,7 @@ import { TokenUsageChart } from '@/components/charts/TokenUsageChart'
 import { apiClient } from '@/lib/api-client'
 import { useTaskStream } from '@/lib/websocket-client'
 import { formatCost, getStatusVariant, formatStatus, formatDate, truncateId } from '@/lib/utils'
-import { ChevronLeft, RefreshCw, XCircle, RotateCcw, Clock, GitBranch, User } from 'lucide-react'
+import { ChevronLeft, RefreshCw, XCircle, RotateCcw, Clock, GitBranch, User, Play } from 'lucide-react'
 import type { Task, ApexEvent } from '@apex/core'
 
 interface LogEntry {
@@ -169,6 +169,18 @@ export default function TaskDetailPage() {
     }
   }
 
+  const handleResume = async () => {
+    try {
+      setActionLoading('resume')
+      await apiClient.resumeTask(taskId)
+      await loadTask()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resume task')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -222,9 +234,12 @@ export default function TaskDetailPage() {
   const isFailed = task.status === 'failed'
   const isCancelled = task.status === 'cancelled'
   const isPending = task.status === 'pending' || task.status === 'queued'
+  const isPaused = task.status === 'paused'
   const isWaitingApproval = task.status === 'waiting-approval'
   // Can retry failed, cancelled, or stuck in-progress tasks
   const canRetry = isFailed || isCancelled || isRunning
+  // Can resume paused tasks
+  const canResume = isPaused
 
   return (
     <div className="p-8">
@@ -307,6 +322,21 @@ export default function TaskDetailPage() {
                   <RotateCcw className="w-4 h-4 mr-1" />
                 )}
                 {isRunning ? 'Restart' : 'Retry'}
+              </Button>
+            )}
+            {canResume && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleResume}
+                disabled={actionLoading === 'resume'}
+              >
+                {actionLoading === 'resume' ? (
+                  <Spinner size="sm" className="mr-1" />
+                ) : (
+                  <Play className="w-4 h-4 mr-1" />
+                )}
+                Resume
               </Button>
             )}
           </div>

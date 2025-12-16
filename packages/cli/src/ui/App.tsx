@@ -21,37 +21,13 @@ const VERSION = '0.3.0';
 
 /**
  * Build agent list from workflow configuration for AgentPanel display
+ * Note: This is a placeholder - workflows are loaded dynamically via loadWorkflow()
+ * The actual agent list is populated via orchestrator events
  */
-function getWorkflowAgents(workflowName: string, config: ApexConfig | null): AgentInfo[] {
-  if (!config || !config.workflows) {
-    return [];
-  }
-
-  const workflow = config.workflows[workflowName];
-  if (!workflow || !workflow.stages) {
-    return [];
-  }
-
-  // Extract unique agents from workflow stages
-  const agentNames = new Set<string>();
-  const agentStageMap = new Map<string, string[]>();
-
-  workflow.stages.forEach(stage => {
-    if (stage.agent) {
-      agentNames.add(stage.agent);
-      if (!agentStageMap.has(stage.agent)) {
-        agentStageMap.set(stage.agent, []);
-      }
-      agentStageMap.get(stage.agent)?.push(stage.name);
-    }
-  });
-
-  // Convert to AgentInfo array with default status
-  return Array.from(agentNames).map(name => ({
-    name,
-    status: 'idle' as const,
-    stage: agentStageMap.get(name)?.[0], // First stage for this agent
-  }));
+function getWorkflowAgents(_workflowName: string, _config: ApexConfig | null): AgentInfo[] {
+  // Workflows are loaded separately via loadWorkflow(), not stored in config
+  // The agent list is populated dynamically via orchestrator events (task:stage-changed)
+  return [];
 }
 
 export interface Message {

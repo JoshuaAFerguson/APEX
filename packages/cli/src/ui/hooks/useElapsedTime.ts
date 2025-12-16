@@ -8,7 +8,7 @@ import { formatElapsed } from '@apex/core';
  * @returns The formatted elapsed time string that updates in real-time
  */
 export function useElapsedTime(
-  startTime: Date | null,
+  startTime: Date | null | undefined,
   updateInterval: number = 1000
 ): string {
   const [elapsedTime, setElapsedTime] = useState<string>('0s');

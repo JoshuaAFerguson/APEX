@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ApexOrchestrator } from '@apex/orchestrator';
-import type { AgentInfo } from '../components/agents/AgentPanel';
+import type { AgentInfo } from '../components/agents/AgentPanel.js';
 
 export interface OrchestratorEventState {
   /** Current active agent */

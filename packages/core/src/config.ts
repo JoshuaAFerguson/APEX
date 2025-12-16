@@ -289,6 +289,12 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       commitFormat: config.git?.commitFormat || 'conventional',
       autoPush: config.git?.autoPush ?? true,
       defaultBranch: config.git?.defaultBranch || 'main',
+      commitAfterSubtask: config.git?.commitAfterSubtask ?? true,
+      pushAfterTask: config.git?.pushAfterTask ?? true,
+      createPR: config.git?.createPR || 'always',
+      prDraft: config.git?.prDraft ?? false,
+      prLabels: config.git?.prLabels,
+      prReviewers: config.git?.prReviewers,
     },
     limits: {
       maxTokensPerTask: config.limits?.maxTokensPerTask || 500000,
