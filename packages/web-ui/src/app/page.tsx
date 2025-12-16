@@ -33,9 +33,11 @@ export default function DashboardPage() {
   }
 
   // Calculate statistics
+  const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'queued').length
   const activeTasks = tasks.filter(t =>
-    t.status === 'queued' || t.status === 'planning' || t.status === 'in-progress' || t.status === 'waiting-approval'
+    t.status === 'planning' || t.status === 'in-progress' || t.status === 'waiting-approval'
   ).length
+  const pausedTasks = tasks.filter(t => t.status === 'paused').length
   const completedTasks = tasks.filter(t => t.status === 'completed').length
   const failedTasks = tasks.filter(t => t.status === 'failed').length
   const totalCost = tasks.reduce((sum, t) => sum + (t.usage?.estimatedCost || 0), 0)
@@ -90,10 +92,22 @@ export default function DashboardPage() {
         actions={<Button onClick={loadTasks}>Refresh</Button>}
       />
 
-      <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardHeader>
-            <h3 className="text-lg font-semibold">Active Tasks</h3>
+            <h3 className="text-lg font-semibold">Pending</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-500">{pendingTasks}</div>
+            <p className="text-sm text-foreground-secondary mt-1">
+              Waiting to start
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h3 className="text-lg font-semibold">Active</h3>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-apex-500">{activeTasks}</div>
@@ -105,7 +119,19 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <h3 className="text-lg font-semibold">Completed Tasks</h3>
+            <h3 className="text-lg font-semibold">Paused</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-orange-500">{pausedTasks}</div>
+            <p className="text-sm text-foreground-secondary mt-1">
+              Rate limited
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <h3 className="text-lg font-semibold">Completed</h3>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-500">{completedTasks}</div>
@@ -117,7 +143,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <h3 className="text-lg font-semibold">Failed Tasks</h3>
+            <h3 className="text-lg font-semibold">Failed</h3>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-500">{failedTasks}</div>
