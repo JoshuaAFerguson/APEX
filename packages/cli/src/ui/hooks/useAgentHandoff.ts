@@ -26,6 +26,16 @@ export interface HandoffAnimationState {
   arrowFrame: number;
   /** Timestamp when handoff animation started (for elapsed time) */
   handoffStartTime: Date | null;
+
+  // ====== NEW: Enhanced Visual Properties ======
+  /** Enhanced arrow animation frame (0-7 for smoother animation) */
+  arrowAnimationFrame: number;
+  /** Icon animation frame for agent icons */
+  iconFrame: number;
+  /** Color intensity for gradient-like transitions (0-1) */
+  colorIntensity: number;
+  /** Current color transition phase */
+  colorPhase: 'source-bright' | 'transitioning' | 'target-bright';
 }
 
 export interface UseAgentHandoffOptions {
@@ -39,6 +49,16 @@ export interface UseAgentHandoffOptions {
   enablePulse?: boolean;
   /** Frequency of pulse cycles during animation */
   pulseFrequency?: number;
+
+  // ====== NEW: Enhanced Visual Options ======
+  /** Arrow animation style */
+  arrowStyle?: 'basic' | 'enhanced' | 'sparkle';
+  /** Enable agent icons during handoff */
+  enableIcons?: boolean;
+  /** Enable smooth color transitions */
+  enableColorTransition?: boolean;
+  /** Use ASCII icons instead of emoji (for terminal compatibility) */
+  useAsciiIcons?: boolean;
 }
 
 /**
@@ -87,6 +107,76 @@ function formatHandoffElapsed(startTime: Date, currentTime: Date = new Date()): 
 }
 
 /**
+ * Easing function for smooth animation transitions
+ * @param t - Progress value (0-1)
+ * @returns Eased progress value (0-1)
+ */
+function easeInOutCubic(t: number): number {
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/**
+ * Arrow animation style type
+ */
+export type ArrowStyle = 'basic' | 'enhanced' | 'sparkle';
+
+/**
+ * Get enhanced arrow frame for smoother animation
+ * @param progress - Animation progress (0-1)
+ * @param style - Arrow animation style
+ * @returns Arrow frame index
+ */
+function getEnhancedArrowFrame(progress: number, style: ArrowStyle = 'enhanced'): number {
+  const frameCount = style === 'basic' ? 3 : 8;
+  const totalFrames = 60; // At 30fps, 2 seconds = 60 frames
+
+  if (style === 'basic') {
+    // Use original calculation for basic style
+    const frameIndex = Math.floor(progress * totalFrames);
+    return Math.min(Math.floor(frameIndex / 20), 2);
+  }
+
+  // Enhanced: More granular frame distribution with easing
+  const easedProgress = easeInOutCubic(progress);
+  return Math.min(Math.floor(easedProgress * frameCount), frameCount - 1);
+}
+
+/**
+ * Get icon animation frame
+ * @param progress - Animation progress (0-1)
+ * @returns Icon frame for coordinated animation
+ */
+function getIconFrame(progress: number): number {
+  // Icon frame coordinates with color transitions
+  if (progress < 0.25) return 0; // Source prominent
+  if (progress < 0.75) return Math.floor((progress - 0.25) * 8); // Transition
+  return 7; // Target prominent
+}
+
+/**
+ * Calculate color intensity for gradient-like transitions
+ * @param progress - Animation progress (0-1)
+ * @returns Color intensity (0-1)
+ */
+function getColorIntensity(progress: number): number {
+  // Smooth transition from source to target emphasis
+  return progress;
+}
+
+/**
+ * Get color transition phase based on progress
+ * @param progress - Animation progress (0-1)
+ * @returns Current color phase
+ */
+function getColorPhase(progress: number): 'source-bright' | 'transitioning' | 'target-bright' {
+  if (progress < 0.3) return 'source-bright';
+  if (progress < 0.7) return 'transitioning';
+  return 'target-bright';
+}
+
+/**
  * Custom hook for managing agent handoff animations
  * Follows the project pattern of setInterval-based animations for terminal compatibility
  */
@@ -99,7 +189,13 @@ export function useAgentHandoff(
     fadeDuration = 500,     // 0.5 seconds fade out
     frameRate = 30,         // 30 fps for smooth animation
     enablePulse = true,     // Enable pulse effect
-    pulseFrequency = 4      // 4 cycles during animation
+    pulseFrequency = 4,     // 4 cycles during animation
+
+    // Enhanced visual options with sensible defaults
+    arrowStyle = 'enhanced',      // Use enhanced arrows by default
+    enableIcons = true,           // Show agent icons by default
+    enableColorTransition = true, // Enable color transitions by default
+    useAsciiIcons = false        // Use emoji by default, fallback available
   } = options;
 
   const [animationState, setAnimationState] = useState<HandoffAnimationState>({
@@ -112,6 +208,12 @@ export function useAgentHandoff(
     pulseIntensity: 0,
     arrowFrame: 0,
     handoffStartTime: null,
+
+    // Enhanced visual properties
+    arrowAnimationFrame: 0,
+    iconFrame: 0,
+    colorIntensity: 0,
+    colorPhase: 'source-bright',
   });
 
   // Track previous agent value for comparison
@@ -152,6 +254,12 @@ export function useAgentHandoff(
       pulseIntensity: enablePulse ? 0.5 : 0,
       arrowFrame: 0,
       handoffStartTime,
+
+      // Enhanced visual properties
+      arrowAnimationFrame: 0,
+      iconFrame: 0,
+      colorIntensity: 0,
+      colorPhase: 'source-bright',
     });
 
     animationIdRef.current = setInterval(() => {
@@ -167,6 +275,12 @@ export function useAgentHandoff(
       const pulseIntensity = enablePulse ? getPulseIntensity(progress, pulseFrequency) : 0;
       const arrowFrame = getArrowFrame(progress);
 
+      // Calculate new enhanced visual properties
+      const arrowAnimationFrame = getEnhancedArrowFrame(progress, arrowStyle);
+      const iconFrame = enableIcons ? getIconFrame(progress) : 0;
+      const colorIntensity = enableColorTransition ? getColorIntensity(progress) : 0;
+      const colorPhase = enableColorTransition ? getColorPhase(progress) : 'source-bright';
+
       setAnimationState(prev => ({
         ...prev,
         progress,
@@ -174,6 +288,12 @@ export function useAgentHandoff(
         transitionPhase,
         pulseIntensity,
         arrowFrame,
+
+        // Enhanced visual properties
+        arrowAnimationFrame,
+        iconFrame,
+        colorIntensity,
+        colorPhase,
       }));
 
       // Complete animation when duration is reached
@@ -193,6 +313,12 @@ export function useAgentHandoff(
           pulseIntensity: 0,
           arrowFrame: 0,
           handoffStartTime: null,
+
+          // Enhanced visual properties reset
+          arrowAnimationFrame: 0,
+          iconFrame: 0,
+          colorIntensity: 0,
+          colorPhase: 'source-bright',
         });
       }
     }, frameInterval);

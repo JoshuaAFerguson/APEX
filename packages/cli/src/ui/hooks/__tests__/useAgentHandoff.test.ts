@@ -22,6 +22,14 @@ describe('useAgentHandoff', () => {
         currentAgent: null,
         progress: 0,
         isFading: false,
+        transitionPhase: 'idle',
+        pulseIntensity: 0,
+        arrowFrame: 0,
+        handoffStartTime: null,
+        arrowAnimationFrame: 0,
+        iconFrame: 0,
+        colorIntensity: 0,
+        colorPhase: 'source-bright',
       });
     });
 
