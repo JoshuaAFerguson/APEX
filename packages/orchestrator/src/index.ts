@@ -285,14 +285,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } catch (error) {
         lastError = error as Error;
 
-        // Check if this is a rate limit error - pause instead of retry/fail
-        if (this.isRateLimitError(lastError)) {
-          const retryAfterSeconds = this.extractRetryAfterSeconds(lastError);
-          await this.store.addLog(taskId, {
-            level: 'warn',
-            message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
-          });
-          await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+        // Check if this is a pausable error (rate limit or usage limit)
+        const pauseReason = this.isPausableError(lastError);
+        if (pauseReason) {
+          if (pauseReason === 'rate_limit') {
+            const retryAfterSeconds = this.extractRetryAfterSeconds(lastError);
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
+            });
+            await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+          } else {
+            // Usage limit - no auto-resume, user needs to add credits or wait for reset
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Usage limit reached. Task paused. Resume manually when limit resets or credits are added.`,
+            });
+            await this.pauseTask(taskId, 'usage_limit');
+          }
           return; // Exit - task is paused, not failed
         }
 
@@ -358,6 +368,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Check if an error is a usage/billing limit error that should pause the task
+   */
+  private isUsageLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('usage limit') ||
+           message.includes('credit') ||
+           message.includes('billing') ||
+           message.includes('quota') ||
+           message.includes('spending limit') ||
+           message.includes('insufficient') ||
+           message.includes('exceeded your') ||
+           message.includes('limit exceeded') ||
+           message.includes('monthly limit') ||
+           message.includes('daily limit');
+  }
+
+  /**
+   * Check if an error should pause the task (rate limit or usage limit)
+   */
+  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | false {
+    if (this.isRateLimitError(error)) {
+      return 'rate_limit';
+    }
+    if (this.isUsageLimitError(error)) {
+      return 'usage_limit';
+    }
+    return false;
+  }
+
+  /**
    * Extract retry-after time from rate limit error (in seconds)
    * Returns default of 60 seconds if not found
    */
@@ -391,7 +431,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'budget' | 'manual',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
@@ -599,6 +639,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Budget exceeded
     if (lowerMessage.includes('budget') || lowerMessage.includes('cost limit')) {
       return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${message}`;
+    }
+
+    // Usage/billing limit exceeded
+    if (lowerMessage.includes('usage limit') || lowerMessage.includes('credit') ||
+        lowerMessage.includes('billing') || lowerMessage.includes('quota') ||
+        lowerMessage.includes('spending limit') || lowerMessage.includes('insufficient') ||
+        lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
+        lowerMessage.includes('daily limit')) {
+      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
     }
 
     // Process exit errors
