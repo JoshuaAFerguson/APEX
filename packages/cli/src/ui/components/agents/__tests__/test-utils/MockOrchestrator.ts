@@ -222,6 +222,108 @@ export class MockOrchestrator extends EventEmitter {
   }
 
   /**
+   * Simulate progress updates for multiple parallel agents
+   */
+  simulateParallelProgress(
+    taskId: string,
+    agentProgressMap: Record<string, number>
+  ): void {
+    Object.entries(agentProgressMap).forEach(([agent, progress]) => {
+      this.emit('agent:progress', taskId, agent, progress);
+    });
+  }
+
+  /**
+   * Simulate malformed event for error testing
+   */
+  simulateMalformedEvent(eventType: string): void {
+    switch (eventType) {
+      case 'parallel-started':
+        this.emit('stage:parallel-started', 'task-1', null, undefined);
+        break;
+      case 'parallel-completed':
+        this.emit('stage:parallel-completed', undefined);
+        break;
+      case 'agent-transition':
+        this.emit('agent:transition', null, '', '');
+        break;
+      default:
+        this.emit(eventType, null, undefined);
+    }
+  }
+
+  /**
+   * Simulate rapid event sequence for performance testing
+   */
+  async simulateRapidEvents(
+    eventCount: number,
+    intervalMs: number = 10
+  ): Promise<void> {
+    for (let i = 0; i < eventCount; i++) {
+      this.emit('stage:parallel-started', `task-${i}`, [`stage-${i}`], [`agent-${i}`]);
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      this.emit('stage:parallel-completed', `task-${i}`);
+    }
+  }
+
+  /**
+   * Simulate complete parallel workflow with all events
+   */
+  async simulateFullParallelWorkflow(
+    taskId: string,
+    stages: Array<{ name: string; agent: string; progress?: number }>
+  ): Promise<void> {
+    // Start task
+    this.simulateTaskStart({ id: taskId, workflow: 'feature', status: 'running' });
+
+    // Sequential pre-parallel stages
+    this.simulateAgentTransition(taskId, null, 'planner');
+    this.simulateStageChange(taskId, 'planning', 'planner');
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Parallel execution
+    const stageNames = stages.map(s => s.name);
+    const agentNames = stages.map(s => s.agent);
+    this.simulateParallelStart(taskId, stageNames, agentNames);
+
+    // Simulate progress updates
+    for (const stage of stages) {
+      if (stage.progress !== undefined) {
+        this.emit('agent:progress', taskId, stage.agent, stage.progress);
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    // Complete parallel
+    this.simulateParallelComplete(taskId);
+
+    // Complete task
+    this.simulateTaskComplete({ id: taskId, status: 'completed' });
+  }
+
+  /**
+   * Simulate agent progress update
+   */
+  simulateAgentProgress(taskId: string, agentName: string, progress: number): void {
+    this.emit('agent:progress', taskId, agentName, progress);
+  }
+
+  /**
+   * Simulate multiple task isolation scenario
+   */
+  simulateMultiTaskEvents(
+    tasks: Array<{ id: string; events: Array<{ type: string; args: any[] }> }>
+  ): void {
+    tasks.forEach(task => {
+      task.events.forEach(event => {
+        this.emit(event.type, task.id, ...event.args);
+      });
+    });
+  }
+
+  /**
    * Helper method to clean up all listeners
    * Should be called in test cleanup
    */
