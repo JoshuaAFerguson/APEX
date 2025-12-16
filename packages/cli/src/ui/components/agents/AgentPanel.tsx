@@ -4,6 +4,7 @@ import { useAgentHandoff } from '../../hooks/useAgentHandoff.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { HandoffIndicator } from './HandoffIndicator.js';
 import { ProgressBar } from '../ProgressIndicators.js';
+import { ParallelExecutionView, ParallelAgent } from './ParallelExecutionView.js';
 
 export interface AgentInfo {
   name: string;
@@ -19,6 +20,7 @@ export interface AgentPanelProps {
   compact?: boolean;
   showParallel?: boolean;
   parallelAgents?: AgentInfo[];
+  useDetailedParallelView?: boolean;
 }
 
 const agentColors: Record<string, string> = {
@@ -44,6 +46,7 @@ export function AgentPanel({
   compact = false,
   showParallel = false,
   parallelAgents = [],
+  useDetailedParallelView = false,
 }: AgentPanelProps): React.ReactElement {
   // Use handoff animation hook to track agent transitions
   const handoffState = useAgentHandoff(currentAgent);
@@ -124,7 +127,20 @@ export function AgentPanel({
 
       {/* Parallel execution section */}
       {showParallel && parallelAgents.length > 1 && (
-        <ParallelSection agents={parallelAgents} />
+        useDetailedParallelView ? (
+          <ParallelExecutionView
+            agents={parallelAgents.map(agent => ({
+              name: agent.name,
+              status: agent.status,
+              stage: agent.stage,
+              progress: agent.progress,
+              startedAt: agent.startedAt,
+            }))}
+            compact={false}
+          />
+        ) : (
+          <ParallelSection agents={parallelAgents} />
+        )
       )}
     </Box>
   );

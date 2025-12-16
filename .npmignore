@@ -1,0 +1,52 @@
+# Source files (dist is published, not src)
+src/
+*.ts
+!*.d.ts
+
+# Tests
+__tests__/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+coverage/
+.nyc_output/
+
+# Build artifacts
+*.tsbuildinfo
+turbo/
+.turbo/
+
+# Development
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+
+# Git
+.git/
+.gitignore
+
+# Documentation (except README)
+docs/
+*.md
+!README.md
+
+# Config files
+.eslintrc*
+.prettierrc*
+tsconfig*.json
+vitest.config.*
+jest.config.*
+
+# CI/CD
+.github/
+
+# Local development
+.env*
+.apex/
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db

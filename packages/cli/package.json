@@ -1,13 +1,17 @@
 {
   "name": "@apex/cli",
   "version": "0.3.0",
-  "description": "APEX command-line interface",
+  "description": "APEX - AI-powered development team automation CLI",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "apex": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -16,12 +20,13 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@apex/api": "*",
-    "@apex/core": "*",
-    "@apex/orchestrator": "*",
+    "@apex/api": "^0.3.0",
+    "@apex/core": "^0.3.0",
+    "@apex/orchestrator": "^0.3.0",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
@@ -64,5 +69,32 @@
     "typescript": "^5.3.0",
     "vitest": "^4.0.15"
   },
-  "license": "MIT"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoshuaAFerguson/apex.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/JoshuaAFerguson/apex/issues"
+  },
+  "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
+  "keywords": [
+    "apex",
+    "ai",
+    "agents",
+    "cli",
+    "automation",
+    "development",
+    "claude",
+    "anthropic",
+    "devops"
+  ],
+  "author": "Joshua A. Ferguson",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

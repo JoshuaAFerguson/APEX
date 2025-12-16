@@ -1,26 +1,30 @@
 {
   "name": "@apex/orchestrator",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "APEX task orchestration engine using Claude Agent SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
-    "@apex/core": "*",
+    "@apex/core": "^0.3.0",
     "better-sqlite3": "^9.2.2",
     "eventemitter3": "^5.0.1"
   },
@@ -29,5 +33,19 @@
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"
   },
-  "license": "MIT"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoshuaAFerguson/apex.git",
+    "directory": "packages/orchestrator"
+  },
+  "bugs": {
+    "url": "https://github.com/JoshuaAFerguson/apex/issues"
+  },
+  "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
+  "keywords": ["apex", "ai", "agents", "orchestration", "claude", "anthropic"],
+  "author": "Joshua A. Ferguson",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

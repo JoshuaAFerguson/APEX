@@ -1,22 +1,26 @@
 {
   "name": "@apex/core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Core types and utilities for APEX",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "yaml": "^2.3.4",
@@ -26,5 +30,19 @@
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0"
   },
-  "license": "MIT"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoshuaAFerguson/apex.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/JoshuaAFerguson/apex/issues"
+  },
+  "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
+  "keywords": ["apex", "ai", "agents", "types", "utilities"],
+  "author": "Joshua A. Ferguson",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

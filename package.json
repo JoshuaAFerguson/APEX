@@ -1,6 +1,6 @@
 {
   "name": "apex",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Autonomous Product Engineering eXecutor - AI-powered development team automation",
   "private": true,
   "workspaces": [
