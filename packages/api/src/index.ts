@@ -234,21 +234,30 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
-      if (task.status !== 'paused') {
-        return reply.status(400).send({
-          error: `Task is not paused (current status: ${task.status}). Use /retry for failed tasks.`
-        });
+      // Handle paused tasks
+      if (task.status === 'paused') {
+        const resumed = await orchestrator.resumePausedTask(id);
+        if (!resumed) {
+          return reply.status(500).send({
+            error: 'Failed to resume task. Check if the task has a valid checkpoint.'
+          });
+        }
+        return { ok: true, message: 'Task resumed from paused state', taskId: id };
       }
 
-      // Resume the paused task
-      const resumed = await orchestrator.resumePausedTask(id);
-      if (!resumed) {
-        return reply.status(500).send({
-          error: 'Failed to resume task. Check if the task has a valid checkpoint.'
+      // Handle pending tasks (subtasks that were never started)
+      if (task.status === 'pending' || task.status === 'queued') {
+        // Start execution in background
+        orchestrator.executeTask(id).catch((error) => {
+          app.log.error(`Task ${id} failed: ${error.message}`);
         });
+        return { ok: true, message: 'Task execution started', taskId: id };
       }
 
-      return { ok: true, message: 'Task resumed' };
+      // For other statuses, suggest retry
+      return reply.status(400).send({
+        error: `Task cannot be resumed (current status: ${task.status}). Use /retry for failed/cancelled tasks.`
+      });
     }
   );
 

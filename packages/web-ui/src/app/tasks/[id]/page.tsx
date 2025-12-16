@@ -238,8 +238,8 @@ export default function TaskDetailPage() {
   const isWaitingApproval = task.status === 'waiting-approval'
   // Can retry failed, cancelled, or stuck in-progress tasks
   const canRetry = isFailed || isCancelled || isRunning
-  // Can resume paused tasks
-  const canResume = isPaused
+  // Can resume paused or pending tasks (pending tasks can be started)
+  const canResume = isPaused || isPending
 
   return (
     <div className="p-8">
@@ -336,7 +336,7 @@ export default function TaskDetailPage() {
                 ) : (
                   <Play className="w-4 h-4 mr-1" />
                 )}
-                Resume
+                {isPending ? 'Start' : 'Resume'}
               </Button>
             )}
           </div>
