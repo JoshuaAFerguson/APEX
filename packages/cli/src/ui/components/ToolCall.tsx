@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
+import type { DisplayMode } from '@apexcli/core';
 
 export interface ToolCallProps {
   toolName: string;
@@ -9,6 +10,7 @@ export interface ToolCallProps {
   status: 'pending' | 'running' | 'success' | 'error';
   duration?: number;
   collapsed?: boolean;
+  displayMode?: DisplayMode;
 }
 
 export function ToolCall({
@@ -18,6 +20,7 @@ export function ToolCall({
   status,
   duration,
   collapsed = false,
+  displayMode = 'normal',
 }: ToolCallProps): React.ReactElement {
   const getStatusIcon = () => {
     switch (status) {
@@ -72,6 +75,37 @@ export function ToolCall({
     return lines.slice(0, maxLines).join('\n') + `\n... (${lines.length - maxLines} more lines)`;
   };
 
+  // Auto-collapse in compact mode unless explicitly set
+  const shouldCollapse = collapsed || displayMode === 'compact';
+
+  // Compact mode: single line
+  if (displayMode === 'compact') {
+    return (
+      <Box gap={1}>
+        {getStatusIcon()}
+        <Text color={getToolColor()} bold>
+          {toolName}
+        </Text>
+        {input && (
+          <Text color="gray" dimColor>
+            {formatInput(input)}
+          </Text>
+        )}
+        {duration !== undefined && status !== 'running' && (
+          <Text color="gray" dimColor>
+            {duration}ms
+          </Text>
+        )}
+        {output && status === 'error' && (
+          <Text color="red" dimColor>
+            (error)
+          </Text>
+        )}
+      </Box>
+    );
+  }
+
+  // Normal and verbose mode
   return (
     <Box flexDirection="column" marginLeft={2}>
       {/* Tool header */}
@@ -90,10 +124,15 @@ export function ToolCall({
             ({duration}ms)
           </Text>
         )}
+        {displayMode === 'verbose' && status && (
+          <Text color="gray" dimColor>
+            [{status}]
+          </Text>
+        )}
       </Box>
 
       {/* Output (if not collapsed and has output) */}
-      {!collapsed && output && status !== 'running' && (
+      {!shouldCollapse && output && status !== 'running' && (
         <Box
           flexDirection="column"
           marginLeft={2}
@@ -102,7 +141,9 @@ export function ToolCall({
           borderColor="gray"
           paddingX={1}
         >
-          <Text color={status === 'error' ? 'red' : 'gray'}>{truncateOutput(output)}</Text>
+          <Text color={status === 'error' ? 'red' : 'gray'}>
+            {displayMode === 'verbose' ? output : truncateOutput(output)}
+          </Text>
         </Box>
       )}
     </Box>

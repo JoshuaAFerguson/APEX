@@ -1224,18 +1224,30 @@ function setConfigValue(config: ApexConfig, key: string, value: string): void {
 // ============================================================================
 
 async function handleCompact(): Promise<void> {
-  ctx.app?.updateState({ displayMode: 'compact' });
+  // Get current state to implement toggle behavior
+  const currentState = ctx.app?.getState();
+  const newMode = currentState?.displayMode === 'compact' ? 'normal' : 'compact';
+
+  ctx.app?.updateState({ displayMode: newMode });
   ctx.app?.addMessage({
     type: 'system',
-    content: 'Display mode set to compact: Single-line status, condensed output',
+    content: newMode === 'compact'
+      ? 'Display mode set to compact: Single-line status, condensed output'
+      : 'Display mode set to normal: Standard display with all components shown',
   });
 }
 
 async function handleVerbose(): Promise<void> {
-  ctx.app?.updateState({ displayMode: 'verbose' });
+  // Get current state to implement toggle behavior
+  const currentState = ctx.app?.getState();
+  const newMode = currentState?.displayMode === 'verbose' ? 'normal' : 'verbose';
+
+  ctx.app?.updateState({ displayMode: newMode });
   ctx.app?.addMessage({
     type: 'system',
-    content: 'Display mode set to verbose: Detailed debug output, full information',
+    content: newMode === 'verbose'
+      ? 'Display mode set to verbose: Detailed debug output, full information'
+      : 'Display mode set to normal: Standard display with all components shown',
   });
 }
 
@@ -1283,6 +1295,56 @@ async function handlePreview(args: string[]): Promise<void> {
       ctx.app?.addMessage({
         type: 'error',
         content: 'Usage: /preview [on|off|toggle|status]',
+      });
+  }
+}
+
+async function handleThoughts(args: string[]): Promise<void> {
+  const action = args[0]?.toLowerCase();
+
+  // Get current state
+  const currentState = ctx.app?.getState();
+
+  switch (action) {
+    case 'on':
+      ctx.app?.updateState({ showThoughts: true });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Thought visibility enabled: AI reasoning will be shown',
+      });
+      break;
+
+    case 'off':
+      ctx.app?.updateState({ showThoughts: false });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Thought visibility disabled: AI reasoning will be hidden',
+      });
+      break;
+
+    case undefined:
+    case 'toggle':
+      const newShowThoughts = !currentState?.showThoughts;
+      ctx.app?.updateState({ showThoughts: newShowThoughts });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: newShowThoughts
+          ? 'Thought visibility enabled: AI reasoning will be shown'
+          : 'Thought visibility disabled: AI reasoning will be hidden',
+      });
+      break;
+
+    case 'status':
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `Thought visibility is currently ${currentState?.showThoughts ? 'enabled' : 'disabled'}.`,
+      });
+      break;
+
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: 'Usage: /thoughts [on|off|toggle|status]',
       });
   }
 }
@@ -1343,6 +1405,9 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
     case 'preview':
     case 'p':
       await handlePreview(args);
+      break;
+    case 'thoughts':
+      await handleThoughts(args);
       break;
     default:
       ctx.app?.addMessage({

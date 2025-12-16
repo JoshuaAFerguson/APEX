@@ -32,6 +32,7 @@ export interface StatusBarProps {
   sessionName?: string;
   displayMode?: 'normal' | 'compact' | 'verbose';
   previewMode?: boolean;
+  showThoughts?: boolean;
 }
 
 export function StatusBar({
@@ -50,6 +51,7 @@ export function StatusBar({
   sessionName,
   displayMode = 'normal',
   previewMode = false,
+  showThoughts = false,
 }: StatusBarProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
@@ -89,6 +91,8 @@ export function StatusBar({
     subtaskProgress,
     sessionName,
     displayMode,
+    previewMode,
+    showThoughts,
   }, elapsed, terminalWidth);
 
   return (
@@ -286,12 +290,22 @@ function buildSegments(
   }
 
   // Preview mode indicator
-  if (previewMode) {
+  if (props.previewMode) {
     right.push({
       label: '',
       value: '📋 PREVIEW',
       valueColor: 'cyan',
       minWidth: 9,
+    });
+  }
+
+  // Show thoughts indicator
+  if (props.showThoughts) {
+    right.push({
+      label: '',
+      value: '💭 THOUGHTS',
+      valueColor: 'magenta',
+      minWidth: 10,
     });
   }
 

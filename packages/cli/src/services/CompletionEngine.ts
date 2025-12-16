@@ -101,6 +101,7 @@ export class CompletionEngine {
           { name: '/theme', desc: 'Change theme', icon: '🎨' },
           { name: '/compact', desc: 'Toggle compact mode', icon: '📦' },
           { name: '/verbose', desc: 'Toggle verbose mode', icon: '📢' },
+          { name: '/thoughts', desc: 'Toggle thought visibility', icon: '💭' },
         ];
 
         const query = input.toLowerCase();

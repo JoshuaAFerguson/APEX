@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import type { DisplayMode } from '@apexcli/core';
 import { useAgentHandoff } from '../../hooks/useAgentHandoff.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { HandoffIndicator } from './HandoffIndicator.js';
@@ -21,6 +22,7 @@ export interface AgentPanelProps {
   showParallel?: boolean;
   parallelAgents?: AgentInfo[];
   useDetailedParallelView?: boolean;
+  displayMode?: DisplayMode;
 }
 
 const agentColors: Record<string, string> = {
@@ -47,10 +49,15 @@ export function AgentPanel({
   showParallel = false,
   parallelAgents = [],
   useDetailedParallelView = false,
+  displayMode = 'normal',
 }: AgentPanelProps): React.ReactElement {
   // Use handoff animation hook to track agent transitions
   const handoffState = useAgentHandoff(currentAgent);
-  if (compact) {
+
+  // Determine if we should use compact display based on displayMode or compact prop
+  const useCompactDisplay = compact || displayMode === 'compact';
+
+  if (useCompactDisplay) {
     // Single line: ⚡developer[42s] | ○tester | ○reviewer with handoff indicator
     return (
       <Box>

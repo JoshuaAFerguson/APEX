@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
+import type { DisplayMode } from '@apexcli/core';
 
 export interface SubtaskInfo {
   id: string;
@@ -18,6 +19,7 @@ export interface TaskProgressProps {
   subtasks?: SubtaskInfo[];
   tokens?: { input: number; output: number };
   cost?: number;
+  displayMode?: DisplayMode;
 }
 
 export function TaskProgress({
@@ -30,6 +32,7 @@ export function TaskProgress({
   subtasks,
   tokens,
   cost,
+  displayMode = 'normal',
 }: TaskProgressProps): React.ReactElement {
   const getStatusIcon = (s: string) => {
     switch (s) {
@@ -96,6 +99,32 @@ export function TaskProgress({
     return `${total}`;
   };
 
+  // Compact mode: single line with essential info
+  if (displayMode === 'compact') {
+    return (
+      <Box gap={1}>
+        {getStatusIcon(status)}
+        <Text color={getStatusColor(status)} bold>
+          {status}
+        </Text>
+        <Text color="gray" dimColor>
+          {taskId.slice(0, 8)}
+        </Text>
+        <Text>{truncateDescription(description, 40)}</Text>
+        {agent && (
+          <Text color="magenta">⚡{agent}</Text>
+        )}
+        {tokens && (
+          <Text color="cyan">{formatTokens(tokens.input, tokens.output)}tk</Text>
+        )}
+        {cost !== undefined && (
+          <Text color="green">{formatCost(cost)}</Text>
+        )}
+      </Box>
+    );
+  }
+
+  // Normal and verbose mode: full display
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
       {/* Header */}
@@ -148,24 +177,24 @@ export function TaskProgress({
         )}
       </Box>
 
-      {/* Subtasks */}
+      {/* Subtasks - show more in verbose mode, less in normal mode */}
       {subtasks && subtasks.length > 0 && (
         <Box flexDirection="column" marginLeft={2} marginTop={1}>
           <Text color="gray" dimColor>
             Subtasks ({subtasks.filter((s) => s.status === 'completed').length}/{subtasks.length}):
           </Text>
-          {subtasks.slice(0, 5).map((subtask) => (
+          {subtasks.slice(0, displayMode === 'verbose' ? 10 : 5).map((subtask) => (
             <Box key={subtask.id} marginLeft={1} gap={1}>
               {getStatusIcon(subtask.status)}
               <Text color={getStatusColor(subtask.status)}>
-                {truncateDescription(subtask.description, 50)}
+                {truncateDescription(subtask.description, displayMode === 'verbose' ? 80 : 50)}
               </Text>
             </Box>
           ))}
-          {subtasks.length > 5 && (
+          {subtasks.length > (displayMode === 'verbose' ? 10 : 5) && (
             <Box marginLeft={2}>
               <Text color="gray" dimColor>
-                ... and {subtasks.length - 5} more
+                ... and {subtasks.length - (displayMode === 'verbose' ? 10 : 5)} more
               </Text>
             </Box>
           )}

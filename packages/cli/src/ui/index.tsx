@@ -51,6 +51,7 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
     sessionName: `Session ${new Date().toLocaleDateString()}`,
     displayMode: 'normal',
     previewMode: false,
+    showThoughts: false,
   };
 
   const { waitUntilExit, unmount } = render(

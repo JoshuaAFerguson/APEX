@@ -87,6 +87,12 @@ export interface AppState {
     };
     timestamp: Date;
   };
+
+  // Show thoughts state
+  showThoughts: boolean;
+
+  // Edit mode state for returning input to text field
+  editModeInput?: string;
 }
 
 export interface AppProps {
@@ -235,6 +241,23 @@ export function App({
           return;
         }
 
+        if (cmd === 'thoughts') {
+          setState((prev) => {
+            const newShowThoughts = !prev.showThoughts;
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newShowThoughts
+                  ? 'Thought visibility enabled: AI reasoning will be shown'
+                  : 'Thought visibility disabled: AI reasoning will be hidden'
+              });
+            }, 0);
+            return { ...prev, showThoughts: newShowThoughts };
+          });
+          return;
+        }
+
         setState((prev) => ({ ...prev, isProcessing: true }));
         try {
           await onCommand(cmd, args);
@@ -271,6 +294,7 @@ export function App({
       '/compact',
       '/verbose',
       '/preview',
+      '/thoughts',
       '/clear',
       '/exit',
       '/quit',
@@ -299,9 +323,14 @@ export function App({
         addMessage({ type: 'system', content: 'Preview cancelled.' });
         return;
       } else if (input?.toLowerCase() === 'e') {
-        // Edit - return input to text box for modification (this would need InputPrompt coordination)
-        setState(prev => ({ ...prev, pendingPreview: undefined }));
-        addMessage({ type: 'system', content: 'Edit mode not yet implemented.' });
+        // Edit - return input to text box for modification
+        const pendingInput = state.pendingPreview.input;
+        setState(prev => ({
+          ...prev,
+          pendingPreview: undefined,
+          editModeInput: pendingInput
+        }));
+        addMessage({ type: 'system', content: 'Returning to edit mode...' });
         return;
       }
       // Don't process other shortcuts in preview mode
@@ -475,6 +504,28 @@ export function App({
           return;
         }
 
+        if (command === 'thoughts') {
+          setState((prev) => {
+            const newShowThoughts = !prev.showThoughts;
+            return {
+              ...prev,
+              showThoughts: newShowThoughts,
+              messages: [
+                ...prev.messages,
+                {
+                  id: `msg_${Date.now()}`,
+                  type: 'system',
+                  content: newShowThoughts
+                    ? 'Thought visibility enabled: AI reasoning will be shown'
+                    : 'Thought visibility disabled: AI reasoning will be hidden',
+                  timestamp: new Date(),
+                },
+              ],
+            };
+          });
+          return;
+        }
+
         // Other commands
         setState((prev) => ({ ...prev, isProcessing: true }));
         try {
@@ -519,7 +570,7 @@ export function App({
         }
       }
     },
-    [handleExit, onCommand, onTask, conversationManager, addMessage]
+    [handleExit, onCommand, onTask, conversationManager, addMessage, state.previewMode]
   );
 
   // Method to update state from outside
@@ -581,8 +632,13 @@ export function App({
             addMessage({ type: 'system', content: 'Preview cancelled.' });
           }}
           onEdit={() => {
-            setState(prev => ({ ...prev, pendingPreview: undefined }));
-            addMessage({ type: 'system', content: 'Edit mode not yet implemented.' });
+            const pendingInput = state.pendingPreview!.input;
+            setState(prev => ({
+              ...prev,
+              pendingPreview: undefined,
+              editModeInput: pendingInput
+            }));
+            addMessage({ type: 'system', content: 'Returning to edit mode...' });
           }}
         />
       )}
@@ -642,6 +698,10 @@ export function App({
               <Text color="gray"> - Toggle input preview mode</Text>
             </Text>
             <Text>
+              <Text color="yellow">/thoughts</Text>
+              <Text color="gray"> - Toggle thought visibility</Text>
+            </Text>
+            <Text>
               <Text color="yellow">/clear</Text>
               <Text color="gray"> - Clear messages</Text>
             </Text>
@@ -680,6 +740,7 @@ export function App({
                 output={msg.toolOutput}
                 status={msg.toolStatus || 'success'}
                 duration={msg.toolDuration}
+                displayMode={state.displayMode}
               />
             );
           }
@@ -690,6 +751,7 @@ export function App({
               content={msg.content}
               agent={msg.agent}
               type={msg.type === 'error' ? 'error' : msg.type === 'system' ? 'system' : 'text'}
+              displayMode={state.displayMode}
             />
           );
         })}
@@ -705,12 +767,14 @@ export function App({
               agent={state.activeAgent}
               tokens={state.tokens}
               cost={state.cost}
+              displayMode={state.displayMode}
             />
             <AgentPanel
               agents={getWorkflowAgents(state.currentTask.workflow, state.config)}
               currentAgent={state.activeAgent}
               showParallel={state.showParallelPanel}
               parallelAgents={state.parallelAgents}
+              displayMode={state.displayMode}
             />
           </>
         )}
@@ -729,6 +793,8 @@ export function App({
         history={state.inputHistory}
         suggestions={getSmartSuggestions()}
         disabled={state.isProcessing}
+        initialValue={state.editModeInput}
+        onValueCleared={() => setState(prev => ({ ...prev, editModeInput: undefined }))}
       />
 
       {/* Status bar */}
@@ -746,6 +812,7 @@ export function App({
         subtaskProgress={state.subtaskProgress}
         displayMode={state.displayMode}
         previewMode={state.previewMode}
+        showThoughts={state.showThoughts}
       />
     </Box>
   );

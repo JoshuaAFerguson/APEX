@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { AdvancedInput, type Suggestion } from './AdvancedInput.js';
 import { CompletionEngine, type CompletionContext } from '../../services/CompletionEngine.js';
@@ -15,6 +15,8 @@ export interface InputPromptProps {
   completionEngine?: CompletionEngine;
   completionContext?: CompletionContext;
   shortcutManager?: ShortcutManager;
+  initialValue?: string;
+  onValueCleared?: () => void;
 }
 
 export function InputPrompt({
@@ -28,8 +30,19 @@ export function InputPrompt({
   completionEngine,
   completionContext,
   shortcutManager,
+  initialValue,
+  onValueCleared,
 }: InputPromptProps): React.ReactElement {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initialValue || '');
+
+  // Handle initialValue updates (for edit mode)
+  useEffect(() => {
+    if (initialValue !== undefined) {
+      setValue(initialValue);
+      // Clear the initial value to avoid re-setting on subsequent renders
+      onValueCleared?.();
+    }
+  }, [initialValue, onValueCleared]);
 
   // Convert string suggestions to Suggestion objects
   const suggestionObjects: Suggestion[] = suggestions.map(s => ({
