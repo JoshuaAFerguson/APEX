@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { useStdoutDimensions, type Breakpoint } from '../hooks/index.js';
 
 // Helper functions moved outside components for reuse
 const getLevelIcon = (level: string): { icon: string; color: string } => {
@@ -17,13 +18,61 @@ const getLevelIcon = (level: string): { icon: string; color: string } => {
   }
 };
 
-const formatTimestamp = (date: Date): string => {
+const formatTimestamp = (date: Date, abbreviated: boolean = false): string => {
+  if (abbreviated) {
+    return date.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
   return date.toLocaleTimeString('en-US', {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
+};
+
+// Responsive utility functions
+const calculateMessageMaxLength = (
+  totalWidth: number,
+  hasTimestamp: boolean,
+  hasAgent: boolean,
+  hasIcon: boolean,
+  isNarrow: boolean
+): number => {
+  // Reserve space for UI elements
+  let reserved = 4; // borders and padding
+  if (hasIcon) reserved += 3; // icon + space
+  if (hasTimestamp) reserved += isNarrow ? 8 : 12; // [HH:MM] or [HH:MM:SS] + brackets + space
+  if (hasAgent) reserved += 12; // average agent name [developer]
+
+  return Math.max(20, totalWidth - reserved);
+};
+
+const truncateMessage = (message: string, maxLength: number): string => {
+  if (message.length <= maxLength) return message;
+  return message.substring(0, maxLength - 3) + '...';
+};
+
+interface ResponsiveConfig {
+  messageMaxLength: number;
+  abbreviateTimestamp: boolean;
+  showIcons: boolean;
+}
+
+const getResponsiveConfig = (
+  width: number,
+  breakpoint: Breakpoint,
+  options: { hasTimestamp: boolean; hasAgent: boolean; hasIcon: boolean }
+): ResponsiveConfig => {
+  const isNarrow = breakpoint === 'narrow';
+  return {
+    messageMaxLength: calculateMessageMaxLength(width, options.hasTimestamp, options.hasAgent, options.hasIcon, isNarrow),
+    abbreviateTimestamp: isNarrow,
+    showIcons: !isNarrow || width >= 40, // Hide icons only in extremely narrow terminals
+  };
 };
 
 export interface LogEntry {

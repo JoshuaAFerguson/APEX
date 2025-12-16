@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/index.js';
 
 export interface StreamingTextProps {
   text: string;
@@ -9,6 +10,7 @@ export interface StreamingTextProps {
   onComplete?: () => void;
   width?: number;
   maxLines?: number;
+  responsive?: boolean; // Enable/disable responsive behavior (default: true)
 }
 
 /**
@@ -20,9 +22,17 @@ export function StreamingText({
   isComplete = false,
   showCursor = true,
   onComplete,
-  width,
+  width: explicitWidth,
   maxLines,
+  responsive = true,
 }: StreamingTextProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : undefined);
+
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showBlinkCursor, setShowBlinkCursor] = useState(true);
