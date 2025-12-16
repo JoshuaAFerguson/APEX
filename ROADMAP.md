@@ -222,7 +222,58 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.4.0 - Tool System & Autonomy
+## v0.4.0 - Sleepless Mode & Autonomy
+
+*24/7 autonomous operation with intelligent scheduling - inspired by [sleepless-agent](https://github.com/context-machine-lab/sleepless-agent)*
+
+### Daemon Mode
+- ⚪ **Background service** - Run APEX as persistent daemon (`apex daemon start/stop/status`)
+- ⚪ **Service installation** - `apex install-service` for systemd (Linux) and launchd (macOS)
+- ⚪ **Auto-start on boot** - Optional system service registration
+- ⚪ **Task queue processing** - Automatically process queued tasks
+- ⚪ **Health monitoring** - Self-healing daemon with watchdog
+- ⚪ **Graceful shutdown** - Complete in-progress tasks before stopping
+
+### Time-Based Usage Management
+- ⚪ **Day/night modes** - Different usage thresholds by time of day
+- ⚪ **Night mode (aggressive)** - Higher threshold (e.g., 96%) for overnight execution
+- ⚪ **Day mode (conservative)** - Lower threshold (e.g., 90%) to preserve manual capacity
+- ⚪ **Configurable time windows** - Define custom day/night hours
+- ⚪ **Auto-pause at threshold** - Stop new tasks when limit approached
+- ⚪ **Auto-resume after cooldown** - Resume when usage resets (already implemented for rate limits)
+
+### Task Auto-Generation (Idle Processing)
+- ⚪ **Idle task generation** - Generate improvement tasks during idle periods
+- ⚪ **Configurable strategies** - Maintenance (40%), refactoring (30%), documentation (20%), tests (10%)
+- ⚪ **Project-aware suggestions** - Analyze codebase for potential improvements
+- ⚪ **Priority queuing** - Auto-generated tasks at lower priority than manual
+- ⚪ **Strategy customization** - Configure via `.apex/config.yaml`
+- ⚪ **Opt-in/opt-out** - Disable auto-generation per project
+
+### Thought Capture Mode
+- ⚪ **Quick thought capture** - `apex think "idea"` for low-friction idea logging
+- ⚪ **Auto-commit to ideas branch** - Thoughts committed to `apex/ideas` branch
+- ⚪ **Thought → task promotion** - Convert thoughts to full tasks when ready
+- ⚪ **Thought search** - Search and browse captured thoughts
+- ⚪ **Thought expiration** - Optional auto-cleanup of old thoughts
+
+### Workspace Isolation
+- ⚪ **Isolated task directories** - Each task runs in its own workspace
+- ⚪ **Workspace cloning** - Clone repo for isolated execution
+- ⚪ **Parallel safety** - Multiple tasks can run without interference
+- ⚪ **Workspace cleanup** - Auto-cleanup after task completion
+- ⚪ **Shared vs isolated mode** - Configurable per workflow
+
+### Task Lifecycle Improvements
+- ⚪ **Soft delete (trash)** - `apex trash <taskId>` moves to trash instead of hard delete
+- ⚪ **Trash recovery** - `apex restore <taskId>` to recover deleted tasks
+- ⚪ **Trash management** - `apex trash list`, `apex trash empty`
+- ⚪ **Task archival** - Archive completed tasks for long-term storage
+- ⚪ **Task templates** - Save and reuse task configurations
+
+---
+
+## v0.5.0 - Tool System & Permissions
 
 *Powerful tool system with fine-grained permission controls*
 
@@ -271,7 +322,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.5.0 - Context & Memory
+## v0.6.0 - Context & Memory
 
 *Intelligent context management and project understanding*
 
@@ -315,9 +366,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.6.0 - Web Dashboard
+## v0.7.0 - Web Dashboard & Integrations
 
-*Visual interface for monitoring and management*
+*Visual interface for monitoring and management with chat platform integrations*
 
 ### Dashboard Core (`@apex/web-ui`)
 - 🟢 React + Next.js dashboard foundation
@@ -351,18 +402,38 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Task filtering and search
 - ⚪ Export task reports
 
-### Notifications
-- ⚪ In-app notification center
-- ⚪ Browser push notifications
-- ⚪ Email notifications
-- ⚪ Slack integration
-- ⚪ Discord integration
+### Slack Integration (Full Task Management)
+- ⚪ **Slack App** - OAuth-based Slack app installation
+- ⚪ **Task submission** - `/apex run "task description"` slash command
+- ⚪ **Thought capture** - `/apex think "idea"` for quick ideas
+- ⚪ **Status checks** - `/apex status` to view active tasks
+- ⚪ **Task reports** - `/apex report [taskId]` for detailed reports
+- ⚪ **Cancellation** - `/apex cancel <taskId>` to cancel tasks
+- ⚪ **Notifications** - Task completion/failure notifications to channels
+- ⚪ **Thread updates** - Real-time task progress in Slack threads
+
+### Other Chat Integrations
+- ⚪ Discord bot with similar commands
 - ⚪ Microsoft Teams integration
 - ⚪ Webhook support for custom integrations
 
+### Notifications
+- ⚪ In-app notification center
+- ⚪ Browser push notifications
+- ⚪ Email notifications (task completion, failures, daily digest)
+- ⚪ Configurable notification preferences
+
+### Reporting & Analytics
+- ⚪ **Daily reports** - Markdown summary of daily activity
+- ⚪ **Weekly digest** - Weekly task statistics and metrics
+- ⚪ **JSONL export** - Performance metrics in JSONL format
+- ⚪ **Task statistics** - Success/failure rates, average duration
+- ⚪ **Cost reports** - Usage breakdown by workflow, agent, time period
+- ⚪ **Custom reports** - Build reports with filters and date ranges
+
 ---
 
-## v0.7.0 - IDE Integration
+## v0.8.0 - IDE Integration
 
 *Deep integration with development environments*
 
@@ -392,7 +463,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.8.0 - Advanced Workflows
+## v0.9.0 - Advanced Workflows
 
 *Complex workflow capabilities and automation*
 
@@ -431,7 +502,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.9.0 - Intelligence & Learning
+## v0.10.0 - Intelligence & Learning
 
 *Smarter agents and continuous improvement*
 
@@ -460,7 +531,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.10.0 - Enterprise Features
+## v0.11.0 - Enterprise Features
 
 *Features for team and enterprise adoption*
 
@@ -501,7 +572,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.11.0 - Ecosystem & Extensibility
+## v0.12.0 - Ecosystem & Extensibility
 
 *Plugin system and community features*
 
@@ -537,7 +608,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.12.0 - Scale & Performance
+## v0.13.0 - Scale & Performance
 
 *Optimization for large-scale usage*
 
@@ -650,26 +721,31 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ## CLI Feature Comparison
 
-| Feature | Claude Code | Codex CLI | Gemini CLI | APEX (v0.3) |
-|---------|-------------|-----------|------------|-------------|
-| Streaming responses | ✅ | ✅ | ✅ | 🟢 |
-| Syntax highlighting | ✅ | ✅ | ✅ | 🟢 |
-| Markdown rendering | ✅ | ✅ | ✅ | 🟢 |
-| Diff views | ✅ | ✅ | ✅ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | 🟢 |
-| History navigation | ✅ | ✅ | ✅ | 🟢 |
-| History search (Ctrl+R) | ✅ | ✅ | ✅ | 🟢 |
-| Tool approval workflow | ✅ | ✅ | ✅ | ⚪ |
-| Cost/token tracking | ✅ | ✅ | ✅ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | 🟢 |
-| Session persistence | ✅ | ✅ | ✅ | 🟢 |
-| Git awareness | ✅ | ✅ | ✅ | 🟢 |
-| Theme support | ✅ | ✅ | ✅ | 🟢 |
-| **Multi-agent orchestration** | ❌ | ❌ | ❌ | 🟢 |
-| **Workflow system** | ❌ | ❌ | ❌ | 🟢 |
-| **Subtask decomposition** | ❌ | ❌ | ❌ | 🟢 |
-| **Web dashboard** | ❌ | ❌ | ❌ | 🟢 |
-| **Agent marketplace** | ❌ | ❌ | ❌ | ⚪ |
+| Feature | Claude Code | Codex CLI | Gemini CLI | Sleepless Agent | APEX |
+|---------|-------------|-----------|------------|-----------------|------|
+| Streaming responses | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| History navigation | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| History search (Ctrl+R) | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ⚪ |
+| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| Multi-turn conversations | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Session persistence | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| Git awareness | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| Theme support | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| **Workflow system** | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **24/7 daemon mode** | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Slack integration** | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Time-based scheduling** | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Task auto-generation** | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Thought capture** | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Agent marketplace** | ❌ | ❌ | ❌ | ❌ | ⚪ |
 
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | ✅ Has feature | ❌ No feature
 
@@ -700,15 +776,16 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 | v0.1.0 | Q1 2025 | Foundation ✅ |
 | v0.2.0 | Q1 2025 | Production Ready ✅ |
 | v0.3.0 | Q2 2025 | Claude Code-like CLI Experience |
-| v0.4.0 | Q2 2025 | Tool System & Autonomy |
-| v0.5.0 | Q2 2025 | Context & Memory |
-| v0.6.0 | Q3 2025 | Web Dashboard |
-| v0.7.0 | Q3 2025 | IDE Integration |
-| v0.8.0 | Q3 2025 | Advanced Workflows |
-| v0.9.0 | Q4 2025 | Intelligence & Learning |
-| v0.10.0 | Q4 2025 | Enterprise Features |
-| v0.11.0 | Q1 2026 | Ecosystem |
-| v0.12.0 | Q1 2026 | Scale & Performance |
+| v0.4.0 | Q2 2025 | Sleepless Mode & Autonomy |
+| v0.5.0 | Q2 2025 | Tool System & Permissions |
+| v0.6.0 | Q3 2025 | Context & Memory |
+| v0.7.0 | Q3 2025 | Web Dashboard & Integrations |
+| v0.8.0 | Q3 2025 | IDE Integration |
+| v0.9.0 | Q4 2025 | Advanced Workflows |
+| v0.10.0 | Q4 2025 | Intelligence & Learning |
+| v0.11.0 | Q1 2026 | Enterprise Features |
+| v0.12.0 | Q1 2026 | Ecosystem & Extensibility |
+| v0.13.0 | Q1 2026 | Scale & Performance |
 | v1.0.0 | Q2 2026 | General Availability |
 
 *Dates are tentative and subject to change based on community feedback and priorities.*
