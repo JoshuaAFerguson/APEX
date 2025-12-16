@@ -562,6 +562,82 @@ async function handleRetry(args: string[]): Promise<void> {
   });
 }
 
+async function handleResume(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const taskId = args[0];
+  if (!taskId) {
+    // If no task ID provided, show all paused tasks
+    const tasks = await ctx.orchestrator.listTasks({ status: 'paused' });
+    if (tasks.length === 0) {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'No paused tasks found.',
+      });
+      return;
+    }
+
+    const lines = ['**Paused Tasks:**\n'];
+    for (const task of tasks) {
+      const reason = task.pauseReason || 'unknown';
+      const resumeAfter = task.resumeAfter
+        ? `Auto-resume: ${task.resumeAfter.toLocaleTimeString()}`
+        : 'Manual resume required';
+      const desc = task.description.length > 40
+        ? task.description.slice(0, 37) + '...'
+        : task.description;
+      lines.push(`  ${task.id.slice(0, 12)} │ ${reason.padEnd(12)} │ ${resumeAfter.padEnd(25)} │ ${desc}`);
+    }
+    lines.push('\nUse /resume <task_id> to resume a specific task.');
+
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: lines.join('\n'),
+    });
+    return;
+  }
+
+  const task = await ctx.orchestrator.getTask(taskId);
+  if (!task) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Task not found: ${taskId}`,
+    });
+    return;
+  }
+
+  if (task.status !== 'paused') {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Task ${taskId} is not paused (status: ${task.status}). Use /retry for failed tasks.`,
+    });
+    return;
+  }
+
+  const resumed = await ctx.orchestrator.resumePausedTask(taskId);
+  if (resumed) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: `Resuming task ${taskId}...`,
+    });
+
+    ctx.app?.updateState({
+      currentTask: task,
+    });
+  } else {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to resume task ${taskId}. Check if the task has a valid checkpoint.`,
+    });
+  }
+}
+
 async function handleLogs(args: string[]): Promise<void> {
   if (!ctx.initialized || !ctx.orchestrator) {
     ctx.app?.addMessage({
@@ -1180,6 +1256,9 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
     case 'retry':
       await handleRetry(args);
       break;
+    case 'resume':
+      await handleResume(args);
+      break;
     case 'logs':
     case 'log':
       await handleLogs(args);
@@ -1308,9 +1387,40 @@ export async function startInkREPL(): Promise<void> {
       });
 
       ctx.orchestrator.on('task:completed', (task) => {
-        // Clear subtask progress when task completes
+        // Clear subtask progress and agent state when task completes
         ctx.app?.updateState({
           subtaskProgress: undefined,
+          previousAgent: undefined,
+          parallelAgents: [],
+          showParallelPanel: false,
+        });
+      });
+
+      ctx.orchestrator.on('task:failed', (task, error) => {
+        // Clear subtask progress and agent state when task fails
+        ctx.app?.updateState({
+          subtaskProgress: undefined,
+          previousAgent: undefined,
+          parallelAgents: [],
+          showParallelPanel: false,
+        });
+      });
+
+      // Handle task paused events (rate limits, etc.)
+      ctx.orchestrator.on('task:paused', (task, reason) => {
+        const resumeInfo = task.resumeAfter
+          ? `Will auto-resume at ${task.resumeAfter.toLocaleTimeString()}.`
+          : 'Use /resume to continue.';
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: `Task ${task.id.slice(0, 12)} paused (${reason}). ${resumeInfo}`,
+        });
+
+        // Clear current task since it's now paused
+        ctx.app?.updateState({
+          currentTask: undefined,
+          activeAgent: undefined,
         });
       });
 
@@ -1369,6 +1479,48 @@ export async function startInkREPL(): Promise<void> {
         ctx.app?.updateState({
           tokens: { input: usage.inputTokens, output: usage.outputTokens },
           cost: usage.estimatedCost,
+        });
+      });
+
+      // Track agent transitions for handoff animation
+      ctx.orchestrator.on('task:stage-changed', async (task, stageName) => {
+        // Look up the agent for this stage from the workflow
+        try {
+          const { loadWorkflow } = await import('@apex/core');
+          const workflow = await loadWorkflow(ctx.cwd, task.workflow);
+          const stage = workflow?.stages.find(s => s.name === stageName);
+
+          if (stage?.agent) {
+            const currentState = ctx.app?.getState();
+            ctx.app?.updateState({
+              previousAgent: currentState?.activeAgent,  // Save current as previous
+              activeAgent: stage.agent,                   // Set new current
+            });
+          }
+        } catch (error) {
+          // Gracefully handle workflow lookup failures
+          console.warn(`Failed to lookup workflow for agent transition: ${error}`);
+        }
+      });
+
+      // Track parallel execution
+      ctx.orchestrator.on('stage:parallel-started', (taskId, stages, agents) => {
+        const parallelAgents = agents.map(name => ({
+          name,
+          status: 'parallel' as const,
+          stage: stages[agents.indexOf(name)] || undefined,
+        }));
+
+        ctx.app?.updateState({
+          parallelAgents,
+          showParallelPanel: parallelAgents.length > 1,
+        });
+      });
+
+      ctx.orchestrator.on('stage:parallel-completed', (taskId) => {
+        ctx.app?.updateState({
+          parallelAgents: [],
+          showParallelPanel: false,
         });
       });
 

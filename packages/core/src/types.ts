@@ -192,6 +192,9 @@ export interface Task {
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
+  pausedAt?: Date;           // When the task was paused
+  resumeAfter?: Date;        // When to auto-resume (e.g., after rate limit reset)
+  pauseReason?: string;      // Why the task was paused (e.g., 'rate_limit', 'budget', 'manual')
   usage: TaskUsage;
   logs: TaskLog[];
   artifacts: TaskArtifact[];

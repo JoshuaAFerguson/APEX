@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import {
+  AgentPanel,
   Banner,
   InputPrompt,
   ResponseStream,
@@ -9,6 +10,7 @@ import {
   TaskProgress,
   ToolCall,
 } from './components/index.js';
+import type { AgentInfo } from './components/agents/AgentPanel.js';
 import type { ApexConfig, Task } from '@apex/core';
 import type { ApexOrchestrator } from '@apex/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
@@ -16,6 +18,41 @@ import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager
 import { CompletionEngine, type CompletionContext } from '../services/CompletionEngine.js';
 
 const VERSION = '0.3.0';
+
+/**
+ * Build agent list from workflow configuration for AgentPanel display
+ */
+function getWorkflowAgents(workflowName: string, config: ApexConfig | null): AgentInfo[] {
+  if (!config || !config.workflows) {
+    return [];
+  }
+
+  const workflow = config.workflows[workflowName];
+  if (!workflow || !workflow.stages) {
+    return [];
+  }
+
+  // Extract unique agents from workflow stages
+  const agentNames = new Set<string>();
+  const agentStageMap = new Map<string, string[]>();
+
+  workflow.stages.forEach(stage => {
+    if (stage.agent) {
+      agentNames.add(stage.agent);
+      if (!agentStageMap.has(stage.agent)) {
+        agentStageMap.set(stage.agent, []);
+      }
+      agentStageMap.get(stage.agent)?.push(stage.name);
+    }
+  });
+
+  // Convert to AgentInfo array with default status
+  return Array.from(agentNames).map(name => ({
+    name,
+    status: 'idle' as const,
+    stage: agentStageMap.get(name)?.[0], // First stage for this agent
+  }));
+}
 
 export interface Message {
   id: string;
@@ -49,6 +86,13 @@ export interface AppState {
   sessionStartTime?: Date;
   sessionName?: string;
   subtaskProgress?: { completed: number; total: number };
+
+  // Agent handoff tracking
+  previousAgent?: string;  // Previous agent for handoff animation
+
+  // Parallel execution tracking
+  parallelAgents?: AgentInfo[];  // Agents running in parallel
+  showParallelPanel?: boolean;   // Whether to show parallel section
 }
 
 export interface AppProps {
@@ -476,15 +520,23 @@ export function App({
 
         {/* Current task progress */}
         {state.currentTask && (
-          <TaskProgress
-            taskId={state.currentTask.id}
-            description={state.currentTask.description}
-            status={state.currentTask.status}
-            workflow={state.currentTask.workflow}
-            agent={state.activeAgent}
-            tokens={state.tokens}
-            cost={state.cost}
-          />
+          <>
+            <TaskProgress
+              taskId={state.currentTask.id}
+              description={state.currentTask.description}
+              status={state.currentTask.status}
+              workflow={state.currentTask.workflow}
+              agent={state.activeAgent}
+              tokens={state.tokens}
+              cost={state.cost}
+            />
+            <AgentPanel
+              agents={getWorkflowAgents(state.currentTask.workflow, state.config)}
+              currentAgent={state.activeAgent}
+              showParallel={state.showParallelPanel}
+              parallelAgents={state.parallelAgents}
+            />
+          </>
         )}
       </Box>
 

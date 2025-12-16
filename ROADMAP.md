@@ -166,9 +166,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Full ShortcutManager** - Context-aware shortcut system implemented
 
 ### Multi-Agent Visualization
-- 🟢 **Agent activity panel** - AgentPanel.tsx exists, needs enhancements
-- 🟡 **Agent handoff animation** - Need to add to AgentPanel
-- ⚪ **Parallel execution view** - Show agents working simultaneously
+- 🟢 **Agent activity panel** - AgentPanel.tsx with full mode and compact mode
+- 🟢 **Agent handoff animation** - Animated arrows (→→→), pulse effects, elapsed time display (see ADR-013)
+- 🟢 **Parallel execution view** - Shows agents working simultaneously with ⟂ icon, cyan styling (see ADR-012)
 - 🟢 **Subtask tree** - SubtaskTree.tsx exists, needs enhancements
 - 🟢 **Workflow progress** - Visual workflow stage progression
 - ⚪ **Agent thought display** - Show agent reasoning (collapsible)
@@ -195,10 +195,10 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Wire ShortcutManager event handlers | 🟢 | Complete | `cli/src/repl.tsx`, `App.tsx` |
 | Real-time streaming to UI | 🟢 | Complete | `cli/src/repl.tsx` (agent:message, agent:tool-use, usage:updated events) |
 
-**Phase 2: Enhancements (IN PROGRESS)**
+**Phase 2: Enhancements (MOSTLY COMPLETE)**
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
-| AgentPanel enhancements (handoff, parallel) | 🟡 | 1 day | `cli/src/ui/components/agents/AgentPanel.tsx` |
+| AgentPanel enhancements (handoff, parallel) | 🟢 | Complete | `AgentPanel.tsx`, `HandoffIndicator.tsx`, `useAgentHandoff.ts` (see ADR-012, ADR-013, ADR-014) |
 | SubtaskTree enhancements (collapse/expand) | 🟡 | 1 day | `cli/src/ui/components/agents/SubtaskTree.tsx` |
 | Display modes (compact/verbose) | ⚪ | 0.5 day | `cli/src/repl.tsx` |
 

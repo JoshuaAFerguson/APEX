@@ -102,3 +102,4 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
 
 export { App, type AppState, type AppProps, type Message } from './App.js';
 export * from './components/index.js';
+export * from './hooks/index.js';

@@ -39,3 +39,6 @@ export {
   type QuickSuccessProps
 } from './SuccessCelebration.js';
 export { IntentDetector, SmartSuggestions, type IntentDetectorProps, type Intent, type SmartSuggestionsProps } from './IntentDetector.js';
+
+// Agent components
+export { AgentPanel, HandoffIndicator, type AgentInfo, type AgentPanelProps, type HandoffIndicatorProps } from './agents/index.js';

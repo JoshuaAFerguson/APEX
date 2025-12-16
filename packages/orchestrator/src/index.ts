@@ -50,7 +50,7 @@ export interface OrchestratorEvents {
   'task:stage-changed': (task: Task, stage: string) => void;
   'task:completed': (task: Task) => void;
   'task:failed': (task: Task, error: Error) => void;
-  'task:paused': (task: Task, gate: string) => void;
+  'task:paused': (task: Task, reason: string) => void;
   'task:decomposed': (task: Task, subtaskIds: string[]) => void;
   'subtask:created': (subtask: Task, parentTaskId: string) => void;
   'subtask:completed': (subtask: Task, parentTaskId: string) => void;
@@ -60,6 +60,13 @@ export interface OrchestratorEvents {
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
   'pr:failed': (taskId: string, error: string) => void;
+
+  // New events for parallel execution
+  'stage:parallel-started': (taskId: string, stages: string[], agents: string[]) => void;
+  'stage:parallel-completed': (taskId: string) => void;
+
+  // Agent transition event (more explicit than task:stage-changed)
+  'agent:transition': (taskId: string, fromAgent: string | null, toAgent: string) => void;
 }
 
 export interface PRResult {
@@ -258,6 +265,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } catch (error) {
         lastError = error as Error;
 
+        // Check if this is a rate limit error - pause instead of retry/fail
+        if (this.isRateLimitError(lastError)) {
+          const retryAfterSeconds = this.extractRetryAfterSeconds(lastError);
+          await this.store.addLog(taskId, {
+            level: 'warn',
+            message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
+          });
+          await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+          return; // Exit - task is paused, not failed
+        }
+
         // Check if we should retry
         const canRetry = autoRetry && attempt < maxRetries && this.isRetryableError(lastError);
 
@@ -306,6 +324,218 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     return !nonRetryablePatterns.some(pattern =>
       error.message.toLowerCase().includes(pattern.toLowerCase())
     );
+  }
+
+  /**
+   * Check if an error is a rate limit error that should pause the task
+   */
+  private isRateLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('rate limit') ||
+           message.includes('too many requests') ||
+           message.includes('429') ||
+           message.includes('overloaded');
+  }
+
+  /**
+   * Extract retry-after time from rate limit error (in seconds)
+   * Returns default of 60 seconds if not found
+   */
+  private extractRetryAfterSeconds(error: Error): number {
+    const message = error.message;
+
+    // Try to extract retry-after from error message
+    // Common patterns: "retry after 60 seconds", "retry-after: 60", "wait 60s"
+    const patterns = [
+      /retry[- ]?after[:\s]+(\d+)/i,
+      /wait[:\s]+(\d+)\s*s/i,
+      /(\d+)\s*seconds?/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const seconds = parseInt(match[1], 10);
+        if (seconds > 0 && seconds < 3600) { // Sanity check: max 1 hour
+          return seconds;
+        }
+      }
+    }
+
+    // Default: 60 seconds
+    return 60;
+  }
+
+  /**
+   * Pause a task due to rate limiting or other pausable conditions
+   */
+  async pauseTask(
+    taskId: string,
+    reason: 'rate_limit' | 'budget' | 'manual',
+    resumeAfterSeconds?: number
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const now = new Date();
+    const resumeAfter = resumeAfterSeconds
+      ? new Date(now.getTime() + resumeAfterSeconds * 1000)
+      : undefined;
+
+    await this.store.updateTask(taskId, {
+      status: 'paused',
+      pausedAt: now,
+      pauseReason: reason,
+      resumeAfter,
+      updatedAt: now,
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: resumeAfter
+        ? `Task paused (${reason}). Will auto-resume after ${resumeAfter.toISOString()}`
+        : `Task paused (${reason}). Use /resume ${taskId} to continue.`,
+    });
+
+    const task = await this.store.getTask(taskId);
+    if (task) {
+      this.emit('task:paused', task, reason);
+
+      // If this is a subtask, pause the parent task too
+      if (task.parentTaskId) {
+        await this.pauseParentTask(task.parentTaskId, taskId, reason);
+      }
+    }
+
+    // Schedule auto-resume if resumeAfter is set
+    if (resumeAfter && resumeAfterSeconds) {
+      this.scheduleAutoResume(taskId, resumeAfterSeconds * 1000);
+    }
+  }
+
+  /**
+   * Pause a parent task because a subtask was paused
+   */
+  private async pauseParentTask(
+    parentTaskId: string,
+    subtaskId: string,
+    reason: string
+  ): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || parentTask.status === 'paused') {
+      return; // Already paused or doesn't exist
+    }
+
+    await this.store.updateTask(parentTaskId, {
+      status: 'paused',
+      pausedAt: new Date(),
+      pauseReason: `subtask_paused:${subtaskId}`,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Parent task paused because subtask ${subtaskId} was paused (${reason})`,
+    });
+
+    this.emit('task:paused', parentTask, `subtask_paused:${subtaskId}`);
+  }
+
+  /**
+   * Schedule auto-resume of a task after a delay
+   */
+  private scheduleAutoResume(taskId: string, delayMs: number): void {
+    setTimeout(async () => {
+      try {
+        const task = await this.store.getTask(taskId);
+        if (task && task.status === 'paused' && task.resumeAfter) {
+          // Only resume if the task is still paused and the resume time has passed
+          if (new Date() >= task.resumeAfter) {
+            await this.store.addLog(taskId, {
+              level: 'info',
+              message: 'Auto-resuming task after rate limit cooldown',
+            });
+            await this.resumePausedTask(taskId);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to auto-resume task ${taskId}:`, error);
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Resume a paused task
+   */
+  async resumePausedTask(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return false;
+    }
+
+    if (task.status !== 'paused') {
+      return false; // Not paused
+    }
+
+    // Clear pause-related fields
+    await this.store.updateTask(taskId, {
+      status: 'in-progress',
+      pausedAt: undefined,
+      pauseReason: undefined,
+      resumeAfter: undefined,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: 'Task resumed',
+    });
+
+    // Resume execution from checkpoint
+    const resumed = await this.resumeTask(taskId);
+
+    // If this is a subtask, check if parent should also resume
+    if (task.parentTaskId) {
+      await this.checkAndResumeParent(task.parentTaskId);
+    }
+
+    return resumed;
+  }
+
+  /**
+   * Check if a parent task should resume (all subtasks are no longer paused)
+   */
+  private async checkAndResumeParent(parentTaskId: string): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || parentTask.status !== 'paused') {
+      return;
+    }
+
+    // Check if the pause was due to a subtask
+    if (!parentTask.pauseReason?.startsWith('subtask_paused:')) {
+      return;
+    }
+
+    // Check if all subtasks are no longer paused
+    const subtasks = await this.getSubtasks(parentTaskId);
+    const anyPaused = subtasks.some(s => s.status === 'paused');
+
+    if (!anyPaused) {
+      // All subtasks are no longer paused, resume parent
+      await this.store.updateTask(parentTaskId, {
+        status: 'in-progress',
+        pausedAt: undefined,
+        pauseReason: undefined,
+        resumeAfter: undefined,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'Parent task resumed - all subtasks unpaused',
+      });
+    }
   }
 
   /**
@@ -470,6 +700,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           level: 'info',
           message: `Running ${readyStages.length} stages in parallel: ${readyStages.map(s => s.name).join(', ')}`,
         });
+
+        // Emit parallel execution started event
+        const stageNames = readyStages.map(s => s.name);
+        const agentNames = readyStages.map(s => s.agent);
+        this.emit('stage:parallel-started', task.id, stageNames, agentNames);
       }
 
       // Mark stages as in progress
@@ -492,6 +727,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           });
         }
         this.emit('task:stage-changed', task, stage.name);
+
+        // Emit agent transition event - we'll let the REPL track previous agent
+        this.emit('agent:transition', task.id, null, stage.agent);
 
         await this.store.addLog(task.id, {
           level: 'info',
@@ -570,6 +808,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         if (decompReq?.shouldDecompose) {
           decompositionRequest = decompReq;
         }
+      }
+
+      // Emit parallel execution completed event if we just finished parallel execution
+      if (results.length > 1) {
+        this.emit('stage:parallel-completed', task.id);
       }
 
       // If any stage failed, throw the first error
@@ -678,7 +921,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Convert agent model to SDK model format
     const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                     agent.model === 'haiku' ? 'claude-haiku-3-5-20241022' :
+                     agent.model === 'haiku' ? 'claude-3-5-haiku-20241022' :
                      'claude-sonnet-4-20250514';
 
     // Execute stage via Claude Agent SDK

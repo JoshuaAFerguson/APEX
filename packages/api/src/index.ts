@@ -223,6 +223,47 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   );
 
+  // Resume a paused task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/resume',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      if (task.status !== 'paused') {
+        return reply.status(400).send({
+          error: `Task is not paused (current status: ${task.status}). Use /retry for failed tasks.`
+        });
+      }
+
+      // Resume the paused task
+      const resumed = await orchestrator.resumePausedTask(id);
+      if (!resumed) {
+        return reply.status(500).send({
+          error: 'Failed to resume task. Check if the task has a valid checkpoint.'
+        });
+      }
+
+      return { ok: true, message: 'Task resumed' };
+    }
+  );
+
+  // List all paused tasks
+  app.get('/tasks/paused', async (request, reply) => {
+    const tasks = await orchestrator.listTasks({ status: 'paused' });
+    return {
+      tasks,
+      count: tasks.length,
+      message: tasks.length > 0
+        ? `${tasks.length} paused task(s) found. Use POST /tasks/:id/resume to resume.`
+        : 'No paused tasks found.'
+    };
+  });
+
   // ============================================================================
   // Subtasks API
   // ============================================================================
@@ -590,6 +631,20 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
+  orchestrator.on('task:paused', (task, reason) => {
+    broadcast(task.id, {
+      type: 'task:paused',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task },
+        reason,
+        pausedAt: task.pausedAt,
+        resumeAfter: task.resumeAfter,
+      },
+    });
+  });
+
   orchestrator.on('agent:message', (taskId, message) => {
     broadcast(taskId, {
       type: 'agent:message',
@@ -676,6 +731,8 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /tasks/:id/log            - Add log entry`);
       console.log(`  POST   /tasks/:id/cancel         - Cancel a task`);
       console.log(`  POST   /tasks/:id/retry          - Retry a failed task`);
+      console.log(`  POST   /tasks/:id/resume         - Resume a paused task`);
+      console.log(`  GET    /tasks/paused             - List paused tasks`);
       console.log('');
       console.log('Subtask Endpoints:');
       console.log(`  POST   /tasks/:id/decompose      - Decompose task into subtasks`);
