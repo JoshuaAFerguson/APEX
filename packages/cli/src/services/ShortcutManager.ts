@@ -309,6 +309,14 @@ export class ShortcutManager {
         action: { type: 'command', command: '/workflows' },
         context: 'global',
       },
+      // Toggle thoughts display
+      {
+        id: 'toggleThoughts',
+        description: 'Toggle thoughts display',
+        keys: { key: 't', ctrl: true },
+        action: { type: 'command', command: '/thoughts' },
+        context: 'global',
+      },
     ];
 
     for (const shortcut of defaults) {
