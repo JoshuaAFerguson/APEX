@@ -49,6 +49,8 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
     model: config?.models?.implementation || 'sonnet',
     sessionStartTime: new Date(),
     sessionName: `Session ${new Date().toLocaleDateString()}`,
+    displayMode: 'normal',
+    previewMode: false,
   };
 
   const { waitUntilExit, unmount } = render(

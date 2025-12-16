@@ -146,6 +146,7 @@ describe('Orchestrator Event Flow Validation', () => {
       model: 'claude-3-sonnet',
       activeAgent: undefined,
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

@@ -4,6 +4,7 @@ import {
   AgentPanel,
   Banner,
   InputPrompt,
+  PreviewPanel,
   ResponseStream,
   ServicesPanel,
   StatusBar,
@@ -11,7 +12,7 @@ import {
   ToolCall,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
-import type { ApexConfig, Task } from '@apexcli/core';
+import type { ApexConfig, Task, DisplayMode } from '@apexcli/core';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
@@ -63,12 +64,29 @@ export interface AppState {
   sessionName?: string;
   subtaskProgress?: { completed: number; total: number };
 
+  // Display mode for UI customization
+  displayMode: DisplayMode;
+
   // Agent handoff tracking
   previousAgent?: string;  // Previous agent for handoff animation
 
   // Parallel execution tracking
   parallelAgents?: AgentInfo[];  // Agents running in parallel
   showParallelPanel?: boolean;   // Whether to show parallel section
+
+  // Preview mode state
+  previewMode: boolean;
+  pendingPreview?: {
+    input: string;
+    intent: {
+      type: 'command' | 'task' | 'question' | 'clarification';
+      confidence: number;
+      command?: string;
+      args?: string[];
+      metadata?: Record<string, unknown>;
+    };
+    timestamp: Date;
+  };
 }
 
 export interface AppProps {
@@ -183,6 +201,16 @@ export function App({
           return;
         }
 
+        if (cmd === 'compact') {
+          setState((prev) => ({ ...prev, displayMode: 'compact' }));
+          return;
+        }
+
+        if (cmd === 'verbose') {
+          setState((prev) => ({ ...prev, displayMode: 'verbose' }));
+          return;
+        }
+
         setState((prev) => ({ ...prev, isProcessing: true }));
         try {
           await onCommand(cmd, args);
@@ -216,6 +244,9 @@ export function App({
       '/serve',
       '/web',
       '/stop',
+      '/compact',
+      '/verbose',
+      '/preview',
       '/clear',
       '/exit',
       '/quit',
@@ -228,6 +259,31 @@ export function App({
 
   // Handle global keyboard shortcuts
   useInput((input, key) => {
+    // Handle preview mode navigation first
+    if (state.pendingPreview) {
+      if (key.return) {
+        // Confirm - execute the pending action
+        const pendingPreview = state.pendingPreview;
+        setState((prev) => ({ ...prev, pendingPreview: undefined }));
+
+        // Execute the original input
+        handleInput(pendingPreview.input);
+        return;
+      } else if (key.escape) {
+        // Cancel - clear the preview
+        setState(prev => ({ ...prev, pendingPreview: undefined }));
+        addMessage({ type: 'system', content: 'Preview cancelled.' });
+        return;
+      } else if (input?.toLowerCase() === 'e') {
+        // Edit - return input to text box for modification (this would need InputPrompt coordination)
+        setState(prev => ({ ...prev, pendingPreview: undefined }));
+        addMessage({ type: 'system', content: 'Edit mode not yet implemented.' });
+        return;
+      }
+      // Don't process other shortcuts in preview mode
+      return;
+    }
+
     // Convert ink key event to ShortcutEvent
     const shortcutEvent: ShortcutEvent = {
       key: input || (key.tab ? 'Tab' : key.escape ? 'Escape' : key.return ? 'Enter' : ''),
@@ -295,6 +351,45 @@ export function App({
       // Detect intent
       const intent = conversationManager.detectIntent(input);
 
+      // Check if preview mode is enabled and this isn't the preview command itself
+      if (state.previewMode && !input.startsWith('/preview')) {
+        // Parse command/task details
+        let command: string | undefined;
+        let args: string[] = [];
+
+        if (input.startsWith('/')) {
+          const parts = input.slice(1).split(/\s+/);
+          command = parts[0].toLowerCase();
+          args = parts.slice(1);
+        }
+
+        // Store pending preview
+        setState((prev) => ({
+          ...prev,
+          pendingPreview: {
+            input,
+            intent: {
+              type: intent.type,
+              confidence: intent.confidence,
+              command,
+              args,
+              metadata: intent.metadata,
+            },
+            timestamp: new Date(),
+          },
+        }));
+
+        // Don't execute - show preview panel instead
+        return;
+      }
+
+      // Handle pending preview confirmation (if user is navigating preview)
+      if (state.pendingPreview) {
+        // Preview confirmation is handled by keyboard events, not text input
+        // If we reach here, treat it as normal input processing
+        setState((prev) => ({ ...prev, pendingPreview: undefined }));
+      }
+
       // Check if it's a command
       if (input.startsWith('/') || intent.type === 'command') {
         const parts = input.startsWith('/') ? input.slice(1).split(/\s+/) : input.split(/\s+/);
@@ -318,6 +413,41 @@ export function App({
         if (command === 'help' || command === 'h' || command === '?') {
           setShowHelp(true);
           setTimeout(() => setShowHelp(false), 10000);
+          return;
+        }
+
+        // Handle display mode commands
+        if (command === 'compact') {
+          setState((prev) => ({
+            ...prev,
+            displayMode: 'compact',
+            messages: [
+              ...prev.messages,
+              {
+                id: `msg_${Date.now()}`,
+                type: 'system',
+                content: 'Display mode set to compact: Single-line status, condensed output',
+                timestamp: new Date(),
+              },
+            ],
+          }));
+          return;
+        }
+
+        if (command === 'verbose') {
+          setState((prev) => ({
+            ...prev,
+            displayMode: 'verbose',
+            messages: [
+              ...prev.messages,
+              {
+                id: `msg_${Date.now()}`,
+                type: 'system',
+                content: 'Display mode set to verbose: Detailed debug output, full information',
+                timestamp: new Date(),
+              },
+            ],
+          }));
           return;
         }
 
@@ -411,6 +541,28 @@ export function App({
       {/* Services Panel - shows when API or Web UI are running */}
       <ServicesPanel apiUrl={state.apiUrl} webUrl={state.webUrl} />
 
+      {/* Preview Panel - shows when there's a pending preview */}
+      {state.pendingPreview && (
+        <PreviewPanel
+          input={state.pendingPreview.input}
+          intent={state.pendingPreview.intent}
+          workflow={state.pendingPreview.intent.metadata?.suggestedWorkflow as string}
+          onConfirm={() => {
+            const pendingPreview = state.pendingPreview!;
+            setState((prev) => ({ ...prev, pendingPreview: undefined }));
+            handleInput(pendingPreview.input);
+          }}
+          onCancel={() => {
+            setState(prev => ({ ...prev, pendingPreview: undefined }));
+            addMessage({ type: 'system', content: 'Preview cancelled.' });
+          }}
+          onEdit={() => {
+            setState(prev => ({ ...prev, pendingPreview: undefined }));
+            addMessage({ type: 'system', content: 'Edit mode not yet implemented.' });
+          }}
+        />
+      )}
+
       {/* Help overlay */}
       {showHelp && (
         <Box
@@ -454,6 +606,18 @@ export function App({
               <Text color="gray"> - Start Web UI</Text>
             </Text>
             <Text>
+              <Text color="yellow">/compact</Text>
+              <Text color="gray"> - Toggle compact display mode</Text>
+            </Text>
+            <Text>
+              <Text color="yellow">/verbose</Text>
+              <Text color="gray"> - Toggle verbose display mode</Text>
+            </Text>
+            <Text>
+              <Text color="yellow">/preview</Text>
+              <Text color="gray"> - Toggle input preview mode</Text>
+            </Text>
+            <Text>
               <Text color="yellow">/clear</Text>
               <Text color="gray"> - Clear messages</Text>
             </Text>
@@ -470,7 +634,19 @@ export function App({
 
       {/* Messages area */}
       <Box flexDirection="column" flexGrow={1} marginBottom={1}>
-        {state.messages.slice(-20).map((msg) => {
+        {state.messages.slice(-20).filter((msg) => {
+          // Filter messages based on display mode
+          if (state.displayMode === 'compact') {
+            // In compact mode, hide system messages and tool calls to save space
+            return msg.type !== 'system' && msg.type !== 'tool';
+          } else if (state.displayMode === 'verbose') {
+            // In verbose mode, show all messages including debug info
+            return true;
+          } else {
+            // In normal mode, show most messages but may filter some debug info
+            return true;
+          }
+        }).map((msg) => {
           if (msg.type === 'tool' && msg.toolName) {
             return (
               <ToolCall
@@ -544,6 +720,8 @@ export function App({
         sessionStartTime={state.sessionStartTime}
         sessionName={state.sessionName}
         subtaskProgress={state.subtaskProgress}
+        displayMode={state.displayMode}
+        previewMode={state.previewMode}
       />
     </Box>
   );

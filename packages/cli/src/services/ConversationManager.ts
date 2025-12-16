@@ -158,44 +158,86 @@ export class ConversationManager {
     metadata?: Record<string, unknown>;
   } {
     const normalized = input.toLowerCase().trim();
+    const metadata: Record<string, unknown> = {};
 
     // Command detection
     if (normalized.startsWith('/')) {
-      return { type: 'command', confidence: 1.0 };
+      const parts = input.slice(1).split(/\s+/);
+      metadata.command = parts[0].toLowerCase();
+      metadata.args = parts.slice(1);
+      metadata.matchedPattern = 'slash_command';
+
+      return {
+        type: 'command',
+        confidence: 1.0,
+        metadata
+      };
     }
 
     // Clarification response detection
     if (this.hasPendingClarification()) {
-      return { type: 'clarification', confidence: 0.9 };
+      return {
+        type: 'clarification',
+        confidence: 0.9,
+        metadata: { matchedPattern: 'pending_clarification' }
+      };
     }
 
     // Question patterns
     const questionPatterns = [
-      /^(what|how|where|when|why|who|can|could|would|should|is|are|do|does|will)\s/i,
-      /\?$/,
-      /^(explain|tell me|show me|help me understand)/i,
+      { pattern: /^(what|how|where|when|why|who|can|could|would|should|is|are|do|does|will)\s/i, name: 'interrogative_start' },
+      { pattern: /\?$/, name: 'question_mark_end' },
+      { pattern: /^(explain|tell me|show me|help me understand)/i, name: 'explanation_request' },
     ];
 
-    if (questionPatterns.some(pattern => pattern.test(normalized))) {
-      return { type: 'question', confidence: 0.8 };
+    for (const { pattern, name } of questionPatterns) {
+      if (pattern.test(normalized)) {
+        metadata.matchedPattern = name;
+        metadata.suggestedWorkflow = 'question';
+        metadata.estimatedComplexity = 'simple';
+
+        return {
+          type: 'question',
+          confidence: 0.8,
+          metadata
+        };
+      }
     }
 
-    // Task patterns
+    // Task patterns with complexity estimation
     const taskPatterns = [
-      /^(create|make|build|add|implement|write|develop|generate)/i,
-      /^(fix|solve|resolve|debug|correct)/i,
-      /^(update|modify|change|edit|refactor)/i,
-      /^(remove|delete|clean|clear)/i,
-      /^(test|check|verify|validate)/i,
-      /^(deploy|install|setup|configure)/i,
+      { pattern: /^(create|make|build|add|implement|write|develop|generate)/i, name: 'creation_task', complexity: 'moderate' },
+      { pattern: /^(fix|solve|resolve|debug|correct)/i, name: 'bugfix_task', complexity: 'simple' },
+      { pattern: /^(update|modify|change|edit|refactor)/i, name: 'modification_task', complexity: 'moderate' },
+      { pattern: /^(remove|delete|clean|clear)/i, name: 'deletion_task', complexity: 'simple' },
+      { pattern: /^(test|check|verify|validate)/i, name: 'testing_task', complexity: 'simple' },
+      { pattern: /^(deploy|install|setup|configure)/i, name: 'deployment_task', complexity: 'complex' },
     ];
 
-    if (taskPatterns.some(pattern => pattern.test(normalized))) {
-      return { type: 'task', confidence: 0.7 };
+    for (const { pattern, name, complexity } of taskPatterns) {
+      if (pattern.test(normalized)) {
+        metadata.matchedPattern = name;
+        metadata.suggestedWorkflow = name.includes('bugfix') ? 'bugfix' : 'feature';
+        metadata.estimatedComplexity = complexity;
+
+        return {
+          type: 'task',
+          confidence: 0.7,
+          metadata
+        };
+      }
     }
 
     // Default to task if it's not clearly a question
-    return { type: 'task', confidence: 0.5 };
+    metadata.matchedPattern = 'default_task';
+    metadata.suggestedWorkflow = 'feature';
+    metadata.estimatedComplexity = 'moderate';
+
+    return {
+      type: 'task',
+      confidence: 0.5,
+      metadata
+    };
   }
 
   // Smart suggestions based on context

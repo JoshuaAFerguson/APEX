@@ -116,6 +116,7 @@ describe('AgentPanel Parallel Orchestrator Event Wiring', () => {
       model: 'claude-3-sonnet',
       activeAgent: 'developer',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

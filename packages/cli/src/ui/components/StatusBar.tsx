@@ -30,6 +30,8 @@ export interface StatusBarProps {
   sessionStartTime?: Date;
   subtaskProgress?: { completed: number; total: number };
   sessionName?: string;
+  displayMode?: 'normal' | 'compact' | 'verbose';
+  previewMode?: boolean;
 }
 
 export function StatusBar({
@@ -46,6 +48,8 @@ export function StatusBar({
   sessionStartTime,
   subtaskProgress,
   sessionName,
+  displayMode = 'normal',
+  previewMode = false,
 }: StatusBarProps): React.ReactElement {
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns || 120;
@@ -84,6 +88,7 @@ export function StatusBar({
     sessionStartTime,
     subtaskProgress,
     sessionName,
+    displayMode,
   }, elapsed, terminalWidth);
 
   return (
@@ -132,6 +137,34 @@ function buildSegments(
 ): { left: Segment[]; right: Segment[] } {
   const left: Segment[] = [];
   const right: Segment[] = [];
+
+  // Handle compact mode - minimal status information
+  if (props.displayMode === 'compact') {
+    // Show only connection status, active agent, and elapsed time
+    left.push({
+      icon: props.isConnected !== false ? '●' : '○',
+      iconColor: props.isConnected !== false ? 'green' : 'red',
+      value: '',
+      valueColor: 'white',
+      minWidth: 2,
+    });
+
+    if (props.agent) {
+      left.push({
+        value: props.agent,
+        valueColor: 'white',
+        minWidth: props.agent.length,
+      });
+    }
+
+    right.push({
+      value: elapsed,
+      valueColor: 'gray',
+      minWidth: 6,
+    });
+
+    return { left, right };
+  }
 
   // Left side segments
   left.push({
@@ -252,7 +285,22 @@ function buildSegments(
     });
   }
 
-  // Filter segments based on available width
+  // Preview mode indicator
+  if (previewMode) {
+    right.push({
+      label: '',
+      value: '📋 PREVIEW',
+      valueColor: 'cyan',
+      minWidth: 9,
+    });
+  }
+
+  // Handle verbose mode - show all information, no filtering
+  if (props.displayMode === 'verbose') {
+    return { left, right };
+  }
+
+  // Filter segments based on available width (normal mode)
   const minLeftWidth = left.reduce((sum, s) => sum + s.minWidth + 1, 0);
   const minRightWidth = right.reduce((sum, s) => sum + s.minWidth + 1, 0);
   const padding = 6; // Border and spacing

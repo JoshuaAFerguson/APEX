@@ -1220,6 +1220,74 @@ function setConfigValue(config: ApexConfig, key: string, value: string): void {
 }
 
 // ============================================================================
+// Display Mode Command Handlers
+// ============================================================================
+
+async function handleCompact(): Promise<void> {
+  ctx.app?.updateState({ displayMode: 'compact' });
+  ctx.app?.addMessage({
+    type: 'system',
+    content: 'Display mode set to compact: Single-line status, condensed output',
+  });
+}
+
+async function handleVerbose(): Promise<void> {
+  ctx.app?.updateState({ displayMode: 'verbose' });
+  ctx.app?.addMessage({
+    type: 'system',
+    content: 'Display mode set to verbose: Detailed debug output, full information',
+  });
+}
+
+async function handlePreview(args: string[]): Promise<void> {
+  const action = args[0]?.toLowerCase();
+
+  // Get current state
+  const currentState = ctx.app?.getState();
+
+  switch (action) {
+    case 'on':
+      ctx.app?.updateState({ previewMode: true, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Preview mode enabled. You will see a preview before each execution.',
+      });
+      break;
+
+    case 'off':
+      ctx.app?.updateState({ previewMode: false, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Preview mode disabled.',
+      });
+      break;
+
+    case undefined:
+    case 'toggle':
+      const newMode = !currentState?.previewMode;
+      ctx.app?.updateState({ previewMode: newMode, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: `Preview mode ${newMode ? 'enabled' : 'disabled'}.`,
+      });
+      break;
+
+    case 'status':
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `Preview mode is currently ${currentState?.previewMode ? 'enabled' : 'disabled'}.`,
+      });
+      break;
+
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: 'Usage: /preview [on|off|toggle|status]',
+      });
+  }
+}
+
+// ============================================================================
 // Command Router
 // ============================================================================
 
@@ -1265,6 +1333,16 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
       break;
     case 'session':
       await handleSession(args);
+      break;
+    case 'compact':
+      await handleCompact();
+      break;
+    case 'verbose':
+      await handleVerbose();
+      break;
+    case 'preview':
+    case 'p':
+      await handlePreview(args);
       break;
     default:
       ctx.app?.addMessage({

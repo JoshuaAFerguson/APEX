@@ -188,6 +188,7 @@ describe('Parallel Execution Performance Tests', () => {
       model: 'claude-3-sonnet',
       activeAgent: 'developer',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

@@ -6,6 +6,7 @@ import {
   TaskStatusSchema,
   AutonomyLevelSchema,
   AgentModelSchema,
+  DisplayMode,
 } from './types';
 
 describe('AgentModelSchema', () => {
@@ -211,5 +212,79 @@ describe('ApexConfigSchema', () => {
         project: {},
       })
     ).toThrow();
+  });
+});
+
+describe('DisplayMode', () => {
+  it('should accept valid display modes', () => {
+    const validModes: DisplayMode[] = ['normal', 'compact', 'verbose'];
+
+    for (const mode of validModes) {
+      expect(mode).toMatch(/^(normal|compact|verbose)$/);
+    }
+  });
+
+  it('should be a literal type with correct values', () => {
+    // Test type assignment - these should compile without errors
+    const normal: DisplayMode = 'normal';
+    const compact: DisplayMode = 'compact';
+    const verbose: DisplayMode = 'verbose';
+
+    expect(normal).toBe('normal');
+    expect(compact).toBe('compact');
+    expect(verbose).toBe('verbose');
+  });
+
+  it('should be used correctly in type definitions', () => {
+    // Create a mock AppState-like object to test DisplayMode integration
+    interface MockAppState {
+      displayMode: DisplayMode;
+      otherProperty: string;
+    }
+
+    const mockState: MockAppState = {
+      displayMode: 'normal',
+      otherProperty: 'test',
+    };
+
+    expect(mockState.displayMode).toBe('normal');
+
+    // Test all valid assignments
+    mockState.displayMode = 'compact';
+    expect(mockState.displayMode).toBe('compact');
+
+    mockState.displayMode = 'verbose';
+    expect(mockState.displayMode).toBe('verbose');
+
+    mockState.displayMode = 'normal';
+    expect(mockState.displayMode).toBe('normal');
+  });
+
+  it('should provide proper type checking', () => {
+    // This test ensures the type is working as expected
+    const testMode = (mode: DisplayMode): string => {
+      switch (mode) {
+        case 'normal':
+          return 'Standard display with all components shown';
+        case 'compact':
+          return 'Minimized display for experienced users';
+        case 'verbose':
+          return 'Detailed debug information for troubleshooting';
+        default:
+          // TypeScript should ensure this is never reached
+          const exhaustiveCheck: never = mode;
+          return exhaustiveCheck;
+      }
+    };
+
+    expect(testMode('normal')).toBe('Standard display with all components shown');
+    expect(testMode('compact')).toBe('Minimized display for experienced users');
+    expect(testMode('verbose')).toBe('Detailed debug information for troubleshooting');
+  });
+
+  it('should be exportable and importable', () => {
+    // This test verifies the type is properly exported from the module
+    // If DisplayMode wasn't exported, the import would fail at compile time
+    expect(typeof DisplayMode).toBeUndefined(); // Types don't exist at runtime
   });
 });

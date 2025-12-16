@@ -372,6 +372,18 @@ export interface ApexEvent {
 }
 
 // ============================================================================
+// UI Display Types
+// ============================================================================
+
+/**
+ * Display mode for the APEX CLI interface
+ * - normal: Standard display with all components shown
+ * - compact: Minimized display for experienced users
+ * - verbose: Detailed debug information for troubleshooting
+ */
+export type DisplayMode = 'normal' | 'compact' | 'verbose';
+
+// ============================================================================
 // Agent SDK Types (mirrors Claude Agent SDK)
 // ============================================================================
 
