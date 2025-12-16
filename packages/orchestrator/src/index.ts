@@ -381,7 +381,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
            message.includes('exceeded your') ||
            message.includes('limit exceeded') ||
            message.includes('monthly limit') ||
-           message.includes('daily limit');
+           message.includes('daily limit') ||
+           // Claude Code specific patterns
+           message.includes('limit reached') ||
+           (message.includes('resets') && message.includes('upgrade')) ||
+           message.includes('/upgrade') ||
+           message.includes('extra-usage');
   }
 
   /**
@@ -646,7 +651,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         lowerMessage.includes('billing') || lowerMessage.includes('quota') ||
         lowerMessage.includes('spending limit') || lowerMessage.includes('insufficient') ||
         lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
-        lowerMessage.includes('daily limit')) {
+        lowerMessage.includes('daily limit') || lowerMessage.includes('limit reached') ||
+        lowerMessage.includes('/upgrade') || lowerMessage.includes('extra-usage')) {
       return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
     }
 

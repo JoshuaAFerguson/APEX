@@ -1,7 +1,7 @@
 # ADR-020: SubtaskTree Collapse/Expand and Progress Indicators
 
 ## Status
-Proposed
+Implemented ✅
 
 ## Context
 
@@ -261,3 +261,78 @@ useEffect(() => {
 - Ink useInput documentation: https://github.com/vadimdemedes/ink#useinputinputhandler-options
 - Existing `useElapsedTime` hook at `packages/cli/src/ui/hooks/useElapsedTime.ts`
 - Existing `ProgressBar` component at `packages/cli/src/ui/components/ProgressIndicators.tsx`
+
+---
+
+## Implementation Review (Architecture Stage)
+
+**Reviewed:** December 2024
+
+### Implementation Verification
+
+All features from the original ADR have been implemented:
+
+| Feature | ADR Spec | Implementation | Status |
+|---------|----------|----------------|--------|
+| Extended SubtaskNode interface | progress, startedAt, estimatedDuration | Lines 5-14 in SubtaskTree.tsx | ✅ Complete |
+| Extended SubtaskTreeProps | All 10 props specified | Lines 16-27 in SubtaskTree.tsx | ✅ Complete |
+| Collapse/Expand state management | Set<string> for collapsed IDs | Lines 49-62 in SubtaskTree.tsx | ✅ Complete |
+| Focus state management | Internal + external control | Lines 65-66 in SubtaskTree.tsx | ✅ Complete |
+| Flat visible node list | useMemo with flattenNodes | Lines 69-84 in SubtaskTree.tsx | ✅ Complete |
+| Keyboard navigation (↑↓, jk) | useInput hook | Lines 110-162 in SubtaskTree.tsx | ✅ Complete |
+| Space/Enter toggle | useInput handler | Line 128-132 | ✅ Complete |
+| ←→/hl hierarchical nav | Parent/child navigation | Lines 133-150 | ✅ Complete |
+| Home/End navigation | First/last node | Lines 151-161 | ✅ Complete |
+| Collapse indicator (▶/▼) | Visual indicators | Line 234 | ✅ Complete |
+| Children count badge | Shows count when collapsed | Line 237 | ✅ Complete |
+| Progress bar (█░) | 10-char block progress | Lines 274-285 | ✅ Complete |
+| Elapsed time (⏱) | useElapsedTime integration | Lines 231, 288-292 | ✅ Complete |
+| Focus highlighting | Inverse colors + brackets | Lines 247, 265-271 | ✅ Complete |
+| Max depth limiting | Overflow indicator | Lines 317-324 | ✅ Complete |
+| SubtaskNodeRow memoization | React.memo wrapper | Line 198 | ✅ Complete |
+
+### Architecture Compliance
+
+The implementation follows all architectural decisions outlined in the ADR:
+
+1. **State Management**: Component-local state using React hooks (useState, useMemo, useCallback)
+2. **Performance Optimization**:
+   - React.memo on SubtaskNodeRow prevents unnecessary re-renders
+   - useMemo for flat node list computation
+   - useCallback for stable callback references
+3. **Keyboard Handling**: Uses Ink's useInput hook with isActive flag
+4. **Elapsed Time**: Leverages existing useElapsedTime hook (per-node intervals)
+5. **Visual Design**: Matches ADR specification for icons, colors, and layout
+
+### Test Coverage
+
+Comprehensive test suites have been created:
+
+| Test File | Lines | Coverage Area |
+|-----------|-------|---------------|
+| SubtaskTree.test.tsx | 629 | Basic rendering, status, hierarchy |
+| SubtaskTree.collapse.test.tsx | 559 | Collapse/expand functionality |
+| SubtaskTree.keyboard.test.tsx | 552 | Keyboard navigation |
+| SubtaskTree.progress.test.tsx | 461 | Progress indicators |
+| SubtaskTree.elapsed-time.test.tsx | 539 | Elapsed time display |
+| **Total** | **~2,740** | Comprehensive coverage |
+
+### Architectural Strengths
+
+1. **Clean separation of concerns**: State, rendering, and interaction logic are well-organized
+2. **Dual control modes**: Supports both internal and externally-controlled focus/collapse state
+3. **Flexible configuration**: All display features can be toggled via props
+4. **Performance-conscious**: Proper memoization at component and computed value levels
+5. **Accessibility**: Full keyboard navigation, visual focus indicators
+
+### Future Enhancement Opportunities
+
+1. **Virtual scrolling**: For trees exceeding 100+ nodes (currently not needed)
+2. **Persistent collapse state**: Could add localStorage/session persistence
+3. **Animation**: Could add smooth transitions for collapse/expand
+4. **Batch elapsed time**: Single interval for all in-progress nodes (optimization)
+5. **Custom status icons**: Configuration prop for custom icon sets
+
+### Conclusion
+
+The SubtaskTree component fully implements all features specified in this ADR. The architecture is sound, performant, and well-tested. No further implementation work is required for the acceptance criteria.

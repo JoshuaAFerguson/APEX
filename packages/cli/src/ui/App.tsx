@@ -202,12 +202,36 @@ export function App({
         }
 
         if (cmd === 'compact') {
-          setState((prev) => ({ ...prev, displayMode: 'compact' }));
+          setState((prev) => {
+            const newMode = prev.displayMode === 'compact' ? 'normal' : 'compact';
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newMode === 'compact'
+                  ? 'Display mode set to compact: Single-line status, condensed output'
+                  : 'Display mode set to normal: Standard display with all components shown'
+              });
+            }, 0);
+            return { ...prev, displayMode: newMode };
+          });
           return;
         }
 
         if (cmd === 'verbose') {
-          setState((prev) => ({ ...prev, displayMode: 'verbose' }));
+          setState((prev) => {
+            const newMode = prev.displayMode === 'verbose' ? 'normal' : 'verbose';
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newMode === 'verbose'
+                  ? 'Display mode set to verbose: Detailed debug output, full information'
+                  : 'Display mode set to normal: Standard display with all components shown'
+              });
+            }, 0);
+            return { ...prev, displayMode: newMode };
+          });
           return;
         }
 
