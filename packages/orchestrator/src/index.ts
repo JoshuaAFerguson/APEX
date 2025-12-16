@@ -2442,15 +2442,18 @@ Parent: ${parentTask.description}`;
 
   /**
    * Aggregate results from all subtasks into the parent task
+   * Returns true if all subtasks are complete, false if some are still pending
    */
-  private async aggregateSubtaskResults(parentTaskId: string): Promise<void> {
+  private async aggregateSubtaskResults(parentTaskId: string): Promise<boolean> {
     const parentTask = await this.store.getTask(parentTaskId);
-    if (!parentTask) return;
+    if (!parentTask) return true;
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     const allArtifacts: string[] = [];
     const subtaskSummaries: string[] = [];
+    let pendingCount = 0;
+    let failedCount = 0;
 
     for (const subtaskId of parentTask.subtaskIds || []) {
       const subtask = await this.store.getTask(subtaskId);
@@ -2467,6 +2470,13 @@ Parent: ${parentTask.description}`;
       }
 
       subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+
+      // Track incomplete subtasks
+      if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused') {
+        pendingCount++;
+      } else if (subtask.status === 'failed') {
+        failedCount++;
+      }
     }
 
     // Update parent task with aggregated usage
@@ -2480,10 +2490,168 @@ Parent: ${parentTask.description}`;
       updatedAt: new Date(),
     });
 
+    if (pendingCount > 0) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Subtask execution incomplete: ${pendingCount} pending, ${failedCount} failed\n${subtaskSummaries.join('\n')}`,
+      });
+      return false;
+    }
+
     await this.store.addLog(parentTaskId, {
       level: 'info',
       message: `Subtask execution complete:\n${subtaskSummaries.join('\n')}`,
     });
+    return true;
+  }
+
+  /**
+   * Continue executing pending subtasks for a parent task
+   * This is used when resuming a parent task that was interrupted
+   */
+  async continuePendingSubtasks(parentTaskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) {
+      throw new Error(`Parent task not found: ${parentTaskId}`);
+    }
+
+    if (!parentTask.subtaskIds || parentTask.subtaskIds.length === 0) {
+      throw new Error(`Task ${parentTaskId} has no subtasks`);
+    }
+
+    // Get pending subtasks
+    const pendingSubtaskIds: string[] = [];
+    for (const subtaskId of parentTask.subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued')) {
+        pendingSubtaskIds.push(subtaskId);
+      }
+    }
+
+    if (pendingSubtaskIds.length === 0) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'No pending subtasks to execute',
+      });
+      return;
+    }
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Continuing execution of ${pendingSubtaskIds.length} pending subtasks`,
+    });
+
+    // Update parent status to in-progress
+    await this.store.updateTask(parentTaskId, {
+      status: 'in-progress',
+      currentStage: 'subtask-execution',
+      updatedAt: new Date(),
+    });
+
+    this.emit('task:started', parentTask);
+
+    const strategy = parentTask.subtaskStrategy || 'sequential';
+
+    try {
+      // Execute pending subtasks based on strategy
+      if (strategy === 'sequential') {
+        for (const subtaskId of pendingSubtaskIds) {
+          const currentParent = await this.store.getTask(parentTaskId);
+          if (currentParent?.status === 'cancelled') {
+            return;
+          }
+
+          await this.executeTask(subtaskId);
+          const completedSubtask = await this.store.getTask(subtaskId);
+          if (completedSubtask) {
+            this.emit('subtask:completed', completedSubtask, parentTaskId);
+            await this.gitCommitSubtask(completedSubtask, parentTask);
+          }
+        }
+      } else {
+        // For parallel/dependency-based, execute all pending at once
+        const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
+        for (let i = 0; i < pendingSubtaskIds.length; i += maxConcurrent) {
+          const currentParent = await this.store.getTask(parentTaskId);
+          if (currentParent?.status === 'cancelled') {
+            return;
+          }
+
+          const batch = pendingSubtaskIds.slice(i, i + maxConcurrent);
+          await Promise.all(batch.map(async (subtaskId) => {
+            await this.executeTask(subtaskId);
+            const completedSubtask = await this.store.getTask(subtaskId);
+            if (completedSubtask) {
+              this.emit('subtask:completed', completedSubtask, parentTaskId);
+            }
+          }));
+        }
+      }
+
+      // Check if all subtasks are now complete
+      const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+
+      if (allComplete) {
+        await this.updateTaskStatus(parentTaskId, 'completed');
+        const completedTask = await this.store.getTask(parentTaskId);
+        if (completedTask) {
+          this.emit('task:completed', completedTask);
+
+          // Handle git operations for parent task
+          try {
+            const prResult = await this.handleTaskGitOperations(completedTask);
+            if (prResult?.success && prResult.prUrl) {
+              await this.store.addLog(parentTaskId, {
+                level: 'info',
+                message: `Pull request created: ${prResult.prUrl}`,
+              });
+            }
+          } catch (error) {
+            await this.store.addLog(parentTaskId, {
+              level: 'warn',
+              message: `Git operations failed: ${(error as Error).message}`,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      // Check if it was a rate limit that caused pausing
+      const updatedParent = await this.store.getTask(parentTaskId);
+      if (updatedParent?.status === 'paused') {
+        // Task was paused due to rate limit, don't mark as failed
+        return;
+      }
+
+      await this.updateTaskStatus(parentTaskId, 'failed', (error as Error).message);
+      const failedTask = await this.store.getTask(parentTaskId);
+      if (failedTask) {
+        this.emit('task:failed', failedTask, error as Error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a parent task has pending subtasks
+   */
+  async hasPendingSubtasks(parentTaskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || !parentTask.subtaskIds) {
+      return false;
+    }
+
+    for (const subtaskId of parentTask.subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused')) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

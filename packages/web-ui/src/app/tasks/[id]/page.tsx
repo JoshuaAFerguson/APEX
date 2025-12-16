@@ -35,6 +35,7 @@ export default function TaskDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [hasSubtasks, setHasSubtasks] = useState(false)
+  const [hasPendingSubtasks, setHasPendingSubtasks] = useState(false)
 
   // WebSocket streaming for real-time updates
   const { events, isConnected } = useTaskStream(taskId)
@@ -60,12 +61,19 @@ export default function TaskDetailPage() {
         setLogs(initialLogs.slice(0, 100).reverse())
       }
 
-      // Check if task has subtasks
+      // Check if task has subtasks and if any are pending
       try {
         const subtaskResponse = await apiClient.getSubtasks(taskId)
         setHasSubtasks(subtaskResponse.count > 0)
+        // Check if any subtasks are pending
+        const pendingStatuses = ['pending', 'queued', 'paused']
+        const pendingSubtasks = subtaskResponse.subtasks?.filter(
+          (s: { status: string }) => pendingStatuses.includes(s.status)
+        ) || []
+        setHasPendingSubtasks(pendingSubtasks.length > 0)
       } catch {
         setHasSubtasks(false)
+        setHasPendingSubtasks(false)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load task')
@@ -238,8 +246,8 @@ export default function TaskDetailPage() {
   const isWaitingApproval = task.status === 'waiting-approval'
   // Can retry failed, cancelled, or stuck in-progress tasks
   const canRetry = isFailed || isCancelled || isRunning
-  // Can resume paused or pending tasks (pending tasks can be started)
-  const canResume = isPaused || isPending
+  // Can resume paused tasks, pending tasks, or any task with pending subtasks
+  const canResume = isPaused || isPending || hasPendingSubtasks
 
   return (
     <div className="p-8">
@@ -336,7 +344,7 @@ export default function TaskDetailPage() {
                 ) : (
                   <Play className="w-4 h-4 mr-1" />
                 )}
-                {isPending ? 'Start' : 'Resume'}
+                {isPending ? 'Start' : hasPendingSubtasks && !isPaused ? 'Continue Subtasks' : 'Resume'}
               </Button>
             )}
           </div>

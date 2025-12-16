@@ -254,9 +254,22 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return { ok: true, message: 'Task execution started', taskId: id };
       }
 
-      // For other statuses, suggest retry
+      // Handle completed/failed/cancelled tasks that have pending subtasks
+      // This allows resuming a parent task to continue its unfinished subtasks
+      if (task.subtaskIds && task.subtaskIds.length > 0) {
+        const hasPending = await orchestrator.hasPendingSubtasks(id);
+        if (hasPending) {
+          // Continue executing pending subtasks in background
+          orchestrator.continuePendingSubtasks(id).catch((error) => {
+            app.log.error(`Task ${id} failed while continuing subtasks: ${error.message}`);
+          });
+          return { ok: true, message: 'Continuing execution of pending subtasks', taskId: id };
+        }
+      }
+
+      // For other statuses with no pending subtasks, suggest retry
       return reply.status(400).send({
-        error: `Task cannot be resumed (current status: ${task.status}). Use /retry for failed/cancelled tasks.`
+        error: `Task cannot be resumed (current status: ${task.status}, no pending subtasks). Use /retry for failed/cancelled tasks.`
       });
     }
   );
