@@ -42,10 +42,10 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 
 ```bash
 # Install globally
-npm install -g @apex/cli
+npm install -g @apexcli/cli
 
 # Or use npx
-npx @apex/cli init
+npx @apexcli/cli init
 ```
 
 ### Initialize a Project

@@ -108,7 +108,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 > **Technical Design**: See [ADR-008: Comprehensive Technical Design](/docs/adr/008-v030-comprehensive-technical-design.md) for detailed implementation specifications.
 > **Implementation Plan**: See [ADR-009: Implementation Plan](/docs/adr/009-v030-implementation-plan.md) for detailed remaining work.
 
-### Rich Terminal UI (`@apex/cli`)
+### Rich Terminal UI (`@apexcli/cli`)
 - 🟢 **Ink-based UI framework** - React for CLI for complex layouts
 - 🟢 **Streaming response rendering** - Character-by-character output (`StreamingText.tsx`)
 - 🟢 **Markdown rendering** - Full CommonMark support (`MarkdownRenderer.tsx`)

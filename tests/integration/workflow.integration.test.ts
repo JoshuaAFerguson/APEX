@@ -20,8 +20,8 @@ import {
   loadAgents,
   loadWorkflows,
   getEffectiveConfig,
-} from '@apex/core';
-import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
+} from '@apexcli/core';
+import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
 
 describe('Integration: Full Workflow', () => {
   let testDir: string;

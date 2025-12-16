@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apex/core';
+import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apexcli/core';
 
 export class TaskStore {
   private db!: Database.Database;

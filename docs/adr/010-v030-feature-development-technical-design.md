@@ -52,13 +52,13 @@ This document provides the **comprehensive technical design** for completing APE
 │                                      │                                      │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
 │  │                      Orchestrator Layer                               │  │
-│  │              (@apex/orchestrator - ApexOrchestrator)                  │  │
+│  │              (@apexcli/orchestrator - ApexOrchestrator)                  │  │
 │  │  Task Management | Agent Execution | Claude SDK | Event Emission     │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
 │                                      │                                      │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
 │  │                         Core Layer                                    │  │
-│  │                    (@apex/core - Types & Config)                      │  │
+│  │                    (@apexcli/core - Types & Config)                      │  │
 │  │  Zod Schemas | Config Loading | Agent/Workflow Parsing | Utilities   │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
 │                                                                              │
@@ -69,10 +69,10 @@ This document provides the **comprehensive technical design** for completing APE
 
 | Package | Purpose | Key Files |
 |---------|---------|-----------|
-| `@apex/core` | Shared types, config, utilities | `types.ts`, `config.ts`, `utils.ts` |
-| `@apex/orchestrator` | Task execution, Claude SDK | `index.ts`, `store.ts`, `context.ts` |
-| `@apex/cli` | CLI, UI, Services | `repl.tsx`, `ui/`, `services/` |
-| `@apex/api` | REST API, WebSocket | `index.ts` |
+| `@apexcli/core` | Shared types, config, utilities | `types.ts`, `config.ts`, `utils.ts` |
+| `@apexcli/orchestrator` | Task execution, Claude SDK | `index.ts`, `store.ts`, `context.ts` |
+| `@apexcli/cli` | CLI, UI, Services | `repl.tsx`, `ui/`, `services/` |
+| `@apexcli/api` | REST API, WebSocket | `index.ts` |
 
 ---
 

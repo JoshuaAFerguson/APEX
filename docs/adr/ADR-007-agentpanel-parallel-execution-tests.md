@@ -126,8 +126,8 @@ After thorough analysis, I identified these potentially missing test scenarios:
 ## Implementation Plan
 
 ### Phase 1: Verification (Required)
-1. Run `npm test --workspace=@apex/cli` to verify all existing tests pass
-2. Run `npm run test:coverage --workspace=@apex/cli` to check coverage metrics
+1. Run `npm test --workspace=@apexcli/cli` to verify all existing tests pass
+2. Run `npm run test:coverage --workspace=@apexcli/cli` to check coverage metrics
 3. Document any failing tests
 
 ### Phase 2: Gap Analysis (If Needed)
@@ -201,16 +201,16 @@ export interface AgentPanelProps {
 
 ```bash
 # Run all CLI tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run specific test file
 npx vitest run packages/cli/src/ui/components/agents/__tests__/AgentPanel.test.tsx
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Watch mode for development
-npm run test:watch --workspace=@apex/cli
+npm run test:watch --workspace=@apexcli/cli
 ```
 
 ## Files Involved
@@ -232,10 +232,10 @@ Given the comprehensive existing coverage, the implementation should follow this
 
 ```bash
 # Step 1: Verify existing tests pass
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Step 2: Check coverage metrics
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Step 3: Only add tests if gaps identified
 ```
@@ -475,8 +475,8 @@ describe('AgentPanel - Parallel Execution Acceptance Criteria', () => {
 ## Notes for Next Stages
 
 1. **Developer Stage**:
-   - Run test suite first: `npm test --workspace=@apex/cli`
-   - Check coverage: `npm run test:coverage --workspace=@apex/cli`
+   - Run test suite first: `npm test --workspace=@apexcli/cli`
+   - Check coverage: `npm run test:coverage --workspace=@apexcli/cli`
    - Only add tests if specific gaps are identified
    - If adding tests, use the template above for `AgentPanel.parallel-acceptance.test.tsx`
 

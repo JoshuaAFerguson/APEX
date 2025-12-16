@@ -68,7 +68,7 @@ Create a test helper that simulates orchestrator events:
 // Location: packages/cli/src/__tests__/mock-orchestrator.ts
 
 import { EventEmitter } from 'eventemitter3';
-import type { OrchestratorEvents } from '@apex/orchestrator';
+import type { OrchestratorEvents } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../ui/components/agents/AgentPanel';
 
 export interface MockOrchestratorOptions {
@@ -152,7 +152,7 @@ This hook bridges orchestrator events to AgentPanel state:
 
 import { useState, useEffect } from 'react';
 import type { EventEmitter } from 'eventemitter3';
-import type { OrchestratorEvents } from '@apex/orchestrator';
+import type { OrchestratorEvents } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel';
 
 export interface OrchestratorState {

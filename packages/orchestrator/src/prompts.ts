@@ -9,7 +9,7 @@ import {
   SubtaskDefinition,
   SubtaskStrategy,
   getEffectiveConfig,
-} from '@apex/core';
+} from '@apexcli/core';
 
 /**
  * Parsed decomposition request from planner output

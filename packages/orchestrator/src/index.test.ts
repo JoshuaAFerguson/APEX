@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { ApexOrchestrator } from './index';
-import { initializeApex } from '@apex/core';
+import { initializeApex } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { exec } from 'child_process';
 

@@ -12,8 +12,8 @@ import {
   ApexEvent,
   SubtaskStrategy,
   SubtaskDefinition,
-} from '@apex/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+} from '@apexcli/core';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {

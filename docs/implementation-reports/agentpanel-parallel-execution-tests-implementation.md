@@ -117,13 +117,13 @@ The existing test suite provides exceptional coverage including:
 
 ```bash
 # Run all CLI tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run specific AgentPanel tests
 npx vitest run packages/cli/src/ui/components/agents/__tests__/AgentPanel*.test.tsx
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ## Quality Assurance

@@ -15,7 +15,7 @@ import type {
   TaskUsage,
   TaskLog,
   TaskArtifact,
-} from '@apex/core';
+} from '@apexcli/core';
 
 /**
  * Create a mock Task object with default values

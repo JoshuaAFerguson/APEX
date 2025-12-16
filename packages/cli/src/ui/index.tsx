@@ -1,8 +1,8 @@
 import React from 'react';
 import { render } from 'ink';
 import { App, type AppState, type Message } from './App.js';
-import type { ApexConfig } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexConfig } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
 export interface InkAppInstance {
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void;

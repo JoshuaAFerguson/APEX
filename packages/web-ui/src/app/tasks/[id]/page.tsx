@@ -15,7 +15,7 @@ import { apiClient } from '@/lib/api-client'
 import { useTaskStream } from '@/lib/websocket-client'
 import { formatCost, getStatusVariant, formatStatus, formatDate, truncateId } from '@/lib/utils'
 import { ChevronLeft, RefreshCw, XCircle, RotateCcw, Clock, GitBranch, User, Play } from 'lucide-react'
-import type { Task, ApexEvent } from '@apex/core'
+import type { Task, ApexEvent } from '@apexcli/core'
 
 interface LogEntry {
   timestamp: Date

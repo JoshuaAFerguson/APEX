@@ -92,7 +92,7 @@ Create a new hook or extend existing logic to track and display handoff duration
 // "⚡ Handoff [1.2s]: planner → developer"
 ```
 
-**Implementation approach**: Leverage the existing `formatElapsed` utility from `@apex/core` but format milliseconds for sub-second precision during handoff (since handoffs are brief).
+**Implementation approach**: Leverage the existing `formatElapsed` utility from `@apexcli/core` but format milliseconds for sub-second precision during handoff (since handoffs are brief).
 
 ### 3. Visual Pulse/Highlight Effect
 

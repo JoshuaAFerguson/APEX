@@ -24,7 +24,7 @@ import {
   generateTaskId,
   generateBranchName,
   calculateCost,
-} from '@apex/core';
+} from '@apexcli/core';
 import { TaskStore } from './store';
 import {
   buildOrchestratorPrompt,
@@ -1274,7 +1274,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get task logs
    */
-  async getTaskLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<import('@apex/core').TaskLog[]> {
+  async getTaskLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<import('@apexcli/core').TaskLog[]> {
     await this.ensureInitialized();
     return this.store.getLogs(taskId, options);
   }
@@ -1298,7 +1298,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get a gate
    */
-  async getGate(taskId: string, gateName: string): Promise<import('@apex/core').Gate | null> {
+  async getGate(taskId: string, gateName: string): Promise<import('@apexcli/core').Gate | null> {
     await this.ensureInitialized();
     return this.store.getGate(taskId, gateName);
   }
@@ -1306,7 +1306,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get all gates for a task
    */
-  async getAllGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+  async getAllGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getAllGates(taskId);
   }
@@ -1314,7 +1314,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get pending gates for a task
    */
-  async getPendingGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+  async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
   }

@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId } from '@/lib/utils'
-import type { Task } from '@apex/core'
+import type { Task } from '@apexcli/core'
 
 export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([])

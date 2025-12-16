@@ -77,7 +77,7 @@ class FailureSimulationOrchestrator extends EventEmitter {
 
 // Mock workflow loader with failure scenarios
 const mockLoadWorkflow = vi.fn();
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadWorkflow: mockLoadWorkflow,
 }));
 

@@ -11,8 +11,8 @@ import {
   ToolCall,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
-import type { ApexConfig, Task } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexConfig, Task } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 import { CompletionEngine, type CompletionContext } from '../services/CompletionEngine.js';

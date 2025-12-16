@@ -7,10 +7,8 @@ This guide explains how to set up and publish APEX packages to npm.
 ### 1. NPM Account & Organization
 
 1. Create an npm account at https://www.npmjs.com/signup
-2. Create an organization for the `@apex` scope (or use an available alternative)
-   - Go to https://www.npmjs.com/org/create
-   - If `@apex` is taken, consider: `@apex-dev`, `@apex-cli`, `@apexcli`
-   - Update all package.json files if using a different scope
+2. The npm organization is `apexcli` (scope: `@apexcli`)
+   - Organization URL: https://www.npmjs.com/org/apexcli
 
 ### 2. NPM Access Token
 
@@ -79,10 +77,10 @@ npm login
 npm run build
 
 # Publish in order (from repo root)
-npm publish --workspace=@apex/core --access public
-npm publish --workspace=@apex/orchestrator --access public
-npm publish --workspace=@apex/api --access public
-npm publish --workspace=@apex/cli --access public
+npm publish --workspace=@apexcli/core --access public
+npm publish --workspace=@apexcli/orchestrator --access public
+npm publish --workspace=@apexcli/api --access public
+npm publish --workspace=@apexcli/cli --access public
 ```
 
 ## Version Management
@@ -102,10 +100,10 @@ npm version patch --workspaces --include-workspace-root
 After publishing, verify packages are live:
 
 ```bash
-npm info @apex/cli
-npm info @apex/core
-npm info @apex/orchestrator
-npm info @apex/api
+npm info @apexcli/cli
+npm info @apexcli/core
+npm info @apexcli/orchestrator
+npm info @apexcli/api
 ```
 
 ## Installation
@@ -114,10 +112,10 @@ Users will install APEX with:
 
 ```bash
 # Global installation (recommended)
-npm install -g @apex/cli
+npm install -g @apexcli/cli
 
 # Or use npx without installing
-npx @apex/cli init
+npx @apexcli/cli init
 ```
 
 ## Troubleshooting
@@ -125,7 +123,7 @@ npx @apex/cli init
 ### "Package name already exists"
 
 The `@apex` scope may already be taken on npm. Options:
-1. Check availability: `npm info @apex/cli`
+1. Check availability: `npm info @apexcli/cli`
 2. Use alternative scope: `@apex-dev`, `@apex-cli`, etc.
 3. Update all package.json files with new scope
 4. Update internal dependencies to match

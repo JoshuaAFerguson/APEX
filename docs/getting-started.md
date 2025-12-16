@@ -15,13 +15,13 @@ Before you begin, ensure you have:
 ### Option 1: Global Installation (Recommended)
 
 ```bash
-npm install -g @apex/cli
+npm install -g @apexcli/cli
 ```
 
 ### Option 2: Use npx
 
 ```bash
-npx @apex/cli <command>
+npx @apexcli/cli <command>
 ```
 
 ### Option 3: Local Development

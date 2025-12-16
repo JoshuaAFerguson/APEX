@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import type { ApexEvent, Task } from '@apex/core'
+import type { ApexEvent, Task } from '@apexcli/core'
 import { getApiUrl } from './config'
 
 type WebSocketEventHandler = (event: ApexEvent) => void

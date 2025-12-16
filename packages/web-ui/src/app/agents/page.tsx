@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { apiClient } from '@/lib/api-client'
-import type { AgentDefinition } from '@apex/core'
+import type { AgentDefinition } from '@apexcli/core'
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentDefinition[]>([])

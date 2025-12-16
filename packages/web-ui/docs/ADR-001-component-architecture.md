@@ -24,7 +24,7 @@ APEX v0.3.0 introduces a web dashboard built with Next.js 14 (App Router), React
 ```typescript
 // /packages/web-ui/src/types/task-detail.ts
 
-import type { Task, TaskLog, Gate, ApexEvent, TaskUsage } from '@apex/core'
+import type { Task, TaskLog, Gate, ApexEvent, TaskUsage } from '@apexcli/core'
 
 /**
  * Task detail page state
@@ -145,7 +145,7 @@ const [streamState, setStreamState] = useState<TaskStreamState>({
 ```typescript
 // /packages/web-ui/src/types/log-viewer.ts
 
-import type { TaskLog } from '@apex/core'
+import type { TaskLog } from '@apexcli/core'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -353,7 +353,7 @@ const filteredLogs = useMemo(() => {
 ```typescript
 // /packages/web-ui/src/types/gate-panel.ts
 
-import type { Gate, GateStatus } from '@apex/core'
+import type { Gate, GateStatus } from '@apexcli/core'
 
 export interface GateAction {
   type: 'approve' | 'reject'
@@ -544,7 +544,7 @@ interface GateErrorState {
 ```typescript
 // /packages/web-ui/src/types/charts.ts
 
-import type { TaskUsage } from '@apex/core'
+import type { TaskUsage } from '@apexcli/core'
 
 /**
  * Token usage breakdown by category
@@ -1220,7 +1220,7 @@ export interface ToastContainerProps {
 import { useEffect } from 'react'
 import { useNotifications } from '@/contexts/NotificationContext'
 import { useTaskStream } from '@/lib/websocket-client'
-import type { ApexEvent } from '@apex/core'
+import type { ApexEvent } from '@apexcli/core'
 
 export function useNotificationEvents(taskId?: string) {
   const { events } = useTaskStream(taskId)

@@ -8,7 +8,7 @@ import {
   formatStatus,
   getRelativeTime,
 } from '../utils';
-import type { TaskStatus } from '@apex/core';
+import type { TaskStatus } from '@apexcli/core';
 
 describe('cn', () => {
   it('should merge class names', () => {
