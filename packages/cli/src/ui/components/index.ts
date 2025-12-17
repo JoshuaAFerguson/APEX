@@ -42,6 +42,7 @@ export { IntentDetector, SmartSuggestions, type IntentDetectorProps, type Intent
 export { PreviewPanel, type PreviewPanelProps } from './PreviewPanel.js';
 export { ThoughtDisplay, type ThoughtDisplayProps } from './ThoughtDisplay.js';
 export { CollapsibleSection, type CollapsibleSectionProps } from './CollapsibleSection.js';
+export { AgentThoughts, type AgentThoughtsProps } from './AgentThoughts.js';
 
 // Agent components
 export {
