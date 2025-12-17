@@ -1333,6 +1333,175 @@ describe('v0.3.0 Integration Tests', () => {
 
       expect(screen.getByText(/tokens:/)).toBeInTheDocument();
     });
+
+    // NEW: Comprehensive Compact Mode - Minimal StatusBar Tests
+    describe('Compact Mode - Minimal StatusBar', () => {
+      const mockSessionData = {
+        sessionStartTime: new Date('2024-01-01T10:00:00Z'),
+        tokens: { input: 1500, output: 800 },
+        cost: 0.05,
+        sessionCost: 0.15,
+        model: 'claude-3-sonnet',
+      };
+
+      it('should show only connection indicator in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              isConnected={true}
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should show connection indicator
+        expect(screen.getByText('●')).toBeInTheDocument();
+      });
+
+      it('should show only active agent name in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              agent="developer"
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should show agent name
+        expect(screen.getByText('developer')).toBeInTheDocument();
+      });
+
+      it('should show only elapsed timer in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              sessionStartTime={new Date(Date.now() - 65000)} // 1 minute 5 seconds ago
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should show elapsed time (format: mm:ss)
+        expect(screen.getByText(/01:0[5-9]/)).toBeInTheDocument();
+      });
+
+      it('should hide git branch in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              gitBranch="feature/v030-test"
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should NOT show git branch
+        expect(screen.queryByText(/feature\/v030-test/)).not.toBeInTheDocument();
+        expect(screen.queryByText('🌿')).not.toBeInTheDocument();
+      });
+
+      it('should hide workflow stage in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              workflowStage="implementation"
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should NOT show workflow stage
+        expect(screen.queryByText('implementation')).not.toBeInTheDocument();
+      });
+
+      it('should hide token/cost details in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              tokens={{ input: 1500, output: 800 }}
+              cost={0.05}
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should NOT show token details or cost
+        expect(screen.queryByText(/2\.3k/)).not.toBeInTheDocument(); // formatted tokens
+        expect(screen.queryByText(/\$0\.0500/)).not.toBeInTheDocument(); // formatted cost
+        expect(screen.queryByText(/tokens:/)).not.toBeInTheDocument();
+      });
+
+      it('should hide API/web URLs in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              apiUrl="http://localhost:3001"
+              webUrl="http://localhost:3000"
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should NOT show URLs
+        expect(screen.queryByText(/localhost:3001/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/localhost:3000/)).not.toBeInTheDocument();
+      });
+
+      it('should hide session name in compact mode', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              sessionName="My Development Session"
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should NOT show session name
+        expect(screen.queryByText(/My Development Session/)).not.toBeInTheDocument();
+      });
+
+      it('should handle compact mode with all props provided', () => {
+        render(
+          <ThemeProvider>
+            <StatusBar
+              gitBranch="feature/comprehensive-test"
+              agent="architect"
+              workflowStage="planning"
+              isConnected={true}
+              apiUrl="http://localhost:3001"
+              webUrl="http://localhost:3000"
+              sessionName="Full Props Test"
+              sessionStartTime={new Date(Date.now() - 120000)} // 2 minutes ago
+              subtaskProgress={{ completed: 3, total: 5 }}
+              displayMode="compact"
+              {...mockSessionData}
+            />
+          </ThemeProvider>
+        );
+
+        // Should show only: connection indicator, agent name, and timer
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('architect')).toBeInTheDocument();
+        expect(screen.getByText(/02:0[0-9]/)).toBeInTheDocument();
+
+        // Should hide everything else
+        expect(screen.queryByText(/feature\/comprehensive-test/)).not.toBeInTheDocument();
+        expect(screen.queryByText('planning')).not.toBeInTheDocument();
+        expect(screen.queryByText(/localhost/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Full Props Test/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/3\/5/)).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('Theme Integration', () => {

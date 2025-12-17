@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/useStdoutDimensions';
 
 // Helper functions for formatting
 function formatTokens(input: number, output: number): string {
@@ -53,8 +54,11 @@ export function StatusBar({
   previewMode = false,
   showThoughts = false,
 }: StatusBarProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns || 120;
+  const { width: terminalWidth, breakpoint } = useStdoutDimensions({
+    narrowThreshold: 80,
+    wideThreshold: 120,
+    fallbackWidth: 120,
+  });
 
   // Session timer
   const [elapsed, setElapsed] = useState('00:00');

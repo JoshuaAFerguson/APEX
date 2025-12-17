@@ -349,6 +349,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       'authentication',
       'unauthorized',
       'forbidden',
+      // Usage limit patterns - don't retry, just pause
+      'usage limit',
+      'limit reached',
+      '/upgrade',
+      'extra-usage',
+      'credit',
+      'billing',
+      'quota',
     ];
 
     return !nonRetryablePatterns.some(pattern =>
@@ -1000,6 +1008,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                      'claude-sonnet-4-20250514';
 
     // Execute stage via Claude Agent SDK
+    // Wrap in try-catch to detect limit errors from collected messages
+    try {
     for await (const message of query({
       prompt: stagePrompt,
       options: {
@@ -1090,6 +1100,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           `Task exceeded budget: $${currentTask.usage.estimatedCost.toFixed(4)} > $${this.effectiveConfig.limits.maxCostPerTask}`
         );
       }
+    }
+    } catch (error) {
+      // Check if collected messages contain limit-related text
+      // This catches cases where "Limit reached" is logged before process exits
+      const fullOutput = messages.join('\n').toLowerCase();
+      const isLimitError = fullOutput.includes('limit reached') ||
+                          fullOutput.includes('/upgrade') ||
+                          fullOutput.includes('extra-usage') ||
+                          fullOutput.includes('resets') && fullOutput.includes('upgrade');
+
+      if (isLimitError) {
+        // Rethrow with limit-specific message so it can be detected and paused
+        throw new Error(`Usage limit reached: ${(error as Error).message}. Recent output: ${messages.slice(-2).join(' ').substring(0, 200)}`);
+      }
+
+      // Rethrow original error
+      throw error;
     }
 
     // Extract stage summary and outputs from the final messages
@@ -2561,8 +2588,9 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Continue executing pending subtasks for a parent task
+   * Continue executing pending/failed subtasks for a parent task
    * This is used when resuming a parent task that was interrupted
+   * Order: failed (retry) -> paused (resume) -> pending (execute)
    */
   async continuePendingSubtasks(parentTaskId: string): Promise<void> {
     await this.ensureInitialized();
@@ -2576,26 +2604,37 @@ Parent: ${parentTask.description}`;
       throw new Error(`Task ${parentTaskId} has no subtasks`);
     }
 
-    // Get pending subtasks
+    // Categorize subtasks by status, preserving order
+    const failedSubtaskIds: string[] = [];
+    const pausedSubtaskIds: string[] = [];
     const pendingSubtaskIds: string[] = [];
+
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
-      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued')) {
+      if (!subtask) continue;
+
+      if (subtask.status === 'failed') {
+        failedSubtaskIds.push(subtaskId);
+      } else if (subtask.status === 'paused') {
+        pausedSubtaskIds.push(subtaskId);
+      } else if (subtask.status === 'pending' || subtask.status === 'queued') {
         pendingSubtaskIds.push(subtaskId);
       }
     }
 
-    if (pendingSubtaskIds.length === 0) {
+    const totalToProcess = failedSubtaskIds.length + pausedSubtaskIds.length + pendingSubtaskIds.length;
+
+    if (totalToProcess === 0) {
       await this.store.addLog(parentTaskId, {
         level: 'info',
-        message: 'No pending subtasks to execute',
+        message: 'No subtasks need processing (all completed or cancelled)',
       });
       return;
     }
 
     await this.store.addLog(parentTaskId, {
       level: 'info',
-      message: `Continuing execution of ${pendingSubtaskIds.length} pending subtasks`,
+      message: `Continuing: ${failedSubtaskIds.length} failed (retry), ${pausedSubtaskIds.length} paused (resume), ${pendingSubtaskIds.length} pending (execute)`,
     });
 
     // Update parent status to in-progress
@@ -2609,28 +2648,85 @@ Parent: ${parentTask.description}`;
 
     const strategy = parentTask.subtaskStrategy || 'sequential';
 
+    // Helper to execute a subtask and check for pause/cancel
+    const executeSubtaskWithCheck = async (subtaskId: string, isRetry: boolean): Promise<boolean> => {
+      const currentParent = await this.store.getTask(parentTaskId);
+      if (currentParent?.status === 'cancelled') {
+        return false; // Stop execution
+      }
+
+      // For failed subtasks, reset status before retry
+      if (isRetry) {
+        await this.store.updateTask(subtaskId, {
+          status: 'pending',
+          error: undefined,
+          updatedAt: new Date(),
+        });
+        await this.store.addLog(parentTaskId, {
+          level: 'info',
+          message: `Retrying failed subtask: ${subtaskId}`,
+        });
+      }
+
+      await this.executeTask(subtaskId);
+
+      // Check if subtask was paused (limit hit)
+      const completedSubtask = await this.store.getTask(subtaskId);
+      if (completedSubtask?.status === 'paused') {
+        // Propagate pause to parent
+        await this.pauseParentTask(parentTaskId, subtaskId, completedSubtask.pauseReason || 'usage_limit');
+        return false; // Stop execution - we're paused
+      }
+
+      if (completedSubtask?.status === 'completed') {
+        this.emit('subtask:completed', completedSubtask, parentTaskId);
+        await this.gitCommitSubtask(completedSubtask, parentTask);
+      }
+
+      return true; // Continue execution
+    };
+
     try {
-      // Execute pending subtasks based on strategy
+      // Process in order: failed -> paused -> pending
+      // All processed sequentially to maintain order and respect limits
+
+      // 1. Retry failed subtasks first (in original order)
+      for (const subtaskId of failedSubtaskIds) {
+        const shouldContinue = await executeSubtaskWithCheck(subtaskId, true);
+        if (!shouldContinue) return;
+      }
+
+      // 2. Resume paused subtasks
+      for (const subtaskId of pausedSubtaskIds) {
+        // Clear pause state first
+        await this.store.updateTask(subtaskId, {
+          status: 'pending',
+          pausedAt: undefined,
+          pauseReason: undefined,
+          resumeAfter: undefined,
+          updatedAt: new Date(),
+        });
+        await this.store.addLog(parentTaskId, {
+          level: 'info',
+          message: `Resuming paused subtask: ${subtaskId}`,
+        });
+
+        const shouldContinue = await executeSubtaskWithCheck(subtaskId, false);
+        if (!shouldContinue) return;
+      }
+
+      // 3. Execute pending subtasks
       if (strategy === 'sequential') {
         for (const subtaskId of pendingSubtaskIds) {
-          const currentParent = await this.store.getTask(parentTaskId);
-          if (currentParent?.status === 'cancelled') {
-            return;
-          }
-
-          await this.executeTask(subtaskId);
-          const completedSubtask = await this.store.getTask(subtaskId);
-          if (completedSubtask) {
-            this.emit('subtask:completed', completedSubtask, parentTaskId);
-            await this.gitCommitSubtask(completedSubtask, parentTask);
-          }
+          const shouldContinue = await executeSubtaskWithCheck(subtaskId, false);
+          if (!shouldContinue) return;
         }
       } else {
-        // For parallel/dependency-based, execute all pending at once
+        // For parallel/dependency-based, execute in batches
         const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
         for (let i = 0; i < pendingSubtaskIds.length; i += maxConcurrent) {
           const currentParent = await this.store.getTask(parentTaskId);
-          if (currentParent?.status === 'cancelled') {
+          if (currentParent?.status === 'cancelled' || currentParent?.status === 'paused') {
             return;
           }
 
@@ -2638,7 +2734,7 @@ Parent: ${parentTask.description}`;
           await Promise.all(batch.map(async (subtaskId) => {
             await this.executeTask(subtaskId);
             const completedSubtask = await this.store.getTask(subtaskId);
-            if (completedSubtask) {
+            if (completedSubtask?.status === 'completed') {
               this.emit('subtask:completed', completedSubtask, parentTaskId);
             }
           }));
@@ -2701,7 +2797,13 @@ Parent: ${parentTask.description}`;
 
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
-      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused')) {
+      // Include failed subtasks - they can be retried via resume
+      if (subtask && (
+        subtask.status === 'pending' ||
+        subtask.status === 'queued' ||
+        subtask.status === 'paused' ||
+        subtask.status === 'failed'
+      )) {
         return true;
       }
     }

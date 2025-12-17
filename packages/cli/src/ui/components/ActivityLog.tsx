@@ -110,11 +110,22 @@ export function ActivityLog({
   showAgents = true,
   allowCollapse = true,
   filterLevel = 'debug',
-  width = 80,
-  height = 20,
+  width: explicitWidth,
+  height: explicitHeight,
   title = 'Activity Log',
   autoScroll = true,
 }: ActivityLogProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, height: terminalHeight, breakpoint } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+  const height = explicitHeight ?? terminalHeight;
+
+  // Get responsive configuration
+  const responsiveConfig = getResponsiveConfig(width, breakpoint, {
+    hasTimestamp: showTimestamps,
+    hasAgent: showAgents,
+    hasIcon: true,
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [filter, setFilter] = useState('');
@@ -207,10 +218,10 @@ export function ActivityLog({
                 <Box>
                   {showTimestamps && (
                     <Text color="gray" dimColor>
-                      [{formatTimestamp(entry.timestamp)}]
+                      [{formatTimestamp(entry.timestamp, responsiveConfig.abbreviateTimestamp)}]
                     </Text>
                   )}
-                  <Text color={color}>{icon} </Text>
+                  {responsiveConfig.showIcons && <Text color={color}>{icon} </Text>}
                   {showAgents && entry.agent && (
                     <Text color="magenta" bold>[{entry.agent}] </Text>
                   )}
@@ -219,7 +230,7 @@ export function ActivityLog({
                   )}
                   <Text color={color}>
                     {isCollapsed ? '▶ ' : ''}
-                    {entry.message}
+                    {truncateMessage(entry.message, responsiveConfig.messageMaxLength)}
                   </Text>
                   {entry.duration && (
                     <Text color="gray" dimColor> ({formatDuration(entry.duration)})</Text>
@@ -271,9 +282,20 @@ export function LogStream({
   onNewEntry,
   realTime = true,
   bufferSize = 1000,
-  width = 80,
-  height = 15,
+  width: explicitWidth,
+  height: explicitHeight,
 }: LogStreamProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, height: terminalHeight, breakpoint } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+  const height = explicitHeight ?? terminalHeight;
+
+  // Get responsive configuration
+  const responsiveConfig = getResponsiveConfig(width, breakpoint, {
+    hasTimestamp: true, // LogStream always shows timestamps
+    hasAgent: true,
+    hasIcon: true,
+  });
   const [buffer, setBuffer] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
@@ -319,13 +341,13 @@ export function LogStream({
           return (
             <Box key={`${entry.id}-${index}`}>
               <Text color="gray" dimColor>
-                {formatTimestamp(entry.timestamp)}
+                {formatTimestamp(entry.timestamp, responsiveConfig.abbreviateTimestamp)}
               </Text>
-              <Text color={color}>{icon} </Text>
+              {responsiveConfig.showIcons && <Text color={color}>{icon} </Text>}
               {entry.agent && (
                 <Text color="magenta" bold>[{entry.agent}] </Text>
               )}
-              <Text>{entry.message}</Text>
+              <Text>{truncateMessage(entry.message, responsiveConfig.messageMaxLength)}</Text>
             </Box>
           );
         })}
