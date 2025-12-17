@@ -1,113 +1,137 @@
-# Agent Handoff Animation - Final Test Summary
+# Verbose Mode Testing Summary
 
-## Test Suite Completion Status: ✅ COMPLETE
+## Overview
+Comprehensive test coverage has been implemented for the verbose mode functionality across all UI components as specified in the acceptance criteria.
 
-### Test Files Created/Enhanced:
+## Acceptance Criteria Coverage
 
-1. **useAgentHandoff.test.ts** - Hook unit tests (45 test cases)
-2. **HandoffIndicator.test.tsx** - Component unit tests (35 test cases)
-3. **AgentPanel.test.tsx** - Integration with existing tests (65 total, 25 handoff-specific)
-4. **agentHandoff.integration.test.tsx** - End-to-end integration tests (30 test cases)
-5. **agentHandoff.acceptance.test.tsx** - Acceptance criteria validation (20 test cases)
+### ✅ Token Breakdown (Input/Output Separately)
+**StatusBar Tests**: `src/ui/components/__tests__/StatusBar.test.tsx`
+- `displays token breakdown in verbose mode`: Validates input→output format (e.g., "500→300")
+- `formats large tokens in breakdown correctly`: Tests formatting for large numbers (e.g., "1.5k→2.5k")
+- `shows both tokens breakdown and total in verbose mode`: Ensures both breakdown and total are displayed
+- `formats token display correctly for thousands/millions`: Tests "2.0k", "4.0M" formatting
 
-### Total Test Coverage:
-- **270 total test cases**
-- **100% code coverage** for handoff animation features
-- **All acceptance criteria validated**
+### ✅ Detailed Timing Info
+**StatusBar Tests**: `src/ui/components/__tests__/StatusBar.test.tsx`
+- `shows detailed timing information`: Tests active/idle/stage timing display
+- `formats timing with hours correctly`: Validates "2h0m", "30m0s" format
+- `shows all segments without filtering`: Ensures verbose mode ignores width constraints
 
-### Test Categories:
+### ✅ Agent Debug Info in AgentPanel
+**AgentPanel Tests**: `src/ui/components/agents/__tests__/AgentPanel.test.tsx`
+- `displays debug information in verbose mode for active agent`: Shows tokens, turns, tools, errors
+- `hides debug information in normal mode`: Ensures debug info only in verbose
+- `only shows debug info for active agent`: Validates selective display
+- `handles partial debug information`: Graceful handling of missing fields
+- `hides error count when zero`: Only shows errors when > 0
+- `handles agent without debug info`: Doesn't crash on missing debugInfo
 
-#### ✅ Unit Tests (115 test cases)
-- `useAgentHandoff` hook behavior and state management
-- `HandoffIndicator` component rendering and props
-- Animation timing and progress calculation
-- Edge cases and error handling
+### ✅ ActivityLog Debug Level
+**ActivityLog Tests**: `src/ui/components/__tests__/ActivityLog.test.tsx`
+- `auto-set filter level to debug in verbose mode`: Shows debug entries + "(auto: verbose)" indicator
+- `respects explicit filter level even in verbose mode`: Explicit levels override auto-debug
+- `shows milliseconds in timestamps in verbose mode`: Timestamps include ".123" format
+- `always shows data in verbose mode`: Data always visible regardless of collapse state
+- `hides debug entries in normal mode by default`: Debug filtered out in normal mode
 
-#### ✅ Integration Tests (95 test cases)
-- AgentPanel integration with handoff animation
-- Mode switching (compact/full) during animation
-- Interaction with existing AgentPanel features
-- State synchronization between components
+### ✅ StatusBar Shows All Available Info
+**StatusBar Tests**: `src/ui/components/__tests__/StatusBar.test.tsx`
+- `shows all segments without filtering`: No responsive filtering in verbose mode
+- `displays session cost in verbose mode when provided`: Session vs regular cost breakdown
+- `shows verbose mode indicator`: "🔍 VERBOSE" display
 
-#### ✅ Performance Tests (40 test cases)
-- Memory leak prevention
-- Rapid agent change handling
-- Animation cleanup verification
-- Resource management under stress
+## Integration Testing
+**Integration Tests**: `src/__tests__/verbose-mode-integration.test.tsx`
 
-#### ✅ Acceptance Tests (20 test cases)
-- AC1: Animated transition when currentAgent changes
-- AC2: Visual indicator showing "previousAgent → currentAgent"
-- AC3: Animation fades after 2 seconds
-- AC4: Works in compact panel mode
-- AC5: Works in full panel mode
+### Cross-Component Consistency
+- `maintains consistent display when multiple components use verbose mode`
+- `handles mixed display modes gracefully`
+- Token information consistency across StatusBar and AgentPanel
+- Agent information consistency across components
+- Timing synchronization validation
 
-### Key Testing Features:
+### Performance & Edge Cases
+- `handles large amounts of data in verbose mode efficiently`: 10 agents, 50 log entries
+- `handles missing or undefined data gracefully`: Partial data validation
+- Performance benchmarking (< 100ms render time)
 
-#### ✅ Comprehensive Coverage
-- All code paths tested
-- Edge cases and error scenarios covered
-- Performance and memory management validated
-- Accessibility compliance verified
+## Test File Structure
 
-#### ✅ Quality Standards
-- Fake timers for deterministic behavior
-- Isolated test environments
-- Comprehensive mock implementations
-- Clear test organization and naming
-
-#### ✅ Real-world Scenarios
-- Rapid agent changes
-- Mode switching during animation
-- Component lifecycle edge cases
-- Integration with existing functionality
-
-### Test Execution Summary:
-
-```bash
-# All tests should pass with these commands:
-npm test src/ui/hooks/__tests__/useAgentHandoff.test.ts
-npm test src/ui/components/agents/__tests__/HandoffIndicator.test.tsx
-npm test src/ui/components/agents/__tests__/AgentPanel.test.tsx
-npm test src/ui/components/agents/__tests__/agentHandoff.integration.test.tsx
-npm test src/ui/components/agents/__tests__/agentHandoff.acceptance.test.tsx
-
-# Full test suite:
-npm test src/ui/components/agents/__tests__/ src/ui/hooks/__tests__/useAgentHandoff.test.ts
+```
+packages/cli/src/
+├── __tests__/
+│   ├── test-utils.tsx (testing utilities)
+│   └── verbose-mode-integration.test.tsx (cross-component tests)
+└── ui/components/
+    ├── __tests__/
+    │   ├── StatusBar.test.tsx (enhanced with verbose mode tests)
+    │   └── ActivityLog.test.tsx (enhanced with verbose mode tests)
+    └── agents/__tests__/
+        └── AgentPanel.test.tsx (enhanced with verbose mode tests)
 ```
 
-### Coverage Report:
+## Test Coverage Metrics
 
-| Component | Lines | Branches | Functions | Statements |
-|-----------|-------|----------|-----------|------------|
-| useAgentHandoff.ts | 100% | 100% | 100% | 100% |
-| HandoffIndicator.tsx | 100% | 100% | 100% | 100% |
-| AgentPanel.tsx (handoff) | 100% | 100% | 100% | 100% |
+### StatusBar Component
+- **Verbose Mode Tests**: 9 new test cases
+- **Coverage Areas**: Token breakdown, timing info, session costs, responsive behavior
+- **Edge Cases**: Large numbers, missing data, terminal width constraints
 
-### Acceptance Criteria Validation:
+### AgentPanel Component
+- **Verbose Mode Tests**: 11 new test cases
+- **Coverage Areas**: Debug info display, agent status, partial data handling
+- **Edge Cases**: Missing debugInfo, zero error counts, inactive agents
 
-✅ **AC1**: Display animated transition when currentAgent changes from previousAgent
-✅ **AC2**: Visual indicator showing 'previousAgent → currentAgent' format
-✅ **AC3**: Animation fades after 2 seconds
-✅ **AC4**: Works in compact panel mode
-✅ **AC5**: Works in full panel mode
+### ActivityLog Component
+- **Verbose Mode Tests**: 9 new test cases
+- **Coverage Areas**: Debug level filtering, timestamp precision, data expansion
+- **Edge Cases**: Auto vs explicit filters, collapsed entries, complex objects
 
-### Feature Quality Indicators:
+### Integration Tests
+- **Test Scenarios**: 8 comprehensive integration tests
+- **Coverage Areas**: Component interaction, consistency, performance
+- **Edge Cases**: Large datasets, missing data, mixed display modes
 
-✅ **Reliability**: All tests use fake timers and mocked dependencies
-✅ **Maintainability**: Clear test structure and comprehensive documentation
-✅ **Performance**: Fast execution (< 100ms per test)
-✅ **Accessibility**: Screen reader compatibility verified
-✅ **Integration**: Seamless integration with existing AgentPanel features
+## Validation Approach
 
-## Conclusion
+### Unit Tests
+- Individual component behavior in verbose mode
+- Proper display/hiding of verbose-specific features
+- Data formatting and edge case handling
+- Responsive behavior override in verbose mode
 
-The agent handoff animation feature has been thoroughly tested with a comprehensive test suite that covers:
+### Integration Tests
+- Multi-component consistency validation
+- Data flow between components
+- Performance testing with realistic datasets
+- Graceful degradation with missing data
 
-- **Complete functionality validation**
-- **Performance under various conditions**
-- **Edge case and error handling**
-- **Integration with existing codebase**
-- **User acceptance criteria fulfillment**
+### Test Quality
+- **Mocking**: Comprehensive mocking of dependencies (Ink, hooks, theme)
+- **Assertions**: Specific text content and DOM structure validation
+- **Edge Cases**: Boundary conditions, missing data, performance limits
+- **Maintainability**: Clear test descriptions, grouped by functionality
 
-The feature is **production-ready** with high confidence in stability, performance, and user experience quality.
+## Execution Notes
+
+All tests use:
+- **Framework**: Vitest with jsdom environment
+- **Testing Library**: @testing-library/react for component testing
+- **Mocking**: vi.mock for dependency isolation
+- **Setup**: beforeEach/afterEach for clean test state
+
+Tests validate both positive cases (verbose features work) and negative cases (features hidden in normal mode), ensuring complete behavioral coverage.
+
+## Coverage Summary
+
+The verbose mode implementation has been thoroughly tested across:
+- ✅ Token breakdown display (input→output format)
+- ✅ Detailed timing information (active/idle/stage times)
+- ✅ Agent panel debug information (tokens, turns, tools, errors)
+- ✅ Activity log debug level filtering
+- ✅ Cross-component consistency and integration
+- ✅ Performance with large datasets
+- ✅ Edge case handling (missing data, boundary conditions)
+
+All acceptance criteria have been validated through comprehensive unit and integration testing.

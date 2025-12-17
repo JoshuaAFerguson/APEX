@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React from 'react';
+import { Box, Text } from 'ink';
 import type { DisplayMode } from '@apexcli/core';
 
 export interface ThoughtDisplayProps {
@@ -15,31 +15,17 @@ export function ThoughtDisplay({
   displayMode = 'normal',
   compact = false,
 }: ThoughtDisplayProps): React.ReactElement {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   // In compact mode or when thinking is disabled via displayMode, don't show
   if (compact || displayMode === 'compact') {
     return <Box />;
   }
 
-  // Show truncated preview if not expanded
-  const maxPreviewLength = displayMode === 'verbose' ? 200 : 100;
-  const shouldTruncate = thinking.length > maxPreviewLength;
-  const displayText = isExpanded || !shouldTruncate
-    ? thinking
-    : thinking.substring(0, maxPreviewLength) + '...';
-
-  const toggleExpansion = () => {
-    setIsExpanded(!isExpanded);
-  };
-
-  // Use global key handler for expansion toggle
-  useInput((input, key) => {
-    // Only handle space key when this component is focused/visible
-    if (input === ' ' && !key.ctrl && !key.meta) {
-      toggleExpansion();
-    }
-  });
+  // Limit display length based on display mode
+  const maxDisplayLength = displayMode === 'verbose' ? 1000 : 300;
+  const shouldTruncate = thinking.length > maxDisplayLength;
+  const displayText = shouldTruncate
+    ? thinking.substring(0, maxDisplayLength) + '...'
+    : thinking;
 
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -49,11 +35,7 @@ export function ThoughtDisplay({
         </Text>
         {shouldTruncate && (
           <Text color="gray" dimColor>
-            {' '}(
-            {isExpanded ? 'expanded' : 'collapsed'}
-            {!isExpanded && ` - ${thinking.length} chars`}
-            {shouldTruncate && ' - press space to toggle'}
-            )
+            {' '}(truncated from {thinking.length} chars)
           </Text>
         )}
       </Box>
@@ -69,13 +51,6 @@ export function ThoughtDisplay({
           {displayText}
         </Text>
       </Box>
-      {shouldTruncate && !isExpanded && (
-        <Box marginLeft={3} marginTop={1}>
-          <Text color="yellow" dimColor>
-            Press space to expand reasoning...
-          </Text>
-        </Box>
-      )}
     </Box>
   );
 }

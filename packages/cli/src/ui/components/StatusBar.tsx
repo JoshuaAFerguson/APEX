@@ -376,8 +376,8 @@ function buildSegments(
       minWidth: 12,
     });
 
-    // In verbose mode, also show session cost if available
-    if (props.displayMode === 'verbose' && props.sessionCost !== undefined) {
+    // In verbose mode, also show session cost if available and different from regular cost
+    if (props.displayMode === 'verbose' && props.sessionCost !== undefined && props.sessionCost !== props.cost) {
       right.push({
         label: 'session:',
         labelColor: 'gray',
