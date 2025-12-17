@@ -5,5 +5,6 @@ export {
   useStdoutDimensions,
   type StdoutDimensions,
   type UseStdoutDimensionsOptions,
-  type Breakpoint
+  type Breakpoint,
+  type BreakpointHelpers
 } from './useStdoutDimensions.js';

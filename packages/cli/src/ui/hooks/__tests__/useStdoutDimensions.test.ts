@@ -291,13 +291,19 @@ describe('useStdoutDimensions', () => {
 
       const { result, rerender } = renderHook(
         (props) => useStdoutDimensions(props),
-        { initialProps: { narrowThreshold: 60, wideThreshold: 120 } }
+        {
+          initialProps: {
+            breakpoints: { narrow: 60, compact: 100, normal: 160 }
+          }
+        }
       );
 
-      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.breakpoint).toBe('compact');
 
       // Change thresholds so 80 becomes narrow
-      rerender({ narrowThreshold: 90, wideThreshold: 130 });
+      rerender({
+        breakpoints: { narrow: 90, compact: 120, normal: 180 }
+      });
 
       expect(result.current.breakpoint).toBe('narrow');
     });
@@ -372,12 +378,16 @@ describe('useStdoutDimensions', () => {
 
       const { result } = renderHook(() =>
         useStdoutDimensions({
-          narrowThreshold: 200, // Everything is narrow
-          wideThreshold: 300
+          breakpoints: {
+            narrow: 200, // Everything is narrow
+            compact: 300,
+            normal: 400
+          }
         })
       );
 
       expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
     });
 
     it('should handle inverted threshold values gracefully', () => {
@@ -385,14 +395,18 @@ describe('useStdoutDimensions', () => {
 
       const { result } = renderHook(() =>
         useStdoutDimensions({
-          narrowThreshold: 150, // narrowThreshold > wideThreshold
-          wideThreshold: 80
+          breakpoints: {
+            narrow: 150, // narrow > compact
+            compact: 80,  // compact < narrow
+            normal: 200
+          }
         })
       );
 
-      // Should still work according to the logic: < 150 = narrow, >= 80 = wide
-      // Since 100 < 150 but >= 80, it should be classified based on first condition (narrow)
+      // Should still work according to the logic: < 150 = narrow
+      // Since 100 < 150, it should be narrow
       expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
     });
   });
 
