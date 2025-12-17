@@ -7,6 +7,7 @@ import { HandoffIndicator } from './HandoffIndicator.js';
 import { ProgressBar } from '../ProgressIndicators.js';
 import { ParallelExecutionView, ParallelAgent } from './ParallelExecutionView.js';
 import { VerboseAgentRow } from './VerboseAgentRow.js';
+import { AgentThoughts } from '../AgentThoughts.js';
 
 export interface AgentInfo {
   name: string;
@@ -136,21 +137,31 @@ export function AgentPanel({
 
       <Box marginTop={1} flexDirection="column">
         {agents.map(agent => (
-          displayMode === 'verbose' ? (
-            <VerboseAgentRow
-              key={agent.name}
-              agent={agent}
-              isActive={agent.name === currentAgent}
-              color={agentColors[agent.name] || 'white'}
-            />
-          ) : (
-            <AgentRow
-              key={agent.name}
-              agent={agent}
-              isActive={agent.name === currentAgent}
-              displayMode={displayMode}
-            />
-          )
+          <React.Fragment key={agent.name}>
+            {displayMode === 'verbose' ? (
+              <VerboseAgentRow
+                agent={agent}
+                isActive={agent.name === currentAgent}
+                color={agentColors[agent.name] || 'white'}
+              />
+            ) : (
+              <AgentRow
+                agent={agent}
+                isActive={agent.name === currentAgent}
+                displayMode={displayMode}
+              />
+            )}
+            {/* Conditionally render AgentThoughts when showThoughts=true and thinking data exists */}
+            {showThoughts && agent.debugInfo?.thinking && (
+              <Box marginTop={1}>
+                <AgentThoughts
+                  thinking={agent.debugInfo.thinking}
+                  agent={agent.name}
+                  displayMode={displayMode}
+                />
+              </Box>
+            )}
+          </React.Fragment>
         ))}
       </Box>
 
@@ -168,7 +179,11 @@ export function AgentPanel({
             compact={false}
           />
         ) : (
-          <ParallelSection agents={parallelAgents} />
+          <ParallelSection
+            agents={parallelAgents}
+            showThoughts={showThoughts}
+            displayMode={displayMode}
+          />
         )
       )}
     </Box>
@@ -233,8 +248,12 @@ function AgentRow({
 
 function ParallelSection({
   agents,
+  showThoughts = false,
+  displayMode = 'normal',
 }: {
   agents: AgentInfo[];
+  showThoughts?: boolean;
+  displayMode?: DisplayMode;
 }): React.ReactElement {
   return (
     <Box marginTop={1} flexDirection="column">
@@ -252,37 +271,49 @@ function ParallelSection({
             agent.progress !== undefined && agent.progress > 0 && agent.progress < 100;
 
           return (
-            <Box key={agent.name} flexDirection="column" marginBottom={1}>
-              <Box>
-                <Text color="cyan">
-                  ⟂{' '}
-                </Text>
-                <Text color="cyan" bold>
-                  {agent.name}
-                </Text>
-                {agent.stage && (
-                  <Text color="gray" dimColor>
-                    {' '}({agent.stage})
+            <React.Fragment key={agent.name}>
+              <Box flexDirection="column" marginBottom={1}>
+                <Box>
+                  <Text color="cyan">
+                    ⟂{' '}
                   </Text>
-                )}
-                {shouldShowElapsed && (
-                  <Text color="gray" dimColor>
-                    {' '}[{elapsedTime}]
+                  <Text color="cyan" bold>
+                    {agent.name}
                   </Text>
+                  {agent.stage && (
+                    <Text color="gray" dimColor>
+                      {' '}({agent.stage})
+                    </Text>
+                  )}
+                  {shouldShowElapsed && (
+                    <Text color="gray" dimColor>
+                      {' '}[{elapsedTime}]
+                    </Text>
+                  )}
+                </Box>
+                {shouldShowProgressBar && (
+                  <Box marginLeft={2} marginTop={1}>
+                    <ProgressBar
+                      progress={agent.progress!}
+                      width={30}
+                      showPercentage={true}
+                      color="cyan"
+                      animated={false}
+                    />
+                  </Box>
                 )}
               </Box>
-              {shouldShowProgressBar && (
-                <Box marginLeft={2} marginTop={1}>
-                  <ProgressBar
-                    progress={agent.progress!}
-                    width={30}
-                    showPercentage={true}
-                    color="cyan"
-                    animated={false}
+              {/* Conditionally render AgentThoughts for parallel agents */}
+              {showThoughts && agent.debugInfo?.thinking && (
+                <Box marginTop={1} marginBottom={1}>
+                  <AgentThoughts
+                    thinking={agent.debugInfo.thinking}
+                    agent={agent.name}
+                    displayMode={displayMode}
                   />
                 </Box>
               )}
-            </Box>
+            </React.Fragment>
           );
         })}
       </Box>
