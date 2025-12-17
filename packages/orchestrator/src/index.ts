@@ -211,6 +211,41 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task not found: ${taskId}`);
     }
 
+    // Check if this task already has subtasks that need to be continued
+    // This happens when resuming a task that was previously decomposed
+    if (task.subtaskIds && task.subtaskIds.length > 0) {
+      const hasWorkToDo = await this.hasPendingSubtasks(taskId, true);
+      if (hasWorkToDo) {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Task has existing subtasks - continuing those instead of re-running workflow`,
+        });
+        await this.continuePendingSubtasks(taskId);
+        return;
+      }
+      // All subtasks are done - aggregate and complete
+      const allComplete = await this.aggregateSubtaskResults(taskId);
+      if (allComplete) {
+        await this.updateTaskStatus(taskId, 'completed');
+        const completedTask = await this.store.getTask(taskId);
+        if (completedTask) {
+          this.emit('task:completed', completedTask);
+          // Handle git operations for completed task
+          if (!task.parentTaskId) {
+            try {
+              await this.handleTaskGitOperations(completedTask);
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Git operations failed: ${(error as Error).message}`,
+              });
+            }
+          }
+        }
+        return;
+      }
+    }
+
     // Load workflow
     const workflow = await loadWorkflow(this.projectPath, task.workflow);
     if (!workflow) {
