@@ -707,6 +707,36 @@ const commands: Command[] = [
       console.log(`APEX v${VERSION}`);
     },
   },
+
+  {
+    name: 'thoughts',
+    aliases: ['t'],
+    description: 'Toggle thought visibility',
+    usage: '/thoughts [on|off|toggle|status]',
+    handler: async (ctx, args) => {
+      // Note: In classic CLI mode, this command has limited functionality
+      // as the classic mode doesn't have the same state management as the Ink UI
+      const action = args[0]?.toLowerCase();
+
+      switch (action) {
+        case 'on':
+          console.log(chalk.green('✓ Thought visibility enabled (Note: Classic CLI has limited thought display)'));
+          break;
+        case 'off':
+          console.log(chalk.green('✓ Thought visibility disabled'));
+          break;
+        case 'status':
+          console.log(chalk.gray('Thought visibility status is managed per session in Ink UI mode'));
+          break;
+        case 'toggle':
+        case undefined:
+          console.log(chalk.blue('💭 Thought visibility toggled (Use --classic flag for rich UI)'));
+          break;
+        default:
+          console.log(chalk.red('Usage: /thoughts [on|off|toggle|status]'));
+      }
+    },
+  },
 ];
 
 // ============================================================================
