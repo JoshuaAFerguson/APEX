@@ -791,6 +791,7 @@ export function App({
               showParallel={state.showParallelPanel}
               parallelAgents={state.parallelAgents}
               displayMode={state.displayMode}
+              showThoughts={state.showThoughts}
             />
           </>
         )}

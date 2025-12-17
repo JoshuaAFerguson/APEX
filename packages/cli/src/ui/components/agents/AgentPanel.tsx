@@ -32,6 +32,7 @@ export interface AgentPanelProps {
   parallelAgents?: AgentInfo[];
   useDetailedParallelView?: boolean;
   displayMode?: DisplayMode;
+  showThoughts?: boolean;
 }
 
 const agentColors: Record<string, string> = {
@@ -59,6 +60,7 @@ export function AgentPanel({
   parallelAgents = [],
   useDetailedParallelView = false,
   displayMode = 'normal',
+  showThoughts = false,
 }: AgentPanelProps): React.ReactElement {
   // Use handoff animation hook to track agent transitions
   const handoffState = useAgentHandoff(currentAgent);
