@@ -406,3 +406,35 @@ export interface AgentUsage {
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
 }
+
+/**
+ * Extended debug data for verbose logging and analysis
+ * Provides detailed breakdowns of agent execution, timing, and performance metrics
+ */
+export interface VerboseDebugData {
+  /** Per-agent token usage breakdown */
+  agentTokens: Record<string, AgentUsage>;
+  /** Execution timing information */
+  timing: {
+    stageStartTime: Date;
+    stageEndTime?: Date;
+    stageDuration?: number; // milliseconds
+    agentResponseTimes: Record<string, number>; // agent name -> response time in ms
+    toolUsageTimes: Record<string, number>; // tool name -> cumulative usage time in ms
+  };
+  /** Agent-specific debug information */
+  agentDebug: {
+    conversationLength: Record<string, number>; // agent name -> number of messages
+    toolCallCounts: Record<string, Record<string, number>>; // agent -> tool -> count
+    errorCounts: Record<string, number>; // agent name -> error count
+    retryAttempts: Record<string, number>; // agent name -> retry count
+  };
+  /** Performance and efficiency metrics */
+  metrics: {
+    tokensPerSecond: number;
+    averageResponseTime: number; // milliseconds
+    toolEfficiency: Record<string, number>; // tool name -> success rate (0-1)
+    memoryUsage?: number; // bytes
+    cpuUtilization?: number; // percentage
+  };
+}

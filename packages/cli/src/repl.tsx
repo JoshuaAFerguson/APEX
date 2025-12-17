@@ -1604,6 +1604,17 @@ export async function startInkREPL(): Promise<void> {
         }
       });
 
+      // Stream agent thinking to the UI
+      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+        // Add thinking content as a separate message type
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: '', // No visible content, thinking is stored separately
+          agent,
+          thinking,
+        });
+      });
+
       // Stream tool use events to the UI
       ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
         // Display tool usage in a compact format

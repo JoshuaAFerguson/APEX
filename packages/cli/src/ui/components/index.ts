@@ -40,6 +40,7 @@ export {
 } from './SuccessCelebration.js';
 export { IntentDetector, SmartSuggestions, type IntentDetectorProps, type Intent, type SmartSuggestionsProps } from './IntentDetector.js';
 export { PreviewPanel, type PreviewPanelProps } from './PreviewPanel.js';
+export { ThoughtDisplay, type ThoughtDisplayProps } from './ThoughtDisplay.js';
 
 // Agent components
 export {

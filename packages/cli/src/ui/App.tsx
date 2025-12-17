@@ -9,6 +9,7 @@ import {
   ServicesPanel,
   StatusBar,
   TaskProgress,
+  ThoughtDisplay,
   ToolCall,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
@@ -41,6 +42,7 @@ export interface Message {
   toolOutput?: string;
   toolStatus?: 'pending' | 'running' | 'success' | 'error';
   toolDuration?: number;
+  thinking?: string; // Agent's reasoning/thought process
   timestamp: Date;
 }
 
@@ -746,13 +748,27 @@ export function App({
           }
 
           return (
-            <ResponseStream
-              key={msg.id}
-              content={msg.content}
-              agent={msg.agent}
-              type={msg.type === 'error' ? 'error' : msg.type === 'system' ? 'system' : 'text'}
-              displayMode={state.displayMode}
-            />
+            <Box key={msg.id} flexDirection="column">
+              {/* Show regular message content if it exists */}
+              {msg.content && msg.content.trim().length > 0 && (
+                <ResponseStream
+                  content={msg.content}
+                  agent={msg.agent}
+                  type={msg.type === 'error' ? 'error' : msg.type === 'system' ? 'system' : 'text'}
+                  displayMode={state.displayMode}
+                />
+              )}
+
+              {/* Show thinking content if enabled and available */}
+              {state.showThoughts && msg.thinking && msg.thinking.trim().length > 0 && msg.agent && (
+                <ThoughtDisplay
+                  thinking={msg.thinking}
+                  agent={msg.agent}
+                  displayMode={state.displayMode}
+                  compact={state.displayMode === 'compact'}
+                />
+              )}
+            </Box>
           );
         })}
 

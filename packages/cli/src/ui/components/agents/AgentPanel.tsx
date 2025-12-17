@@ -13,6 +13,14 @@ export interface AgentInfo {
   stage?: string;
   progress?: number; // 0-100
   startedAt?: Date; // When the agent started working
+  // Verbose mode debug fields
+  debugInfo?: {
+    tokensUsed?: { input: number; output: number };
+    stageStartedAt?: Date;
+    lastToolCall?: string;
+    turnCount?: number;
+    errorCount?: number;
+  };
 }
 
 export interface AgentPanelProps {
@@ -128,6 +136,7 @@ export function AgentPanel({
             key={agent.name}
             agent={agent}
             isActive={agent.name === currentAgent}
+            displayMode={displayMode}
           />
         ))}
       </Box>
@@ -156,9 +165,11 @@ export function AgentPanel({
 function AgentRow({
   agent,
   isActive,
+  displayMode = 'normal',
 }: {
   agent: AgentInfo;
   isActive: boolean;
+  displayMode?: DisplayMode;
 }): React.ReactElement {
   const color = agentColors[agent.name] || 'white';
   // Use cyan color for parallel agents
@@ -201,6 +212,32 @@ function AgentRow({
             color={finalColor}
             animated={false}
           />
+        </Box>
+      )}
+
+      {/* Verbose mode debug information */}
+      {displayMode === 'verbose' && isActive && agent.debugInfo && (
+        <Box marginLeft={4} marginTop={1} flexDirection="column">
+          {agent.debugInfo.tokensUsed && (
+            <Text color="gray" dimColor>
+              🔢 Tokens: {agent.debugInfo.tokensUsed.input}→{agent.debugInfo.tokensUsed.output}
+            </Text>
+          )}
+          {agent.debugInfo.turnCount !== undefined && (
+            <Text color="gray" dimColor>
+              🔄 Turns: {agent.debugInfo.turnCount}
+            </Text>
+          )}
+          {agent.debugInfo.lastToolCall && (
+            <Text color="gray" dimColor>
+              🔧 Last tool: {agent.debugInfo.lastToolCall}
+            </Text>
+          )}
+          {agent.debugInfo.errorCount !== undefined && agent.debugInfo.errorCount > 0 && (
+            <Text color="red" dimColor>
+              ❌ Errors: {agent.debugInfo.errorCount}
+            </Text>
+          )}
         </Box>
       )}
     </Box>

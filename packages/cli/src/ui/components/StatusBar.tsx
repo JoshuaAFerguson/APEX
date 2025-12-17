@@ -13,8 +13,35 @@ function formatTokens(input: number, output: number): string {
   return total.toString();
 }
 
+function formatTokenBreakdown(input: number, output: number): string {
+  const formatValue = (val: number): string => {
+    if (val >= 1000000) {
+      return `${(val / 1000000).toFixed(1)}M`;
+    } else if (val >= 1000) {
+      return `${(val / 1000).toFixed(1)}k`;
+    }
+    return val.toString();
+  };
+
+  return `${formatValue(input)}→${formatValue(output)}`;
+}
+
 function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
+}
+
+function formatDetailedTime(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0) {
+    return `${hours}h${minutes % 60}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
 }
 
 export interface StatusBarProps {
@@ -34,6 +61,13 @@ export interface StatusBarProps {
   displayMode?: 'normal' | 'compact' | 'verbose';
   previewMode?: boolean;
   showThoughts?: boolean;
+  // Verbose mode timing details
+  detailedTiming?: {
+    stageStartTime?: Date;
+    totalActiveTime?: number; // milliseconds of active processing
+    totalIdleTime?: number;   // milliseconds of waiting/idle
+    currentStageElapsed?: number; // milliseconds in current stage
+  };
 }
 
 export function StatusBar({
@@ -53,6 +87,7 @@ export function StatusBar({
   displayMode = 'normal',
   previewMode = false,
   showThoughts = false,
+  detailedTiming,
 }: StatusBarProps): React.ReactElement {
   const { width: terminalWidth, breakpoint } = useStdoutDimensions({
     narrowThreshold: 80,
@@ -97,6 +132,7 @@ export function StatusBar({
     displayMode,
     previewMode,
     showThoughts,
+    detailedTiming,
   }, elapsed, terminalWidth);
 
   return (
@@ -256,7 +292,7 @@ function buildSegments(
     });
   }
 
-  // Right side segments
+  // Right side segments - Session timer
   right.push({
     label: '',
     value: elapsed,
@@ -264,15 +300,71 @@ function buildSegments(
     minWidth: 6,
   });
 
+  // In verbose mode, add detailed timing information
+  if (props.displayMode === 'verbose' && props.detailedTiming) {
+    const { totalActiveTime, totalIdleTime, currentStageElapsed } = props.detailedTiming;
+
+    // Show active vs idle time breakdown
+    if (totalActiveTime !== undefined && totalIdleTime !== undefined) {
+      right.push({
+        label: 'active:',
+        labelColor: 'gray',
+        value: formatDetailedTime(totalActiveTime),
+        valueColor: 'green',
+        minWidth: 12,
+      });
+
+      right.push({
+        label: 'idle:',
+        labelColor: 'gray',
+        value: formatDetailedTime(totalIdleTime),
+        valueColor: 'yellow',
+        minWidth: 10,
+      });
+    }
+
+    // Show current stage elapsed time
+    if (currentStageElapsed !== undefined && props.workflowStage) {
+      right.push({
+        label: 'stage:',
+        labelColor: 'gray',
+        value: formatDetailedTime(currentStageElapsed),
+        valueColor: 'cyan',
+        minWidth: 12,
+      });
+    }
+  }
+
   if (props.tokens) {
     const total = props.tokens.input + props.tokens.output;
-    right.push({
-      label: 'tokens:',
-      labelColor: 'gray',
-      value: formatTokens(props.tokens.input, props.tokens.output),
-      valueColor: 'cyan',
-      minWidth: 14,
-    });
+
+    // In verbose mode, show input→output breakdown
+    if (props.displayMode === 'verbose') {
+      right.push({
+        label: 'tokens:',
+        labelColor: 'gray',
+        value: formatTokenBreakdown(props.tokens.input, props.tokens.output),
+        valueColor: 'cyan',
+        minWidth: 18, // Increased width for breakdown format
+      });
+
+      // Also show total for clarity in verbose mode
+      right.push({
+        label: 'total:',
+        labelColor: 'gray',
+        value: formatTokens(props.tokens.input, props.tokens.output),
+        valueColor: 'blue',
+        minWidth: 12,
+      });
+    } else {
+      right.push({
+        label: 'tokens:',
+        labelColor: 'gray',
+        value: formatTokens(props.tokens.input, props.tokens.output),
+        valueColor: 'cyan',
+        minWidth: 14,
+      });
+    }
   }
 
   if (props.cost !== undefined) {
@@ -283,6 +375,17 @@ function buildSegments(
       valueColor: 'green',
       minWidth: 12,
     });
+
+    // In verbose mode, also show session cost if available
+    if (props.displayMode === 'verbose' && props.sessionCost !== undefined) {
+      right.push({
+        label: 'session:',
+        labelColor: 'gray',
+        value: `$${props.sessionCost.toFixed(4)}`,
+        valueColor: 'yellow',
+        minWidth: 14,
+      });
+    }
   }
 
   if (props.model) {
@@ -312,6 +415,16 @@ function buildSegments(
       value: '💭 THOUGHTS',
       valueColor: 'magenta',
       minWidth: 10,
+    });
+  }
+
+  // Verbose mode indicator
+  if (props.displayMode === 'verbose') {
+    right.push({
+      label: '',
+      value: '🔍 VERBOSE',
+      valueColor: 'cyan',
+      minWidth: 9,
     });
   }
 

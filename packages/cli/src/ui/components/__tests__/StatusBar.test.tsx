@@ -309,6 +309,176 @@ describe('StatusBar', () => {
     });
   });
 
+  describe('verbose mode', () => {
+    it('shows verbose mode indicator', () => {
+      render(<StatusBar {...defaultProps} displayMode="verbose" />);
+
+      expect(screen.getByText('🔍 VERBOSE')).toBeInTheDocument();
+    });
+
+    it('displays token breakdown in verbose mode', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          tokens={{ input: 500, output: 300 }}
+        />
+      );
+
+      // Should show input→output breakdown
+      expect(screen.getByText('tokens:')).toBeInTheDocument();
+      expect(screen.getByText('500→300')).toBeInTheDocument();
+
+      // Should also show total
+      expect(screen.getByText('total:')).toBeInTheDocument();
+      expect(screen.getByText('800')).toBeInTheDocument();
+    });
+
+    it('formats large tokens in breakdown correctly', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          tokens={{ input: 1500, output: 2500 }}
+        />
+      );
+
+      expect(screen.getByText('1.5k→2.5k')).toBeInTheDocument();
+      expect(screen.getByText('4.0k')).toBeInTheDocument();
+    });
+
+    it('displays session cost in verbose mode when provided', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          cost={0.1234}
+          sessionCost={0.5678}
+        />
+      );
+
+      expect(screen.getByText('cost:')).toBeInTheDocument();
+      expect(screen.getByText('$0.1234')).toBeInTheDocument();
+      expect(screen.getByText('session:')).toBeInTheDocument();
+      expect(screen.getByText('$0.5678')).toBeInTheDocument();
+    });
+
+    it('shows detailed timing information', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          workflowStage="implementation"
+          detailedTiming={{
+            totalActiveTime: 120000, // 2 minutes
+            totalIdleTime: 30000,    // 30 seconds
+            currentStageElapsed: 60000, // 1 minute
+          }}
+        />
+      );
+
+      expect(screen.getByText('active:')).toBeInTheDocument();
+      expect(screen.getByText('2m0s')).toBeInTheDocument();
+      expect(screen.getByText('idle:')).toBeInTheDocument();
+      expect(screen.getByText('30s')).toBeInTheDocument();
+      expect(screen.getByText('stage:')).toBeInTheDocument();
+      expect(screen.getByText('1m0s')).toBeInTheDocument();
+    });
+
+    it('formats timing with hours correctly', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          detailedTiming={{
+            totalActiveTime: 7200000, // 2 hours
+            totalIdleTime: 1800000,   // 30 minutes
+          }}
+        />
+      );
+
+      expect(screen.getByText('2h0m')).toBeInTheDocument();
+      expect(screen.getByText('30m0s')).toBeInTheDocument();
+    });
+
+    it('shows all segments without filtering', () => {
+      // Mock narrow terminal to test that verbose mode ignores width constraints
+      vi.mocked(require('ink').useStdout).mockReturnValue({
+        stdout: { columns: 60 }
+      });
+
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          gitBranch="feature/long-branch-name"
+          agent="planner"
+          workflowStage="implementation"
+          apiUrl="http://localhost:4000"
+          webUrl="http://localhost:3000"
+          sessionName="Very Long Session Name"
+          tokens={{ input: 1000, output: 500 }}
+          cost={0.1234}
+          sessionCost={0.5678}
+          model="opus"
+          subtaskProgress={{ completed: 3, total: 5 }}
+        />
+      );
+
+      // All elements should be visible despite narrow terminal
+      expect(screen.getByText('feature/long-branch-name')).toBeInTheDocument();
+      expect(screen.getByText('planner')).toBeInTheDocument();
+      expect(screen.getByText('implementation')).toBeInTheDocument();
+      expect(screen.getByText('4000')).toBeInTheDocument();
+      expect(screen.getByText('3000')).toBeInTheDocument();
+      expect(screen.getByText(/Very Long Session Name/)).toBeInTheDocument();
+      expect(screen.getByText('🔍 VERBOSE')).toBeInTheDocument();
+    });
+
+    it('does not show session cost if same as regular cost', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          cost={0.1234}
+          sessionCost={0.1234}
+        />
+      );
+
+      expect(screen.getByText('cost:')).toBeInTheDocument();
+      expect(screen.getByText('$0.1234')).toBeInTheDocument();
+      expect(screen.queryByText('session:')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('compact mode', () => {
+    it('shows minimal information in compact mode', () => {
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="compact"
+          gitBranch="main"
+          agent="planner"
+          workflowStage="implementation"
+          model="opus"
+          tokens={{ input: 500, output: 300 }}
+          cost={0.1234}
+        />
+      );
+
+      // Should show connection, git branch, and cost only
+      expect(screen.getByText('●')).toBeInTheDocument();
+      expect(screen.getByText('main')).toBeInTheDocument();
+      expect(screen.getByText('$0.1234')).toBeInTheDocument();
+
+      // Should not show other elements
+      expect(screen.queryByText('planner')).not.toBeInTheDocument();
+      expect(screen.queryByText('implementation')).not.toBeInTheDocument();
+      expect(screen.queryByText('opus')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+    });
+  });
+
   describe('accessibility', () => {
     it('provides meaningful text content for screen readers', () => {
       render(

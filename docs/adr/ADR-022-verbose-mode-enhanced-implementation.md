@@ -1,4 +1,4 @@
-# ADR-006: Verbose Mode Implementation Architecture
+# ADR-022: Verbose Mode Enhanced Implementation Architecture
 
 ## Status
 Proposed
@@ -6,9 +6,14 @@ Proposed
 ## Date
 2024-12-17
 
+## Related ADRs
+- ADR-020: Display Modes (Compact and Verbose) - Base architecture
+
 ## Context
 
-APEX CLI needs enhanced verbose mode functionality to provide detailed debugging information for troubleshooting and advanced users. The acceptance criteria specify:
+APEX CLI needs enhanced verbose mode functionality to provide detailed debugging information for troubleshooting and advanced users. While ADR-020 established the foundational display modes architecture, this ADR specifies the detailed implementation for verbose mode enhancements.
+
+The acceptance criteria specify:
 
 1. **Token breakdown**: Show input/output tokens separately
 2. **Detailed timing info**: Show comprehensive timing information

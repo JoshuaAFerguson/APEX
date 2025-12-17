@@ -710,4 +710,266 @@ describe('AgentPanel', () => {
       expect(screen.getAllByText(/⟂/)).toHaveLength(2); // For developer and tester
     });
   });
+
+  describe('verbose mode debug information', () => {
+    const agentWithDebugInfo: AgentInfo[] = [
+      {
+        name: 'developer',
+        status: 'active',
+        stage: 'implementation',
+        debugInfo: {
+          tokensUsed: { input: 1500, output: 2500 },
+          stageStartedAt: new Date('2023-01-01T10:00:00Z'),
+          lastToolCall: 'Edit',
+          turnCount: 3,
+          errorCount: 1,
+        },
+      },
+    ];
+
+    it('displays debug information in verbose mode for active agent', () => {
+      render(
+        <AgentPanel
+          agents={agentWithDebugInfo}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should show token breakdown
+      expect(screen.getByText('🔢 Tokens: 1500→2500')).toBeInTheDocument();
+
+      // Should show turn count
+      expect(screen.getByText('🔄 Turns: 3')).toBeInTheDocument();
+
+      // Should show last tool call
+      expect(screen.getByText('🔧 Last tool: Edit')).toBeInTheDocument();
+
+      // Should show error count
+      expect(screen.getByText('❌ Errors: 1')).toBeInTheDocument();
+    });
+
+    it('hides debug information in normal mode', () => {
+      render(
+        <AgentPanel
+          agents={agentWithDebugInfo}
+          currentAgent="developer"
+          displayMode="normal"
+        />
+      );
+
+      // Should not show any debug information
+      expect(screen.queryByText(/🔢 Tokens:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/🔄 Turns:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/🔧 Last tool:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/❌ Errors:/)).not.toBeInTheDocument();
+    });
+
+    it('only shows debug info for active agent', () => {
+      const mixedAgents: AgentInfo[] = [
+        {
+          name: 'planner',
+          status: 'completed',
+          debugInfo: {
+            tokensUsed: { input: 500, output: 300 },
+            turnCount: 2,
+          },
+        },
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            tokensUsed: { input: 1500, output: 2500 },
+            turnCount: 3,
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={mixedAgents}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Only active agent's debug info should be shown
+      expect(screen.getByText('🔢 Tokens: 1500→2500')).toBeInTheDocument();
+      expect(screen.getByText('🔄 Turns: 3')).toBeInTheDocument();
+
+      // Completed agent's debug info should not be shown
+      expect(screen.queryByText('🔢 Tokens: 500→300')).not.toBeInTheDocument();
+    });
+
+    it('handles partial debug information', () => {
+      const partialDebugAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            tokensUsed: { input: 1000, output: 1500 },
+            // Missing some fields
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={partialDebugAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should show available fields
+      expect(screen.getByText('🔢 Tokens: 1000→1500')).toBeInTheDocument();
+
+      // Should not show missing fields
+      expect(screen.queryByText(/🔄 Turns:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/🔧 Last tool:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/❌ Errors:/)).not.toBeInTheDocument();
+    });
+
+    it('hides error count when zero', () => {
+      const noErrorsAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            tokensUsed: { input: 1000, output: 1500 },
+            turnCount: 3,
+            errorCount: 0,
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={noErrorsAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should not show error count when it's 0
+      expect(screen.queryByText(/❌ Errors:/)).not.toBeInTheDocument();
+
+      // Other fields should still be visible
+      expect(screen.getByText('🔢 Tokens: 1000→1500')).toBeInTheDocument();
+      expect(screen.getByText('🔄 Turns: 3')).toBeInTheDocument();
+    });
+
+    it('handles agent without debug info in verbose mode', () => {
+      const noDebugAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          stage: 'implementation',
+          // No debugInfo
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={noDebugAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should still show normal agent info
+      expect(screen.getByText('developer')).toBeInTheDocument();
+      expect(screen.getByText(/\(implementation\)/)).toBeInTheDocument();
+
+      // Should not show any debug fields
+      expect(screen.queryByText(/🔢/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/🔄/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/🔧/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/❌/)).not.toBeInTheDocument();
+    });
+
+    it('formats debug information with proper indentation', () => {
+      render(
+        <AgentPanel
+          agents={agentWithDebugInfo}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Debug info should be indented relative to agent name
+      // This would require testing actual DOM structure or CSS classes
+      expect(screen.getByText('🔢 Tokens: 1500→2500')).toBeInTheDocument();
+      expect(screen.getByText('🔄 Turns: 3')).toBeInTheDocument();
+    });
+
+    it('handles large token numbers in debug info', () => {
+      const largeTokensAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            tokensUsed: { input: 150000, output: 250000 },
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={largeTokensAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should display raw numbers, not formatted
+      expect(screen.getByText('🔢 Tokens: 150000→250000')).toBeInTheDocument();
+    });
+
+    it('handles special characters in tool names', () => {
+      const specialToolAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            lastToolCall: 'WebFetch',
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={specialToolAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      expect(screen.getByText('🔧 Last tool: WebFetch')).toBeInTheDocument();
+    });
+
+    it('handles undefined vs 0 turn count correctly', () => {
+      const undefinedTurnsAgent: AgentInfo[] = [
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            tokensUsed: { input: 1000, output: 1500 },
+            turnCount: undefined,
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={undefinedTurnsAgent}
+          currentAgent="developer"
+          displayMode="verbose"
+        />
+      );
+
+      // Should not show turn count when undefined
+      expect(screen.queryByText(/🔄 Turns:/)).not.toBeInTheDocument();
+    });
+  });
 });

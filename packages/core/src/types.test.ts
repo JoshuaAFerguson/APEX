@@ -7,6 +7,8 @@ import {
   AutonomyLevelSchema,
   AgentModelSchema,
   DisplayMode,
+  VerboseDebugData,
+  AgentUsage,
 } from './types';
 
 describe('AgentModelSchema', () => {
@@ -286,5 +288,515 @@ describe('DisplayMode', () => {
     // This test verifies the type is properly exported from the module
     // If DisplayMode wasn't exported, the import would fail at compile time
     expect(typeof DisplayMode).toBeUndefined(); // Types don't exist at runtime
+  });
+});
+
+describe('VerboseDebugData', () => {
+  const createValidAgentUsage = (): AgentUsage => ({
+    inputTokens: 1000,
+    outputTokens: 500,
+    cacheCreationInputTokens: 100,
+    cacheReadInputTokens: 50,
+  });
+
+  const createValidVerboseDebugData = (): VerboseDebugData => ({
+    agentTokens: {
+      planner: createValidAgentUsage(),
+      developer: {
+        inputTokens: 2000,
+        outputTokens: 800,
+        cacheCreationInputTokens: 200,
+        cacheReadInputTokens: 100,
+      },
+    },
+    timing: {
+      stageStartTime: new Date('2023-01-01T10:00:00Z'),
+      stageEndTime: new Date('2023-01-01T10:05:00Z'),
+      stageDuration: 300000, // 5 minutes in milliseconds
+      agentResponseTimes: {
+        planner: 2000,
+        developer: 3500,
+      },
+      toolUsageTimes: {
+        Read: 500,
+        Write: 750,
+        Bash: 1200,
+      },
+    },
+    agentDebug: {
+      conversationLength: {
+        planner: 5,
+        developer: 8,
+      },
+      toolCallCounts: {
+        planner: {
+          Read: 3,
+          Grep: 2,
+        },
+        developer: {
+          Write: 4,
+          Edit: 6,
+          Bash: 2,
+        },
+      },
+      errorCounts: {
+        planner: 0,
+        developer: 1,
+      },
+      retryAttempts: {
+        planner: 0,
+        developer: 1,
+      },
+    },
+    metrics: {
+      tokensPerSecond: 10.5,
+      averageResponseTime: 2750,
+      toolEfficiency: {
+        Read: 1.0,
+        Write: 0.95,
+        Edit: 0.98,
+        Bash: 0.87,
+        Grep: 1.0,
+      },
+      memoryUsage: 256000000, // 256MB in bytes
+      cpuUtilization: 25.5,
+    },
+  });
+
+  it('should be exportable and importable', () => {
+    // This test verifies the type is properly exported from the module
+    // If VerboseDebugData wasn't exported, the import would fail at compile time
+    expect(typeof VerboseDebugData).toBeUndefined(); // Types don't exist at runtime
+  });
+
+  describe('structure validation', () => {
+    it('should accept valid VerboseDebugData with all fields', () => {
+      const validData = createValidVerboseDebugData();
+
+      // Test that the object can be typed correctly
+      expect(validData).toBeDefined();
+      expect(typeof validData.agentTokens).toBe('object');
+      expect(typeof validData.timing).toBe('object');
+      expect(typeof validData.agentDebug).toBe('object');
+      expect(typeof validData.metrics).toBe('object');
+    });
+
+    it('should accept minimal VerboseDebugData with required fields only', () => {
+      const minimalData: VerboseDebugData = {
+        agentTokens: {
+          'test-agent': {
+            inputTokens: 100,
+            outputTokens: 50,
+          },
+        },
+        timing: {
+          stageStartTime: new Date(),
+          agentResponseTimes: {},
+          toolUsageTimes: {},
+        },
+        agentDebug: {
+          conversationLength: {},
+          toolCallCounts: {},
+          errorCounts: {},
+          retryAttempts: {},
+        },
+        metrics: {
+          tokensPerSecond: 5.0,
+          averageResponseTime: 1000,
+          toolEfficiency: {},
+        },
+      };
+
+      expect(minimalData).toBeDefined();
+      expect(minimalData.agentTokens['test-agent'].inputTokens).toBe(100);
+      expect(minimalData.timing.stageStartTime).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('agentTokens field', () => {
+    it('should accept multiple agents with different token usage', () => {
+      const data = createValidVerboseDebugData();
+
+      expect(data.agentTokens).toBeDefined();
+      expect(Object.keys(data.agentTokens)).toContain('planner');
+      expect(Object.keys(data.agentTokens)).toContain('developer');
+
+      // Test AgentUsage structure
+      const plannerUsage = data.agentTokens.planner;
+      expect(plannerUsage.inputTokens).toBe(1000);
+      expect(plannerUsage.outputTokens).toBe(500);
+      expect(plannerUsage.cacheCreationInputTokens).toBe(100);
+      expect(plannerUsage.cacheReadInputTokens).toBe(50);
+    });
+
+    it('should accept AgentUsage with optional cache fields', () => {
+      const agentUsage: AgentUsage = {
+        inputTokens: 500,
+        outputTokens: 200,
+      };
+
+      const data: VerboseDebugData = {
+        agentTokens: { 'test-agent': agentUsage },
+        timing: {
+          stageStartTime: new Date(),
+          agentResponseTimes: {},
+          toolUsageTimes: {},
+        },
+        agentDebug: {
+          conversationLength: {},
+          toolCallCounts: {},
+          errorCounts: {},
+          retryAttempts: {},
+        },
+        metrics: {
+          tokensPerSecond: 5.0,
+          averageResponseTime: 1000,
+          toolEfficiency: {},
+        },
+      };
+
+      expect(data.agentTokens['test-agent'].inputTokens).toBe(500);
+      expect(data.agentTokens['test-agent'].outputTokens).toBe(200);
+      expect(data.agentTokens['test-agent'].cacheCreationInputTokens).toBeUndefined();
+      expect(data.agentTokens['test-agent'].cacheReadInputTokens).toBeUndefined();
+    });
+  });
+
+  describe('timing field', () => {
+    it('should have required timing fields', () => {
+      const data = createValidVerboseDebugData();
+      const timing = data.timing;
+
+      expect(timing.stageStartTime).toBeInstanceOf(Date);
+      expect(timing.stageEndTime).toBeInstanceOf(Date);
+      expect(timing.stageDuration).toBe(300000);
+      expect(typeof timing.agentResponseTimes).toBe('object');
+      expect(typeof timing.toolUsageTimes).toBe('object');
+    });
+
+    it('should accept timing without optional fields', () => {
+      const timing = {
+        stageStartTime: new Date(),
+        agentResponseTimes: { planner: 1000 },
+        toolUsageTimes: { Read: 500 },
+      };
+
+      expect(timing.stageStartTime).toBeInstanceOf(Date);
+      expect(timing.stageEndTime).toBeUndefined();
+      expect(timing.stageDuration).toBeUndefined();
+      expect(timing.agentResponseTimes.planner).toBe(1000);
+      expect(timing.toolUsageTimes.Read).toBe(500);
+    });
+
+    it('should handle response times for multiple agents and tools', () => {
+      const data = createValidVerboseDebugData();
+      const timing = data.timing;
+
+      // Agent response times
+      expect(timing.agentResponseTimes.planner).toBe(2000);
+      expect(timing.agentResponseTimes.developer).toBe(3500);
+
+      // Tool usage times
+      expect(timing.toolUsageTimes.Read).toBe(500);
+      expect(timing.toolUsageTimes.Write).toBe(750);
+      expect(timing.toolUsageTimes.Bash).toBe(1200);
+    });
+  });
+
+  describe('agentDebug field', () => {
+    it('should track conversation and tool usage per agent', () => {
+      const data = createValidVerboseDebugData();
+      const debug = data.agentDebug;
+
+      // Conversation length tracking
+      expect(debug.conversationLength.planner).toBe(5);
+      expect(debug.conversationLength.developer).toBe(8);
+
+      // Tool call counts per agent
+      expect(debug.toolCallCounts.planner.Read).toBe(3);
+      expect(debug.toolCallCounts.planner.Grep).toBe(2);
+      expect(debug.toolCallCounts.developer.Write).toBe(4);
+      expect(debug.toolCallCounts.developer.Edit).toBe(6);
+      expect(debug.toolCallCounts.developer.Bash).toBe(2);
+    });
+
+    it('should track error and retry counts', () => {
+      const data = createValidVerboseDebugData();
+      const debug = data.agentDebug;
+
+      // Error counts
+      expect(debug.errorCounts.planner).toBe(0);
+      expect(debug.errorCounts.developer).toBe(1);
+
+      // Retry attempts
+      expect(debug.retryAttempts.planner).toBe(0);
+      expect(debug.retryAttempts.developer).toBe(1);
+    });
+
+    it('should handle nested tool call count structure', () => {
+      const debug = {
+        conversationLength: { agent1: 3, agent2: 5 },
+        toolCallCounts: {
+          agent1: { Read: 2, Write: 1 },
+          agent2: { Edit: 3, Bash: 2, Grep: 1 },
+        },
+        errorCounts: { agent1: 0, agent2: 1 },
+        retryAttempts: { agent1: 0, agent2: 2 },
+      };
+
+      expect(debug.toolCallCounts.agent1.Read).toBe(2);
+      expect(debug.toolCallCounts.agent2.Edit).toBe(3);
+      expect(debug.toolCallCounts.agent2.Bash).toBe(2);
+    });
+  });
+
+  describe('metrics field', () => {
+    it('should have required performance metrics', () => {
+      const data = createValidVerboseDebugData();
+      const metrics = data.metrics;
+
+      expect(metrics.tokensPerSecond).toBe(10.5);
+      expect(metrics.averageResponseTime).toBe(2750);
+      expect(typeof metrics.toolEfficiency).toBe('object');
+    });
+
+    it('should handle optional system metrics', () => {
+      const data = createValidVerboseDebugData();
+      const metrics = data.metrics;
+
+      expect(metrics.memoryUsage).toBe(256000000);
+      expect(metrics.cpuUtilization).toBe(25.5);
+    });
+
+    it('should track tool efficiency rates', () => {
+      const data = createValidVerboseDebugData();
+      const toolEfficiency = data.metrics.toolEfficiency;
+
+      expect(toolEfficiency.Read).toBe(1.0);
+      expect(toolEfficiency.Write).toBe(0.95);
+      expect(toolEfficiency.Edit).toBe(0.98);
+      expect(toolEfficiency.Bash).toBe(0.87);
+      expect(toolEfficiency.Grep).toBe(1.0);
+    });
+
+    it('should accept metrics without optional system fields', () => {
+      const metrics = {
+        tokensPerSecond: 8.5,
+        averageResponseTime: 2000,
+        toolEfficiency: {
+          Read: 0.98,
+          Write: 0.92,
+        },
+      };
+
+      expect(metrics.tokensPerSecond).toBe(8.5);
+      expect(metrics.averageResponseTime).toBe(2000);
+      expect(metrics.memoryUsage).toBeUndefined();
+      expect(metrics.cpuUtilization).toBeUndefined();
+      expect(metrics.toolEfficiency.Read).toBe(0.98);
+      expect(metrics.toolEfficiency.Write).toBe(0.92);
+    });
+  });
+
+  describe('integration scenarios', () => {
+    it('should support empty agent data for new stages', () => {
+      const emptyData: VerboseDebugData = {
+        agentTokens: {},
+        timing: {
+          stageStartTime: new Date(),
+          agentResponseTimes: {},
+          toolUsageTimes: {},
+        },
+        agentDebug: {
+          conversationLength: {},
+          toolCallCounts: {},
+          errorCounts: {},
+          retryAttempts: {},
+        },
+        metrics: {
+          tokensPerSecond: 0,
+          averageResponseTime: 0,
+          toolEfficiency: {},
+        },
+      };
+
+      expect(emptyData).toBeDefined();
+      expect(Object.keys(emptyData.agentTokens)).toHaveLength(0);
+      expect(Object.keys(emptyData.timing.agentResponseTimes)).toHaveLength(0);
+      expect(Object.keys(emptyData.agentDebug.conversationLength)).toHaveLength(0);
+    });
+
+    it('should support single agent workflow data', () => {
+      const singleAgentData: VerboseDebugData = {
+        agentTokens: {
+          'solo-agent': {
+            inputTokens: 1500,
+            outputTokens: 600,
+            cacheCreationInputTokens: 150,
+            cacheReadInputTokens: 75,
+          },
+        },
+        timing: {
+          stageStartTime: new Date('2023-01-01T14:00:00Z'),
+          stageEndTime: new Date('2023-01-01T14:03:30Z'),
+          stageDuration: 210000, // 3.5 minutes
+          agentResponseTimes: {
+            'solo-agent': 2100,
+          },
+          toolUsageTimes: {
+            Read: 300,
+            Write: 500,
+            Edit: 800,
+          },
+        },
+        agentDebug: {
+          conversationLength: {
+            'solo-agent': 12,
+          },
+          toolCallCounts: {
+            'solo-agent': {
+              Read: 5,
+              Write: 3,
+              Edit: 4,
+            },
+          },
+          errorCounts: {
+            'solo-agent': 0,
+          },
+          retryAttempts: {
+            'solo-agent': 0,
+          },
+        },
+        metrics: {
+          tokensPerSecond: 12.0,
+          averageResponseTime: 2100,
+          toolEfficiency: {
+            Read: 1.0,
+            Write: 1.0,
+            Edit: 0.95,
+          },
+          memoryUsage: 128000000,
+          cpuUtilization: 15.2,
+        },
+      };
+
+      expect(singleAgentData.agentTokens['solo-agent'].inputTokens).toBe(1500);
+      expect(singleAgentData.timing.stageDuration).toBe(210000);
+      expect(singleAgentData.agentDebug.conversationLength['solo-agent']).toBe(12);
+      expect(singleAgentData.metrics.tokensPerSecond).toBe(12.0);
+    });
+
+    it('should support complex multi-agent workflow data', () => {
+      const complexData = createValidVerboseDebugData();
+
+      // Add additional agents to test scalability
+      complexData.agentTokens.architect = {
+        inputTokens: 800,
+        outputTokens: 400,
+        cacheCreationInputTokens: 80,
+        cacheReadInputTokens: 40,
+      };
+
+      complexData.agentTokens.tester = {
+        inputTokens: 600,
+        outputTokens: 300,
+      };
+
+      complexData.timing.agentResponseTimes.architect = 1800;
+      complexData.timing.agentResponseTimes.tester = 2200;
+
+      complexData.agentDebug.conversationLength.architect = 6;
+      complexData.agentDebug.conversationLength.tester = 4;
+
+      complexData.agentDebug.toolCallCounts.architect = {
+        Read: 4,
+        Grep: 3,
+        Write: 2,
+      };
+
+      complexData.agentDebug.toolCallCounts.tester = {
+        Bash: 5,
+        Read: 2,
+      };
+
+      complexData.agentDebug.errorCounts.architect = 0;
+      complexData.agentDebug.errorCounts.tester = 0;
+
+      complexData.agentDebug.retryAttempts.architect = 0;
+      complexData.agentDebug.retryAttempts.tester = 1;
+
+      expect(Object.keys(complexData.agentTokens)).toHaveLength(4);
+      expect(complexData.agentTokens.architect.inputTokens).toBe(800);
+      expect(complexData.agentTokens.tester.outputTokens).toBe(300);
+      expect(complexData.timing.agentResponseTimes.architect).toBe(1800);
+      expect(complexData.agentDebug.toolCallCounts.architect.Grep).toBe(3);
+      expect(complexData.agentDebug.toolCallCounts.tester.Bash).toBe(5);
+    });
+  });
+
+  describe('type safety and constraints', () => {
+    it('should enforce number types for token counts', () => {
+      const usage: AgentUsage = {
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheCreationInputTokens: 100,
+        cacheReadInputTokens: 50,
+      };
+
+      expect(typeof usage.inputTokens).toBe('number');
+      expect(typeof usage.outputTokens).toBe('number');
+      expect(typeof usage.cacheCreationInputTokens).toBe('number');
+      expect(typeof usage.cacheReadInputTokens).toBe('number');
+    });
+
+    it('should enforce Date type for timing fields', () => {
+      const startTime = new Date();
+      const endTime = new Date(startTime.getTime() + 300000);
+
+      const timing = {
+        stageStartTime: startTime,
+        stageEndTime: endTime,
+        stageDuration: 300000,
+        agentResponseTimes: {},
+        toolUsageTimes: {},
+      };
+
+      expect(timing.stageStartTime).toBeInstanceOf(Date);
+      expect(timing.stageEndTime).toBeInstanceOf(Date);
+      expect(typeof timing.stageDuration).toBe('number');
+    });
+
+    it('should enforce Record<string, number> for efficiency rates', () => {
+      const efficiency: Record<string, number> = {
+        Read: 1.0,
+        Write: 0.95,
+        Edit: 0.98,
+      };
+
+      Object.entries(efficiency).forEach(([tool, rate]) => {
+        expect(typeof tool).toBe('string');
+        expect(typeof rate).toBe('number');
+        expect(rate).toBeGreaterThanOrEqual(0);
+        expect(rate).toBeLessThanOrEqual(1);
+      });
+    });
+
+    it('should enforce nested Record structure for tool call counts', () => {
+      const toolCounts: Record<string, Record<string, number>> = {
+        planner: { Read: 3, Grep: 2 },
+        developer: { Write: 4, Edit: 6 },
+      };
+
+      Object.entries(toolCounts).forEach(([agent, tools]) => {
+        expect(typeof agent).toBe('string');
+        expect(typeof tools).toBe('object');
+
+        Object.entries(tools).forEach(([tool, count]) => {
+          expect(typeof tool).toBe('string');
+          expect(typeof count).toBe('number');
+          expect(count).toBeGreaterThanOrEqual(0);
+        });
+      });
+    });
   });
 });

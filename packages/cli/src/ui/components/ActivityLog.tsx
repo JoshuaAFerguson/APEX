@@ -18,7 +18,7 @@ const getLevelIcon = (level: string): { icon: string; color: string } => {
   }
 };
 
-const formatTimestamp = (date: Date, abbreviated: boolean = false): string => {
+const formatTimestamp = (date: Date, abbreviated: boolean = false, verbose: boolean = false): string => {
   if (abbreviated) {
     return date.toLocaleTimeString('en-US', {
       hour12: false,
@@ -26,12 +26,21 @@ const formatTimestamp = (date: Date, abbreviated: boolean = false): string => {
       minute: '2-digit',
     });
   }
-  return date.toLocaleTimeString('en-US', {
+
+  const base = date.toLocaleTimeString('en-US', {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
+
+  // Add milliseconds in verbose mode
+  if (verbose) {
+    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    return `${base}.${ms}`;
+  }
+
+  return base;
 };
 
 // Responsive utility functions
@@ -98,6 +107,7 @@ export interface ActivityLogProps {
   height?: number;
   title?: string;
   autoScroll?: boolean;
+  displayMode?: 'normal' | 'compact' | 'verbose';
 }
 
 /**
@@ -109,11 +119,12 @@ export function ActivityLog({
   showTimestamps = true,
   showAgents = true,
   allowCollapse = true,
-  filterLevel = 'debug',
+  filterLevel,
   width: explicitWidth,
   height: explicitHeight,
   title = 'Activity Log',
   autoScroll = true,
+  displayMode = 'normal',
 }: ActivityLogProps): React.ReactElement {
   // Use responsive dimensions when explicit values aren't provided
   const { width: terminalWidth, height: terminalHeight, breakpoint } = useStdoutDimensions();
@@ -133,9 +144,14 @@ export function ActivityLog({
 
   const levelOrder = { debug: 0, info: 1, warn: 2, error: 3, success: 1 };
 
+  // Determine effective filter level - auto-set to debug in verbose mode
+  const effectiveFilterLevel = displayMode === 'verbose'
+    ? (filterLevel ?? 'debug')  // If verbose, default to debug if no explicit level
+    : (filterLevel ?? 'info');   // Otherwise, default to info if no explicit level
+
   // Filter entries based on level and search
   const filteredEntries = entries
-    .filter(entry => levelOrder[entry.level] >= levelOrder[filterLevel])
+    .filter(entry => levelOrder[entry.level] >= levelOrder[effectiveFilterLevel])
     .filter(entry =>
       filter === '' ||
       entry.message.toLowerCase().includes(filter.toLowerCase()) ||
@@ -199,7 +215,10 @@ export function ActivityLog({
       <Box paddingX={1} paddingY={0}>
         <Text color="gray">Filter: </Text>
         <Text color="white">{filter || 'none'}</Text>
-        <Text color="gray"> | Level: {filterLevel}+</Text>
+        <Text color="gray"> | Level: {effectiveFilterLevel}+</Text>
+        {displayMode === 'verbose' && !filterLevel && (
+          <Text color="cyan"> (auto: verbose)</Text>
+        )}
       </Box>
 
       {/* Log entries */}
@@ -218,7 +237,7 @@ export function ActivityLog({
                 <Box>
                   {showTimestamps && (
                     <Text color="gray" dimColor>
-                      [{formatTimestamp(entry.timestamp, responsiveConfig.abbreviateTimestamp)}]
+                      [{formatTimestamp(entry.timestamp, displayMode !== 'verbose' && responsiveConfig.abbreviateTimestamp, displayMode === 'verbose')}]
                     </Text>
                   )}
                   {responsiveConfig.showIcons && <Text color={color}>{icon} </Text>}
@@ -238,7 +257,7 @@ export function ActivityLog({
                 </Box>
 
                 {/* Expanded data */}
-                {!isCollapsed && entry.data && Object.keys(entry.data).length > 0 && (
+                {((displayMode === 'verbose' && entry.data && Object.keys(entry.data).length > 0) || (!isCollapsed && entry.data && Object.keys(entry.data).length > 0)) && (
                   <Box marginLeft={showTimestamps ? 12 : 4} flexDirection="column">
                     {Object.entries(entry.data).map(([key, value]) => (
                       <Text key={key} color="gray" dimColor>

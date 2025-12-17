@@ -56,6 +56,7 @@ export interface OrchestratorEvents {
   'subtask:completed': (subtask: Task, parentTaskId: string) => void;
   'subtask:failed': (subtask: Task, parentTaskId: string, error: Error) => void;
   'agent:message': (taskId: string, message: unknown) => void;
+  'agent:thinking': (taskId: string, agent: string, thinking: string) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
@@ -1070,16 +1071,26 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       // Collect text content for summary extraction and log AI responses
       if (message && typeof message === 'object') {
-        // Extract text content from SDK message format
+        // Extract text content and thinking from SDK message format
         // SDK messages have type: 'assistant' with nested message.content array
         // or type: 'result' with result string
         let textContent = '';
+        let thinkingContent = '';
 
         const msg = message as Record<string, unknown>;
 
         if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
           // Assistant messages have content as array of blocks
-          const apiMessage = msg.message as { content?: Array<{ type: string; text?: string }> };
+          const apiMessage = msg.message as {
+            content?: Array<{ type: string; text?: string }>;
+            thinking?: string;
+          };
+
+          // Extract thinking content if available
+          if (typeof apiMessage.thinking === 'string') {
+            thinkingContent = apiMessage.thinking;
+          }
+
           if (Array.isArray(apiMessage.content)) {
             for (const block of apiMessage.content) {
               if (block.type === 'text' && block.text) {
@@ -1104,6 +1115,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           await this.store.addLog(task.id, {
             level: 'info',
             message: truncated,
+            stage: stage.name,
+            agent: agent.name,
+          });
+        }
+
+        // Emit thinking content if available
+        if (thinkingContent.trim().length > 0) {
+          this.emit('agent:thinking', task.id, agent.name, thinkingContent);
+
+          // Log thinking content for debugging (verbose only)
+          await this.store.addLog(task.id, {
+            level: 'debug',
+            message: `[THINKING] ${thinkingContent.length > 200 ? thinkingContent.substring(0, 200) + '...' : thinkingContent}`,
             stage: stage.name,
             agent: agent.name,
           });
