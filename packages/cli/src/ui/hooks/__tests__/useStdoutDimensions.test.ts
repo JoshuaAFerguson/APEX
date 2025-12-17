@@ -86,45 +86,102 @@ describe('useStdoutDimensions', () => {
       const { result } = renderHook(() => useStdoutDimensions());
 
       expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
+      expect(result.current.isCompact).toBe(false);
+      expect(result.current.isNormal).toBe(false);
+      expect(result.current.isWide).toBe(false);
     });
 
-    it('should classify normal terminals (60-119 columns)', () => {
+    it('should classify compact terminals (60-99 columns)', () => {
       mockBaseHook.mockReturnValue([80, 24]);
 
       const { result } = renderHook(() => useStdoutDimensions());
 
-      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.breakpoint).toBe('compact');
+      expect(result.current.isNarrow).toBe(false);
+      expect(result.current.isCompact).toBe(true);
+      expect(result.current.isNormal).toBe(false);
+      expect(result.current.isWide).toBe(false);
     });
 
-    it('should classify wide terminals (>= 120 columns)', () => {
-      mockBaseHook.mockReturnValue([150, 30]);
+    it('should classify normal terminals (100-159 columns)', () => {
+      mockBaseHook.mockReturnValue([120, 30]);
+
+      const { result } = renderHook(() => useStdoutDimensions());
+
+      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.isNarrow).toBe(false);
+      expect(result.current.isCompact).toBe(false);
+      expect(result.current.isNormal).toBe(true);
+      expect(result.current.isWide).toBe(false);
+    });
+
+    it('should classify wide terminals (>= 160 columns)', () => {
+      mockBaseHook.mockReturnValue([180, 30]);
 
       const { result } = renderHook(() => useStdoutDimensions());
 
       expect(result.current.breakpoint).toBe('wide');
+      expect(result.current.isNarrow).toBe(false);
+      expect(result.current.isCompact).toBe(false);
+      expect(result.current.isNormal).toBe(false);
+      expect(result.current.isWide).toBe(true);
     });
 
     it('should handle boundary values correctly', () => {
-      // Test narrow/normal boundary (60)
+      // Test narrow/compact boundary (60)
       mockBaseHook.mockReturnValue([59, 24]);
       const { result: result59 } = renderHook(() => useStdoutDimensions());
       expect(result59.current.breakpoint).toBe('narrow');
+      expect(result59.current.isNarrow).toBe(true);
 
       mockBaseHook.mockReturnValue([60, 24]);
       const { result: result60 } = renderHook(() => useStdoutDimensions());
-      expect(result60.current.breakpoint).toBe('normal');
+      expect(result60.current.breakpoint).toBe('compact');
+      expect(result60.current.isCompact).toBe(true);
 
-      // Test normal/wide boundary (120)
-      mockBaseHook.mockReturnValue([119, 24]);
-      const { result: result119 } = renderHook(() => useStdoutDimensions());
-      expect(result119.current.breakpoint).toBe('normal');
+      // Test compact/normal boundary (100)
+      mockBaseHook.mockReturnValue([99, 24]);
+      const { result: result99 } = renderHook(() => useStdoutDimensions());
+      expect(result99.current.breakpoint).toBe('compact');
+      expect(result99.current.isCompact).toBe(true);
 
-      mockBaseHook.mockReturnValue([120, 24]);
-      const { result: result120 } = renderHook(() => useStdoutDimensions());
-      expect(result120.current.breakpoint).toBe('wide');
+      mockBaseHook.mockReturnValue([100, 24]);
+      const { result: result100 } = renderHook(() => useStdoutDimensions());
+      expect(result100.current.breakpoint).toBe('normal');
+      expect(result100.current.isNormal).toBe(true);
+
+      // Test normal/wide boundary (160)
+      mockBaseHook.mockReturnValue([159, 24]);
+      const { result: result159 } = renderHook(() => useStdoutDimensions());
+      expect(result159.current.breakpoint).toBe('normal');
+      expect(result159.current.isNormal).toBe(true);
+
+      mockBaseHook.mockReturnValue([160, 24]);
+      const { result: result160 } = renderHook(() => useStdoutDimensions());
+      expect(result160.current.breakpoint).toBe('wide');
+      expect(result160.current.isWide).toBe(true);
     });
 
-    it('should use custom thresholds', () => {
+    it('should use new custom breakpoints system', () => {
+      mockBaseHook.mockReturnValue([80, 24]);
+
+      const { result } = renderHook(() =>
+        useStdoutDimensions({
+          breakpoints: {
+            narrow: 70,
+            compact: 110,
+            normal: 150
+          }
+        })
+      );
+
+      // 80 columns with custom thresholds (narrow < 70, compact < 110, normal < 150)
+      expect(result.current.breakpoint).toBe('compact');
+      expect(result.current.isCompact).toBe(true);
+    });
+
+    it('should support deprecated thresholds for backward compatibility', () => {
       mockBaseHook.mockReturnValue([80, 24]);
 
       const { result } = renderHook(() =>
@@ -134,8 +191,9 @@ describe('useStdoutDimensions', () => {
         })
       );
 
-      // 80 columns with custom thresholds (narrow < 90, wide >= 140)
+      // 80 columns with deprecated thresholds should map to new system
       expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
     });
 
     it('should update breakpoint when dimensions change', () => {
@@ -145,11 +203,13 @@ describe('useStdoutDimensions', () => {
       mockBaseHook.mockReturnValue([40, 24]);
       rerender();
       expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
 
       // Change to wide
-      mockBaseHook.mockReturnValue([150, 30]);
+      mockBaseHook.mockReturnValue([180, 30]);
       rerender();
       expect(result.current.breakpoint).toBe('wide');
+      expect(result.current.isWide).toBe(true);
     });
 
     it('should use fallback width for breakpoint calculation when unavailable', () => {
@@ -157,12 +217,51 @@ describe('useStdoutDimensions', () => {
 
       const { result } = renderHook(() =>
         useStdoutDimensions({
-          fallbackWidth: 150 // Should result in 'wide' breakpoint
+          fallbackWidth: 180 // Should result in 'wide' breakpoint
         })
       );
 
       expect(result.current.breakpoint).toBe('wide');
+      expect(result.current.isWide).toBe(true);
       expect(result.current.isAvailable).toBe(false);
+    });
+  });
+
+  describe('boolean helpers', () => {
+    it('should have exactly one boolean helper true at a time', () => {
+      const testCases = [
+        { width: 40, expected: 'isNarrow' },
+        { width: 80, expected: 'isCompact' },
+        { width: 120, expected: 'isNormal' },
+        { width: 180, expected: 'isWide' },
+      ];
+
+      testCases.forEach(({ width, expected }) => {
+        mockBaseHook.mockReturnValue([width, 24]);
+        const { result } = renderHook(() => useStdoutDimensions());
+
+        const helpers = ['isNarrow', 'isCompact', 'isNormal', 'isWide'];
+        const trueHelpers = helpers.filter(helper => result.current[helper]);
+
+        expect(trueHelpers).toHaveLength(1);
+        expect(trueHelpers[0]).toBe(expected);
+      });
+    });
+
+    it('should update boolean helpers when dimensions change', () => {
+      const { result, rerender } = renderHook(() => useStdoutDimensions());
+
+      // Start narrow
+      mockBaseHook.mockReturnValue([40, 24]);
+      rerender();
+      expect(result.current.isNarrow).toBe(true);
+      expect([result.current.isCompact, result.current.isNormal, result.current.isWide].some(Boolean)).toBe(false);
+
+      // Change to compact
+      mockBaseHook.mockReturnValue([80, 30]);
+      rerender();
+      expect(result.current.isCompact).toBe(true);
+      expect([result.current.isNarrow, result.current.isNormal, result.current.isWide].some(Boolean)).toBe(false);
     });
   });
 
@@ -184,7 +283,7 @@ describe('useStdoutDimensions', () => {
       rerender();
 
       expect(result.current.breakpoint).toBe(initialBreakpoint);
-      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.breakpoint).toBe('compact');
     });
 
     it('should recalculate breakpoint when thresholds change', () => {
@@ -307,6 +406,11 @@ describe('useStdoutDimensions', () => {
       expect(result.current).toHaveProperty('height');
       expect(result.current).toHaveProperty('breakpoint');
       expect(result.current).toHaveProperty('isAvailable');
+      // Boolean helpers
+      expect(result.current).toHaveProperty('isNarrow');
+      expect(result.current).toHaveProperty('isCompact');
+      expect(result.current).toHaveProperty('isNormal');
+      expect(result.current).toHaveProperty('isWide');
     });
 
     it('should return correct types', () => {
@@ -317,8 +421,13 @@ describe('useStdoutDimensions', () => {
       expect(typeof result.current.width).toBe('number');
       expect(typeof result.current.height).toBe('number');
       expect(typeof result.current.breakpoint).toBe('string');
-      expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+      expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
       expect(typeof result.current.isAvailable).toBe('boolean');
+      // Boolean helpers should be booleans
+      expect(typeof result.current.isNarrow).toBe('boolean');
+      expect(typeof result.current.isCompact).toBe('boolean');
+      expect(typeof result.current.isNormal).toBe('boolean');
+      expect(typeof result.current.isWide).toBe('boolean');
     });
 
     it('should be consistent between calls with same input', () => {

@@ -82,6 +82,23 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     });
   }, []);
 
+  // Helper to update agent debug info
+  const updateAgentDebugInfo = useCallback((
+    agents: AgentInfo[],
+    agentName: string,
+    updater: (debugInfo?: AgentInfo['debugInfo']) => AgentInfo['debugInfo']
+  ): AgentInfo[] => {
+    return agents.map(agent => {
+      if (agent.name === agentName) {
+        return {
+          ...agent,
+          debugInfo: updater(agent.debugInfo),
+        };
+      }
+      return agent;
+    });
+  }, []);
+
   // Event handlers
   useEffect(() => {
     if (!orchestrator) return;
@@ -237,6 +254,63 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    // Debug info handlers
+    const handleUsageUpdated = (usage: { taskId: string; agentName: string; tokensUsed: { input: number; output: number } }) => {
+      if (taskId && usage.taskId !== taskId) return;
+
+      log('Usage updated', { agent: usage.agentName, tokens: usage.tokensUsed });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, usage.agentName, (debugInfo) => ({
+          ...debugInfo,
+          tokensUsed: usage.tokensUsed,
+        })),
+      }));
+    };
+
+    const handleToolUse = (toolData: { taskId: string; agentName: string; toolName: string }) => {
+      if (taskId && toolData.taskId !== taskId) return;
+
+      log('Tool use', { agent: toolData.agentName, tool: toolData.toolName });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, toolData.agentName, (debugInfo) => ({
+          ...debugInfo,
+          lastToolCall: toolData.toolName,
+        })),
+      }));
+    };
+
+    const handleAgentTurn = (turnData: { taskId: string; agentName: string; turnNumber: number }) => {
+      if (taskId && turnData.taskId !== taskId) return;
+
+      log('Agent turn', { agent: turnData.agentName, turn: turnData.turnNumber });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, turnData.agentName, (debugInfo) => ({
+          ...debugInfo,
+          turnCount: turnData.turnNumber,
+        })),
+      }));
+    };
+
+    const handleError = (errorData: { taskId: string; agentName: string; error: Error }) => {
+      if (taskId && errorData.taskId !== taskId) return;
+
+      log('Agent error', { agent: errorData.agentName, error: errorData.error.message });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, errorData.agentName, (debugInfo) => ({
+          ...debugInfo,
+          errorCount: (debugInfo?.errorCount || 0) + 1,
+        })),
+      }));
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -247,6 +321,12 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('task:failed', handleTaskFail);
     orchestrator.on('subtask:created', handleSubtaskCreated);
     orchestrator.on('subtask:completed', handleSubtaskCompleted);
+
+    // Register debug event listeners
+    orchestrator.on('usage:updated', handleUsageUpdated);
+    orchestrator.on('tool:use', handleToolUse);
+    orchestrator.on('agent:turn', handleAgentTurn);
+    orchestrator.on('error', handleError);
 
     log('Event listeners registered');
 
@@ -262,9 +342,15 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('subtask:created', handleSubtaskCreated);
       orchestrator.off('subtask:completed', handleSubtaskCompleted);
 
+      // Cleanup debug event listeners
+      orchestrator.off('usage:updated', handleUsageUpdated);
+      orchestrator.off('tool:use', handleToolUse);
+      orchestrator.off('agent:turn', handleAgentTurn);
+      orchestrator.off('error', handleError);
+
       log('Event listeners cleaned up');
     };
-  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus]);
+  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus, updateAgentDebugInfo]);
 
   // Initialize agents from workflow if not already set
   useEffect(() => {

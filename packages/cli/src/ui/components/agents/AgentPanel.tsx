@@ -6,6 +6,7 @@ import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { HandoffIndicator } from './HandoffIndicator.js';
 import { ProgressBar } from '../ProgressIndicators.js';
 import { ParallelExecutionView, ParallelAgent } from './ParallelExecutionView.js';
+import { VerboseAgentRow } from './VerboseAgentRow.js';
 
 export interface AgentInfo {
   name: string;
@@ -132,12 +133,21 @@ export function AgentPanel({
 
       <Box marginTop={1} flexDirection="column">
         {agents.map(agent => (
-          <AgentRow
-            key={agent.name}
-            agent={agent}
-            isActive={agent.name === currentAgent}
-            displayMode={displayMode}
-          />
+          displayMode === 'verbose' ? (
+            <VerboseAgentRow
+              key={agent.name}
+              agent={agent}
+              isActive={agent.name === currentAgent}
+              color={agentColors[agent.name] || 'white'}
+            />
+          ) : (
+            <AgentRow
+              key={agent.name}
+              agent={agent}
+              isActive={agent.name === currentAgent}
+              displayMode={displayMode}
+            />
+          )
         ))}
       </Box>
 
@@ -212,32 +222,6 @@ function AgentRow({
             color={finalColor}
             animated={false}
           />
-        </Box>
-      )}
-
-      {/* Verbose mode debug information */}
-      {displayMode === 'verbose' && isActive && agent.debugInfo && (
-        <Box marginLeft={4} marginTop={1} flexDirection="column">
-          {agent.debugInfo.tokensUsed && (
-            <Text color="gray" dimColor>
-              🔢 Tokens: {agent.debugInfo.tokensUsed.input}→{agent.debugInfo.tokensUsed.output}
-            </Text>
-          )}
-          {agent.debugInfo.turnCount !== undefined && (
-            <Text color="gray" dimColor>
-              🔄 Turns: {agent.debugInfo.turnCount}
-            </Text>
-          )}
-          {agent.debugInfo.lastToolCall && (
-            <Text color="gray" dimColor>
-              🔧 Last tool: {agent.debugInfo.lastToolCall}
-            </Text>
-          )}
-          {agent.debugInfo.errorCount !== undefined && agent.debugInfo.errorCount > 0 && (
-            <Text color="red" dimColor>
-              ❌ Errors: {agent.debugInfo.errorCount}
-            </Text>
-          )}
         </Box>
       )}
     </Box>
