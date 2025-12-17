@@ -88,14 +88,15 @@ describe('StatusBar - Display Modes', () => {
     it('should show minimal information in compact mode', () => {
       render(<StatusBar {...baseProps} displayMode="compact" />);
 
-      // Should show only essential information
+      // Should show only essential information: connection status, branch, and cost
       expect(screen.getByText('●')).toBeInTheDocument(); // Connection status
-      expect(screen.getByText('developer')).toBeInTheDocument(); // Agent name (essential)
-      expect(screen.getByText(/02:00/)).toBeInTheDocument(); // Timer (essential)
+      expect(screen.getByText('feature/display-modes')).toBeInTheDocument(); // Git branch (essential in compact)
+      expect(screen.getByText(/\$0\.0234/)).toBeInTheDocument(); // Cost (essential in compact)
 
       // Should not show detailed labels or less essential information
       expect(screen.queryByText('⚡')).not.toBeInTheDocument(); // Agent icon hidden
-      expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument(); // Git branch hidden
+      expect(screen.queryByText('developer')).not.toBeInTheDocument(); // Agent name hidden
+      expect(screen.queryByText(/02:00/)).not.toBeInTheDocument(); // Timer hidden
       expect(screen.queryByText('▶')).not.toBeInTheDocument(); // Stage icon hidden
       expect(screen.queryByText('implementation')).not.toBeInTheDocument(); // Stage hidden
       expect(screen.queryByText('📋')).not.toBeInTheDocument(); // Progress icon hidden
@@ -105,23 +106,23 @@ describe('StatusBar - Display Modes', () => {
       expect(screen.queryByText(/api:/)).not.toBeInTheDocument(); // API info hidden
       expect(screen.queryByText(/web:/)).not.toBeInTheDocument(); // Web info hidden
       expect(screen.queryByText(/tokens:/)).not.toBeInTheDocument(); // Token info hidden
-      expect(screen.queryByText(/cost:/)).not.toBeInTheDocument(); // Cost info hidden
+      expect(screen.queryByText(/cost:/)).not.toBeInTheDocument(); // Cost label hidden (but value shown)
       expect(screen.queryByText(/model:/)).not.toBeInTheDocument(); // Model info hidden
     });
 
-    it('should handle compact mode with no agent', () => {
-      const propsWithoutAgent = { ...baseProps, agent: undefined };
-      render(<StatusBar {...propsWithoutAgent} displayMode="compact" />);
+    it('should handle compact mode with no git branch', () => {
+      const propsWithoutBranch = { ...baseProps, gitBranch: undefined };
+      render(<StatusBar {...propsWithoutBranch} displayMode="compact" />);
 
-      // Should show minimal info even without agent
+      // Should show minimal info even without git branch
       expect(screen.getByText('●')).toBeInTheDocument(); // Connection status
-      expect(screen.getByText(/02:00/)).toBeInTheDocument(); // Timer
+      expect(screen.getByText(/\$0\.0234/)).toBeInTheDocument(); // Cost
 
-      // Agent name should not be present
-      expect(screen.queryByText('developer')).not.toBeInTheDocument();
+      // Git branch should not be present
+      expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument();
     });
 
-    it('should prioritize connection and timer in compact mode', () => {
+    it('should prioritize connection status in compact mode', () => {
       const minimalProps: StatusBarProps = {
         isConnected: false, // Disconnected
         displayMode: 'compact',
@@ -131,7 +132,10 @@ describe('StatusBar - Display Modes', () => {
 
       // Should show connection status even when disconnected
       expect(screen.getByText('○')).toBeInTheDocument(); // Disconnected status
-      expect(screen.getByText('00:00')).toBeInTheDocument(); // Timer (no start time)
+
+      // With minimal props, no git branch or cost should be shown
+      expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument();
+      expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
     });
 
     it('should handle compact mode in narrow terminal', () => {
@@ -144,8 +148,8 @@ describe('StatusBar - Display Modes', () => {
 
       // Should still show essential info even in narrow terminal
       expect(screen.getByText('●')).toBeInTheDocument();
-      expect(screen.getByText('developer')).toBeInTheDocument();
-      expect(screen.getByText(/02:00/)).toBeInTheDocument();
+      expect(screen.getByText('feature/display-modes')).toBeInTheDocument();
+      expect(screen.getByText(/\$0\.0234/)).toBeInTheDocument();
     });
   });
 
@@ -227,9 +231,9 @@ describe('StatusBar - Display Modes', () => {
       rerender(<StatusBar {...baseProps} displayMode="compact" />);
 
       // Should now show minimal info
-      expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument();
       expect(screen.queryByText('implementation')).not.toBeInTheDocument();
-      expect(screen.getByText('developer')).toBeInTheDocument(); // Essential info remains
+      expect(screen.queryByText('developer')).not.toBeInTheDocument(); // Agent name hidden in compact
+      expect(screen.getByText('feature/display-modes')).toBeInTheDocument(); // Branch shown in compact
       expect(screen.getByText('●')).toBeInTheDocument(); // Connection remains
     });
 
@@ -237,8 +241,8 @@ describe('StatusBar - Display Modes', () => {
       const { rerender } = render(<StatusBar {...baseProps} displayMode="compact" />);
 
       // Initially shows minimal info
-      expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument();
-      expect(screen.queryByText('claude-3-sonnet')).not.toBeInTheDocument();
+      expect(screen.getByText('feature/display-modes')).toBeInTheDocument(); // Branch shown in compact
+      expect(screen.queryByText('claude-3-sonnet')).not.toBeInTheDocument(); // Model hidden in compact
 
       // Switch to verbose mode
       rerender(<StatusBar {...baseProps} displayMode="verbose" />);
@@ -260,10 +264,15 @@ describe('StatusBar - Display Modes', () => {
         // Essential elements should always be present
         expect(screen.getByText('●')).toBeInTheDocument(); // Connection
 
+        // In all modes, branch should be visible (compact mode now shows branch)
+        expect(screen.getByText('feature/display-modes')).toBeInTheDocument();
+
         if (mode === 'compact') {
-          expect(screen.queryByText('feature/display-modes')).not.toBeInTheDocument();
+          // In compact mode, agent should be hidden but branch should be shown
+          expect(screen.queryByText('developer')).not.toBeInTheDocument();
         } else {
-          expect(screen.getByText('feature/display-modes')).toBeInTheDocument();
+          // In normal/verbose modes, agent should be shown
+          expect(screen.getByText('developer')).toBeInTheDocument();
         }
       });
     });
@@ -330,6 +339,8 @@ describe('StatusBar - Display Modes', () => {
         if (mode === 'compact') {
           // Session name should not be shown in compact mode
           expect(screen.queryByText(/Very Long/)).not.toBeInTheDocument();
+          // Should show branch and cost instead
+          expect(screen.getByText('feature/display-modes')).toBeInTheDocument();
         } else {
           // In normal/verbose modes, should handle long names (possibly truncated)
           const sessionElements = screen.queryAllByText(/Very Long/);
@@ -356,8 +367,10 @@ describe('StatusBar - Display Modes', () => {
         <StatusBar {...baseProps} sessionStartTime={startTime} displayMode="compact" />
       );
 
-      // Timer should still be accurate
-      expect(screen.getByText('01:05')).toBeInTheDocument();
+      // Timer should not be shown in compact mode (shows branch and cost instead)
+      expect(screen.queryByText('01:05')).not.toBeInTheDocument();
+      expect(screen.getByText('feature/display-modes')).toBeInTheDocument();
+      expect(screen.getByText(/\$0\.0234/)).toBeInTheDocument();
 
       // Switch to verbose mode
       rerender(

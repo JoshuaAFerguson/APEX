@@ -148,7 +148,7 @@ function buildSegments(
 
   // Handle compact mode - minimal status information
   if (props.displayMode === 'compact') {
-    // Show only connection status, active agent, and elapsed time
+    // Show only connection status, git branch, and cost
     left.push({
       icon: props.isConnected !== false ? '●' : '○',
       iconColor: props.isConnected !== false ? 'green' : 'red',
@@ -157,19 +157,21 @@ function buildSegments(
       minWidth: 2,
     });
 
-    if (props.agent) {
+    if (props.gitBranch) {
       left.push({
-        value: props.agent,
-        valueColor: 'white',
-        minWidth: props.agent.length,
+        value: props.gitBranch,
+        valueColor: 'yellow',
+        minWidth: props.gitBranch.length,
       });
     }
 
-    right.push({
-      value: elapsed,
-      valueColor: 'gray',
-      minWidth: 6,
-    });
+    if (props.cost !== undefined) {
+      right.push({
+        value: formatCost(props.cost),
+        valueColor: 'green',
+        minWidth: 8, // For "$0.0000" format
+      });
+    }
 
     return { left, right };
   }
