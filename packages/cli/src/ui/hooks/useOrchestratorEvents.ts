@@ -311,6 +311,20 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    const handleAgentThinking = (eventTaskId: string, agentName: string, thinking: string) => {
+      if (taskId && eventTaskId !== taskId) return;
+
+      log('Agent thinking', { agent: agentName, thinking: thinking.substring(0, 100) + (thinking.length > 100 ? '...' : '') });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, agentName, (debugInfo) => ({
+          ...debugInfo,
+          thinking: thinking,
+        })),
+      }));
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -326,6 +340,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('usage:updated', handleUsageUpdated);
     orchestrator.on('tool:use', handleToolUse);
     orchestrator.on('agent:turn', handleAgentTurn);
+    orchestrator.on('agent:thinking', handleAgentThinking);
     orchestrator.on('error', handleError);
 
     log('Event listeners registered');
@@ -346,6 +361,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('usage:updated', handleUsageUpdated);
       orchestrator.off('tool:use', handleToolUse);
       orchestrator.off('agent:turn', handleAgentTurn);
+      orchestrator.off('agent:thinking', handleAgentThinking);
       orchestrator.off('error', handleError);
 
       log('Event listeners cleaned up');

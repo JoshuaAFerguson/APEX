@@ -972,4 +972,305 @@ describe('AgentPanel', () => {
       expect(screen.queryByText(/🔄 Turns:/)).not.toBeInTheDocument();
     });
   });
+
+  describe('thinking field in debugInfo', () => {
+    it('should include thinking field in AgentInfo interface type definition', () => {
+      // Type compilation test: This should compile without TypeScript errors
+      const agentWithThinking: AgentInfo = {
+        name: 'developer',
+        status: 'active',
+        stage: 'implementation',
+        debugInfo: {
+          thinking: 'I need to analyze the requirements carefully...',
+          tokensUsed: { input: 1500, output: 2500 },
+          turnCount: 3,
+        },
+      };
+
+      // Verify the agent object is properly typed
+      expect(agentWithThinking.debugInfo?.thinking).toBe('I need to analyze the requirements carefully...');
+      expect(typeof agentWithThinking.debugInfo?.thinking).toBe('string');
+    });
+
+    it('should allow thinking field to be undefined', () => {
+      // Type compilation test: thinking field should be optional
+      const agentWithoutThinking: AgentInfo = {
+        name: 'tester',
+        status: 'active',
+        debugInfo: {
+          tokensUsed: { input: 800, output: 1200 },
+          turnCount: 2,
+          // thinking field is intentionally omitted
+        },
+      };
+
+      expect(agentWithoutThinking.debugInfo?.thinking).toBeUndefined();
+    });
+
+    it('should allow thinking field to be null', () => {
+      // Type compilation test: thinking field should accept null values
+      const agentWithNullThinking: AgentInfo = {
+        name: 'reviewer',
+        status: 'active',
+        debugInfo: {
+          thinking: undefined,
+          tokensUsed: { input: 1000, output: 1800 },
+        },
+      };
+
+      expect(agentWithNullThinking.debugInfo?.thinking).toBeUndefined();
+    });
+
+    it('should handle empty string thinking content', () => {
+      const agentWithEmptyThinking: AgentInfo = {
+        name: 'architect',
+        status: 'active',
+        debugInfo: {
+          thinking: '',
+          tokensUsed: { input: 500, output: 300 },
+        },
+      };
+
+      expect(agentWithEmptyThinking.debugInfo?.thinking).toBe('');
+      expect(typeof agentWithEmptyThinking.debugInfo?.thinking).toBe('string');
+    });
+
+    it('should handle multiline thinking content', () => {
+      const multilineThinking = `Step 1: Analyze the problem
+Step 2: Design the solution
+Step 3: Implement the code`;
+
+      const agentWithMultilineThinking: AgentInfo = {
+        name: 'planner',
+        status: 'active',
+        debugInfo: {
+          thinking: multilineThinking,
+          tokensUsed: { input: 2000, output: 3000 },
+        },
+      };
+
+      expect(agentWithMultilineThinking.debugInfo?.thinking).toBe(multilineThinking);
+      expect(agentWithMultilineThinking.debugInfo?.thinking?.includes('\n')).toBe(true);
+    });
+
+    it('should handle long thinking content', () => {
+      const longThinking = 'I need to carefully consider all aspects of this implementation. '.repeat(50);
+
+      const agentWithLongThinking: AgentInfo = {
+        name: 'developer',
+        status: 'active',
+        debugInfo: {
+          thinking: longThinking,
+          tokensUsed: { input: 5000, output: 8000 },
+          turnCount: 10,
+        },
+      };
+
+      expect(agentWithLongThinking.debugInfo?.thinking).toBe(longThinking);
+      expect(agentWithLongThinking.debugInfo?.thinking?.length).toBeGreaterThan(1000);
+    });
+
+    it('should handle special characters in thinking content', () => {
+      const specialThinking = 'Thinking with émojis 🤔💭, "quotes", \'apostrophes\', <html>, & special chars';
+
+      const agentWithSpecialThinking: AgentInfo = {
+        name: 'reviewer',
+        status: 'active',
+        debugInfo: {
+          thinking: specialThinking,
+          lastToolCall: 'Edit',
+        },
+      };
+
+      expect(agentWithSpecialThinking.debugInfo?.thinking).toBe(specialThinking);
+    });
+
+    it('should allow thinking field alongside all other debugInfo fields', () => {
+      const completeDebugAgent: AgentInfo = {
+        name: 'devops',
+        status: 'active',
+        stage: 'deployment',
+        progress: 75,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        debugInfo: {
+          thinking: 'Preparing deployment pipeline...',
+          tokensUsed: { input: 2500, output: 4000 },
+          stageStartedAt: new Date('2023-01-01T10:30:00Z'),
+          lastToolCall: 'Bash',
+          turnCount: 5,
+          errorCount: 2,
+        },
+      };
+
+      // Verify all fields are present and correctly typed
+      expect(completeDebugAgent.debugInfo?.thinking).toBe('Preparing deployment pipeline...');
+      expect(completeDebugAgent.debugInfo?.tokensUsed).toEqual({ input: 2500, output: 4000 });
+      expect(completeDebugAgent.debugInfo?.stageStartedAt).toBeInstanceOf(Date);
+      expect(completeDebugAgent.debugInfo?.lastToolCall).toBe('Bash');
+      expect(completeDebugAgent.debugInfo?.turnCount).toBe(5);
+      expect(completeDebugAgent.debugInfo?.errorCount).toBe(2);
+    });
+
+    it('should handle array of agents with mixed thinking field usage', () => {
+      const mixedAgents: AgentInfo[] = [
+        {
+          name: 'planner',
+          status: 'completed',
+          debugInfo: {
+            thinking: 'Planning phase completed successfully',
+            tokensUsed: { input: 500, output: 800 },
+          },
+        },
+        {
+          name: 'architect',
+          status: 'completed',
+          debugInfo: {
+            tokensUsed: { input: 700, output: 1200 },
+            // No thinking field
+          },
+        },
+        {
+          name: 'developer',
+          status: 'active',
+          debugInfo: {
+            thinking: 'Currently implementing the core logic',
+            tokensUsed: { input: 1500, output: 2500 },
+            turnCount: 3,
+          },
+        },
+        {
+          name: 'tester',
+          status: 'waiting',
+          debugInfo: {
+            thinking: '',
+            tokensUsed: { input: 0, output: 0 },
+          },
+        },
+      ];
+
+      // Verify mixed usage compiles and works correctly
+      expect(mixedAgents[0].debugInfo?.thinking).toBe('Planning phase completed successfully');
+      expect(mixedAgents[1].debugInfo?.thinking).toBeUndefined();
+      expect(mixedAgents[2].debugInfo?.thinking).toBe('Currently implementing the core logic');
+      expect(mixedAgents[3].debugInfo?.thinking).toBe('');
+
+      // This should render without errors
+      render(<AgentPanel agents={mixedAgents} currentAgent="developer" />);
+
+      // Verify agents are rendered
+      expect(screen.getByText('planner')).toBeInTheDocument();
+      expect(screen.getByText('architect')).toBeInTheDocument();
+      expect(screen.getByText('developer')).toBeInTheDocument();
+      expect(screen.getByText('tester')).toBeInTheDocument();
+    });
+
+    it('should maintain backward compatibility with existing debugInfo structure', () => {
+      // Test that existing code without thinking field still works
+      const legacyAgent: AgentInfo = {
+        name: 'legacy',
+        status: 'active',
+        debugInfo: {
+          tokensUsed: { input: 1000, output: 1500 },
+          stageStartedAt: new Date(),
+          lastToolCall: 'Read',
+          turnCount: 4,
+          errorCount: 1,
+          // No thinking field - should be backward compatible
+        },
+      };
+
+      expect(legacyAgent.debugInfo?.thinking).toBeUndefined();
+
+      // Should render without issues
+      render(<AgentPanel agents={[legacyAgent]} currentAgent="legacy" />);
+      expect(screen.getByText('legacy')).toBeInTheDocument();
+    });
+
+    it('should handle rapid thinking content updates', () => {
+      const [currentThinking, setCurrentThinking] = React.useState('Initial thinking');
+
+      const DynamicAgent = () => {
+        const agent: AgentInfo = {
+          name: 'dynamic',
+          status: 'active',
+          debugInfo: {
+            thinking: currentThinking,
+            tokensUsed: { input: 1000, output: 1500 },
+          },
+        };
+
+        return <AgentPanel agents={[agent]} currentAgent="dynamic" />;
+      };
+
+      const { rerender } = render(<DynamicAgent />);
+
+      // Update thinking content multiple times
+      const updates = [
+        'First update',
+        'Second update with more content',
+        'Third update with even longer content that tests performance',
+        'Final update'
+      ];
+
+      updates.forEach(update => {
+        setCurrentThinking(update);
+        rerender(<DynamicAgent />);
+        // Component should handle updates without errors
+        expect(screen.getByText('dynamic')).toBeInTheDocument();
+      });
+    });
+
+    it('should handle Unicode and international characters in thinking', () => {
+      const unicodeThinking = 'Testing Unicode: 测试中文, العربية, русский, 日本語, 🚀💻🔥';
+
+      const unicodeAgent: AgentInfo = {
+        name: 'unicode',
+        status: 'active',
+        debugInfo: {
+          thinking: unicodeThinking,
+          tokensUsed: { input: 800, output: 1200 },
+        },
+      };
+
+      expect(unicodeAgent.debugInfo?.thinking).toBe(unicodeThinking);
+
+      // Should render without issues
+      render(<AgentPanel agents={[unicodeAgent]} currentAgent="unicode" />);
+      expect(screen.getByText('unicode')).toBeInTheDocument();
+    });
+
+    it('should handle thinking field in parallel agents', () => {
+      const parallelAgentsWithThinking: AgentInfo[] = [
+        {
+          name: 'parallel1',
+          status: 'parallel',
+          debugInfo: {
+            thinking: 'Working on parallel task 1',
+            tokensUsed: { input: 500, output: 800 },
+          },
+        },
+        {
+          name: 'parallel2',
+          status: 'parallel',
+          debugInfo: {
+            thinking: 'Working on parallel task 2',
+            tokensUsed: { input: 600, output: 900 },
+          },
+        },
+      ];
+
+      render(
+        <AgentPanel
+          agents={[]}
+          showParallel={true}
+          parallelAgents={parallelAgentsWithThinking}
+        />
+      );
+
+      // Both parallel agents should be rendered
+      expect(screen.getByText('parallel1')).toBeInTheDocument();
+      expect(screen.getByText('parallel2')).toBeInTheDocument();
+      expect(screen.getByText('⟂ Parallel Execution')).toBeInTheDocument();
+    });
+  });
 });

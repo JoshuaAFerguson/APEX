@@ -21,6 +21,7 @@ export interface AgentInfo {
     lastToolCall?: string;
     turnCount?: number;
     errorCount?: number;
+    thinking?: string;
   };
 }
 
