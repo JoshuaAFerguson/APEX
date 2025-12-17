@@ -2649,13 +2649,55 @@ Parent: ${parentTask.description}`;
     const strategy = parentTask.subtaskStrategy || 'sequential';
 
     // Helper to execute a subtask and check for pause/cancel
+    // Handles nested subtasks recursively
     const executeSubtaskWithCheck = async (subtaskId: string, isRetry: boolean): Promise<boolean> => {
       const currentParent = await this.store.getTask(parentTaskId);
       if (currentParent?.status === 'cancelled') {
         return false; // Stop execution
       }
 
-      // For failed subtasks, reset status before retry
+      const subtask = await this.store.getTask(subtaskId);
+      if (!subtask) return true;
+
+      // Check if this subtask has its own pending/failed subtasks
+      // If so, recursively continue those first
+      if (subtask.subtaskIds && subtask.subtaskIds.length > 0) {
+        const hasNestedWork = await this.hasPendingSubtasks(subtaskId, false);
+        if (hasNestedWork) {
+          await this.store.addLog(parentTaskId, {
+            level: 'info',
+            message: `Subtask ${subtaskId} has nested subtasks to process`,
+          });
+
+          // Update subtask status to in-progress and recursively continue its subtasks
+          await this.store.updateTask(subtaskId, {
+            status: 'in-progress',
+            updatedAt: new Date(),
+          });
+
+          try {
+            await this.continuePendingSubtasks(subtaskId);
+            const afterContinue = await this.store.getTask(subtaskId);
+            if (afterContinue?.status === 'paused') {
+              // Nested subtask hit a limit, propagate pause up
+              await this.pauseParentTask(parentTaskId, subtaskId, afterContinue.pauseReason || 'usage_limit');
+              return false;
+            }
+          } catch (error) {
+            // Nested continuation failed
+            const failedSubtask = await this.store.getTask(subtaskId);
+            if (failedSubtask?.status === 'paused') {
+              await this.pauseParentTask(parentTaskId, subtaskId, failedSubtask.pauseReason || 'usage_limit');
+              return false;
+            }
+            throw error;
+          }
+
+          return true; // Continue with next subtask
+        }
+      }
+
+      // For failed subtasks without nested work, reset status before retry
       if (isRetry) {
         await this.store.updateTask(subtaskId, {
           status: 'pending',
@@ -2785,9 +2827,10 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Check if a parent task has pending subtasks
+   * Check if a parent task has pending subtasks (recursive)
+   * Also checks if any subtask has its own pending/failed subtasks
    */
-  async hasPendingSubtasks(parentTaskId: string): Promise<boolean> {
+  async hasPendingSubtasks(parentTaskId: string, recursive = true): Promise<boolean> {
     await this.ensureInitialized();
 
     const parentTask = await this.store.getTask(parentTaskId);
@@ -2797,14 +2840,24 @@ Parent: ${parentTask.description}`;
 
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
+      if (!subtask) continue;
+
       // Include failed subtasks - they can be retried via resume
-      if (subtask && (
+      if (
         subtask.status === 'pending' ||
         subtask.status === 'queued' ||
         subtask.status === 'paused' ||
         subtask.status === 'failed'
-      )) {
+      ) {
         return true;
+      }
+
+      // Recursively check if this subtask has its own pending/failed subtasks
+      if (recursive && subtask.subtaskIds && subtask.subtaskIds.length > 0) {
+        const hasNestedPending = await this.hasPendingSubtasks(subtaskId, true);
+        if (hasNestedPending) {
+          return true;
+        }
       }
     }
 

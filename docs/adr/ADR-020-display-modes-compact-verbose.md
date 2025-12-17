@@ -1,7 +1,7 @@
 # ADR-007: Display Modes (Compact and Verbose)
 
 ## Status
-Proposed
+Accepted (Implemented)
 
 ## Context
 Users need the ability to control the verbosity of the APEX CLI output to match their preferences and use cases:
