@@ -4,9 +4,18 @@ import * as path from 'path';
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
+    environment: 'jsdom', // Required for React components testing
     include: ['tests/**/*.test.ts'],
     testTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'json'],
+      include: ['tests/**/*.ts'],
+      exclude: [
+        '**/*.test.ts',
+        '**/*.d.ts',
+      ],
+    },
   },
   resolve: {
     alias: {
