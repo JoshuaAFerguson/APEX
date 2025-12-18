@@ -419,7 +419,7 @@ describe('StatusBar - Responsive Segment Adaptation', () => {
       // Should show medium priority segments at 80 cols
       expect(screen.getByText('implementation')).toBeInTheDocument();
 
-      // Test exact boundary at 120 columns (should be wide tier)
+      // Test exact boundary at 120 columns (should be normal tier, not wide)
       mockUseStdoutDimensions.mockReturnValue({
         width: 120,
         height: 30,
@@ -433,7 +433,26 @@ describe('StatusBar - Responsive Segment Adaptation', () => {
 
       render(<StatusBar {...defaultProps} />);
 
-      // Should show low priority segments at 120 cols
+      // Should NOT show low priority segments at 120 cols (normal tier, not wide)
+      expect(screen.queryByText(/Responsive Testing/)).not.toBeInTheDocument();
+    });
+
+    it('shows wide tier at 121 columns', () => {
+      // Test that 121 columns is wide tier (shows low priority segments)
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 121,
+        height: 30,
+        breakpoint: 'normal' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: true,
+        isWide: false,
+      });
+
+      render(<StatusBar {...defaultProps} />);
+
+      // Should show low priority segments at 121 cols (wide tier)
       expect(screen.getByText(/Responsive Testing/)).toBeInTheDocument();
     });
   });

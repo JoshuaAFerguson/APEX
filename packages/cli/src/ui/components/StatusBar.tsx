@@ -156,7 +156,7 @@ export function StatusBar({
 
   // Determine display tier based on terminal width and task requirements
   const displayTier: DisplayTier = terminalWidth < 80 ? 'narrow' :
-                                  terminalWidth < 120 ? 'normal' : 'wide';
+                                  terminalWidth <= 120 ? 'normal' : 'wide';
 
   // Session timer
   const [elapsed, setElapsed] = useState('00:00');
@@ -238,6 +238,7 @@ interface Segment {
   value: string;
   valueColor: string;
   minWidth: number;
+  priority?: SegmentPriority; // Added for priority-aware trimToFit
 }
 
 // Enhanced segment interface with priority and responsive support
@@ -734,6 +735,7 @@ function applyAbbreviations(
       value: effectiveValue,
       valueColor: config.valueColor,
       minWidth: config.minWidth,
+      priority: config.priority, // Preserve priority for trimToFit
     };
 
     // Add to the appropriate side
@@ -747,47 +749,71 @@ function applyAbbreviations(
   return { left, right };
 }
 
-// Final fallback width-based trimming
+// Priority-to-numeric mapping for sorting
+const PRIORITY_ORDER: Record<SegmentPriority, number> = {
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+};
+
+// Enhanced width-based trimming with priority-aware removal
 function trimToFit(
   segments: { left: Segment[]; right: Segment[] },
   terminalWidth: number
 ): { left: Segment[]; right: Segment[] } {
-  // Calculate current width usage
-  const leftWidth = segments.left.reduce((sum, s) => sum + s.minWidth + 1, 0);
-  const rightWidth = segments.right.reduce((sum, s) => sum + s.minWidth + 1, 0);
-  const padding = 6; // Border and spacing
-  const totalWidth = leftWidth + rightWidth + padding;
+  // Calculate actual content width (not minWidth estimates)
+  const calculateActualWidth = (segs: Segment[]) =>
+    segs.reduce((sum, s) => {
+      const iconWidth = s.icon ? 2 : 0;
+      const labelWidth = s.label ? s.label.length : 0;
+      const valueWidth = s.value.length;
+      return sum + iconWidth + labelWidth + valueWidth + 1; // +1 for gap
+    }, 0);
 
-  // If it fits, return as-is
-  if (totalWidth <= terminalWidth) {
-    return segments;
-  }
+  const padding = 6; // Box border (2) + paddingX (2 each side)
+  const centerGap = 2; // Gap between left and right sections
 
-  // Otherwise, progressively remove lower priority segments
-  // For simplicity, remove from the end of each side (lower priority typically appears later)
-  const left = [...segments.left];
-  const right = [...segments.right];
+  let leftSegs = [...segments.left];
+  let rightSegs = [...segments.right];
 
-  while (left.length + right.length > 2) {
-    const currentLeftWidth = left.reduce((sum, s) => sum + s.minWidth + 1, 0);
-    const currentRightWidth = right.reduce((sum, s) => sum + s.minWidth + 1, 0);
-    const currentTotal = currentLeftWidth + currentRightWidth + padding;
+  // Helper to get numeric priority from segment
+  const getPriority = (seg: Segment): number => {
+    return seg.priority ? PRIORITY_ORDER[seg.priority] : 3; // Default to medium
+  };
 
-    if (currentTotal <= terminalWidth) {
-      break;
-    }
+  // Sort remaining segments by priority (lowest first for removal)
+  // Keep tracking which side each segment is on
+  const getAllWithMeta = () => [
+    ...leftSegs.map((s, i) => ({ seg: s, side: 'left' as const, index: i, priority: getPriority(s) })),
+    ...rightSegs.map((s, i) => ({ seg: s, side: 'right' as const, index: i, priority: getPriority(s) })),
+  ].sort((a, b) => b.priority - a.priority); // Lowest priority first (higher number = lower priority)
 
-    // Remove from left side if it has more segments, otherwise from right
-    if (left.length > right.length && left.length > 1) {
-      left.pop();
-    } else if (right.length > 1) {
-      right.pop();
-    } else if (left.length > 1) {
-      left.pop();
+  // Iteratively remove lowest priority segment until fits
+  while (true) {
+    const leftWidth = calculateActualWidth(leftSegs);
+    const rightWidth = calculateActualWidth(rightSegs);
+    const totalWidth = leftWidth + rightWidth + padding + centerGap;
+
+    if (totalWidth <= terminalWidth) break;
+    if (leftSegs.length + rightSegs.length <= 2) break; // Keep at least connection + timer
+
+    // Find and remove lowest priority segment
+    const candidates = getAllWithMeta().filter(m =>
+      // Don't remove critical segments
+      m.priority !== 1 && // critical = 1 in numeric form
+      (m.side === 'left' ? leftSegs.length > 1 : rightSegs.length > 1)
+    );
+
+    if (candidates.length === 0) break;
+
+    const toRemove = candidates[0]; // Lowest priority
+    if (toRemove.side === 'left') {
+      leftSegs = leftSegs.filter((_, i) => i !== toRemove.index);
     } else {
-      break; // Can't remove any more
+      rightSegs = rightSegs.filter((_, i) => i !== toRemove.index);
     }
   }
 
-  return { left, right };
+  return { left: leftSegs, right: rightSegs };
 }

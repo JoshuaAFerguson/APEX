@@ -33,5 +33,8 @@ npm-debug.log*
 # Turbo
 .turbo/
 
+#AI Tools
 CLAUDE.md
 .claude/
+.zencoder/
+.zenflow/

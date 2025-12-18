@@ -125,7 +125,7 @@ Duration: 3m 42s
 
 ## Terminal Interface (v0.3.0)
 
-APEX now features a rich terminal interface with real-time updates and enhanced visual feedback:
+APEX now features a rich terminal interface with real-time updates, enhanced visual feedback, and customizable display modes:
 
 ### Progress Indicators
 
@@ -148,6 +148,57 @@ Tasks display live progress with detailed stage information:
 Tokens: 12,456 | Cost: $0.0425 | Elapsed: 1m 23s
 ```
 
+### Display Modes ✨ NEW in v0.3.0
+
+Customize how information is displayed to match your workflow:
+
+```bash
+# Toggle compact mode for minimal display
+/compact
+● main | $0.0425
+
+# Toggle verbose mode for maximum detail
+/verbose
+● main | ⚡developer | ▶implementation | tokens: 1.5k→800 | total: 2.3k | cost: $0.0425 | 🔍 VERBOSE
+
+# Return to normal balanced display
+/compact  # (toggles off)
+```
+
+**Three Display Modes:**
+- **Normal** - Balanced information display (default)
+- **Compact** - Minimal display for focus or small terminals
+- **Verbose** - Maximum information for debugging and analysis
+
+See [Display Modes Guide](user-guide/display-modes.md) for complete details.
+
+### Input Preview ✨ NEW in v0.3.0
+
+Preview what will be sent to Claude before executing commands:
+
+```bash
+# Enable preview mode
+/preview on
+
+# Now when you type commands, you'll see:
+┌─ Input Preview ─────────────────────────────────────┐
+│ Input: "implement user authentication"              │
+│                                                     │
+│ Intent: task_execution (85% confidence)            │
+│ This will be sent to the developer agent           │
+│                                                     │
+│ [Enter] Execute  [Escape] Cancel  [E] Edit          │
+└─────────────────────────────────────────────────────┘
+```
+
+**Benefits of Input Preview:**
+- Verify your intent before execution
+- See confidence levels for command interpretation
+- Catch potential issues before they happen
+- Learn how APEX processes different input types
+
+See [Input Preview Guide](user-guide/input-preview.md) for complete details.
+
 ### Interactive Controls
 
 Control task execution with keyboard shortcuts:
@@ -155,6 +206,9 @@ Control task execution with keyboard shortcuts:
 - `q` - Quit task
 - `l` - View detailed logs
 - `Enter` - Approve current stage (manual mode)
+- `/compact` - Toggle compact display mode
+- `/verbose` - Toggle verbose display mode
+- `/preview on|off` - Control input preview mode
 
 ### Color-coded Output
 
@@ -162,6 +216,8 @@ Control task execution with keyboard shortcuts:
 - 🟡 Warnings and reviews
 - 🔴 Errors and failures
 - 🔵 Information and status updates
+- 📋 Preview mode active indicator
+- 🔍 Verbose mode active indicator
 
 ## Session Management Basics
 
@@ -284,6 +340,11 @@ apex logs task_abc123_def456
 
 ## Next Steps
 
+### v0.3.0 Features
+- **[Display Modes Guide](user-guide/display-modes.md)** - Customize how information is displayed (compact, normal, verbose)
+- **[Input Preview Guide](user-guide/input-preview.md)** - Preview commands before execution with intent detection
+
+### Complete Documentation
 - [CLI Guide](cli-guide.md) - Complete command reference and advanced features
 - [Configure your agents](agents.md) - Customize agent behavior
 - [Define workflows](workflows.md) - Create custom development workflows
