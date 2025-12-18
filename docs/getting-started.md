@@ -123,6 +123,133 @@ Cost: $0.1523
 Duration: 3m 42s
 ```
 
+## Terminal Interface (v0.3.0)
+
+APEX now features a rich terminal interface with real-time updates and enhanced visual feedback:
+
+### Progress Indicators
+
+Tasks display live progress with detailed stage information:
+
+```
+🚀 APEX Task: Add authentication middleware
+
+┌─ Task Progress ──────────────────────────────────────┐
+│ Stage: implementation [■■■■■■■░░░] 70%               │
+│ Agent: developer                                     │
+│ File: src/middleware/auth.ts                         │
+│                                                      │
+│ Recent Actions:                                      │
+│ ✓ Created auth middleware structure                  │
+│ ✓ Added JWT validation logic                        │
+│ → Writing error handling...                         │
+└──────────────────────────────────────────────────────┘
+
+Tokens: 12,456 | Cost: $0.0425 | Elapsed: 1m 23s
+```
+
+### Interactive Controls
+
+Control task execution with keyboard shortcuts:
+- `Space` - Pause/resume task
+- `q` - Quit task
+- `l` - View detailed logs
+- `Enter` - Approve current stage (manual mode)
+
+### Color-coded Output
+
+- 🟢 Success indicators
+- 🟡 Warnings and reviews
+- 🔴 Errors and failures
+- 🔵 Information and status updates
+
+## Session Management Basics
+
+APEX maintains session state for improved workflow continuity:
+
+### Active Sessions
+
+View and manage active tasks:
+
+```bash
+# List all active sessions
+apex sessions
+
+# Resume a paused session
+apex resume task_abc123_def456
+
+# Attach to a running session
+apex attach task_abc123_def456
+```
+
+### Session Persistence
+
+Sessions survive terminal disconnections and system restarts:
+- Task state is automatically saved to `.apex/apex.db`
+- Progress is preserved across interruptions
+- Resume where you left off with full context
+
+### Background Execution
+
+Run tasks in the background:
+
+```bash
+# Start task in background
+apex run "Fix memory leak" --background
+
+# Check background tasks
+apex status --background
+```
+
+## Keyboard Shortcuts & Tab Completion
+
+### Tab Completion
+
+APEX supports intelligent tab completion for faster workflows:
+
+```bash
+# Complete commands
+apex <tab>
+# Shows: init, run, status, logs, sessions, serve
+
+# Complete task IDs
+apex status task_<tab>
+# Shows recent task IDs
+
+# Complete autonomy levels
+apex run "task" --autonomy <tab>
+# Shows: full, review-before-commit, review-before-merge, manual
+```
+
+### Essential Shortcuts
+
+| Shortcut | Action |
+|----------|---------|
+| `Ctrl+C` | Graceful task termination |
+| `Ctrl+Z` | Pause task (resume with `fg`) |
+| `↑/↓` | Navigate command history |
+| `Tab` | Auto-complete commands/options |
+| `Ctrl+L` | Clear terminal (preserves task state) |
+
+### Setup Tab Completion
+
+Add to your shell profile for persistent completion:
+
+**Bash:**
+```bash
+echo 'eval "$(apex completion bash)"' >> ~/.bashrc
+```
+
+**Zsh:**
+```bash
+echo 'eval "$(apex completion zsh)"' >> ~/.zshrc
+```
+
+**Fish:**
+```bash
+apex completion fish | source
+```
+
 ## Autonomy Levels
 
 Choose how much control to give APEX:
@@ -157,6 +284,7 @@ apex logs task_abc123_def456
 
 ## Next Steps
 
+- [CLI Guide](cli-guide.md) - Complete command reference and advanced features
 - [Configure your agents](agents.md) - Customize agent behavior
 - [Define workflows](workflows.md) - Create custom development workflows
 - [API Reference](api-reference.md) - Integrate with your tools
