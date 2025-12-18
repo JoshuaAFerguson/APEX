@@ -7,7 +7,7 @@
  *
  * Architecture:
  * - 5-tier priority system: CRITICAL > HIGH > MEDIUM > LOW
- * - 3-tier responsive display: narrow (<80), normal (80-119), wide (>=120)
+ * - 3-tier responsive display: narrow (<60), normal (60-160), wide (>160)
  * - Progressive segment hiding and abbreviation based on available space
  *
  * Priority Assignments:
@@ -17,9 +17,9 @@
  * - LOW: Session name, API URLs, Preview/Verbose indicators
  *
  * Responsive Behavior:
- * - Narrow (<80 cols): Shows only CRITICAL + HIGH priority with abbreviated labels
- * - Normal (80-119 cols): Shows CRITICAL + HIGH + MEDIUM with full labels
- * - Wide (>=120 cols): Shows all segments with full labels and extended details
+ * - Narrow (<60 cols): Shows only CRITICAL + HIGH priority with abbreviated labels
+ * - Normal (60-160 cols): Shows CRITICAL + HIGH + MEDIUM with full labels
+ * - Wide (>160 cols): Shows all segments with full labels and extended details
  *
  * Display Modes:
  * - 'compact': Always shows minimal segments (overrides responsive)
@@ -146,17 +146,14 @@ export function StatusBar({
   detailedTiming,
 }: StatusBarProps): React.ReactElement {
   const { width: terminalWidth, breakpoint } = useStdoutDimensions({
-    breakpoints: {
-      narrow: 80,    // < 80 = narrow
-      compact: 100,  // 80-99 = compact
-      normal: 120,   // 100-119 = normal
-    },               // >= 120 = wide
+    // Use default breakpoints: narrow: 60, compact: 100, normal: 160, wide: >= 160
     fallbackWidth: 120,
   });
 
-  // Determine display tier based on terminal width and task requirements
-  const displayTier: DisplayTier = terminalWidth < 80 ? 'narrow' :
-                                  terminalWidth <= 120 ? 'normal' : 'wide';
+  // Determine display tier based on terminal width and acceptance criteria
+  // Narrow: <60, Normal: 60-160, Wide: >160 (to show extra details per acceptance criteria)
+  const displayTier: DisplayTier = terminalWidth < 60 ? 'narrow' :
+                                  terminalWidth <= 160 ? 'normal' : 'wide';
 
   // Session timer
   const [elapsed, setElapsed] = useState('00:00');

@@ -209,9 +209,9 @@ describe('StatusBar', () => {
 
   describe('responsive segment adaptation', () => {
     it('adapts to narrow terminal width with abbreviated labels', () => {
-      // Mock narrow terminal (< 80)
+      // Mock narrow terminal (< 60)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 60,
+        width: 50,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -295,7 +295,7 @@ describe('StatusBar', () => {
     });
 
     it('shows all segments in normal width terminals', () => {
-      // Mock normal terminal (80-119)
+      // Mock normal terminal (60-160)
       mockUseStdoutDimensions.mockReturnValue({
         width: 100,
         height: 24,
@@ -335,9 +335,9 @@ describe('StatusBar', () => {
     });
 
     it('shows all segments including low priority in wide terminals', () => {
-      // Mock wide terminal (>=120)
+      // Mock wide terminal (>160)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 150,
+        width: 180,
         height: 40,
         breakpoint: 'wide' as const,
         isAvailable: true,
@@ -378,9 +378,9 @@ describe('StatusBar', () => {
     });
 
     it('handles boundary width values correctly', () => {
-      // Test exact boundary at 79 columns (should be narrow)
+      // Test exact boundary at 59 columns (should be narrow)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 79,
+        width: 59,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -406,9 +406,9 @@ describe('StatusBar', () => {
       expect(screen.getByText('planner')).toBeInTheDocument(); // high
       expect(screen.queryByText('testing')).not.toBeInTheDocument(); // medium - should not show
 
-      // Test exact boundary at 80 columns (should be normal/compact based on StatusBar's breakpoint config)
+      // Test exact boundary at 60 columns (should be normal per new config)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 80,
+        width: 60,
         height: 24,
         breakpoint: 'compact' as const,
         isAvailable: true,
@@ -428,13 +428,12 @@ describe('StatusBar', () => {
         />
       );
 
-      // Based on StatusBar's breakpoint config: narrow: 80, compact: 100, normal: 120
-      // At width 80, displayTier should be 'normal' (80 <= 120)
+      // At width 60, displayTier should be 'normal' (60 <= 160)
       expect(screen.getByText('testing')).toBeInTheDocument(); // medium priority should now show
 
-      // Test exact boundary at 119 columns (should be normal)
+      // Test exact boundary at 160 columns (should be normal)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 119,
+        width: 160,
         height: 24,
         breakpoint: 'normal' as const,
         isAvailable: true,
@@ -455,32 +454,9 @@ describe('StatusBar', () => {
       // Should still be normal tier - no low priority segments
       expect(screen.queryByText('Session Name')).not.toBeInTheDocument(); // low priority
 
-      // Test exact boundary at 120 columns (should be normal per StatusBar's config)
+      // Test width 161 (should be wide)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 120,
-        height: 24,
-        breakpoint: 'normal' as const,
-        isAvailable: true,
-        isNarrow: false,
-        isCompact: false,
-        isNormal: true,
-        isWide: false,
-      });
-
-      rerender(
-        <StatusBar
-          {...defaultProps}
-          gitBranch="test-branch"
-          sessionName="Session Name"
-        />
-      );
-
-      // At width 120, displayTier should be 'normal' (80 <= 120), so still no low priority
-      expect(screen.queryByText('Session Name')).not.toBeInTheDocument();
-
-      // Test width 121 (should be wide)
-      mockUseStdoutDimensions.mockReturnValue({
-        width: 121,
+        width: 161,
         height: 24,
         breakpoint: 'wide' as const,
         isAvailable: true,
@@ -503,22 +479,22 @@ describe('StatusBar', () => {
     });
 
     it('prevents overflow and truncation at boundary widths', () => {
-      const testWidths = [79, 80, 119, 120];
+      const testWidths = [59, 60, 160, 161];
 
       testWidths.forEach(width => {
-        const expectedBreakpoint = width < 80 ? 'narrow' :
+        const expectedBreakpoint = width < 60 ? 'narrow' :
                                   width < 100 ? 'compact' :
-                                  width < 120 ? 'normal' : 'normal'; // StatusBar uses different logic
+                                  width <= 160 ? 'normal' : 'wide';
 
         mockUseStdoutDimensions.mockReturnValue({
           width,
           height: 24,
           breakpoint: expectedBreakpoint as any,
           isAvailable: true,
-          isNarrow: width < 80,
-          isCompact: width >= 80 && width < 100,
-          isNormal: width >= 100,
-          isWide: width >= 160, // Per hook defaults
+          isNarrow: width < 60,
+          isCompact: width >= 60 && width < 100,
+          isNormal: width >= 100 && width <= 160,
+          isWide: width > 160,
         });
 
         const { rerender } = render(
@@ -837,11 +813,7 @@ describe('StatusBar', () => {
       render(<StatusBar {...defaultProps} />);
 
       expect(mockUseStdoutDimensions).toHaveBeenCalledWith({
-        breakpoints: {
-          narrow: 80,    // < 80 = narrow
-          compact: 100,  // 80-99 = compact
-          normal: 120,   // 100-119 = normal
-        },               // >= 120 = wide
+        // Use default breakpoints: narrow: 60, compact: 100, normal: 160, wide: >= 160
         fallbackWidth: 120,
       });
     });
@@ -1004,11 +976,11 @@ describe('StatusBar', () => {
       });
 
       it('tests exact boundary conditions', () => {
-        // StatusBar logic: displayTier = width < 80 ? 'narrow' : width <= 120 ? 'normal' : 'wide'
+        // StatusBar logic: displayTier = width < 60 ? 'narrow' : width <= 160 ? 'normal' : 'wide'
 
-        // Test width 79 (should be narrow)
+        // Test width 59 (should be narrow)
         mockUseStdoutDimensions.mockReturnValue({
-          width: 79,
+          width: 59,
           height: 24,
           breakpoint: 'narrow' as const,
           isAvailable: true,
@@ -1025,9 +997,9 @@ describe('StatusBar', () => {
         expect(screen.queryByText('testing')).not.toBeInTheDocument(); // narrow = no medium
         expect(screen.queryByText('Test')).not.toBeInTheDocument(); // narrow = no low
 
-        // Test width 80 (should be normal per StatusBar logic)
+        // Test width 60 (should be normal per StatusBar logic)
         mockUseStdoutDimensions.mockReturnValue({
-          width: 80,
+          width: 60,
           height: 24,
           breakpoint: 'compact' as const, // Hook breakpoint
           isAvailable: true,
@@ -1042,9 +1014,9 @@ describe('StatusBar', () => {
         expect(screen.getByText('testing')).toBeInTheDocument(); // normal = medium allowed
         expect(screen.queryByText('Test')).not.toBeInTheDocument(); // normal = no low
 
-        // Test width 120 (should be normal per StatusBar logic)
+        // Test width 160 (should be normal per StatusBar logic)
         mockUseStdoutDimensions.mockReturnValue({
-          width: 120,
+          width: 160,
           height: 24,
           breakpoint: 'normal' as const, // Hook breakpoint doesn't matter for StatusBar logic
           isAvailable: true,
@@ -1059,9 +1031,9 @@ describe('StatusBar', () => {
         expect(screen.getByText('testing')).toBeInTheDocument(); // normal = medium allowed
         expect(screen.queryByText('Test')).not.toBeInTheDocument(); // normal = no low
 
-        // Test width 121 (should be wide)
+        // Test width 161 (should be wide)
         mockUseStdoutDimensions.mockReturnValue({
-          width: 121,
+          width: 161,
           height: 24,
           breakpoint: 'wide' as const,
           isAvailable: true,
@@ -1321,6 +1293,215 @@ describe('StatusBar', () => {
 
         // Verify hook is called exactly once per render
         expect(mockUseStdoutDimensions).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('acceptance criteria compliance', () => {
+      it('shows abbreviated content in narrow terminals (<60 cols)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 55,
+          height: 24,
+          breakpoint: 'narrow' as const,
+          isAvailable: true,
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/long-branch-name-that-should-be-abbreviated"
+            agent="developer"
+            workflowStage="implementation"
+            tokens={{ input: 1000, output: 500 }}
+            cost={0.1234}
+            model="opus"
+            sessionName="Session"
+            apiUrl="http://localhost:4000"
+          />
+        );
+
+        // Should show only critical and high priority with abbreviated content
+        expect(screen.getByText('●')).toBeInTheDocument(); // critical: connection
+
+        // High priority items should be shown but possibly abbreviated
+        expect(screen.getByText(/feature\//)).toBeInTheDocument(); // git branch (high) - may be compressed
+        expect(screen.getByText('developer')).toBeInTheDocument(); // agent (high)
+        expect(screen.getByText('$0.1234')).toBeInTheDocument(); // cost (high)
+        expect(screen.getByText('opus')).toBeInTheDocument(); // model (high)
+
+        // Medium priority should NOT be shown in narrow mode
+        expect(screen.queryByText('implementation')).not.toBeInTheDocument(); // medium: workflow stage
+        expect(screen.queryByText(/tokens:|tk:/)).not.toBeInTheDocument(); // medium: tokens
+
+        // Low priority should NOT be shown in narrow mode
+        expect(screen.queryByText('Session')).not.toBeInTheDocument(); // low: session name
+        expect(screen.queryByText('4000')).not.toBeInTheDocument(); // low: api url
+      });
+
+      it('shows full information with extra details in wide terminals (>160 cols)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 200,
+          height: 40,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/comprehensive-wide-terminal-display"
+            agent="architect"
+            workflowStage="planning"
+            tokens={{ input: 5000, output: 3000 }}
+            cost={0.7890}
+            sessionCost={1.2345}
+            model="opus"
+            sessionName="Full Feature Development Session"
+            apiUrl="http://localhost:4000"
+            webUrl="http://localhost:3000"
+            subtaskProgress={{ completed: 8, total: 12 }}
+            previewMode={true}
+            showThoughts={true}
+          />
+        );
+
+        // Should show ALL priority levels with full labels and extra details
+        expect(screen.getByText('●')).toBeInTheDocument(); // critical: connection
+        expect(screen.getByText('feature/comprehensive-wide-terminal-display')).toBeInTheDocument(); // high: git branch (full)
+        expect(screen.getByText('architect')).toBeInTheDocument(); // high: agent
+        expect(screen.getByText('planning')).toBeInTheDocument(); // medium: workflow stage
+        expect(screen.getByText('8.0k')).toBeInTheDocument(); // medium: tokens
+        expect(screen.getByText('$0.7890')).toBeInTheDocument(); // high: cost
+        expect(screen.getByText('opus')).toBeInTheDocument(); // high: model
+        expect(screen.getByText(/Full Feature Development Session/)).toBeInTheDocument(); // low: session name (full)
+        expect(screen.getByText('4000')).toBeInTheDocument(); // low: api url
+        expect(screen.getByText('3000')).toBeInTheDocument(); // low: web url
+        expect(screen.getByText('[8/12]')).toBeInTheDocument(); // medium: subtask progress
+        expect(screen.getByText('📋 PREVIEW')).toBeInTheDocument(); // low: preview mode
+        expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument(); // low: show thoughts
+
+        // Labels should be full, not abbreviated in wide mode
+        expect(screen.getByText('tokens:')).toBeInTheDocument();
+        expect(screen.getByText('cost:')).toBeInTheDocument();
+        expect(screen.getByText('model:')).toBeInTheDocument();
+        expect(screen.queryByText('tk:')).not.toBeInTheDocument(); // Should not see abbreviated forms
+        expect(screen.queryByText('m:')).not.toBeInTheDocument(); // Should not see abbreviated forms
+      });
+
+      it('handles exact boundary at 60 columns correctly', () => {
+        // Test exactly at 60 columns (should be normal mode per acceptance criteria)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 60,
+          height: 24,
+          breakpoint: 'compact' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="main"
+            agent="planner"
+            workflowStage="implementation"
+            sessionName="Test Session"
+          />
+        );
+
+        // At exactly 60 columns, should be in normal mode (critical + high + medium)
+        expect(screen.getByText('●')).toBeInTheDocument(); // critical
+        expect(screen.getByText('main')).toBeInTheDocument(); // high
+        expect(screen.getByText('planner')).toBeInTheDocument(); // high
+        expect(screen.getByText('implementation')).toBeInTheDocument(); // medium - should show
+
+        // Low priority should still not show in normal mode
+        expect(screen.queryByText('Test Session')).not.toBeInTheDocument(); // low
+      });
+
+      it('handles exact boundary at 160 columns correctly', () => {
+        // Test exactly at 160 columns (should be normal mode per acceptance criteria)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 160,
+          height: 30,
+          breakpoint: 'normal' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/test"
+            agent="developer"
+            workflowStage="testing"
+            sessionName="Boundary Test Session"
+            apiUrl="http://localhost:4000"
+          />
+        );
+
+        // At exactly 160 columns, should still be in normal mode (critical + high + medium)
+        expect(screen.getByText('●')).toBeInTheDocument(); // critical
+        expect(screen.getByText('feature/test')).toBeInTheDocument(); // high
+        expect(screen.getByText('developer')).toBeInTheDocument(); // high
+        expect(screen.getByText('testing')).toBeInTheDocument(); // medium - should show
+
+        // Low priority should NOT show in normal mode (need >160 for wide mode)
+        expect(screen.queryByText('Boundary Test Session')).not.toBeInTheDocument(); // low
+        expect(screen.queryByText('4000')).not.toBeInTheDocument(); // low
+      });
+
+      it('transitions to wide mode at 161 columns for extra details', () => {
+        // Test at 161 columns (should be wide mode with all details)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 161,
+          height: 30,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/wide-mode-test"
+            agent="tester"
+            workflowStage="validation"
+            sessionName="Wide Mode Test Session"
+            apiUrl="http://localhost:4000"
+            webUrl="http://localhost:3000"
+            tokens={{ input: 2000, output: 1500 }}
+            cost={0.5678}
+          />
+        );
+
+        // At 161 columns, should be in wide mode (all priority levels)
+        expect(screen.getByText('●')).toBeInTheDocument(); // critical
+        expect(screen.getByText('feature/wide-mode-test')).toBeInTheDocument(); // high
+        expect(screen.getByText('tester')).toBeInTheDocument(); // high
+        expect(screen.getByText('validation')).toBeInTheDocument(); // medium
+        expect(screen.getByText('3.5k')).toBeInTheDocument(); // medium: tokens
+        expect(screen.getByText('$0.5678')).toBeInTheDocument(); // high
+
+        // Low priority should NOW show in wide mode
+        expect(screen.getByText(/Wide Mode Test Session/)).toBeInTheDocument(); // low: session name
+        expect(screen.getByText('4000')).toBeInTheDocument(); // low: api url
+        expect(screen.getByText('3000')).toBeInTheDocument(); // low: web url
       });
     });
   });
