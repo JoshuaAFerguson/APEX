@@ -707,6 +707,388 @@ agents.map(agent => (
 3. **Memory Usage**: Limit history length for long-running sessions
 4. **Terminal Compatibility**: Test across different terminal emulators
 
+### 12. Markdown Rendering System
+
+#### Comprehensive Markdown Support
+
+The `MarkdownRenderer` component provides full CommonMark support with syntax highlighting, enabling rich text formatting throughout the APEX interface. All agent responses, documentation, and help text support the following markdown elements:
+
+**Supported Elements:**
+- Headers (h1, h2, h3)
+- Unordered and ordered lists
+- Code blocks with syntax highlighting
+- Inline code formatting
+- Blockquotes
+- Bold and italic text emphasis
+
+#### Header Elements
+
+**Raw Markdown:**
+```markdown
+# Primary Header
+## Secondary Header
+### Tertiary Header
+```
+
+**Rendered Output:**
+```
+┌─ Markdown Rendering ─────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ██████ Primary Header                                                        │
+│                                                                              │
+│ ████ Secondary Header                                                        │
+│                                                                              │
+│ ██ Tertiary Header                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### List Elements
+
+**Raw Markdown:**
+```markdown
+### Unordered Lists
+- Feature planning
+- Code implementation
+- Testing and validation
+- Documentation updates
+
+### Ordered Lists
+1. Initialize project structure
+2. Configure development environment
+3. Implement core features
+4. Write comprehensive tests
+```
+
+**Rendered Output:**
+```
+┌─ List Rendering ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ██ Unordered Lists                                                           │
+│                                                                              │
+│ • Feature planning                                                           │
+│ • Code implementation                                                        │
+│ • Testing and validation                                                     │
+│ • Documentation updates                                                      │
+│                                                                              │
+│ ██ Ordered Lists                                                             │
+│                                                                              │
+│ 1. Initialize project structure                                              │
+│ 2. Configure development environment                                         │
+│ 3. Implement core features                                                   │
+│ 4. Write comprehensive tests                                                 │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Code Block Elements
+
+**Raw Markdown:**
+````markdown
+```typescript
+interface AuthConfig {
+  jwtSecret: string;
+  tokenExpiry: number;
+  refreshEnabled: boolean;
+}
+
+const config: AuthConfig = {
+  jwtSecret: process.env.JWT_SECRET,
+  tokenExpiry: 3600,
+  refreshEnabled: true
+};
+```
+````
+
+**Rendered Output:**
+```
+┌─ Code Block Rendering ───────────────────────────────────────────────────────┐
+│                                                                              │
+│ interface AuthConfig {                                                       │
+│   jwtSecret: string;                                                         │
+│   tokenExpiry: number;                                                       │
+│   refreshEnabled: boolean;                                                   │
+│ }                                                                            │
+│                                                                              │
+│ const config: AuthConfig = {                                                 │
+│   jwtSecret: process.env.JWT_SECRET,                                         │
+│   tokenExpiry: 3600,                                                         │
+│   refreshEnabled: true                                                       │
+│ };                                                                           │
+│                                                                              │
+│ [TypeScript syntax highlighting applied]                                     │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Inline Code Elements
+
+**Raw Markdown:**
+```markdown
+Use the `npm install` command to install dependencies. Configure your environment with `API_KEY=your_key` and run `npm start` to begin development.
+```
+
+**Rendered Output:**
+```
+┌─ Inline Code Rendering ──────────────────────────────────────────────────────┐
+│                                                                              │
+│ Use the npm install command to install dependencies. Configure your         │
+│ environment with API_KEY=your_key and run npm start to begin development.   │
+│                                                                              │
+│ [Inline code highlighted with distinct background/styling]                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Blockquote Elements
+
+**Raw Markdown:**
+```markdown
+> **Important**: Always validate user input before processing authentication tokens.
+>
+> This prevents security vulnerabilities and ensures your application maintains
+> proper data integrity throughout the authentication flow.
+```
+
+**Rendered Output:**
+```
+┌─ Blockquote Rendering ───────────────────────────────────────────────────────┐
+│                                                                              │
+│ │ Important: Always validate user input before processing authentication     │
+│ │ tokens.                                                                    │
+│ │                                                                            │
+│ │ This prevents security vulnerabilities and ensures your application       │
+│ │ maintains proper data integrity throughout the authentication flow.        │
+│                                                                              │
+│ [Left border and distinct styling applied]                                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Text Emphasis Elements
+
+**Raw Markdown:**
+```markdown
+The authentication system supports **strong emphasis** for critical information,
+*italic emphasis* for subtle highlights, and ***combined emphasis*** for maximum
+impact when documenting important implementation details.
+```
+
+**Rendered Output:**
+```
+┌─ Text Emphasis Rendering ────────────────────────────────────────────────────┐
+│                                                                              │
+│ The authentication system supports strong emphasis for critical              │
+│ information, italic emphasis for subtle highlights, and combined emphasis    │
+│ for maximum impact when documenting important implementation details.        │
+│                                                                              │
+│ [Bold, italic, and combined styling applied appropriately]                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### MarkdownRenderer Component API
+
+**Basic Usage:**
+```typescript
+import { MarkdownRenderer } from '@apex/cli/ui/components';
+
+<MarkdownRenderer
+  content={markdownString}
+  highlightLanguage="typescript"
+  showLineNumbers={true}
+  theme="dark"
+  maxWidth={80}
+/>
+```
+
+**Advanced Configuration:**
+```typescript
+<MarkdownRenderer
+  content={agentResponse}
+  highlightLanguage="auto"
+  showLineNumbers={false}
+  theme="auto"
+  responsive={true}
+  streaming={true}
+  onRenderComplete={() => handleComplete()}
+  customStyles={{
+    header: { color: 'cyan', bold: true },
+    code: { backgroundColor: 'gray', color: 'white' },
+    emphasis: { color: 'yellow' }
+  }}
+/>
+```
+
+**Component Properties:**
+```typescript
+interface MarkdownRendererProps {
+  content: string;                    // Raw markdown content
+  highlightLanguage?: string;         // Syntax highlighting language
+  showLineNumbers?: boolean;          // Show line numbers in code blocks
+  theme?: 'dark' | 'light' | 'auto';  // Color theme
+  maxWidth?: number;                  // Maximum rendering width
+  responsive?: boolean;               // Responsive layout adaptation
+  streaming?: boolean;                // Character-by-character rendering
+  onRenderComplete?: () => void;      // Callback when rendering completes
+  customStyles?: StyleOverrides;      // Custom styling overrides
+}
+```
+
+#### Responsive Markdown Layout
+
+Markdown content automatically adapts to terminal width:
+
+**Wide Terminal (120+ columns):**
+```
+┌─ Authentication Implementation Guide ────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                          │
+│ ██████ JWT Authentication Setup                                                                                          │
+│                                                                                                                          │
+│ Follow these steps to implement secure authentication in your React application:                                        │
+│                                                                                                                          │
+│ 1. Install required dependencies: npm install jsonwebtoken bcryptjs express-rate-limit                                 │
+│ 2. Configure environment variables for JWT secrets and database connection                                              │
+│ 3. Create authentication middleware with proper error handling and token validation                                     │
+│ 4. Implement protected route wrapper component with React Router integration                                            │
+│                                                                                                                          │
+│ > **Security Note**: Always use HTTPS in production and implement proper token rotation strategies                      │
+│                                                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Compact Terminal (60-79 columns):**
+```
+┌─ Auth Implementation ─────────────────────────────────┐
+│                                                       │
+│ ██████ JWT Authentication                             │
+│                                                       │
+│ Steps for secure auth implementation:                 │
+│                                                       │
+│ 1. Install deps: npm install jsonwebtoken bcryptjs   │
+│ 2. Configure environment variables                    │
+│ 3. Create auth middleware                             │
+│ 4. Implement protected routes                         │
+│                                                       │
+│ > **Security**: Use HTTPS in production               │
+│                                                       │
+└───────────────────────────────────────────────────────┘
+```
+
+#### Color Reference for Markdown Elements
+
+**Color Mapping:**
+- **Headers**: Cyan bold text with size-based intensity
+- **Bold text**: White bold or bright white
+- **Italic text**: Yellow or bright yellow
+- **Inline code**: Gray background with white text
+- **Code blocks**: Syntax-highlighted with language detection
+- **Blockquotes**: Left cyan border with dimmed text
+- **Lists**: White bullets/numbers with normal text
+- **Links**: Blue underlined text (when supported)
+
+**Theme Adaptation:**
+```typescript
+// Dark theme (default)
+const darkTheme = {
+  header1: { color: 'cyanBright', bold: true },
+  header2: { color: 'cyan', bold: true },
+  header3: { color: 'cyanDim', bold: true },
+  bold: { color: 'whiteBright', bold: true },
+  italic: { color: 'yellow', italic: true },
+  code: { backgroundColor: 'bgGray', color: 'white' },
+  blockquote: { color: 'gray', borderColor: 'cyan' }
+};
+
+// Light theme
+const lightTheme = {
+  header1: { color: 'blue', bold: true },
+  header2: { color: 'blueDim', bold: true },
+  header3: { color: 'gray', bold: true },
+  bold: { color: 'black', bold: true },
+  italic: { color: 'magenta', italic: true },
+  code: { backgroundColor: 'bgWhite', color: 'black' },
+  blockquote: { color: 'gray', borderColor: 'blue' }
+};
+```
+
+#### Integration with Streaming Components
+
+Markdown rendering integrates seamlessly with APEX's streaming system:
+
+```typescript
+// Streaming markdown response from agent
+<StreamingResponse
+  agent="📝 documentation"
+  content={markdownResponse}
+  renderAsMarkdown={true}
+  isStreaming={true}
+  onComplete={() => setShowNext(true)}
+/>
+
+// Agent response with markdown content
+const agentResponse = `
+## Implementation Plan
+
+I'll create the authentication system with these components:
+
+1. **LoginForm Component**
+   - Email/password validation
+   - Submit handling with loading states
+   - Error message display
+
+2. **AuthContext Provider**
+   - User state management
+   - Token storage and validation
+   - Login/logout functions
+
+\`\`\`typescript
+// Example implementation
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isAuthenticated: false,
+  login: async () => {},
+  logout: () => {}
+});
+\`\`\`
+
+> **Next Steps**: After reviewing this plan, I'll implement each component with full TypeScript support and comprehensive error handling.
+`;
+```
+
+**Streaming Markdown Output:**
+```
+┌─ 📝 documentation ● streaming... ────────────────────────────────────────────┐
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│ ████ Implementation Plan                                                     │
+│                                                                              │
+│ I'll create the authentication system with these components:                 │
+│                                                                              │
+│ 1. LoginForm Component                                                       │
+│    • Email/password validation                                               │
+│    • Submit handling with loading states                                     │
+│    • Error message display                                                   │
+│                                                                              │
+│ 2. AuthContext Provider                                                      │
+│    • User state management                                                   │
+│    • Token storage and validation                                            │
+│    • Login/logout functions                                                  │
+│                                                                              │
+│ // Example implementation                                                     │
+│ const AuthContext = createContext<AuthContextType>({                        │
+│   user: null,                                                               │
+│   isAuthenticated: false,                                                    │
+│   login: async () => {},                                                     │
+│   logout: () => {}                                                           │
+│ });                                                                          │
+│                                                                              │
+│ │ Next Steps: After reviewing this plan, I'll implement each component      │
+│ │ with full TypeScript support and comprehensive error handling.▊           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## Technical Specifications
 
 ### Dependencies

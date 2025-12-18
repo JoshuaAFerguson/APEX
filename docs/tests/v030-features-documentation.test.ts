@@ -45,11 +45,24 @@ describe('v0.3.0 Features Documentation Tests', () => {
         'Session Management',
         'Keyboard Shortcuts',
         'Syntax Highlighting and Code Display',
+        'Markdown Rendering System',
       ];
 
       requiredSections.forEach(section => {
         expect(documentationContent).toContain(section);
       });
+    });
+
+    it('should include comprehensive markdown rendering section', () => {
+      expect(documentationContent).toContain('### 12. Markdown Rendering System');
+      expect(documentationContent).toContain('#### Comprehensive Markdown Support');
+      expect(documentationContent).toContain('#### Header Elements');
+      expect(documentationContent).toContain('#### List Elements');
+      expect(documentationContent).toContain('#### Code Block Elements');
+      expect(documentationContent).toContain('#### Inline Code Elements');
+      expect(documentationContent).toContain('#### Blockquote Elements');
+      expect(documentationContent).toContain('#### Text Emphasis Elements');
+      expect(documentationContent).toContain('#### MarkdownRenderer Component API');
     });
 
     it('should include implementation architecture section', () => {
@@ -300,6 +313,111 @@ describe('v0.3.0 Features Documentation Tests', () => {
       expect(documentationContent).toContain('as documented');
       expect(documentationContent).toContain('described above');
       expect(documentationContent).toContain('mentioned in');
+    });
+  });
+
+  describe('Markdown Rendering Documentation Validation', () => {
+    it('should document all supported markdown elements', () => {
+      const supportedElements = [
+        'Headers (h1, h2, h3)',
+        'Unordered and ordered lists',
+        'Code blocks with syntax highlighting',
+        'Inline code formatting',
+        'Blockquotes',
+        'Bold and italic text emphasis'
+      ];
+
+      supportedElements.forEach(element => {
+        expect(documentationContent).toContain(element);
+      });
+    });
+
+    it('should include before/after markdown examples', () => {
+      expect(documentationContent).toContain('**Raw Markdown:**');
+      expect(documentationContent).toContain('**Rendered Output:**');
+
+      // Check for specific examples
+      expect(documentationContent).toContain('```markdown\n# Primary Header\n## Secondary Header\n### Tertiary Header\n```');
+      expect(documentationContent).toContain('```markdown\n### Unordered Lists\n- Feature planning');
+      expect(documentationContent).toContain('```markdown\n### Ordered Lists\n1. Initialize project structure');
+    });
+
+    it('should include MarkdownRenderer component API documentation', () => {
+      expect(documentationContent).toContain('MarkdownRenderer Component API');
+      expect(documentationContent).toContain('**Basic Usage:**');
+      expect(documentationContent).toContain('**Advanced Configuration:**');
+      expect(documentationContent).toContain('**Component Properties:**');
+
+      // API properties
+      expect(documentationContent).toContain('content: string');
+      expect(documentationContent).toContain('highlightLanguage?: string');
+      expect(documentationContent).toContain('showLineNumbers?: boolean');
+      expect(documentationContent).toContain('theme?: \'dark\' | \'light\' | \'auto\'');
+      expect(documentationContent).toContain('responsive?: boolean');
+      expect(documentationContent).toContain('streaming?: boolean');
+      expect(documentationContent).toContain('onRenderComplete?: () => void');
+    });
+
+    it('should include responsive layout examples for markdown', () => {
+      expect(documentationContent).toContain('#### Responsive Markdown Layout');
+      expect(documentationContent).toContain('**Wide Terminal (120+ columns):**');
+      expect(documentationContent).toContain('**Compact Terminal (60-79 columns):**');
+
+      // Should show markdown content adapted to different terminal widths
+      expect(documentationContent).toContain('Authentication Implementation Guide');
+      expect(documentationContent).toContain('Auth Implementation');
+    });
+
+    it('should document color mapping for markdown elements', () => {
+      expect(documentationContent).toContain('#### Color Reference for Markdown Elements');
+      expect(documentationContent).toContain('**Color Mapping:**');
+      expect(documentationContent).toContain('**Headers**: Cyan bold text');
+      expect(documentationContent).toContain('**Bold text**: White bold or bright white');
+      expect(documentationContent).toContain('**Italic text**: Yellow or bright yellow');
+      expect(documentationContent).toContain('**Inline code**: Gray background with white text');
+      expect(documentationContent).toContain('**Code blocks**: Syntax-highlighted');
+      expect(documentationContent).toContain('**Blockquotes**: Left cyan border');
+    });
+
+    it('should include theme adaptation documentation', () => {
+      expect(documentationContent).toContain('**Theme Adaptation:**');
+      expect(documentationContent).toContain('// Dark theme (default)');
+      expect(documentationContent).toContain('// Light theme');
+      expect(documentationContent).toContain('header1: { color: \'cyanBright\', bold: true }');
+      expect(documentationContent).toContain('code: { backgroundColor: \'bgGray\', color: \'white\' }');
+    });
+
+    it('should document integration with streaming components', () => {
+      expect(documentationContent).toContain('#### Integration with Streaming Components');
+      expect(documentationContent).toContain('renderAsMarkdown={true}');
+      expect(documentationContent).toContain('**Streaming Markdown Output:**');
+
+      // Should show example of streaming markdown with proper formatting
+      expect(documentationContent).toContain('📝 documentation ● streaming...');
+      expect(documentationContent).toContain('████ Implementation Plan');
+    });
+
+    it('should validate markdown examples are properly formatted', () => {
+      // Check that all markdown code blocks are properly delimited
+      const markdownBlocks = documentationContent.match(/```markdown\n[\s\S]*?\n```/g);
+      expect(markdownBlocks).toBeTruthy();
+      expect(markdownBlocks!.length).toBeGreaterThan(5);
+
+      // Check that rendered output examples are properly formatted
+      const renderedBlocks = documentationContent.match(/```\n[\s\S]*?┌─[\s\S]*?└─[\s\S]*?\n```/g);
+      expect(renderedBlocks).toBeTruthy();
+      expect(renderedBlocks!.length).toBeGreaterThan(5);
+    });
+
+    it('should include comprehensive TypeScript examples', () => {
+      // Basic MarkdownRenderer usage
+      expect(documentationContent).toContain('import { MarkdownRenderer } from \'@apex/cli/ui/components\';');
+      expect(documentationContent).toContain('<MarkdownRenderer');
+      expect(documentationContent).toContain('content={markdownString}');
+
+      // Advanced configuration examples
+      expect(documentationContent).toContain('customStyles={{');
+      expect(documentationContent).toContain('interface MarkdownRendererProps');
     });
   });
 
