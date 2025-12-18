@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
+import { useStdoutDimensions } from '../../hooks/useStdoutDimensions.js';
 import { ProgressBar } from '../ProgressIndicators.js';
 
 export interface ParallelAgent {
@@ -13,6 +14,7 @@ export interface ParallelAgent {
 
 export interface ParallelExecutionViewProps {
   agents: ParallelAgent[];
+  /** Override automatic maxColumns calculation. If not provided, will adapt based on terminal width */
   maxColumns?: number;
   compact?: boolean;
 }
@@ -35,14 +37,75 @@ const statusIcons: Record<ParallelAgent['status'], string> = {
 };
 
 /**
+ * Calculate maxColumns based on terminal width using the breakpoint system
+ */
+function calculateMaxColumns(
+  width: number,
+  isNarrow: boolean,
+  isCompact: boolean,
+  isNormal: boolean,
+  isWide: boolean,
+  compact: boolean
+): number {
+  // For narrow terminals, always use 1 column to prevent horizontal overflow
+  if (isNarrow) {
+    return 1;
+  }
+
+  // For compact terminals, use 2 columns unless in compact mode
+  if (isCompact) {
+    return compact ? 1 : 2;
+  }
+
+  // For normal terminals, calculate based on estimated agent card width
+  if (isNormal) {
+    if (compact) {
+      // Compact cards: ~18 characters wide + spacing
+      const cardWidth = 20;
+      return Math.max(1, Math.floor(width / cardWidth));
+    } else {
+      // Full cards: ~26 characters wide + spacing
+      const cardWidth = 28;
+      return Math.max(1, Math.floor(width / cardWidth));
+    }
+  }
+
+  // For wide terminals, allow more columns
+  if (isWide) {
+    if (compact) {
+      const cardWidth = 20;
+      return Math.max(1, Math.floor(width / cardWidth));
+    } else {
+      const cardWidth = 28;
+      return Math.max(1, Math.floor(width / cardWidth));
+    }
+  }
+
+  // Fallback to default behavior
+  return 3;
+}
+
+/**
  * ParallelExecutionView component for detailed parallel agent visualization
  * Shows all parallel agents in a grouped view with individual progress side-by-side
+ * Dynamically adapts maxColumns based on terminal width
  */
 export function ParallelExecutionView({
   agents,
-  maxColumns = 3,
+  maxColumns: explicitMaxColumns,
   compact = false,
 }: ParallelExecutionViewProps): React.ReactElement {
+  // Get terminal dimensions and breakpoint information
+  const { width, isNarrow, isCompact, isNormal, isWide } = useStdoutDimensions();
+
+  // Calculate responsive maxColumns based on terminal width
+  const responsiveMaxColumns = useMemo(() =>
+    calculateMaxColumns(width, isNarrow, isCompact, isNormal, isWide, compact),
+    [width, isNarrow, isCompact, isNormal, isWide, compact]
+  );
+
+  // Use explicit maxColumns if provided, otherwise use responsive calculation
+  const maxColumns = explicitMaxColumns ?? responsiveMaxColumns;
   // Filter to only show parallel or active agents
   const activeParallelAgents = agents.filter(
     agent => agent.status === 'parallel' || agent.status === 'active'
