@@ -6,7 +6,7 @@
 import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SessionStore } from '../services/SessionStore';
+import { SessionStore, Session, SessionMessage } from '../services/SessionStore';
 import { CompletionEngine } from '../services/CompletionEngine';
 import { ConversationManager } from '../services/ConversationManager';
 import { ShortcutManager } from '../services/ShortcutManager';
@@ -21,6 +21,8 @@ vi.mock('fs/promises', () => ({
   writeFile: vi.fn(),
   mkdir: vi.fn(),
   access: vi.fn(),
+  unlink: vi.fn(),
+  readdir: vi.fn(),
 }));
 
 // Mock process
@@ -37,6 +39,12 @@ vi.mock('ink', async () => {
   };
 });
 
+// Mock zlib for compression/decompression in SessionStore
+vi.mock('zlib', () => ({
+  gzip: vi.fn(),
+  gunzip: vi.fn(),
+}));
+
 describe('v0.3.0 Integration Tests', () => {
   let sessionStore: SessionStore;
   let completionEngine: CompletionEngine;
@@ -47,6 +55,23 @@ describe('v0.3.0 Integration Tests', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+
+    // Mock file system operations
+    const fs = await import('fs/promises');
+    const zlib = await import('zlib');
+
+    vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+    vi.mocked(fs.unlink).mockResolvedValue(undefined);
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+
+    // Mock compression functions
+    const gzip = vi.fn().mockResolvedValue(Buffer.from('compressed'));
+    const gunzip = vi.fn().mockResolvedValue(Buffer.from('{}'));
+    vi.mocked(zlib.gzip as any).mockImplementation(gzip);
+    vi.mocked(zlib.gunzip as any).mockImplementation(gunzip);
 
     // Initialize services
     sessionStore = new SessionStore('/test/.apex/sessions');
@@ -72,6 +97,690 @@ describe('v0.3.0 Integration Tests', () => {
   });
 
   describe('Session Management Integration', () => {
+    // Test data factory for consistent test fixtures
+    const createTestSession = (overrides: Partial<Session> = {}): Omit<Session, 'id' | 'createdAt' | 'updatedAt' | 'lastAccessedAt'> => ({
+      projectPath: '/test/project',
+      messages: [],
+      inputHistory: [],
+      state: {
+        totalTokens: { input: 0, output: 0 },
+        totalCost: 0,
+        tasksCreated: [],
+        tasksCompleted: [],
+      },
+      childSessionIds: [],
+      tags: [],
+      ...overrides,
+    });
+
+    const createTestMessage = (overrides: Partial<SessionMessage> = {}): Omit<SessionMessage, 'id' | 'index' | 'timestamp'> => ({
+      role: 'user',
+      content: 'Test message',
+      ...overrides,
+    });
+
+    describe('Full Session Lifecycle', () => {
+      describe('Session Creation', () => {
+        it('should create session with name and tags', async () => {
+          const session = await sessionStore.createSession('My Session');
+          expect(session.name).toBe('My Session');
+          expect(session.id).toMatch(/^sess_\d+_\w+$/);
+          expect(session.tags).toEqual([]);
+        });
+
+        it('should create session and set as active', async () => {
+          const session = await sessionStore.createSession();
+          const activeId = await sessionStore.getActiveSessionId();
+          expect(activeId).toBe(session.id);
+        });
+
+        it('should initialize session with default state', async () => {
+          const session = await sessionStore.createSession();
+          expect(session.messages).toEqual([]);
+          expect(session.inputHistory).toEqual([]);
+          expect(session.state.totalTokens).toEqual({ input: 0, output: 0 });
+          expect(session.state.totalCost).toBe(0);
+          expect(session.state.tasksCreated).toEqual([]);
+          expect(session.state.tasksCompleted).toEqual([]);
+        });
+      });
+
+      describe('Session Update', () => {
+        it('should update session name and tags', async () => {
+          const session = await sessionStore.createSession();
+          await sessionStore.updateSession(session.id, {
+            name: 'Updated Name',
+            tags: ['important', 'work'],
+          });
+
+          const updated = await sessionStore.getSession(session.id);
+          expect(updated?.name).toBe('Updated Name');
+          expect(updated?.tags).toEqual(['important', 'work']);
+        });
+
+        it('should preserve existing fields when updating', async () => {
+          const session = await sessionStore.createSession('Original');
+          const originalCreatedAt = session.createdAt;
+
+          await sessionStore.updateSession(session.id, { tags: ['new-tag'] });
+
+          const updated = await sessionStore.getSession(session.id);
+          expect(updated?.name).toBe('Original');
+          expect(updated?.createdAt).toEqual(originalCreatedAt);
+        });
+
+        it('should update updatedAt timestamp on update', async () => {
+          const session = await sessionStore.createSession();
+          const originalUpdatedAt = session.updatedAt;
+
+          // Wait a bit to ensure timestamp difference
+          vi.advanceTimersByTime(1000);
+
+          await sessionStore.updateSession(session.id, { name: 'Updated' });
+
+          const updated = await sessionStore.getSession(session.id);
+          expect(updated?.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+        });
+      });
+
+      describe('Session Archive/Restore', () => {
+        it('should archive session and retrieve from archive', async () => {
+          const session = await sessionStore.createSession('To Archive');
+          await sessionStore.archiveSession(session.id);
+
+          // Session should be marked as archived in listing
+          const sessions = await sessionStore.listSessions({ all: true });
+          const archived = sessions.find(s => s.id === session.id);
+          expect(archived?.isArchived).toBe(true);
+
+          // Should still be retrievable
+          const retrieved = await sessionStore.getSession(session.id);
+          expect(retrieved).toBeDefined();
+          expect(retrieved?.name).toBe('To Archive');
+        });
+
+        it('should remove archived session from default listing', async () => {
+          const session = await sessionStore.createSession('To Archive');
+          await sessionStore.archiveSession(session.id);
+
+          // Should not appear in default listing
+          const defaultSessions = await sessionStore.listSessions();
+          expect(defaultSessions.find(s => s.id === session.id)).toBeUndefined();
+
+          // Should appear when including archived
+          const allSessions = await sessionStore.listSessions({ all: true });
+          expect(allSessions.find(s => s.id === session.id)).toBeDefined();
+        });
+
+        it('should handle archiving session with messages', async () => {
+          const sessionId = await conversationManager.startSession();
+
+          await conversationManager.addMessage({
+            role: 'user',
+            content: 'Message before archive',
+          });
+
+          await sessionStore.archiveSession(sessionId);
+
+          const archivedSession = await sessionStore.getSession(sessionId);
+          expect(archivedSession?.messages).toHaveLength(1);
+          expect(archivedSession?.messages[0].content).toBe('Message before archive');
+        });
+      });
+
+      describe('Session Deletion', () => {
+        it('should delete session from main storage', async () => {
+          const session = await sessionStore.createSession();
+          await sessionStore.deleteSession(session.id);
+
+          const retrieved = await sessionStore.getSession(session.id);
+          expect(retrieved).toBeNull();
+        });
+
+        it('should delete archived session', async () => {
+          const session = await sessionStore.createSession();
+          await sessionStore.archiveSession(session.id);
+          await sessionStore.deleteSession(session.id);
+
+          const retrieved = await sessionStore.getSession(session.id);
+          expect(retrieved).toBeNull();
+        });
+
+        it('should remove deleted session from index', async () => {
+          const session = await sessionStore.createSession();
+          await sessionStore.deleteSession(session.id);
+
+          const sessions = await sessionStore.listSessions({ all: true });
+          expect(sessions.find(s => s.id === session.id)).toBeUndefined();
+        });
+      });
+    });
+
+    describe('Session Search & Filtering', () => {
+      beforeEach(async () => {
+        // Clean up any existing sessions for isolated testing
+        try {
+          const existingSessions = await sessionStore.listSessions({ all: true });
+          for (const session of existingSessions) {
+            try {
+              await sessionStore.deleteSession(session.id);
+            } catch (error) {
+              // Ignore errors when deleting sessions (might not exist)
+            }
+          }
+        } catch (error) {
+          // Ignore errors when listing sessions (might be empty)
+        }
+      });
+
+      describe('Search by Name', () => {
+        it('should find sessions by partial name match', async () => {
+          await sessionStore.createSession('Feature: User Authentication');
+          await sessionStore.createSession('Feature: Payment Integration');
+          await sessionStore.createSession('Bugfix: Login Error');
+
+          const results = await sessionStore.listSessions({ search: 'feature' });
+          expect(results).toHaveLength(2);
+          expect(results.every(s => s.name?.toLowerCase().includes('feature'))).toBe(true);
+        });
+
+        it('should find sessions by ID substring', async () => {
+          const session = await sessionStore.createSession();
+          const idPrefix = session.id.substring(0, 10);
+
+          const results = await sessionStore.listSessions({ search: idPrefix });
+          expect(results.some(s => s.id === session.id)).toBe(true);
+        });
+
+        it('should handle case-insensitive search', async () => {
+          await sessionStore.createSession('MyTestSession');
+
+          const results = await sessionStore.listSessions({ search: 'mytest' });
+          expect(results).toHaveLength(1);
+          expect(results[0].name).toBe('MyTestSession');
+        });
+
+        it('should return empty array for no matches', async () => {
+          await sessionStore.createSession('Test Session');
+
+          const results = await sessionStore.listSessions({ search: 'nonexistent' });
+          expect(results).toHaveLength(0);
+        });
+      });
+
+      describe('Filter by Tags', () => {
+        it('should filter sessions by single tag', async () => {
+          const session1 = await sessionStore.createSession('Session 1');
+          await sessionStore.updateSession(session1.id, { tags: ['work'] });
+
+          const session2 = await sessionStore.createSession('Session 2');
+          await sessionStore.updateSession(session2.id, { tags: ['personal'] });
+
+          const results = await sessionStore.listSessions({ tags: ['work'] });
+          expect(results).toHaveLength(1);
+          expect(results[0].tags).toContain('work');
+        });
+
+        it('should filter sessions by multiple tags (OR logic)', async () => {
+          const session1 = await sessionStore.createSession('Session 1');
+          await sessionStore.updateSession(session1.id, { tags: ['work'] });
+
+          const session2 = await sessionStore.createSession('Session 2');
+          await sessionStore.updateSession(session2.id, { tags: ['urgent'] });
+
+          const session3 = await sessionStore.createSession('Session 3');
+          await sessionStore.updateSession(session3.id, { tags: ['personal'] });
+
+          const results = await sessionStore.listSessions({ tags: ['work', 'urgent'] });
+          expect(results).toHaveLength(2);
+        });
+
+        it('should handle sessions with multiple tags', async () => {
+          const session = await sessionStore.createSession('Multi-tag Session');
+          await sessionStore.updateSession(session.id, { tags: ['work', 'urgent', 'important'] });
+
+          const workResults = await sessionStore.listSessions({ tags: ['work'] });
+          expect(workResults).toHaveLength(1);
+
+          const urgentResults = await sessionStore.listSessions({ tags: ['urgent'] });
+          expect(urgentResults).toHaveLength(1);
+
+          const personalResults = await sessionStore.listSessions({ tags: ['personal'] });
+          expect(personalResults).toHaveLength(0);
+        });
+      });
+
+      describe('Combined Filters', () => {
+        it('should combine search and tag filters', async () => {
+          const session1 = await sessionStore.createSession('Work Feature: Authentication');
+          await sessionStore.updateSession(session1.id, { tags: ['work', 'feature'] });
+
+          const session2 = await sessionStore.createSession('Personal Feature: Todo App');
+          await sessionStore.updateSession(session2.id, { tags: ['personal', 'feature'] });
+
+          const session3 = await sessionStore.createSession('Work Bugfix: Login');
+          await sessionStore.updateSession(session3.id, { tags: ['work', 'bugfix'] });
+
+          const results = await sessionStore.listSessions({
+            search: 'feature',
+            tags: ['work']
+          });
+
+          expect(results).toHaveLength(1);
+          expect(results[0].name).toBe('Work Feature: Authentication');
+        });
+      });
+    });
+
+    describe('Session Listing', () => {
+      beforeEach(async () => {
+        // Clean up any existing sessions for isolated testing
+        try {
+          const existingSessions = await sessionStore.listSessions({ all: true });
+          for (const session of existingSessions) {
+            try {
+              await sessionStore.deleteSession(session.id);
+            } catch (error) {
+              // Ignore errors when deleting sessions (might not exist)
+            }
+          }
+        } catch (error) {
+          // Ignore errors when listing sessions (might be empty)
+        }
+      });
+
+      describe('Pagination', () => {
+        it('should limit results to specified count', async () => {
+          // Create 5 sessions
+          for (let i = 0; i < 5; i++) {
+            await sessionStore.createSession(`Session ${i}`);
+            vi.advanceTimersByTime(100); // Ensure different timestamps
+          }
+
+          const results = await sessionStore.listSessions({ limit: 3 });
+          expect(results).toHaveLength(3);
+        });
+
+        it('should return most recent sessions when limited', async () => {
+          await sessionStore.createSession('Oldest');
+          vi.advanceTimersByTime(1000);
+          await sessionStore.createSession('Middle');
+          vi.advanceTimersByTime(1000);
+          await sessionStore.createSession('Newest');
+
+          const results = await sessionStore.listSessions({ limit: 2 });
+          expect(results[0].name).toBe('Newest');
+          expect(results[1].name).toBe('Middle');
+        });
+
+        it('should handle limit larger than available sessions', async () => {
+          await sessionStore.createSession('Only Session');
+
+          const results = await sessionStore.listSessions({ limit: 10 });
+          expect(results).toHaveLength(1);
+        });
+      });
+
+      describe('Sorting', () => {
+        it('should sort sessions by updatedAt in descending order', async () => {
+          const first = await sessionStore.createSession('First');
+          vi.advanceTimersByTime(1000);
+          const second = await sessionStore.createSession('Second');
+          vi.advanceTimersByTime(1000);
+          const third = await sessionStore.createSession('Third');
+
+          const results = await sessionStore.listSessions();
+          expect(results[0].name).toBe('Third');
+          expect(results[1].name).toBe('Second');
+          expect(results[2].name).toBe('First');
+        });
+
+        it('should reflect updated order after session modification', async () => {
+          const first = await sessionStore.createSession('First');
+          vi.advanceTimersByTime(1000);
+          const second = await sessionStore.createSession('Second');
+
+          vi.advanceTimersByTime(1000);
+          await sessionStore.updateSession(first.id, { name: 'Updated First' });
+
+          const results = await sessionStore.listSessions();
+          expect(results[0].name).toBe('Updated First');
+          expect(results[1].name).toBe('Second');
+        });
+      });
+
+      describe('Active vs Archived Filtering', () => {
+        it('should exclude archived sessions by default', async () => {
+          await sessionStore.createSession('Active Session');
+          const archived = await sessionStore.createSession('Archived Session');
+          await sessionStore.archiveSession(archived.id);
+
+          const defaultResults = await sessionStore.listSessions();
+          expect(defaultResults).toHaveLength(1);
+          expect(defaultResults[0].name).toBe('Active Session');
+        });
+
+        it('should include archived when all=true', async () => {
+          await sessionStore.createSession('Active Session');
+          const archived = await sessionStore.createSession('Archived Session');
+          await sessionStore.archiveSession(archived.id);
+
+          const allResults = await sessionStore.listSessions({ all: true });
+          expect(allResults).toHaveLength(2);
+        });
+
+        it('should correctly mark archived status in results', async () => {
+          await sessionStore.createSession('Active Session');
+          const archived = await sessionStore.createSession('Archived Session');
+          await sessionStore.archiveSession(archived.id);
+
+          const allResults = await sessionStore.listSessions({ all: true });
+          const activeResult = allResults.find(s => s.name === 'Active Session');
+          const archivedResult = allResults.find(s => s.name === 'Archived Session');
+
+          expect(activeResult?.isArchived).toBe(false);
+          expect(archivedResult?.isArchived).toBe(true);
+        });
+      });
+    });
+
+    describe('Auto-save Behavior', () => {
+      let autoSaver: SessionAutoSaver;
+
+      afterEach(() => {
+        if (autoSaver) {
+          autoSaver.stop();
+        }
+      });
+
+      describe('Interval-based Auto-save', () => {
+        it('should auto-save at configured interval', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 30000,
+            maxUnsavedMessages: 100,
+          });
+
+          await autoSaver.start();
+          await autoSaver.addMessage(createTestMessage({ content: 'Test message' }));
+
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+
+          // Advance to just before interval
+          vi.advanceTimersByTime(29000);
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+
+          // Advance past interval
+          vi.advanceTimersByTime(2000);
+          await vi.runAllTimersAsync();
+
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('should respect custom interval settings', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 10000, // 10 seconds
+          });
+
+          await autoSaver.start();
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+
+          // Should not save before 10 seconds
+          vi.advanceTimersByTime(9000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+
+          // Should save after 10 seconds
+          vi.advanceTimersByTime(2000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('should continue auto-saving on timer intervals', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 5000,
+          });
+
+          await autoSaver.start();
+
+          // First save cycle
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 1' }));
+          vi.advanceTimersByTime(5000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+
+          // Second save cycle
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 2' }));
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+          vi.advanceTimersByTime(5000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+      });
+
+      describe('Threshold-based Auto-save', () => {
+        it('should auto-save when message threshold reached', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 60000, // Long interval
+            maxUnsavedMessages: 3,
+          });
+
+          await autoSaver.start();
+
+          // Add messages up to threshold
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 1' }));
+          expect(autoSaver.getUnsavedChangesCount()).toBe(1);
+
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 2' }));
+          expect(autoSaver.getUnsavedChangesCount()).toBe(2);
+
+          // Third message should trigger auto-save
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 3' }));
+          expect(autoSaver.getUnsavedChangesCount()).toBe(0);
+        });
+
+        it('should handle combined threshold and interval saves', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 5000,
+            maxUnsavedMessages: 5,
+          });
+
+          await autoSaver.start();
+
+          // Add 2 messages (below threshold)
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 1' }));
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 2' }));
+          expect(autoSaver.getUnsavedChangesCount()).toBe(2);
+
+          // Wait for interval save
+          vi.advanceTimersByTime(5000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.getUnsavedChangesCount()).toBe(0);
+        });
+
+        it('should track different types of changes for threshold', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 60000,
+            maxUnsavedMessages: 3,
+          });
+
+          await autoSaver.start();
+
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 1' }));
+          await autoSaver.updateSessionInfo({ name: 'Updated Name' });
+          await autoSaver.updateState({ totalCost: 0.05 });
+
+          // All changes count toward threshold
+          expect(autoSaver.getUnsavedChangesCount()).toBe(0); // Should have auto-saved
+        });
+      });
+
+      describe('Options Configuration at Runtime', () => {
+        it('should enable auto-save dynamically', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: false,
+            intervalMs: 1000,
+          });
+
+          await autoSaver.start();
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+
+          // Advance time - should not auto-save when disabled
+          vi.advanceTimersByTime(2000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+
+          // Enable auto-save
+          autoSaver.updateOptions({ enabled: true });
+
+          vi.advanceTimersByTime(1000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('should disable auto-save dynamically', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 1000,
+          });
+
+          await autoSaver.start();
+
+          // Disable auto-save
+          autoSaver.updateOptions({ enabled: false });
+
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+          vi.advanceTimersByTime(2000);
+          await vi.runAllTimersAsync();
+
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+        });
+
+        it('should update interval dynamically', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 10000,
+          });
+
+          await autoSaver.start();
+
+          // Update to faster interval
+          autoSaver.updateOptions({ intervalMs: 1000 });
+
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+
+          // Should save with new faster interval
+          vi.advanceTimersByTime(1000);
+          await vi.runAllTimersAsync();
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+
+        it('should update threshold dynamically', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 60000,
+            maxUnsavedMessages: 5,
+          });
+
+          await autoSaver.start();
+
+          // Update to lower threshold
+          autoSaver.updateOptions({ maxUnsavedMessages: 2 });
+
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 1' }));
+          await autoSaver.addMessage(createTestMessage({ content: 'Message 2' }));
+
+          // Should auto-save with new lower threshold
+          expect(autoSaver.getUnsavedChangesCount()).toBe(0);
+        });
+      });
+
+      describe('Error Recovery', () => {
+        it('should recover from auto-save failures and retry', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 1000,
+          });
+
+          await autoSaver.start();
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+
+          // First save fails
+          const updateSpy = vi.spyOn(sessionStore, 'updateSession')
+            .mockRejectedValueOnce(new Error('Network error'));
+
+          vi.advanceTimersByTime(1000);
+          await vi.runAllTimersAsync();
+
+          // Changes should still be tracked after failed save
+          expect(autoSaver.hasUnsavedChanges()).toBe(true);
+
+          // Second attempt succeeds
+          vi.advanceTimersByTime(1000);
+          await vi.runAllTimersAsync();
+
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+          expect(updateSpy).toHaveBeenCalledTimes(2);
+        });
+
+        it('should handle save errors gracefully without crashing', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 1000,
+            maxUnsavedMessages: 1,
+          });
+
+          await autoSaver.start();
+
+          // Mock console.error to capture error logs
+          const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+          // Make save always fail
+          vi.spyOn(sessionStore, 'updateSession')
+            .mockRejectedValue(new Error('Persistent error'));
+
+          // Adding message should trigger immediate save due to threshold
+          await autoSaver.addMessage(createTestMessage({ content: 'Test' }));
+
+          // Should not crash, error should be logged
+          await vi.runAllTimersAsync();
+          expect(consoleSpy).toHaveBeenCalled();
+
+          consoleSpy.mockRestore();
+        });
+
+        it('should maintain consistency during concurrent operations', async () => {
+          autoSaver = new SessionAutoSaver(sessionStore, {
+            enabled: true,
+            intervalMs: 100,
+          });
+
+          await autoSaver.start();
+
+          // Add messages rapidly
+          const promises = Array.from({ length: 10 }, (_, i) =>
+            autoSaver.addMessage(createTestMessage({ content: `Message ${i}` }))
+          );
+
+          await Promise.all(promises);
+
+          // Let auto-save complete
+          vi.advanceTimersByTime(200);
+          await vi.runAllTimersAsync();
+
+          const session = autoSaver.getSession();
+          expect(session?.messages).toHaveLength(10);
+          expect(autoSaver.hasUnsavedChanges()).toBe(false);
+        });
+      });
+    });
+
+    // Existing tests
     it('should create and persist session data', async () => {
       const sessionId = await conversationManager.startSession();
       expect(sessionId).toBeDefined();
@@ -124,9 +833,9 @@ describe('v0.3.0 Integration Tests', () => {
         content: 'Export test message',
       });
 
-      const exported = await sessionStore.exportSession(sessionId, 'markdown');
+      const exported = await sessionStore.exportSession(sessionId, 'md');
       expect(exported).toContain('Export test message');
-      expect(exported).toContain('# Session Export');
+      expect(exported).toContain('# APEX Session');
     });
   });
 
@@ -310,16 +1019,14 @@ describe('v0.3.0 Integration Tests', () => {
       await conversationManager.addMessage({
         role: 'assistant',
         content: '',
-        tool_calls: [{
+        toolCalls: [{
           id: 'call_1',
-          type: 'function',
-          function: {
-            name: 'write_file',
-            arguments: JSON.stringify({
-              path: 'Button.tsx',
-              content: 'export const Button = () => <button>Click me</button>;'
-            }),
+          name: 'write_file',
+          arguments: {
+            path: 'Button.tsx',
+            content: 'export const Button = () => <button>Click me</button>;'
           },
+          timestamp: new Date(),
         }],
       });
 
@@ -327,7 +1034,7 @@ describe('v0.3.0 Integration Tests', () => {
       await conversationManager.addMessage({
         role: 'tool',
         content: 'File created successfully',
-        tool_call_id: 'call_1',
+        taskId: 'call_1',
       });
 
       const session = await sessionStore.getSession(sessionId);
