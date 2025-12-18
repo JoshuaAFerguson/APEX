@@ -2,16 +2,47 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { diffLines, diffChars, type Change } from 'diff';
 import fastDiff from 'fast-diff';
+import { useStdoutDimensions, type Breakpoint } from '../hooks/index.js';
 
 export interface DiffViewerProps {
   oldContent: string;
   newContent: string;
   filename?: string;
-  mode?: 'unified' | 'split' | 'inline';
+  mode?: 'unified' | 'split' | 'inline' | 'auto';
   context?: number;
   showLineNumbers?: boolean;
   width?: number;
   maxLines?: number;
+  responsive?: boolean;
+}
+
+/**
+ * Helper function to determine effective mode based on terminal width
+ */
+function getEffectiveMode(
+  requestedMode: 'unified' | 'split' | 'inline' | 'auto',
+  width: number,
+  breakpoint: Breakpoint
+): 'unified' | 'split' | 'inline' {
+  if (requestedMode === 'auto') {
+    // Auto mode: unified for narrow/compact terminals, split for normal/wide
+    return width < 100 ? 'unified' : 'split';
+  }
+
+  // If split requested but terminal too narrow, fallback to unified
+  if (requestedMode === 'split' && width < 100) {
+    return 'unified';
+  }
+
+  return requestedMode;
+}
+
+/**
+ * Helper function to truncate long lines that exceed available width
+ */
+function truncateDiffLine(content: string, maxWidth: number): string {
+  if (content.length <= maxWidth) return content;
+  return content.substring(0, maxWidth - 3) + '...';
 }
 
 /**
@@ -21,13 +52,28 @@ export function DiffViewer({
   oldContent,
   newContent,
   filename,
-  mode = 'unified',
+  mode = 'auto',
   context = 3,
   showLineNumbers = true,
-  width = 120,
+  width: explicitWidth,
   maxLines,
+  responsive = true,
 }: DiffViewerProps): React.ReactElement {
-  switch (mode) {
+  // Get terminal dimensions
+  const { width: terminalWidth, breakpoint } = useStdoutDimensions();
+
+  // Calculate effective width
+  const effectiveWidth = explicitWidth ?? (responsive
+    ? Math.max(60, terminalWidth - 2)
+    : 120);
+
+  // Determine effective mode
+  const effectiveMode = getEffectiveMode(mode, effectiveWidth, breakpoint);
+
+  // Check if we forced unified mode due to narrow terminal
+  const forcedUnified = mode === 'split' && effectiveMode === 'unified';
+
+  switch (effectiveMode) {
     case 'split':
       return (
         <SplitDiffViewer
@@ -36,7 +82,7 @@ export function DiffViewer({
           filename={filename}
           context={context}
           showLineNumbers={showLineNumbers}
-          width={width}
+          width={effectiveWidth}
           maxLines={maxLines}
         />
       );
@@ -48,7 +94,7 @@ export function DiffViewer({
           filename={filename}
           context={context}
           showLineNumbers={showLineNumbers}
-          width={width}
+          width={effectiveWidth}
           maxLines={maxLines}
         />
       );
@@ -60,8 +106,9 @@ export function DiffViewer({
           filename={filename}
           context={context}
           showLineNumbers={showLineNumbers}
-          width={width}
+          width={effectiveWidth}
           maxLines={maxLines}
+          forcedUnified={forcedUnified}
         />
       );
   }
@@ -78,9 +125,15 @@ function UnifiedDiffViewer({
   showLineNumbers,
   width,
   maxLines,
-}: Omit<DiffViewerProps, 'mode'>): React.ReactElement {
+  forcedUnified = false,
+}: Omit<DiffViewerProps, 'mode'> & { forcedUnified?: boolean }): React.ReactElement {
   const diff = diffLines(oldContent, newContent);
   const hunks = createHunks(diff, context!);
+
+  // Calculate available width for content (accounting for line numbers and padding)
+  const lineNumberWidth = showLineNumbers ? 8 : 0;
+  const borderPadding = 2; // paddingX={1} on both sides
+  const contentWidth = width! - lineNumberWidth - borderPadding - 1; // -1 for the diff marker
 
   return (
     <Box flexDirection="column" width={width}>
@@ -89,6 +142,11 @@ function UnifiedDiffViewer({
         <Text color="white" bold>
           {filename ? `--- ${filename}` : '--- a/file'}
         </Text>
+        {forcedUnified && (
+          <Text color="yellow" dimColor>
+            {' '}(split view requires 100+ columns)
+          </Text>
+        )}
       </Box>
       <Box borderStyle="single" borderColor="gray" paddingX={1}>
         <Text color="white" bold>
@@ -146,7 +204,7 @@ function UnifiedDiffViewer({
                     : line.type === 'removed'
                     ? '-'
                     : ' '}
-                  {line.content}
+                  {truncateDiffLine(line.content, contentWidth)}
                 </Text>
               </Box>
             );
@@ -178,6 +236,10 @@ function SplitDiffViewer({
   const diff = diffLines(oldContent, newContent);
   const hunks = createHunks(diff, context!);
   const halfWidth = Math.floor((width! - 4) / 2);
+
+  // Calculate available width for content on each side
+  const lineNumberWidth = showLineNumbers ? 5 : 0; // "123 │"
+  const contentWidth = halfWidth - lineNumberWidth;
 
   return (
     <Box flexDirection="column" width={width}>
@@ -223,7 +285,7 @@ function SplitDiffViewer({
                     color={line.type === 'removed' ? 'red' : 'white'}
                     backgroundColor={line.type === 'removed' ? 'redBright' : undefined}
                   >
-                    {line.type !== 'added' ? line.content : ''}
+                    {line.type !== 'added' ? truncateDiffLine(line.content, contentWidth) : ''}
                   </Text>
                 </Box>
 
@@ -242,7 +304,7 @@ function SplitDiffViewer({
                     color={line.type === 'added' ? 'green' : 'white'}
                     backgroundColor={line.type === 'added' ? 'greenBright' : undefined}
                   >
-                    {line.type !== 'removed' ? line.content : ''}
+                    {line.type !== 'removed' ? truncateDiffLine(line.content, contentWidth) : ''}
                   </Text>
                 </Box>
               </Box>

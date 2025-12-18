@@ -2675,7 +2675,7 @@ Parent: ${parentTask.description}`;
   /**
    * Continue executing pending/failed subtasks for a parent task
    * This is used when resuming a parent task that was interrupted
-   * Order: failed (retry) -> paused (resume) -> pending (execute)
+   * Processes subtasks in their ORIGINAL order (respects sequential dependencies)
    */
   async continuePendingSubtasks(parentTaskId: string): Promise<void> {
     await this.ensureInitialized();
@@ -2689,27 +2689,31 @@ Parent: ${parentTask.description}`;
       throw new Error(`Task ${parentTaskId} has no subtasks`);
     }
 
-    // Categorize subtasks by status, preserving order
-    const failedSubtaskIds: string[] = [];
-    const pausedSubtaskIds: string[] = [];
-    const pendingSubtaskIds: string[] = [];
+    // Collect subtasks that need processing IN ORIGINAL ORDER
+    // This respects sequential dependencies
+    const subtasksToProcess: Array<{ id: string; status: string; isRetry: boolean }> = [];
+    let failedCount = 0;
+    let pausedCount = 0;
+    let pendingCount = 0;
 
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
       if (!subtask) continue;
 
       if (subtask.status === 'failed') {
-        failedSubtaskIds.push(subtaskId);
+        subtasksToProcess.push({ id: subtaskId, status: 'failed', isRetry: true });
+        failedCount++;
       } else if (subtask.status === 'paused') {
-        pausedSubtaskIds.push(subtaskId);
+        subtasksToProcess.push({ id: subtaskId, status: 'paused', isRetry: false });
+        pausedCount++;
       } else if (subtask.status === 'pending' || subtask.status === 'queued') {
-        pendingSubtaskIds.push(subtaskId);
+        subtasksToProcess.push({ id: subtaskId, status: 'pending', isRetry: false });
+        pendingCount++;
       }
+      // Skip completed/cancelled subtasks
     }
 
-    const totalToProcess = failedSubtaskIds.length + pausedSubtaskIds.length + pendingSubtaskIds.length;
-
-    if (totalToProcess === 0) {
+    if (subtasksToProcess.length === 0) {
       await this.store.addLog(parentTaskId, {
         level: 'info',
         message: 'No subtasks need processing (all completed or cancelled)',
@@ -2719,7 +2723,7 @@ Parent: ${parentTask.description}`;
 
     await this.store.addLog(parentTaskId, {
       level: 'info',
-      message: `Continuing: ${failedSubtaskIds.length} failed (retry), ${pausedSubtaskIds.length} paused (resume), ${pendingSubtaskIds.length} pending (execute)`,
+      message: `Continuing ${subtasksToProcess.length} subtasks in order: ${failedCount} failed, ${pausedCount} paused, ${pendingCount} pending`,
     });
 
     // Update parent status to in-progress
@@ -2814,51 +2818,62 @@ Parent: ${parentTask.description}`;
     };
 
     try {
-      // Process in order: failed -> paused -> pending
-      // All processed sequentially to maintain order and respect limits
+      // Process subtasks in ORIGINAL ORDER to respect sequential dependencies
+      // Each subtask is handled based on its status (failed=retry, paused=resume, pending=execute)
 
-      // 1. Retry failed subtasks first (in original order)
-      for (const subtaskId of failedSubtaskIds) {
-        const shouldContinue = await executeSubtaskWithCheck(subtaskId, true);
-        if (!shouldContinue) return;
-      }
-
-      // 2. Resume paused subtasks
-      for (const subtaskId of pausedSubtaskIds) {
-        // Clear pause state first
-        await this.store.updateTask(subtaskId, {
-          status: 'pending',
-          pausedAt: undefined,
-          pauseReason: undefined,
-          resumeAfter: undefined,
-          updatedAt: new Date(),
-        });
-        await this.store.addLog(parentTaskId, {
-          level: 'info',
-          message: `Resuming paused subtask: ${subtaskId}`,
-        });
-
-        const shouldContinue = await executeSubtaskWithCheck(subtaskId, false);
-        if (!shouldContinue) return;
-      }
-
-      // 3. Execute pending subtasks
       if (strategy === 'sequential') {
-        for (const subtaskId of pendingSubtaskIds) {
-          const shouldContinue = await executeSubtaskWithCheck(subtaskId, false);
+        // Sequential: process one at a time in order
+        for (const { id: subtaskId, status, isRetry } of subtasksToProcess) {
+          // Handle paused subtasks: clear pause state first
+          if (status === 'paused') {
+            await this.store.updateTask(subtaskId, {
+              status: 'pending',
+              pausedAt: undefined,
+              pauseReason: undefined,
+              resumeAfter: undefined,
+              updatedAt: new Date(),
+            });
+            await this.store.addLog(parentTaskId, {
+              level: 'info',
+              message: `Resuming paused subtask: ${subtaskId}`,
+            });
+          }
+
+          const shouldContinue = await executeSubtaskWithCheck(subtaskId, isRetry);
           if (!shouldContinue) return;
         }
       } else {
-        // For parallel/dependency-based, execute in batches
+        // For parallel/dependency-based, execute in batches but respect order within batches
         const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-        for (let i = 0; i < pendingSubtaskIds.length; i += maxConcurrent) {
+        for (let i = 0; i < subtasksToProcess.length; i += maxConcurrent) {
           const currentParent = await this.store.getTask(parentTaskId);
           if (currentParent?.status === 'cancelled' || currentParent?.status === 'paused') {
             return;
           }
 
-          const batch = pendingSubtaskIds.slice(i, i + maxConcurrent);
-          await Promise.all(batch.map(async (subtaskId) => {
+          const batch = subtasksToProcess.slice(i, i + maxConcurrent);
+
+          // Clear pause state for paused subtasks in this batch
+          for (const { id: subtaskId, status } of batch) {
+            if (status === 'paused') {
+              await this.store.updateTask(subtaskId, {
+                status: 'pending',
+                pausedAt: undefined,
+                pauseReason: undefined,
+                resumeAfter: undefined,
+                updatedAt: new Date(),
+              });
+            }
+          }
+
+          await Promise.all(batch.map(async ({ id: subtaskId, isRetry }) => {
+            if (isRetry) {
+              await this.store.updateTask(subtaskId, {
+                status: 'pending',
+                error: undefined,
+                updatedAt: new Date(),
+              });
+            }
             await this.executeTask(subtaskId);
             const completedSubtask = await this.store.getTask(subtaskId);
             if (completedSubtask?.status === 'completed') {

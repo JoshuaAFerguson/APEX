@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/index.js';
 
 export interface SyntaxHighlighterProps {
   code: string;
@@ -8,6 +9,41 @@ export interface SyntaxHighlighterProps {
   showLineNumbers?: boolean;
   width?: number;
   maxLines?: number;
+  responsive?: boolean;
+  wrapLines?: boolean;
+}
+
+/**
+ * Helper function to wrap long code lines intelligently
+ */
+function wrapCodeLine(line: string, maxWidth: number): string[] {
+  if (line.length <= maxWidth) return [line];
+
+  const wrappedLines: string[] = [];
+  let remaining = line;
+
+  while (remaining.length > maxWidth) {
+    // Try to break at a sensible point (space, operator, comma)
+    let breakPoint = maxWidth;
+    const breakChars = [' ', ',', '.', '(', ')', '{', '}', '[', ']', ';', '+', '-', '*', '/', '=', '|', '&'];
+
+    // Look backwards from the max width to find a good break point
+    for (let i = maxWidth; i > maxWidth - 20 && i > 0; i--) {
+      if (breakChars.includes(remaining[i])) {
+        breakPoint = i + 1;
+        break;
+      }
+    }
+
+    wrappedLines.push(remaining.substring(0, breakPoint));
+    remaining = '  ' + remaining.substring(breakPoint); // Indent continuation
+  }
+
+  if (remaining.length > 0) {
+    wrappedLines.push(remaining);
+  }
+
+  return wrappedLines;
 }
 
 /**
@@ -18,15 +54,38 @@ export function SyntaxHighlighter({
   code,
   language = 'typescript',
   showLineNumbers = true,
-  width = 80,
+  width: explicitWidth,
   maxLines,
+  responsive = true,
+  wrapLines,
 }: SyntaxHighlighterProps): React.ReactElement {
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Calculate effective width
+  const effectiveWidth = explicitWidth ?? (responsive
+    ? Math.max(40, terminalWidth - 2)
+    : 80);
+
+  // Determine if line wrapping is enabled
+  const shouldWrap = wrapLines ?? responsive;
+
+  // Calculate available width for code content
+  const lineNumberWidth = showLineNumbers ? 6 : 0; // "123 │ "
+  const borderPadding = 4; // paddingX={1} + box borders
+  const codeWidth = effectiveWidth - lineNumberWidth - borderPadding;
+
   // Use simple highlighting for now - Shiki requires more complex setup
   const highlightedCode = code;
 
   const lines = highlightedCode.split('\n');
-  const displayLines = maxLines ? lines.slice(0, maxLines) : lines;
-  const truncated = maxLines && lines.length > maxLines;
+
+  // Process lines with optional wrapping
+  const processedLines = shouldWrap
+    ? lines.flatMap(line => wrapCodeLine(line, codeWidth))
+    : lines;
+
+  const displayLines = maxLines ? processedLines.slice(0, maxLines) : processedLines;
+  const truncated = maxLines && processedLines.length > maxLines;
 
   return (
     <Box
@@ -34,12 +93,14 @@ export function SyntaxHighlighter({
       borderStyle="single"
       borderColor="gray"
       paddingX={1}
-      width={width}
+      width={effectiveWidth}
     >
       {/* Header */}
       <Box justifyContent="space-between">
         <Text color="gray">{language}</Text>
-        <Text color="gray">{lines.length} lines</Text>
+        <Text color="gray">
+          {lines.length} lines{shouldWrap && processedLines.length !== lines.length ? ` (${processedLines.length} wrapped)` : ''}
+        </Text>
       </Box>
 
       {/* Code lines */}
@@ -57,7 +118,7 @@ export function SyntaxHighlighter({
       {/* Truncation indicator */}
       {truncated && (
         <Text color="gray" italic>
-          ... {lines.length - maxLines!} more lines
+          ... {processedLines.length - maxLines!} more lines
         </Text>
       )}
     </Box>
@@ -71,12 +132,35 @@ export function SimpleSyntaxHighlighter({
   code,
   language = 'typescript',
   showLineNumbers = true,
-  width = 80,
+  width: explicitWidth,
   maxLines,
+  responsive = true,
+  wrapLines,
 }: SyntaxHighlighterProps): React.ReactElement {
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Calculate effective width
+  const effectiveWidth = explicitWidth ?? (responsive
+    ? Math.max(40, terminalWidth - 2)
+    : 80);
+
+  // Determine if line wrapping is enabled
+  const shouldWrap = wrapLines ?? responsive;
+
+  // Calculate available width for code content
+  const lineNumberWidth = showLineNumbers ? 6 : 0; // "123 │ "
+  const borderPadding = 4; // paddingX={1} + box borders
+  const codeWidth = effectiveWidth - lineNumberWidth - borderPadding;
+
   const lines = code.split('\n');
-  const displayLines = maxLines ? lines.slice(0, maxLines) : lines;
-  const truncated = maxLines && lines.length > maxLines;
+
+  // Process lines with optional wrapping
+  const processedLines = shouldWrap
+    ? lines.flatMap(line => wrapCodeLine(line, codeWidth))
+    : lines;
+
+  const displayLines = maxLines ? processedLines.slice(0, maxLines) : processedLines;
+  const truncated = maxLines && processedLines.length > maxLines;
 
   return (
     <Box
@@ -84,12 +168,14 @@ export function SimpleSyntaxHighlighter({
       borderStyle="single"
       borderColor="gray"
       paddingX={1}
-      width={width}
+      width={effectiveWidth}
     >
       {/* Header */}
       <Box justifyContent="space-between">
         <Text color="gray">{language}</Text>
-        <Text color="gray">{lines.length} lines</Text>
+        <Text color="gray">
+          {lines.length} lines{shouldWrap && processedLines.length !== lines.length ? ` (${processedLines.length} wrapped)` : ''}
+        </Text>
       </Box>
 
       {/* Code lines */}
@@ -109,7 +195,7 @@ export function SimpleSyntaxHighlighter({
       {/* Truncation indicator */}
       {truncated && (
         <Text color="gray" italic>
-          ... {lines.length - maxLines!} more lines
+          ... {processedLines.length - maxLines!} more lines
         </Text>
       )}
     </Box>

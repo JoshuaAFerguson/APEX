@@ -142,7 +142,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **History search** - Ctrl+R search implemented via ShortcutManager
 - 🟢 **Multi-line input** - Shift+Enter support in AdvancedInput
 - 🟢 **Inline editing** - Edit previous input before sending
-- ⚪ **Input preview** - Show what will be sent before execution
+- 🟢 **Input preview** - Show what will be sent before execution
 
 ### Output & Feedback
 - 🟢 **Streaming output** - Real-time character streaming
@@ -150,8 +150,8 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Activity log** - Collapsible log of actions (`ActivityLog.tsx`)
 - 🟢 **Error formatting** - Clear, actionable error messages (`ErrorDisplay.tsx`)
 - 🟢 **Success celebration** - Visual feedback on task completion (`SuccessCelebration.tsx`)
-- ⚪ **Compact mode** - Condensed output for experienced users
-- ⚪ **Verbose mode** - Detailed output for debugging
+- 🟢 **Compact mode** - Condensed output for experienced users
+- 🟢 **Verbose mode** - Detailed output for debugging
 
 ### Keyboard Shortcuts
 - 🟢 **Ctrl+C** - Cancel current operation
@@ -200,7 +200,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 |------|--------|--------|-------|
 | AgentPanel enhancements (handoff, parallel) | 🟢 | Complete | `AgentPanel.tsx`, `HandoffIndicator.tsx`, `useAgentHandoff.ts` (see ADR-012, ADR-013, ADR-014) |
 | SubtaskTree enhancements (collapse/expand) | 🟢 | Complete | `cli/src/ui/components/agents/SubtaskTree.tsx` |
-| Display modes (compact/verbose) | ⚪ | 0.5 day | `cli/src/repl.tsx` |
+| Display modes (compact/verbose) | 🟢 | Complete | `cli/src/repl.tsx` |
 
 **Phase 3: Polish & Testing (MEDIUM PRIORITY)**
 | Task | Status | Effort | Files |
@@ -208,7 +208,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
 | Documentation updates | ⚪ | 1 day | `docs/` |
 
-**Estimated Remaining**: 2-3 days (display modes + testing)
+**Estimated Remaining**: 2 days (testing + documentation)
 
 > **Key Finding**: Most core services (SessionStore, CompletionEngine, ShortcutManager, ConversationManager) are already implemented. Primary remaining work is **integration** and **UI component enhancements**.
 

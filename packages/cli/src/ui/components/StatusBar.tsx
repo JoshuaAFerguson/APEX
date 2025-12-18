@@ -264,7 +264,7 @@ function buildSegments(
   const allSegments = createSegmentConfigs(props, elapsed);
 
   // 2. Filter by display mode (compact/normal/verbose)
-  const modeFiltered = filterByDisplayMode(allSegments, props.displayMode);
+  const modeFiltered = filterByDisplayMode(allSegments, props.displayMode || 'normal');
 
   // 3. Apply responsive tier filtering (narrow/normal/wide)
   const tierFiltered = filterByTier(modeFiltered, displayTier);

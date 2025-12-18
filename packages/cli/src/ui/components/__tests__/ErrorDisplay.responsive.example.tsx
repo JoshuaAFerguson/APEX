@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { ErrorDisplay, ErrorSummary, ValidationError } from '../ErrorDisplay';
+import { ErrorDisplay, ErrorSummary, ValidationError } from '../ErrorDisplay.js';
 
 // Example error data
 const sampleError = "Unable to authenticate with the API. The provided credentials appear to be invalid or expired.";

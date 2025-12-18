@@ -50,7 +50,7 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
     sessionStartTime: new Date(),
     sessionName: `Session ${new Date().toLocaleDateString()}`,
     displayMode: 'normal',
-    previewMode: config?.ui?.previewMode ?? false,
+    previewMode: (config as any)?.ui?.previewMode ?? false,
     showThoughts: false,
   };
 
