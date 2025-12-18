@@ -6,7 +6,8 @@ import {
   CircularProgress,
   StepProgress,
   MultiTaskProgress,
-  Spinner,
+  LoadingSpinner,
+  SpinnerWithText,
 } from '../ProgressIndicators';
 
 describe('ProgressIndicators', () => {
@@ -341,6 +342,218 @@ describe('ProgressIndicators', () => {
       expect(() => {
         unmount();
       }).not.toThrow();
+    });
+  });
+
+  describe('Responsive Behavior', () => {
+    // Mock useStdoutDimensions hook
+    const mockUseStdoutDimensions = vi.fn();
+
+    beforeEach(() => {
+      // Mock the hook to return known values
+      vi.mock('../hooks/useStdoutDimensions', () => ({
+        useStdoutDimensions: mockUseStdoutDimensions,
+      }));
+    });
+
+    describe('ProgressBar Responsive Width', () => {
+      it('adapts width to narrow terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 50,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<ProgressBar progress={50} responsive={true} />);
+
+        // With 50 width, narrow mode (90%), minus 5 for percentage = 40.5 chars available
+        // 90% of 40.5 = ~36 chars for progress bar
+        expect(screen.getByText('50%')).toBeInTheDocument();
+      });
+
+      it('adapts width to compact terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          breakpoint: 'compact',
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<ProgressBar progress={75} responsive={true} />);
+
+        expect(screen.getByText('75%')).toBeInTheDocument();
+      });
+
+      it('respects explicit width when responsive is disabled', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 50,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<ProgressBar progress={50} responsive={false} width={20} />);
+
+        expect(screen.getByText('50%')).toBeInTheDocument();
+      });
+
+      it('applies min and max width constraints', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 200,
+          breakpoint: 'wide',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(<ProgressBar progress={25} responsive={true} minWidth={15} maxWidth={60} />);
+
+        expect(screen.getByText('25%')).toBeInTheDocument();
+      });
+
+      it('accounts for reserved space in calculations', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+        });
+
+        render(<ProgressBar progress={50} responsive={true} reservedSpace={20} />);
+
+        expect(screen.getByText('50%')).toBeInTheDocument();
+      });
+    });
+
+    describe('SpinnerWithText Responsive', () => {
+      it('truncates text in narrow terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 40,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<SpinnerWithText text="This is a very long loading message that should be truncated" />);
+
+        // Should contain truncated text with ellipsis
+        expect(screen.getByText(/\.\.\./)).toBeInTheDocument();
+      });
+
+      it('uses abbreviated text when provided for narrow terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 40,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <SpinnerWithText
+            text="Processing very important operation"
+            abbreviatedText="Processing..."
+          />
+        );
+
+        expect(screen.getByText('Processing...')).toBeInTheDocument();
+        expect(screen.queryByText('Processing very important operation')).not.toBeInTheDocument();
+      });
+
+      it('shows full text in wide terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          breakpoint: 'wide',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        const fullText = 'Processing operation';
+        render(<SpinnerWithText text={fullText} />);
+
+        expect(screen.getByText(fullText)).toBeInTheDocument();
+      });
+
+      it('respects custom maxTextLength', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+        });
+
+        render(<SpinnerWithText text="This text should be truncated" maxTextLength={10} />);
+
+        // Should show truncated version
+        expect(screen.getByText(/\.\.\./)).toBeInTheDocument();
+      });
+
+      it('disables truncation when responsive is false', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 20,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        const fullText = 'This text should not be truncated';
+        render(<SpinnerWithText text={fullText} responsive={false} />);
+
+        expect(screen.getByText(fullText)).toBeInTheDocument();
+      });
+    });
+
+    describe('LoadingSpinner Responsive', () => {
+      it('truncates text when responsive mode is enabled', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 30,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<LoadingSpinner text="Very long loading text that needs truncation" responsive={true} />);
+
+        // Should use SpinnerWithText internally and truncate
+        expect(screen.getByText(/\.\.\./)).toBeInTheDocument();
+      });
+
+      it('preserves text when responsive mode is disabled', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 20,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        const fullText = 'Loading...';
+        render(<LoadingSpinner text={fullText} responsive={false} />);
+
+        expect(screen.getByText(fullText)).toBeInTheDocument();
+      });
     });
   });
 });

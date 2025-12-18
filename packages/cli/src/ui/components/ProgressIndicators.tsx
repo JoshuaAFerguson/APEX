@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
+import { useStdoutDimensions } from '../hooks/useStdoutDimensions';
 
 export interface ProgressBarProps {
   progress: number; // 0-100
@@ -10,20 +11,67 @@ export interface ProgressBarProps {
   color?: string;
   backgroundColor?: string;
   animated?: boolean;
+  /** Enable responsive width adaptation (default: true) */
+  responsive?: boolean;
+  /** Minimum width when responsive (default: 10) */
+  minWidth?: number;
+  /** Maximum width when responsive (default: 80) */
+  maxWidth?: number;
+  /** Reserved space to account for in responsive calculations (default: 0) */
+  reservedSpace?: number;
 }
 
 /**
- * Customizable progress bar component
+ * Customizable progress bar component with responsive width adaptation
  */
 export function ProgressBar({
   progress,
-  width = 40,
+  width,
   showPercentage = true,
   label,
   color = 'cyan',
   backgroundColor = 'gray',
   animated = false,
+  responsive = true,
+  minWidth = 10,
+  maxWidth = 80,
+  reservedSpace = 0,
 }: ProgressBarProps): React.ReactElement {
+  const { width: terminalWidth, breakpoint } = useStdoutDimensions();
+
+  // Calculate responsive width based on breakpoint and constraints
+  const calculatedWidth = useMemo(() => {
+    // If responsive is disabled or explicit width is provided, use that
+    if (!responsive || width !== undefined) {
+      return width ?? 40; // Default fallback for non-responsive mode
+    }
+
+    // Calculate available width
+    const percentageSpace = showPercentage ? 5 : 0; // " XXX%" takes ~5 chars
+    const availableWidth = terminalWidth - reservedSpace - percentageSpace;
+
+    // Apply breakpoint-based percentage of available width
+    let targetWidth: number;
+    switch (breakpoint) {
+      case 'narrow':
+        targetWidth = Math.floor(availableWidth * 0.9); // 90% of available
+        break;
+      case 'compact':
+        targetWidth = Math.floor(availableWidth * 0.7); // 70% of available
+        break;
+      case 'normal':
+        targetWidth = Math.floor(availableWidth * 0.5); // 50% of available
+        break;
+      case 'wide':
+        targetWidth = Math.floor(availableWidth * 0.4); // 40% of available
+        break;
+      default:
+        targetWidth = 40;
+    }
+
+    // Apply min/max constraints
+    return Math.max(minWidth, Math.min(maxWidth, targetWidth));
+  }, [responsive, width, terminalWidth, breakpoint, reservedSpace, showPercentage, minWidth, maxWidth]);
   const [animatedProgress, setAnimatedProgress] = useState(0);
 
   useEffect(() => {
@@ -58,8 +106,8 @@ export function ProgressBar({
   }, [progress, animated]); // removed animatedProgress to prevent loop
 
   const clampedProgress = Math.max(0, Math.min(100, animatedProgress));
-  const filledWidth = Math.floor((clampedProgress / 100) * width);
-  const emptyWidth = width - filledWidth;
+  const filledWidth = Math.floor((clampedProgress / 100) * calculatedWidth);
+  const emptyWidth = calculatedWidth - filledWidth;
 
   const filled = '█'.repeat(filledWidth);
   const empty = '░'.repeat(emptyWidth);
@@ -113,20 +161,111 @@ export function CircularProgress({
   );
 }
 
+export interface SpinnerWithTextProps {
+  type?: 'dots' | 'line' | 'pipe' | 'star' | 'flip' | 'hamburger' | 'growVertical';
+  text?: string;
+  color?: string;
+  textColor?: string;
+  /** Enable responsive text truncation (default: true) */
+  responsive?: boolean;
+  /** Abbreviated text for narrow terminals */
+  abbreviatedText?: string;
+  /** Maximum text length before truncation */
+  maxTextLength?: number;
+  /** Minimum text length to show (default: 3) */
+  minTextLength?: number;
+}
+
+/**
+ * Spinner with responsive text truncation capabilities
+ */
+export function SpinnerWithText({
+  type = 'dots',
+  text,
+  color = 'cyan',
+  textColor = 'gray',
+  responsive = true,
+  abbreviatedText,
+  maxTextLength,
+  minTextLength = 3,
+}: SpinnerWithTextProps): React.ReactElement {
+  const { width: terminalWidth, breakpoint } = useStdoutDimensions();
+
+  // Calculate effective text to display
+  const displayText = useMemo(() => {
+    if (!text) return undefined;
+    if (!responsive) return text;
+
+    // Use abbreviated text for narrow terminals if provided
+    if (breakpoint === 'narrow' && abbreviatedText) {
+      return abbreviatedText;
+    }
+
+    // Calculate available space for text
+    const spinnerSpace = 2; // Spinner + space
+    const availableTextSpace = terminalWidth - spinnerSpace;
+
+    // Determine max length based on breakpoint if not explicitly set
+    const effectiveMaxLength = maxTextLength ?? (() => {
+      switch (breakpoint) {
+        case 'narrow': return Math.min(availableTextSpace, 15);
+        case 'compact': return Math.min(availableTextSpace, 30);
+        case 'normal': return Math.min(availableTextSpace, 50);
+        case 'wide': return Math.min(availableTextSpace, 80);
+        default: return availableTextSpace;
+      }
+    })();
+
+    // Truncate if necessary
+    if (text.length <= effectiveMaxLength) {
+      return text;
+    }
+
+    const truncatedLength = Math.max(minTextLength, effectiveMaxLength - 3);
+    return text.slice(0, truncatedLength) + '...';
+  }, [text, responsive, abbreviatedText, breakpoint, terminalWidth, maxTextLength, minTextLength]);
+
+  return (
+    <Box>
+      <Text color={color}>
+        <Spinner type={type} />
+      </Text>
+      {displayText && (
+        <Text color={textColor}> {displayText}</Text>
+      )}
+    </Box>
+  );
+}
+
 export interface LoadingSpinnerProps {
   type?: 'dots' | 'line' | 'pipe' | 'star' | 'flip' | 'hamburger' | 'growVertical';
   text?: string;
   color?: string;
+  /** Enable responsive text truncation (default: false for backward compatibility) */
+  responsive?: boolean;
 }
 
 /**
- * Enhanced loading spinner with various types
+ * Enhanced loading spinner with various types and optional responsive text truncation
  */
 export function LoadingSpinner({
   type = 'dots',
   text,
   color = 'cyan',
+  responsive = false,
 }: LoadingSpinnerProps): React.ReactElement {
+  // Use SpinnerWithText for responsive behavior, fallback to simple implementation
+  if (responsive) {
+    return (
+      <SpinnerWithText
+        type={type}
+        text={text}
+        color={color}
+        responsive={true}
+      />
+    );
+  }
+
   return (
     <Box>
       <Text color={color}>
@@ -218,7 +357,7 @@ export function StepProgress({
                 {step.name}
               </Text>
               {step.status === 'in-progress' && !compact && (
-                <LoadingSpinner type="dots" />
+                <LoadingSpinner type="dots" responsive={true} />
               )}
             </Box>
             {showDescriptions && step.description && !compact && (
@@ -289,7 +428,7 @@ export function TaskProgress({
       {/* Current step */}
       {currentStep && status === 'in-progress' && (
         <Box marginTop={1}>
-          {showSpinner && <LoadingSpinner type="dots" />}
+          {showSpinner && <LoadingSpinner type="dots" responsive={true} />}
           <Text color="cyan">{currentStep}</Text>
         </Box>
       )}
@@ -299,7 +438,8 @@ export function TaskProgress({
         <Box marginTop={1}>
           <ProgressBar
             progress={progress}
-            width={50}
+            responsive={true}
+            reservedSpace={6} // Account for padding and border
             showPercentage={true}
             animated={true}
           />
@@ -357,7 +497,8 @@ export function MultiTaskProgress({
       {!compact && (
         <ProgressBar
           progress={overallProgress}
-          width={60}
+          responsive={true}
+          reservedSpace={4} // Account for padding and border
           showPercentage={true}
           label="Overall Progress"
           animated={true}
@@ -402,4 +543,5 @@ export function MultiTaskProgress({
 
 export {
   Spinner as InkSpinner,
+  SpinnerWithText,
 };
