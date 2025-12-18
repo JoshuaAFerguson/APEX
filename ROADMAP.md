@@ -635,12 +635,71 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Dependency-aware changes
 - ⚪ Coordinated releases
 
-### Observability
-- ⚪ OpenTelemetry integration
-- ⚪ Distributed tracing
-- ⚪ Custom metrics
-- ⚪ Alerting rules
-- ⚪ Performance dashboards
+### Observability (inspired by [claude-code-otel](https://github.com/ColeMurray/claude-code-otel))
+
+**OpenTelemetry Integration**
+- ⚪ `@apex/telemetry` package - OTEL export for metrics, traces, and logs
+- ⚪ OTLP exporter - gRPC (4317) and HTTP (4318) endpoints
+- ⚪ Prometheus metrics endpoint - `/metrics` in @apex/api
+- ⚪ Loki log aggregation support
+- ⚪ Distributed tracing across agents and subtasks
+
+**Core Metrics**
+- ⚪ `apex.session.count` - CLI sessions initiated
+- ⚪ `apex.task.count` - Tasks by status (pending/running/completed/failed)
+- ⚪ `apex.subtask.count` - Subtask execution counts
+- ⚪ `apex.lines_of_code.count` - Modified code lines per task
+- ⚪ `apex.commit.count` - Generated commits
+- ⚪ `apex.pull_request.count` - Created pull requests
+
+**Cost & Token Metrics**
+- ⚪ `apex.cost.usage` - Cost by model, agent, and workflow
+- ⚪ `apex.token.usage` - Token breakdown (input/output/cache)
+- ⚪ `apex.api_request.duration` - API latency histograms
+- ⚪ `apex.api_request.count` - Request counts by model/status
+- ⚪ `apex.api_error.count` - API failures by error type
+
+**Agent & Tool Metrics**
+- ⚪ `apex.agent.duration` - Time spent per agent
+- ⚪ `apex.agent.handoff.count` - Agent transition counts
+- ⚪ `apex.tool.duration` - Tool execution timing
+- ⚪ `apex.tool.success_rate` - Tool success/failure rates
+- ⚪ `apex.workflow.stage.duration` - Time per workflow stage
+
+**Telemetry Configuration**
+```yaml
+# .apex/config.yaml
+telemetry:
+  enabled: true
+  exporters: [otlp, prometheus]
+  endpoint: "http://localhost:4317"
+  protocol: grpc  # or http
+  exportInterval: 60000  # 1 minute for production
+  privacy:
+    includePrompts: false
+    includeSessionId: true
+    includeAccountId: false
+```
+
+**Grafana Dashboard Templates**
+- ⚪ Overview dashboard - Active tasks, costs, tokens, agents
+- ⚪ Cost analysis dashboard - Spending by model/workflow/time
+- ⚪ Performance dashboard - Latency, success rates, errors
+- ⚪ Agent dashboard - Per-agent metrics and comparisons
+- ⚪ Tool dashboard - Tool usage patterns and performance
+
+**Docker Compose Stack**
+- ⚪ `docker-compose.observability.yml` - Full OTEL stack
+- ⚪ Pre-configured Prometheus scrape configs
+- ⚪ Pre-configured Grafana dashboards
+- ⚪ Loki for structured log aggregation
+
+**Alerting**
+- ⚪ Cost threshold alerts
+- ⚪ Error rate alerts
+- ⚪ Task failure alerts
+- ⚪ API latency alerts
+- ⚪ Budget exhaustion warnings
 
 ---
 
@@ -746,6 +805,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | **Task auto-generation** | ❌ | ❌ | ❌ | ✅ | ⚪ |
 | **Thought capture** | ❌ | ❌ | ❌ | ✅ | ⚪ |
 | **Agent marketplace** | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **OpenTelemetry/Observability** | ✅ | ❌ | ❌ | ❌ | ⚪ |
 
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | ✅ Has feature | ❌ No feature
 
