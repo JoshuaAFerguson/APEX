@@ -3,22 +3,40 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
-// Mock useStdout from ink
-vi.mock('ink', async () => {
-  const actual = await vi.importActual('ink');
-  return {
-    ...actual,
-    useStdout: () => ({ stdout: { columns: 120 } }),
-  };
-});
+// Mock useStdoutDimensions hook
+const mockUseStdoutDimensions = vi.fn(() => ({
+  width: 120,
+  height: 30,
+  breakpoint: 'normal' as const,
+  isAvailable: true,
+  isNarrow: false,
+  isCompact: false,
+  isNormal: true,
+  isWide: false,
+}));
+
+vi.mock('../hooks/useStdoutDimensions.js', () => ({
+  useStdoutDimensions: mockUseStdoutDimensions,
+}));
 
 describe('StatusBar', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mockUseStdoutDimensions.mockReturnValue({
+      width: 120,
+      height: 30,
+      breakpoint: 'normal' as const,
+      isAvailable: true,
+      isNarrow: false,
+      isCompact: false,
+      isNormal: true,
+      isWide: false,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
   const defaultProps: StatusBarProps = {
@@ -192,8 +210,15 @@ describe('StatusBar', () => {
   describe('responsive layout', () => {
     it('adapts to terminal width', () => {
       // Mock narrow terminal
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 60 }
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 60,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
       });
 
       render(
@@ -214,8 +239,15 @@ describe('StatusBar', () => {
 
     it('prioritizes important information in narrow terminals', () => {
       // Mock very narrow terminal
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 40 }
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 40,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
       });
 
       render(
@@ -278,13 +310,20 @@ describe('StatusBar', () => {
     });
 
     it('handles missing terminal width', () => {
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: undefined
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 80,  // fallback width
+        height: 24, // fallback height
+        breakpoint: 'compact' as const,
+        isAvailable: false, // indicates terminal dimensions unavailable
+        isNarrow: false,
+        isCompact: true,
+        isNormal: false,
+        isWide: false,
       });
 
       render(<StatusBar {...defaultProps} />);
 
-      // Should use default width and not crash
+      // Should use fallback width and not crash
       expect(screen.getByText('●')).toBeInTheDocument();
     });
   });
@@ -403,8 +442,15 @@ describe('StatusBar', () => {
 
     it('shows all segments without filtering', () => {
       // Mock narrow terminal to test that verbose mode ignores width constraints
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 60 }
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 60,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
       });
 
       render(
@@ -498,6 +544,467 @@ describe('StatusBar', () => {
       expect(screen.getByText('300')).toBeInTheDocument();
       expect(screen.getByText('$0.0500')).toBeInTheDocument();
       expect(screen.getByText('opus')).toBeInTheDocument();
+    });
+  });
+
+  describe('useStdoutDimensions hook integration', () => {
+    it('calls useStdoutDimensions with correct default configuration', () => {
+      render(<StatusBar {...defaultProps} />);
+
+      expect(mockUseStdoutDimensions).toHaveBeenCalledWith({
+        breakpoints: {
+          narrow: 80,    // < 80 = narrow
+          compact: 100,  // 80-99 = compact
+          normal: 120,   // 100-119 = normal
+        },               // >= 120 = wide
+        fallbackWidth: 120,
+      });
+    });
+
+    it('uses width from useStdoutDimensions for terminal width', () => {
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 150,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
+      render(<StatusBar {...defaultProps} />);
+
+      // Verify the hook was called
+      expect(mockUseStdoutDimensions).toHaveBeenCalled();
+    });
+
+    describe('custom breakpoints configuration', () => {
+      it('handles narrow breakpoint (<80 columns)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 75,
+          height: 24,
+          breakpoint: 'narrow' as const,
+          isAvailable: true,
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="main"
+            agent="planner"
+            workflowStage="testing"
+            tokens={{ input: 500, output: 300 }}
+            cost={0.1234}
+            model="opus"
+          />
+        );
+
+        // Essential info should still be displayed
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('main')).toBeInTheDocument();
+        expect(screen.getByText('planner')).toBeInTheDocument();
+      });
+
+      it('handles compact breakpoint (80-99 columns)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 85,
+          height: 24,
+          breakpoint: 'compact' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/auth"
+            agent="developer"
+            workflowStage="implementation"
+            tokens={{ input: 1000, output: 500 }}
+            cost={0.2345}
+          />
+        );
+
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('feature/auth')).toBeInTheDocument();
+        expect(screen.getByText('developer')).toBeInTheDocument();
+        expect(screen.getByText('implementation')).toBeInTheDocument();
+      });
+
+      it('handles normal breakpoint (100-119 columns)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 110,
+          height: 30,
+          breakpoint: 'normal' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/ui"
+            agent="architect"
+            workflowStage="planning"
+            tokens={{ input: 2000, output: 1500 }}
+            cost={0.3456}
+            model="sonnet"
+          />
+        );
+
+        // Should show all information comfortably
+        expect(screen.getByText('feature/ui')).toBeInTheDocument();
+        expect(screen.getByText('architect')).toBeInTheDocument();
+        expect(screen.getByText('planning')).toBeInTheDocument();
+        expect(screen.getByText('3.5k')).toBeInTheDocument(); // tokens
+        expect(screen.getByText('$0.3456')).toBeInTheDocument();
+        expect(screen.getByText('sonnet')).toBeInTheDocument();
+      });
+
+      it('handles wide breakpoint (>=120 columns)', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 150,
+          height: 40,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/comprehensive-testing"
+            agent="tester"
+            workflowStage="testing"
+            tokens={{ input: 5000, output: 3000 }}
+            cost={0.7890}
+            model="opus"
+            apiUrl="http://localhost:4000"
+            webUrl="http://localhost:3000"
+            sessionName="Integration Testing Session"
+            subtaskProgress={{ completed: 8, total: 12 }}
+          />
+        );
+
+        // Should display all elements with wide layout
+        expect(screen.getByText('feature/comprehensive-testing')).toBeInTheDocument();
+        expect(screen.getByText('tester')).toBeInTheDocument();
+        expect(screen.getByText('testing')).toBeInTheDocument();
+        expect(screen.getByText('8.0k')).toBeInTheDocument(); // tokens
+        expect(screen.getByText('$0.7890')).toBeInTheDocument();
+        expect(screen.getByText('opus')).toBeInTheDocument();
+        expect(screen.getByText('4000')).toBeInTheDocument(); // API port
+        expect(screen.getByText('3000')).toBeInTheDocument(); // Web port
+        expect(screen.getByText(/Integration Testing Session/)).toBeInTheDocument();
+        expect(screen.getByText('[8/12]')).toBeInTheDocument();
+      });
+
+      it('handles boundary values correctly', () => {
+        // Test exact boundary at 80 columns (should be compact)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          height: 24,
+          breakpoint: 'compact' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="main" />);
+        expect(screen.getByText('main')).toBeInTheDocument();
+
+        // Test exact boundary at 100 columns (should be normal)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 100,
+          height: 24,
+          breakpoint: 'normal' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="develop" />);
+        expect(screen.getByText('develop')).toBeInTheDocument();
+
+        // Test exact boundary at 120 columns (should be wide)
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          height: 30,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="release" />);
+        expect(screen.getByText('release')).toBeInTheDocument();
+      });
+    });
+
+    describe('layout adaptation based on breakpoints', () => {
+      it('filters segments appropriately in narrow terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 50,  // Very narrow
+          height: 24,
+          breakpoint: 'narrow' as const,
+          isAvailable: true,
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="main"
+            agent="planner"
+            workflowStage="implementation"
+            apiUrl="http://localhost:4000"
+            webUrl="http://localhost:3000"
+            sessionName="Long Session Name"
+            tokens={{ input: 1000, output: 500 }}
+            cost={0.1234}
+            model="opus"
+            subtaskProgress={{ completed: 3, total: 5 }}
+          />
+        );
+
+        // Essential elements should be present
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('main')).toBeInTheDocument();
+
+        // Some elements might be filtered out due to space constraints
+        // but the component should still render successfully
+        expect(mockUseStdoutDimensions).toHaveBeenCalledWith({
+          breakpoints: {
+            narrow: 80,
+            compact: 100,
+            normal: 120,
+          },
+          fallbackWidth: 120,
+        });
+      });
+
+      it('shows all segments in wide terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 200,
+          height: 40,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/comprehensive-display"
+            agent="developer"
+            workflowStage="implementation"
+            apiUrl="http://localhost:4000"
+            webUrl="http://localhost:3000"
+            sessionName="Full Feature Session"
+            tokens={{ input: 2500, output: 1800 }}
+            cost={0.4567}
+            sessionCost={1.2345}
+            model="opus"
+            subtaskProgress={{ completed: 6, total: 8 }}
+          />
+        );
+
+        // All segments should be visible in wide terminals
+        expect(screen.getByText('feature/comprehensive-display')).toBeInTheDocument();
+        expect(screen.getByText('developer')).toBeInTheDocument();
+        expect(screen.getByText('implementation')).toBeInTheDocument();
+        expect(screen.getByText('4000')).toBeInTheDocument();
+        expect(screen.getByText('3000')).toBeInTheDocument();
+        expect(screen.getByText(/Full Feature Session/)).toBeInTheDocument();
+        expect(screen.getByText('4.3k')).toBeInTheDocument(); // tokens
+        expect(screen.getByText('$0.4567')).toBeInTheDocument();
+        expect(screen.getByText('opus')).toBeInTheDocument();
+        expect(screen.getByText('[6/8]')).toBeInTheDocument();
+      });
+
+      it('responds to breakpoint changes', () => {
+        // Start with wide terminal
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 180,
+          height: 40,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        const { rerender } = render(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/responsive"
+            agent="tester"
+            tokens={{ input: 1000, output: 500 }}
+            cost={0.25}
+            model="sonnet"
+          />
+        );
+
+        expect(screen.getByText('feature/responsive')).toBeInTheDocument();
+        expect(screen.getByText('tester')).toBeInTheDocument();
+        expect(screen.getByText('sonnet')).toBeInTheDocument();
+
+        // Change to narrow terminal
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 60,
+          height: 24,
+          breakpoint: 'narrow' as const,
+          isAvailable: true,
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        rerender(
+          <StatusBar
+            {...defaultProps}
+            gitBranch="feature/responsive"
+            agent="tester"
+            tokens={{ input: 1000, output: 500 }}
+            cost={0.25}
+            model="sonnet"
+          />
+        );
+
+        // Essential elements should still be there
+        expect(screen.getByText('●')).toBeInTheDocument();
+      });
+    });
+
+    describe('edge cases and error handling', () => {
+      it('handles hook returning undefined dimensions', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,   // fallback
+          height: 24,  // fallback
+          breakpoint: 'compact' as const,
+          isAvailable: false,
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="main" />);
+
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('main')).toBeInTheDocument();
+      });
+
+      it('handles extreme dimensions gracefully', () => {
+        // Very narrow terminal
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 10,
+          height: 5,
+          breakpoint: 'narrow' as const,
+          isAvailable: true,
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+        });
+
+        render(<StatusBar {...defaultProps} />);
+        expect(screen.getByText('●')).toBeInTheDocument();
+
+        // Very wide terminal
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 500,
+          height: 100,
+          breakpoint: 'wide' as const,
+          isAvailable: true,
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="main" />);
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('main')).toBeInTheDocument();
+      });
+
+      it('handles breakpoint changes during render', () => {
+        let callCount = 0;
+        mockUseStdoutDimensions.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              width: 120,
+              height: 30,
+              breakpoint: 'normal' as const,
+              isAvailable: true,
+              isNarrow: false,
+              isCompact: false,
+              isNormal: true,
+              isWide: false,
+            };
+          }
+          return {
+            width: 80,
+            height: 24,
+            breakpoint: 'compact' as const,
+            isAvailable: true,
+            isNarrow: false,
+            isCompact: true,
+            isNormal: false,
+            isWide: false,
+          };
+        });
+
+        render(<StatusBar {...defaultProps} gitBranch="dynamic" />);
+        expect(screen.getByText('●')).toBeInTheDocument();
+        expect(screen.getByText('dynamic')).toBeInTheDocument();
+      });
+
+      it('maintains correct props contract with hook', () => {
+        render(<StatusBar {...defaultProps} />);
+
+        // Verify the hook is called with the exact expected configuration
+        expect(mockUseStdoutDimensions).toHaveBeenCalledWith({
+          breakpoints: {
+            narrow: 80,
+            compact: 100,
+            normal: 120,
+          },
+          fallbackWidth: 120,
+        });
+
+        // Verify hook is called exactly once per render
+        expect(mockUseStdoutDimensions).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

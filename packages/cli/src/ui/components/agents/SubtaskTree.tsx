@@ -148,13 +148,13 @@ export function SubtaskTree({
       } else if (!collapsedNodes.has(currentNode.id) && currentNode.children && currentNode.children.length > 0) {
         handleFocusChange(currentNode.children[0].id);
       }
-    } else if (key.home) {
-      // Move to first node
+    } else if (input === 'g') {
+      // Move to first node (vim-style 'gg')
       if (visibleNodes.length > 0) {
         handleFocusChange(visibleNodes[0].node.id);
       }
-    } else if (key.end) {
-      // Move to last node
+    } else if (input === 'G') {
+      // Move to last node (vim-style 'G')
       if (visibleNodes.length > 0) {
         handleFocusChange(visibleNodes[visibleNodes.length - 1].node.id);
       }

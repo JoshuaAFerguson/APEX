@@ -254,33 +254,26 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
-    // Debug info handlers
-    const handleUsageUpdated = (usage: { taskId: string; agentName: string; tokensUsed: { input: number; output: number } }) => {
-      if (taskId && usage.taskId !== taskId) return;
+    // Debug info handlers - adapted to match OrchestratorEvents signatures
+    const handleUsageUpdated = (eventTaskId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }) => {
+      if (taskId && eventTaskId !== taskId) return;
 
-      log('Usage updated', { agent: usage.agentName, tokens: usage.tokensUsed });
+      log('Usage updated', { taskId: eventTaskId, tokens: usage });
 
+      // Update overall usage state if needed
       setState(prev => ({
         ...prev,
-        agents: updateAgentDebugInfo(prev.agents, usage.agentName, (debugInfo) => ({
-          ...debugInfo,
-          tokensUsed: usage.tokensUsed,
-        })),
+        // Usage is tracked at task level, not agent level in orchestrator events
       }));
     };
 
-    const handleToolUse = (toolData: { taskId: string; agentName: string; toolName: string }) => {
-      if (taskId && toolData.taskId !== taskId) return;
+    const handleToolUse = (eventTaskId: string, tool: string, _input: unknown) => {
+      if (taskId && eventTaskId !== taskId) return;
 
-      log('Tool use', { agent: toolData.agentName, tool: toolData.toolName });
+      log('Tool use', { taskId: eventTaskId, tool });
 
-      setState(prev => ({
-        ...prev,
-        agents: updateAgentDebugInfo(prev.agents, toolData.agentName, (debugInfo) => ({
-          ...debugInfo,
-          lastToolCall: toolData.toolName,
-        })),
-      }));
+      // Tool use doesn't have agent name in orchestrator events
+      // Just log for debugging
     };
 
     const handleAgentTurn = (turnData: { taskId: string; agentName: string; turnNumber: number }) => {
@@ -338,10 +331,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
     // Register debug event listeners
     orchestrator.on('usage:updated', handleUsageUpdated);
-    orchestrator.on('tool:use', handleToolUse);
-    orchestrator.on('agent:turn', handleAgentTurn);
+    orchestrator.on('agent:tool-use', handleToolUse);
     orchestrator.on('agent:thinking', handleAgentThinking);
-    orchestrator.on('error', handleError);
 
     log('Event listeners registered');
 
@@ -359,10 +350,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       // Cleanup debug event listeners
       orchestrator.off('usage:updated', handleUsageUpdated);
-      orchestrator.off('tool:use', handleToolUse);
-      orchestrator.off('agent:turn', handleAgentTurn);
+      orchestrator.off('agent:tool-use', handleToolUse);
       orchestrator.off('agent:thinking', handleAgentThinking);
-      orchestrator.off('error', handleError);
 
       log('Event listeners cleaned up');
     };

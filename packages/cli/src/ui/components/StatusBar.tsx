@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
-import { useStdoutDimensions } from '../hooks/useStdoutDimensions';
+import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 // Helper functions for formatting
 function formatTokens(input: number, output: number): string {
@@ -90,8 +90,11 @@ export function StatusBar({
   detailedTiming,
 }: StatusBarProps): React.ReactElement {
   const { width: terminalWidth, breakpoint } = useStdoutDimensions({
-    narrowThreshold: 80,
-    wideThreshold: 120,
+    breakpoints: {
+      narrow: 80,    // < 80 = narrow
+      compact: 100,  // 80-99 = compact
+      normal: 120,   // 100-119 = normal
+    },               // >= 120 = wide
     fallbackWidth: 120,
   });
 

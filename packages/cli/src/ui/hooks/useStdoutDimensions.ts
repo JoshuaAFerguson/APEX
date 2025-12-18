@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
+import { useMemo, useState, useEffect } from 'react';
+import { useStdout } from 'ink';
 
 /**
  * Breakpoint helpers interface with boolean flags
@@ -190,9 +190,35 @@ export function useStdoutDimensions(
     return DEFAULT_BREAKPOINTS;
   }, [customBreakpoints, narrowThreshold, wideThreshold]);
 
-  // Get dimensions from ink-use-stdout-dimensions
-  // This hook handles resize events automatically
-  const [width, height] = useStdoutDimensionsBase();
+  // Get stdout from ink's useStdout hook
+  const { stdout } = useStdout();
+
+  // Track dimensions with state to handle resize events
+  const [dimensions, setDimensions] = useState<[number | undefined, number | undefined]>(() => [
+    stdout?.columns,
+    stdout?.rows
+  ]);
+
+  // Listen for resize events
+  useEffect(() => {
+    if (!stdout) return;
+
+    const handleResize = () => {
+      setDimensions([stdout.columns, stdout.rows]);
+    };
+
+    // Set initial dimensions
+    handleResize();
+
+    // Listen for resize
+    stdout.on('resize', handleResize);
+
+    return () => {
+      stdout.off('resize', handleResize);
+    };
+  }, [stdout]);
+
+  const [width, height] = dimensions;
 
   // Determine if actual dimensions are available
   const isAvailable = width !== undefined && height !== undefined;
@@ -221,5 +247,4 @@ export function useStdoutDimensions(
   };
 }
 
-// Re-export types for external use
-export type { StdoutDimensions, UseStdoutDimensionsOptions, BreakpointHelpers };
+// Types are already exported above with their definitions

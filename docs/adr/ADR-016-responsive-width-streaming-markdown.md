@@ -1,32 +1,33 @@
 # ADR-016: Responsive Width for StreamingText and MarkdownRenderer
 
 ## Status
-Proposed
+In Progress (Partially Implemented)
 
 ## Context
 
-The APEX CLI has components that display text and markdown content (`StreamingText`, `MarkdownRenderer`) which currently either:
-1. Use hardcoded width values (e.g., `width = 80` in MarkdownRenderer)
-2. Have optional width props with no responsive default behavior
+The APEX CLI has components that display text and markdown content (`StreamingText`, `MarkdownRenderer`) which need to adapt to terminal width to prevent horizontal overflow.
 
-This causes horizontal text overflow in narrow terminals and doesn't adapt to the user's terminal size.
-
-### Current State Analysis
+### Current State Analysis (Updated)
 
 **StreamingText.tsx** (`packages/cli/src/ui/components/StreamingText.tsx`):
-- Has `width?: number` prop (optional, no default)
-- Already has `formatText()` function for line wrapping
-- Contains sub-components: `StreamingText`, `StreamingResponse`, `TypewriterText`
-- `StreamingResponse` has `width = 80` hardcoded default
+- ✅ **ALREADY IMPLEMENTED** - Uses `useStdoutDimensions` hook
+- ✅ Has `responsive?: boolean` prop (default: `true`)
+- ✅ Calculates `effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : undefined)`
+- ✅ Has `formatText()` function for line wrapping
+- ✅ Contains sub-components: `StreamingText`, `StreamingResponse`, `TypewriterText`
+- ✅ `StreamingResponse` also uses `useStdoutDimensions` with responsive width
 
 **MarkdownRenderer.tsx** (`packages/cli/src/ui/components/MarkdownRenderer.tsx`):
-- Has `width = 80` hardcoded default in both `MarkdownRenderer` and `SimpleMarkdownRenderer`
+- ❌ **NEEDS UPDATE** - Has `width = 80` hardcoded default
+- ❌ Does NOT use `useStdoutDimensions` hook
+- ❌ `SimpleMarkdownRenderer` also has `width = 80` hardcoded default
 - Uses width for `<Box width={width}>` container
 
 **useStdoutDimensions hook** (`packages/cli/src/ui/hooks/useStdoutDimensions.ts`):
-- Already implemented and exported
-- Provides: `width`, `height`, `breakpoint` ('narrow' | 'normal' | 'wide'), `isAvailable`
+- ✅ Already implemented and exported
+- Provides: `width`, `height`, `breakpoint` ('narrow' | 'compact' | 'normal' | 'wide'), `isAvailable`
 - Has configurable thresholds via options
+- Includes boolean helpers: `isNarrow`, `isCompact`, `isNormal`, `isWide`
 
 ## Decision
 
@@ -238,29 +239,88 @@ import { useStdoutDimensions } from '../hooks/index.js';
 
 ## Implementation Checklist
 
-1. [ ] Update `StreamingText.tsx`:
-   - Add `useStdoutDimensions` import
-   - Add `responsive` prop with default `true`
-   - Rename `width` to `explicitWidth` internally
-   - Calculate `effectiveWidth` using hook when no explicit width
-   - Update `StreamingResponse` similarly
+1. [x] Update `StreamingText.tsx`:
+   - [x] Add `useStdoutDimensions` import
+   - [x] Add `responsive` prop with default `true`
+   - [x] Rename `width` to `explicitWidth` internally
+   - [x] Calculate `effectiveWidth` using hook when no explicit width
+   - [x] Update `StreamingResponse` similarly
 
 2. [ ] Update `MarkdownRenderer.tsx`:
-   - Add `useStdoutDimensions` import
-   - Add `responsive` prop with default `true`
-   - Rename `width` to `explicitWidth` internally
-   - Calculate `effectiveWidth` using hook when no explicit width
-   - Apply to both `MarkdownRenderer` and `SimpleMarkdownRenderer`
+   - [ ] Add `useStdoutDimensions` import
+   - [ ] Add `responsive` prop with default `true`
+   - [ ] Rename `width` to `explicitWidth` internally
+   - [ ] Calculate `effectiveWidth` using hook when no explicit width
+   - [ ] Apply to both `MarkdownRenderer` and `SimpleMarkdownRenderer`
 
 3. [ ] Update tests:
-   - Add tests for responsive behavior
-   - Test explicit width override
-   - Test responsive={false} disables hook
-   - Test narrow terminal handling
+   - [ ] Add tests for responsive behavior (MarkdownRenderer)
+   - [ ] Test explicit width override
+   - [ ] Test responsive={false} disables hook
+   - [ ] Test narrow terminal handling
 
 4. [ ] Verify no horizontal overflow in narrow terminals
 
+## Remaining Work for Developer Stage
+
+The developer stage needs to implement the following changes for `MarkdownRenderer.tsx`:
+
+### Changes Required
+
+```typescript
+// packages/cli/src/ui/components/MarkdownRenderer.tsx
+
+// 1. Add import at top of file
+import { useStdoutDimensions } from '../hooks/index.js';
+
+// 2. Update interface
+export interface MarkdownRendererProps {
+  content: string;
+  width?: number;           // Optional explicit width override
+  responsive?: boolean;     // Enable/disable responsive behavior (default: true)
+}
+
+// 3. Update MarkdownRenderer function signature and add hook
+export function MarkdownRenderer({
+  content,
+  width: explicitWidth,
+  responsive = true,
+}: MarkdownRendererProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
+
+  const [processed, setProcessed] = useState<string>(content);
+  // ... rest of implementation using effectiveWidth instead of width
+}
+
+// 4. Update SimpleMarkdownRenderer similarly
+export function SimpleMarkdownRenderer({
+  content,
+  width: explicitWidth,
+  responsive = true,
+}: MarkdownRendererProps): React.ReactElement {
+  const { width: terminalWidth } = useStdoutDimensions();
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
+
+  // ... rest of implementation using effectiveWidth
+}
+```
+
+### Test Updates Required
+
+Update `packages/cli/src/ui/components/__tests__/MarkdownRenderer.test.tsx`:
+
+1. Add mock for `useStdoutDimensions` hook
+2. Add tests for responsive width behavior
+3. Add tests for explicit width override
+4. Add tests for `responsive={false}` behavior
+
 ## Related Documents
 
-- `packages/cli/src/ui/hooks/ADR-useStdoutDimensions.md` - Hook architecture
-- `packages/cli/src/ui/hooks/examples/useStdoutDimensions.example.tsx` - Usage patterns
+- `packages/cli/src/ui/hooks/useStdoutDimensions.ts` - Hook implementation
+- `packages/cli/src/ui/components/StreamingText.tsx` - Reference implementation pattern
+- `packages/cli/src/ui/components/ActivityLog.tsx` - Another responsive component example

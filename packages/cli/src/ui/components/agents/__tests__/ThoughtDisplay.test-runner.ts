@@ -7,25 +7,25 @@ import { describe, it, expect } from 'vitest';
 
 describe('ThoughtDisplay Integration Test Validation', () => {
   it('should be able to import AgentPanel component', async () => {
-    const { AgentPanel } = await import('../AgentPanel');
+    const { AgentPanel } = await import('../AgentPanel.js');
     expect(AgentPanel).toBeDefined();
     expect(typeof AgentPanel).toBe('function');
   });
 
   it('should be able to import ThoughtDisplay component', async () => {
-    const { ThoughtDisplay } = await import('../../ThoughtDisplay');
+    const { ThoughtDisplay } = await import('../../ThoughtDisplay.js');
     expect(ThoughtDisplay).toBeDefined();
     expect(typeof ThoughtDisplay).toBe('function');
   });
 
   it('should be able to import AgentThoughts component', async () => {
-    const { AgentThoughts } = await import('../../AgentThoughts');
+    const { AgentThoughts } = await import('../../AgentThoughts.js');
     expect(AgentThoughts).toBeDefined();
     expect(typeof AgentThoughts).toBe('function');
   });
 
   it('should validate ThoughtDisplayProps interface', async () => {
-    const { ThoughtDisplay } = await import('../../ThoughtDisplay');
+    const { ThoughtDisplay } = await import('../../ThoughtDisplay.js');
 
     // Test that component accepts required props without error
     const minimalProps = {
@@ -41,7 +41,7 @@ describe('ThoughtDisplay Integration Test Validation', () => {
   });
 
   it('should validate AgentInfo interface with thinking', async () => {
-    const { AgentPanel } = await import('../AgentPanel');
+    const { AgentPanel } = await import('../AgentPanel.js');
 
     const minimalAgentWithThinking = {
       name: 'test-agent',
@@ -64,7 +64,7 @@ describe('ThoughtDisplay Integration Test Validation', () => {
   });
 
   it('should validate test utilities are available', async () => {
-    const testUtils = await import('../../../__tests__/test-utils');
+    const testUtils = await import('../../../../__tests__/test-utils.js');
 
     expect(testUtils.render).toBeDefined();
     expect(testUtils.screen).toBeDefined();

@@ -205,7 +205,6 @@ export function CollapsibleSection({
         width={width}
         paddingX={1}
         justifyContent="space-between"
-        onClick={handleToggle}
       >
         <Box>
           {showArrow && <ArrowIndicator collapsed={collapsed} animated={true} dimmed={dimmed} />}
@@ -222,7 +221,6 @@ export function CollapsibleSection({
         width={width}
         paddingX={1}
         justifyContent="space-between"
-        onClick={handleToggle}
       >
         <Box>
           {showArrow && <ArrowIndicator collapsed={collapsed} animated={true} dimmed={dimmed} />}
@@ -245,7 +243,6 @@ export function CollapsibleSection({
       <Box
         paddingX={1}
         justifyContent="space-between"
-        onClick={handleToggle}
       >
         <Box>
           {showArrow && <ArrowIndicator collapsed={collapsed} animated={true} dimmed={dimmed} />}

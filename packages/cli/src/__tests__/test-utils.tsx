@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, RenderOptions } from '@testing-library/react';
+import { render, RenderOptions, RenderResult } from '@testing-library/react';
 import { vi } from 'vitest';
 
 // Mock theme context for tests
@@ -40,7 +40,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 const customRender = (
   ui: React.ReactElement,
   options?: Omit<RenderOptions, 'wrapper'>
-) => {
+): RenderResult => {
   const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return <ThemeProvider>{children}</ThemeProvider>;
   };
