@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '../../__tests__/test-utils';
+import { render, screen } from '../../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
 // Mock useStdoutDimensions hook specifically for integration tests

@@ -170,13 +170,17 @@ export function ErrorDisplay({
       {context && Object.keys(context).length > 0 && (
         <Box flexDirection="column" marginBottom={1}>
           <Text color="gray" bold>Context:</Text>
-          {Object.entries(context).map(([key, value]) => (
-            <Box key={key} marginLeft={2}>
-              <Text color="gray">
-                {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </Text>
-            </Box>
-          ))}
+          {Object.entries(context).map(([key, value]) => {
+            const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            const displayValue = truncateMessage(valueStr, contextValueMaxLength);
+            return (
+              <Box key={key} marginLeft={2}>
+                <Text color="gray">
+                  {key}: {displayValue}
+                </Text>
+              </Box>
+            );
+          })}
         </Box>
       )}
 
@@ -210,7 +214,7 @@ export function ErrorDisplay({
                   <Text color="yellow" bold>{suggestion.title}</Text>
                 </Box>
                 <Box marginLeft={4}>
-                  <Text color="white">{suggestion.description}</Text>
+                  <Text color="white">{truncateMessage(suggestion.description, suggestionDescMaxLength)}</Text>
                 </Box>
                 {suggestion.command && (
                   <Box marginLeft={4}>
@@ -261,6 +265,7 @@ export interface ErrorSummaryProps {
   title?: string;
   maxErrors?: number;
   showTimestamps?: boolean;
+  width?: number;
 }
 
 /**
@@ -271,7 +276,15 @@ export function ErrorSummary({
   title = 'Recent Issues',
   maxErrors = 5,
   showTimestamps = true,
+  width: explicitWidth,
 }: ErrorSummaryProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, breakpoint, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Responsive configuration
+  const abbreviateTimestamp = isNarrow;
+  const messageMaxLength = Math.max(20, width - (showTimestamps ? 20 : 8));
   const recentErrors = errors.slice(-maxErrors);
   const unresolvedCount = errors.filter(e => !e.resolved).length;
 
@@ -316,11 +329,11 @@ export function ErrorSummary({
                 <Text color={color}>{icon} </Text>
                 {showTimestamps && (
                   <Text color="gray" dimColor>
-                    [{error.timestamp.toLocaleTimeString()}]
+                    [{formatTimestamp(error.timestamp, abbreviateTimestamp)}]
                   </Text>
                 )}
                 <Text color={error.resolved ? 'gray' : color} strikethrough={error.resolved}>
-                  {error.message.length > 60 ? `${error.message.substring(0, 57)}...` : error.message}
+                  {truncateMessage(error.message, messageMaxLength)}
                 </Text>
                 {error.resolved && (
                   <Text color="green"> ✓</Text>
@@ -339,6 +352,7 @@ export interface ValidationErrorProps {
   value: unknown;
   errors: string[];
   suggestions?: string[];
+  width?: number;
   onFix?: (field: string, value: unknown) => void;
 }
 
@@ -350,21 +364,29 @@ export function ValidationError({
   value,
   errors,
   suggestions = [],
+  width: explicitWidth,
   onFix,
 }: ValidationErrorProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Responsive truncation
+  const valueMaxLength = isNarrow ? 20 : 40;
+  const errorMaxLength = Math.max(30, width - 8);
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1}>
       {/* Field info */}
       <Box>
         <Text color="red" bold>Invalid {field}: </Text>
-        <Text color="gray">"{String(value)}"</Text>
+        <Text color="gray">"{truncateMessage(String(value), valueMaxLength)}"</Text>
       </Box>
 
       {/* Errors */}
       <Box flexDirection="column" marginLeft={2}>
         {errors.map((error, index) => (
           <Box key={index}>
-            <Text color="red">• {error}</Text>
+            <Text color="red">• {truncateMessage(error, errorMaxLength)}</Text>
           </Box>
         ))}
       </Box>
@@ -375,7 +397,7 @@ export function ValidationError({
           <Text color="yellow">Suggestions:</Text>
           {suggestions.map((suggestion, index) => (
             <Box key={index} marginLeft={2}>
-              <Text color="yellow">• {suggestion}</Text>
+              <Text color="yellow">• {truncateMessage(suggestion, errorMaxLength)}</Text>
             </Box>
           ))}
         </Box>
