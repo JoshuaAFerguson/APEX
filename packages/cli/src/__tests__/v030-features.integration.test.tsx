@@ -6,8 +6,9 @@
 import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Fuse from 'fuse.js';
 import { SessionStore, Session, SessionMessage } from '../services/SessionStore';
-import { CompletionEngine } from '../services/CompletionEngine';
+import { CompletionEngine, CompletionContext } from '../services/CompletionEngine';
 import { ConversationManager } from '../services/ConversationManager';
 import { ShortcutManager } from '../services/ShortcutManager';
 import { SessionAutoSaver } from '../services/SessionAutoSaver';
@@ -907,30 +908,872 @@ describe('v0.3.0 Integration Tests', () => {
   });
 
   describe('Completion Engine Integration', () => {
-    it('should provide command completions', async () => {
-      const completions = await completionEngine.getCompletions('ru', 'command');
+    let testCompletionEngine: CompletionEngine;
+    let testContext: CompletionContext;
 
-      expect(completions).toContain('run');
+    // Test factory for consistent context generation
+    const createTestContext = (overrides: Partial<CompletionContext> = {}): CompletionContext => ({
+      projectPath: '/test/project',
+      agents: ['planner', 'architect', 'developer', 'reviewer', 'tester', 'devops'],
+      workflows: ['feature', 'bugfix', 'refactor'],
+      recentTasks: [
+        { id: 'task_abc123', description: 'Implement authentication' },
+        { id: 'task_def456', description: 'Fix payment bug' },
+        { id: 'task_xyz789', description: 'Add user dashboard' },
+      ],
+      inputHistory: [
+        'fix the bug in payment',
+        'add new feature',
+        'run tests',
+        'create component Button',
+        'implement user authentication',
+        'refactor code structure',
+      ],
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      testCompletionEngine = new CompletionEngine();
+      testContext = createTestContext();
+    });
+
+    describe('Provider Coverage', () => {
+      describe('Command Provider', () => {
+        it('should complete command names with / prefix', async () => {
+          const completions = await testCompletionEngine.getCompletions('/h', 2, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('/help');
+          expect(completions[0].type).toBe('command');
+          expect(completions[0].icon).toBe('?');
+          expect(completions[0].description).toBe('Show help');
+        });
+
+        it('should score exact matches higher than partial matches', async () => {
+          const completions = await testCompletionEngine.getCompletions('/status', 7, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('/status');
+          expect(completions[0].score).toBe(100); // Exact match
+        });
+
+        it('should return multiple matching commands', async () => {
+          const completions = await testCompletionEngine.getCompletions('/c', 2, testContext);
+
+          const commandValues = completions.map(c => c.value);
+          expect(commandValues).toContain('/cancel');
+          expect(commandValues).toContain('/clear');
+          expect(commandValues).toContain('/config');
+          expect(commandValues).toContain('/compact');
+        });
+
+        it('should handle case insensitive matching', async () => {
+          const completions = await testCompletionEngine.getCompletions('/HELP', 5, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('/help');
+        });
+      });
+
+      describe('Session Subcommand Provider', () => {
+        it('should complete session subcommands', async () => {
+          const completions = await testCompletionEngine.getCompletions('/session l', 10, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('/session list');
+          expect(completions[0].displayValue).toBe('list');
+          expect(completions[0].type).toBe('subcommand');
+        });
+
+        it('should complete partial subcommand matches', async () => {
+          const completions = await testCompletionEngine.getCompletions('/session sa', 11, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('/session save');
+          expect(completions[0].description).toBe('Save session');
+        });
+
+        it('should return multiple matching subcommands', async () => {
+          const completions = await testCompletionEngine.getCompletions('/session ', 9, testContext);
+
+          const subcommandValues = completions.map(c => c.displayValue);
+          expect(subcommandValues).toContain('list');
+          expect(subcommandValues).toContain('load');
+          expect(subcommandValues).toContain('save');
+          expect(subcommandValues).toContain('branch');
+        });
+      });
+
+      describe('Path Provider', () => {
+        beforeEach(async () => {
+          const fs = await import('fs/promises');
+          // Mock directory listing
+          vi.mocked(fs.readdir).mockResolvedValue([
+            { name: 'src', isDirectory: () => true, isFile: () => false } as any,
+            { name: 'package.json', isDirectory: () => false, isFile: () => true } as any,
+            { name: 'README.md', isDirectory: () => false, isFile: () => true } as any,
+            { name: 'components', isDirectory: () => true, isFile: () => false } as any,
+            { name: 'utils.ts', isDirectory: () => false, isFile: () => true } as any,
+          ]);
+        });
+
+        it('should complete file paths', async () => {
+          const completions = await testCompletionEngine.getCompletions('edit src/', 8, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.some(c => c.value.includes('src/'))).toBe(true);
+          expect(completions.some(c => c.type === 'directory')).toBe(true);
+          expect(completions.some(c => c.type === 'file')).toBe(true);
+        });
+
+        it('should distinguish between files and directories', async () => {
+          const completions = await testCompletionEngine.getCompletions('./s', 3, testContext);
+
+          const srcCompletion = completions.find(c => c.displayValue?.includes('src'));
+          expect(srcCompletion?.type).toBe('directory');
+          expect(srcCompletion?.icon).toBe('📁');
+          expect(srcCompletion?.value?.endsWith('/')).toBe(true);
+        });
+
+        it('should filter files starting with dot', async () => {
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockResolvedValue([
+            { name: '.git', isDirectory: () => true, isFile: () => false } as any,
+            { name: '.env', isDirectory: () => false, isFile: () => true } as any,
+            { name: 'src', isDirectory: () => true, isFile: () => false } as any,
+          ]);
+
+          const completions = await testCompletionEngine.getCompletions('./', 2, testContext);
+
+          expect(completions.every(c => !c.value.includes('.git'))).toBe(true);
+          expect(completions.every(c => !c.value.includes('.env'))).toBe(true);
+        });
+
+        it('should handle relative path completion', async () => {
+          const completions = await testCompletionEngine.getCompletions('edit ./pack', 10, testContext);
+
+          expect(completions.some(c => c.value.includes('package.json'))).toBe(true);
+        });
+
+        it('should handle errors gracefully', async () => {
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockRejectedValue(new Error('Permission denied'));
+
+          const completions = await testCompletionEngine.getCompletions('edit /root/', 11, testContext);
+
+          expect(completions).toEqual([]);
+        });
+      });
+
+      describe('Agent Provider (@mentions)', () => {
+        it('should complete agent names with @ prefix', async () => {
+          const completions = await testCompletionEngine.getCompletions('@dev', 4, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('@developer');
+          expect(completions[0].type).toBe('agent');
+          expect(completions[0].icon).toBe('🤖');
+        });
+
+        it('should provide agent descriptions', async () => {
+          const completions = await testCompletionEngine.getCompletions('@plan', 5, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('@planner');
+          expect(completions[0].description).toBe('Creates implementation plans');
+        });
+
+        it('should return all agents when just @ is typed', async () => {
+          const completions = await testCompletionEngine.getCompletions('@', 1, testContext);
+
+          expect(completions.length).toBe(testContext.agents.length);
+          const agentNames = completions.map(c => c.value);
+          expect(agentNames).toContain('@planner');
+          expect(agentNames).toContain('@architect');
+          expect(agentNames).toContain('@developer');
+        });
+
+        it('should score exact prefix matches higher', async () => {
+          const completions = await testCompletionEngine.getCompletions('@architect', 10, testContext);
+
+          expect(completions[0].value).toBe('@architect');
+          expect(completions[0].score).toBe(100);
+        });
+      });
+
+      describe('Workflow Provider (--workflow)', () => {
+        it('should complete workflow names with --workflow prefix', async () => {
+          const completions = await testCompletionEngine.getCompletions('--workflow fea', 14, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('feature');
+          expect(completions[0].type).toBe('workflow');
+          expect(completions[0].icon).toBe('⚙️');
+        });
+
+        it('should provide workflow descriptions', async () => {
+          const completions = await testCompletionEngine.getCompletions('--workflow bug', 14, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('bugfix');
+          expect(completions[0].description).toBe('Bug investigation and fix');
+        });
+
+        it('should complete all workflows when only --workflow is typed', async () => {
+          const completions = await testCompletionEngine.getCompletions('--workflow ', 11, testContext);
+
+          expect(completions.length).toBe(testContext.workflows.length);
+          const workflowNames = completions.map(c => c.value);
+          expect(workflowNames).toContain('feature');
+          expect(workflowNames).toContain('bugfix');
+          expect(workflowNames).toContain('refactor');
+        });
+      });
+
+      describe('Task ID Provider (task_*)', () => {
+        it('should complete task IDs with task_ prefix', async () => {
+          const completions = await testCompletionEngine.getCompletions('task_ab', 7, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('task_abc123');
+          expect(completions[0].type).toBe('task');
+          expect(completions[0].icon).toBe('📋');
+        });
+
+        it('should include task descriptions', async () => {
+          const completions = await testCompletionEngine.getCompletions('task_def', 8, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions[0].value).toBe('task_def456');
+          expect(completions[0].description).toBe('Fix payment bug');
+        });
+
+        it('should limit task ID display length', async () => {
+          const longTaskContext = createTestContext({
+            recentTasks: [
+              { id: 'task_verylongidentifier123456789', description: 'Very long description that should be truncated for display purposes' },
+            ],
+          });
+
+          const completions = await testCompletionEngine.getCompletions('task_very', 9, longTaskContext);
+
+          expect(completions[0].displayValue).toHaveLength(16);
+          expect(completions[0].description).toHaveLength(50);
+        });
+      });
+
+      describe('History Provider', () => {
+        it('should suggest from input history', async () => {
+          const completions = await testCompletionEngine.getCompletions('fix', 3, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.some(c => c.value === 'fix the bug in payment')).toBe(true);
+          expect(completions.some(c => c.type === 'history')).toBe(true);
+        });
+
+        it('should exclude exact matches from history', async () => {
+          const completions = await testCompletionEngine.getCompletions('fix the bug in payment', 22, testContext);
+
+          expect(completions.every(c => c.value !== 'fix the bug in payment')).toBe(true);
+        });
+
+        it('should limit history suggestions', async () => {
+          const manyHistoryContext = createTestContext({
+            inputHistory: Array.from({ length: 20 }, (_, i) => `command ${i} with fix prefix`),
+          });
+
+          const completions = await testCompletionEngine.getCompletions('command', 7, manyHistoryContext);
+
+          const historyCompletions = completions.filter(c => c.type === 'history');
+          expect(historyCompletions.length).toBeLessThanOrEqual(5);
+        });
+
+        it('should score more recent history higher', async () => {
+          const completions = await testCompletionEngine.getCompletions('add', 3, testContext);
+
+          const historyCompletions = completions.filter(c => c.type === 'history');
+          if (historyCompletions.length > 1) {
+            // More recent entries should have higher scores
+            expect(historyCompletions[0].score).toBeGreaterThan(historyCompletions[1].score);
+          }
+        });
+      });
+
+      describe('Task Pattern Provider', () => {
+        it('should suggest common task patterns', async () => {
+          const completions = await testCompletionEngine.getCompletions('fix', 3, testContext);
+
+          expect(completions.some(c => c.value === 'fix the bug in')).toBe(true);
+          expect(completions.some(c => c.type === 'template')).toBe(true);
+        });
+
+        it('should provide pattern suggestions for various action verbs', async () => {
+          const actionVerbs = ['add', 'update', 'implement', 'create', 'remove', 'refactor', 'test', 'document'];
+
+          for (const verb of actionVerbs) {
+            const completions = await testCompletionEngine.getCompletions(verb, verb.length, testContext);
+            const templateCompletions = completions.filter(c => c.type === 'template');
+            expect(templateCompletions.length).toBeGreaterThan(0);
+            expect(templateCompletions[0].icon).toBe('✨');
+          }
+        });
+
+        it('should match case insensitive patterns', async () => {
+          const completions = await testCompletionEngine.getCompletions('FIX', 3, testContext);
+
+          expect(completions.some(c => c.value === 'fix the bug in')).toBe(true);
+        });
+      });
+    });
+
+    describe('Tab Completion Integration', () => {
+      let mockAdvancedInput: React.Component;
+      let mockCompletionContext: CompletionContext;
+
+      beforeEach(() => {
+        mockCompletionContext = createTestContext();
+        vi.clearAllTimers();
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
+      });
+
+      describe('Debouncing Behavior', () => {
+        it('should debounce completion requests', async () => {
+          const completionSpy = vi.spyOn(testCompletionEngine, 'getCompletions');
+
+          // Simulate the AdvancedInput component's debounced behavior
+          const triggerCompletion = async (input: string) => {
+            return new Promise<void>((resolve) => {
+              setTimeout(async () => {
+                await testCompletionEngine.getCompletions(input, input.length, mockCompletionContext);
+                resolve();
+              }, 150); // debounceMs = 150
+            });
+          };
+
+          // Simulate rapid input changes
+          triggerCompletion('/h');
+          triggerCompletion('/he');
+          triggerCompletion('/hel');
+          triggerCompletion('/help');
+
+          // Should not have called engine yet
+          expect(completionSpy).not.toHaveBeenCalled();
+
+          // Advance time past debounce threshold
+          vi.advanceTimersByTime(150);
+          await vi.runAllTimersAsync();
+
+          // Should have called only once with the final input
+          expect(completionSpy).toHaveBeenCalledTimes(1);
+          expect(completionSpy).toHaveBeenLastCalledWith('/help', 5, mockCompletionContext);
+        });
+
+        it('should respect custom debounce timing', async () => {
+          const completionSpy = vi.spyOn(testCompletionEngine, 'getCompletions');
+          const customDebounce = 300;
+
+          const triggerCompletion = async (input: string) => {
+            return new Promise<void>((resolve) => {
+              setTimeout(async () => {
+                await testCompletionEngine.getCompletions(input, input.length, mockCompletionContext);
+                resolve();
+              }, customDebounce);
+            });
+          };
+
+          triggerCompletion('/status');
+
+          // Should not complete before custom debounce time
+          vi.advanceTimersByTime(200);
+          await vi.runAllTimersAsync();
+          expect(completionSpy).not.toHaveBeenCalled();
+
+          // Should complete after custom debounce time
+          vi.advanceTimersByTime(100);
+          await vi.runAllTimersAsync();
+          expect(completionSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('should cancel previous debounced requests', async () => {
+          const completionSpy = vi.spyOn(testCompletionEngine, 'getCompletions');
+
+          // Simulate the component's behavior of clearing previous timeouts
+          let timeoutId: NodeJS.Timeout | null = null;
+
+          const scheduleCompletion = (input: string) => {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+            timeoutId = setTimeout(async () => {
+              await testCompletionEngine.getCompletions(input, input.length, mockCompletionContext);
+            }, 150);
+          };
+
+          scheduleCompletion('/h');
+          scheduleCompletion('/he');
+          scheduleCompletion('/help');
+
+          vi.advanceTimersByTime(150);
+          await vi.runAllTimersAsync();
+
+          // Should only have been called once with the final input
+          expect(completionSpy).toHaveBeenCalledTimes(1);
+          expect(completionSpy).toHaveBeenCalledWith('/help', 5, mockCompletionContext);
+        });
+      });
+
+      describe('Completion Triggering', () => {
+        it('should trigger completions for command inputs', async () => {
+          const completions = await testCompletionEngine.getCompletions('/st', 3, mockCompletionContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.some(c => c.type === 'command')).toBe(true);
+        });
+
+        it('should trigger completions for path inputs', async () => {
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockResolvedValue([
+            { name: 'test.js', isDirectory: () => false, isFile: () => true } as any,
+          ]);
+
+          const completions = await testCompletionEngine.getCompletions('edit ./te', 8, mockCompletionContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.some(c => c.type === 'file')).toBe(true);
+        });
+
+        it('should trigger completions for agent mentions', async () => {
+          const completions = await testCompletionEngine.getCompletions('@arc', 4, mockCompletionContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.some(c => c.type === 'agent')).toBe(true);
+        });
+
+        it('should not trigger completions for very short inputs', async () => {
+          const completions = await testCompletionEngine.getCompletions('a', 1, mockCompletionContext);
+
+          // History provider should not trigger for inputs < 2 chars
+          const historyCompletions = completions.filter(c => c.type === 'history');
+          expect(historyCompletions).toEqual([]);
+        });
+      });
+
+      describe('Smart Replacement', () => {
+        it('should replace command prefixes correctly', async () => {
+          // Simulate the AdvancedInput component's smart replacement logic
+          const input = '/hel';
+          const cursorPos = 4;
+          const suggestion = { value: '/help', type: 'command' };
+
+          // For commands, replace from start or after whitespace
+          const beforeCursor = input.substring(0, cursorPos);
+          const afterCursor = input.substring(cursorPos);
+          const commandMatch = beforeCursor.match(/(\s|^)(\/\S*)$/);
+
+          expect(commandMatch).toBeDefined();
+
+          if (commandMatch) {
+            const prefix = beforeCursor.substring(0, commandMatch.index! + commandMatch[1].length);
+            const newInput = prefix + suggestion.value + afterCursor;
+
+            expect(newInput).toBe('/help');
+          }
+        });
+
+        it('should replace word boundaries for non-command completions', async () => {
+          const input = 'create comp';
+          const cursorPos = 11;
+          const suggestion = { value: 'create component', type: 'history' };
+
+          const beforeCursor = input.substring(0, cursorPos);
+          const afterCursor = input.substring(cursorPos);
+          const wordMatch = beforeCursor.match(/(\S+)$/);
+
+          expect(wordMatch).toBeDefined();
+
+          if (wordMatch) {
+            const prefix = beforeCursor.substring(0, wordMatch.index!);
+            const newInput = prefix + suggestion.value + afterCursor;
+
+            expect(newInput).toBe('create component');
+          }
+        });
+      });
+    });
+
+    describe('Fuzzy Search Integration', () => {
+      const testSuggestions = [
+        { value: '/help', description: 'Show help' },
+        { value: '/health', description: 'Health check' },
+        { value: '/helicopter', description: 'Not a command' },
+        { value: '/session', description: 'Session management' },
+        { value: '/status', description: 'Task status' },
+      ];
+
+      describe('Fuse.js Integration', () => {
+        it('should use fuzzy matching with configurable threshold', () => {
+          const fuse = new Fuse(testSuggestions, {
+            keys: ['value', 'description'],
+            threshold: 0.4,
+            includeScore: true
+          });
+
+          const results = fuse.search('hlp');
+          expect(results.length).toBeGreaterThan(0);
+          expect(results[0].item.value).toBe('/help');
+        });
+
+        it('should match across multiple fields', () => {
+          const fuse = new Fuse(testSuggestions, {
+            keys: ['value', 'description'],
+            threshold: 0.4,
+            includeScore: true
+          });
+
+          const results = fuse.search('check');
+          expect(results.length).toBeGreaterThan(0);
+          expect(results.some(r => r.item.value === '/health')).toBe(true);
+        });
+
+        it('should respect threshold boundaries', () => {
+          const strictFuse = new Fuse(testSuggestions, {
+            keys: ['value'],
+            threshold: 0.1, // Very strict
+            includeScore: true
+          });
+
+          const lenientFuse = new Fuse(testSuggestions, {
+            keys: ['value'],
+            threshold: 0.8, // Very lenient
+            includeScore: true
+          });
+
+          const strictResults = strictFuse.search('xyz');
+          const lenientResults = lenientFuse.search('xyz');
+
+          expect(strictResults.length).toBeLessThanOrEqual(lenientResults.length);
+        });
+      });
+
+      describe('Threshold Behavior', () => {
+        it('should exclude poor matches below threshold', () => {
+          const fuse = new Fuse(testSuggestions, {
+            keys: ['value'],
+            threshold: 0.3,
+            includeScore: true
+          });
+
+          const results = fuse.search('completelydifferent');
+          expect(results.length).toBe(0);
+        });
+
+        it('should include good matches above threshold', () => {
+          const fuse = new Fuse(testSuggestions, {
+            keys: ['value'],
+            threshold: 0.5,
+            includeScore: true
+          });
+
+          const results = fuse.search('hlp'); // Should match 'help'
+          expect(results.length).toBeGreaterThan(0);
+          expect(results[0].score).toBeLessThan(0.5);
+        });
+
+        it('should order results by relevance score', () => {
+          const fuse = new Fuse(testSuggestions, {
+            keys: ['value'],
+            threshold: 0.6,
+            includeScore: true
+          });
+
+          const results = fuse.search('hel');
+          if (results.length > 1) {
+            for (let i = 0; i < results.length - 1; i++) {
+              expect(results[i].score).toBeLessThanOrEqual(results[i + 1].score);
+            }
+          }
+        });
+      });
+
+      describe('Combined Results', () => {
+        it('should merge engine results with fuzzy search', async () => {
+          // Test the AdvancedInput component's logic for combining engine + fuzzy results
+          const engineResults = await testCompletionEngine.getCompletions('/h', 2, testContext);
+
+          // Simulate fuzzy search on fallback suggestions
+          const fallbackSuggestions = testSuggestions;
+          const fuse = new Fuse(fallbackSuggestions, {
+            keys: ['value', 'description'],
+            threshold: 0.4
+          });
+
+          const fuzzyResults = fuse.search('/h').map(result => result.item);
+
+          // Combine and deduplicate
+          const allSuggestions = [...engineResults, ...fuzzyResults];
+          const seen = new Set<string>();
+          const deduplicated = allSuggestions.filter(s => {
+            if (seen.has(s.value)) return false;
+            seen.add(s.value);
+            return true;
+          });
+
+          expect(deduplicated.length).toBeGreaterThan(0);
+          expect(deduplicated.length).toBeLessThanOrEqual(allSuggestions.length);
+        });
+
+        it('should limit total combined results', async () => {
+          // Simulate AdvancedInput's behavior of limiting to 10 suggestions
+          const engineResults = await testCompletionEngine.getCompletions('', 0, testContext);
+          const fallbackSuggestions = Array.from({ length: 20 }, (_, i) => ({
+            value: `suggestion${i}`,
+            description: `Description ${i}`,
+          }));
+
+          const combined = [...engineResults, ...fallbackSuggestions];
+          const limited = combined.slice(0, 10);
+
+          expect(limited.length).toBeLessThanOrEqual(10);
+        });
+
+        it('should prioritize engine results over fuzzy matches', async () => {
+          const engineResults = await testCompletionEngine.getCompletions('/help', 5, testContext);
+          const fuzzyResults = [{ value: '/helicopter', description: 'Not relevant' }];
+
+          const combined = [...engineResults, ...fuzzyResults];
+
+          // Engine results should appear first (higher scores)
+          if (engineResults.length > 0 && fuzzyResults.length > 0) {
+            expect(combined[0]).toBe(engineResults[0]);
+          }
+        });
+      });
+    });
+
+    describe('Context-Aware Completions', () => {
+      describe('Project Context', () => {
+        it('should use project path for file completions', async () => {
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockResolvedValue([
+            { name: 'src', isDirectory: () => true, isFile: () => false } as any,
+          ]);
+
+          const customContext = createTestContext({
+            projectPath: '/custom/project/path',
+          });
+
+          const completions = await testCompletionEngine.getCompletions('./s', 3, customContext);
+
+          expect(fs.readdir).toHaveBeenCalledWith(
+            expect.stringContaining('/custom/project/path'),
+            expect.any(Object)
+          );
+        });
+
+        it('should adapt to different project structures', async () => {
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockResolvedValue([
+            { name: 'lib', isDirectory: () => true, isFile: () => false } as any,
+            { name: 'dist', isDirectory: () => true, isFile: () => false } as any,
+            { name: 'index.js', isDirectory: () => false, isFile: () => true } as any,
+          ]);
+
+          const completions = await testCompletionEngine.getCompletions('./l', 3, testContext);
+
+          expect(completions.some(c => c.value.includes('lib'))).toBe(true);
+        });
+      });
+
+      describe('Session History', () => {
+        it('should prioritize recent input history', async () => {
+          const recentHistoryContext = createTestContext({
+            inputHistory: [
+              'recently used command',
+              'fix recent bug',
+              'older command',
+            ],
+          });
+
+          const completions = await testCompletionEngine.getCompletions('rec', 3, recentHistoryContext);
+
+          const historyCompletions = completions.filter(c => c.type === 'history');
+          if (historyCompletions.length > 1) {
+            expect(historyCompletions[0].value).toBe('recently used command');
+          }
+        });
+
+        it('should limit history search to recent entries', async () => {
+          const manyHistoryContext = createTestContext({
+            inputHistory: Array.from({ length: 100 }, (_, i) => `command ${i}`),
+          });
+
+          const completions = await testCompletionEngine.getCompletions('command', 7, manyHistoryContext);
+
+          // Should only consider last 50 commands (as per implementation)
+          const historyCompletions = completions.filter(c => c.type === 'history');
+          expect(historyCompletions.length).toBeLessThanOrEqual(5);
+        });
+      });
+
+      describe('Recent Tasks', () => {
+        it('should provide completions for recent task IDs', async () => {
+          const completions = await testCompletionEngine.getCompletions('task_', 5, testContext);
+
+          expect(completions.length).toBeGreaterThan(0);
+          expect(completions.every(c => c.type === 'task')).toBe(true);
+          expect(completions.every(c => c.value.startsWith('task_'))).toBe(true);
+        });
+
+        it('should include task descriptions in completions', async () => {
+          const completions = await testCompletionEngine.getCompletions('task_abc', 8, testContext);
+
+          expect(completions[0].description).toBe('Implement authentication');
+        });
+
+        it('should limit task suggestions appropriately', async () => {
+          const manyTasksContext = createTestContext({
+            recentTasks: Array.from({ length: 20 }, (_, i) => ({
+              id: `task_${i.toString().padStart(3, '0')}`,
+              description: `Task ${i}`,
+            })),
+          });
+
+          const completions = await testCompletionEngine.getCompletions('task_', 5, manyTasksContext);
+
+          expect(completions.length).toBeLessThanOrEqual(10);
+        });
+      });
+
+      describe('Dynamic Context Updates', () => {
+        it('should reflect context changes in completions', async () => {
+          const initialCompletions = await testCompletionEngine.getCompletions('@dev', 4, testContext);
+
+          const newContext = createTestContext({
+            agents: ['planner', 'specialist', 'custom-agent'],
+          });
+
+          const updatedCompletions = await testCompletionEngine.getCompletions('@spec', 5, newContext);
+
+          expect(updatedCompletions.some(c => c.value === '@specialist')).toBe(true);
+          expect(updatedCompletions.some(c => c.value === '@developer')).toBe(false);
+        });
+
+        it('should handle empty context gracefully', async () => {
+          const emptyContext = createTestContext({
+            agents: [],
+            workflows: [],
+            recentTasks: [],
+            inputHistory: [],
+          });
+
+          const completions = await testCompletionEngine.getCompletions('@', 1, emptyContext);
+
+          expect(completions.filter(c => c.type === 'agent')).toEqual([]);
+        });
+
+        it('should validate context data types', async () => {
+          const invalidContext = {
+            projectPath: '',
+            agents: ['valid-agent'],
+            workflows: ['valid-workflow'],
+            recentTasks: [{ id: 'task_123', description: 'Valid task' }],
+            inputHistory: ['valid history'],
+          };
+
+          const completions = await testCompletionEngine.getCompletions('@valid', 6, invalidContext);
+
+          expect(completions.some(c => c.value === '@valid-agent')).toBe(true);
+        });
+      });
+
+      describe('Error Recovery', () => {
+        it('should handle provider errors gracefully', async () => {
+          const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+          // Force file system error in path provider
+          const fs = await import('fs/promises');
+          vi.mocked(fs.readdir).mockRejectedValue(new Error('Test error'));
+
+          const completions = await testCompletionEngine.getCompletions('./test', 6, testContext);
+
+          // Should continue with other providers despite path provider error
+          expect(completions.some(c => c.type === 'template')).toBe(true); // Pattern provider should still work
+          expect(consoleSpy).toHaveBeenCalled();
+
+          consoleSpy.mockRestore();
+        });
+
+        it('should handle malformed context gracefully', async () => {
+          const malformedContext = {
+            projectPath: null,
+            agents: undefined,
+            workflows: [],
+            recentTasks: null,
+            inputHistory: undefined,
+          } as any;
+
+          // Should not crash
+          await expect(
+            testCompletionEngine.getCompletions('/help', 5, malformedContext)
+          ).resolves.toBeDefined();
+        });
+
+        it('should continue functioning after individual provider failures', async () => {
+          const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+          // Create an engine with a provider that will fail
+          const brokenProvider = {
+            type: 'command' as const,
+            trigger: /^broken/,
+            priority: 999,
+            async getSuggestions() {
+              throw new Error('Simulated provider error');
+            },
+          };
+
+          testCompletionEngine.registerProvider(brokenProvider);
+
+          const completions = await testCompletionEngine.getCompletions('broken test', 11, testContext);
+
+          // Should continue with other providers despite the broken one
+          expect(completions.some(c => c.type === 'history')).toBe(true);
+          expect(consoleSpy).toHaveBeenCalled();
+
+          consoleSpy.mockRestore();
+        });
+      });
+    });
+
+    // Legacy tests for backward compatibility
+    it('should provide command completions', async () => {
+      const completions = await testCompletionEngine.getCompletions('/run', 4, testContext);
+
       expect(completions.length).toBeGreaterThan(0);
+      expect(completions.some(c => c.value.includes('run'))).toBe(true);
     });
 
     it('should provide history-based completions', async () => {
-      const completions = await completionEngine.getCompletions('create', 'natural');
+      const completions = await testCompletionEngine.getCompletions('create', 6, testContext);
 
-      expect(completions).toContain('create component');
+      expect(completions.some(c => c.value.includes('create component'))).toBe(true);
       expect(completions.length).toBeGreaterThan(0);
     });
 
     it('should handle context-aware completions', async () => {
-      completionEngine.updateContext({
-        currentDirectory: '/src/components',
-        recentFiles: ['Button.tsx', 'Modal.tsx'],
-        activeTask: 'component-creation',
-      });
+      const fs = await import('fs/promises');
+      vi.mocked(fs.readdir).mockResolvedValue([
+        { name: 'Button.tsx', isDirectory: () => false, isFile: () => true } as any,
+        { name: 'Modal.tsx', isDirectory: () => false, isFile: () => true } as any,
+      ]);
 
-      const completions = await completionEngine.getCompletions('edit', 'natural');
+      const completions = await testCompletionEngine.getCompletions('edit But', 8, testContext);
 
-      expect(completions.some(c => c.includes('Button.tsx'))).toBe(true);
+      expect(completions.some(c => c.value.includes('Button.tsx'))).toBe(true);
     });
   });
 
