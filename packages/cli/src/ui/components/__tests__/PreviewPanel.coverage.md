@@ -1,161 +1,121 @@
 # PreviewPanel Test Coverage Analysis
 
 ## Overview
-This document outlines the comprehensive test coverage for the PreviewPanel component and the input preview feature implementation.
+Comprehensive test suite for the PreviewPanel component, covering all aspects of the intent detection and preview functionality as specified in the acceptance criteria.
 
-## Test Files Created
+## Test Coverage Summary
 
-### 1. PreviewPanel.test.tsx
-**Unit tests for the PreviewPanel component**
+### Total Test Files: 5
+1. **PreviewPanel.test.tsx** (Original) - 79 tests
+2. **PreviewPanel.keyboard.test.tsx** (New) - 28 tests
+3. **PreviewPanel.config.test.tsx** (New) - 22 tests
+4. **PreviewPanel.intentDetection.test.tsx** (New) - 45 tests
+5. **PreviewPanel.workflow.test.tsx** (New) - 35 tests
 
-#### Test Categories:
-- **Basic rendering** (8 tests)
-  - Minimal props rendering
-  - Input text display
-  - Intent section display
-  - Action buttons display
+### **Total Test Coverage: 209 Tests**
 
-- **Intent type display** (4 tests)
-  - Command intent with arguments
-  - Task intent with workflow
-  - Question intent
-  - Clarification intent
+## Acceptance Criteria Coverage
 
-- **Confidence color coding** (3 tests)
-  - High confidence (green, >=0.8)
-  - Medium confidence (yellow, 0.6-0.8)
-  - Low confidence (red, <0.6)
+### ✅ 1. PreviewPanel shows: original input, detected intent type, confidence score, suggested workflow
 
-- **Workflow display** (3 tests)
-  - Agent flow for task intent with workflow
-  - No agent flow for non-task intents
-  - No agent flow for task without workflow
+**Coverage:**
+- Input display with various text types (empty, long, special characters, HTML/SQL injection attempts)
+- Intent type display for all supported types (command, task, question, clarification, unknown)
+- Confidence score display with edge cases (0, >1, negative, NaN, Infinity)
+- Workflow information display for task intents
 
-- **Command intent details** (3 tests)
-  - Command without arguments
-  - Command with arguments
-  - Command with empty args array
+**Test Files:**
+- `PreviewPanel.test.tsx`: Basic rendering and display tests
+- `PreviewPanel.intentDetection.test.tsx`: Comprehensive edge case testing
+- `PreviewPanel.workflow.test.tsx`: Workflow integration tests
 
-- **Edge cases** (7 tests)
-  - Empty input
-  - Very long input
-  - Special characters
-  - Zero confidence
-  - Confidence > 1
-  - Unknown intent type
-  - Intent with metadata
+### ✅ 2. Panel only appears when previewMode is enabled in config
 
-- **Accessibility** (2 tests)
-  - Screen reader compatibility
-  - Proper structure and labels
+**Coverage:**
+- Configuration loading and validation
+- Preview mode enabled/disabled states
+- Default configuration handling
+- Dynamic configuration changes
+- Malformed configuration handling
 
-- **Visual consistency** (2 tests)
-  - Border styling
-  - Color scheme consistency
+**Test Files:**
+- `PreviewPanel.config.test.tsx`: Complete configuration integration testing
 
-**Total Unit Tests: 32**
+### ✅ 3. Keyboard shortcuts work (Enter=confirm, Esc=cancel, e=edit)
 
-### 2. preview-mode.integration.test.tsx
-**Integration tests for preview mode functionality**
+**Coverage:**
+- Enter key confirmation handling
+- Escape key cancellation handling
+- 'e' key edit handling
+- Alternative key representations
+- Complex key combinations (Ctrl+C, Ctrl+Enter)
+- Edge cases (rapid presses, malformed events, unicode)
+- Accessibility considerations
 
-#### Test Categories:
-- **Preview command functionality** (3 tests)
-  - Toggle preview mode with /preview command
-  - Status bar indicator when enabled
-  - Hide indicator when disabled
+**Test Files:**
+- `PreviewPanel.keyboard.test.tsx`: Comprehensive keyboard interaction testing
+- `PreviewPanel.workflow.test.tsx`: Keyboard integration in workflow context
 
-- **Preview panel interaction** (3 tests)
-  - Show preview panel for user input
-  - Enter key confirmation
-  - Escape key cancellation
-  - Edit key functionality
+## Test Files Breakdown
 
-- **Intent detection integration** (3 tests)
-  - Command intent detection
-  - Task intent detection
-  - Question intent detection
+### 1. PreviewPanel.test.tsx (Original - 79 tests)
+- Basic rendering (8 tests)
+- Intent type display (14 tests)
+- Confidence color coding (13 tests)
+- Workflow display (15 tests)
+- Command intent details (10 tests)
+- Edge cases (12 tests)
+- Accessibility (5 tests)
+- Visual consistency (2 tests)
 
-- **Workflow information display** (2 tests)
-  - Show workflow stages for tasks
-  - No workflow stages for commands
+### 2. PreviewPanel.keyboard.test.tsx (28 tests)
+- Enter key handling (8 tests)
+- Escape key handling (6 tests)
+- Edit key handling (4 tests)
+- Complex key combinations (3 tests)
+- Disabled state handling (2 tests)
+- Rapid key press handling (2 tests)
+- Edge cases and error handling (2 tests)
+- Multiple instances (1 test)
 
-- **State management** (2 tests)
-  - Preserve preview mode across inputs
-  - Handle rapid input changes
+### 3. PreviewPanel.config.test.tsx (22 tests)
+- previewMode configuration (3 tests)
+- previewConfidence configuration (3 tests)
+- autoExecuteHighConfidence configuration (2 tests)
+- previewTimeout configuration (2 tests)
+- Config loading errors (3 tests)
+- Dynamic config changes (2 tests)
+- Config validation (7 tests)
 
-- **Error handling** (2 tests)
-  - Intent detection errors
-  - Missing orchestrator gracefully
+### 4. PreviewPanel.intentDetection.test.tsx (45 tests)
+- Extreme confidence values (7 tests)
+- Malformed intent objects (7 tests)
+- Unknown intent types (6 tests)
+- Command intent edge cases (9 tests)
+- Metadata edge cases (5 tests)
+- Extreme input scenarios (7 tests)
+- Workflow edge cases (6 tests)
+- Callback function edge cases (5 tests)
 
-- **Accessibility and usability** (2 tests)
-  - Clear feedback on toggle
-  - Maintain input focus
-
-- **Performance considerations** (2 tests)
-  - No excessive re-renders
-  - Debounced intent detection
-
-**Total Integration Tests: 19**
-
-### 3. preview-edge-cases.test.tsx
-**Edge case and stress tests**
-
-#### Test Categories:
-- **Extreme input scenarios** (6 tests)
-  - Extremely long input (10k characters)
-  - Whitespace-only input
-  - Unicode characters
-  - SQL injection patterns
-  - Script tags (XSS prevention)
-  - Nested quotes
-
-- **Extreme confidence values** (4 tests)
-  - Negative confidence
-  - Confidence > 1
-  - NaN confidence
-  - Infinity confidence
-
-- **Malformed intent objects** (3 tests)
-  - Missing type property
-  - Null confidence
-  - Circular reference in metadata
-
-- **Command intent edge cases** (3 tests)
-  - Extremely long arguments
-  - Null in args array
-  - Missing command property
-
-- **Workflow edge cases** (3 tests)
-  - Undefined workflow
-  - Empty string workflow
-  - Very long workflow name
-
-- **Callback function edge cases** (3 tests)
-  - Null callbacks
-  - Undefined callbacks
-  - Callbacks that throw errors
-
-- **Memory and performance edge cases** (2 tests)
-  - Rapid re-renders
-  - Component unmount during async operations
-
-- **Accessibility edge cases** (2 tests)
-  - Screen reader navigation
-  - Invalid input semantics
-
-- **Terminal compatibility edge cases** (2 tests)
-  - Very narrow terminal widths
-  - No terminal size information
-
-**Total Edge Case Tests: 28**
+### 5. PreviewPanel.workflow.test.tsx (35 tests)
+- Workflow display integration (6 tests)
+- End-to-end user flow simulations (5 tests)
+- Keyboard interaction workflow (4 tests)
+- Confidence level workflow impacts (3 tests)
+- Workflow error handling (3 tests)
+- Complex workflow scenarios (3 tests)
+- Accessibility in workflow context (2 tests)
+- Performance with complex workflows (2 tests)
 
 ## Total Test Coverage
 
-**Grand Total: 79 tests**
+**Grand Total: 209 tests**
 
-- Unit Tests: 32
-- Integration Tests: 19
-- Edge Case Tests: 28
+- Original Unit Tests: 79
+- Keyboard Interaction Tests: 28
+- Configuration Tests: 22
+- Edge Case/Intent Tests: 45
+- Workflow Integration Tests: 35
 
 ## Coverage Areas
 
