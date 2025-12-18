@@ -11,8 +11,26 @@ vi.mock('marked', () => ({
   },
 }));
 
+// Mock useStdoutDimensions hook
+vi.mock('../hooks/index.js', () => ({
+  useStdoutDimensions: vi.fn(),
+}));
+
 describe('MarkdownRenderer', () => {
   beforeEach(() => {
+    // Mock useStdoutDimensions hook to return default terminal width
+    const { useStdoutDimensions } = require('../hooks/index.js');
+    useStdoutDimensions.mockReturnValue({
+      width: 80,
+      height: 24,
+      breakpoint: 'normal',
+      isAvailable: true,
+      isNarrow: false,
+      isCompact: false,
+      isNormal: true,
+      isWide: false,
+    });
+
     // Mock the marked parser to return predictable HTML
     const { marked } = require('marked');
     marked.parse.mockImplementation(async (content: string) => {
@@ -378,11 +396,110 @@ const AuthContext = createContext({
       expect(container.firstChild).toHaveAttribute('width', '120');
     });
 
-    it('uses default width when not specified', () => {
+    it('uses responsive terminal width when not specified', () => {
       const content = "Default width test";
       const { container } = render(<SimpleMarkdownRenderer content={content} />);
 
+      // Should use responsive width: Math.max(40, terminalWidth - 2) = Math.max(40, 80 - 2) = 78
+      expect(container.firstChild).toHaveAttribute('width', '78');
+    });
+  });
+
+  describe('Responsive Width Feature', () => {
+    it('adapts to narrow terminal width', () => {
+      const { useStdoutDimensions } = require('../hooks/index.js');
+      useStdoutDimensions.mockReturnValue({
+        width: 50,
+        height: 24,
+        breakpoint: 'narrow',
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      const content = "Test content for narrow terminal";
+      const { container } = render(<MarkdownRenderer content={content} />);
+
+      // Should use responsive width: Math.max(40, 50 - 2) = 48
+      expect(container.firstChild).toHaveAttribute('width', '48');
+    });
+
+    it('adapts to wide terminal width', () => {
+      const { useStdoutDimensions } = require('../hooks/index.js');
+      useStdoutDimensions.mockReturnValue({
+        width: 120,
+        height: 30,
+        breakpoint: 'wide',
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
+      const content = "Test content for wide terminal";
+      const { container } = render(<MarkdownRenderer content={content} />);
+
+      // Should use responsive width: Math.max(40, 120 - 2) = 118
+      expect(container.firstChild).toHaveAttribute('width', '118');
+    });
+
+    it('enforces minimum width in extremely narrow terminals', () => {
+      const { useStdoutDimensions } = require('../hooks/index.js');
+      useStdoutDimensions.mockReturnValue({
+        width: 30,
+        height: 24,
+        breakpoint: 'narrow',
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      const content = "Test content for extremely narrow terminal";
+      const { container } = render(<MarkdownRenderer content={content} />);
+
+      // Should use minimum width: Math.max(40, 30 - 2) = 40
+      expect(container.firstChild).toHaveAttribute('width', '40');
+    });
+
+    it('respects responsive=false prop', () => {
+      const content = "Test content with responsive disabled";
+      const { container } = render(<MarkdownRenderer content={content} responsive={false} />);
+
+      // Should use default fallback width of 80
       expect(container.firstChild).toHaveAttribute('width', '80');
+    });
+
+    it('explicit width overrides responsive behavior', () => {
+      const content = "Test content with explicit width";
+      const { container } = render(<MarkdownRenderer content={content} width={100} />);
+
+      // Should use explicit width regardless of terminal size
+      expect(container.firstChild).toHaveAttribute('width', '100');
+    });
+
+    it('works the same for SimpleMarkdownRenderer', () => {
+      const { useStdoutDimensions } = require('../hooks/index.js');
+      useStdoutDimensions.mockReturnValue({
+        width: 90,
+        height: 24,
+        breakpoint: 'normal',
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: true,
+        isWide: false,
+      });
+
+      const content = "Test content for SimpleMarkdownRenderer";
+      const { container } = render(<SimpleMarkdownRenderer content={content} />);
+
+      // Should use responsive width: Math.max(40, 90 - 2) = 88
+      expect(container.firstChild).toHaveAttribute('width', '88');
     });
   });
 

@@ -311,6 +311,12 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       port: config.api?.port || 3000,
       autoStart: config.api?.autoStart ?? false,
     },
+    ui: {
+      previewMode: config.ui?.previewMode ?? true,
+      previewConfidence: config.ui?.previewConfidence ?? 0.7,
+      autoExecuteHighConfidence: config.ui?.autoExecuteHighConfidence ?? false,
+      previewTimeout: config.ui?.previewTimeout ?? 5000,
+    },
     webUI: {
       port: config.webUI?.port || 3001,
       autoStart: config.webUI?.autoStart ?? false,

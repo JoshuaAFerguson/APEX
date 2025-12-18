@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { marked } from 'marked';
+import { useStdoutDimensions } from '../hooks/index.js';
 
 export interface MarkdownRendererProps {
   content: string;
   width?: number;
+  responsive?: boolean; // Enable/disable responsive behavior (default: true)
 }
 
 /**
@@ -13,8 +15,16 @@ export interface MarkdownRendererProps {
  */
 export function MarkdownRenderer({
   content,
-  width = 80
+  width: explicitWidth,
+  responsive = true
 }: MarkdownRendererProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
+
   const [processed, setProcessed] = useState<string>(content);
 
   useEffect(() => {
@@ -39,7 +49,7 @@ export function MarkdownRenderer({
   }, [content]);
 
   return (
-    <Box flexDirection="column" width={width}>
+    <Box flexDirection="column" width={effectiveWidth}>
       <Text>{processed}</Text>
     </Box>
   );
@@ -50,12 +60,20 @@ export function MarkdownRenderer({
  */
 export function SimpleMarkdownRenderer({
   content,
-  width = 80
+  width: explicitWidth,
+  responsive = true
 }: MarkdownRendererProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
+
   const lines = content.split('\n');
 
   return (
-    <Box flexDirection="column" width={width}>
+    <Box flexDirection="column" width={effectiveWidth}>
       {lines.map((line, index) => {
         // Headers
         if (line.startsWith('# ')) {

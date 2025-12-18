@@ -2,6 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
+// Types for abbreviated labels
+type AbbreviationMode = 'full' | 'abbreviated' | 'auto';
+
+// Mapping of full labels to their abbreviated forms
+const ABBREVIATED_LABELS: Record<string, string> = {
+  'tokens:': 'tok:',
+  'cost:': '$',
+  'model:': 'mod:',
+  'active:': 'act:',
+  'idle:': 'idl:',
+  'stage:': 'stg:',
+  'session:': 'sess:',
+  'total:': 'tot:',
+  'api:': 'api:',  // Already short
+  'web:': 'web:',  // Already short
+};
+
 // Helper functions for formatting
 function formatTokens(input: number, output: number): string {
   const total = input + output;
@@ -42,6 +59,41 @@ function formatDetailedTime(milliseconds: number): string {
   } else {
     return `${seconds}s`;
   }
+}
+
+// Helper function to select appropriate label based on abbreviation mode
+function getEffectiveLabel(
+  segment: Segment,
+  abbreviationMode: AbbreviationMode,
+  terminalWidth: number
+): string | undefined {
+  if (!segment.label) return undefined;
+
+  const useAbbreviated =
+    abbreviationMode === 'abbreviated' ||
+    (abbreviationMode === 'auto' && terminalWidth < 80);
+
+  if (useAbbreviated && segment.abbreviatedLabel !== undefined) {
+    // Empty string abbreviation means no label should be shown when abbreviated
+    return segment.abbreviatedLabel === '' ? undefined : segment.abbreviatedLabel;
+  }
+
+  return segment.label;
+}
+
+// Calculate minWidth dynamically based on label mode
+function calculateMinWidth(
+  segment: Segment,
+  useAbbreviated: boolean
+): number {
+  const labelLength = useAbbreviated
+    ? (segment.abbreviatedLabel?.length ?? segment.label?.length ?? 0)
+    : (segment.label?.length ?? 0);
+
+  const valueLength = segment.value.length;
+  const iconLength = segment.icon ? segment.icon.length + 1 : 0;
+
+  return labelLength + valueLength + iconLength;
 }
 
 export interface StatusBarProps {
@@ -147,21 +199,38 @@ export function StatusBar({
       justifyContent="space-between"
     >
       <Box gap={2}>
-        {segments.left.map((seg, i) => (
-          <Text key={i}>
-            <Text color={seg.iconColor}>{seg.icon}</Text>
-            <Text color={seg.valueColor}>{seg.value}</Text>
-          </Text>
-        ))}
+        {segments.left.map((seg, i) => {
+          // Determine abbreviation mode based on display mode
+          const abbreviationMode: AbbreviationMode =
+            displayMode === 'compact' ? 'abbreviated' :
+            displayMode === 'verbose' ? 'full' :
+            'auto';
+          const effectiveLabel = getEffectiveLabel(seg, abbreviationMode, terminalWidth);
+          return (
+            <Text key={i}>
+              <Text color={seg.iconColor}>{seg.icon}</Text>
+              {effectiveLabel && <Text color={seg.labelColor || 'gray'}>{effectiveLabel}</Text>}
+              <Text color={seg.valueColor}>{seg.value}</Text>
+            </Text>
+          );
+        })}
       </Box>
 
       <Box gap={2}>
-        {segments.right.map((seg, i) => (
-          <Text key={i}>
-            <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>
-            <Text color={seg.valueColor}>{seg.value}</Text>
-          </Text>
-        ))}
+        {segments.right.map((seg, i) => {
+          // Determine abbreviation mode based on display mode
+          const abbreviationMode: AbbreviationMode =
+            displayMode === 'compact' ? 'abbreviated' :
+            displayMode === 'verbose' ? 'full' :
+            'auto';
+          const effectiveLabel = getEffectiveLabel(seg, abbreviationMode, terminalWidth);
+          return (
+            <Text key={i}>
+              {effectiveLabel && <Text color={seg.labelColor || 'gray'}>{effectiveLabel}</Text>}
+              <Text color={seg.valueColor}>{seg.value}</Text>
+            </Text>
+          );
+        })}
       </Box>
     </Box>
   );
@@ -171,6 +240,7 @@ interface Segment {
   icon?: string;
   iconColor?: string;
   label?: string;
+  abbreviatedLabel?: string;
   labelColor?: string;
   value: string;
   valueColor: string;
@@ -180,10 +250,17 @@ interface Segment {
 function buildSegments(
   props: StatusBarProps,
   elapsed: string,
-  terminalWidth: number
+  terminalWidth: number,
+  abbreviationMode: AbbreviationMode = 'auto'
 ): { left: Segment[]; right: Segment[] } {
   const left: Segment[] = [];
   const right: Segment[] = [];
+
+  // Determine effective abbreviation mode based on display mode
+  const effectiveAbbreviationMode: AbbreviationMode =
+    props.displayMode === 'compact' ? 'abbreviated' :
+    props.displayMode === 'verbose' ? 'full' :
+    abbreviationMode;
 
   // Handle compact mode - minimal status information
   if (props.displayMode === 'compact') {
@@ -205,6 +282,7 @@ function buildSegments(
     }
 
     if (props.cost !== undefined) {
+      // In compact mode, just show the cost value without label since space is critical
       right.push({
         value: formatCost(props.cost),
         valueColor: 'green',
@@ -278,6 +356,7 @@ function buildSegments(
   if (props.apiUrl) {
     left.push({
       label: 'api:',
+      abbreviatedLabel: 'api:',
       labelColor: 'gray',
       value: props.apiUrl.replace('http://localhost:', ''),
       valueColor: 'green',
@@ -288,6 +367,7 @@ function buildSegments(
   if (props.webUrl) {
     left.push({
       label: 'web:',
+      abbreviatedLabel: 'web:',
       labelColor: 'gray',
       value: props.webUrl.replace('http://localhost:', ''),
       valueColor: 'green',
@@ -311,6 +391,7 @@ function buildSegments(
     if (totalActiveTime !== undefined && totalIdleTime !== undefined) {
       right.push({
         label: 'active:',
+        abbreviatedLabel: 'act:',
         labelColor: 'gray',
         value: formatDetailedTime(totalActiveTime),
         valueColor: 'green',
@@ -319,6 +400,7 @@ function buildSegments(
 
       right.push({
         label: 'idle:',
+        abbreviatedLabel: 'idl:',
         labelColor: 'gray',
         value: formatDetailedTime(totalIdleTime),
         valueColor: 'yellow',
@@ -330,6 +412,7 @@ function buildSegments(
     if (currentStageElapsed !== undefined && props.workflowStage) {
       right.push({
         label: 'stage:',
+        abbreviatedLabel: 'stg:',
         labelColor: 'gray',
         value: formatDetailedTime(currentStageElapsed),
         valueColor: 'cyan',
@@ -345,6 +428,7 @@ function buildSegments(
     if (props.displayMode === 'verbose') {
       right.push({
         label: 'tokens:',
+        abbreviatedLabel: 'tok:',
         labelColor: 'gray',
         value: formatTokenBreakdown(props.tokens.input, props.tokens.output),
         valueColor: 'cyan',
@@ -354,6 +438,7 @@ function buildSegments(
       // Also show total for clarity in verbose mode
       right.push({
         label: 'total:',
+        abbreviatedLabel: 'tot:',
         labelColor: 'gray',
         value: formatTokens(props.tokens.input, props.tokens.output),
         valueColor: 'blue',
@@ -362,6 +447,7 @@ function buildSegments(
     } else {
       right.push({
         label: 'tokens:',
+        abbreviatedLabel: 'tok:',
         labelColor: 'gray',
         value: formatTokens(props.tokens.input, props.tokens.output),
         valueColor: 'cyan',
@@ -371,10 +457,14 @@ function buildSegments(
   }
 
   if (props.cost !== undefined) {
+    // Special handling for cost: when abbreviated, show just the value without prefix
+    // since the value already has $ symbol
+    const costValue = `$${props.cost.toFixed(4)}`;
     right.push({
       label: 'cost:',
+      abbreviatedLabel: '', // Empty abbreviation means no label when abbreviated
       labelColor: 'gray',
-      value: `$${props.cost.toFixed(4)}`,
+      value: costValue,
       valueColor: 'green',
       minWidth: 12,
     });
@@ -383,6 +473,7 @@ function buildSegments(
     if (props.displayMode === 'verbose' && props.sessionCost !== undefined && props.sessionCost !== props.cost) {
       right.push({
         label: 'session:',
+        abbreviatedLabel: 'sess:',
         labelColor: 'gray',
         value: `$${props.sessionCost.toFixed(4)}`,
         valueColor: 'yellow',
@@ -394,6 +485,7 @@ function buildSegments(
   if (props.model) {
     right.push({
       label: 'model:',
+      abbreviatedLabel: 'mod:',
       labelColor: 'gray',
       value: props.model,
       valueColor: 'blue',

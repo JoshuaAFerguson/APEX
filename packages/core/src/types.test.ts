@@ -9,6 +9,7 @@ import {
   DisplayMode,
   VerboseDebugData,
   AgentUsage,
+  UIConfigSchema,
 } from './types';
 
 describe('AgentModelSchema', () => {
@@ -21,6 +22,61 @@ describe('AgentModelSchema', () => {
 
   it('should reject invalid models', () => {
     expect(() => AgentModelSchema.parse('gpt-4')).toThrow();
+  });
+});
+
+describe('UIConfigSchema', () => {
+  it('should accept valid UI config with all fields', () => {
+    const config = UIConfigSchema.parse({
+      previewMode: true,
+      previewConfidence: 0.8,
+      autoExecuteHighConfidence: true,
+      previewTimeout: 10000,
+    });
+    expect(config.previewMode).toBe(true);
+    expect(config.previewConfidence).toBe(0.8);
+    expect(config.autoExecuteHighConfidence).toBe(true);
+    expect(config.previewTimeout).toBe(10000);
+  });
+
+  it('should apply defaults for optional fields', () => {
+    const config = UIConfigSchema.parse({});
+    expect(config.previewMode).toBe(true);
+    expect(config.previewConfidence).toBe(0.7);
+    expect(config.autoExecuteHighConfidence).toBe(false);
+    expect(config.previewTimeout).toBe(5000);
+  });
+
+  it('should accept partial config with defaults', () => {
+    const config = UIConfigSchema.parse({
+      previewMode: false,
+      previewConfidence: 0.9,
+    });
+    expect(config.previewMode).toBe(false);
+    expect(config.previewConfidence).toBe(0.9);
+    expect(config.autoExecuteHighConfidence).toBe(false); // default
+    expect(config.previewTimeout).toBe(5000); // default
+  });
+
+  it('should validate previewConfidence range', () => {
+    // Valid range (0-1)
+    expect(() => UIConfigSchema.parse({ previewConfidence: 0.0 })).not.toThrow();
+    expect(() => UIConfigSchema.parse({ previewConfidence: 1.0 })).not.toThrow();
+    expect(() => UIConfigSchema.parse({ previewConfidence: 0.5 })).not.toThrow();
+
+    // Invalid range
+    expect(() => UIConfigSchema.parse({ previewConfidence: -0.1 })).toThrow();
+    expect(() => UIConfigSchema.parse({ previewConfidence: 1.1 })).toThrow();
+  });
+
+  it('should validate previewTimeout minimum value', () => {
+    // Valid timeout (>= 1000ms)
+    expect(() => UIConfigSchema.parse({ previewTimeout: 1000 })).not.toThrow();
+    expect(() => UIConfigSchema.parse({ previewTimeout: 5000 })).not.toThrow();
+
+    // Invalid timeout (< 1000ms)
+    expect(() => UIConfigSchema.parse({ previewTimeout: 999 })).toThrow();
+    expect(() => UIConfigSchema.parse({ previewTimeout: 500 })).toThrow();
   });
 });
 
@@ -191,12 +247,22 @@ describe('ApexConfigSchema', () => {
         url: 'http://localhost:4000',
         port: 4000,
       },
+      ui: {
+        previewMode: false,
+        previewConfidence: 0.8,
+        autoExecuteHighConfidence: true,
+        previewTimeout: 7500,
+      },
     });
     expect(config.project.language).toBe('typescript');
     expect(config.autonomy?.default).toBe('review-before-merge');
     expect(config.agents?.enabled).toEqual(['planner', 'developer']);
     expect(config.git?.branchPrefix).toBe('feature/');
     expect(config.limits?.maxTokensPerTask).toBe(100000);
+    expect(config.ui?.previewMode).toBe(false);
+    expect(config.ui?.previewConfidence).toBe(0.8);
+    expect(config.ui?.autoExecuteHighConfidence).toBe(true);
+    expect(config.ui?.previewTimeout).toBe(7500);
   });
 
   it('should apply defaults for optional fields', () => {

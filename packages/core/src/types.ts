@@ -122,6 +122,14 @@ export const ModelsConfigSchema = z.object({
 });
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 
+export const UIConfigSchema = z.object({
+  previewMode: z.boolean().optional().default(true),
+  previewConfidence: z.number().min(0).max(1).optional().default(0.7),
+  autoExecuteHighConfidence: z.boolean().optional().default(false),
+  previewTimeout: z.number().min(1000).optional().default(5000),
+});
+export type UIConfig = z.infer<typeof UIConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -148,6 +156,7 @@ export const ApexConfigSchema = z.object({
       autoStart: z.boolean().optional().default(false),
     })
     .optional(),
+  ui: UIConfigSchema.optional(),
   webUI: z
     .object({
       port: z.number().optional().default(3001),
