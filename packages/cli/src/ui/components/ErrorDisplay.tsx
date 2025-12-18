@@ -1,5 +1,28 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/index.js';
+
+// Helper functions for responsive behavior (following ActivityLog patterns)
+const formatTimestamp = (date: Date, abbreviated: boolean = false): string => {
+  if (abbreviated) {
+    return date.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+const truncateMessage = (message: string, maxLength: number): string => {
+  if (message.length <= maxLength) return message;
+  return message.substring(0, maxLength - 3) + '...';
+};
 
 export interface ErrorSuggestion {
   title: string;
@@ -31,10 +54,18 @@ export function ErrorDisplay({
   showStack = false,
   showSuggestions = true,
   context,
-  width = 80,
+  width: explicitWidth,
   onRetry,
   onDismiss,
 }: ErrorDisplayProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, breakpoint, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Calculate responsive configuration
+  const messageMaxLength = Math.max(30, width - 10); // Reserve for borders/padding
+  const suggestionDescMaxLength = Math.max(25, width - 16); // Indent + icon
+  const contextValueMaxLength = Math.max(20, width - 20);
   const errorMessage = typeof error === 'string' ? error : error.message;
   const errorStack = typeof error === 'string' ? undefined : error.stack;
 

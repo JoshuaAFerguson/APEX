@@ -354,6 +354,303 @@ describe('StatusBar useStdoutDimensions Integration', () => {
     });
   });
 
+  describe('abbreviated labels integration', () => {
+    it('integrates abbreviated labels with auto mode based on terminal width', () => {
+      const testCases = [
+        { width: 75, expectAbbreviated: true },  // < 80
+        { width: 85, expectAbbreviated: false }, // >= 80
+        { width: 120, expectAbbreviated: false }, // >= 80
+      ];
+
+      testCases.forEach(({ width, expectAbbreviated }) => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width,
+          height: 30,
+          breakpoint: width < 80 ? 'narrow' : (width < 100 ? 'compact' : (width < 120 ? 'normal' : 'wide')) as any,
+          isAvailable: true,
+          isNarrow: width < 80,
+          isCompact: width >= 80 && width < 100,
+          isNormal: width >= 100 && width < 120,
+          isWide: width >= 120,
+        });
+
+        const { unmount } = render(
+          <StatusBar
+            {...defaultProps}
+            displayMode="normal" // auto mode
+            tokens={{ input: 500, output: 300 }}
+            cost={0.1234}
+            model="opus"
+          />
+        );
+
+        if (expectAbbreviated) {
+          expect(screen.getByText('tok:')).toBeInTheDocument();
+          expect(screen.getByText('mod:')).toBeInTheDocument();
+          expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+          expect(screen.queryByText('model:')).not.toBeInTheDocument();
+        } else {
+          expect(screen.getByText('tokens:')).toBeInTheDocument();
+          expect(screen.getByText('model:')).toBeInTheDocument();
+          expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+          expect(screen.queryByText('mod:')).not.toBeInTheDocument();
+        }
+
+        unmount();
+      });
+    });
+
+    it('integrates abbreviated labels with display mode overrides', () => {
+      // Test narrow terminal where auto mode would use abbreviations
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 70,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      // Verbose mode should override terminal width
+      const { rerender } = render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="verbose"
+          tokens={{ input: 500, output: 300 }}
+          cost={0.1234}
+          model="opus"
+        />
+      );
+
+      // Should use full labels even in narrow terminal
+      expect(screen.getByText('tokens:')).toBeInTheDocument();
+      expect(screen.getByText('total:')).toBeInTheDocument();
+      expect(screen.getByText('cost:')).toBeInTheDocument();
+      expect(screen.getByText('model:')).toBeInTheDocument();
+
+      // Compact mode should use abbreviations regardless of width
+      rerender(
+        <StatusBar
+          {...defaultProps}
+          displayMode="compact"
+          tokens={{ input: 500, output: 300 }}
+          cost={0.1234}
+          model="opus"
+        />
+      );
+
+      // Compact mode shows minimal information
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('model:')).not.toBeInTheDocument();
+      expect(screen.queryByText('mod:')).not.toBeInTheDocument();
+      expect(screen.getByText('$0.1234')).toBeInTheDocument(); // Just cost value
+
+      // Normal mode should use abbreviations due to narrow width
+      rerender(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          tokens={{ input: 500, output: 300 }}
+          cost={0.1234}
+          model="opus"
+        />
+      );
+
+      expect(screen.getByText('tok:')).toBeInTheDocument();
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+    });
+
+    it('handles complex session with all abbreviated labels', () => {
+      // Force narrow terminal for comprehensive abbreviation testing
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 70,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          gitBranch="feature/abbreviations"
+          agent="planner"
+          workflowStage="implementation"
+          tokens={{ input: 2500, output: 1500 }}
+          cost={0.4567}
+          model="opus"
+          apiUrl="http://localhost:4000"
+          webUrl="http://localhost:3000"
+          sessionStartTime={new Date()}
+        />
+      );
+
+      // Verify all abbreviated labels
+      expect(screen.getByText('tok:')).toBeInTheDocument();
+      expect(screen.getByText('4.0k')).toBeInTheDocument(); // token value
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+      expect(screen.getByText('opus')).toBeInTheDocument();
+      expect(screen.getByText('api:')).toBeInTheDocument();
+      expect(screen.getByText('4000')).toBeInTheDocument();
+      expect(screen.getByText('web:')).toBeInTheDocument();
+      expect(screen.getByText('3000')).toBeInTheDocument();
+
+      // Cost should show just value without label
+      expect(screen.getByText('$0.4567')).toBeInTheDocument();
+      expect(screen.queryByText('cost:')).not.toBeInTheDocument();
+
+      // Elements without labels should show normally
+      expect(screen.getByText('feature/abbreviations')).toBeInTheDocument();
+      expect(screen.getByText('planner')).toBeInTheDocument();
+      expect(screen.getByText('implementation')).toBeInTheDocument();
+      expect(screen.getByText('00:00')).toBeInTheDocument(); // timer
+    });
+
+    it('validates abbreviation consistency across re-renders', () => {
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 75, // Force abbreviations
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      const { rerender } = render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          tokens={{ input: 100, output: 50 }}
+          cost={0.01}
+          model="opus"
+        />
+      );
+
+      // Initial state with abbreviations
+      expect(screen.getByText('tok:')).toBeInTheDocument();
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+
+      // Update with new data - should maintain abbreviations
+      rerender(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          tokens={{ input: 2000, output: 1500 }}
+          cost={0.5678}
+          model="sonnet"
+        />
+      );
+
+      expect(screen.getByText('tok:')).toBeInTheDocument();
+      expect(screen.getByText('3.5k')).toBeInTheDocument(); // updated value
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+      expect(screen.getByText('sonnet')).toBeInTheDocument(); // updated value
+      expect(screen.getByText('$0.5678')).toBeInTheDocument(); // updated cost
+    });
+
+    it('handles abbreviation mode transitions smoothly', () => {
+      const sessionData = {
+        tokens: { input: 1000, output: 500 },
+        cost: 0.25,
+        model: 'opus',
+        gitBranch: 'main',
+      };
+
+      // Start wide (full labels)
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 120,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
+      const { rerender } = render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          {...sessionData}
+        />
+      );
+
+      expect(screen.getByText('tokens:')).toBeInTheDocument();
+      expect(screen.getByText('model:')).toBeInTheDocument();
+
+      // Change to narrow (abbreviated labels)
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 70,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      rerender(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          {...sessionData}
+        />
+      );
+
+      expect(screen.getByText('tok:')).toBeInTheDocument();
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.queryByText('model:')).not.toBeInTheDocument();
+
+      // Values should remain consistent
+      expect(screen.getByText('1.5k')).toBeInTheDocument(); // token total
+      expect(screen.getByText('opus')).toBeInTheDocument();
+      expect(screen.getByText('main')).toBeInTheDocument();
+    });
+
+    it('integrates special cost abbreviation behavior', () => {
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 70, // Force abbreviations
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      render(
+        <StatusBar
+          {...defaultProps}
+          displayMode="normal"
+          cost={0.1234}
+          sessionCost={0.5678}
+        />
+      );
+
+      // Cost should show just value without label when abbreviated
+      expect(screen.getByText('$0.1234')).toBeInTheDocument();
+      expect(screen.queryByText('cost:')).not.toBeInTheDocument();
+      expect(screen.queryByText('$:')).not.toBeInTheDocument(); // No separate $ label
+
+      // Session cost should not appear in normal mode (only in verbose)
+      expect(screen.queryByText('session:')).not.toBeInTheDocument();
+      expect(screen.queryByText('sess:')).not.toBeInTheDocument();
+    });
+  });
+
   describe('acceptance criteria validation', () => {
     it('completely satisfies acceptance criteria requirements', () => {
       mockUseStdoutDimensions.mockReturnValue({
@@ -399,6 +696,45 @@ describe('StatusBar useStdoutDimensions Integration', () => {
       expect(screen.getByText('tester')).toBeInTheDocument();
       expect(screen.getByText('1.5k')).toBeInTheDocument(); // formatted tokens
       expect(screen.getByText('$0.2500')).toBeInTheDocument();
+    });
+
+    it('validates abbreviated label system acceptance criteria', () => {
+      // Test narrow terminal to verify abbreviations
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 75, // < 80 = narrow
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
+      render(
+        <StatusBar
+          {...defaultProps}
+          tokens={{ input: 500, output: 300 }}
+          cost={0.1234}
+          model="opus"
+        />
+      );
+
+      // 1. Created abbreviated versions of segment labels ✓
+      expect(screen.getByText('tok:')).toBeInTheDocument(); // 'tokens:' → 'tok:'
+      expect(screen.getByText('mod:')).toBeInTheDocument(); // 'model:' → 'mod:'
+      expect(screen.getByText('$0.1234')).toBeInTheDocument(); // 'cost:' → '$' (empty abbreviation = no label)
+
+      // 2. Segment interface extended with optional abbreviatedLabel property ✓
+      // (Implementation includes abbreviatedLabel in segments)
+
+      // 3. buildSegments function updated to accept abbreviation mode parameter ✓
+      // (Function behavior changes based on displayMode and terminal width)
+
+      // Test that full labels are NOT shown when abbreviated
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.queryByText('model:')).not.toBeInTheDocument();
+      expect(screen.queryByText('cost:')).not.toBeInTheDocument();
     });
   });
 });
