@@ -115,7 +115,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Syntax-highlighted code blocks** - Language-aware highlighting (`SyntaxHighlighter.tsx`)
 - 🟢 **Diff views** - Unified, split, and inline modes (`DiffViewer.tsx`)
 - 🟢 **Boxed UI elements** - Panels, cards, and bordered sections
-- 🟡 **Responsive layouts** - Basic support, needs enhancement
+- 🟢 **Responsive layouts** - Full 4-tier breakpoint system (narrow/compact/normal/wide)
 - 🟢 **Theme support** - Dark/light modes with ThemeContext
 
 ### Status Bar & Information Display
@@ -169,9 +169,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Agent activity panel** - AgentPanel.tsx with full mode and compact mode
 - 🟢 **Agent handoff animation** - Animated arrows (→→→), pulse effects, elapsed time display (see ADR-013)
 - 🟢 **Parallel execution view** - Shows agents working simultaneously with ⟂ icon, cyan styling (see ADR-012)
-- 🟢 **Subtask tree** - SubtaskTree.tsx exists, needs enhancements
+- 🟢 **Subtask tree** - Full collapse/expand, keyboard navigation, interactive subtask hierarchy
 - 🟢 **Workflow progress** - Visual workflow stage progression
-- ⚪ **Agent thought display** - Show agent reasoning (collapsible)
+- 🟢 **Agent thought display** - Complete thoughts system with `/thoughts` command, collapsible AgentThoughts components
 
 ### Session Management
 - 🟢 **Session persistence** - SessionStore fully implemented with CRUD
@@ -195,11 +195,11 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Wire ShortcutManager event handlers | 🟢 | Complete | `cli/src/repl.tsx`, `App.tsx` |
 | Real-time streaming to UI | 🟢 | Complete | `cli/src/repl.tsx` (agent:message, agent:tool-use, usage:updated events) |
 
-**Phase 2: Enhancements (MOSTLY COMPLETE)**
+**Phase 2: Enhancements (COMPLETE)**
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
 | AgentPanel enhancements (handoff, parallel) | 🟢 | Complete | `AgentPanel.tsx`, `HandoffIndicator.tsx`, `useAgentHandoff.ts` (see ADR-012, ADR-013, ADR-014) |
-| SubtaskTree enhancements (collapse/expand) | 🟡 | 1 day | `cli/src/ui/components/agents/SubtaskTree.tsx` |
+| SubtaskTree enhancements (collapse/expand) | 🟢 | Complete | `cli/src/ui/components/agents/SubtaskTree.tsx` |
 | Display modes (compact/verbose) | ⚪ | 0.5 day | `cli/src/repl.tsx` |
 
 **Phase 3: Polish & Testing (MEDIUM PRIORITY)**
@@ -208,7 +208,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
 | Documentation updates | ⚪ | 1 day | `docs/` |
 
-**Estimated Remaining**: 3-5 days
+**Estimated Remaining**: 2-3 days (display modes + testing)
 
 > **Key Finding**: Most core services (SessionStore, CompletionEngine, ShortcutManager, ConversationManager) are already implemented. Primary remaining work is **integration** and **UI component enhancements**.
 
