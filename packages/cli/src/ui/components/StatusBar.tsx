@@ -1,3 +1,32 @@
+/**
+ * Responsive StatusBar Component
+ *
+ * This component implements intelligent breakpoint-based segment adaptation that adjusts
+ * the displayed information based on terminal width. It uses a priority-based system
+ * to ensure the most important information is always visible.
+ *
+ * Architecture:
+ * - 5-tier priority system: CRITICAL > HIGH > MEDIUM > LOW
+ * - 3-tier responsive display: narrow (<80), normal (80-119), wide (>=120)
+ * - Progressive segment hiding and abbreviation based on available space
+ *
+ * Priority Assignments:
+ * - CRITICAL: Connection status, Session timer (always shown)
+ * - HIGH: Git branch, Agent, Cost, Model
+ * - MEDIUM: Workflow stage, Tokens, Subtask progress
+ * - LOW: Session name, API URLs, Preview/Verbose indicators
+ *
+ * Responsive Behavior:
+ * - Narrow (<80 cols): Shows only CRITICAL + HIGH priority with abbreviated labels
+ * - Normal (80-119 cols): Shows CRITICAL + HIGH + MEDIUM with full labels
+ * - Wide (>=120 cols): Shows all segments with full labels and extended details
+ *
+ * Display Modes:
+ * - 'compact': Always shows minimal segments (overrides responsive)
+ * - 'normal': Respects responsive tier filtering
+ * - 'verbose': Always shows all segments (overrides responsive)
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
