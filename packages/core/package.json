@@ -1,5 +1,5 @@
 {
-  "name": "@apexcli/core",
+  "name": "@apex/core",
   "version": "0.3.0",
   "description": "Core types and utilities for APEX",
   "main": "./dist/index.js",

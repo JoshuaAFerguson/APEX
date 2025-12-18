@@ -160,7 +160,7 @@ try {
 console.log('\n✅ Test 4: Integration with existing types');
 try {
   // Import other types to test integration
-  import('./types').then(types => {
+  import('./types.js').then(types => {
     // Test that VerboseDebugData can be used in broader contexts
     const debugData: VerboseDebugData = {
       agentTokens: { agent: { inputTokens: 100, outputTokens: 50 } },

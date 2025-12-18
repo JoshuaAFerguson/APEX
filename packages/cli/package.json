@@ -1,5 +1,5 @@
 {
-  "name": "@apexcli/cli",
+  "name": "@apex/cli",
   "version": "0.3.0",
   "description": "APEX - AI-powered development team automation CLI",
   "type": "module",
@@ -24,9 +24,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@apexcli/api": "^0.3.0",
-    "@apexcli/core": "^0.3.0",
-    "@apexcli/orchestrator": "^0.3.0",
+    "@apex/api": "^0.3.0",
+    "@apex/core": "^0.3.0",
+    "@apex/orchestrator": "^0.3.0",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
     "commander": "^11.1.0",

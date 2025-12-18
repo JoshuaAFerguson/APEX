@@ -78,7 +78,7 @@ You are a planning agent.
     orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
 
-    server = createServer({ orchestrator });
+    server = await createServer({ projectPath: testDir });
     await server.listen({ port: 0, host: '127.0.0.1' });
     port = server.server.address().port;
   });
@@ -463,7 +463,7 @@ You are a planning agent.
       const response = await fetch(`http://localhost:${port}/api/tasks/${task.id}/logs`);
       expect(response.ok).toBe(true);
 
-      const logs = await response.json();
+      const logs = await response.json() as any[];
 
       // Find thinking log entries
       const thinkingLogs = logs.filter((log: any) =>
@@ -504,7 +504,7 @@ You are a planning agent.
       const response = await fetch(`http://localhost:${port}/api/tasks/${task.id}`);
       expect(response.ok).toBe(true);
 
-      const taskDetails = await response.json();
+      const taskDetails = await response.json() as any;
       expect(taskDetails.id).toBe(task.id);
       expect(taskDetails.status).toBe('completed');
     });

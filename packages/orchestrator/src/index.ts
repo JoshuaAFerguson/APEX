@@ -293,31 +293,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           });
         }
 
-        await this.runWorkflow(task, workflow);
-        await this.updateTaskStatus(taskId, 'completed');
-        const completedTask = await this.store.getTask(taskId);
-        this.emit('task:completed', completedTask!);
+        const shouldComplete = await this.runWorkflow(task, workflow);
 
-        // Handle git operations (push and PR creation) for parent tasks only
-        if (!task.parentTaskId && completedTask) {
-          try {
-            const prResult = await this.handleTaskGitOperations(completedTask);
-            if (prResult?.success && prResult.prUrl) {
+        if (shouldComplete) {
+          await this.updateTaskStatus(taskId, 'completed');
+          const completedTask = await this.store.getTask(taskId);
+          this.emit('task:completed', completedTask!);
+
+          // Handle git operations (push and PR creation) for parent tasks only
+          if (!task.parentTaskId && completedTask) {
+            try {
+              const prResult = await this.handleTaskGitOperations(completedTask);
+              if (prResult?.success && prResult.prUrl) {
+                await this.store.addLog(taskId, {
+                  level: 'info',
+                  message: `Pull request created: ${prResult.prUrl}`,
+                });
+              }
+            } catch (error) {
+              // Log but don't fail the task if git operations fail
               await this.store.addLog(taskId, {
-                level: 'info',
-                message: `Pull request created: ${prResult.prUrl}`,
+                level: 'warn',
+                message: `Git operations failed: ${(error as Error).message}`,
               });
             }
-          } catch (error) {
-            // Log but don't fail the task if git operations fail
-            await this.store.addLog(taskId, {
-              level: 'warn',
-              message: `Git operations failed: ${(error as Error).message}`,
-            });
           }
         }
+        // If shouldComplete is false, subtasks are paused/incomplete
+        // Task stays in-progress and can be resumed later
 
-        return; // Success - exit the retry loop
+        return; // Exit the retry loop (either completed or staying in-progress)
       } catch (error) {
         lastError = error as Error;
 
@@ -767,8 +772,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   /**
    * Run the workflow for a task - with parallel stage execution
+   * Returns true if the task should be marked as completed, false if it should stay in-progress
    */
-  private async runWorkflow(task: Task, workflow: WorkflowDefinition): Promise<void> {
+  private async runWorkflow(task: Task, workflow: WorkflowDefinition): Promise<boolean> {
     const stageResults = new Map<string, StageResult>();
     const completedStages = new Set<string>();
     const inProgressStages = new Set<string>();
@@ -788,7 +794,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           level: 'info',
           message: 'Task was cancelled, stopping workflow execution',
         });
-        return;
+        return false; // Task was cancelled, don't mark as completed
       }
 
       // Find all stages ready to run (dependencies met, not completed, not in progress)
@@ -966,15 +972,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
         // Execute subtasks according to strategy
-        await this.executeSubtasks(task.id);
+        const allSubtasksComplete = await this.executeSubtasks(task.id);
 
-        // All subtasks completed successfully - workflow is done
-        await this.store.addLog(task.id, {
-          level: 'info',
-          message: `All subtasks completed. Workflow finished via decomposition.`,
-        });
-
-        return; // Exit workflow - subtasks handled the work
+        if (allSubtasksComplete) {
+          // All subtasks completed successfully - workflow is done
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `All subtasks completed. Workflow finished via decomposition.`,
+          });
+          return true; // Task can be marked as completed
+        } else {
+          // Some subtasks are incomplete (paused, pending, or failed)
+          // Task should stay in-progress, not be marked as completed
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `Subtask execution paused or incomplete. Task will remain in-progress.`,
+          });
+          return false; // Task should NOT be marked as completed
+        }
       }
     }
 
@@ -982,6 +997,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       level: 'info',
       message: `Workflow "${workflow.name}" completed successfully. Stages completed: ${Array.from(completedStages).join(', ')}`,
     });
+
+    return true; // Workflow completed, task can be marked as completed
   }
 
   /**
@@ -2319,8 +2336,9 @@ Parent: ${parentTask.description}`;
 
   /**
    * Execute subtasks according to their strategy
+   * Returns true if all subtasks completed successfully, false if any are incomplete/paused
    */
-  async executeSubtasks(parentTaskId: string): Promise<void> {
+  async executeSubtasks(parentTaskId: string): Promise<boolean> {
     await this.ensureInitialized();
 
     const parentTask = await this.store.getTask(parentTaskId);
@@ -2352,8 +2370,9 @@ Parent: ${parentTask.description}`;
         break;
     }
 
-    // After all subtasks complete, aggregate results and complete parent
-    await this.aggregateSubtaskResults(parentTaskId);
+    // After subtask execution, aggregate results and check if all are complete
+    const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+    return allComplete;
   }
 
   /**

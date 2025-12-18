@@ -30,10 +30,17 @@ export interface CompletionContext {
   inputHistory: string[];
 }
 
+export interface CompletionEngineConfig {
+  commands?: Array<{ name: string; description: string }>;
+  history?: string[];
+}
+
 export class CompletionEngine {
   private providers: CompletionProvider[] = [];
+  private config: CompletionEngineConfig = {};
 
-  constructor() {
+  constructor(config: CompletionEngineConfig = {}) {
+    this.config = config;
     this.registerDefaultProviders();
   }
 
@@ -83,8 +90,8 @@ export class CompletionEngine {
       type: 'command',
       trigger: /^\//,
       priority: 100,
-      async getSuggestions(input) {
-        const commands = [
+      getSuggestions: async (input) => {
+        const defaultCommands = [
           { name: '/help', desc: 'Show help', icon: '?' },
           { name: '/status', desc: 'Task status', icon: '📊' },
           { name: '/agents', desc: 'List agents', icon: '🤖' },
@@ -103,6 +110,14 @@ export class CompletionEngine {
           { name: '/verbose', desc: 'Toggle verbose mode', icon: '📢' },
           { name: '/thoughts', desc: 'Toggle thought visibility', icon: '💭' },
         ];
+
+        const configuredCommands = this.config.commands?.map(cmd => ({
+          name: cmd.name,
+          desc: cmd.description,
+          icon: '⚙️'
+        })) || [];
+
+        const commands = [...defaultCommands, ...configuredCommands];
 
         const query = input.toLowerCase();
         return commands
@@ -291,13 +306,18 @@ export class CompletionEngine {
       type: 'task',
       trigger: /^\w/,
       priority: 60,
-      async getSuggestions(input, cursorPos, context) {
+      getSuggestions: async (input, cursorPos, context) => {
         if (input.length < 2) return [];
 
         const prefix = input.toLowerCase();
-        const recentHistory = context.inputHistory.slice(-50); // Last 50 commands
+        const contextHistory = context.inputHistory.slice(-50); // Last 50 commands
+        const configuredHistory = this.config.history || [];
 
-        return recentHistory
+        // Combine configured history and context history, with configured taking precedence
+        const allHistory = [...configuredHistory, ...contextHistory];
+        const uniqueHistory = Array.from(new Set(allHistory));
+
+        return uniqueHistory
           .filter(h => h.toLowerCase().startsWith(prefix) && h.toLowerCase() !== prefix)
           .slice(0, 5) // Limit to 5 suggestions
           .map((h, index) => ({
