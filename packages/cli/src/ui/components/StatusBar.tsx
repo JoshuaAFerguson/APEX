@@ -7,19 +7,6 @@ type SegmentPriority = 'critical' | 'high' | 'medium' | 'low';
 type DisplayTier = 'narrow' | 'normal' | 'wide';
 type AbbreviationMode = 'full' | 'abbreviated' | 'auto';
 
-// Enhanced segment interface with priority and responsive support
-interface ResponsiveSegment extends Segment {
-  id: string;
-  priority: SegmentPriority;
-  side: 'left' | 'right';
-  shouldShow: boolean;
-  narrowModeConfig?: {
-    hideLabel?: boolean;
-    hideValue?: boolean;
-    compressValue?: (value: string) => string;
-  };
-}
-
 // Priority-based filtering by display tier
 const PRIORITY_BY_TIER: Record<DisplayTier, SegmentPriority[]> = {
   narrow: ['critical', 'high'],
@@ -83,40 +70,6 @@ function formatDetailedTime(milliseconds: number): string {
   }
 }
 
-// Helper function to select appropriate label based on abbreviation mode
-function getEffectiveLabel(
-  segment: Segment,
-  abbreviationMode: AbbreviationMode,
-  terminalWidth: number
-): string | undefined {
-  if (!segment.label) return undefined;
-
-  const useAbbreviated =
-    abbreviationMode === 'abbreviated' ||
-    (abbreviationMode === 'auto' && terminalWidth < 80);
-
-  if (useAbbreviated && segment.abbreviatedLabel !== undefined) {
-    // Empty string abbreviation means no label should be shown when abbreviated
-    return segment.abbreviatedLabel === '' ? undefined : segment.abbreviatedLabel;
-  }
-
-  return segment.label;
-}
-
-// Calculate minWidth dynamically based on label mode
-function calculateMinWidth(
-  segment: Segment,
-  useAbbreviated: boolean
-): number {
-  const labelLength = useAbbreviated
-    ? (segment.abbreviatedLabel?.length ?? segment.label?.length ?? 0)
-    : (segment.label?.length ?? 0);
-
-  const valueLength = segment.value.length;
-  const iconLength = segment.icon ? segment.icon.length + 1 : 0;
-
-  return labelLength + valueLength + iconLength;
-}
 
 export interface StatusBarProps {
   gitBranch?: string;
@@ -226,38 +179,22 @@ export function StatusBar({
       justifyContent="space-between"
     >
       <Box gap={2}>
-        {segments.left.map((seg, i) => {
-          // Determine abbreviation mode based on display mode
-          const abbreviationMode: AbbreviationMode =
-            displayMode === 'compact' ? 'abbreviated' :
-            displayMode === 'verbose' ? 'full' :
-            'auto';
-          const effectiveLabel = getEffectiveLabel(seg, abbreviationMode, terminalWidth);
-          return (
-            <Text key={i}>
-              <Text color={seg.iconColor}>{seg.icon}</Text>
-              {effectiveLabel && <Text color={seg.labelColor || 'gray'}>{effectiveLabel}</Text>}
-              <Text color={seg.valueColor}>{seg.value}</Text>
-            </Text>
-          );
-        })}
+        {segments.left.map((seg, i) => (
+          <Text key={i}>
+            {seg.icon && <Text color={seg.iconColor}>{seg.icon}</Text>}
+            {seg.label && <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>}
+            <Text color={seg.valueColor}>{seg.value}</Text>
+          </Text>
+        ))}
       </Box>
 
       <Box gap={2}>
-        {segments.right.map((seg, i) => {
-          // Determine abbreviation mode based on display mode
-          const abbreviationMode: AbbreviationMode =
-            displayMode === 'compact' ? 'abbreviated' :
-            displayMode === 'verbose' ? 'full' :
-            'auto';
-          const effectiveLabel = getEffectiveLabel(seg, abbreviationMode, terminalWidth);
-          return (
-            <Text key={i}>
-              {effectiveLabel && <Text color={seg.labelColor || 'gray'}>{effectiveLabel}</Text>}
-              <Text color={seg.valueColor}>{seg.value}</Text>
-            </Text>
-          );
-        })}
+        {segments.right.map((seg, i) => (
+          <Text key={i}>
+            {seg.label && <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>}
+            <Text color={seg.valueColor}>{seg.value}</Text>
+          </Text>
+        ))}
       </Box>
     </Box>
   );
@@ -272,6 +209,19 @@ interface Segment {
   value: string;
   valueColor: string;
   minWidth: number;
+}
+
+// Enhanced segment interface with priority and responsive support
+interface ResponsiveSegment extends Segment {
+  id: string;
+  priority: SegmentPriority;
+  side: 'left' | 'right';
+  shouldShow: boolean;
+  narrowModeConfig?: {
+    hideLabel?: boolean;
+    hideValue?: boolean;
+    compressValue?: (value: string) => string;
+  };
 }
 
 function buildSegments(
