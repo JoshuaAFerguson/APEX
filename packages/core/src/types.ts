@@ -356,6 +356,7 @@ export type ApexEventType =
   | 'subtask:completed'
   | 'subtask:failed'
   | 'agent:message'
+  | 'agent:thinking'
   | 'agent:tool-use'
   | 'agent:tool-result'
   | 'gate:required'

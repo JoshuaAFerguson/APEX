@@ -1082,21 +1082,28 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
           // Assistant messages have content as array of blocks
           const apiMessage = msg.message as {
-            content?: Array<{ type: string; text?: string }>;
+            content?: Array<{
+              type: string;
+              text?: string;
+              thinking?: string;
+            }>;
             thinking?: string;
           };
-
-          // Extract thinking content if available
-          if (typeof apiMessage.thinking === 'string') {
-            thinkingContent = apiMessage.thinking;
-          }
 
           if (Array.isArray(apiMessage.content)) {
             for (const block of apiMessage.content) {
               if (block.type === 'text' && block.text) {
                 textContent += block.text + '\n';
+              } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
+                // Extract thinking content from content blocks
+                thinkingContent += block.thinking;
               }
             }
+          }
+
+          // Fallback: Extract thinking content if available as direct property (legacy support)
+          if (typeof apiMessage.thinking === 'string' && !thinkingContent) {
+            thinkingContent = apiMessage.thinking;
           }
         } else if (msg.type === 'result' && typeof msg.result === 'string') {
           textContent = msg.result;

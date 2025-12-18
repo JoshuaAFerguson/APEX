@@ -676,6 +676,15 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
+  orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+    broadcast(taskId, {
+      type: 'agent:thinking',
+      taskId,
+      timestamp: new Date(),
+      data: { agent, thinking },
+    });
+  });
+
   orchestrator.on('agent:tool-use', (taskId, tool, input) => {
     broadcast(taskId, {
       type: 'agent:tool-use',
