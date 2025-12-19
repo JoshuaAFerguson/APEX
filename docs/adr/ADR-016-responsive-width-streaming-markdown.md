@@ -1,7 +1,7 @@
 # ADR-016: Responsive Width for StreamingText and MarkdownRenderer
 
 ## Status
-In Progress (Partially Implemented)
+✅ **COMPLETED** - Fully Implemented
 
 ## Context
 
@@ -18,10 +18,11 @@ The APEX CLI has components that display text and markdown content (`StreamingTe
 - ✅ `StreamingResponse` also uses `useStdoutDimensions` with responsive width
 
 **MarkdownRenderer.tsx** (`packages/cli/src/ui/components/MarkdownRenderer.tsx`):
-- ❌ **NEEDS UPDATE** - Has `width = 80` hardcoded default
-- ❌ Does NOT use `useStdoutDimensions` hook
-- ❌ `SimpleMarkdownRenderer` also has `width = 80` hardcoded default
-- Uses width for `<Box width={width}>` container
+- ✅ **COMPLETED** - Uses `useStdoutDimensions` hook
+- ✅ Has `responsive?: boolean` prop (default: `true`)
+- ✅ Calculates `effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80)`
+- ✅ Both `MarkdownRenderer` and `SimpleMarkdownRenderer` are responsive
+- ✅ Uses width for `<Box width={effectiveWidth}>` container
 
 **useStdoutDimensions hook** (`packages/cli/src/ui/hooks/useStdoutDimensions.ts`):
 - ✅ Already implemented and exported
@@ -246,78 +247,42 @@ import { useStdoutDimensions } from '../hooks/index.js';
    - [x] Calculate `effectiveWidth` using hook when no explicit width
    - [x] Update `StreamingResponse` similarly
 
-2. [ ] Update `MarkdownRenderer.tsx`:
-   - [ ] Add `useStdoutDimensions` import
-   - [ ] Add `responsive` prop with default `true`
-   - [ ] Rename `width` to `explicitWidth` internally
-   - [ ] Calculate `effectiveWidth` using hook when no explicit width
-   - [ ] Apply to both `MarkdownRenderer` and `SimpleMarkdownRenderer`
+2. [x] Update `MarkdownRenderer.tsx`:
+   - [x] Add `useStdoutDimensions` import
+   - [x] Add `responsive` prop with default `true`
+   - [x] Rename `width` to `explicitWidth` internally
+   - [x] Calculate `effectiveWidth` using hook when no explicit width
+   - [x] Apply to both `MarkdownRenderer` and `SimpleMarkdownRenderer`
 
-3. [ ] Update tests:
-   - [ ] Add tests for responsive behavior (MarkdownRenderer)
-   - [ ] Test explicit width override
-   - [ ] Test responsive={false} disables hook
-   - [ ] Test narrow terminal handling
+3. [x] Update tests:
+   - [x] Add tests for responsive behavior (MarkdownRenderer)
+   - [x] Test explicit width override
+   - [x] Test responsive={false} disables hook
+   - [x] Test narrow terminal handling
 
-4. [ ] Verify no horizontal overflow in narrow terminals
+4. [x] Verify no horizontal overflow in narrow terminals
 
-## Remaining Work for Developer Stage
+## ✅ IMPLEMENTATION COMPLETED
 
-The developer stage needs to implement the following changes for `MarkdownRenderer.tsx`:
+All responsive width functionality for MarkdownRenderer components has been successfully implemented:
 
-### Changes Required
+### ✅ Implementation Complete
 
-```typescript
-// packages/cli/src/ui/components/MarkdownRenderer.tsx
+**MarkdownRenderer.tsx** - All changes implemented:
+- ✅ Added `import { useStdoutDimensions } from '../hooks/index.js'`
+- ✅ Updated interface to include `responsive?: boolean` prop (default: `true`)
+- ✅ Updated `MarkdownRenderer` function to use responsive width calculation
+- ✅ Updated `SimpleMarkdownRenderer` function to use responsive width calculation
+- ✅ Both components use `effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80)`
+- ✅ All `<Box width={effectiveWidth}>` containers properly implement responsive width
 
-// 1. Add import at top of file
-import { useStdoutDimensions } from '../hooks/index.js';
-
-// 2. Update interface
-export interface MarkdownRendererProps {
-  content: string;
-  width?: number;           // Optional explicit width override
-  responsive?: boolean;     // Enable/disable responsive behavior (default: true)
-}
-
-// 3. Update MarkdownRenderer function signature and add hook
-export function MarkdownRenderer({
-  content,
-  width: explicitWidth,
-  responsive = true,
-}: MarkdownRendererProps): React.ReactElement {
-  // Get terminal dimensions from hook
-  const { width: terminalWidth } = useStdoutDimensions();
-
-  // Use explicit width if provided, otherwise use responsive terminal width
-  // Subtract 2 for padding/margin safety
-  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
-
-  const [processed, setProcessed] = useState<string>(content);
-  // ... rest of implementation using effectiveWidth instead of width
-}
-
-// 4. Update SimpleMarkdownRenderer similarly
-export function SimpleMarkdownRenderer({
-  content,
-  width: explicitWidth,
-  responsive = true,
-}: MarkdownRendererProps): React.ReactElement {
-  const { width: terminalWidth } = useStdoutDimensions();
-  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
-
-  // ... rest of implementation using effectiveWidth
-}
-```
-
-### Test Updates Required
-
-Update `packages/cli/src/ui/components/__tests__/MarkdownRenderer.test.tsx`:
-
-1. Add mock for `useStdoutDimensions` hook
-2. Add tests for responsive width behavior
-3. Add tests for explicit width override
-4. Add tests for `responsive={false}` behavior
+**Test Coverage Complete** - `MarkdownRenderer.responsive.test.tsx`:
+- ✅ Comprehensive responsive behavior tests for both components
+- ✅ Tests for explicit width override functionality
+- ✅ Tests for `responsive={false}` behavior
+- ✅ Tests for narrow/wide terminal width scenarios
+- ✅ Tests for minimum width enforcement (40 character floor)
+- ✅ Tests for padding safety buffer (2 character reduction)
 
 ## Related Documents
 
