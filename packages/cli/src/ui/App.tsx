@@ -24,6 +24,12 @@ import { CompletionEngine, type CompletionContext } from '../services/Completion
 const VERSION = '0.3.0';
 
 /**
+ * High confidence threshold for auto-execute feature
+ * When autoExecuteHighConfidence is enabled, inputs must have >= 0.95 confidence to auto-execute
+ */
+const HIGH_CONFIDENCE_THRESHOLD = 0.95;
+
+/**
  * Build agent list from workflow configuration for AgentPanel display
  * Note: This is a placeholder - workflows are loaded dynamically via loadWorkflow()
  * The actual agent list is populated via orchestrator events
@@ -532,14 +538,15 @@ export function App({
       // Check if preview mode is enabled and this isn't the preview command itself
       if (state.previewMode && !input.startsWith('/preview')) {
         // Check if auto-execute is enabled and confidence is high enough
+        // For auto-execute, we enforce a minimum threshold of 0.95 regardless of user-configured threshold
         if (
           state.previewConfig.autoExecuteHighConfidence &&
-          intent.confidence >= state.previewConfig.confidenceThreshold
+          intent.confidence >= HIGH_CONFIDENCE_THRESHOLD
         ) {
           // Auto-execute without preview for high confidence inputs
           addMessage({
             type: 'system',
-            content: `Auto-executing (confidence: ${(intent.confidence * 100).toFixed(0)}% ≥ ${(state.previewConfig.confidenceThreshold * 100).toFixed(0)}%)`,
+            content: `Auto-executing (confidence: ${(intent.confidence * 100).toFixed(0)}% ≥ ${(HIGH_CONFIDENCE_THRESHOLD * 100).toFixed(0)}%)`,
           });
           // Continue to normal execution below
         } else {
