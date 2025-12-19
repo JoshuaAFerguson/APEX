@@ -1133,31 +1133,400 @@ Highlight specific lines to draw attention to important code:
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Diff Views
+### 13. Diff Views
 
-```diff
-┌─ Changes: AuthContext.tsx ───────────────────────────────────────────────────┐
+APEX v0.3.0 includes a powerful `DiffViewer` component that displays code changes in three distinct viewing modes: unified, split, and inline. The component automatically adapts to terminal width and provides clear visual feedback for additions, removals, and context lines.
+
+#### Overview
+
+The DiffViewer component supports:
+- **Three display modes**: Unified, Split, and Inline
+- **Auto mode**: Automatically selects the best mode based on terminal width
+- **Responsive layout**: Adapts to terminal dimensions
+- **Line numbers**: Optional line number display with dynamic sizing
+- **Context control**: Configurable context lines around changes
+- **Truncation**: Automatic line truncation for long lines
+
+#### Unified Mode
+
+The unified mode displays changes in a traditional git diff format with added lines marked with `+` and removed lines marked with `-`. This is the default mode for narrow terminals and provides a compact view of changes.
+
+**Visual Example:**
+
+```
+┌─ Changes: AuthContext.tsx (Unified Mode) ────────────────────────────────────┐
+│                                                                              │
+│ --- AuthContext.tsx                                                          │
+│ +++ AuthContext.tsx                                                          │
 │                                                                              │
 │ @@ -1,8 +1,15 @@                                                             │
-│  import React, { createContext, useContext } from 'react';                  │
 │                                                                              │
-│ +interface User {                                                            │
-│ +  id: string;                                                               │
-│ +  email: string;                                                            │
-│ +  name: string;                                                             │
-│ +}                                                                           │
-│ +                                                                            │
-│  interface AuthContextType {                                                 │
-│ -  user: any;                                                                │
-│ -  isAuthenticated: boolean;                                                 │
-│ +  user: User | null;                                                        │
-│ +  isAuthenticated: boolean;                                                 │
-│ +  login: (email: string, password: string) => Promise<void>;               │
-│ +  logout: () => void;                                                       │
-│  }                                                                           │
+│   1   1 │  import React, { createContext, useContext } from 'react';        │
+│   2   2 │                                                                    │
+│       3 │ +interface User {                                                  │
+│       4 │ +  id: string;                                                     │
+│       5 │ +  email: string;                                                  │
+│       6 │ +  name: string;                                                   │
+│       7 │ +}                                                                 │
+│       8 │ +                                                                  │
+│   3   9 │  interface AuthContextType {                                       │
+│   4     │ -  user: any;                                                      │
+│   5     │ -  isAuthenticated: boolean;                                       │
+│      10 │ +  user: User | null;                                              │
+│      11 │ +  isAuthenticated: boolean;                                       │
+│      12 │ +  login: (email: string, password: string) => Promise<void>;     │
+│      13 │ +  logout: () => void;                                             │
+│   6  14 │  }                                                                 │
+│                                                                              │
+│ [Unified view • Added: green background • Removed: red background]          │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Key Features:**
+- Two line number columns (old file line, new file line)
+- `+` prefix for added lines with green highlighting
+- `-` prefix for removed lines with red highlighting
+- Space prefix for context (unchanged) lines
+- Hunk headers showing line range information (`@@`)
+
+#### Split Mode
+
+The split mode displays the old and new versions side-by-side, making it easy to compare changes at a glance. This mode requires a wider terminal (120+ columns) and provides the most comprehensive view of modifications.
+
+**Visual Example:**
+
+```
+┌─ Changes: AuthContext.tsx (Split Mode) ──────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                      │
+│ ┌─── OLD ─────────────────────────────────────┐  ┌─── NEW ─────────────────────────────────────────────────────────┐│
+│ │ --- AuthContext.tsx                          │  │ +++ AuthContext.tsx                                            ││
+│ └──────────────────────────────────────────────┘  └────────────────────────────────────────────────────────────────┘│
+│                                                                                                                      │
+│ @@ -1,8 +1,15 @@                                                                                                     │
+│                                                                                                                      │
+│  1 │ import React, { createContext, useContext }   1 │ import React, { createContext, useContext } from 'react';   │
+│  2 │ } from 'react';                               2 │                                                              │
+│  3 │                                               3 │ interface User {                                             │
+│    │                                               4 │   id: string;                                                │
+│    │                                               5 │   email: string;                                             │
+│    │                                               6 │   name: string;                                              │
+│    │                                               7 │ }                                                            │
+│    │                                               8 │                                                              │
+│  4 │ interface AuthContextType {                   9 │ interface AuthContextType {                                  │
+│  5 │   user: any;                                    │                                                              │
+│  6 │   isAuthenticated: boolean;                     │                                                              │
+│    │                                              10 │   user: User | null;                                         │
+│    │                                              11 │   isAuthenticated: boolean;                                  │
+│    │                                              12 │   login: (email: string, password: string) => Promise<void>;│
+│    │                                              13 │   logout: () => void;                                        │
+│  7 │ }                                            14 │ }                                                            │
+│                                                                                                                      │
+│ [Split view • Requires 120+ columns • Red: removed • Green: added]                                                  │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Side-by-side comparison of old and new content
+- Separate line numbers for each side
+- Red highlighting for removed lines (left side)
+- Green highlighting for added lines (right side)
+- Empty cells where lines don't correspond
+- Automatic fallback to unified mode if terminal < 120 columns
+
+#### Inline Mode
+
+The inline mode provides character-level diff highlighting, showing exactly which characters were added or removed within lines. This is ideal for reviewing small, precise changes within text.
+
+**Visual Example:**
+
+```
+┌─ Changes: config.yaml (Inline Mode) ─────────────────────────────────────────┐
+│                                                                              │
+│ config.yaml                                                                  │
+│                                                                              │
+│ project:                                                                     │
+│   name: my-appmy-application                                                 │
+│   version: 1.0.01.1.0                                                        │
+│   description: A simple appA full-featured application                       │
+│                                                                              │
+│ settings:                                                                    │
+│   debug: truefalse                                                           │
+│   logLevel: infowarndebug                                                    │
+│   maxConnections: 10100                                                      │
+│                                                                              │
+│ [Inline view • Character-level highlighting]                                 │
+│ [Red background: removed characters • Green background: added characters]    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Character-by-character diff highlighting
+- Inline display of both old and new content
+- Red background for removed characters
+- Green background for added characters
+- Ideal for small text changes, config modifications, or typo fixes
+
+#### Auto Mode and Responsive Behavior
+
+The `auto` mode (default) automatically selects the optimal display mode based on terminal width:
+
+```
+Terminal Width          Selected Mode       Rationale
+──────────────────────────────────────────────────────────────────────
+< 120 columns          Unified              Insufficient width for split
+≥ 120 columns          Split                Full side-by-side comparison
+```
+
+**Responsive Width Adaptation:**
+
+```
+┌─ DiffViewer Responsive Behavior ─────────────────────────────────────────────┐
+│                                                                              │
+│ Terminal Width: 160 columns (wide)                                           │
+│ ┌──────────────────────────────────────────────────────────────────────────┐ │
+│ │  Mode: Split (auto-selected)                                              │ │
+│ │  Each side: ~78 columns                                                   │ │
+│ │  Line numbers: Dynamic (4+ digits for large files)                       │ │
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│ Terminal Width: 100 columns (normal)                                         │
+│ ┌────────────────────────────────────────────────────────────────────────┐   │
+│ │  Mode: Unified (auto-selected, < 120 threshold)                         │   │
+│ │  Content width: ~90 columns                                              │   │
+│ │  Line numbers: Standard (3 digits)                                       │   │
+│ └────────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│ Terminal Width: 60 columns (compact)                                         │
+│ ┌─────────────────────────────────────────────────────────┐                  │
+│ │  Mode: Unified                                          │                  │
+│ │  Content width: ~50 columns                             │                  │
+│ │  Line numbers: Compact (2 digits)                       │                  │
+│ │  Long lines: Truncated with ...                         │                  │
+│ └─────────────────────────────────────────────────────────┘                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Split Mode Fallback:**
+
+When split mode is explicitly requested but the terminal is too narrow, the component gracefully falls back to unified mode with a notification:
+
+```
+┌─ DiffViewer: Split Mode Fallback ────────────────────────────────────────────┐
+│                                                                              │
+│ --- AuthContext.tsx (split view requires 120+ columns)                       │
+│ +++ AuthContext.tsx                                                          │
+│                                                                              │
+│ [Continues with unified view...]                                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### DiffViewer Component API
+
+**Basic Usage:**
+
+```typescript
+import { DiffViewer } from '@apex/cli/ui/components';
+
+// Auto mode (recommended) - automatically selects best mode
+<DiffViewer
+  oldContent={originalCode}
+  newContent={modifiedCode}
+  filename="AuthContext.tsx"
+/>
+
+// Explicit unified mode
+<DiffViewer
+  oldContent={originalCode}
+  newContent={modifiedCode}
+  mode="unified"
+/>
+
+// Explicit split mode (requires 120+ columns)
+<DiffViewer
+  oldContent={originalCode}
+  newContent={modifiedCode}
+  mode="split"
+/>
+
+// Inline mode for character-level diffs
+<DiffViewer
+  oldContent={originalText}
+  newContent={modifiedText}
+  mode="inline"
+/>
+```
+
+**Full Configuration:**
+
+```typescript
+<DiffViewer
+  oldContent={originalCode}
+  newContent={modifiedCode}
+  filename="AuthContext.tsx"
+  mode="auto"                  // 'unified' | 'split' | 'inline' | 'auto'
+  context={3}                  // Number of context lines around changes
+  showLineNumbers={true}       // Display line numbers
+  width={120}                  // Explicit width (overrides responsive)
+  maxLines={50}                // Limit displayed lines
+  responsive={true}            // Enable responsive width adaptation
+/>
+```
+
+**Component Properties:**
+
+```typescript
+interface DiffViewerProps {
+  oldContent: string;           // Original content to compare
+  newContent: string;           // Modified content to compare
+  filename?: string;            // Optional filename for header display
+  mode?: 'unified' | 'split' | 'inline' | 'auto';  // Display mode (default: 'auto')
+  context?: number;             // Context lines around changes (default: 3)
+  showLineNumbers?: boolean;    // Show line numbers (default: true)
+  width?: number;               // Explicit width override
+  maxLines?: number;            // Maximum lines to display
+  responsive?: boolean;         // Enable responsive layout (default: true)
+}
+```
+
+#### Configuration via .apex/config.yaml
+
+```yaml
+# Diff viewer configuration
+ui:
+  diffViewer:
+    defaultMode: auto           # auto, unified, split, or inline
+    showLineNumbers: true       # Display line numbers by default
+    contextLines: 3             # Context lines around changes
+    responsive: true            # Enable responsive width adaptation
+
+    # Mode-specific settings
+    unifiedMode:
+      colorScheme:
+        added: green
+        removed: red
+        context: white
+      background:
+        added: greenBright
+        removed: redBright
+
+    splitMode:
+      minimumWidth: 120         # Minimum columns for split mode
+      separatorWidth: 2         # Gap between left and right panels
+
+    inlineMode:
+      characterLevel: true      # Character-by-character highlighting
+```
+
+#### Dynamic Line Number Width
+
+The DiffViewer automatically adjusts line number column width based on file size and terminal width:
+
+```
+┌─ Line Number Width Calculation ──────────────────────────────────────────────┐
+│                                                                              │
+│ File Size              Terminal        Line Number Width                     │
+│ ──────────────────────────────────────────────────────────────────────────  │
+│ < 100 lines           Narrow           2 digits (compact)                   │
+│ < 100 lines           Normal/Wide      2-3 digits                           │
+│ 100-999 lines         All              3 digits                             │
+│ 1000-9999 lines       All              4 digits                             │
+│ 10000+ lines          All              5-6 digits (max 6)                   │
+│                                                                              │
+│ Example: 1,234-line file in wide terminal                                   │
+│ ┌────┬────────────────────────────────────────────────────────────────────┐ │
+│ │ 1234 │ export function processData(items: DataItem[]): Result[] {        │ │
+│ │ 1235 │   return items.map(item => ({                                     │ │
+│ │ 1236 │     id: item.id,                                                  │ │
+│ │ 1237 │     processed: true,                                               │ │
+│ │ 1238 │     timestamp: Date.now()                                          │ │
+│ │ 1239 │   }));                                                            │ │
+│ │ 1240 │ }                                                                  │ │
+│ └────┴────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Use Case Examples
+
+##### Code Review - Split Mode
+
+```typescript
+// Ideal for reviewing substantial code changes
+<DiffViewer
+  oldContent={pullRequestBase}
+  newContent={pullRequestHead}
+  filename="src/services/AuthService.ts"
+  mode="split"
+  context={5}
+/>
+```
+
+##### Quick Config Check - Inline Mode
+
+```typescript
+// Perfect for configuration file changes
+<DiffViewer
+  oldContent={currentConfig}
+  newContent={proposedConfig}
+  filename=".env.production"
+  mode="inline"
+/>
+```
+
+##### Git-style Output - Unified Mode
+
+```typescript
+// Traditional git diff format
+<DiffViewer
+  oldContent={commitParent}
+  newContent={commitCurrent}
+  filename="package.json"
+  mode="unified"
+  showLineNumbers={true}
+  context={3}
+/>
+```
+
+##### Responsive Demo Application
+
+```typescript
+// Let the component choose the best mode
+function FileChangesViewer({ changes }: { changes: FileChange[] }) {
+  return (
+    <Box flexDirection="column">
+      {changes.map((change, index) => (
+        <Box key={index} marginBottom={1}>
+          <DiffViewer
+            oldContent={change.before}
+            newContent={change.after}
+            filename={change.path}
+            mode="auto"           // Adapts to terminal width
+            responsive={true}     // Enable width adaptation
+            maxLines={30}         // Limit for large files
+          />
+        </Box>
+      ))}
+    </Box>
+  );
+}
+```
+
+#### Color Reference
+
+| Element | Color | Background | Description |
+|---------|-------|------------|-------------|
+| Added lines | green | greenBright | New content |
+| Removed lines | red | redBright | Deleted content |
+| Context lines | white | none | Unchanged lines |
+| Line numbers | gray (dim) | none | Line number columns |
+| Hunk headers | cyan (bold) | none | `@@ -x,y +x,y @@` format |
+| File headers | white (bold) | none | `--- a/file` and `+++ b/file` |
+| Fallback notice | yellow (dim) | none | Split mode width warning |
 
 ## Implementation Architecture
 

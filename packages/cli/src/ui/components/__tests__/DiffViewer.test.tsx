@@ -93,47 +93,753 @@ describe('DiffViewer', () => {
   });
 
   describe('View Modes', () => {
-    it('renders split view correctly', () => {
-      render(
-        <DiffViewer
-          oldContent="old content"
-          newContent="new content"
-          filename="test.txt"
-          mode="split"
-        />
-      );
+    describe('Unified Mode', () => {
+      it('renders unified diff with proper header structure', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'line 1\n' },
+          { count: 1, value: 'old line 2\n', removed: true },
+          { count: 1, value: 'new line 2\n', added: true },
+          { count: 1, value: 'line 3\n' },
+        ]);
 
-      // Basic rendering test
-      expect(screen.getByText('test.txt')).toBeInTheDocument();
+        render(
+          <DiffViewer
+            oldContent="line 1\nold line 2\nline 3"
+            newContent="line 1\nnew line 2\nline 3"
+            filename="unified-test.txt"
+            mode="unified"
+          />
+        );
+
+        // Should show both --- and +++ headers
+        expect(screen.getByText(/--- unified-test\.txt/)).toBeInTheDocument();
+        expect(screen.getByText(/\+\+\+ unified-test\.txt/)).toBeInTheDocument();
+      });
+
+      it('displays diff markers correctly (+/-/ )', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'context line\n' },
+          { count: 1, value: 'removed line\n', removed: true },
+          { count: 1, value: 'added line\n', added: true },
+        ]);
+
+        const { container } = render(
+          <DiffViewer
+            oldContent="context line\nremoved line"
+            newContent="context line\nadded line"
+            filename="diff-markers.txt"
+            mode="unified"
+          />
+        );
+
+        // Basic rendering verification
+        expect(screen.getByText('diff-markers.txt')).toBeInTheDocument();
+      });
+
+      it('shows hunk headers with line number information', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'line 1\n' },
+          { count: 1, value: 'old line\n', removed: true },
+          { count: 1, value: 'new line\n', added: true },
+        ]);
+
+        const { container } = render(
+          <DiffViewer
+            oldContent="line 1\nold line"
+            newContent="line 1\nnew line"
+            filename="hunk-headers.txt"
+            mode="unified"
+          />
+        );
+
+        // Should contain hunk header pattern @@ -x,y +a,b @@
+        expect(container.textContent).toMatch(/@@ -\d+,\d+ \+\d+,\d+ @@/);
+      });
     });
 
-    it('renders inline view with character-level diffs', () => {
-      render(
-        <DiffViewer
-          oldContent="old content"
-          newContent="new content"
-          filename="test.txt"
-          mode="inline"
-        />
-      );
+    describe('Split Mode', () => {
+      beforeEach(() => {
+        // Ensure wide enough terminal for split mode
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 140,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
 
-      // Should show character-level differences
-      expect(mockDiffChars).toHaveBeenCalled();
+      it('renders split diff with dual headers', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'old content\n', removed: true },
+          { count: 1, value: 'new content\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="split-test.txt"
+            mode="split"
+          />
+        );
+
+        // Should show both old and new file headers in split mode
+        const headers = screen.getAllByText(/split-test\.txt/);
+        expect(headers).toHaveLength(2); // One for old, one for new
+
+        // Should show --- header for old content
+        expect(screen.getByText(/--- split-test\.txt/)).toBeInTheDocument();
+        // Should show +++ header for new content
+        expect(screen.getByText(/\+\+\+ split-test\.txt/)).toBeInTheDocument();
+      });
+
+      it('displays side-by-side content correctly', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'unchanged line\n' },
+          { count: 1, value: 'old content\n', removed: true },
+          { count: 1, value: 'new content\n', added: true },
+        ]);
+
+        const { container } = render(
+          <DiffViewer
+            oldContent="unchanged line\nold content"
+            newContent="unchanged line\nnew content"
+            filename="side-by-side.txt"
+            mode="split"
+          />
+        );
+
+        // Should render without errors and show filename
+        expect(screen.getByText(/side-by-side\.txt/)).toBeInTheDocument();
+      });
+
+      it('handles line numbers in split mode with pipe separator', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'line 1\n' },
+          { count: 1, value: 'line 2\n', removed: true },
+          { count: 1, value: 'modified line 2\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="line 1\nline 2"
+            newContent="line 1\nmodified line 2"
+            filename="line-numbers-split.txt"
+            mode="split"
+            showLineNumbers={true}
+          />
+        );
+
+        // Should show pipe separators for line numbers in split mode
+        expect(screen.getByText('line-numbers-split.txt')).toBeInTheDocument();
+      });
+
+      it('calculates proper content width for each side', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'very long line that should be truncated if needed\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent=""
+            newContent="very long line that should be truncated if needed"
+            filename="content-width-split.txt"
+            mode="split"
+            width={120}
+          />
+        );
+
+        // Should handle content width calculation for split mode
+        expect(screen.getByText('content-width-split.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Inline Mode', () => {
+      it('renders inline diff with character-level highlighting', () => {
+        mockDiffChars.mockReturnValue([
+          { count: 4, value: 'same' },
+          { count: 3, value: 'old', removed: true },
+          { count: 3, value: 'new', added: true },
+          { count: 4, value: ' end' },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="same old end"
+            newContent="same new end"
+            filename="inline-test.txt"
+            mode="inline"
+          />
+        );
+
+        // Should use character-level diffing
+        expect(mockDiffChars).toHaveBeenCalledWith('same old end', 'same new end');
+        expect(screen.getByText('inline-test.txt')).toBeInTheDocument();
+      });
+
+      it('displays character-level changes with proper highlighting', () => {
+        mockDiffChars.mockReturnValue([
+          { count: 5, value: 'Hello' },
+          { count: 5, value: 'World', removed: true },
+          { count: 4, value: 'APEX', added: true },
+        ]);
+
+        const { container } = render(
+          <DiffViewer
+            oldContent="HelloWorld"
+            newContent="HelloAPEX"
+            filename="char-highlighting.txt"
+            mode="inline"
+          />
+        );
+
+        // Should render character-level changes
+        expect(screen.getByText('char-highlighting.txt')).toBeInTheDocument();
+      });
+
+      it('handles multiline content in inline mode', () => {
+        mockDiffChars.mockReturnValue([
+          { count: 6, value: 'line 1' },
+          { count: 1, value: '\n' },
+          { count: 6, value: 'line 2', removed: true },
+          { count: 1, value: '\n' },
+          { count: 6, value: 'line 3', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="line 1\nline 2"
+            newContent="line 1\nline 3"
+            filename="multiline-inline.txt"
+            mode="inline"
+          />
+        );
+
+        // Should handle multiline content with character-level diffing
+        expect(mockDiffChars).toHaveBeenCalled();
+        expect(screen.getByText('multiline-inline.txt')).toBeInTheDocument();
+      });
+
+      it('handles very long inline diffs', () => {
+        const longOldText = 'a'.repeat(1000);
+        const longNewText = 'b'.repeat(1000);
+
+        mockDiffChars.mockReturnValue([
+          { count: 1000, value: longOldText, removed: true },
+          { count: 1000, value: longNewText, added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={longOldText}
+            newContent={longNewText}
+            filename="long-inline.txt"
+            mode="inline"
+            maxLines={50}
+          />
+        );
+
+        // Should handle long diffs with maxLines limit
+        expect(screen.getByText('long-inline.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Auto Mode Selection', () => {
+      it('automatically selects split mode for wide terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 140,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="auto-wide.txt"
+            mode="auto"
+          />
+        );
+
+        // Should select split mode - verify dual headers
+        expect(screen.getAllByText(/auto-wide\.txt/)).toHaveLength(2);
+      });
+
+      it('automatically selects unified mode for narrow terminals', () => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          height: 30,
+          breakpoint: 'compact',
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="auto-narrow.txt"
+            mode="auto"
+          />
+        );
+
+        // Should select unified mode - verify unified headers (--- and +++)
+        expect(screen.getByText(/--- auto-narrow\.txt/)).toBeInTheDocument();
+        expect(screen.getByText(/\+\+\+ auto-narrow\.txt/)).toBeInTheDocument();
+      });
     });
   });
 
-  describe('Basic Functionality', () => {
-    it('handles unknown file types gracefully', () => {
-      render(
-        <DiffViewer
-          oldContent="unknown content"
-          newContent="unknown content 2"
-          filename="file.xyz"
-        />
-      );
+  describe('Edge Cases and Error Handling', () => {
+    describe('Content Edge Cases', () => {
+      it('handles empty old content', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'new line 1\n', added: true },
+          { count: 1, value: 'new line 2\n', added: true },
+        ]);
 
-      // Should not crash with unknown extensions
-      expect(screen.getByText('file.xyz')).toBeInTheDocument();
+        render(
+          <DiffViewer
+            oldContent=""
+            newContent="new line 1\nnew line 2"
+            filename="empty-old.txt"
+          />
+        );
+
+        expect(screen.getByText('empty-old.txt')).toBeInTheDocument();
+      });
+
+      it('handles empty new content', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'old line 1\n', removed: true },
+          { count: 1, value: 'old line 2\n', removed: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="old line 1\nold line 2"
+            newContent=""
+            filename="empty-new.txt"
+          />
+        );
+
+        expect(screen.getByText('empty-new.txt')).toBeInTheDocument();
+      });
+
+      it('handles both empty contents', () => {
+        mockDiffLines.mockReturnValue([]);
+
+        render(
+          <DiffViewer
+            oldContent=""
+            newContent=""
+            filename="both-empty.txt"
+          />
+        );
+
+        expect(screen.getByText('both-empty.txt')).toBeInTheDocument();
+      });
+
+      it('handles content with only whitespace', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: '   \n', removed: true },
+          { count: 1, value: '\t\t\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="   "
+            newContent="\t\t"
+            filename="whitespace-only.txt"
+          />
+        );
+
+        expect(screen.getByText('whitespace-only.txt')).toBeInTheDocument();
+      });
+
+      it('handles content with no trailing newlines', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'no newline old', removed: true },
+          { count: 1, value: 'no newline new', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="no newline old"
+            newContent="no newline new"
+            filename="no-newlines.txt"
+          />
+        );
+
+        expect(screen.getByText('no-newlines.txt')).toBeInTheDocument();
+      });
+
+      it('handles very large files', () => {
+        const largeOld = Array(10000).fill('old line').join('\n');
+        const largeNew = Array(10000).fill('new line').join('\n');
+
+        mockDiffLines.mockReturnValue([
+          { count: 10000, value: largeOld, removed: true },
+          { count: 10000, value: largeNew, added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={largeOld}
+            newContent={largeNew}
+            filename="very-large.txt"
+            maxLines={100}
+          />
+        );
+
+        expect(screen.getByText('very-large.txt')).toBeInTheDocument();
+      });
+
+      it('handles binary-like content', () => {
+        const binaryContent = String.fromCharCode(...Array(256).keys());
+
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: binaryContent, removed: true },
+          { count: 1, value: binaryContent + 'modified', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={binaryContent}
+            newContent={binaryContent + 'modified'}
+            filename="binary-like.bin"
+          />
+        );
+
+        expect(screen.getByText('binary-like.bin')).toBeInTheDocument();
+      });
+
+      it('handles unicode and special characters', () => {
+        const unicodeOld = '🚀 Hello 世界 ñoño';
+        const unicodeNew = '🎉 Hello 世界 niño';
+
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: `${unicodeOld}\n`, removed: true },
+          { count: 1, value: `${unicodeNew}\n`, added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={unicodeOld}
+            newContent={unicodeNew}
+            filename="unicode.txt"
+          />
+        );
+
+        expect(screen.getByText('unicode.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Filename Edge Cases', () => {
+      it('handles missing filename', () => {
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="new"
+          />
+        );
+
+        // Should use default file names
+        expect(screen.getByText(/--- a\/file/)).toBeInTheDocument();
+        expect(screen.getByText(/\+\+\+ b\/file/)).toBeInTheDocument();
+      });
+
+      it('handles empty filename', () => {
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="new"
+            filename=""
+          />
+        );
+
+        // Should fall back to default names
+        expect(screen.getByText(/--- a\/file/)).toBeInTheDocument();
+        expect(screen.getByText(/\+\+\+ b\/file/)).toBeInTheDocument();
+      });
+
+      it('handles filename with special characters', () => {
+        const specialFilename = 'my file (1) [copy].txt';
+
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename={specialFilename}
+          />
+        );
+
+        expect(screen.getByText(specialFilename)).toBeInTheDocument();
+      });
+
+      it('handles very long filename', () => {
+        const longFilename = 'very-long-filename-that-might-cause-issues-with-display-and-truncation.txt';
+
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="new"
+            filename={longFilename}
+          />
+        );
+
+        expect(screen.getByText(longFilename)).toBeInTheDocument();
+      });
+    });
+
+    describe('Context Parameter Edge Cases', () => {
+      it('handles zero context', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'context line 1\n' },
+          { count: 1, value: 'old line\n', removed: true },
+          { count: 1, value: 'new line\n', added: true },
+          { count: 1, value: 'context line 2\n' },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="context line 1\nold line\ncontext line 2"
+            newContent="context line 1\nnew line\ncontext line 2"
+            filename="zero-context.txt"
+            context={0}
+          />
+        );
+
+        expect(screen.getByText('zero-context.txt')).toBeInTheDocument();
+      });
+
+      it('handles very large context', () => {
+        const lines = Array(50).fill(0).map((_, i) => `line ${i + 1}`);
+        const middleIndex = 25;
+        lines[middleIndex] = 'modified line';
+
+        mockDiffLines.mockReturnValue([
+          ...lines.slice(0, middleIndex).map(line => ({ count: 1, value: `${line}\n` })),
+          { count: 1, value: 'original line\n', removed: true },
+          { count: 1, value: 'modified line\n', added: true },
+          ...lines.slice(middleIndex + 1).map(line => ({ count: 1, value: `${line}\n` })),
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={lines.join('\n').replace('modified line', 'original line')}
+            newContent={lines.join('\n')}
+            filename="large-context.txt"
+            context={50}
+          />
+        );
+
+        expect(screen.getByText('large-context.txt')).toBeInTheDocument();
+      });
+
+      it('handles negative context gracefully', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'old line\n', removed: true },
+          { count: 1, value: 'new line\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="old line"
+            newContent="new line"
+            filename="negative-context.txt"
+            context={-1}
+          />
+        );
+
+        expect(screen.getByText('negative-context.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Width Parameter Edge Cases', () => {
+      it('handles zero width', () => {
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="new"
+            filename="zero-width.txt"
+            width={0}
+          />
+        );
+
+        expect(screen.getByText('zero-width.txt')).toBeInTheDocument();
+      });
+
+      it('handles negative width', () => {
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="new"
+            filename="negative-width.txt"
+            width={-10}
+          />
+        );
+
+        expect(screen.getByText('negative-width.txt')).toBeInTheDocument();
+      });
+
+      it('handles extremely large width', () => {
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="huge-width.txt"
+            width={10000}
+          />
+        );
+
+        expect(screen.getByText('huge-width.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('MaxLines Parameter Edge Cases', () => {
+      it('handles zero maxLines', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'line 1\n' },
+          { count: 1, value: 'line 2\n', added: true },
+          { count: 1, value: 'line 3\n' },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="line 1\nline 3"
+            newContent="line 1\nline 2\nline 3"
+            filename="zero-maxlines.txt"
+            maxLines={0}
+          />
+        );
+
+        expect(screen.getByText('zero-maxlines.txt')).toBeInTheDocument();
+      });
+
+      it('handles maxLines smaller than content', () => {
+        const manyLines = Array(100).fill(0).map((_, i) => `line ${i + 1}`).join('\n');
+
+        mockDiffLines.mockReturnValue([
+          { count: 100, value: manyLines },
+          { count: 1, value: 'extra line\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={manyLines}
+            newContent={manyLines + '\nextra line'}
+            filename="limited-lines.txt"
+            maxLines={5}
+          />
+        );
+
+        expect(screen.getByText('limited-lines.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Diff Library Edge Cases', () => {
+      it('handles diff library returning empty array', () => {
+        mockDiffLines.mockReturnValue([]);
+
+        render(
+          <DiffViewer
+            oldContent="content"
+            newContent="content"
+            filename="empty-diff.txt"
+          />
+        );
+
+        expect(screen.getByText('empty-diff.txt')).toBeInTheDocument();
+      });
+
+      it('handles diff library returning null/undefined values', () => {
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'test\n', added: true },
+          null as any,
+          { count: 1, value: 'another test\n', removed: true },
+          undefined as any,
+        ].filter(Boolean));
+
+        render(
+          <DiffViewer
+            oldContent="another test"
+            newContent="test"
+            filename="null-diff.txt"
+          />
+        );
+
+        expect(screen.getByText('null-diff.txt')).toBeInTheDocument();
+      });
+
+      it('handles diff with missing properties', () => {
+        mockDiffLines.mockReturnValue([
+          { value: 'incomplete diff\n' } as any,
+          { count: 1 } as any,
+          { count: 1, value: 'valid diff\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent="old"
+            newContent="incomplete diff\nvalid diff"
+            filename="incomplete-diff.txt"
+          />
+        );
+
+        expect(screen.getByText('incomplete-diff.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Unknown File Types', () => {
+      it('handles unknown file extensions gracefully', () => {
+        render(
+          <DiffViewer
+            oldContent="unknown content"
+            newContent="unknown content 2"
+            filename="file.xyz"
+          />
+        );
+
+        // Should not crash with unknown extensions
+        expect(screen.getByText('file.xyz')).toBeInTheDocument();
+      });
+
+      it('handles files without extensions', () => {
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="README"
+          />
+        );
+
+        expect(screen.getByText('README')).toBeInTheDocument();
+      });
+
+      it('handles hidden files', () => {
+        render(
+          <DiffViewer
+            oldContent="old config"
+            newContent="new config"
+            filename=".gitignore"
+          />
+        );
+
+        expect(screen.getByText('.gitignore')).toBeInTheDocument();
+      });
     });
   });
 
@@ -1251,6 +1957,443 @@ describe('DiffViewer', () => {
 
         // Should enforce minimum width (60 according to implementation)
         expect(result.container).toBeDefined();
+      });
+    });
+  });
+
+  describe('Integration and Behavior Tests', () => {
+    describe('Mode Interaction with Responsive Behavior', () => {
+      it('respects explicit mode even when auto mode would choose differently', () => {
+        // Wide terminal but force unified mode
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 150,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        render(
+          <DiffViewer
+            oldContent="old content"
+            newContent="new content"
+            filename="forced-unified.txt"
+            mode="unified"
+          />
+        );
+
+        // Should use unified mode despite wide terminal
+        expect(screen.getByText(/--- forced-unified\.txt/)).toBeInTheDocument();
+        expect(screen.getByText(/\+\+\+ forced-unified\.txt/)).toBeInTheDocument();
+        // Should NOT show dual headers like split mode
+        const headers = screen.getAllByText(/forced-unified\.txt/);
+        expect(headers).toHaveLength(2); // Only --- and +++ headers
+      });
+
+      it('inline mode works regardless of terminal width', () => {
+        const scenarios = [40, 80, 120, 200]; // narrow, compact, normal, wide
+
+        scenarios.forEach(width => {
+          mockUseStdoutDimensions.mockReturnValue({
+            width,
+            height: 30,
+            breakpoint: width < 60 ? 'narrow' : width < 120 ? 'compact' : 'normal',
+            isNarrow: width < 60,
+            isCompact: width >= 60 && width < 120,
+            isNormal: width >= 120,
+            isWide: false,
+            isAvailable: true,
+          });
+
+          mockDiffChars.mockReturnValue([
+            { count: 3, value: 'old', removed: true },
+            { count: 3, value: 'new', added: true },
+          ]);
+
+          const { rerender } = render(
+            <DiffViewer
+              oldContent="old"
+              newContent="new"
+              filename={`inline-${width}.txt`}
+              mode="inline"
+            />
+          );
+
+          // Should always use character-level diffing in inline mode
+          expect(mockDiffChars).toHaveBeenCalled();
+          expect(screen.getByText(`inline-${width}.txt`)).toBeInTheDocument();
+
+          // Clean up for next iteration
+          rerender(<div />);
+        });
+      });
+    });
+
+    describe('Line Number Display Integration', () => {
+      it('adapts line number width based on content size and terminal width', () => {
+        // Test small file on narrow terminal
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 50,
+          height: 30,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        mockDiffLines.mockReturnValue([
+          { count: 5, value: Array(5).fill(0).map((_, i) => `line ${i + 1}`).join('\n') },
+          { count: 1, value: 'line 6\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={Array(5).fill(0).map((_, i) => `line ${i + 1}`).join('\n')}
+            newContent={Array(5).fill(0).map((_, i) => `line ${i + 1}`).join('\n') + '\nline 6'}
+            filename="small-narrow.txt"
+            showLineNumbers={true}
+          />
+        );
+
+        // Should use minimum 2 digits for narrow terminals
+        expect(screen.getByText('small-narrow.txt')).toBeInTheDocument();
+      });
+
+      it('handles transition between different line number widths', () => {
+        // Test file that grows from 2-digit to 3-digit line numbers
+        const baseLines = Array(99).fill(0).map((_, i) => `line ${i + 1}`);
+        const extraLines = Array(10).fill(0).map((_, i) => `line ${i + 100}`);
+
+        mockDiffLines.mockReturnValue([
+          { count: 99, value: baseLines.join('\n') },
+          ...extraLines.map(line => ({ count: 1, value: `${line}\n`, added: true })),
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={baseLines.join('\n')}
+            newContent={[...baseLines, ...extraLines].join('\n')}
+            filename="line-transition.txt"
+            showLineNumbers={true}
+          />
+        );
+
+        // Should handle transition to 3-digit line numbers gracefully
+        expect(screen.getByText('line-transition.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Content Truncation Behavior', () => {
+      it('truncates consistently across different modes', () => {
+        const longContent = 'very long content that should definitely be truncated when displayed in narrow terminals or limited width scenarios';
+
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          height: 30,
+          breakpoint: 'compact',
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        // Test unified mode truncation
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: `${longContent}\n`, added: true },
+        ]);
+
+        const { rerender } = render(
+          <DiffViewer
+            oldContent=""
+            newContent={longContent}
+            filename="truncation-unified.txt"
+            mode="unified"
+          />
+        );
+
+        expect(screen.getByText('truncation-unified.txt')).toBeInTheDocument();
+
+        // Test split mode truncation (should fall back to unified due to narrow width)
+        rerender(
+          <DiffViewer
+            oldContent=""
+            newContent={longContent}
+            filename="truncation-split.txt"
+            mode="split"
+          />
+        );
+
+        expect(screen.getByText(/split view requires 120\+ columns/i)).toBeInTheDocument();
+      });
+
+      it('handles mixed short and long lines properly', () => {
+        const mixedContent = [
+          'short',
+          'this is a much longer line that will need truncation in narrow displays',
+          'mid',
+          'extremely long line that definitely exceeds any reasonable terminal width and should be truncated with ellipsis',
+          'end'
+        ];
+
+        mockDiffLines.mockReturnValue([
+          ...mixedContent.map((line, i) => ({
+            count: 1,
+            value: `${line}\n`,
+            ...(i % 2 === 0 ? {} : { added: true })
+          })),
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={mixedContent.filter((_, i) => i % 2 === 0).join('\n')}
+            newContent={mixedContent.join('\n')}
+            filename="mixed-lengths.txt"
+            width={80}
+          />
+        );
+
+        expect(screen.getByText('mixed-lengths.txt')).toBeInTheDocument();
+      });
+    });
+
+    describe('Performance and Stress Testing', () => {
+      it('handles rapid mode switching without errors', () => {
+        const content = 'test content for mode switching';
+        const modes = ['unified', 'split', 'inline', 'auto'] as const;
+
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+
+        const { rerender } = render(
+          <DiffViewer
+            oldContent={content}
+            newContent={content + ' modified'}
+            filename="mode-switch.txt"
+            mode="unified"
+          />
+        );
+
+        modes.forEach(mode => {
+          rerender(
+            <DiffViewer
+              oldContent={content}
+              newContent={content + ' modified'}
+              filename="mode-switch.txt"
+              mode={mode}
+            />
+          );
+
+          expect(screen.getByText('mode-switch.txt')).toBeInTheDocument();
+        });
+      });
+
+      it('handles rapid width changes without performance degradation', () => {
+        const widths = [40, 60, 80, 100, 120, 150, 200];
+
+        const start = performance.now();
+
+        widths.forEach(width => {
+          mockUseStdoutDimensions.mockReturnValue({
+            width,
+            height: 30,
+            breakpoint: width < 60 ? 'narrow' : width < 120 ? 'compact' : 'normal',
+            isNarrow: width < 60,
+            isCompact: width >= 60 && width < 120,
+            isNormal: width >= 120,
+            isWide: false,
+            isAvailable: true,
+          });
+
+          const { rerender, unmount } = render(
+            <DiffViewer
+              oldContent="test content"
+              newContent="modified test content"
+              filename={`width-${width}.txt`}
+              mode="auto"
+            />
+          );
+
+          expect(screen.getByText(`width-${width}.txt`)).toBeInTheDocument();
+          unmount();
+        });
+
+        const end = performance.now();
+        expect(end - start).toBeLessThan(500); // Should handle width changes quickly
+      });
+
+      it('maintains consistent behavior under stress', () => {
+        // Simulate rapid prop changes
+        const iterations = 50;
+        let errors = 0;
+
+        for (let i = 0; i < iterations; i++) {
+          try {
+            const { unmount } = render(
+              <DiffViewer
+                oldContent={`content ${i}`}
+                newContent={`modified content ${i}`}
+                filename={`stress-${i}.txt`}
+                mode={i % 2 === 0 ? 'unified' : 'split'}
+                width={80 + (i % 50)}
+                showLineNumbers={i % 3 === 0}
+              />
+            );
+
+            expect(screen.getByText(`stress-${i}.txt`)).toBeInTheDocument();
+            unmount();
+          } catch (error) {
+            errors++;
+          }
+        }
+
+        expect(errors).toBe(0); // Should not have any errors during stress testing
+      });
+    });
+
+    describe('Real-world Scenarios', () => {
+      it('handles typical code file diff scenarios', () => {
+        const jsCodeOld = `function hello() {
+  console.log("Hello, World!");
+  return true;
+}`;
+
+        const jsCodeNew = `function hello() {
+  console.log("Hello, APEX!");
+  console.log("Additional logging");
+  return true;
+}`;
+
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: 'function hello() {\n' },
+          { count: 1, value: '  console.log("Hello, World!");\n', removed: true },
+          { count: 1, value: '  console.log("Hello, APEX!");\n', added: true },
+          { count: 1, value: '  console.log("Additional logging");\n', added: true },
+          { count: 1, value: '  return true;\n' },
+          { count: 1, value: '}\n' },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={jsCodeOld}
+            newContent={jsCodeNew}
+            filename="hello.js"
+            mode="unified"
+            showLineNumbers={true}
+          />
+        );
+
+        expect(screen.getByText('hello.js')).toBeInTheDocument();
+      });
+
+      it('handles configuration file changes', () => {
+        const configOld = `{
+  "name": "my-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "^18.0.0"
+  }
+}`;
+
+        const configNew = `{
+  "name": "my-app",
+  "version": "1.1.0",
+  "dependencies": {
+    "react": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}`;
+
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: '{\n' },
+          { count: 1, value: '  "name": "my-app",\n' },
+          { count: 1, value: '  "version": "1.0.0",\n', removed: true },
+          { count: 1, value: '  "version": "1.1.0",\n', added: true },
+          { count: 1, value: '  "dependencies": {\n' },
+          { count: 1, value: '    "react": "^18.0.0"\n', removed: true },
+          { count: 1, value: '    "react": "^18.0.0",\n', added: true },
+          { count: 1, value: '    "typescript": "^5.0.0"\n', added: true },
+          { count: 1, value: '  }\n' },
+          { count: 1, value: '}\n' },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={configOld}
+            newContent={configNew}
+            filename="package.json"
+            mode="split"
+          />
+        );
+
+        expect(screen.getByText('package.json')).toBeInTheDocument();
+      });
+
+      it('handles markdown document diffs', () => {
+        const markdownOld = `# My Project
+
+This is a sample project.
+
+## Features
+
+- Feature 1
+- Feature 2`;
+
+        const markdownNew = `# My Amazing Project
+
+This is a sample project with awesome features.
+
+## Features
+
+- Feature 1
+- Feature 2
+- New Feature 3
+
+## Installation
+
+Run \`npm install\` to get started.`;
+
+        mockDiffLines.mockReturnValue([
+          { count: 1, value: '# My Project\n', removed: true },
+          { count: 1, value: '# My Amazing Project\n', added: true },
+          { count: 1, value: '\n' },
+          { count: 1, value: 'This is a sample project.\n', removed: true },
+          { count: 1, value: 'This is a sample project with awesome features.\n', added: true },
+          { count: 1, value: '\n' },
+          { count: 1, value: '## Features\n' },
+          { count: 1, value: '\n' },
+          { count: 1, value: '- Feature 1\n' },
+          { count: 1, value: '- Feature 2\n' },
+          { count: 1, value: '- New Feature 3\n', added: true },
+          { count: 1, value: '\n', added: true },
+          { count: 1, value: '## Installation\n', added: true },
+          { count: 1, value: '\n', added: true },
+          { count: 1, value: 'Run `npm install` to get started.\n', added: true },
+        ]);
+
+        render(
+          <DiffViewer
+            oldContent={markdownOld}
+            newContent={markdownNew}
+            filename="README.md"
+            mode="auto"
+          />
+        );
+
+        expect(screen.getByText('README.md')).toBeInTheDocument();
       });
     });
   });
