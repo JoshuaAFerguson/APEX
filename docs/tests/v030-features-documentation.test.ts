@@ -473,4 +473,131 @@ describe('v0.3.0 Features Documentation Tests', () => {
       }
     });
   });
+
+  describe('Natural Language Interface Documentation Validation', () => {
+    it('should contain comprehensive intent detection examples', () => {
+      expect(documentationContent).toContain('#### Intent Detection Examples');
+      expect(documentationContent).toContain('##### Commands vs Tasks vs Questions');
+
+      // Commands examples
+      expect(documentationContent).toContain('**Commands** are recognized by explicit prefixes');
+      expect(documentationContent).toContain('🔍 Intent: command');
+      expect(documentationContent).toContain('📊 Confidence: 100%');
+
+      // Tasks examples
+      expect(documentationContent).toContain('**Tasks** are natural language requests');
+      expect(documentationContent).toContain('🔍 Intent: task');
+      expect(documentationContent).toContain('🤖 Agent Assignment: architect → planner → developer');
+
+      // Questions examples
+      expect(documentationContent).toContain('**Questions** seek information without requiring code changes');
+      expect(documentationContent).toContain('🔍 Intent: question');
+      expect(documentationContent).toContain('🤖 Agent Assignment: None (direct analysis)');
+    });
+
+    it('should include clarification flows for ambiguous input', () => {
+      expect(documentationContent).toContain('##### Ambiguous Input Handling');
+      expect(documentationContent).toContain('When intent is unclear, APEX engages in clarification flows');
+      expect(documentationContent).toContain('apex> Fix the bug');
+      expect(documentationContent).toContain('🔍 Intent: task (uncertain)');
+      expect(documentationContent).toContain('📊 Confidence: 45%');
+      expect(documentationContent).toContain('⚠️ Clarification needed');
+      expect(documentationContent).toContain('┌─ Clarification Required');
+      expect(documentationContent).toContain('🔍 What bug would you like me to fix?');
+    });
+
+    it('should include contextual suggestions with project context analysis', () => {
+      expect(documentationContent).toContain('##### Contextual Suggestions');
+      expect(documentationContent).toContain('APEX provides intelligent suggestions based on project context');
+      expect(documentationContent).toContain('apex> add auth');
+      expect(documentationContent).toContain('🔍 Analyzing project context...');
+      expect(documentationContent).toContain('📁 Detected: React + TypeScript project');
+      expect(documentationContent).toContain('🔧 Dependencies: @auth0/auth0-react found');
+      expect(documentationContent).toContain('💡 Contextual Suggestions:');
+      expect(documentationContent).toContain('🔐 Authentication Features:');
+      expect(documentationContent).toContain('→ "Add Auth0 login integration"');
+    });
+
+    it('should demonstrate multi-step task detection and breakdown', () => {
+      expect(documentationContent).toContain('##### Multi-step Task Detection');
+      expect(documentationContent).toContain('APEX recognizes complex, multi-step requests');
+      expect(documentationContent).toContain('apex> Create a blog system with posts, comments, and user profiles');
+      expect(documentationContent).toContain('🔍 Intent: complex_task');
+      expect(documentationContent).toContain('🏗️ Multi-step workflow detected');
+      expect(documentationContent).toContain('┌─ Task Breakdown');
+      expect(documentationContent).toContain('📋 Detected Components:');
+      expect(documentationContent).toContain('1️⃣ Blog Posts System');
+      expect(documentationContent).toContain('2️⃣ Comments System');
+      expect(documentationContent).toContain('3️⃣ User Profiles');
+    });
+
+    it('should include context-aware modifications examples', () => {
+      expect(documentationContent).toContain('##### Context-Aware Modifications');
+      expect(documentationContent).toContain('APEX understands references to previous work');
+      expect(documentationContent).toContain('apex> Make the authentication more secure');
+      expect(documentationContent).toContain('🔍 Intent: task (context-dependent)');
+      expect(documentationContent).toContain('🧠 Context Analysis: Previous authentication task found');
+      expect(documentationContent).toContain('🔍 Found previous work: JWT Authentication System');
+      expect(documentationContent).toContain('🛡️ Security Enhancement Options:');
+    });
+
+    it('should include natural language command patterns', () => {
+      expect(documentationContent).toContain('#### Natural Language Command Patterns');
+      expect(documentationContent).toContain('##### Imperative Commands');
+      expect(documentationContent).toContain('##### Descriptive Requests');
+      expect(documentationContent).toContain('##### Problem-Oriented Input');
+
+      // Imperative examples
+      expect(documentationContent).toContain('apex> Create a new component called UserProfile');
+      expect(documentationContent).toContain('apex> Delete the old authentication code');
+
+      // Descriptive examples
+      expect(documentationContent).toContain('apex> I need a way for users to reset their passwords');
+      expect(documentationContent).toContain('apex> The search functionality should be faster');
+
+      // Problem-oriented examples
+      expect(documentationContent).toContain('apex> The app crashes when users try to checkout');
+      expect(documentationContent).toContain('apex> Load times are too slow on the product page');
+    });
+
+    it('should use consistent visual formatting and emoji indicators', () => {
+      // Intent detection emojis
+      expect(documentationContent).toContain('🔍');
+      expect(documentationContent).toContain('📊');
+      expect(documentationContent).toContain('🤖');
+      expect(documentationContent).toContain('⚡');
+      expect(documentationContent).toContain('💡');
+      expect(documentationContent).toContain('🧠');
+
+      // Box drawing characters for dialogs
+      expect(documentationContent).toContain('┌─');
+      expect(documentationContent).toContain('└─');
+      expect(documentationContent).toContain('│');
+
+      // Consistent prompt format
+      const promptPattern = /apex> [^\n]+/g;
+      const prompts = documentationContent.match(promptPattern);
+      expect(prompts).toBeTruthy();
+      expect(prompts!.length).toBeGreaterThan(15);
+    });
+
+    it('should include realistic confidence scores and agent assignments', () => {
+      // Check for various confidence scores
+      const confidenceScores = documentationContent.match(/📊 Confidence: (\d+)%/g);
+      expect(confidenceScores).toBeTruthy();
+      expect(confidenceScores!.length).toBeGreaterThan(10);
+
+      // Validate confidence score ranges
+      confidenceScores!.forEach(match => {
+        const score = parseInt(match.match(/\d+/)![0]);
+        expect(score).toBeGreaterThanOrEqual(40);
+        expect(score).toBeLessThanOrEqual(100);
+      });
+
+      // Check for various agent assignments
+      expect(documentationContent).toContain('🤖 Agent Assignment: None (direct analysis)');
+      expect(documentationContent).toContain('🤖 Agent Assignment: developer');
+      expect(documentationContent).toContain('🤖 Agent Assignment: tester → developer');
+    });
+  });
 });

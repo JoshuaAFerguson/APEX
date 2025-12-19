@@ -7,22 +7,23 @@
 
 import * as fs from 'fs/promises';
 import { formatTokens } from '@apexcli/core';
+import { Session, SessionSummary } from '../services/SessionStore.js';
 
 // Context interface for session handlers
 export interface SessionContext {
   initialized: boolean;
   sessionStore: {
-    listSessions: (options: { all?: boolean; search?: string; limit?: number }) => Promise<any[]>;
-    getSession: (id: string) => Promise<any | null>;
+    listSessions: (options?: { all?: boolean; search?: string; limit?: number; tags?: string[] }) => Promise<SessionSummary[]>;
+    getSession: (id: string) => Promise<Session | null>;
     deleteSession: (id: string) => Promise<void>;
-    branchSession: (sessionId: string, fromIndex: number, name?: string) => Promise<any>;
+    branchSession: (sessionId: string, fromIndex: number, name?: string) => Promise<Session>;
     exportSession: (sessionId: string, format: 'md' | 'json' | 'html') => Promise<string>;
     setActiveSession: (sessionId: string) => Promise<void>;
   } | null;
   sessionAutoSaver: {
-    getSession: () => any | null;
+    getSession: () => Session | null;
     save: () => Promise<void>;
-    start: (sessionId: string) => Promise<any>;
+    start: (sessionId?: string) => Promise<Session>;
     updateSessionInfo: (info: { name?: string; tags?: string[] }) => Promise<void>;
     getUnsavedChangesCount: () => number;
   } | null;

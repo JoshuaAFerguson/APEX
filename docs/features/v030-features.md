@@ -931,6 +931,291 @@ apex> Can you also add password reset functionality?
 - Integration with your existing auth system
 ```
 
+#### Intent Detection Examples
+
+APEX uses sophisticated natural language processing to distinguish between three primary input types:
+
+##### Commands vs Tasks vs Questions
+
+**Commands** are recognized by explicit prefixes and trigger system functions:
+
+```
+apex> /help                    # System command - shows help menu
+apex> /status                  # System command - displays current task status
+apex> /agents                  # System command - lists available agents
+
+🔍 Intent: command
+📊 Confidence: 100%
+⚡ Action: Execute system function immediately
+```
+
+**Tasks** are natural language requests that require agent execution:
+
+```
+apex> Add user authentication to my React app
+
+🔍 Intent: task
+📊 Confidence: 95%
+🤖 Agent Assignment: architect → planner → developer
+⚡ Action: Create task execution workflow
+
+apex> Refactor this component to use hooks
+
+🔍 Intent: task
+📊 Confidence: 88%
+🤖 Agent Assignment: developer
+⚡ Action: Code refactoring workflow
+
+apex> Create unit tests for the login functionality
+
+🔍 Intent: task
+📊 Confidence: 92%
+🤖 Agent Assignment: tester → developer
+⚡ Action: Test generation workflow
+```
+
+**Questions** seek information without requiring code changes:
+
+```
+apex> What does this function do?
+
+🔍 Intent: question
+📊 Confidence: 91%
+🤖 Agent Assignment: None (direct analysis)
+⚡ Action: Code explanation response
+
+apex> How do I configure JWT tokens?
+
+🔍 Intent: question
+📊 Confidence: 89%
+🤖 Agent Assignment: None (guidance response)
+⚡ Action: Documentation/guidance response
+
+apex> What's the difference between useState and useReducer?
+
+🔍 Intent: question
+📊 Confidence: 94%
+🤖 Agent Assignment: None (educational response)
+⚡ Action: Conceptual explanation
+```
+
+##### Ambiguous Input Handling
+
+When intent is unclear, APEX engages in clarification flows:
+
+```
+apex> Fix the bug
+
+🔍 Intent: task (uncertain)
+📊 Confidence: 45%
+⚠️ Clarification needed
+
+🤖 I need more details to help you effectively:
+
+┌─ Clarification Required ─────────────────────────────────────────────────┐
+│                                                                           │
+│ 🔍 What bug would you like me to fix?                                    │
+│                                                                           │
+│ To provide the best assistance, could you specify:                       │
+│ • Which component or file has the issue?                                 │
+│ • What behavior are you seeing vs what you expected?                     │
+│ • Any error messages or console logs?                                    │
+│                                                                           │
+│ Examples:                                                                 │
+│ • "Fix the login form validation error"                                  │
+│ • "The shopping cart isn't updating quantities correctly"                │
+│ • "Handle the 404 error in the user profile page"                       │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+apex> Fix the login form validation error
+
+🔍 Intent: task (clarified)
+📊 Confidence: 94%
+🤖 Agent Assignment: developer
+⚡ Action: Bug fix workflow initiated
+```
+
+##### Contextual Suggestions
+
+APEX provides intelligent suggestions based on project context:
+
+```
+apex> add auth
+
+🔍 Analyzing project context...
+📁 Detected: React + TypeScript project
+🔧 Dependencies: @auth0/auth0-react found
+
+💡 Contextual Suggestions:
+
+┌─ Intent Suggestions ─────────────────────────────────────────────────────┐
+│                                                                           │
+│ Based on your project, you might want to:                               │
+│                                                                           │
+│ 🔐 Authentication Features:                                              │
+│   → "Add Auth0 login integration"                                        │
+│   → "Create protected routes with authentication"                        │
+│   → "Add logout functionality to the navigation"                         │
+│                                                                           │
+│ 🛡️ Authorization Features:                                               │
+│   → "Add role-based access control"                                     │
+│   → "Create admin dashboard with auth guards"                           │
+│                                                                           │
+│ 🔧 Configuration:                                                        │
+│   → "Configure Auth0 environment variables"                             │
+│   → "Set up Auth0 callback URLs"                                        │
+│                                                                           │
+│ Type your selection or provide more specific details...                  │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Advanced Intent Recognition
+
+##### Multi-step Task Detection
+
+APEX recognizes complex, multi-step requests:
+
+```
+apex> Create a blog system with posts, comments, and user profiles
+
+🔍 Intent: complex_task
+📊 Confidence: 89%
+🏗️ Multi-step workflow detected
+
+┌─ Task Breakdown ─────────────────────────────────────────────────────────┐
+│                                                                           │
+│ 📋 Detected Components:                                                  │
+│                                                                           │
+│ 1️⃣ Blog Posts System                                                     │
+│    • Post creation/editing interface                                     │
+│    • Post listing and pagination                                         │
+│    • Rich text editor integration                                        │
+│                                                                           │
+│ 2️⃣ Comments System                                                       │
+│    • Comment threads and replies                                         │
+│    • Comment moderation features                                         │
+│    • Real-time comment updates                                           │
+│                                                                           │
+│ 3️⃣ User Profiles                                                         │
+│    • User profile pages                                                  │
+│    • Profile editing capabilities                                        │
+│    • User avatar management                                              │
+│                                                                           │
+│ 🤖 Suggested Execution Order:                                            │
+│    architect → planner → developer → tester → reviewer                  │
+│                                                                           │
+│ ⏱️ Estimated Duration: 2-3 hours                                         │
+│                                                                           │
+│ Proceed with this breakdown? (y/n)                                      │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Context-Aware Modifications
+
+APEX understands references to previous work:
+
+```
+apex> Make the authentication more secure
+
+🔍 Intent: task (context-dependent)
+📊 Confidence: 82%
+🧠 Context Analysis: Previous authentication task found
+
+┌─ Context-Aware Enhancement ─────────────────────────────────────────────┐
+│                                                                           │
+│ 🔍 Found previous work: JWT Authentication System                        │
+│ 📅 Implemented: 2 hours ago                                             │
+│                                                                           │
+│ 🛡️ Security Enhancement Options:                                         │
+│                                                                           │
+│ • Add refresh token rotation                                             │
+│ • Implement rate limiting on auth endpoints                              │
+│ • Add two-factor authentication (2FA)                                    │
+│ • Enhance password strength requirements                                 │
+│ • Add session timeout management                                         │
+│ • Implement suspicious login detection                                   │
+│                                                                           │
+│ Would you like me to implement all security enhancements                │
+│ or focus on specific areas?                                              │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Natural Language Command Patterns
+
+##### Imperative Commands
+
+```
+apex> Create a new component called UserProfile
+apex> Delete the old authentication code
+apex> Refactor the shopping cart logic
+apex> Test the login functionality
+apex> Deploy the application to production
+```
+
+##### Descriptive Requests
+
+```
+apex> I need a way for users to reset their passwords
+apex> The search functionality should be faster
+apex> Users want to be able to save their favorite items
+apex> The mobile layout needs improvement
+```
+
+##### Problem-Oriented Input
+
+```
+apex> The app crashes when users try to checkout
+apex> Load times are too slow on the product page
+apex> Users can't find the logout button
+apex> The form validation isn't working correctly
+```
+
+##### Exploratory Questions
+
+```
+apex> How can I improve the performance of this component?
+apex> What's the best way to handle user authentication?
+apex> Should I use Redux or Context for state management?
+apex> How do I deploy this React app to AWS?
+```
+
+#### Confidence-Based Execution Flow
+
+APEX adjusts its behavior based on intent detection confidence:
+
+```
+High Confidence (90-100%):
+┌─ Auto-Execute ───────────────────────────────────────────────────────────┐
+│ ⚡ Executing immediately...                                               │
+│ 🤖 Task: Add user authentication                                         │
+│ 📊 Confidence: 95%                                                       │
+└───────────────────────────────────────────────────────────────────────────┘
+
+Medium Confidence (70-89%):
+┌─ Confirmation Requested ─────────────────────────────────────────────────┐
+│ 🤖 I'll help you add user authentication.                               │
+│ 📊 Confidence: 82%                                                       │
+│                                                                           │
+│ Proceed with JWT-based authentication? (y/n)                            │
+│ Or provide more specific requirements...                                 │
+└───────────────────────────────────────────────────────────────────────────┘
+
+Low Confidence (0-69%):
+┌─ Clarification Required ─────────────────────────────────────────────────┐
+│ 🤔 I'm not sure what you'd like me to do.                               │
+│ 📊 Confidence: 45%                                                       │
+│                                                                           │
+│ Could you provide more details or try one of these formats:             │
+│ • "Create a [specific component] for [purpose]"                         │
+│ • "Fix [specific issue] in [file/component]"                           │
+│ • "Add [feature] to [existing component]"                               │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
 ### 7. Enhanced Input Experience
 
 #### Advanced Input with Preview

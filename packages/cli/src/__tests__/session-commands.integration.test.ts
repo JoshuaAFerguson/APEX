@@ -17,6 +17,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import { Session, SessionSummary } from '../services/SessionStore.js';
+import {
+  handleSession,
+  handleSessionList,
+  handleSessionLoad,
+  handleSessionSave,
+  handleSessionBranch,
+  handleSessionExport,
+  handleSessionDelete,
+  handleSessionInfo,
+  type SessionContext,
+} from '../handlers/session-handlers.js';
 
 // Mock dependencies
 vi.mock('fs/promises');
