@@ -24,13 +24,15 @@ function getEffectiveMode(
   width: number,
   breakpoint: Breakpoint
 ): 'unified' | 'split' | 'inline' {
+  const SPLIT_MODE_MIN_WIDTH = 120;
+
   if (requestedMode === 'auto') {
     // Auto mode: unified for narrow/compact terminals, split for normal/wide
-    return width < 100 ? 'unified' : 'split';
+    return width < SPLIT_MODE_MIN_WIDTH ? 'unified' : 'split';
   }
 
   // If split requested but terminal too narrow, fallback to unified
-  if (requestedMode === 'split' && width < 100) {
+  if (requestedMode === 'split' && width < SPLIT_MODE_MIN_WIDTH) {
     return 'unified';
   }
 
@@ -43,6 +45,41 @@ function getEffectiveMode(
 function truncateDiffLine(content: string, maxWidth: number): string {
   if (content.length <= maxWidth) return content;
   return content.substring(0, maxWidth - 3) + '...';
+}
+
+/**
+ * Helper function to calculate line number column width based on max line number and breakpoint
+ */
+function calculateLineNumberWidth(maxLineNumber: number, breakpoint: Breakpoint): number {
+  // Minimum 2 digits for compact display
+  const minDigits = breakpoint === 'narrow' ? 2 : breakpoint === 'compact' ? 3 : 2;
+
+  // Calculate digits needed for the max line number
+  const requiredDigits = Math.max(minDigits, maxLineNumber.toString().length);
+
+  // Ensure reasonable bounds (max 6 digits for very large files)
+  const boundedDigits = Math.min(6, requiredDigits);
+
+  // Add padding for separator
+  return boundedDigits + 1;
+}
+
+/**
+ * Helper function to calculate content width after accounting for line numbers and padding
+ */
+function calculateContentWidth(
+  totalWidth: number,
+  lineNumberWidth: number,
+  borderPadding: number,
+  diffMarkerWidth: number,
+  breakpoint: Breakpoint
+): number {
+  const overhead = lineNumberWidth + borderPadding + diffMarkerWidth;
+  const contentWidth = totalWidth - overhead;
+
+  // Ensure minimum content width based on breakpoint
+  const minContent = breakpoint === 'narrow' ? 20 : breakpoint === 'compact' ? 30 : 40;
+  return Math.max(minContent, contentWidth);
 }
 
 /**
@@ -129,11 +166,33 @@ function UnifiedDiffViewer({
 }: Omit<DiffViewerProps, 'mode'> & { forcedUnified?: boolean }): React.ReactElement {
   const diff = diffLines(oldContent, newContent);
   const hunks = createHunks(diff, context!);
+  const { breakpoint } = useStdoutDimensions();
+
+  // Calculate maximum line number for dynamic width
+  const maxLineNum = hunks.length > 0
+    ? Math.max(
+        ...hunks.flatMap(h => h.lines.map(l =>
+          Math.max(l.oldLineNumber ?? 0, l.newLineNumber ?? 0)
+        ))
+      )
+    : 99; // Default for empty diffs
+
+  // Calculate dynamic line number width
+  const singleLineNumWidth = showLineNumbers
+    ? calculateLineNumberWidth(maxLineNum, breakpoint)
+    : 0;
+  const lineNumberWidth = showLineNumbers ? singleLineNumWidth * 2 + 1 : 0; // Two columns + space
 
   // Calculate available width for content (accounting for line numbers and padding)
-  const lineNumberWidth = showLineNumbers ? 8 : 0;
   const borderPadding = 2; // paddingX={1} on both sides
-  const contentWidth = width! - lineNumberWidth - borderPadding - 1; // -1 for the diff marker
+  const diffMarkerWidth = 1; // +/-/space marker
+  const contentWidth = calculateContentWidth(
+    width!,
+    lineNumberWidth,
+    borderPadding,
+    diffMarkerWidth,
+    breakpoint
+  );
 
   return (
     <Box flexDirection="column" width={width}>
@@ -144,7 +203,7 @@ function UnifiedDiffViewer({
         </Text>
         {forcedUnified && (
           <Text color="yellow" dimColor>
-            {' '}(split view requires 100+ columns)
+            {' '}(split view requires 120+ columns)
           </Text>
         )}
       </Box>
@@ -169,16 +228,17 @@ function UnifiedDiffViewer({
             return (
               <Box key={lineIndex}>
                 {showLineNumbers && (
-                  <Box width={8} justifyContent="flex-end" marginRight={1}>
+                  <Box width={lineNumberWidth} justifyContent="flex-end" marginRight={1}>
                     <Text color="gray" dimColor>
                       {line.oldLineNumber !== undefined
-                        ? line.oldLineNumber.toString().padStart(3, ' ')
-                        : '   '}
+                        ? line.oldLineNumber.toString().padStart(singleLineNumWidth - 1, ' ')
+                        : ' '.repeat(singleLineNumWidth - 1)}
                     </Text>
+                    <Text color="gray" dimColor> </Text>
                     <Text color="gray" dimColor>
                       {line.newLineNumber !== undefined
-                        ? line.newLineNumber.toString().padStart(3, ' ')
-                        : '   '}
+                        ? line.newLineNumber.toString().padStart(singleLineNumWidth - 1, ' ')
+                        : ' '.repeat(singleLineNumWidth - 1)}
                     </Text>
                   </Box>
                 )}
@@ -235,11 +295,31 @@ function SplitDiffViewer({
 }: Omit<DiffViewerProps, 'mode'>): React.ReactElement {
   const diff = diffLines(oldContent, newContent);
   const hunks = createHunks(diff, context!);
+  const { breakpoint } = useStdoutDimensions();
   const halfWidth = Math.floor((width! - 4) / 2);
 
+  // Calculate maximum line number for dynamic width
+  const maxLineNum = hunks.length > 0
+    ? Math.max(
+        ...hunks.flatMap(h => h.lines.map(l =>
+          Math.max(l.oldLineNumber ?? 0, l.newLineNumber ?? 0)
+        ))
+      )
+    : 99; // Default for empty diffs
+
+  // Calculate dynamic line number width for split view (single column + separator)
+  const lineNumberWidth = showLineNumbers
+    ? calculateLineNumberWidth(maxLineNum, breakpoint) + 1 // +1 for " │"
+    : 0;
+
   // Calculate available width for content on each side
-  const lineNumberWidth = showLineNumbers ? 5 : 0; // "123 │"
-  const contentWidth = halfWidth - lineNumberWidth;
+  const contentWidth = calculateContentWidth(
+    halfWidth,
+    lineNumberWidth,
+    0, // No border padding on each side in split mode
+    0, // No diff marker in split mode
+    breakpoint
+  );
 
   return (
     <Box flexDirection="column" width={width}>
@@ -277,8 +357,8 @@ function SplitDiffViewer({
                   {showLineNumbers && (
                     <Text color="gray" dimColor>
                       {line.oldLineNumber !== undefined
-                        ? line.oldLineNumber.toString().padStart(3, ' ')
-                        : '   '} │
+                        ? line.oldLineNumber.toString().padStart(lineNumberWidth - 2, ' ')
+                        : ' '.repeat(lineNumberWidth - 2)} │
                     </Text>
                   )}
                   <Text
@@ -296,8 +376,8 @@ function SplitDiffViewer({
                   {showLineNumbers && (
                     <Text color="gray" dimColor>
                       {line.newLineNumber !== undefined
-                        ? line.newLineNumber.toString().padStart(3, ' ')
-                        : '   '} │
+                        ? line.newLineNumber.toString().padStart(lineNumberWidth - 2, ' ')
+                        : ' '.repeat(lineNumberWidth - 2)} │
                     </Text>
                   )}
                   <Text
