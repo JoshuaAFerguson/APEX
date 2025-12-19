@@ -355,6 +355,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Tool error display** - Clear error messages with context
 - ⚪ **Diff preview** - Show changes before applying
 - ⚪ **Undo capability** - Revert tool actions
+- ⚪ **Dry-run mode** - Simulate tool actions and show planned changes before execution
 
 ### Permission System
 - ⚪ **Permission levels** - Allow always, allow once, deny
@@ -363,6 +364,8 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Dangerous operation warnings** - Extra confirmation for risky actions
 - ⚪ **Permission presets** - "Autonomous", "Review all", "Read-only"
 - ⚪ **Permission persistence** - Remember choices across sessions
+- ⚪ **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
+- ⚪ **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
 
 ### Autonomy Controls
 - ⚪ **Autonomy levels** - Full auto, review before commit, review all
@@ -398,6 +401,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Framework detection** - Auto-detect frameworks and conventions
 - ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
 - ⚪ **Test framework detection** - Know how to run tests
+- ⚪ **Workspace health checks** - `apex doctor` validates toolchain and config per package
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 - ⚪ **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
@@ -418,6 +422,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Conversation Memory
 - ⚪ **Session context** - Remember everything in current session
+- ⚪ **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
+- ⚪ **Long-term memory** - Persistent project and user memory across sessions
+- ⚪ **RAG over repo/docs/issues** - Retrieval-augmented context for answers and plans
 - ⚪ **Context summarization** - Compress old context intelligently
 - ⚪ **Memory persistence** - Remember across sessions
 - ⚪ **Explicit memory** - User can tell APEX to remember things

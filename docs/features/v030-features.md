@@ -515,6 +515,595 @@ apex> /export auth-session-summary
 
 ### 11. Syntax Highlighting and Code Display
 
+APEX v0.3.0 provides comprehensive syntax highlighting support for code blocks displayed in the terminal. The syntax highlighting engine automatically detects languages and applies appropriate coloring to enhance code readability.
+
+#### Supported Languages
+
+APEX supports syntax highlighting for a wide variety of programming languages and configuration formats:
+
+| Category | Languages |
+|----------|-----------|
+| **Web Development** | TypeScript, JavaScript, JSX, TSX, HTML, CSS, SCSS |
+| **Backend** | Python, Go, Rust, Java, C, C++, C# |
+| **Configuration** | JSON, YAML, TOML, INI, ENV |
+| **Shell & Scripting** | Bash, Shell, PowerShell, Zsh |
+| **Data & Markup** | Markdown, XML, SQL, GraphQL |
+| **Other** | Dockerfile, Makefile, Diff, Regex |
+
+#### Language-Specific Examples
+
+##### TypeScript / JavaScript
+
+```
+┌─ Generated Code: AuthService.ts ─────────────────────────────────────────────┐
+│                                                                              │
+│ import { sign, verify } from 'jsonwebtoken';                                │
+│                                                                              │
+│ interface TokenPayload {                                                     │
+│   userId: string;                                                            │
+│   email: string;                                                             │
+│   role: 'admin' | 'user';                                                   │
+│ }                                                                            │
+│                                                                              │
+│ export class AuthService {                                                   │
+│   private readonly secret: string;                                          │
+│                                                                              │
+│   constructor(secret: string) {                                             │
+│     this.secret = secret;                                                   │
+│   }                                                                          │
+│                                                                              │
+│   generateToken(payload: TokenPayload): string {                            │
+│     return sign(payload, this.secret, { expiresIn: '24h' });               │
+│   }                                                                          │
+│                                                                              │
+│   verifyToken(token: string): TokenPayload | null {                         │
+│     try {                                                                    │
+│       return verify(token, this.secret) as TokenPayload;                    │
+│     } catch {                                                                │
+│       return null;                                                           │
+│     }                                                                        │
+│   }                                                                          │
+│ }                                                                            │
+│                                                                              │
+│ [TypeScript • Keywords: blue, Types: cyan, Strings: green, Comments: gray]  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Python
+
+```
+┌─ Generated Code: data_processor.py ──────────────────────────────────────────┐
+│                                                                              │
+│ from typing import List, Dict, Optional                                      │
+│ from dataclasses import dataclass                                            │
+│ import asyncio                                                               │
+│                                                                              │
+│ @dataclass                                                                   │
+│ class ProcessingResult:                                                      │
+│     """Result of data processing operation."""                               │
+│     success: bool                                                            │
+│     data: Optional[Dict] = None                                              │
+│     error: Optional[str] = None                                              │
+│                                                                              │
+│ async def process_batch(items: List[str]) -> List[ProcessingResult]:        │
+│     """Process a batch of items asynchronously."""                           │
+│     tasks = [process_item(item) for item in items]                          │
+│     results = await asyncio.gather(*tasks, return_exceptions=True)          │
+│                                                                              │
+│     return [                                                                 │
+│         ProcessingResult(success=True, data=r) if not isinstance(r, Exception) │
+│         else ProcessingResult(success=False, error=str(r))                  │
+│         for r in results                                                     │
+│     ]                                                                        │
+│                                                                              │
+│ [Python • Keywords: magenta, Decorators: yellow, Docstrings: green]         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### JSON
+
+```
+┌─ Configuration: package.json ────────────────────────────────────────────────┐
+│                                                                              │
+│ {                                                                            │
+│   "name": "@apex/cli",                                                       │
+│   "version": "0.3.0",                                                        │
+│   "description": "APEX Command Line Interface",                              │
+│   "main": "dist/index.js",                                                   │
+│   "scripts": {                                                               │
+│     "build": "tsc",                                                          │
+│     "dev": "tsc --watch",                                                    │
+│     "test": "vitest run",                                                    │
+│     "lint": "eslint src/"                                                    │
+│   },                                                                         │
+│   "dependencies": {                                                          │
+│     "ink": "^4.4.1",                                                         │
+│     "react": "^18.2.0",                                                      │
+│     "chalk": "^5.3.0"                                                        │
+│   },                                                                         │
+│   "devDependencies": {                                                       │
+│     "typescript": "^5.3.0",                                                  │
+│     "@types/node": "^20.10.0"                                               │
+│   }                                                                          │
+│ }                                                                            │
+│                                                                              │
+│ [JSON • Keys: cyan, Strings: green, Numbers: yellow, Braces: white]         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### YAML
+
+```
+┌─ Configuration: .apex/config.yaml ───────────────────────────────────────────┐
+│                                                                              │
+│ # APEX Project Configuration                                                 │
+│ project:                                                                     │
+│   name: my-application                                                       │
+│   version: 1.0.0                                                             │
+│                                                                              │
+│ agents:                                                                      │
+│   planner:                                                                   │
+│     enabled: true                                                            │
+│     model: claude-sonnet-4-20250514                                                 │
+│     maxTokens: 4096                                                          │
+│                                                                              │
+│   developer:                                                                 │
+│     enabled: true                                                            │
+│     model: claude-sonnet-4-20250514                                                 │
+│     tools:                                                                   │
+│       - read_file                                                            │
+│       - write_file                                                           │
+│       - execute_command                                                      │
+│                                                                              │
+│ limits:                                                                      │
+│   maxConcurrentTasks: 5                                                      │
+│   costLimit: 10.00  # USD per session                                       │
+│   tokenLimit: 100000                                                         │
+│                                                                              │
+│ [YAML • Keys: cyan, Values: white, Comments: gray, Booleans: yellow]        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Bash / Shell
+
+```
+┌─ Script: deploy.sh ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│ #!/bin/bash                                                                  │
+│ set -euo pipefail                                                            │
+│                                                                              │
+│ # Configuration                                                              │
+│ DEPLOY_ENV="${1:-production}"                                               │
+│ BUILD_DIR="./dist"                                                           │
+│ REMOTE_HOST="deploy@example.com"                                            │
+│                                                                              │
+│ echo "🚀 Deploying to ${DEPLOY_ENV}..."                                     │
+│                                                                              │
+│ # Build the project                                                          │
+│ npm run build                                                                │
+│                                                                              │
+│ # Run tests before deployment                                                │
+│ if [[ "$DEPLOY_ENV" == "production" ]]; then                                │
+│     npm run test:e2e                                                         │
+│ fi                                                                           │
+│                                                                              │
+│ # Deploy to remote server                                                    │
+│ rsync -avz --delete "$BUILD_DIR/" "$REMOTE_HOST:/var/www/app/"              │
+│                                                                              │
+│ echo "✅ Deployment complete!"                                               │
+│                                                                              │
+│ [Bash • Commands: green, Variables: cyan, Strings: yellow, Comments: gray]  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### SQL
+
+```
+┌─ Query: get_user_analytics.sql ──────────────────────────────────────────────┐
+│                                                                              │
+│ -- Get user activity analytics for the past 30 days                         │
+│ SELECT                                                                       │
+│     u.id,                                                                    │
+│     u.email,                                                                 │
+│     COUNT(DISTINCT s.id) AS session_count,                                  │
+│     SUM(s.duration_seconds) / 3600.0 AS total_hours,                        │
+│     AVG(s.actions_count) AS avg_actions_per_session                         │
+│ FROM users u                                                                 │
+│ LEFT JOIN sessions s ON s.user_id = u.id                                    │
+│     AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'                   │
+│ WHERE u.is_active = TRUE                                                     │
+│ GROUP BY u.id, u.email                                                       │
+│ HAVING COUNT(DISTINCT s.id) > 0                                             │
+│ ORDER BY total_hours DESC                                                    │
+│ LIMIT 100;                                                                   │
+│                                                                              │
+│ [SQL • Keywords: blue, Functions: magenta, Strings: green, Numbers: yellow] │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Dockerfile
+
+```
+┌─ Configuration: Dockerfile ──────────────────────────────────────────────────┐
+│                                                                              │
+│ # Build stage                                                                │
+│ FROM node:20-alpine AS builder                                               │
+│ WORKDIR /app                                                                 │
+│                                                                              │
+│ COPY package*.json ./                                                        │
+│ RUN npm ci --only=production                                                │
+│                                                                              │
+│ COPY . .                                                                     │
+│ RUN npm run build                                                            │
+│                                                                              │
+│ # Production stage                                                           │
+│ FROM node:20-alpine                                                          │
+│ WORKDIR /app                                                                 │
+│                                                                              │
+│ ENV NODE_ENV=production                                                      │
+│ EXPOSE 3000                                                                  │
+│                                                                              │
+│ COPY --from=builder /app/dist ./dist                                        │
+│ COPY --from=builder /app/node_modules ./node_modules                        │
+│                                                                              │
+│ CMD ["node", "dist/index.js"]                                               │
+│                                                                              │
+│ [Dockerfile • Instructions: blue, Arguments: white, Comments: gray]         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Go
+
+```
+┌─ Generated Code: server.go ──────────────────────────────────────────────────┐
+│                                                                              │
+│ package main                                                                 │
+│                                                                              │
+│ import (                                                                     │
+│     "fmt"                                                                    │
+│     "log"                                                                    │
+│     "net/http"                                                               │
+│     "time"                                                                   │
+│ )                                                                            │
+│                                                                              │
+│ type Server struct {                                                         │
+│     Port    string                                                           │
+│     Timeout time.Duration                                                    │
+│ }                                                                            │
+│                                                                              │
+│ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {     │
+│     w.Header().Set("Content-Type", "application/json")                      │
+│     fmt.Fprintf(w, `{"status": "healthy", "timestamp": "%s"}`,             │
+│         time.Now().Format(time.RFC3339))                                    │
+│ }                                                                            │
+│                                                                              │
+│ func (s *Server) Start() error {                                            │
+│     mux := http.NewServeMux()                                               │
+│     mux.HandleFunc("/health", s.handleHealth)                               │
+│                                                                              │
+│     server := &http.Server{                                                 │
+│         Addr:         ":" + s.Port,                                         │
+│         Handler:      mux,                                                   │
+│         ReadTimeout:  s.Timeout,                                            │
+│         WriteTimeout: s.Timeout,                                            │
+│     }                                                                        │
+│                                                                              │
+│     log.Printf("Server starting on port %s", s.Port)                       │
+│     return server.ListenAndServe()                                          │
+│ }                                                                            │
+│                                                                              │
+│ func main() {                                                               │
+│     server := &Server{                                                      │
+│         Port:    "8080",                                                     │
+│         Timeout: 30 * time.Second,                                          │
+│     }                                                                        │
+│                                                                              │
+│     if err := server.Start(); err != nil {                                  │
+│         log.Fatal("Server failed:", err)                                     │
+│     }                                                                        │
+│ }                                                                            │
+│                                                                              │
+│ [Go • Keywords: magenta, Types: cyan, Functions: yellow, Strings: green]    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Rust
+
+```
+┌─ Generated Code: auth.rs ────────────────────────────────────────────────────┐
+│                                                                              │
+│ use serde::{Deserialize, Serialize};                                         │
+│ use std::collections::HashMap;                                               │
+│ use thiserror::Error;                                                        │
+│                                                                              │
+│ #[derive(Debug, Error)]                                                      │
+│ pub enum AuthError {                                                         │
+│     #[error("Invalid credentials")]                                          │
+│     InvalidCredentials,                                                      │
+│     #[error("Token expired")]                                                │
+│     TokenExpired,                                                            │
+│     #[error("Database error: {0}")]                                          │
+│     DatabaseError(String),                                                   │
+│ }                                                                            │
+│                                                                              │
+│ #[derive(Debug, Serialize, Deserialize)]                                    │
+│ pub struct User {                                                            │
+│     pub id: u64,                                                             │
+│     pub email: String,                                                       │
+│     pub name: String,                                                        │
+│     pub roles: Vec<String>,                                                  │
+│ }                                                                            │
+│                                                                              │
+│ pub struct AuthService {                                                     │
+│     users: HashMap<String, User>,                                            │
+│     secret_key: String,                                                      │
+│ }                                                                            │
+│                                                                              │
+│ impl AuthService {                                                           │
+│     pub fn new(secret_key: String) -> Self {                                │
+│         Self {                                                               │
+│             users: HashMap::new(),                                           │
+│             secret_key,                                                      │
+│         }                                                                    │
+│     }                                                                        │
+│                                                                              │
+│     pub async fn authenticate(                                               │
+│         &self,                                                               │
+│         email: &str,                                                         │
+│         password: &str,                                                      │
+│     ) -> Result<String, AuthError> {                                        │
+│         // Authentication logic here                                         │
+│         todo!("Implement authentication")                                    │
+│     }                                                                        │
+│ }                                                                            │
+│                                                                              │
+│ [Rust • Keywords: blue, Attributes: yellow, Types: cyan, Macros: magenta]   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Markdown
+
+```
+┌─ Documentation: README.md ───────────────────────────────────────────────────┐
+│                                                                              │
+│ # APEX Authentication Module                                                 │
+│                                                                              │
+│ A secure, JWT-based authentication system for modern web applications.      │
+│                                                                              │
+│ ## Features                                                                  │
+│                                                                              │
+│ - **Secure JWT tokens** with configurable expiration                        │
+│ - **Role-based access control** with flexible permissions                   │
+│ - **Password hashing** using bcrypt with salt rounds                        │
+│ - **Rate limiting** to prevent brute force attacks                          │
+│ - **Session management** with automatic cleanup                              │
+│                                                                              │
+│ ## Quick Start                                                               │
+│                                                                              │
+│ ```typescript                                                                │
+│ import { AuthService } from '@apex/auth';                                   │
+│                                                                              │
+│ const auth = new AuthService({                                               │
+│   jwtSecret: process.env.JWT_SECRET,                                         │
+│   tokenExpiry: '24h'                                                         │
+│ });                                                                          │
+│                                                                              │
+│ // Authenticate user                                                         │
+│ const token = await auth.login(email, password);                            │
+│ ```                                                                          │
+│                                                                              │
+│ ## Configuration                                                             │
+│                                                                              │
+│ | Option | Type | Default | Description |                                   │
+│ |--------|------|---------|-------------|                                   │
+│ | `jwtSecret` | string | - | Secret key for JWT signing |                  │
+│ | `tokenExpiry` | string | '1h' | Token expiration time |                   │
+│ | `hashRounds` | number | 12 | bcrypt salt rounds |                          │
+│                                                                              │
+│ > **Security Note**: Always use environment variables for sensitive         │
+│ > configuration like JWT secrets in production environments.                │
+│                                                                              │
+│ [Markdown • Headers: cyan, Code: gray bg, Tables: formatted, Links: blue]   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Configuration Options
+
+##### SyntaxHighlighter Component API
+
+```typescript
+import { SyntaxHighlighter, CodeBlock } from '@apex/cli/ui/components';
+
+// Basic usage with SyntaxHighlighter
+<SyntaxHighlighter
+  code={sourceCode}
+  language="typescript"
+/>
+
+// CodeBlock component for file display
+<CodeBlock
+  code={sourceCode}
+  language="typescript"
+  filename="AuthService.ts"
+  showLineNumbers={true}
+/>
+
+// Full SyntaxHighlighter configuration
+<SyntaxHighlighter
+  code={sourceCode}
+  language="python"
+  showLineNumbers={true}
+  width={80}
+  maxLines={20}
+  responsive={true}
+  wrapLines={true}
+/>
+
+// Responsive configuration
+<SyntaxHighlighter
+  code={sourceCode}
+  language="javascript"
+  responsive={true} // Adapts to terminal width automatically
+  wrapLines={true}  // Intelligently wraps long lines
+/>
+```
+
+##### Component Properties
+
+```typescript
+// SyntaxHighlighter component interface
+interface SyntaxHighlighterProps {
+  code: string;                           // Source code to highlight
+  language?: string;                      // Language identifier (default: 'typescript')
+  showLineNumbers?: boolean;              // Display line numbers (default: true)
+  width?: number;                         // Explicit width override
+  maxLines?: number;                      // Maximum lines to display before truncation
+  responsive?: boolean;                   // Auto-adapt to terminal width (default: true)
+  wrapLines?: boolean;                    // Wrap long lines intelligently
+}
+
+// CodeBlock component interface
+interface CodeBlockProps {
+  code: string;                           // Source code to highlight
+  language?: string;                      // Language identifier (default: 'typescript')
+  filename?: string;                      // Optional filename to display
+  showLineNumbers?: boolean;              // Display line numbers (default: true)
+}
+
+// Language mapping for common aliases
+const languageMap = {
+  ts: 'typescript',
+  js: 'javascript',
+  py: 'python',
+  rb: 'ruby',
+  sh: 'bash',
+  shell: 'bash',
+  yml: 'yaml',
+  md: 'markdown'
+};
+```
+
+##### Theme Configuration
+
+```typescript
+// Custom theme configuration
+const customTheme: ThemeOverrides = {
+  keyword: 'blue',
+  string: 'green',
+  number: 'yellow',
+  comment: 'gray',
+  function: 'cyan',
+  variable: 'white',
+  type: 'magenta',
+  operator: 'white',
+  punctuation: 'gray',
+  background: 'bgBlack',
+  lineNumber: 'gray',
+  highlightLine: 'bgGray'
+};
+
+<SyntaxHighlighter
+  code={code}
+  language="typescript"
+  customTheme={customTheme}
+/>
+```
+
+##### Global Configuration via .apex/config.yaml
+
+```yaml
+# Syntax highlighting configuration
+ui:
+  syntaxHighlighting:
+    enabled: true
+    theme: dark                    # dark, light, or auto
+    defaultShowLineNumbers: false
+    defaultWrapLongLines: false
+    maxCodeBlockHeight: 30         # Maximum lines before scrolling
+
+    # Language-specific overrides
+    languageOverrides:
+      python:
+        showLineNumbers: true
+      yaml:
+        wrapLongLines: true
+
+    # Custom color scheme
+    colors:
+      keyword: blue
+      string: green
+      number: yellow
+      comment: gray
+      function: cyan
+```
+
+#### Responsive Syntax Highlighting
+
+Syntax highlighting adapts to terminal width for optimal readability:
+
+**Wide Terminal (120+ columns):**
+```
+┌─ src/components/UserProfile.tsx ─────────────────────────────────────────────────────────────────────────────────────┐
+│  1 │ import React, { useState, useEffect } from 'react';                                                              │
+│  2 │ import { User, UserService } from '../services/UserService';                                                     │
+│  3 │                                                                                                                  │
+│  4 │ interface UserProfileProps {                                                                                     │
+│  5 │   userId: string;                                                                                                │
+│  6 │   onUpdate?: (user: User) => void;                                                                               │
+│  7 │ }                                                                                                                │
+│  8 │                                                                                                                  │
+│  9 │ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onUpdate }) => {                               │
+│ 10 │   const [user, setUser] = useState<User | null>(null);                                                           │
+│ 11 │   const [loading, setLoading] = useState(true);                                                                  │
+│                                                                                                                       │
+│ [TypeScript] [Lines 1-11 of 45] [Copy]                                                                                │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Compact Terminal (60-79 columns):**
+```
+┌─ UserProfile.tsx ─────────────────────────────────────┐
+│  1 │ import React, { useState, useEffect }           │
+│    │   from 'react';                                 │
+│  2 │ import { User, UserService }                    │
+│    │   from '../services/UserService';               │
+│  3 │                                                 │
+│  4 │ interface UserProfileProps {                    │
+│  5 │   userId: string;                               │
+│  6 │   onUpdate?: (user: User) => void;              │
+│  7 │ }                                               │
+│                                                       │
+│ [TS] [1-7/45]                                         │
+└───────────────────────────────────────────────────────┘
+```
+
+#### Line Highlighting
+
+Highlight specific lines to draw attention to important code:
+
+```
+┌─ Important Changes ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│  1 │ export function validateInput(input: string): boolean {                │
+│  2 │   // Basic validation                                                  │
+│  3 │   if (!input || input.trim().length === 0) {                     ← NEW │
+│  4 │     return false;                                                 ← NEW │
+│  5 │   }                                                               ← NEW │
+│  6 │                                                                        │
+│  7 │   // Check for dangerous patterns                                      │
+│  8 │   const dangerousPatterns = [                                    ← NEW │
+│  9 │     /<script>/i,                                                  ← NEW │
+│ 10 │     /javascript:/i,                                               ← NEW │
+│ 11 │     /on\w+=/i                                                     ← NEW │
+│ 12 │   ];                                                              ← NEW │
+│ 13 │                                                                        │
+│ 14 │   return !dangerousPatterns.some(p => p.test(input));            ← NEW │
+│ 15 │ }                                                                      │
+│                                                                              │
+│ [Lines 3-5, 8-12, 14 highlighted]                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
 #### Code Blocks with Highlighting
 
 ```typescript
@@ -1012,6 +1601,109 @@ const lightTheme = {
 };
 ```
 
+#### Component Integration Examples
+
+##### Streaming Code Generation
+
+```typescript
+// Example: Developer agent generating code with streaming
+import { StreamingResponse, SyntaxHighlighter } from '@apex/cli/ui/components';
+
+<StreamingResponse
+  agent="🤖 developer"
+  content={
+    <div>
+      <p>I'll create the authentication service for you:</p>
+      <SyntaxHighlighter
+        code={generatedCode}
+        language="typescript"
+        showLineNumbers={true}
+        responsive={true}
+      />
+      <p>This implementation includes JWT token handling and user validation.</p>
+    </div>
+  }
+  isStreaming={isGenerating}
+  onComplete={() => setShowNext(true)}
+/>
+```
+
+##### File Comparison with Diff
+
+```typescript
+// Show before/after code comparison
+import { CodeBlock } from '@apex/cli/ui/components';
+
+// Original file
+<CodeBlock
+  code={originalCode}
+  language="typescript"
+  filename="AuthContext.tsx (before)"
+  showLineNumbers={true}
+/>
+
+// Modified file
+<CodeBlock
+  code={modifiedCode}
+  language="typescript"
+  filename="AuthContext.tsx (after)"
+  showLineNumbers={true}
+/>
+```
+
+##### Multi-Language Documentation
+
+```typescript
+// Display implementation in multiple languages
+const examples = [
+  { lang: 'typescript', code: tsCode, filename: 'auth.ts' },
+  { lang: 'python', code: pyCode, filename: 'auth.py' },
+  { lang: 'go', code: goCode, filename: 'auth.go' },
+];
+
+{examples.map((example, index) => (
+  <CodeBlock
+    key={index}
+    code={example.code}
+    language={example.lang}
+    filename={example.filename}
+    showLineNumbers={true}
+  />
+))}
+```
+
+##### Smart Language Detection
+
+```typescript
+// Automatic language detection based on file extension
+function getLanguageFromFilename(filename: string): string {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  const languageMap: Record<string, string> = {
+    'ts': 'typescript',
+    'tsx': 'typescript',
+    'js': 'javascript',
+    'jsx': 'javascript',
+    'py': 'python',
+    'rs': 'rust',
+    'go': 'go',
+    'yml': 'yaml',
+    'yaml': 'yaml',
+    'json': 'json',
+    'md': 'markdown',
+    'sh': 'bash',
+    'sql': 'sql',
+  };
+  return languageMap[extension || ''] || 'text';
+}
+
+// Usage in components
+<SyntaxHighlighter
+  code={fileContent}
+  language={getLanguageFromFilename(filename)}
+  responsive={true}
+/>
+```
+
 #### Integration with Streaming Components
 
 Markdown rendering integrates seamlessly with APEX's streaming system:
@@ -1089,6 +1781,140 @@ const AuthContext = createContext<AuthContextType>({
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+#### Performance Optimization
+
+##### Intelligent Line Wrapping
+
+The SyntaxHighlighter component includes smart line wrapping that preserves code readability:
+
+```typescript
+// Automatic wrapping at optimal break points
+function wrapCodeLine(line: string, maxWidth: number): string[] {
+  const breakChars = [' ', ',', '.', '(', ')', '{', '}', '[', ']', ';', '+', '-', '*', '/', '='];
+
+  // Look for natural break points rather than hard character limits
+  for (let i = maxWidth; i > maxWidth - 20 && i > 0; i--) {
+    if (breakChars.includes(line[i])) {
+      return [
+        line.substring(0, i + 1),
+        '  ' + line.substring(i + 1) // Indent continuation
+      ];
+    }
+  }
+}
+```
+
+##### Component Rendering Performance
+
+```typescript
+// Performance considerations for large code files
+<SyntaxHighlighter
+  code={largeFile}
+  language="typescript"
+  maxLines={50}        // Limit rendering to first 50 lines
+  responsive={true}    // Only render visible content
+  wrapLines={false}    // Disable wrapping for performance
+/>
+
+// Virtual scrolling for very large files
+<VirtualizedCodeView
+  code={hugeFile}
+  language="typescript"
+  windowSize={20}      // Only render 20 lines at a time
+  showLineNumbers={true}
+/>
+```
+
+##### Memory Management
+
+```typescript
+// Cleanup strategies for long-running sessions
+useEffect(() => {
+  // Cleanup syntax highlighter resources
+  return () => {
+    if (syntaxHighlighter.current) {
+      syntaxHighlighter.current.dispose();
+    }
+  };
+}, []);
+
+// Lazy loading for syntax highlighting
+const LazyCodeBlock = React.lazy(() => import('./CodeBlock'));
+
+<Suspense fallback={<Text>Loading syntax highlighting...</Text>}>
+  <LazyCodeBlock code={code} language={language} />
+</Suspense>
+```
+
+#### Configuration File Examples
+
+##### Complete .apex/config.yaml Configuration
+
+```yaml
+# Complete syntax highlighting configuration
+ui:
+  syntaxHighlighting:
+    enabled: true
+    theme: dark                           # dark, light, auto
+    defaultShowLineNumbers: true
+    defaultWrapLongLines: true
+    maxCodeBlockHeight: 30
+
+    # Performance settings
+    lazyLoading: true
+    virtualScrolling: true
+    maxRenderLines: 100
+
+    # Language-specific settings
+    languageOverrides:
+      typescript:
+        showLineNumbers: true
+        wrapLongLines: true
+        maxLines: 50
+      python:
+        showLineNumbers: true
+        wrapLongLines: false
+      json:
+        showLineNumbers: false
+        wrapLongLines: true
+      markdown:
+        showLineNumbers: false
+        wrapLongLines: true
+
+    # Custom highlighting colors
+    colors:
+      keyword: blue
+      string: green
+      number: yellow
+      comment: gray
+      function: cyan
+      variable: white
+      type: magenta
+      operator: white
+      punctuation: gray
+      background: bgBlack
+      lineNumber: gray
+      highlightLine: bgGray
+
+    # File extension mappings
+    extensions:
+      '.ts': typescript
+      '.tsx': typescript
+      '.js': javascript
+      '.jsx': javascript
+      '.py': python
+      '.rs': rust
+      '.go': go
+      '.sql': sql
+      '.sh': bash
+      '.yml': yaml
+      '.yaml': yaml
+      '.json': json
+      '.md': markdown
+      '.dockerfile': dockerfile
+      '.env': bash
+```
+
 ## Technical Specifications
 
 ### Dependencies
@@ -1096,8 +1922,8 @@ const AuthContext = createContext<AuthContextType>({
 - **ink**: React renderer for CLI applications
 - **ink-syntax-highlight**: Syntax highlighting for code blocks
 - **marked**: CommonMark markdown parsing
-- **shiki**: Advanced syntax highlighting engine
-- **fuse.js**: Fuzzy search for completions
+- **react**: Component framework for CLI rendering
+- **chalk**: Terminal string styling utilities
 
 ### Browser/Terminal Compatibility
 
