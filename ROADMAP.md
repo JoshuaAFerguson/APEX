@@ -1,6 +1,6 @@
 # APEX Roadmap
 
-This document outlines the planned development roadmap for APEX. Our goal is to create an AI coding assistant experience on par with Claude Code, Codex CLI, and Gemini CLI, while adding powerful multi-agent orchestration and autonomous workflow capabilities.
+This document outlines the planned development roadmap for APEX. Our goal is to create a **general-purpose multi-agent orchestration platform** that starts with world-class software development capabilities (on par with Claude Code, Codex CLI, and Gemini CLI) and expands to support any domain requiring intelligent agent collaboration—education, creative writing, game development, business, research, and beyond.
 
 > **Legend:**
 > - 🟢 Complete
@@ -327,6 +327,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 *Powerful tool system with fine-grained permission controls*
 
+### Browser Automation (inspired by [Cline](https://github.com/cline/cline) & [OpenHands](https://github.com/OpenHands/OpenHands))
+- ⚪ **Headless browser** - Launch sites in headless browser for testing
+- ⚪ **Browser actions** - Click, type, scroll, navigate
+- ⚪ **Screenshot capture** - Capture screenshots for visual debugging
+- ⚪ **Console log capture** - Capture browser console for error detection
+- ⚪ **Visual regression testing** - Compare screenshots across runs
+- ⚪ **Runtime error detection** - Detect and fix JavaScript runtime errors
+
 ### Built-in Tools (Claude Code parity)
 - ⚪ **Read** - Read file contents with line numbers
 - ⚪ **Write** - Create new files
@@ -364,6 +372,13 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Time limits** - Maximum task duration
 - ⚪ **Change limits** - Maximum files/lines changed without approval
 
+### Code Quality Integration (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
+- ⚪ **Lint-after-edit** - Automatically lint code after every edit
+- ⚪ **Auto-fix linting errors** - Fix syntax errors, missing imports automatically
+- ⚪ **Pre-edit validation** - Validate syntax before allowing edits
+- ⚪ **Compiler feedback loop** - Monitor compiler errors and fix proactively
+- ⚪ **Type checking integration** - Run TypeScript/Flow checks after edits
+
 ### Tool Extensions
 - ⚪ **Custom tools** - Define project-specific tools
 - ⚪ **Tool hooks** - Pre/post execution hooks
@@ -384,13 +399,22 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
 - ⚪ **Test framework detection** - Know how to run tests
 
-### Codebase Intelligence
+### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
+- ⚪ **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
 - ⚪ **Codebase indexing** - Build searchable index of code
 - ⚪ **Semantic code search** - Find code by meaning, not just text
 - ⚪ **Symbol resolution** - Understand function/class definitions and usages
 - ⚪ **Import graph** - Understand module dependencies
 - ⚪ **Type awareness** - Leverage TypeScript/type information
 - ⚪ **Documentation extraction** - Parse JSDoc, docstrings, comments
+- ⚪ **Tree-sitter integration** - Language-aware parsing for all major languages
+
+### Multimodal Input (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
+- ⚪ **Image context** - Add screenshots, diagrams to provide visual context
+- ⚪ **Web page context** - Fetch and include web pages as reference
+- ⚪ **GitHub issue images** - Process images attached to GitHub issues
+- ⚪ **Design mockup input** - Accept Figma/design mockups as input
+- ⚪ **Error screenshot analysis** - Analyze screenshots of errors/bugs
 
 ### Conversation Memory
 - ⚪ **Session context** - Remember everything in current session
@@ -547,6 +571,15 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ File change watchers
 - ⚪ CI/CD pipeline integration
 
+### GitHub Issue Resolver (inspired by [OpenHands](https://github.com/OpenHands/OpenHands))
+- ⚪ **Auto-fix labeled issues** - Automatically fix issues tagged with `apex-fix` label
+- ⚪ **GitHub Action integration** - Run as GitHub Action in CI/CD
+- ⚪ **Issue analysis** - Analyze issue description and reproduce the problem
+- ⚪ **Auto PR creation** - Create pull request with fix
+- ⚪ **PR review response** - Respond to PR review comments automatically
+- ⚪ **Issue triage** - Auto-label and categorize new issues
+- ⚪ **Duplicate detection** - Identify and link duplicate issues
+
 ### GitHub Integration
 - ⚪ GitHub App for seamless auth
 - ⚪ Issue analysis and task creation
@@ -566,6 +599,21 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 ## v0.10.0 - Intelligence & Learning
 
 *Smarter agents and continuous improvement*
+
+### Confidence & Clarification (inspired by [Devin](https://devin.ai/))
+- ⚪ **Confidence scoring** - Self-assess confidence before executing tasks
+- ⚪ **Clarification requests** - Ask for clarification when confidence is low
+- ⚪ **Uncertainty handling** - Different strategies for high/low confidence tasks
+- ⚪ **Human escalation** - Escalate to human when stuck or uncertain
+- ⚪ **Assumption declaration** - Explicitly state assumptions before proceeding
+
+### Auto-Documentation (inspired by [Devin](https://devin.ai/))
+- ⚪ **Devin-style Wiki** - Auto-generate project documentation
+- ⚪ **Code documentation** - Generate JSDoc/docstrings for code
+- ⚪ **Architecture docs** - Generate architecture diagrams and descriptions
+- ⚪ **API documentation** - Auto-generate API docs from code
+- ⚪ **Change documentation** - Document what changed and why after each task
+- ⚪ **Interactive search** - Search & answer engine for codebase questions
 
 ### Agent Intelligence
 - ⚪ Agent performance analytics
@@ -633,7 +681,90 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.12.0 - Ecosystem & Extensibility
+## v0.12.0 - Domain-Specific Agent Packs
+
+*Expand APEX beyond software development to other creative and professional domains*
+
+### Educational Content Agents (inspired by [ai-infra-curriculum](https://github.com/ai-infra-curriculum))
+- ⚪ **Curriculum Designer** - Design course structure, learning objectives, prerequisites
+- ⚪ **Lesson Planner** - Create detailed lesson plans with activities and materials
+- ⚪ **Content Writer** - Generate educational content, explanations, examples
+- ⚪ **Quiz Generator** - Create assessments, quizzes, and practice problems
+- ⚪ **Lab Designer** - Design hands-on exercises and lab environments
+- ⚪ **Slide Deck Generator** - Create presentation slides from content
+- ⚪ **Study Guide Creator** - Generate summaries, flashcards, review materials
+- ⚪ **Rubric Designer** - Create grading rubrics and evaluation criteria
+
+### Game Development Agents
+- ⚪ **Narrative Designer** - Create storylines, dialogue, lore, and world-building
+- ⚪ **Level Designer** - Design game levels, puzzles, and progression
+- ⚪ **Character Creator** - Design characters, backstories, and abilities
+- ⚪ **Dialogue Writer** - Generate NPC dialogue, branching conversations
+- ⚪ **Item/Loot Designer** - Create items, weapons, rewards, and balance
+- ⚪ **Quest Designer** - Design quests, objectives, and reward structures
+- ⚪ **Game Balance Analyst** - Analyze and suggest balance adjustments
+- ⚪ **Asset Descriptor** - Generate descriptions for AI image/3D generation
+
+### Personal Assistant Agents
+- ⚪ **Task Manager** - Break down goals into actionable tasks
+- ⚪ **Research Assistant** - Research topics and synthesize information
+- ⚪ **Email Drafter** - Draft emails, responses, and communications
+- ⚪ **Meeting Summarizer** - Summarize meetings and extract action items
+- ⚪ **Schedule Optimizer** - Suggest optimal scheduling and time blocking
+- ⚪ **Decision Helper** - Analyze options and provide decision frameworks
+- ⚪ **Learning Coach** - Create personalized learning plans
+- ⚪ **Habit Tracker** - Design and track habit formation strategies
+
+### Creative Writing Agents
+- ⚪ **Story Architect** - Design plot structure, story arcs, and pacing
+- ⚪ **Character Developer** - Create detailed character profiles, motivations, and arcs
+- ⚪ **World Builder** - Design settings, cultures, histories, and magic systems
+- ⚪ **Dialogue Coach** - Write and improve character dialogue and voice
+- ⚪ **Scene Writer** - Draft individual scenes with description and action
+- ⚪ **Continuity Editor** - Track and maintain story consistency
+- ⚪ **Beta Reader** - Provide feedback on drafts from reader perspective
+- ⚪ **Genre Specialist** - Adapt writing to specific genre conventions (fantasy, sci-fi, romance, thriller)
+- ⚪ **Outline Generator** - Create detailed story outlines and chapter breakdowns
+- ⚪ **Writing Prompt Generator** - Generate creative prompts to overcome writer's block
+
+### Content Creation Agents
+- ⚪ **Blog Writer** - Generate blog posts, articles, and long-form content
+- ⚪ **Social Media Manager** - Create posts, threads, and content calendars
+- ⚪ **Copywriter** - Write marketing copy, ads, and landing pages
+- ⚪ **Editor** - Review and improve written content
+- ⚪ **SEO Optimizer** - Optimize content for search engines
+- ⚪ **Newsletter Creator** - Design and write email newsletters
+- ⚪ **Script Writer** - Write video scripts, podcasts, and presentations
+- ⚪ **Content Repurposer** - Transform content across formats
+
+### Data & Research Agents
+- ⚪ **Data Analyst** - Analyze datasets and generate insights
+- ⚪ **Report Generator** - Create reports from data and findings
+- ⚪ **Literature Reviewer** - Synthesize research papers and sources
+- ⚪ **Fact Checker** - Verify claims and find supporting evidence
+- ⚪ **Trend Analyzer** - Identify patterns and trends in data
+- ⚪ **Survey Designer** - Create surveys and analyze responses
+- ⚪ **Competitive Analyst** - Research competitors and market landscape
+
+### Business & Strategy Agents
+- ⚪ **Business Plan Writer** - Generate business plans and pitch decks
+- ⚪ **Market Researcher** - Research markets, audiences, and opportunities
+- ⚪ **Financial Modeler** - Create financial projections and models
+- ⚪ **Product Manager** - Define requirements, user stories, and roadmaps
+- ⚪ **OKR Designer** - Create objectives and key results frameworks
+- ⚪ **Process Documenter** - Document workflows and SOPs
+
+### Domain Pack Infrastructure
+- ⚪ **Agent pack format** - Standardized format for distributing agent packs
+- ⚪ **Pack installation** - `apex packs install <pack-name>`
+- ⚪ **Pack registry** - Community registry for sharing agent packs
+- ⚪ **Pack versioning** - Semantic versioning for agent packs
+- ⚪ **Pack dependencies** - Packs can depend on other packs
+- ⚪ **Custom workflows per domain** - Domain-specific workflow templates
+
+---
+
+## v0.13.0 - Ecosystem & Extensibility
 
 *Plugin system and community features*
 
@@ -644,6 +775,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Custom workflow actions
 - ⚪ Custom tool integrations
 - ⚪ Hook system for extensions
+
+### MCP Marketplace (inspired by [Cline](https://github.com/cline/cline))
+- ⚪ **MCP server directory** - Browse available MCP servers
+- ⚪ **One-click install** - Install MCP servers with single command
+- ⚪ **Auto-configuration** - Automatic setup without manual config
+- ⚪ **MCP server ratings** - Community ratings and reviews
+- ⚪ **Version management** - Update and rollback MCP servers
+- ⚪ **Custom MCP servers** - Publish your own MCP servers
 
 ### Agent Marketplace
 - ⚪ Community agent repository
@@ -669,7 +808,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.13.0 - Scale & Performance
+## v0.14.0 - Scale & Performance
 
 *Optimization for large-scale usage*
 
@@ -817,10 +956,18 @@ telemetry:
 
 ### Developer Experience
 - 💡 Mobile app for monitoring
-- 💡 Voice commands integration
+- 💡 **Voice coding** (inspired by [Aider](https://github.com/Aider-AI/aider)) - Speak to APEX about code changes
 - 💡 Natural language task refinement
 - 💡 Pair programming mode
 - 💡 Live collaboration features
+- 💡 **Debugger integration** (inspired by [SWE-agent](https://github.com/SWE-agent/SWE-agent)) - Attach to debugger for complex issues
+
+### Ticket System Integrations (inspired by [Devin](https://devin.ai/))
+- 💡 **Linear integration** - Assign tickets directly to APEX
+- 💡 **Jira integration** - Work on Jira tickets automatically
+- 💡 **Shortcut integration** - Clubhouse/Shortcut ticket support
+- 💡 **ClickUp integration** - ClickUp task automation
+- 💡 **Ticket-to-PR pipeline** - End-to-end ticket → code → PR
 
 ### Advanced Automation
 - 💡 Full CI/CD pipeline generation
@@ -854,39 +1001,38 @@ telemetry:
 
 ## CLI Feature Comparison
 
-| Feature | Claude Code | Codex CLI | Gemini CLI | Sleepless Agent | Rover | APEX |
-|---------|-------------|-----------|------------|-----------------|-------|------|
-| Streaming responses | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Syntax highlighting | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Markdown rendering | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Diff views | ✅ | ✅ | ✅ | ❌ | ✅ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| History navigation | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| History search (Ctrl+R) | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ❌ | ⚪ |
-| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Session persistence | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| Theme support | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
-| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| **Built-in workflow templates** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **24/7 daemon mode** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Slack integration** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Time-based scheduling** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Task auto-generation** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Thought capture** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Agent marketplace** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **OpenTelemetry/Observability** | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Multi-LLM backends** | ❌ | ❌ | ❌ | ❌ | ✅ | 💡 |
-| **Task shell access** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **VSCode extension** | ✅ | ✅ | ❌ | ❌ | ✅ | ⚪ |
+| Feature | Claude Code | Codex CLI | Gemini CLI | Aider | Cline | OpenHands | Rover | APEX |
+|---------|-------------|-----------|------------|-------|-------|-----------|-------|------|
+| Streaming responses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| History navigation | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ⚪ |
+| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Multi-turn conversations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Session persistence | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **Browser automation** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚪ |
+| **Voice coding** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | 💡 |
+| **Multimodal input (images)** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ⚪ |
+| **Repository map (AST)** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ⚪ |
+| **Lint-after-edit** | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ⚪ |
+| **GitHub issue resolver** | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Confidence scoring** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Auto-documentation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **MCP marketplace** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ⚪ |
+| **24/7 daemon mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ⚪ |
+| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Multi-LLM backends** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | 💡 |
+| **VSCode extension** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ⚪ |
 
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | 💡 Considering | ✅ Has feature | ❌ No feature
 
@@ -925,9 +1071,10 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 | v0.9.0 | Q4 2025 | Advanced Workflows |
 | v0.10.0 | Q4 2025 | Intelligence & Learning |
 | v0.11.0 | Q1 2026 | Enterprise Features |
-| v0.12.0 | Q1 2026 | Ecosystem & Extensibility |
-| v0.13.0 | Q1 2026 | Scale & Performance |
-| v1.0.0 | Q2 2026 | General Availability |
+| v0.12.0 | Q1 2026 | Domain-Specific Agent Packs |
+| v0.13.0 | Q2 2026 | Ecosystem & Extensibility |
+| v0.14.0 | Q2 2026 | Scale & Performance |
+| v1.0.0 | Q3 2026 | General Availability |
 
 *Dates are tentative and subject to change based on community feedback and priorities.*
 

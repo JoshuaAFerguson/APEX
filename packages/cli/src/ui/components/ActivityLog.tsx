@@ -249,7 +249,7 @@ export function ActivityLog({
                   )}
                   <Text color={color}>
                     {isCollapsed ? '▶ ' : ''}
-                    {truncateMessage(entry.message, responsiveConfig.messageMaxLength)}
+                    {displayMode === 'verbose' ? entry.message : truncateMessage(entry.message, responsiveConfig.messageMaxLength)}
                   </Text>
                   {entry.duration && (
                     <Text color="gray" dimColor> ({formatDuration(entry.duration)})</Text>

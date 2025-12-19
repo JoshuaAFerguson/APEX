@@ -479,6 +479,52 @@ describe('ActivityLog', () => {
       expect(screen.getByText('Info message')).toBeInTheDocument();
       expect(screen.getByText('Level: info+')).toBeInTheDocument();
     });
+
+    it('should not truncate messages in verbose mode', () => {
+      const longMessageEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'This is a very long message that would normally be truncated in normal or compact mode but should be displayed in full without any truncation in verbose display mode',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={longMessageEntry}
+          displayMode="verbose"
+          width={80} // Small width to force truncation in other modes
+        />
+      );
+
+      // Full message should be visible without truncation
+      expect(screen.getByText('This is a very long message that would normally be truncated in normal or compact mode but should be displayed in full without any truncation in verbose display mode')).toBeInTheDocument();
+    });
+
+    it('should truncate messages in normal mode with narrow width', () => {
+      const longMessageEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'This is a very long message that should be truncated in normal mode',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={longMessageEntry}
+          displayMode="normal"
+          width={60} // Small width to force truncation
+        />
+      );
+
+      // Message should be truncated (won't match the full text)
+      expect(screen.queryByText('This is a very long message that should be truncated in normal mode')).not.toBeInTheDocument();
+      // Should contain the beginning of the message
+      expect(screen.getByText(/This is a very long message/)).toBeInTheDocument();
+    });
   });
 });
 

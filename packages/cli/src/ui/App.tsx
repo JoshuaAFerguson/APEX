@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import {
+  ActivityLog,
   AgentPanel,
   Banner,
   InputPrompt,
@@ -11,9 +12,10 @@ import {
   TaskProgress,
   ThoughtDisplay,
   ToolCall,
+  type LogEntry,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
-import type { ApexConfig, Task, DisplayMode } from '@apexcli/core';
+import type { ApexConfig, Task, DisplayMode, VerboseDebugData } from '@apexcli/core';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
@@ -30,6 +32,119 @@ function getWorkflowAgents(_workflowName: string, _config: ApexConfig | null): A
   // Workflows are loaded separately via loadWorkflow(), not stored in config
   // The agent list is populated dynamically via orchestrator events (task:stage-changed)
   return [];
+}
+
+/**
+ * Converts VerboseDebugData to ActivityLog LogEntry format
+ * Transforms debug metrics into structured log entries for display
+ */
+function convertVerboseDataToLogEntries(verboseData: VerboseDebugData): LogEntry[] {
+  const entries: LogEntry[] = [];
+  const timestamp = new Date();
+
+  // Add timing information
+  if (verboseData.timing.stageDuration) {
+    entries.push({
+      id: `timing_${timestamp.getTime()}`,
+      timestamp,
+      level: 'info',
+      message: `Stage completed in ${verboseData.timing.stageDuration}ms`,
+      category: 'timing',
+      data: {
+        stageStartTime: verboseData.timing.stageStartTime,
+        stageEndTime: verboseData.timing.stageEndTime,
+        duration: verboseData.timing.stageDuration,
+      },
+    });
+  }
+
+  // Add agent response times
+  Object.entries(verboseData.timing.agentResponseTimes).forEach(([agent, responseTime]) => {
+    entries.push({
+      id: `agent_response_${agent}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 1),
+      level: 'debug',
+      message: `Agent response time: ${responseTime}ms`,
+      agent,
+      category: 'performance',
+      duration: responseTime,
+      data: {
+        responseTime,
+        agent,
+      },
+    });
+  });
+
+  // Add performance metrics
+  if (verboseData.metrics.tokensPerSecond > 0) {
+    entries.push({
+      id: `metrics_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 2),
+      level: 'info',
+      message: `Processing rate: ${verboseData.metrics.tokensPerSecond.toFixed(2)} tokens/sec`,
+      category: 'metrics',
+      data: {
+        tokensPerSecond: verboseData.metrics.tokensPerSecond,
+        averageResponseTime: verboseData.metrics.averageResponseTime,
+        memoryUsage: verboseData.metrics.memoryUsage,
+        cpuUtilization: verboseData.metrics.cpuUtilization,
+      },
+    });
+  }
+
+  // Add agent token usage
+  Object.entries(verboseData.agentTokens).forEach(([agent, usage]) => {
+    entries.push({
+      id: `tokens_${agent}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 3),
+      level: 'debug',
+      message: `Token usage: ${usage.inputTokens + usage.outputTokens} total (${usage.inputTokens} in, ${usage.outputTokens} out)`,
+      agent,
+      category: 'tokens',
+      data: {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCost: usage.estimatedCost,
+      },
+    });
+  });
+
+  // Add tool usage statistics
+  Object.entries(verboseData.timing.toolUsageTimes).forEach(([tool, usageTime]) => {
+    entries.push({
+      id: `tool_${tool}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 4),
+      level: 'debug',
+      message: `Tool ${tool} used for ${usageTime}ms`,
+      category: 'tools',
+      duration: usageTime,
+      data: {
+        tool,
+        usageTime,
+        efficiency: verboseData.metrics.toolEfficiency[tool] || 0,
+      },
+    });
+  });
+
+  // Add error and retry information
+  Object.entries(verboseData.agentDebug.errorCounts).forEach(([agent, errorCount]) => {
+    if (errorCount > 0) {
+      entries.push({
+        id: `errors_${agent}_${timestamp.getTime()}`,
+        timestamp: new Date(timestamp.getTime() + 5),
+        level: 'warn',
+        message: `Agent ${agent} encountered ${errorCount} error(s)`,
+        agent,
+        category: 'errors',
+        data: {
+          errorCount,
+          retryAttempts: verboseData.agentDebug.retryAttempts[agent] || 0,
+        },
+      });
+    }
+  });
+
+  return entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 }
 
 export interface Message {
@@ -95,6 +210,9 @@ export interface AppState {
 
   // Edit mode state for returning input to text field
   editModeInput?: string;
+
+  // Verbose debug data populated from orchestrator events
+  verboseData?: VerboseDebugData;
 }
 
 export interface AppProps {
@@ -793,6 +911,20 @@ export function App({
               displayMode={state.displayMode}
               showThoughts={state.showThoughts}
             />
+
+            {/* Activity Log - shows in verbose mode with debug data */}
+            {state.displayMode === 'verbose' && state.verboseData && (
+              <ActivityLog
+                entries={convertVerboseDataToLogEntries(state.verboseData)}
+                displayMode={state.displayMode}
+                title="Debug Activity Log"
+                maxEntries={50}
+                showTimestamps={true}
+                showAgents={true}
+                allowCollapse={true}
+                filterLevel="debug"
+              />
+            )}
           </>
         )}
       </Box>
