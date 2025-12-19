@@ -38,7 +38,7 @@ function getWorkflowAgents(_workflowName: string, _config: ApexConfig | null): A
  * Converts VerboseDebugData to ActivityLog LogEntry format
  * Transforms debug metrics into structured log entries for display
  */
-function convertVerboseDataToLogEntries(verboseData: VerboseDebugData): LogEntry[] {
+export function convertVerboseDataToLogEntries(verboseData: VerboseDebugData): LogEntry[] {
   const entries: LogEntry[] = [];
   const timestamp = new Date();
 

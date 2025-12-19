@@ -1678,6 +1678,172 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
+      // Aggregate verbose debug data from orchestrator events
+      let currentVerboseData: VerboseDebugData | undefined;
+      let stageStartTime: Date | undefined;
+
+      // Helper to initialize verbose data for a task
+      const initializeVerboseData = () => {
+        currentVerboseData = {
+          agentTokens: {},
+          timing: {
+            stageStartTime: new Date(),
+            agentResponseTimes: {},
+            toolUsageTimes: {},
+          },
+          agentDebug: {
+            conversationLength: {},
+            toolCallCounts: {},
+            errorCounts: {},
+            retryAttempts: {},
+          },
+          metrics: {
+            tokensPerSecond: 0,
+            averageResponseTime: 0,
+            toolEfficiency: {},
+          },
+        };
+        stageStartTime = new Date();
+      };
+
+      // Helper to calculate performance metrics
+      const updatePerformanceMetrics = () => {
+        if (!currentVerboseData) return;
+
+        const agents = Object.keys(currentVerboseData.agentTokens);
+        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes);
+
+        if (responseTimes.length > 0) {
+          currentVerboseData.metrics.averageResponseTime =
+            responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+        }
+
+        // Calculate tokens per second based on total tokens and elapsed time
+        const totalTokens = agents.reduce((sum, agent) => {
+          const usage = currentVerboseData!.agentTokens[agent];
+          return sum + usage.inputTokens + usage.outputTokens;
+        }, 0);
+
+        if (stageStartTime && totalTokens > 0) {
+          const elapsedSeconds = (Date.now() - stageStartTime.getTime()) / 1000;
+          currentVerboseData.metrics.tokensPerSecond = elapsedSeconds > 0 ? totalTokens / elapsedSeconds : 0;
+        }
+
+        // Calculate tool efficiency based on usage vs errors
+        Object.keys(currentVerboseData.timing.toolUsageTimes).forEach(tool => {
+          const errorCounts = Object.values(currentVerboseData!.agentDebug.errorCounts).reduce((sum, count) => sum + count, 0);
+          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) =>
+            sum + (toolCounts[tool] || 0), 0);
+          currentVerboseData!.metrics.toolEfficiency[tool] = toolUsages > 0 ? 1 - (errorCounts / toolUsages) : 1;
+        });
+      };
+
+      // Track task lifecycle for verbose data
+      ctx.orchestrator.on('task:started', (task) => {
+        initializeVerboseData();
+        ctx.app?.updateState({ verboseData: currentVerboseData });
+      });
+
+      ctx.orchestrator.on('task:stage-changed', (task, stageName) => {
+        if (currentVerboseData) {
+          // Complete previous stage timing
+          const now = new Date();
+          if (stageStartTime) {
+            currentVerboseData.timing.stageEndTime = now;
+            currentVerboseData.timing.stageDuration = now.getTime() - stageStartTime.getTime();
+          }
+          // Start new stage
+          stageStartTime = now;
+          currentVerboseData.timing.stageStartTime = now;
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track agent token usage
+      ctx.orchestrator.on('usage:updated', (taskId, usage) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          currentVerboseData.agentTokens[agent] = {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            estimatedCost: usage.estimatedCost,
+          };
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track agent response times and tool usage
+      const agentResponseStartTimes = new Map<string, number>();
+      const toolUsageStartTimes = new Map<string, number>();
+
+      ctx.orchestrator.on('agent:message', (taskId, message) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          const endTime = Date.now();
+          const startTime = agentResponseStartTimes.get(agent);
+
+          if (startTime) {
+            currentVerboseData.timing.agentResponseTimes[agent] = endTime - startTime;
+            agentResponseStartTimes.delete(agent);
+          }
+
+          // Update conversation length
+          currentVerboseData.agentDebug.conversationLength[agent] =
+            (currentVerboseData.agentDebug.conversationLength[agent] || 0) + 1;
+
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+        // Mark agent response start time
+        agentResponseStartTimes.set(agent, Date.now());
+      });
+
+      ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+
+          // Track tool usage start time
+          toolUsageStartTimes.set(tool, Date.now());
+
+          // Update tool call counts
+          if (!currentVerboseData.agentDebug.toolCallCounts[agent]) {
+            currentVerboseData.agentDebug.toolCallCounts[agent] = {};
+          }
+          currentVerboseData.agentDebug.toolCallCounts[agent][tool] =
+            (currentVerboseData.agentDebug.toolCallCounts[agent][tool] || 0) + 1;
+
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track task completion/failure for final metrics
+      ctx.orchestrator.on('task:completed', (task) => {
+        if (currentVerboseData) {
+          const now = new Date();
+          if (stageStartTime) {
+            currentVerboseData.timing.stageEndTime = now;
+            currentVerboseData.timing.stageDuration = now.getTime() - stageStartTime.getTime();
+          }
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      ctx.orchestrator.on('task:failed', (task, error) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          currentVerboseData.agentDebug.errorCounts[agent] =
+            (currentVerboseData.agentDebug.errorCounts[agent] || 0) + 1;
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
       // Initialize session management
       ctx.sessionStore = new SessionStore(ctx.cwd);
       await ctx.sessionStore.initialize();

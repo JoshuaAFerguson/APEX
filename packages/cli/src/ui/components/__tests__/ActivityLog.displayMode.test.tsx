@@ -1,619 +1,435 @@
-/**
- * Tests for ActivityLog component adaptation to display modes
- * Validates that ActivityLog correctly filters, formats, and displays
- * entries based on the current display mode (normal, compact, verbose)
- */
-
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { ActivityLog, type ActivityLogProps, type LogEntry } from '../ActivityLog.js';
 import type { DisplayMode } from '@apexcli/core';
 
-// Mock Ink components
+// Mock useStdoutDimensions hook
+vi.mock('../../hooks/index.js', () => ({
+  useStdoutDimensions: () => ({
+    width: 80,
+    height: 24,
+    breakpoint: 'normal' as const,
+  }),
+}));
+
+// Mock useInput hook from ink
 vi.mock('ink', async () => {
   const actual = await vi.importActual('ink');
   return {
     ...actual,
-    Box: ({ children, ...props }: any) => <div data-testid="box" {...props}>{children}</div>,
-    Text: ({ children, ...props }: any) => <span data-testid="text" {...props}>{children}</span>,
+    useInput: vi.fn(),
   };
 });
 
-interface ActivityEntry {
-  id: string;
-  type: 'user' | 'system' | 'tool' | 'error' | 'debug' | 'agent' | 'task';
-  content: string;
-  timestamp: Date;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  metadata?: {
-    agent?: string;
-    toolName?: string;
-    duration?: number;
-    tokens?: { input: number; output: number };
-  };
-  stackTrace?: string;
-  details?: string;
-}
+describe('ActivityLog DisplayMode Integration', () => {
+  const createMockLogEntries = (): LogEntry[] => [
+    {
+      id: 'entry-1',
+      timestamp: new Date('2023-01-01T10:00:00Z'),
+      level: 'info',
+      message: 'Stage completed in 5000ms',
+      category: 'timing',
+      data: {
+        stageDuration: 5000,
+        stageStartTime: new Date('2023-01-01T09:59:55Z'),
+        stageEndTime: new Date('2023-01-01T10:00:00Z'),
+      },
+    },
+    {
+      id: 'entry-2',
+      timestamp: new Date('2023-01-01T10:00:01Z'),
+      level: 'debug',
+      message: 'Agent response time: 2000ms',
+      agent: 'planner',
+      category: 'performance',
+      duration: 2000,
+      data: {
+        responseTime: 2000,
+        agent: 'planner',
+      },
+    },
+    {
+      id: 'entry-3',
+      timestamp: new Date('2023-01-01T10:00:02Z'),
+      level: 'info',
+      message: 'Processing rate: 10.50 tokens/sec',
+      category: 'metrics',
+      data: {
+        tokensPerSecond: 10.5,
+        averageResponseTime: 2000,
+        memoryUsage: 256000000,
+        cpuUtilization: 25.5,
+      },
+    },
+    {
+      id: 'entry-4',
+      timestamp: new Date('2023-01-01T10:00:03Z'),
+      level: 'debug',
+      message: 'Token usage: 1500 total (1000 in, 500 out)',
+      agent: 'planner',
+      category: 'tokens',
+      data: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        estimatedCost: 0.05,
+      },
+    },
+    {
+      id: 'entry-5',
+      timestamp: new Date('2023-01-01T10:00:04Z'),
+      level: 'debug',
+      message: 'Tool Read used for 1000ms',
+      category: 'tools',
+      duration: 1000,
+      data: {
+        tool: 'Read',
+        usageTime: 1000,
+        efficiency: 1.0,
+      },
+    },
+    {
+      id: 'entry-6',
+      timestamp: new Date('2023-01-01T10:00:05Z'),
+      level: 'warn',
+      message: 'Agent developer encountered 1 error(s)',
+      agent: 'developer',
+      category: 'errors',
+      data: {
+        errorCount: 1,
+        retryAttempts: 1,
+      },
+    },
+  ];
 
-// Mock ActivityLog component to test display mode adaptation
-const MockActivityLog: React.FC<{
-  displayMode: DisplayMode;
-  entries: ActivityEntry[];
-  maxEntries?: number;
-}> = ({ displayMode, entries, maxEntries = 100 }) => {
-  const filterEntriesByMode = (entries: ActivityEntry[]): ActivityEntry[] => {
-    switch (displayMode) {
-      case 'compact':
-        // Only show high priority and critical entries, plus user actions
-        return entries.filter(entry =>
-          ['high', 'critical'].includes(entry.priority) ||
-          entry.type === 'user' ||
-          entry.type === 'error'
-        ).slice(-Math.min(10, maxEntries)); // Limit to recent 10 entries
-
-      case 'verbose':
-        // Show all entries
-        return entries.slice(-maxEntries);
-
-      default: // normal
-        // Hide debug entries but show everything else
-        return entries.filter(entry =>
-          entry.type !== 'debug'
-        ).slice(-Math.min(50, maxEntries));
-    }
-  };
-
-  const formatEntryForMode = (entry: ActivityEntry): {
-    displayContent: string;
-    showMetadata: boolean;
-    showTimestamp: boolean;
-    showDetails: boolean;
-  } => {
-    switch (displayMode) {
-      case 'compact':
-        return {
-          displayContent: entry.content.substring(0, 40) + (entry.content.length > 40 ? '...' : ''),
-          showMetadata: false,
-          showTimestamp: false,
-          showDetails: false,
-        };
-
-      case 'verbose':
-        return {
-          displayContent: entry.content,
-          showMetadata: true,
-          showTimestamp: true,
-          showDetails: true,
-        };
-
-      default: // normal
-        return {
-          displayContent: entry.content.substring(0, 100) + (entry.content.length > 100 ? '...' : ''),
-          showMetadata: !!entry.metadata,
-          showTimestamp: true,
-          showDetails: false,
-        };
-    }
-  };
-
-  const getEntryIcon = (entry: ActivityEntry): string => {
-    switch (entry.type) {
-      case 'user': return '👤';
-      case 'system': return '⚙️';
-      case 'tool': return '🔧';
-      case 'error': return '❌';
-      case 'debug': return '🐛';
-      case 'agent': return '🤖';
-      case 'task': return '📋';
-      default: return '📝';
-    }
-  };
-
-  const getPriorityIndicator = (priority: string): string => {
-    switch (priority) {
-      case 'critical': return '🔴';
-      case 'high': return '🟠';
-      case 'medium': return '🟡';
-      case 'low': return '🟢';
-      default: return '⚪';
-    }
-  };
-
-  const filteredEntries = filterEntriesByMode(entries);
-
-  return (
-    <div data-testid="activity-log" data-display-mode={displayMode}>
-      <div data-testid="log-header">
-        <span data-testid="log-title">
-          {displayMode === 'compact' ? 'Log' : 'Activity Log'}
-        </span>
-        <span data-testid="entry-count">({filteredEntries.length})</span>
-        {displayMode === 'verbose' && (
-          <span data-testid="mode-indicator"> - VERBOSE</span>
-        )}
-      </div>
-
-      <div data-testid="log-entries">
-        {filteredEntries.map(entry => {
-          const format = formatEntryForMode(entry);
-
-          return (
-            <div
-              key={entry.id}
-              data-testid="log-entry"
-              data-entry-type={entry.type}
-              data-priority={entry.priority}
-            >
-              {/* Entry header with icon and type */}
-              <div data-testid="entry-header">
-                <span data-testid="entry-icon">{getEntryIcon(entry)}</span>
-                {displayMode !== 'compact' && (
-                  <span data-testid="entry-type">{entry.type.toUpperCase()}</span>
-                )}
-                <span data-testid="priority-indicator">{getPriorityIndicator(entry.priority)}</span>
-              </div>
-
-              {/* Entry content */}
-              <div data-testid="entry-content">
-                {format.displayContent}
-              </div>
-
-              {/* Timestamp - conditionally shown */}
-              {format.showTimestamp && (
-                <div data-testid="entry-timestamp">
-                  {displayMode === 'compact'
-                    ? entry.timestamp.toLocaleTimeString()
-                    : entry.timestamp.toISOString()
-                  }
-                </div>
-              )}
-
-              {/* Metadata - conditionally shown */}
-              {format.showMetadata && entry.metadata && (
-                <div data-testid="entry-metadata">
-                  {entry.metadata.agent && (
-                    <span data-testid="metadata-agent">Agent: {entry.metadata.agent}</span>
-                  )}
-                  {entry.metadata.toolName && (
-                    <span data-testid="metadata-tool">Tool: {entry.metadata.toolName}</span>
-                  )}
-                  {entry.metadata.duration && (
-                    <span data-testid="metadata-duration">Duration: {entry.metadata.duration}ms</span>
-                  )}
-                  {entry.metadata.tokens && (
-                    <span data-testid="metadata-tokens">
-                      Tokens: {entry.metadata.tokens.input}→{entry.metadata.tokens.output}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Details and stack trace - verbose mode only */}
-              {format.showDetails && entry.details && (
-                <div data-testid="entry-details">
-                  <div data-testid="details-label">Details:</div>
-                  <div data-testid="details-content">{entry.details}</div>
-                </div>
-              )}
-
-              {format.showDetails && entry.stackTrace && (
-                <div data-testid="entry-stack-trace">
-                  <div data-testid="stack-trace-label">Stack Trace:</div>
-                  <div data-testid="stack-trace-content">{entry.stackTrace}</div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer with additional info in verbose mode */}
-      {displayMode === 'verbose' && (
-        <div data-testid="log-footer">
-          <div data-testid="total-entries">Total: {entries.length}</div>
-          <div data-testid="filtered-entries">Showing: {filteredEntries.length}</div>
-          <div data-testid="max-entries">Max: {maxEntries}</div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-describe('ActivityLog Display Mode Adaptation', () => {
-  const createSampleEntry = (overrides: Partial<ActivityEntry> = {}): ActivityEntry => ({
-    id: Math.random().toString(36),
-    type: 'user',
-    content: 'Sample activity entry',
-    timestamp: new Date('2024-01-01T10:00:00Z'),
-    priority: 'medium',
+  const createActivityLogProps = (
+    overrides: Partial<ActivityLogProps> = {}
+  ): ActivityLogProps => ({
+    entries: createMockLogEntries(),
+    maxEntries: 100,
+    showTimestamps: true,
+    showAgents: true,
+    allowCollapse: true,
+    title: 'Debug Activity Log',
+    autoScroll: true,
+    displayMode: 'normal',
     ...overrides,
   });
 
-  const sampleEntries: ActivityEntry[] = [
-    createSampleEntry({
-      id: '1',
-      type: 'user',
-      content: 'User started a new task',
-      priority: 'high',
-    }),
-    createSampleEntry({
-      id: '2',
-      type: 'system',
-      content: 'System initialized successfully',
-      priority: 'low',
-    }),
-    createSampleEntry({
-      id: '3',
-      type: 'agent',
-      content: 'Developer agent activated',
-      priority: 'medium',
-      metadata: { agent: 'developer' },
-    }),
-    createSampleEntry({
-      id: '4',
-      type: 'tool',
-      content: 'Read file operation completed',
-      priority: 'low',
-      metadata: { toolName: 'Read', duration: 150 },
-    }),
-    createSampleEntry({
-      id: '5',
-      type: 'error',
-      content: 'File not found error occurred',
-      priority: 'critical',
-      stackTrace: 'Error: File not found\n  at function1:10\n  at function2:5',
-      details: 'The requested file does not exist in the project directory',
-    }),
-    createSampleEntry({
-      id: '6',
-      type: 'debug',
-      content: 'Debug trace: processing workflow step 3',
-      priority: 'low',
-      details: 'Internal state: {step: 3, status: "processing"}',
-    }),
-    createSampleEntry({
-      id: '7',
-      type: 'task',
-      content: 'Task completed successfully with 1500 input and 2000 output tokens',
-      priority: 'high',
-      metadata: { tokens: { input: 1500, output: 2000 } },
-    }),
-  ];
+  describe('displayMode prop handling', () => {
+    const displayModes: DisplayMode[] = ['normal', 'compact', 'verbose'];
 
-  describe('Normal Display Mode', () => {
-    it('should show most entries except debug', () => {
-      render(<MockActivityLog displayMode="normal" entries={sampleEntries} />);
+    displayModes.forEach((displayMode) => {
+      it(`should accept displayMode "${displayMode}"`, () => {
+        const props = createActivityLogProps({ displayMode });
 
-      expect(screen.getByTestId('activity-log')).toHaveAttribute('data-display-mode', 'normal');
-
-      const entries = screen.getAllByTestId('log-entry');
-      expect(entries).toHaveLength(6); // All except debug entry
-
-      // Should not show debug entry
-      const debugEntry = entries.find(entry =>
-        entry.getAttribute('data-entry-type') === 'debug'
-      );
-      expect(debugEntry).toBeUndefined();
-    });
-
-    it('should display standard log header', () => {
-      render(<MockActivityLog displayMode="normal" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('log-title')).toHaveTextContent('Activity Log');
-      expect(screen.getByTestId('entry-count')).toHaveTextContent('(6)');
-      expect(screen.queryByTestId('mode-indicator')).not.toBeInTheDocument();
-    });
-
-    it('should show content with moderate truncation', () => {
-      const longContentEntry = createSampleEntry({
-        content: 'This is a very long activity entry that should be truncated in normal mode because it exceeds the 100 character limit for normal display',
+        expect(() => render(<ActivityLog {...props} />)).not.toThrow();
       });
-
-      render(<MockActivityLog displayMode="normal" entries={[longContentEntry]} />);
-
-      const entryContent = screen.getByTestId('entry-content');
-      expect(entryContent.textContent).toHaveLength(103); // 100 chars + '...'
-      expect(entryContent.textContent).toEndWith('...');
     });
 
-    it('should show timestamps and selective metadata', () => {
-      render(<MockActivityLog displayMode="normal" entries={sampleEntries} />);
+    it('should default to normal displayMode when not specified', () => {
+      const props = createActivityLogProps();
+      delete (props as any).displayMode;
 
-      // Should show timestamps
-      const timestamps = screen.getAllByTestId('entry-timestamp');
-      expect(timestamps.length).toBeGreaterThan(0);
-      expect(timestamps[0]).toHaveTextContent('2024-01-01T10:00:00.000Z');
+      render(<ActivityLog {...props} />);
 
-      // Should show metadata for entries that have it
-      const metadataElements = screen.getAllByTestId('entry-metadata');
-      expect(metadataElements.length).toBeGreaterThan(0);
-    });
-
-    it('should not show debug details or stack traces', () => {
-      render(<MockActivityLog displayMode="normal" entries={sampleEntries} />);
-
-      expect(screen.queryByTestId('entry-details')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-stack-trace')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('log-footer')).not.toBeInTheDocument();
+      // Component should render without errors
+      expect(screen.getByText('Debug Activity Log')).toBeInTheDocument();
     });
   });
 
-  describe('Compact Display Mode', () => {
-    it('should show only high priority and important entries', () => {
-      render(<MockActivityLog displayMode="compact" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('activity-log')).toHaveAttribute('data-display-mode', 'compact');
-
-      const entries = screen.getAllByTestId('log-entry');
-      expect(entries).toHaveLength(3); // user (high), error (critical), task (high)
-
-      // Should only show high/critical priority or user/error types
-      const entryTypes = entries.map(entry => entry.getAttribute('data-entry-type'));
-      const entryPriorities = entries.map(entry => entry.getAttribute('data-priority'));
-
-      expect(entryTypes).toEqual(['user', 'error', 'task']);
-      expect(entryPriorities).toEqual(['high', 'critical', 'high']);
-    });
-
-    it('should display compact log header', () => {
-      render(<MockActivityLog displayMode="compact" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('log-title')).toHaveTextContent('Log');
-      expect(screen.getByTestId('entry-count')).toHaveTextContent('(3)');
-      expect(screen.queryByTestId('mode-indicator')).not.toBeInTheDocument();
-    });
-
-    it('should truncate content aggressively', () => {
-      const longContentEntry = createSampleEntry({
-        content: 'This is a very long activity entry that should be truncated',
-        priority: 'high',
+  describe('filter level behavior with displayMode', () => {
+    it('should auto-set filter level to debug in verbose mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        filterLevel: undefined, // No explicit filter level
       });
 
-      render(<MockActivityLog displayMode="compact" entries={[longContentEntry]} />);
+      render(<ActivityLog {...props} />);
 
-      const entryContent = screen.getByTestId('entry-content');
-      expect(entryContent.textContent).toHaveLength(43); // 40 chars + '...'
-      expect(entryContent.textContent).toEndWith('...');
+      // Should show debug level indicator
+      expect(screen.getByText(/Level: debug\+/)).toBeInTheDocument();
+      expect(screen.getByText(/\(auto: verbose\)/)).toBeInTheDocument();
     });
 
-    it('should hide metadata, details, and timestamps', () => {
-      render(<MockActivityLog displayMode="compact" entries={sampleEntries} />);
+    it('should default to info filter level in normal mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'normal',
+        filterLevel: undefined, // No explicit filter level
+      });
 
-      expect(screen.queryByTestId('entry-metadata')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-timestamp')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-details')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-stack-trace')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('log-footer')).not.toBeInTheDocument();
+      render(<ActivityLog {...props} />);
+
+      // Should show info level indicator
+      expect(screen.getByText(/Level: info\+/)).toBeInTheDocument();
+      // Should not show auto indicator
+      expect(screen.queryByText(/\(auto: verbose\)/)).not.toBeInTheDocument();
     });
 
-    it('should not show entry type labels', () => {
-      render(<MockActivityLog displayMode="compact" entries={sampleEntries} />);
+    it('should default to info filter level in compact mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'compact',
+        filterLevel: undefined, // No explicit filter level
+      });
 
-      expect(screen.queryByTestId('entry-type')).not.toBeInTheDocument();
+      render(<ActivityLog {...props} />);
+
+      // Should show info level indicator
+      expect(screen.getByText(/Level: info\+/)).toBeInTheDocument();
     });
 
-    it('should limit to recent 10 entries even with more available', () => {
-      const manyEntries = Array.from({ length: 20 }, (_, i) =>
-        createSampleEntry({
-          id: `entry-${i}`,
-          priority: 'high',
-          content: `Entry ${i}`,
-        })
-      );
+    it('should respect explicit filter level regardless of display mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        filterLevel: 'warn', // Explicit filter level
+      });
 
-      render(<MockActivityLog displayMode="compact" entries={manyEntries} />);
+      render(<ActivityLog {...props} />);
 
-      const entries = screen.getAllByTestId('log-entry');
-      expect(entries).toHaveLength(10);
+      // Should show warn level, not auto-debug
+      expect(screen.getByText(/Level: warn\+/)).toBeInTheDocument();
+      expect(screen.queryByText(/\(auto: verbose\)/)).not.toBeInTheDocument();
     });
   });
 
-  describe('Verbose Display Mode', () => {
-    it('should show all entries including debug', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('activity-log')).toHaveAttribute('data-display-mode', 'verbose');
-
-      const entries = screen.getAllByTestId('log-entry');
-      expect(entries).toHaveLength(7); // All entries including debug
-
-      // Should include debug entry
-      const debugEntry = entries.find(entry =>
-        entry.getAttribute('data-entry-type') === 'debug'
-      );
-      expect(debugEntry).toBeDefined();
-    });
-
-    it('should display verbose log header with mode indicator', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('log-title')).toHaveTextContent('Activity Log');
-      expect(screen.getByTestId('entry-count')).toHaveTextContent('(7)');
-      expect(screen.getByTestId('mode-indicator')).toHaveTextContent(' - VERBOSE');
-    });
-
-    it('should show full content without truncation', () => {
-      const longContentEntry = createSampleEntry({
-        content: 'This is a very long activity entry that should not be truncated in verbose mode and should be shown in its entirety',
+  describe('entry filtering with different display modes', () => {
+    it('should show debug entries in verbose mode with auto filter', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        filterLevel: undefined, // Auto-set to debug
       });
 
-      render(<MockActivityLog displayMode="verbose" entries={[longContentEntry]} />);
+      render(<ActivityLog {...props} />);
 
-      const entryContent = screen.getByTestId('entry-content');
-      expect(entryContent.textContent).toBe(longContentEntry.content);
-      expect(entryContent.textContent).not.toEndWith('...');
+      // Should show all entries including debug ones
+      expect(screen.getByText(/Agent response time: 2000ms/)).toBeInTheDocument();
+      expect(screen.getByText(/Token usage: 1500 total/)).toBeInTheDocument();
+      expect(screen.getByText(/Tool Read used for 1000ms/)).toBeInTheDocument();
     });
 
-    it('should show all metadata information', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
+    it('should filter out debug entries in normal mode with auto filter', () => {
+      const props = createActivityLogProps({
+        displayMode: 'normal',
+        filterLevel: undefined, // Auto-set to info
+      });
 
-      // Should show all types of metadata
-      expect(screen.getByTestId('metadata-agent')).toHaveTextContent('Agent: developer');
-      expect(screen.getByTestId('metadata-tool')).toHaveTextContent('Tool: Read');
-      expect(screen.getByTestId('metadata-duration')).toHaveTextContent('Duration: 150ms');
-      expect(screen.getByTestId('metadata-tokens')).toHaveTextContent('Tokens: 1500→2000');
+      render(<ActivityLog {...props} />);
+
+      // Should show info and warn entries
+      expect(screen.getByText(/Stage completed in 5000ms/)).toBeInTheDocument();
+      expect(screen.getByText(/Processing rate: 10.50 tokens\/sec/)).toBeInTheDocument();
+      expect(screen.getByText(/Agent developer encountered 1 error\(s\)/)).toBeInTheDocument();
+
+      // Should not show debug entries
+      expect(screen.queryByText(/Agent response time: 2000ms/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Token usage: 1500 total/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Tool Read used for 1000ms/)).not.toBeInTheDocument();
     });
 
-    it('should show timestamps in full ISO format', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
+    it('should filter out debug entries in compact mode with auto filter', () => {
+      const props = createActivityLogProps({
+        displayMode: 'compact',
+        filterLevel: undefined, // Auto-set to info
+      });
 
-      const timestamps = screen.getAllByTestId('entry-timestamp');
-      expect(timestamps.length).toBeGreaterThan(0);
-      expect(timestamps[0]).toHaveTextContent('2024-01-01T10:00:00.000Z');
-    });
+      render(<ActivityLog {...props} />);
 
-    it('should show details and stack traces', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
+      // Should show info and warn entries, not debug
+      expect(screen.getByText(/Stage completed in 5000ms/)).toBeInTheDocument();
+      expect(screen.getByText(/Processing rate: 10.50 tokens\/sec/)).toBeInTheDocument();
+      expect(screen.getByText(/Agent developer encountered 1 error\(s\)/)).toBeInTheDocument();
 
-      // Should show error details
-      expect(screen.getByTestId('entry-details')).toBeInTheDocument();
-      expect(screen.getByTestId('details-label')).toHaveTextContent('Details:');
-      expect(screen.getByTestId('details-content')).toHaveTextContent(
-        'The requested file does not exist in the project directory'
-      );
-
-      // Should show stack trace
-      expect(screen.getByTestId('entry-stack-trace')).toBeInTheDocument();
-      expect(screen.getByTestId('stack-trace-label')).toHaveTextContent('Stack Trace:');
-      expect(screen.getByTestId('stack-trace-content')).toHaveTextContent(
-        'Error: File not found'
-      );
-    });
-
-    it('should show log footer with statistics', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
-
-      expect(screen.getByTestId('log-footer')).toBeInTheDocument();
-      expect(screen.getByTestId('total-entries')).toHaveTextContent('Total: 7');
-      expect(screen.getByTestId('filtered-entries')).toHaveTextContent('Showing: 7');
-      expect(screen.getByTestId('max-entries')).toHaveTextContent('Max: 100');
-    });
-
-    it('should show entry type labels', () => {
-      render(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
-
-      const entryTypes = screen.getAllByTestId('entry-type');
-      expect(entryTypes.length).toBe(7);
-      expect(entryTypes[0]).toHaveTextContent('USER');
+      // Should not show debug entries
+      expect(screen.queryByText(/Agent response time: 2000ms/)).not.toBeInTheDocument();
     });
   });
 
-  describe('Display Mode Transitions', () => {
-    it('should handle mode changes correctly', () => {
-      const { rerender } = render(
-        <MockActivityLog displayMode="normal" entries={sampleEntries} />
-      );
+  describe('timestamp display with displayMode', () => {
+    it('should show full timestamps in verbose mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        showTimestamps: true,
+      });
 
-      // Normal mode - 6 entries (no debug)
-      expect(screen.getAllByTestId('log-entry')).toHaveLength(6);
-      expect(screen.queryByTestId('log-footer')).not.toBeInTheDocument();
+      render(<ActivityLog {...props} />);
 
-      // Switch to compact - 3 entries (high priority only)
-      rerender(<MockActivityLog displayMode="compact" entries={sampleEntries} />);
-
-      expect(screen.getAllByTestId('log-entry')).toHaveLength(3);
-      expect(screen.getByTestId('log-title')).toHaveTextContent('Log');
-
-      // Switch to verbose - all 7 entries
-      rerender(<MockActivityLog displayMode="verbose" entries={sampleEntries} />);
-
-      expect(screen.getAllByTestId('log-entry')).toHaveLength(7);
-      expect(screen.getByTestId('log-footer')).toBeInTheDocument();
-      expect(screen.getByTestId('mode-indicator')).toHaveTextContent(' - VERBOSE');
+      // Should show full timestamp with milliseconds
+      expect(screen.getByText(/\[10:00:00\.000\]/)).toBeInTheDocument();
     });
 
-    it('should maintain entry icons and priority indicators across modes', () => {
-      const modes: DisplayMode[] = ['normal', 'compact', 'verbose'];
+    it('should show abbreviated timestamps in non-verbose modes on narrow screens', () => {
+      // This test needs proper Vitest mock handling for dynamic imports
+      // For now, we'll test the static behavior
+      const props = createActivityLogProps({
+        displayMode: 'normal',
+        showTimestamps: true,
+      });
 
-      modes.forEach(mode => {
-        render(<MockActivityLog displayMode={mode} entries={sampleEntries.slice(0, 3)} />);
+      render(<ActivityLog {...props} />);
 
-        // Icons should always be present
-        const icons = screen.getAllByTestId('entry-icon');
-        expect(icons.length).toBeGreaterThan(0);
+      // Should show timestamp format (specific format depends on screen width)
+      expect(screen.getByText(/\[10:00/)).toBeInTheDocument();
+    });
+  });
 
-        // Priority indicators should always be present
-        const priorities = screen.getAllByTestId('priority-indicator');
-        expect(priorities.length).toBeGreaterThan(0);
+  describe('data expansion with displayMode', () => {
+    it('should show expanded data in verbose mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Should show data fields for entries
+      expect(screen.getByText(/stageDuration:/)).toBeInTheDocument();
+      expect(screen.getByText(/tokensPerSecond:/)).toBeInTheDocument();
+      expect(screen.getByText(/responseTime:/)).toBeInTheDocument();
+    });
+
+    it('should not auto-expand data in normal mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'normal',
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Data fields should not be visible by default
+      expect(screen.queryByText(/stageDuration:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/tokensPerSecond:/)).not.toBeInTheDocument();
+    });
+
+    it('should not auto-expand data in compact mode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'compact',
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Data fields should not be visible by default
+      expect(screen.queryByText(/stageDuration:/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('message truncation with displayMode', () => {
+    it('should not truncate messages in verbose mode', () => {
+      const longMessage = 'This is a very long message that would normally be truncated in other display modes but should be shown in full in verbose mode to provide maximum detail';
+      const entries: LogEntry[] = [
+        {
+          id: 'long-entry',
+          timestamp: new Date(),
+          level: 'info',
+          message: longMessage,
+          category: 'test',
+        },
+      ];
+
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        entries,
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Full message should be visible
+      expect(screen.getByText(longMessage)).toBeInTheDocument();
+    });
+
+    it('should respect responsive truncation in normal mode', () => {
+      const longMessage = 'This is a very long message that should be truncated in normal display mode to fit within the available space and maintain readability';
+      const entries: LogEntry[] = [
+        {
+          id: 'long-entry',
+          timestamp: new Date(),
+          level: 'info',
+          message: longMessage,
+          category: 'test',
+        },
+      ];
+
+      const props = createActivityLogProps({
+        displayMode: 'normal',
+        entries,
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Should find truncated message (with ...)
+      expect(screen.getByText(/\.\.\.$/)).toBeInTheDocument();
+    });
+  });
+
+  describe('component integration', () => {
+    it('should maintain all ActivityLog functionality with displayMode', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
+        allowCollapse: true,
+        showTimestamps: true,
+        showAgents: true,
+      });
+
+      render(<ActivityLog {...props} />);
+
+      // Core functionality should work
+      expect(screen.getByText('Debug Activity Log')).toBeInTheDocument();
+      expect(screen.getByText(/6 entries/)).toBeInTheDocument();
+      expect(screen.getByText(/Press 'c' to collapse/)).toBeInTheDocument();
+
+      // Display mode specific features
+      expect(screen.getByText(/Level: debug\+/)).toBeInTheDocument();
+      expect(screen.getByText(/\(auto: verbose\)/)).toBeInTheDocument();
+
+      // Entries should be visible
+      expect(screen.getByText(/Stage completed in 5000ms/)).toBeInTheDocument();
+      expect(screen.getByText(/Agent response time: 2000ms/)).toBeInTheDocument();
+    });
+
+    it('should handle empty entries gracefully in all display modes', () => {
+      const displayModes: DisplayMode[] = ['normal', 'compact', 'verbose'];
+
+      displayModes.forEach((displayMode) => {
+        const props = createActivityLogProps({
+          displayMode,
+          entries: [],
+        });
+
+        const { unmount } = render(<ActivityLog {...props} />);
+
+        expect(screen.getByText('No log entries to display')).toBeInTheDocument();
+
+        unmount();
       });
     });
   });
 
-  describe('Edge Cases and Performance', () => {
-    it('should handle empty entries gracefully', () => {
-      render(<MockActivityLog displayMode="normal" entries={[]} />);
+  describe('accessibility and usability', () => {
+    it('should provide clear visual hierarchy in all display modes', () => {
+      const displayModes: DisplayMode[] = ['normal', 'compact', 'verbose'];
 
-      expect(screen.getByTestId('activity-log')).toBeInTheDocument();
-      expect(screen.getByTestId('entry-count')).toHaveTextContent('(0)');
-      expect(screen.queryByTestId('log-entry')).not.toBeInTheDocument();
+      displayModes.forEach((displayMode) => {
+        const props = createActivityLogProps({ displayMode });
+
+        const { unmount } = render(<ActivityLog {...props} />);
+
+        // Header should be clear
+        expect(screen.getByText('Debug Activity Log')).toBeInTheDocument();
+
+        // Entry count should be visible
+        expect(screen.getByText(/entries/)).toBeInTheDocument();
+
+        unmount();
+      });
     });
 
-    it('should handle entries with missing optional fields', () => {
-      const minimalEntry: ActivityEntry = {
-        id: 'minimal',
-        type: 'user',
-        content: 'Minimal entry',
-        timestamp: new Date(),
-        priority: 'medium',
-      };
-
-      render(<MockActivityLog displayMode="verbose" entries={[minimalEntry]} />);
-
-      expect(screen.getByTestId('log-entry')).toBeInTheDocument();
-      expect(screen.getByTestId('entry-content')).toHaveTextContent('Minimal entry');
-      expect(screen.queryByTestId('entry-metadata')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-details')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('entry-stack-trace')).not.toBeInTheDocument();
-    });
-
-    it('should respect maxEntries limit across modes', () => {
-      const manyEntries = Array.from({ length: 200 }, (_, i) =>
-        createSampleEntry({
-          id: `entry-${i}`,
-          content: `Entry ${i}`,
-          priority: i % 2 === 0 ? 'high' : 'low',
-        })
-      );
-
-      // Normal mode with limit
-      render(<MockActivityLog displayMode="normal" entries={manyEntries} maxEntries={30} />);
-      expect(screen.getAllByTestId('log-entry').length).toBeLessThanOrEqual(30);
-
-      // Verbose mode with limit
-      const { rerender } = render(
-        <MockActivityLog displayMode="verbose" entries={manyEntries} maxEntries={50} />
-      );
-      expect(screen.getAllByTestId('log-entry').length).toBeLessThanOrEqual(50);
-      expect(screen.getByTestId('max-entries')).toHaveTextContent('Max: 50');
-    });
-
-    it('should handle very long stack traces in verbose mode', () => {
-      const entryWithLongStackTrace = createSampleEntry({
-        type: 'error',
-        priority: 'critical',
-        stackTrace: 'Error: Very long stack trace\n' + '  at function'.repeat(100),
+    it('should indicate current filter level clearly', () => {
+      const props = createActivityLogProps({
+        displayMode: 'verbose',
       });
 
-      render(<MockActivityLog displayMode="verbose" entries={[entryWithLongStackTrace]} />);
+      render(<ActivityLog {...props} />);
 
-      expect(screen.getByTestId('entry-stack-trace')).toBeInTheDocument();
-      expect(screen.getByTestId('stack-trace-content')).toBeInTheDocument();
-    });
-
-    it('should handle rapid mode switching without errors', () => {
-      const { rerender } = render(
-        <MockActivityLog displayMode="normal" entries={sampleEntries} />
-      );
-
-      const modes: DisplayMode[] = ['compact', 'verbose', 'normal', 'compact', 'verbose'];
-
-      modes.forEach(mode => {
-        expect(() => {
-          rerender(<MockActivityLog displayMode={mode} entries={sampleEntries} />);
-        }).not.toThrow();
-
-        expect(screen.getByTestId('activity-log')).toHaveAttribute('data-display-mode', mode);
-      });
+      // Filter indication should be clear
+      expect(screen.getByText(/Filter:/)).toBeInTheDocument();
+      expect(screen.getByText(/Level:/)).toBeInTheDocument();
     });
   });
 });
