@@ -222,6 +222,9 @@ export interface AppState {
   // Edit mode state for returning input to text field
   editModeInput?: string;
 
+  // Preview countdown state - remaining time in milliseconds for preview timeout
+  remainingMs?: number;
+
   // Verbose debug data populated from orchestrator events
   verboseData?: VerboseDebugData;
 }
@@ -749,29 +752,61 @@ export function App({
     };
   }, [addMessage, updateState, state]);
 
-  // Preview timeout handler
+  // Preview countdown and timeout handler
   useEffect(() => {
     if (!state.pendingPreview) {
-      return; // No pending preview, nothing to timeout
+      // No pending preview, reset countdown state
+      setState((prev) => ({ ...prev, remainingMs: undefined }));
+      return;
     }
 
-    const timeoutId = setTimeout(() => {
-      // Auto-cancel preview after timeout
-      setState((prev) => ({
-        ...prev,
-        pendingPreview: undefined,
-      }));
-      addMessage({
-        type: 'system',
-        content: `Preview cancelled after ${state.previewConfig.timeoutMs / 1000}s timeout.`,
-      });
-    }, state.previewConfig.timeoutMs);
+    // Initialize countdown state when preview starts
+    setState((prev) => ({
+      ...prev,
+      remainingMs: prev.previewConfig.timeoutMs,
+    }));
 
-    // Cleanup timeout if preview is cancelled manually or confirmed
+    // Set up interval for countdown updates (100ms for smooth updates)
+    const intervalId = setInterval(() => {
+      setState((prev) => {
+        if (!prev.pendingPreview || !prev.remainingMs) {
+          return prev;
+        }
+
+        const newRemainingMs = prev.remainingMs - 100;
+
+        if (newRemainingMs <= 0) {
+          // Countdown reached 0 - auto-execute the preview
+          const pendingPreview = prev.pendingPreview;
+
+          // Clear preview state first
+          const newState = {
+            ...prev,
+            pendingPreview: undefined,
+            remainingMs: undefined,
+          };
+
+          // Execute the pending input using setTimeout to avoid state update conflicts
+          setTimeout(() => {
+            addMessage({
+              type: 'system',
+              content: `Auto-executing after ${prev.previewConfig.timeoutMs / 1000}s timeout.`,
+            });
+            handleInput(pendingPreview.input);
+          }, 0);
+
+          return newState;
+        }
+
+        return { ...prev, remainingMs: newRemainingMs };
+      });
+    }, 100);
+
+    // Cleanup interval when preview is cancelled manually or confirmed
     return () => {
-      clearTimeout(timeoutId);
+      clearInterval(intervalId);
     };
-  }, [state.pendingPreview, state.previewConfig.timeoutMs, addMessage]);
+  }, [state.pendingPreview, state.previewConfig.timeoutMs, addMessage, handleInput]);
 
   return (
     <Box flexDirection="column" minHeight={20}>
@@ -791,6 +826,7 @@ export function App({
           input={state.pendingPreview.input}
           intent={state.pendingPreview.intent}
           workflow={state.pendingPreview.intent.metadata?.suggestedWorkflow as string}
+          remainingMs={state.remainingMs}
           onConfirm={() => {
             const pendingPreview = state.pendingPreview!;
             setState((prev) => ({ ...prev, pendingPreview: undefined }));

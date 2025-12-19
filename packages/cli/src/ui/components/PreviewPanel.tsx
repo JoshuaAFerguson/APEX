@@ -40,6 +40,7 @@ export interface PreviewPanelProps {
     metadata?: Record<string, unknown>;
   };
   workflow?: string;
+  remainingMs?: number; // Remaining milliseconds for countdown timer
   onConfirm: () => void;
   onCancel: () => void;
   onEdit: () => void;
@@ -127,6 +128,7 @@ export function PreviewPanel({
   input,
   intent,
   workflow,
+  remainingMs,
   onConfirm,
   onCancel,
   onEdit,
@@ -200,6 +202,17 @@ export function PreviewPanel({
     return 'red';
   };
 
+  const getCountdownColor = (remainingSeconds: number): string => {
+    if (remainingSeconds > 5) return 'green';
+    if (remainingSeconds > 2) return 'yellow';
+    return 'red';
+  };
+
+  const formatCountdown = (ms: number): string => {
+    const seconds = Math.ceil(ms / 1000);
+    return `${seconds}s`;
+  };
+
   const confidencePercentage = Math.round(intent.confidence * 100);
 
   // Main container with responsive border and padding
@@ -230,13 +243,38 @@ export function PreviewPanel({
           <Text bold color="cyan">
             📋 Input Preview
           </Text>
-          {config.showStatusIndicator && (
-            <Box>
-              <Text color="cyan">[</Text>
-              <Text color="green" bold>on</Text>
-              <Text color="cyan">]</Text>
-            </Box>
-          )}
+          <Box gap={1}>
+            {/* Countdown timer */}
+            {remainingMs !== undefined && (
+              <Box>
+                <Text color="gray">Auto-execute in </Text>
+                <Text color={getCountdownColor(remainingMs / 1000)} bold>
+                  {formatCountdown(remainingMs)}
+                </Text>
+              </Box>
+            )}
+            {/* Status indicator */}
+            {config.showStatusIndicator && (
+              <Box>
+                <Text color="cyan">[</Text>
+                <Text color="green" bold>on</Text>
+                <Text color="cyan">]</Text>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )}
+
+      {/* Countdown display for compact mode (when title is not shown) */}
+      {!config.showTitle && remainingMs !== undefined && (
+        <Box justifyContent="space-between" marginBottom={1}>
+          <Text bold color="cyan">📋 Preview</Text>
+          <Box>
+            <Text color="gray">Auto-execute in </Text>
+            <Text color={getCountdownColor(remainingMs / 1000)} bold>
+              {formatCountdown(remainingMs)}
+            </Text>
+          </Box>
         </Box>
       )}
 
