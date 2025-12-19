@@ -340,7 +340,8 @@ apex logs task_abc123_def456
 
 ## Next Steps
 
-### v0.3.0 Features
+### ✨ NEW in v0.3.0 - Enhanced Features
+- **[Complete v0.3.0 Features Overview](features/v030-features.md)** - Comprehensive guide to all new features and capabilities
 - **[Display Modes Guide](user-guide/display-modes.md)** - Customize how information is displayed (compact, normal, verbose)
 - **[Input Preview Guide](user-guide/input-preview.md)** - Preview commands before execution with intent detection
 

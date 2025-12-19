@@ -15,13 +15,15 @@ This comprehensive guide covers all CLI commands, keyboard shortcuts, session ma
 - [Task Management](#task-management)
 - [Configuration](#configuration)
 
+**✨ NEW in v0.3.0**: See the [Complete v0.3.0 Features Overview](features/v030-features.md) for detailed documentation of all enhanced features.
+
 ---
 
 ## Getting Started
 
 APEX provides two interface modes:
 
-1. **Rich Terminal UI** (default) - Modern Ink-based interface with real-time updates
+1. **Rich Terminal UI** (default) - Modern Ink-based interface with real-time updates ✨ NEW in v0.3.0
 2. **Classic Mode** - Traditional readline-based interface
 
 ```bash
@@ -34,6 +36,17 @@ apex --classic
 # Run a command directly without entering REPL
 apex <command> [args]
 ```
+
+### ✨ What's New in v0.3.0
+
+APEX v0.3.0 introduces a completely redesigned terminal experience with:
+- **[Rich Terminal Interface](#starting-apex)** - Real-time streaming output and visual feedback
+- **[Display Modes](#display-modes)** - Compact, normal, and verbose display options ([detailed guide](user-guide/display-modes.md))
+- **[Input Preview](#preview---toggle-preview-mode--new-in-v030)** - Preview commands before execution with intent detection ([detailed guide](user-guide/input-preview.md))
+- **[Enhanced Session Management](#session-management)** - Improved persistence and branching capabilities
+- **[Advanced Keyboard Shortcuts](#keyboard-shortcuts)** - Comprehensive shortcut system with auto-completion
+
+See the [Complete v0.3.0 Features Overview](features/v030-features.md) for in-depth technical details and examples.
 
 ---
 
@@ -346,6 +359,8 @@ Create a GitHub pull request for a completed task.
 
 APEX automatically manages sessions, tracking your conversation history, tasks, and costs.
 
+> **✨ NEW in v0.3.0**: Enhanced session management with improved persistence, branching capabilities, and visual feedback. Session data now integrates seamlessly with the rich terminal interface.
+
 ### Session Commands
 
 All session commands use the `/session` prefix:
@@ -488,6 +503,8 @@ APEX supports three display modes to customize output verbosity:
 | `compact` | Condensed output, single-line status |
 | `verbose` | Detailed debug information |
 
+> **✨ NEW in v0.3.0**: Enhanced display modes with improved terminal interface and responsive design. See the detailed [Display Modes User Guide](user-guide/display-modes.md) for comprehensive usage examples and best practices.
+
 ### `/compact` - Toggle Compact Mode
 
 Toggles between compact and normal display mode.
@@ -538,9 +555,11 @@ Control visibility of AI reasoning/thinking process.
 /thoughts status      # Show current setting
 ```
 
-### `/preview` - Toggle Preview Mode
+### `/preview` - Toggle Preview Mode ✨ NEW in v0.3.0
 
-Enable/disable preview of actions before execution.
+Enable/disable preview of actions before execution with intent detection and confidence levels.
+
+> See the comprehensive [Input Preview User Guide](user-guide/input-preview.md) for detailed usage examples, best practices, and troubleshooting.
 
 **Usage:**
 ```bash
@@ -559,6 +578,8 @@ Enable/disable preview of actions before execution.
 ## Keyboard Shortcuts
 
 APEX supports comprehensive keyboard shortcuts for efficient navigation and control.
+
+> **✨ NEW in v0.3.0**: Enhanced keyboard shortcuts with improved input handling, auto-completion, and integration with new terminal interface features like display modes and input preview.
 
 ### Global Shortcuts
 
@@ -887,6 +908,20 @@ Add user endpoint
 - Use `/thoughts` to understand AI reasoning
 
 ---
+
+## Related Documentation
+
+### ✨ v0.3.0 Features
+- **[Complete v0.3.0 Features Overview](features/v030-features.md)** - Comprehensive guide to all new features and capabilities
+- **[Display Modes User Guide](user-guide/display-modes.md)** - Detailed guide to compact, normal, and verbose display modes
+- **[Input Preview User Guide](user-guide/input-preview.md)** - Complete guide to command preview with intent detection
+
+### Core Guides
+- **[Getting Started Guide](getting-started.md)** - Quick start tutorial with v0.3.0 terminal interface examples
+- **[Agent Configuration](agents.md)** - Customize agent behavior and capabilities
+- **[Workflow Definitions](workflows.md)** - Create and modify development workflows
+- **[API Reference](api-reference.md)** - Programmatic integration with APEX
+- **[Best Practices](best-practices.md)** - Tips for effective APEX usage
 
 ## Getting Help
 
