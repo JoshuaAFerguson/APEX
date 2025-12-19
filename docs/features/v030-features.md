@@ -146,74 +146,696 @@ const { width, height, breakpoint } = useStdoutDimensions();
 // narrow: width < 60, compact: 60-79, normal: 80-119, wide: 120+
 ```
 
-### 4. Multi-Agent Visualization
+### 4. Agent Panel Visualization
 
-#### Agent Panel with Handoff Animations
+The Agent Panel system provides comprehensive visualization of multi-agent orchestration, including real-time status tracking, animated handoffs between agents, parallel execution monitoring, and hierarchical task breakdowns.
 
-The `AgentPanel` component provides real-time visualization of agent activity:
+#### AgentPanel Component Overview
+
+The `AgentPanel` component is the primary interface for visualizing agent activity. It supports three display modes that automatically adapt to terminal width and user preferences.
+
+##### Display Modes
+
+| Mode | Description | Terminal Width | Use Case |
+|------|-------------|----------------|----------|
+| **Full** | Detailed view with borders, progress bars, and stage info | 80+ columns | Standard desktop terminals |
+| **Compact** | Inline display with abbreviated names and minimal chrome | < 80 columns | Narrow terminals, status bars |
+| **Verbose** | Extended debug info including tokens, tool calls, and thoughts | Any | Debugging, development |
+
+##### Full Mode (Normal/Wide Terminals)
+
+Full mode provides maximum detail with bordered sections, progress bars, and comprehensive status information:
 
 ```
 ┌─ Agent Activity ─────────────────────────────────────────────────────────────┐
 │                                                                              │
-│ 📋 planner    → → →  🏗️  architect  → → →  🤖 developer    ⟂  🧪 tester      │
-│   completed          in progress             waiting           parallel      │
-│   (2.3s)            (0:45 elapsed)           queue: 1           (running)    │
+│ Active Agents                                                                │
 │                                                                              │
-│ ├─ 📋 Plan implementation strategy                              ✓ (2.3s)     │
-│ ├─ 🏗️ Design authentication system                            ● (in progress) │
-│ │  ├─ Define JWT token structure                               ✓ (0.2s)     │
-│ │  ├─ Design login/register flow                               ✓ (0.8s)     │
-│ │  └─ Plan component hierarchy                                 ● (current)   │
-│ ├─ 🤖 Implement authentication components                       ⏸ (waiting)   │
-│ └─ 🧪 Write tests for auth system                              ⟂ (parallel)  │
+│ ⚡ Handoff [0.8s]: 📋 planner →→→ 🏗️ architect                               │
+│ ████████████████████████████████████████ 100%                               │
+│                                                                              │
+│ ⚡ planner                                                                    │
+│   (planning) [2.3s]                                                          │
+│   ████████████████████████████████░░░░ 85%                                  │
+│                                                                              │
+│ ⚡ architect                                                                  │
+│   (designing) [0:45 elapsed]                                                │
+│   █████████████████░░░░░░░░░░░░░░░░░░░ 45%                                  │
+│                                                                              │
+│ ○ developer                                                                  │
+│   (waiting)                                                                  │
+│                                                                              │
+│ ⟂ Parallel Execution                                                         │
+│ ⟂ tester (testing) [0:12 elapsed]                                           │
+│   █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 15%                                  │
+│ ⟂ reviewer (reviewing) [0:08 elapsed]                                       │
+│   ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 10%                                  │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Visual Elements:**
-- `→ → →` Animated handoff arrows between agents
-- `⟂` Parallel execution indicator with cyan styling
-- `●` Active/in-progress indicator with pulse effect
-- `✓` Completed tasks with elapsed time
-- `⏸` Waiting/queued tasks
-- Hierarchical subtask tree with expand/collapse
+##### Compact Mode (Narrow Terminals)
+
+Compact mode provides an inline, space-efficient display ideal for status bars and narrow terminals:
+
+```
+⚡plan[85%][2.3s] | ⚡arch[45%][0:45] | ○dev | ⟂test,rev+1
+```
+
+**Compact Mode Features:**
+- Abbreviated agent names (planner → plan, architect → arch, developer → dev)
+- Inline percentage progress instead of progress bars
+- Parallel agents shown with comma-separated list
+- Overflow indicator (+N) for many parallel agents
+
+##### Verbose Mode (Debug Display)
+
+Verbose mode extends full mode with additional debugging information:
+
+```
+┌─ Agent Activity (Verbose) ────────────────────────────────────────────────────┐
+│                                                                               │
+│ ⚡ architect                                                                   │
+│   Stage: designing | Elapsed: 0:45                                            │
+│   Tokens: 1,234↑ 2,567↓ | Turns: 5 | Errors: 0                               │
+│   Last Tool: read_file (src/auth/AuthContext.tsx)                            │
+│   ████████████████████████░░░░░░░░░░░░░░░░ 60%                               │
+│                                                                               │
+│   💭 Thinking:                                                                │
+│   "I need to analyze the existing authentication patterns                     │
+│    in the codebase before designing the new JWT system..."                   │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### AgentPanel Component API
+
+```typescript
+import { AgentPanel } from '@apex/cli/ui/components';
+
+// Basic usage with automatic mode selection
+<AgentPanel
+  agents={agentStates}
+  currentAgent="architect"
+/>
+
+// Explicit compact mode
+<AgentPanel
+  agents={agentStates}
+  currentAgent="developer"
+  compact={true}
+/>
+
+// Full mode with parallel agents
+<AgentPanel
+  agents={agentStates}
+  currentAgent="architect"
+  showParallel={true}
+  parallelAgents={parallelAgentStates}
+  useDetailedParallelView={true}
+/>
+
+// Verbose mode with thought display
+<AgentPanel
+  agents={agentStates}
+  currentAgent="developer"
+  displayMode="verbose"
+  showThoughts={true}
+/>
+```
+
+**Component Properties:**
+
+```typescript
+interface AgentPanelProps {
+  agents: AgentInfo[];              // Array of agent state objects
+  currentAgent?: string;            // Name of the currently active agent
+  compact?: boolean;                // Force compact mode (default: auto)
+  showParallel?: boolean;           // Show parallel execution section
+  parallelAgents?: AgentInfo[];     // Agents running in parallel
+  useDetailedParallelView?: boolean; // Use ParallelExecutionView component
+  displayMode?: 'normal' | 'compact' | 'verbose';  // Display mode override
+  showThoughts?: boolean;           // Show agent thinking/reasoning
+  width?: number;                   // Explicit width override for testing
+}
+
+interface AgentInfo {
+  name: string;                     // Agent identifier
+  status: 'active' | 'waiting' | 'completed' | 'idle' | 'parallel';
+  stage?: string;                   // Current workflow stage
+  progress?: number;                // Progress percentage (0-100)
+  startedAt?: Date;                 // When the agent started working
+  debugInfo?: {                     // Verbose mode information
+    tokensUsed?: { input: number; output: number };
+    stageStartedAt?: Date;
+    lastToolCall?: string;
+    turnCount?: number;
+    errorCount?: number;
+    thinking?: string;
+  };
+}
+```
+
+##### Responsive Breakpoint System
+
+AgentPanel automatically adapts to terminal width using a 4-tier breakpoint system:
+
+| Breakpoint | Width | Layout | Features |
+|------------|-------|--------|----------|
+| **Narrow** | < 60 cols | Compact | No borders, abbreviated names, inline progress |
+| **Compact** | 60-79 cols | Compact | No borders, full names, inline progress |
+| **Normal** | 80-119 cols | Full | Borders, progress bars (30 chars), stage info |
+| **Wide** | 120+ cols | Full | Borders, wide progress bars (40 chars), full details |
+
+```typescript
+// Responsive configuration per breakpoint
+const RESPONSIVE_CONFIGS = {
+  narrow: {
+    useCompactLayout: true,
+    showBorder: false,
+    showTitle: false,
+    agentNameMaxLength: 6,
+    abbreviateNames: true,
+    showProgressBars: false,
+    showProgressInline: true,
+    maxParallelAgentsVisible: 2,
+  },
+  compact: {
+    useCompactLayout: true,
+    showBorder: false,
+    agentNameMaxLength: 10,
+    showProgressBars: false,
+    maxParallelAgentsVisible: 3,
+  },
+  normal: {
+    useCompactLayout: false,
+    showBorder: true,
+    showTitle: true,
+    agentNameMaxLength: 16,
+    showProgressBars: true,
+    progressBarWidth: 30,
+    maxParallelAgentsVisible: 5,
+  },
+  wide: {
+    useCompactLayout: false,
+    showBorder: true,
+    agentNameMaxLength: 24,
+    progressBarWidth: 40,
+    maxParallelAgentsVisible: 10,
+    showThoughtsPreview: true,
+  },
+};
+```
+
+#### Handoff Animations
+
+The `HandoffIndicator` component provides animated transitions when work passes from one agent to another. It supports multiple animation styles and automatically adapts to terminal capabilities.
+
+##### Animation Styles
+
+**Basic Style** (ASCII-compatible):
+```
+planner → architect
+planner →→ architect
+planner →→→ architect
+```
+
+**Enhanced Style** (Default):
+```
+📋 planner ·→ 🏗️ architect
+📋 planner →· 🏗️ architect
+📋 planner →→ 🏗️ architect
+📋 planner →→· 🏗️ architect
+📋 planner →→→ 🏗️ architect
+📋 planner →→→· 🏗️ architect
+📋 planner ⟶→→ 🏗️ architect
+📋 planner ⟹ 🏗️ architect
+```
+
+**Sparkle Style** (High-visibility):
+```
+📋 planner ✦→ 🏗️ architect
+📋 planner →✦ 🏗️ architect
+📋 planner →→✦ 🏗️ architect
+📋 planner ✦→→→ 🏗️ architect
+📋 planner →→→✦ 🏗️ architect
+📋 planner ✦⟶→→ 🏗️ architect
+📋 planner →⟶✦ 🏗️ architect
+📋 planner ⟹✦ 🏗️ architect
+```
+
+##### Full Mode Handoff Display
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ ⚡ Handoff [1.2s]: 📋 planner →→→ 🏗️ architect                                │
+│ ████████████████████████████████████████░░░░░░░░ 80%                          │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Handoff Visual Features:**
+- Progress bar showing transition progress (0-100%)
+- Elapsed time display
+- Color transitions from source agent color → target agent color
+- Agent icons with pulsing animation effect
+- Border color transitions during handoff
+
+##### Compact Mode Handoff Display
+
+```
+| 📋 planner →→→ 🏗️ architect [1.2s]
+```
+
+##### Color Transition Phases
+
+The handoff animation includes smooth color transitions:
+
+| Progress | Source Agent | Arrow | Target Agent | Border |
+|----------|--------------|-------|--------------|--------|
+| 0-30% | Bright | Dim | Faded | Gray |
+| 30-50% | Normal | Normal | Dim | White |
+| 50-70% | Dim | Normal | Normal | Target color |
+| 70-100% | Faded | Bright | Bright | Fading |
+
+##### HandoffIndicator Component API
+
+```typescript
+import { HandoffIndicator } from '@apex/cli/ui/components/agents';
+
+// Basic handoff display
+<HandoffIndicator
+  animationState={handoffState}
+  agentColors={agentColorMap}
+/>
+
+// Compact inline mode
+<HandoffIndicator
+  animationState={handoffState}
+  agentColors={agentColorMap}
+  compact={true}
+/>
+
+// Full customization
+<HandoffIndicator
+  animationState={handoffState}
+  agentColors={agentColorMap}
+  showElapsedTime={true}
+  showProgressBar={true}
+  showAgentIcons={true}
+  arrowStyle="sparkle"
+  enableColorTransition={true}
+  forceAsciiIcons={false}
+/>
+```
+
+**Component Properties:**
+
+```typescript
+interface HandoffIndicatorProps {
+  animationState: HandoffAnimationState;  // From useAgentHandoff hook
+  agentColors: Record<string, string>;    // Color mapping for agents
+  compact?: boolean;                      // Inline display mode
+  showElapsedTime?: boolean;              // Show handoff duration
+  showProgressBar?: boolean;              // Show progress bar (full mode)
+  showAgentIcons?: boolean;               // Show emoji icons
+  agentIcons?: Record<string, string>;    // Custom icon mapping
+  arrowStyle?: 'basic' | 'enhanced' | 'sparkle';  // Animation style
+  enableColorTransition?: boolean;        // Smooth color transitions
+  forceAsciiIcons?: boolean;              // Force ASCII-only icons
+}
+```
 
 #### Parallel Execution View
 
+The `ParallelExecutionView` component displays multiple agents running concurrently, with responsive column layouts that adapt to terminal width.
+
+##### Grid Layout Examples
+
+**Wide Terminal (4 columns):**
 ```
-┌─ Parallel Agent Execution ───────────────────────────────────────────────────┐
+┌─ Parallel Execution (4 agents) ──────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                      │
+│ ╭──────────────────────╮  ╭──────────────────────╮  ╭──────────────────────╮  ╭──────────────────────╮              │
+│ │     ⟂ developer      │  │      ⟂ tester        │  │      ⟂ devops        │  │     ⟂ reviewer       │              │
+│ │                      │  │                      │  │                      │  │                      │              │
+│ │   Stage: coding      │  │   Stage: testing     │  │   Stage: deploying   │  │   Stage: reviewing   │              │
+│ │                      │  │                      │  │                      │  │                      │              │
+│ │   Runtime: [1:23]    │  │   Runtime: [0:47]    │  │   Runtime: [0:34]    │  │   Runtime: [0:12]    │              │
+│ │                      │  │                      │  │                      │  │                      │              │
+│ │   ████████░░░░ 65%   │  │   █████░░░░░░ 40%    │  │   ██████░░░░░ 50%    │  │   ███░░░░░░░ 25%     │              │
+│ │                      │  │                      │  │                      │  │                      │              │
+│ │  Running in Parallel │  │  Running in Parallel │  │  Running in Parallel │  │  Running in Parallel │              │
+│ ╰──────────────────────╯  ╰──────────────────────╯  ╰──────────────────────╯  ╰──────────────────────╯              │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Normal Terminal (2 columns):**
+```
+┌─ Parallel Execution (4 agents) ──────────────────────────────────────────────┐
 │                                                                              │
-│ 🤖 developer                           ⟂  🧪 tester                          │
-│ ● Implementing login form                ● Running unit tests                │
-│   (1:23 elapsed)                          (0:47 elapsed)                     │
+│ ╭────────────────────────╮  ╭────────────────────────╮                      │
+│ │      ⟂ developer       │  │       ⟂ tester         │                      │
+│ │    Stage: coding       │  │    Stage: testing      │                      │
+│ │    Runtime: [1:23]     │  │    Runtime: [0:47]     │                      │
+│ │    ████████░░░░ 65%    │  │    █████░░░░░░ 40%     │                      │
+│ │   Running in Parallel  │  │   Running in Parallel  │                      │
+│ ╰────────────────────────╯  ╰────────────────────────╯                      │
 │                                                                              │
-│ 🔧 devops                              ⟂  📝 reviewer                        │
-│ ● Setting up CI pipeline                 ● Code review in progress           │
-│   (0:34 elapsed)                          (0:12 elapsed)                     │
+│ ╭────────────────────────╮  ╭────────────────────────╮                      │
+│ │       ⟂ devops         │  │      ⟂ reviewer        │                      │
+│ │    Stage: deploying    │  │    Stage: reviewing    │                      │
+│ │    Runtime: [0:34]     │  │    Runtime: [0:12]     │                      │
+│ │    ██████░░░░░ 50%     │  │    ███░░░░░░░ 25%      │                      │
+│ │   Running in Parallel  │  │   Running in Parallel  │                      │
+│ ╰────────────────────────╯  ╰────────────────────────╯                      │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Subtask Tree with Interactive Controls
+**Narrow Terminal (1 column):**
+```
+⟂ Parallel Execution (4 agents)
+
+╭──────────────────╮
+│   ⟂ developer    │
+│      coding      │
+│     [1:23]       │
+│       65%        │
+╰──────────────────╯
+
+╭──────────────────╮
+│    ⟂ tester      │
+│     testing      │
+│     [0:47]       │
+│       40%        │
+╰──────────────────╯
+
+╭──────────────────╮
+│    ⟂ devops      │
+│    deploying     │
+│     [0:34]       │
+│       50%        │
+╰──────────────────╯
+
+╭──────────────────╮
+│   ⟂ reviewer     │
+│    reviewing     │
+│     [0:12]       │
+│       25%        │
+╰──────────────────╯
+```
+
+##### ParallelExecutionView Component API
+
+```typescript
+import { ParallelExecutionView } from '@apex/cli/ui/components/agents';
+
+// Basic parallel view with automatic column calculation
+<ParallelExecutionView
+  agents={parallelAgents}
+/>
+
+// Explicit column control
+<ParallelExecutionView
+  agents={parallelAgents}
+  maxColumns={3}
+/>
+
+// Compact card display
+<ParallelExecutionView
+  agents={parallelAgents}
+  compact={true}
+/>
+```
+
+**Component Properties:**
+
+```typescript
+interface ParallelExecutionViewProps {
+  agents: ParallelAgent[];     // Array of parallel agent states
+  maxColumns?: number;         // Override auto column calculation
+  compact?: boolean;           // Use compact card display
+}
+
+interface ParallelAgent {
+  name: string;
+  status: 'parallel' | 'active' | 'completed' | 'waiting' | 'idle';
+  stage?: string;
+  progress?: number;           // 0-100
+  startedAt?: Date;
+}
+```
+
+##### Responsive Column Calculation
+
+Columns automatically adapt based on terminal width:
+
+| Terminal | Card Width | Columns |
+|----------|------------|---------|
+| Narrow (< 60) | N/A | 1 (stacked) |
+| Compact (60-79) | ~20 chars | 2-3 |
+| Normal (80-119) | ~28 chars | 2-4 |
+| Wide (120+) | ~28 chars | 4-6 |
+
+#### SubtaskTree Visualization
+
+The `SubtaskTree` component provides an interactive, hierarchical view of task breakdowns with keyboard navigation and collapse/expand functionality.
+
+##### Visual Layout
 
 ```
 ┌─ Task Breakdown ─────────────────────────────────────────────────────────────┐
 │                                                                              │
-│ ▼ 🏗️ Design authentication system                              ● (current)   │
-│   ├─ ✓ Define JWT token structure                               (0.2s)       │
-│   ├─ ✓ Design login/register flow                               (0.8s)       │
-│   ├─ ● Plan component hierarchy                                 (current)     │
-│   │   ├─ ✓ LoginForm component                                  (0.1s)       │
-│   │   ├─ ● AuthContext provider                                 (current)     │
-│   │   └─ ⏸ ProtectedRoute wrapper                              (pending)     │
-│   └─ ⏸ Create API integration plan                             (pending)     │
+│ ▼ 🏗️ Design authentication system                              ● 0:45       │
+│   ├─ ✓ Define JWT token structure                               0.2s        │
+│   ├─ ✓ Design login/register flow                               0.8s        │
+│   ├─ ● Plan component hierarchy                                 0:12        │
+│   │   ├─ ✓ LoginForm component                                  0.1s        │
+│   │   ├─ ● AuthContext provider                               ← current     │
+│   │   └─ ○ ProtectedRoute wrapper                               pending     │
+│   └─ ○ Create API integration plan                              pending     │
 │                                                                              │
-│ ▶ 🤖 Implement authentication components                        (collapsed)   │
-│ ▶ 🧪 Write tests for auth system                               (collapsed)   │
+│ ▶ 🤖 Implement authentication components                        collapsed    │
+│ ▶ 🧪 Write tests for auth system                               collapsed    │
 │                                                                              │
-│ Keyboard: ↑↓ Navigate, ←→ Collapse/Expand, Space Toggle        │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│ Keyboard: ↑↓ Navigate │ ←→ Collapse/Expand │ Space Toggle │ Enter Details   │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+##### Status Icons and Colors
+
+| Status | Icon | Color | Description |
+|--------|------|-------|-------------|
+| **Pending** | `○` | Gray | Task not yet started |
+| **In Progress** | `●` | Blue | Task currently executing |
+| **Completed** | `✓` | Green | Task finished successfully |
+| **Failed** | `✗` | Red | Task encountered an error |
+
+##### Tree Navigation Icons
+
+| State | Icon | Description |
+|-------|------|-------------|
+| **Expanded** | `▼` | Node children are visible |
+| **Collapsed** | `▶` | Node children are hidden |
+| **Leaf** | `├─` / `└─` | Branch connectors |
+
+##### Interactive Features
+
+**Keyboard Navigation:**
+- `↑` / `↓` - Move focus between visible nodes
+- `←` - Collapse current node (or move to parent)
+- `→` - Expand current node (or move to first child)
+- `Space` - Toggle collapse/expand state
+- `Enter` - Show detailed node information
+
+**Progress Tracking:**
+- Real-time elapsed time for in-progress tasks
+- Completion time display for finished tasks
+- Progress percentage for tasks with known progress
+
+##### SubtaskTree Component API
+
+```typescript
+import { SubtaskTree } from '@apex/cli/ui/components/agents';
+
+// Basic tree display
+<SubtaskTree
+  task={rootTask}
+/>
+
+// Controlled collapse state
+<SubtaskTree
+  task={rootTask}
+  defaultCollapsed={true}
+  initialCollapsedIds={new Set(['node-1', 'node-2'])}
+  onToggleCollapse={(nodeId, collapsed) => {
+    console.log(`Node ${nodeId} is now ${collapsed ? 'collapsed' : 'expanded'}`);
+  }}
+/>
+
+// Non-interactive display (read-only)
+<SubtaskTree
+  task={rootTask}
+  interactive={false}
+  showProgress={true}
+  showElapsedTime={true}
+/>
+
+// External focus control
+<SubtaskTree
+  task={rootTask}
+  focusedNodeId={currentFocusId}
+  onFocusChange={(nodeId) => setCurrentFocusId(nodeId)}
+/>
+```
+
+**Component Properties:**
+
+```typescript
+interface SubtaskTreeProps {
+  task: SubtaskNode;                        // Root task node
+  maxDepth?: number;                        // Maximum nesting depth (default: 3)
+  defaultCollapsed?: boolean;               // Initial collapsed state
+  initialCollapsedIds?: Set<string>;        // Specific nodes to collapse
+  onToggleCollapse?: (nodeId: string, collapsed: boolean) => void;
+  showProgress?: boolean;                   // Show progress indicators
+  showElapsedTime?: boolean;                // Show elapsed time
+  interactive?: boolean;                    // Enable keyboard navigation
+  focusedNodeId?: string;                   // External focus control
+  onFocusChange?: (nodeId: string | null) => void;
+}
+
+interface SubtaskNode {
+  id: string;                               // Unique node identifier
+  description: string;                      // Task description
+  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  children?: SubtaskNode[];                 // Nested subtasks
+  progress?: number;                        // 0-100 percentage
+  startedAt?: Date;                         // For elapsed time calculation
+  estimatedDuration?: number;               // Estimated duration in ms
+}
+```
+
+##### Example Task Structure
+
+```typescript
+const taskTree: SubtaskNode = {
+  id: 'auth-system',
+  description: 'Design authentication system',
+  status: 'in-progress',
+  startedAt: new Date(),
+  progress: 45,
+  children: [
+    {
+      id: 'jwt-structure',
+      description: 'Define JWT token structure',
+      status: 'completed',
+    },
+    {
+      id: 'login-flow',
+      description: 'Design login/register flow',
+      status: 'completed',
+    },
+    {
+      id: 'component-hierarchy',
+      description: 'Plan component hierarchy',
+      status: 'in-progress',
+      progress: 60,
+      children: [
+        { id: 'login-form', description: 'LoginForm component', status: 'completed' },
+        { id: 'auth-context', description: 'AuthContext provider', status: 'in-progress' },
+        { id: 'protected-route', description: 'ProtectedRoute wrapper', status: 'pending' },
+      ],
+    },
+    {
+      id: 'api-integration',
+      description: 'Create API integration plan',
+      status: 'pending',
+    },
+  ],
+};
+```
+
+#### Configuration via .apex/config.yaml
+
+```yaml
+# Agent panel visualization configuration
+ui:
+  agentPanel:
+    defaultMode: auto                 # auto, compact, normal, verbose
+    showProgressBars: true
+    showElapsedTime: true
+    showAgentIcons: true
+
+    # Handoff animation settings
+    handoff:
+      arrowStyle: enhanced            # basic, enhanced, sparkle
+      showProgressBar: true
+      enableColorTransition: true
+      animationDuration: 2000         # ms
+
+    # Parallel execution settings
+    parallel:
+      maxColumnsOverride: null        # null for auto, or explicit number
+      compactCards: false
+      showStageInfo: true
+
+    # Subtask tree settings
+    subtaskTree:
+      maxDepth: 3
+      defaultCollapsed: false
+      showProgress: true
+      showElapsedTime: true
+      interactive: true
+
+    # Responsive breakpoints override
+    breakpoints:
+      narrow: 60
+      compact: 80
+      normal: 120
+```
+
+#### Integration with Orchestrator Events
+
+The AgentPanel system integrates with the APEX orchestrator through event subscriptions:
+
+```typescript
+import { useOrchestratorEvents } from '@apex/cli/ui/hooks';
+
+function AgentActivityDisplay() {
+  const {
+    agents,
+    currentAgent,
+    parallelAgents,
+    handoffState,
+    subtaskTree,
+  } = useOrchestratorEvents(orchestrator);
+
+  return (
+    <AgentPanel
+      agents={agents}
+      currentAgent={currentAgent}
+      showParallel={parallelAgents.length > 0}
+      parallelAgents={parallelAgents}
+      displayMode="normal"
+    />
+  );
+}
+```
+
+**Supported Orchestrator Events:**
+- `agent:start` - Agent begins execution
+- `agent:progress` - Agent progress update
+- `agent:complete` - Agent finishes execution
+- `agent:handoff` - Control passes between agents
+- `parallel:start` - Parallel execution begins
+- `parallel:update` - Parallel agent progress
+- `parallel:complete` - Parallel execution ends
+- `subtask:create` - New subtask created
+- `subtask:update` - Subtask status change
+- `subtask:complete` - Subtask finished
 
 ### 5. Status Bar and Information Display
 
