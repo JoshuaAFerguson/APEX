@@ -466,6 +466,11 @@ export function App({
         }));
         addMessage({ type: 'system', content: 'Returning to edit mode...' });
         return;
+      } else {
+        // Any other keypress - cancel countdown but keep preview visible
+        setState(prev => ({ ...prev, remainingMs: undefined }));
+        addMessage({ type: 'system', content: 'Auto-execute cancelled.' });
+        return;
       }
       // Don't process other shortcuts in preview mode
       return;
