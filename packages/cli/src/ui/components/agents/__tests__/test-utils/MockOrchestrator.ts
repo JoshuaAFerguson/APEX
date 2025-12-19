@@ -324,6 +324,14 @@ export class MockOrchestrator extends EventEmitter {
   }
 
   /**
+   * Simulate agent turn event
+   * Tests turn count tracking in verbose data
+   */
+  simulateAgentTurn(event: { taskId: string; agentName: string; turnNumber: number }) {
+    this.emit('agent:turn', event);
+  }
+
+  /**
    * Helper method to clean up all listeners
    * Should be called in test cleanup
    */
