@@ -1251,8 +1251,37 @@ async function handleVerbose(): Promise<void> {
   });
 }
 
+// Helper function to persist preview configuration changes to disk
+async function persistPreviewConfig(previewConfig: {
+  confidenceThreshold: number;
+  autoExecuteHighConfidence: boolean;
+  timeoutMs: number;
+}): Promise<void> {
+  if (!ctx.config || !ctx.initialized) return;
+
+  // Update config object with current state
+  ctx.config.ui = {
+    ...ctx.config.ui,
+    previewMode: ctx.app?.getState()?.previewMode ?? ctx.config.ui?.previewMode ?? true,
+    previewConfidence: previewConfig.confidenceThreshold,
+    autoExecuteHighConfidence: previewConfig.autoExecuteHighConfidence,
+    previewTimeout: previewConfig.timeoutMs,
+  };
+
+  // Persist to file
+  try {
+    await saveConfig(ctx.cwd, ctx.config);
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to persist config: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
 async function handlePreview(args: string[]): Promise<void> {
   const action = args[0]?.toLowerCase();
+  const value = args[1];
 
   // Get current state
   const currentState = ctx.app?.getState();
@@ -1264,6 +1293,10 @@ async function handlePreview(args: string[]): Promise<void> {
         type: 'system',
         content: 'Preview mode enabled. You will see a preview before each execution.',
       });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
       break;
 
     case 'off':
@@ -1272,6 +1305,10 @@ async function handlePreview(args: string[]): Promise<void> {
         type: 'system',
         content: 'Preview mode disabled.',
       });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
       break;
 
     case undefined:
@@ -1282,19 +1319,143 @@ async function handlePreview(args: string[]): Promise<void> {
         type: 'system',
         content: `Preview mode ${newMode ? 'enabled' : 'disabled'}.`,
       });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
+      break;
+
+    case 'confidence':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Preview confidence threshold: ${(currentState?.previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
+        });
+      } else {
+        const parsed = parseFloat(value);
+        if (isNaN(parsed)) {
+          ctx.app?.addMessage({
+            type: 'error',
+            content: 'Confidence must be a number between 0-1 (e.g., 0.7) or 0-100 (e.g., 70).',
+          });
+        } else {
+          // Auto-detect range: 0-1 vs 0-100
+          const threshold = parsed > 1 ? parsed / 100 : parsed;
+
+          if (threshold < 0 || threshold > 1) {
+            ctx.app?.addMessage({
+              type: 'error',
+              content: 'Confidence threshold must be between 0-1 (or 0-100).',
+            });
+          } else {
+            const newConfig = {
+              ...currentState?.previewConfig,
+              confidenceThreshold: threshold,
+            };
+            ctx.app?.updateState({ previewConfig: newConfig });
+
+            // Persist to config file
+            await persistPreviewConfig(newConfig);
+
+            ctx.app?.addMessage({
+              type: 'system',
+              content: `Preview confidence threshold set to ${(threshold * 100).toFixed(0)}%.`,
+            });
+          }
+        }
+      }
+      break;
+
+    case 'timeout':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Preview timeout: ${currentState?.previewConfig.timeoutMs / 1000}s`,
+        });
+      } else {
+        const timeout = parseInt(value, 10);
+        if (isNaN(timeout) || timeout < 1) {
+          ctx.app?.addMessage({
+            type: 'error',
+            content: 'Timeout must be a positive number (in seconds).',
+          });
+        } else {
+          const newConfig = {
+            ...currentState?.previewConfig,
+            timeoutMs: timeout * 1000,
+          };
+          ctx.app?.updateState({ previewConfig: newConfig });
+
+          // Persist to config file
+          await persistPreviewConfig(newConfig);
+
+          ctx.app?.addMessage({
+            type: 'system',
+            content: `Preview timeout set to ${timeout}s.`,
+          });
+        }
+      }
+      break;
+
+    case 'auto':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Auto-execute high confidence: ${currentState?.previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
+        });
+      } else if (value === 'on' || value === 'true') {
+        const newConfig = {
+          ...currentState?.previewConfig,
+          autoExecuteHighConfidence: true,
+        };
+        ctx.app?.updateState({ previewConfig: newConfig });
+
+        // Persist to config file
+        await persistPreviewConfig(newConfig);
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: 'Auto-execute for high confidence inputs enabled.',
+        });
+      } else if (value === 'off' || value === 'false') {
+        const newConfig = {
+          ...currentState?.previewConfig,
+          autoExecuteHighConfidence: false,
+        };
+        ctx.app?.updateState({ previewConfig: newConfig });
+
+        // Persist to config file
+        await persistPreviewConfig(newConfig);
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: 'Auto-execute for high confidence inputs disabled.',
+        });
+      } else {
+        ctx.app?.addMessage({
+          type: 'error',
+          content: 'Usage: /preview auto [on|off]',
+        });
+      }
       break;
 
     case 'status':
+    case 'settings':  // Add alias for settings
+      const config = currentState?.previewConfig;
       ctx.app?.addMessage({
         type: 'assistant',
-        content: `Preview mode is currently ${currentState?.previewMode ? 'enabled' : 'disabled'}.`,
+        content: `Preview Settings:
+• Mode: ${currentState?.previewMode ? 'enabled' : 'disabled'}
+• Confidence threshold: ${(config?.confidenceThreshold * 100).toFixed(0)}%
+• Auto-execute high confidence: ${config?.autoExecuteHighConfidence ? 'enabled' : 'disabled'}
+• Timeout: ${config?.timeoutMs / 1000}s`,
       });
       break;
 
     default:
       ctx.app?.addMessage({
         type: 'error',
-        content: 'Usage: /preview [on|off|toggle|status]',
+        content: 'Usage: /preview [on|off|toggle|status|settings|confidence|timeout|auto]',
       });
   }
 }

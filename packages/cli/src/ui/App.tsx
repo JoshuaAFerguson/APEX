@@ -193,6 +193,11 @@ export interface AppState {
 
   // Preview mode state
   previewMode: boolean;
+  previewConfig: {
+    confidenceThreshold: number;
+    autoExecuteHighConfidence: boolean;
+    timeoutMs: number;
+  };
   pendingPreview?: {
     input: string;
     intent: {
@@ -526,34 +531,47 @@ export function App({
 
       // Check if preview mode is enabled and this isn't the preview command itself
       if (state.previewMode && !input.startsWith('/preview')) {
-        // Parse command/task details
-        let command: string | undefined;
-        let args: string[] = [];
+        // Check if auto-execute is enabled and confidence is high enough
+        if (
+          state.previewConfig.autoExecuteHighConfidence &&
+          intent.confidence >= state.previewConfig.confidenceThreshold
+        ) {
+          // Auto-execute without preview for high confidence inputs
+          addMessage({
+            type: 'system',
+            content: `Auto-executing (confidence: ${(intent.confidence * 100).toFixed(0)}% ≥ ${(state.previewConfig.confidenceThreshold * 100).toFixed(0)}%)`,
+          });
+          // Continue to normal execution below
+        } else {
+          // Parse command/task details for preview
+          let command: string | undefined;
+          let args: string[] = [];
 
-        if (input.startsWith('/')) {
-          const parts = input.slice(1).split(/\s+/);
-          command = parts[0].toLowerCase();
-          args = parts.slice(1);
-        }
+          if (input.startsWith('/')) {
+            const parts = input.slice(1).split(/\s+/);
+            command = parts[0].toLowerCase();
+            args = parts.slice(1);
+          }
 
-        // Store pending preview
-        setState((prev) => ({
-          ...prev,
-          pendingPreview: {
-            input,
-            intent: {
-              type: intent.type,
-              confidence: intent.confidence,
-              command,
-              args,
-              metadata: intent.metadata,
+          // Store pending preview
+          setState((prev) => ({
+            ...prev,
+            pendingPreview: {
+              input,
+              intent: {
+                type: intent.type,
+                confidence: intent.confidence,
+                command,
+                args,
+                metadata: intent.metadata,
+              },
+              timestamp: new Date(),
             },
-            timestamp: new Date(),
-          },
-        }));
+          }));
 
-        // Don't execute - show preview panel instead
-        return;
+          // Don't execute - show preview panel instead
+          return;
+        }
       }
 
       // Handle pending preview confirmation (if user is navigating preview)
@@ -690,7 +708,7 @@ export function App({
         }
       }
     },
-    [handleExit, onCommand, onTask, conversationManager, addMessage, state.previewMode]
+    [handleExit, onCommand, onTask, conversationManager, addMessage, state.previewMode, state.previewConfig]
   );
 
   // Method to update state from outside
@@ -723,6 +741,30 @@ export function App({
       delete (globalThis as Record<string, unknown>).__apexApp;
     };
   }, [addMessage, updateState, state]);
+
+  // Preview timeout handler
+  useEffect(() => {
+    if (!state.pendingPreview) {
+      return; // No pending preview, nothing to timeout
+    }
+
+    const timeoutId = setTimeout(() => {
+      // Auto-cancel preview after timeout
+      setState((prev) => ({
+        ...prev,
+        pendingPreview: undefined,
+      }));
+      addMessage({
+        type: 'system',
+        content: `Preview cancelled after ${state.previewConfig.timeoutMs / 1000}s timeout.`,
+      });
+    }, state.previewConfig.timeoutMs);
+
+    // Cleanup timeout if preview is cancelled manually or confirmed
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [state.pendingPreview, state.previewConfig.timeoutMs, addMessage]);
 
   return (
     <Box flexDirection="column" minHeight={20}>
