@@ -1,7 +1,20 @@
 # ADR-029: ErrorDisplay Component Responsive Width
 
 ## Status
-Proposed
+Accepted (Partially Implemented)
+
+## Implementation Status
+
+| Feature | Status |
+|---------|--------|
+| `useStdoutDimensions` integration | ✅ Complete |
+| Message truncation | ✅ Complete |
+| Timestamp abbreviation | ✅ Complete |
+| Context value truncation | ✅ Complete |
+| Suggestion truncation | ✅ Complete |
+| Stack trace width adaptation | ❌ Pending |
+| Verbose mode integration | ❌ Pending |
+| Full breakpoint test coverage | ⚠️ Partial |
 
 ## Context
 
@@ -230,3 +243,58 @@ export function ValidationError({
 ## References
 - ActivityLog.tsx implementation patterns
 - useStdoutDimensions hook documentation
+
+---
+
+## Appendix: Remaining Implementation - Stack Trace and Verbose Mode
+
+### Stack Trace Responsive Behavior (Pending)
+
+The current implementation shows 10 stack trace lines regardless of terminal width. The following enhancement is needed:
+
+#### Proposed Stack Trace Behavior Matrix
+
+| Breakpoint | Width   | Verbose OFF     | Verbose ON        |
+|------------|---------|-----------------|-------------------|
+| narrow     | <60     | Hidden (0 lines)| 3 lines max       |
+| compact    | 60-100  | Hidden (0 lines)| 5 lines max       |
+| normal     | 100-160 | 5 lines max     | 10 lines max      |
+| wide       | ≥160    | 8 lines max     | Full stack trace  |
+
+#### Required Changes
+
+1. **Add `verbose` prop to ErrorDisplayProps**:
+```typescript
+export interface ErrorDisplayProps {
+  // ... existing props
+  verbose?: boolean;  // NEW: Controls stack trace detail level
+}
+```
+
+2. **Implement stack trace configuration helper**:
+```typescript
+const getStackTraceConfig = (
+  breakpoint: Breakpoint,
+  verbose: boolean
+): { maxLines: number; shouldShow: boolean } => {
+  const config = {
+    narrow: { normal: 0, verbose: 3 },
+    compact: { normal: 0, verbose: 5 },
+    normal: { normal: 5, verbose: 10 },
+    wide: { normal: 8, verbose: Infinity },
+  };
+  const maxLines = verbose ? config[breakpoint].verbose : config[breakpoint].normal;
+  return { maxLines, shouldShow: maxLines > 0 };
+};
+```
+
+3. **Update stack trace rendering** to use configuration instead of hardcoded `slice(0, 10)`
+
+### Test Coverage Requirements (Pending)
+
+Add tests for:
+- Stack trace visibility at each breakpoint
+- Verbose mode stack trace line counts
+- Interaction between `showStack` prop and responsive configuration
+
+See `TECHNICAL-DESIGN-errordisplay-responsive-enhancement.md` for full implementation details.

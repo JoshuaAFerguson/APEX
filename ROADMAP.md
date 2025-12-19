@@ -242,6 +242,15 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Auto-pause at threshold** - Stop new tasks when limit approached
 - ⚪ **Auto-resume after cooldown** - Resume when usage resets (already implemented for rate limits)
 
+### Session Recovery & Continuity
+- ⚪ **Auto-resume on session limit** - Automatically resume highest parent task when context window expires
+- ⚪ **Session state persistence** - Save task progress before session ends
+- ⚪ **Conversation summary injection** - Inject summary of previous session context on resume
+- ⚪ **Seamless task continuation** - Resume exactly where the task left off
+- ⚪ **Resume notification** - Notify user when auto-resume triggers
+- ⚪ **Resume delay configuration** - Configurable delay before auto-resume (default: immediate)
+- ⚪ **Max resume attempts** - Limit consecutive auto-resumes to prevent infinite loops
+
 ### Task Auto-Generation (Idle Processing)
 - ⚪ **Idle task generation** - Generate improvement tasks during idle periods
 - ⚪ **Configurable strategies** - Maintenance (40%), refactoring (30%), documentation (20%), tests (10%)
@@ -257,12 +266,53 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Thought search** - Search and browse captured thoughts
 - ⚪ **Thought expiration** - Optional auto-cleanup of old thoughts
 
-### Workspace Isolation
-- ⚪ **Isolated task directories** - Each task runs in its own workspace
-- ⚪ **Workspace cloning** - Clone repo for isolated execution
-- ⚪ **Parallel safety** - Multiple tasks can run without interference
-- ⚪ **Workspace cleanup** - Auto-cleanup after task completion
-- ⚪ **Shared vs isolated mode** - Configurable per workflow
+### Workspace Isolation (inspired by [Rover](https://github.com/endorhq/rover))
+
+**Container Sandbox**
+- ⚪ **Docker/Podman sandbox** - Each task runs in isolated container
+- ⚪ **Custom base images** - Project-specific sandbox images (`.apex/Dockerfile`)
+- ⚪ **Auto dependency install** - Install project dependencies in sandbox
+- ⚪ **Sandbox shell access** - `apex shell <taskId>` for manual intervention
+- ⚪ **Resource limits** - CPU/memory limits per container
+
+**Git Worktree Isolation**
+- ⚪ **Worktree per task** - Each task gets independent git worktree
+- ⚪ **Branch isolation** - Separate branch per task (already have this)
+- ⚪ **True parallel execution** - Multiple tasks modify code simultaneously
+- ⚪ **Worktree cleanup** - Auto-cleanup after merge/cancel
+
+**Isolation Modes**
+- ⚪ **Full isolation** - Container + worktree (safest, slower)
+- ⚪ **Worktree only** - Git worktree without container (faster)
+- ⚪ **Shared workspace** - Current behavior (fastest, single task)
+- ⚪ **Configurable per workflow** - Set default isolation mode
+
+### Task Interaction Commands (inspired by [Rover](https://github.com/endorhq/rover))
+
+**Task Refinement**
+- ⚪ **`apex iterate <taskId>`** - Refine task with additional instructions
+- ⚪ **`apex iterate <taskId> "feedback"`** - Add specific feedback for next iteration
+- ⚪ **Iteration history** - Track all iterations and their outcomes
+- ⚪ **Iteration diff** - Compare changes between iterations
+
+**Task Inspection**
+- ⚪ **`apex inspect <taskId>`** - View comprehensive task results
+- ⚪ **`apex inspect <taskId> --files`** - List generated/modified files
+- ⚪ **`apex inspect <taskId> --file <path>`** - View specific file content
+- ⚪ **`apex inspect <taskId> --docs`** - View generated documentation
+- ⚪ **`apex inspect <taskId> --timeline`** - View execution timeline
+
+**Code Review Commands**
+- ⚪ **`apex diff <taskId>`** - View all code changes made by task
+- ⚪ **`apex diff <taskId> --stat`** - Summary of changes (files, lines)
+- ⚪ **`apex diff <taskId> --file <path>`** - Diff for specific file
+- ⚪ **`apex diff <taskId> --staged`** - Show what will be committed
+
+**Git Integration**
+- ⚪ **`apex push <taskId>`** - Push task branch to remote
+- ⚪ **`apex merge <taskId>`** - Merge task branch to current branch
+- ⚪ **`apex merge <taskId> --squash`** - Squash merge task changes
+- ⚪ **`apex checkout <taskId>`** - Switch to task's worktree/branch
 
 ### Task Lifecycle Improvements
 - ⚪ **Soft delete (trash)** - `apex trash <taskId>` moves to trash instead of hard delete
@@ -466,6 +516,17 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 ## v0.9.0 - Advanced Workflows
 
 *Complex workflow capabilities and automation*
+
+### Built-in Workflow Templates (inspired by [Rover](https://github.com/endorhq/rover))
+- ⚪ **`swe` (Software Engineering)** - Full development workflow (plan → architect → develop → review → test)
+- ⚪ **`tech-writer`** - Documentation generation workflow
+- ⚪ **`refactor`** - Code refactoring with safety checks
+- ⚪ **`test-suite`** - Test generation and coverage improvement
+- ⚪ **`bugfix`** - Focused bug investigation and fixing
+- ⚪ **`security-audit`** - Security review workflow
+- ⚪ **`performance`** - Performance optimization workflow
+- ⚪ **`apex workflows inspect <name>`** - View detailed workflow configuration
+- ⚪ **Workflow step validation** - Validate workflow definitions before execution
 
 ### Workflow Engine
 - ⚪ Conditional stage execution (if/else)
@@ -734,6 +795,19 @@ telemetry:
 
 *Long-term vision and experimental features*
 
+### Multi-LLM Backend Support (inspired by [Rover](https://github.com/endorhq/rover))
+- 💡 **Pluggable LLM backends** - Support multiple AI providers
+- 💡 **Claude Code backend** - Current default (via Claude Agent SDK)
+- 💡 **OpenAI Codex backend** - OpenAI's coding model
+- 💡 **Gemini CLI backend** - Google's Gemini models
+- 💡 **Qwen Code backend** - Alibaba's coding model
+- 💡 **Cursor backend** - Cursor's AI capabilities
+- 💡 **Local models** - Ollama, llama.cpp integration
+- 💡 **Per-task model selection** - Choose model per task
+- 💡 **Per-agent model selection** - Different models for different agents
+- 💡 **Cost comparison** - Compare costs across providers
+- 💡 **Fallback chains** - Try cheaper model first, escalate if needed
+
 ### Advanced AI Features
 - 💡 Multi-model orchestration (Claude + GPT + Gemini + local models)
 - 💡 Fine-tuned models for specific tasks
@@ -780,34 +854,41 @@ telemetry:
 
 ## CLI Feature Comparison
 
-| Feature | Claude Code | Codex CLI | Gemini CLI | Sleepless Agent | APEX |
-|---------|-------------|-----------|------------|-----------------|------|
-| Streaming responses | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Syntax highlighting | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Markdown rendering | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Diff views | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| History navigation | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| History search (Ctrl+R) | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ⚪ |
-| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Session persistence | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| Git awareness | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| Theme support | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| **Workflow system** | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **24/7 daemon mode** | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Slack integration** | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Time-based scheduling** | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Task auto-generation** | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Thought capture** | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Agent marketplace** | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **OpenTelemetry/Observability** | ✅ | ❌ | ❌ | ❌ | ⚪ |
+| Feature | Claude Code | Codex CLI | Gemini CLI | Sleepless Agent | Rover | APEX |
+|---------|-------------|-----------|------------|-----------------|-------|------|
+| Streaming responses | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | ❌ | ✅ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| History navigation | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| History search (Ctrl+R) | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ❌ | ⚪ |
+| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Multi-turn conversations | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| Session persistence | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| Theme support | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| **Built-in workflow templates** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **24/7 daemon mode** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Slack integration** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Time-based scheduling** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Task auto-generation** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Thought capture** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Agent marketplace** | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **OpenTelemetry/Observability** | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Multi-LLM backends** | ❌ | ❌ | ❌ | ❌ | ✅ | 💡 |
+| **Task shell access** | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **VSCode extension** | ✅ | ✅ | ❌ | ❌ | ✅ | ⚪ |
 
-> **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | ✅ Has feature | ❌ No feature
+> **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | 💡 Considering | ✅ Has feature | ❌ No feature
 
 ---
 

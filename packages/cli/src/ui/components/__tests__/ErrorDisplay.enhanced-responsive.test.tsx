@@ -16,6 +16,23 @@ describe('ErrorDisplay Components - Enhanced Responsive Width Behavior', () => {
 
   describe('ErrorDisplay Responsive Behavior', () => {
     const longError = 'This is an extremely long error message that should be truncated based on the terminal width to ensure proper display across different screen sizes and terminal configurations';
+    const errorWithStack = new Error(longError);
+    errorWithStack.stack = `Error: ${longError}
+    at functionA (file:///Users/test/app.js:10:15)
+    at functionB (file:///Users/test/module.js:25:20)
+    at functionC (file:///Users/test/handler.js:42:10)
+    at async main (file:///Users/test/index.js:100:5)
+    at processNextTick (node:internal/process/task_queues.js:61:5)
+    at process.processImmediate (node:internal/timers.js:437:3)
+    at Object.exports.runInThisContext (vm.js:74:17)
+    at Module._compile (module.js:460:26)
+    at Object.Module._extensions..js (module.js:478:10)
+    at Module.load (module.js:355:32)
+    at Function.Module._load (module.js:310:12)
+    at Function.Module.runMain (module.js:501:10)
+    at startup (node:internal/bootstrap/node.js:283:19)
+    at node:internal/main/run_main_module.js:17:47`;
+
     const complexContext = {
       longKey: 'This is a very long context value that should be truncated in narrow terminals',
       shortKey: 'short',
@@ -500,6 +517,236 @@ describe('ErrorDisplay Components - Enhanced Responsive Width Behavior', () => {
       );
 
       expect(container).toBeInTheDocument();
+    });
+  });
+
+  describe('ErrorDisplay Stack Trace Responsive Behavior', () => {
+    const stackError = new Error('Stack trace test error');
+    stackError.stack = `Error: Stack trace test error
+    at functionA (file:///Users/test/app.js:10:15)
+    at functionB (file:///Users/test/module.js:25:20)
+    at functionC (file:///Users/test/handler.js:42:10)
+    at async main (file:///Users/test/index.js:100:5)
+    at processNextTick (node:internal/process/task_queues.js:61:5)
+    at process.processImmediate (node:internal/timers.js:437:3)
+    at Object.exports.runInThisContext (vm.js:74:17)
+    at Module._compile (module.js:460:26)
+    at Object.Module._extensions..js (module.js:478:10)
+    at Module.load (module.js:355:32)
+    at Function.Module._load (module.js:310:12)
+    at Function.Module.runMain (module.js:501:10)
+    at startup (node:internal/bootstrap/node.js:283:19)
+    at node:internal/main/run_main_module.js:17:47`;
+
+    describe('Narrow terminal (<60) stack trace behavior', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 45,
+          height: 20,
+          breakpoint: 'narrow',
+          isNarrow: true,
+          isCompact: false,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should hide stack trace in non-verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={false} />);
+
+        expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
+        expect(screen.queryByText(/at functionA/)).not.toBeInTheDocument();
+      });
+
+      it('should show 3 lines in verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={true} />);
+
+        expect(screen.getByText(/Stack Trace \(3 lines\):/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionB/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionC/)).toBeInTheDocument();
+        expect(screen.queryByText(/at async main/)).not.toBeInTheDocument();
+        expect(screen.getByText(/... 11 more lines \(use verbose mode to see full trace\)/)).toBeInTheDocument();
+      });
+    });
+
+    describe('Compact terminal (60-100) stack trace behavior', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 80,
+          height: 24,
+          breakpoint: 'compact',
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should hide stack trace in non-verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={false} />);
+
+        expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
+        expect(screen.queryByText(/at functionA/)).not.toBeInTheDocument();
+      });
+
+      it('should show 5 lines in verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={true} />);
+
+        expect(screen.getByText(/Stack Trace \(5 lines\):/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionB/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionC/)).toBeInTheDocument();
+        expect(screen.getByText(/at async main/)).toBeInTheDocument();
+        expect(screen.getByText(/at processNextTick/)).toBeInTheDocument();
+        expect(screen.queryByText(/at process.processImmediate/)).not.toBeInTheDocument();
+        expect(screen.getByText(/... 9 more lines \(use verbose mode to see full trace\)/)).toBeInTheDocument();
+      });
+    });
+
+    describe('Normal terminal (100-160) stack trace behavior', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should show 5 lines in non-verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={false} />);
+
+        expect(screen.getByText(/Stack Trace \(5 lines\):/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionB/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionC/)).toBeInTheDocument();
+        expect(screen.getByText(/at async main/)).toBeInTheDocument();
+        expect(screen.getByText(/at processNextTick/)).toBeInTheDocument();
+        expect(screen.queryByText(/at process.processImmediate/)).not.toBeInTheDocument();
+        expect(screen.getByText(/... 9 more lines \(use verbose mode to see full trace\)/)).toBeInTheDocument();
+      });
+
+      it('should show 10 lines in verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={true} />);
+
+        expect(screen.getByText(/Stack Trace \(10 lines\):/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at process.processImmediate/)).toBeInTheDocument();
+        expect(screen.getByText(/at Module.load/)).toBeInTheDocument();
+        expect(screen.queryByText(/at Function.Module._load/)).not.toBeInTheDocument();
+        expect(screen.getByText(/... 4 more lines \(use verbose mode to see full trace\)/)).toBeInTheDocument();
+      });
+    });
+
+    describe('Wide terminal (≥160) stack trace behavior', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 180,
+          height: 40,
+          breakpoint: 'wide',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: false,
+          isWide: true,
+          isAvailable: true,
+        });
+      });
+
+      it('should show 8 lines in non-verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={false} />);
+
+        expect(screen.getByText(/Stack Trace \(8 lines\):/)).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at Module._compile/)).toBeInTheDocument();
+        expect(screen.queryByText(/at Object.Module._extensions/)).not.toBeInTheDocument();
+        expect(screen.getByText(/... 6 more lines \(use verbose mode to see full trace\)/)).toBeInTheDocument();
+      });
+
+      it('should show full stack trace in verbose mode', () => {
+        render(<ErrorDisplay error={stackError} showStack={true} verbose={true} />);
+
+        expect(screen.getByText('Stack Trace:')).toBeInTheDocument();
+        expect(screen.getByText(/at functionA/)).toBeInTheDocument();
+        expect(screen.getByText(/at node:internal\/main\/run_main_module.js/)).toBeInTheDocument();
+        expect(screen.queryByText(/... \d+ more lines/)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Stack trace line truncation', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 60,
+          height: 24,
+          breakpoint: 'compact',
+          isNarrow: false,
+          isCompact: true,
+          isNormal: false,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should truncate very long stack trace lines', () => {
+        const veryLongLineError = new Error('Test');
+        veryLongLineError.stack = `Error: Test
+    at veryLongFunctionNameThatExceedsTheAvailableTerminalWidth (file:///very/long/path/to/file/with/very/long/filename.js:100:25)`;
+
+        render(<ErrorDisplay error={veryLongLineError} showStack={true} verbose={true} />);
+
+        const stackTraceLines = screen.getAllByText(/at veryLongFunctionNameThatExceedsTheAvailableTerminalWidth/);
+        expect(stackTraceLines.some(line => line.textContent?.includes('...'))).toBe(true);
+      });
+    });
+
+    describe('Stack trace with showStack=false', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should not show stack trace even in verbose mode when showStack=false', () => {
+        render(<ErrorDisplay error={stackError} showStack={false} verbose={true} />);
+
+        expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
+        expect(screen.queryByText(/at functionA/)).not.toBeInTheDocument();
+      });
+    });
+
+    describe('String error (no stack trace)', () => {
+      beforeEach(() => {
+        mockUseStdoutDimensions.mockReturnValue({
+          width: 120,
+          height: 30,
+          breakpoint: 'normal',
+          isNarrow: false,
+          isCompact: false,
+          isNormal: true,
+          isWide: false,
+          isAvailable: true,
+        });
+      });
+
+      it('should not show stack trace for string errors', () => {
+        render(<ErrorDisplay error="String error message" showStack={true} verbose={true} />);
+
+        expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
+        expect(screen.getByText('String error message')).toBeInTheDocument();
+      });
     });
   });
 });

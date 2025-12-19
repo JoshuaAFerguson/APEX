@@ -24,6 +24,32 @@ const truncateMessage = (message: string, maxLength: number): string => {
   return message.substring(0, maxLength - 3) + '...';
 };
 
+const truncateStackLine = (line: string, maxLength: number): string => {
+  if (line.length <= maxLength) return line;
+  return line.substring(0, maxLength - 3) + '...';
+};
+
+const getStackTraceConfig = (
+  breakpoint: 'narrow' | 'compact' | 'normal' | 'wide',
+  verbose: boolean
+): { maxLines: number; shouldShow: boolean } => {
+  const config = {
+    narrow: { normal: 0, verbose: 3 },
+    compact: { normal: 0, verbose: 5 },
+    normal: { normal: 5, verbose: 10 },
+    wide: { normal: 8, verbose: Infinity }, // Infinity = show all
+  };
+
+  const maxLines = verbose
+    ? config[breakpoint].verbose
+    : config[breakpoint].normal;
+
+  return {
+    maxLines,
+    shouldShow: maxLines > 0,
+  };
+};
+
 export interface ErrorSuggestion {
   title: string;
   description: string;
@@ -37,6 +63,7 @@ export interface ErrorDisplayProps {
   title?: string;
   suggestions?: ErrorSuggestion[];
   showStack?: boolean;
+  verbose?: boolean;
   showSuggestions?: boolean;
   context?: Record<string, unknown>;
   width?: number;
@@ -52,6 +79,7 @@ export function ErrorDisplay({
   title = 'Error',
   suggestions = [],
   showStack = false,
+  verbose = false,
   showSuggestions = true,
   context,
   width: explicitWidth,
@@ -68,6 +96,10 @@ export function ErrorDisplay({
   const contextValueMaxLength = Math.max(20, width - 20);
   const errorMessage = typeof error === 'string' ? error : error.message;
   const errorStack = typeof error === 'string' ? undefined : error.stack;
+
+  // Calculate stack trace configuration based on breakpoint and verbose mode
+  const stackConfig = getStackTraceConfig(breakpoint, verbose);
+  const stackLines = errorStack ? errorStack.split('\n').filter(line => line.trim()) : [];
 
   // Auto-generate suggestions based on common error patterns
   const generateSuggestions = (message: string): ErrorSuggestion[] => {
@@ -184,16 +216,25 @@ export function ErrorDisplay({
         </Box>
       )}
 
-      {/* Stack trace */}
-      {showStack && errorStack && (
+      {/* Stack trace - responsive to width and verbose mode */}
+      {showStack && errorStack && stackConfig.shouldShow && (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="gray" bold>Stack Trace:</Text>
+          <Text color="gray" bold>
+            Stack Trace{stackConfig.maxLines !== Infinity ? ` (${Math.min(stackLines.length, stackConfig.maxLines)} lines)` : ''}:
+          </Text>
           <Box marginLeft={2} flexDirection="column">
-            {errorStack.split('\n').slice(0, 10).map((line, index) => (
-              <Text key={index} color="gray" dimColor>
-                {line}
+            {stackLines
+              .slice(0, stackConfig.maxLines === Infinity ? undefined : stackConfig.maxLines)
+              .map((line, index) => (
+                <Text key={index} color="gray" dimColor>
+                  {truncateStackLine(line, width - 4)}
+                </Text>
+              ))}
+            {stackLines.length > stackConfig.maxLines && stackConfig.maxLines !== Infinity && (
+              <Text color="gray" dimColor italic>
+                ... {stackLines.length - stackConfig.maxLines} more lines (use verbose mode to see full trace)
               </Text>
-            ))}
+            )}
           </Box>
         </Box>
       )}

@@ -44,7 +44,18 @@ describe('ErrorDisplay', () => {
 
     render(<ErrorDisplay error={error} showStack={true} />);
 
-    expect(screen.getByText('Stack Trace:')).toBeInTheDocument();
+    expect(screen.getByText('Stack Trace (5 lines):')).toBeInTheDocument();
+    expect(screen.getByText('Error: Test error')).toBeInTheDocument();
+    expect(screen.getByText('    at test.js:1:1')).toBeInTheDocument();
+  });
+
+  it('should accept verbose prop and affect stack trace display', () => {
+    const error = new Error('Test error');
+    error.stack = 'Error: Test error\n    at test.js:1:1\n    at main.js:2:2';
+
+    render(<ErrorDisplay error={error} showStack={true} verbose={true} />);
+
+    expect(screen.getByText('Stack Trace (10 lines):')).toBeInTheDocument();
     expect(screen.getByText('Error: Test error')).toBeInTheDocument();
     expect(screen.getByText('    at test.js:1:1')).toBeInTheDocument();
   });
