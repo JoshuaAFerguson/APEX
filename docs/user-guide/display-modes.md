@@ -120,18 +120,29 @@ Your selected display mode persists throughout your APEX session:
 ## Component Behavior by Mode
 
 ### StatusBar
+
+> **📖 For Complete Element Documentation**: See the comprehensive [StatusBar Reference](../cli-guide.md#statusbar-reference) for detailed information about all 21 display elements, visual examples, color coding, and responsive behavior.
+
 | Component | Normal | Compact | Verbose |
 |-----------|--------|---------|---------|
-| Connection Status | ● | ● | ● |
-| Git Branch | ✓ | ✓ | ✓ |
-| Agent | ✓ | ✗ | ✓ |
-| Workflow Stage | ✓ | ✗ | ✓ |
-| Tokens | Total | ✗ | Breakdown + Total |
-| Cost | Current | Current | Current + Session |
-| Model | ✓ | ✗ | ✓ |
-| Session Timer | ✓ | ✗ | ✓ |
-| Timing Details | ✗ | ✗ | ✓ |
-| Mode Indicator | ✗ | ✗ | 🔍 VERBOSE |
+| **Connection Status** | ● (green/red) | ● | ● |
+| **Git Branch** | ⎇ branch-name | ⎇ branch | ⎇ branch |
+| **Agent** | ⚡agent-name | ✗ | ⚡agent-name |
+| **Workflow Stage** | ▶stage-name | ✗ | ▶stage-name |
+| **Subtask Progress** | 📋 [X/Y] | ✗ | 📋 [X/Y] |
+| **Tokens** | tokens: X.Xk | ✗ | tokens: X.Xk→Y.Yk + total: Z.Zk |
+| **Cost** | cost: $X.XXXX | $X.XXXX | cost: $X.XXXX + session: $Y.YYYY |
+| **Model** | model: name | ✗ | model: name |
+| **Session Timer** | MM:SS | ✗ | MM:SS |
+| **Timing Details** | ✗ | ✗ | active: XmXXs + idle: XmXXs + stage: XmXXs |
+| **Session Name** | ✗ | ✗ | 💾 session-name |
+| **Server URLs** | ✗ | ✗ | api:XXXX + web:XXXX |
+| **Mode Indicators** | ✗ | ✗ | 🔍 VERBOSE + 📋 PREVIEW + 💭 THOUGHTS |
+
+**Element Count by Mode:**
+- **Normal Mode**: 9 core elements (responsive: 6-9 based on terminal width)
+- **Compact Mode**: 3 essential elements only
+- **Verbose Mode**: Up to 21 elements (all available data shown)
 
 ### AgentPanel
 - **Normal**: Multi-line with status icons and details

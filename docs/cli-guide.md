@@ -9,6 +9,7 @@ This comprehensive guide covers all CLI commands, keyboard shortcuts, session ma
 - [REPL Commands](#repl-commands)
 - [Session Management](#session-management)
 - [Display Modes](#display-modes)
+- [StatusBar Reference](#statusbar-reference)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Natural Language Tasks](#natural-language-tasks)
 - [Server Management](#server-management)
@@ -572,6 +573,790 @@ Enable/disable preview of actions before execution with intent detection and con
 /preview on           # Enable previews
 /preview off          # Disable previews
 ```
+
+---
+
+## StatusBar Reference
+
+The StatusBar component provides real-time session and task information at the bottom of the APEX interface. It features a sophisticated responsive design with priority-based element display that adapts to your terminal width and selected display mode.
+
+> **✨ NEW in v0.3.0**: The StatusBar component has been completely redesigned with responsive behavior, priority-based element visibility, and mode-specific enhancements. It intelligently adapts to terminal width and display modes to ensure critical information is always visible.
+
+### Visual Example
+
+**Full StatusBar (Wide Terminal, Normal Mode):**
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● ⎇ main | ⚡developer | ▶implementation | 📋 [2/5]                                                tokens: 45.2k | cost: $0.1523 | model: sonnet | 05:23 │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ↑   ↑       ↑             ↑                  ↑                                                       ↑               ↑              ↑            ↑
+ │   │       │             │                  │                                                       │               │              │            │
+ │   │       │             │                  └─ Subtask Progress                                     │               │              │            └─ Session Timer
+ │   │       │             └─ Workflow Stage                                                          │               │              └─ Model Indicator
+ │   │       └─ Agent Indicator                                                                       │               └─ Cost Display
+ │   └─ Git Branch                                                                                    └─ Token Count
+ └─ Connection Status
+```
+
+**Compact Mode:**
+```
+┌─────────────────────────────────────────────┐
+│ ● main | $0.1523                            │
+└─────────────────────────────────────────────┘
+```
+
+**Verbose Mode (Additional Elements):**
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● main | ⚡dev | ▶impl | 📋 [2/5] | 💾 my-session | api:3000 | web:3001     tokens: 12.5k→8.2k | total: 20.7k | cost: $0.15 | session: $1.25 | model: sonnet | active: 3m42s | idle: 1m18s | stage: 45s | 🔍 VERBOSE │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Display Elements
+
+The StatusBar displays up to 21 different elements organized by priority and side. Elements are automatically hidden or abbreviated based on terminal width and display mode.
+
+#### Priority System
+
+| Priority | Level | Description | Visibility |
+|----------|-------|-------------|------------|
+| **CRITICAL** | Always shown | Core functionality indicators | All widths, all modes |
+| **HIGH** | Essential | Important status information | Normal+ terminal widths |
+| **MEDIUM** | Standard | Detailed progress information | Wide terminal widths |
+| **LOW** | Extended | Additional context and debug info | Wide terminals, verbose mode |
+
+#### Left Side Elements
+
+##### 1. Connection Status (●/○)
+
+**Visual Example:**
+```
+● (connected) or ○ (disconnected)
+```
+
+**Location:** Left side (leftmost)
+**Priority:** CRITICAL
+**Icon/Label:** Solid/hollow circle indicating connection state
+
+**Description:**
+Real-time connection status to the APEX backend services. This is always visible as it's critical for understanding if your commands can be executed.
+
+**Color Coding:**
+| State | Color | Meaning |
+|-------|-------|---------|
+| ● | Green | Connected and ready |
+| ○ | Red | Disconnected or error |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| All | ✓ | ✓ | ✓ |
+
+##### 2. Git Branch (⎇ branch-name)
+
+**Visual Example:**
+```
+⎇ main
+⎇ feature/auth-impl
+⎇ apex/abc123-fix-bug
+```
+
+**Location:** Left side
+**Priority:** HIGH
+**Icon/Label:** Git branch symbol (⎇) followed by branch name
+
+**Description:**
+Current git branch name, essential for tracking which branch your changes are being made to. APEX creates specific branches for tasks.
+
+**Format:**
+- Full branch names in normal and verbose modes
+- Truncated to 12 characters with `...` in narrow terminals
+- Branch names longer than available space are abbreviated
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| ⎇ | Cyan | Branch icon |
+| Name | Yellow | Branch name |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Narrow+ | ✓ | ✓ | ✓ |
+
+##### 3. Agent Indicator (⚡agent-name)
+
+**Visual Example:**
+```
+⚡developer
+⚡planner
+⚡architect
+```
+
+**Location:** Left side
+**Priority:** HIGH
+**Icon/Label:** Lightning bolt (⚡) followed by active agent name
+
+**Description:**
+Shows which AI agent is currently active or was last active. Different agents have different capabilities and are used for different workflow stages.
+
+**Common Agent Names:**
+- `planner` - Creates implementation plans
+- `architect` - Designs system architecture
+- `developer` - Implements features and writes code
+- `tester` - Creates and runs tests
+- `reviewer` - Reviews code quality
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| ⚡ | Magenta | Agent icon |
+| Name | White | Agent name |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Normal+ | ✗ | ✓ | ✓ |
+
+##### 4. Workflow Stage (▶stage-name)
+
+**Visual Example:**
+```
+▶planning
+▶architecture
+▶implementation
+▶testing
+▶review
+```
+
+**Location:** Left side
+**Priority:** MEDIUM
+**Icon/Label:** Play arrow (▶) followed by current workflow stage
+
+**Description:**
+Current stage in the workflow execution. Workflows typically progress through planning, architecture, implementation, testing, and review stages.
+
+**Common Stages:**
+- `planning` - Breaking down tasks and creating plans
+- `architecture` - Designing technical solutions
+- `implementation` - Writing code and making changes
+- `testing` - Creating and running tests
+- `review` - Code review and quality checks
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| ▶ | Blue | Stage icon |
+| Name | Gray | Stage name |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✓ | ✓ |
+
+##### 5. Subtask Progress (📋 [X/Y])
+
+**Visual Example:**
+```
+📋 [2/5]
+📋 [0/3]
+📋 [5/5]
+```
+
+**Location:** Left side
+**Priority:** MEDIUM
+**Icon/Label:** Clipboard (📋) followed by completion count in brackets
+
+**Description:**
+Shows progress through subtasks within the current workflow stage. Useful for understanding how much work remains in the current stage.
+
+**Format:**
+- `[completed/total]` format
+- Only shown when total > 0
+
+**Color Coding:**
+| State | Color | Meaning |
+|-------|-------|---------|
+| 📋 | Cyan | Progress icon |
+| [X/Y] incomplete | Yellow | Work in progress |
+| [Y/Y] complete | Green | Stage completed |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✓ | ✓ |
+
+##### 6. Session Name (💾 session-name)
+
+**Visual Example:**
+```
+💾 my-project-work
+💾 auth-feature
+💾 bug-investigation
+```
+
+**Location:** Left side
+**Priority:** LOW
+**Icon/Label:** Floppy disk (💾) followed by session name
+
+**Description:**
+Named session identifier when you've saved your current session with a custom name using `/session save`.
+
+**Format:**
+- Session names longer than 15 characters are truncated with `...`
+- Only shown when a session has been explicitly named
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| 💾 | Blue | Session icon |
+| Name | Cyan | Session name |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 7. API URL (api:port)
+
+**Visual Example:**
+```
+api:3000
+→ 3000 (abbreviated)
+```
+
+**Location:** Left side
+**Priority:** LOW
+**Icon/Label:** `api:` or `→` (abbreviated) followed by port number
+
+**Description:**
+Shows the port number where the APEX API server is running. Useful when integrating with other tools or debugging connectivity.
+
+**Format:**
+- Full format: `api:3000`
+- Abbreviated format: `→ 3000`
+- Shows port only (localhost is assumed)
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | URL label |
+| Port | Green | Port number |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 8. Web URL (web:port)
+
+**Visual Example:**
+```
+web:3001
+↗ 3001 (abbreviated)
+```
+
+**Location:** Left side
+**Priority:** LOW
+**Icon/Label:** `web:` or `↗` (abbreviated) followed by port number
+
+**Description:**
+Shows the port number where the APEX Web UI is running. The web interface provides a browser-based alternative to the CLI.
+
+**Format:**
+- Full format: `web:3001`
+- Abbreviated format: `↗ 3001`
+- Shows port only (localhost is assumed)
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | URL label |
+| Port | Green | Port number |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+#### Right Side Elements
+
+##### 9. Session Timer (MM:SS)
+
+**Visual Example:**
+```
+05:23
+12:05
+00:42
+```
+
+**Location:** Right side (rightmost)
+**Priority:** CRITICAL
+**Icon/Label:** Time in MM:SS format
+
+**Description:**
+Elapsed time since the current session started. Helps track how long you've been working and estimate task duration. Updates every second.
+
+**Format:**
+- `MM:SS` format (minutes:seconds)
+- Continues counting indefinitely
+- Resets when starting a new session
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Time | Gray | Session elapsed time |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Normal+ | ✗ | ✓ | ✓ |
+
+##### 10. Model Indicator (model: name)
+
+**Visual Example:**
+```
+model: sonnet
+m: sonnet (abbreviated)
+model: opus
+model: haiku
+```
+
+**Location:** Right side
+**Priority:** HIGH
+**Icon/Label:** `model:` or `m:` (abbreviated) followed by model name
+
+**Description:**
+Shows which AI model is currently being used for task execution. Different models have different capabilities and costs.
+
+**Common Models:**
+- `sonnet` - Balanced performance and cost
+- `opus` - Highest capability, most expensive
+- `haiku` - Fastest, most economical
+
+**Format:**
+- Full format: `model: sonnet`
+- Abbreviated format: `m: sonnet`
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Model label |
+| Name | Blue | Model name |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Normal+ | ✗ | ✓ | ✓ |
+
+##### 11. Cost Display (cost: $X.XXXX)
+
+**Visual Example:**
+```
+cost: $0.1523
+$0.1523 (abbreviated - no label)
+cost: $0.0045
+```
+
+**Location:** Right side
+**Priority:** HIGH
+**Icon/Label:** `cost:` label (hidden when abbreviated) followed by dollar amount
+
+**Description:**
+Current task cost in USD. Tracks the estimated cost of API calls for the current task. Essential for monitoring usage and staying within budgets.
+
+**Format:**
+- Full format: `cost: $0.1523`
+- Abbreviated format: `$0.1523` (no label)
+- Always shows 4 decimal places
+- Updates in real-time during task execution
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Cost label |
+| Amount | Green | Dollar amount |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Narrow+ | ✓ | ✓ | ✓ |
+
+##### 12. Token Count (tokens: X.Xk)
+
+**Visual Example:**
+```
+tokens: 45.2k
+tk: 1.5k (abbreviated)
+tokens: 234
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `tokens:` or `tk:` (abbreviated) followed by formatted count
+
+**Description:**
+Total token count (input + output) for the current task. Tokens are the units that AI models process, and understanding token usage helps with cost and performance optimization.
+
+**Format:**
+- Numbers ≥ 1M: `1.5M`
+- Numbers ≥ 1k: `45.2k`
+- Numbers < 1k: Show exact number
+- Full format: `tokens: 45.2k`
+- Abbreviated format: `tk: 45.2k`
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Token label |
+| Count | Cyan | Token count |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✓ | See Verbose Elements |
+
+#### Verbose Mode Only Elements
+
+These elements are only shown in verbose mode and provide additional debugging and monitoring information.
+
+##### 13. Token Breakdown (tokens: X.Xk→Y.Yk)
+
+**Visual Example:**
+```
+tokens: 12.5k→8.2k
+tk: 1.5k→800 (abbreviated)
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `tokens:` or `tk:` (abbreviated) followed by input→output breakdown
+
+**Description:**
+In verbose mode, shows detailed token breakdown as input→output instead of just total. Helps understand the ratio of context vs. generation.
+
+**Format:**
+- Format: `input→output`
+- Uses same number formatting as total tokens
+- Replaces the simple token count in verbose mode
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Token label |
+| Breakdown | Cyan | Input→output counts |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 14. Total Tokens (total: X.Xk)
+
+**Visual Example:**
+```
+total: 20.7k
+∑: 2.3k (abbreviated)
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `total:` or `∑:` (abbreviated) followed by total count
+
+**Description:**
+In verbose mode, shows the total token count alongside the detailed breakdown. Provides both detailed and summary views of token usage.
+
+**Format:**
+- Same number formatting as other token displays
+- Full format: `total: 20.7k`
+- Abbreviated format: `∑: 20.7k`
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Total label |
+| Count | Blue | Total token count |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 15. Session Cost (session: $X.XXXX)
+
+**Visual Example:**
+```
+session: $1.2500
+sess: $5.67 (abbreviated)
+```
+
+**Location:** Right side
+**Priority:** LOW
+**Icon/Label:** `session:` or `sess:` (abbreviated) followed by session total
+
+**Description:**
+Cumulative cost for the entire session when different from current task cost. Helps track total spending across multiple tasks in a session.
+
+**Format:**
+- Full format: `session: $1.2500`
+- Abbreviated format: `sess: $1.25`
+- Only shown when different from current task cost
+- 4 decimal places for precision
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Session label |
+| Amount | Yellow | Session cost total |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 16. Active Time (active: XmXXs)
+
+**Visual Example:**
+```
+active: 3m42s
+a: 1m30s (abbreviated)
+active: 45s
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `active:` or `a:` (abbreviated) followed by duration
+
+**Description:**
+Total time spent actively processing (not idle or waiting). Useful for understanding actual work time vs. total elapsed time.
+
+**Format:**
+- Hours: `2h15m` (when ≥1 hour)
+- Minutes: `3m42s` (when ≥1 minute)
+- Seconds: `45s` (when <1 minute)
+- Full format: `active: 3m42s`
+- Abbreviated format: `a: 3m42s`
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Active label |
+| Duration | Green | Active processing time |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 17. Idle Time (idle: XmXXs)
+
+**Visual Example:**
+```
+idle: 1m18s
+i: 2m5s (abbreviated)
+idle: 30s
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `idle:` or `i:` (abbreviated) followed by duration
+
+**Description:**
+Total time spent waiting or idle (not actively processing). Includes time waiting for API responses, user input, or rate limits.
+
+**Format:**
+- Same time formatting as active time
+- Full format: `idle: 1m18s`
+- Abbreviated format: `i: 1m18s`
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Idle label |
+| Duration | Yellow | Idle/waiting time |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 18. Stage Time (stage: XmXXs)
+
+**Visual Example:**
+```
+stage: 45s
+s: 2m15s (abbreviated)
+stage: 1m30s
+```
+
+**Location:** Right side
+**Priority:** MEDIUM
+**Icon/Label:** `stage:` or `s:` (abbreviated) followed by duration
+
+**Description:**
+Time elapsed in the current workflow stage. Resets when transitioning between stages. Useful for understanding how long each stage takes.
+
+**Format:**
+- Same time formatting as other durations
+- Full format: `stage: 45s`
+- Abbreviated format: `s: 45s`
+- Resets to 0s when stage changes
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Label | Gray | Stage label |
+| Duration | Cyan | Current stage elapsed time |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+##### 19. Preview Mode Indicator (📋 PREVIEW)
+
+**Visual Example:**
+```
+📋 PREVIEW
+```
+
+**Location:** Right side
+**Priority:** LOW
+**Icon/Label:** Clipboard icon (📋) followed by "PREVIEW"
+
+**Description:**
+Indicator that preview mode is enabled. Preview mode shows command intent and confidence before execution.
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Indicator | Cyan | Preview mode active |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✓ | ✓ |
+
+##### 20. Thoughts Display Indicator (💭 THOUGHTS)
+
+**Visual Example:**
+```
+💭 THOUGHTS
+```
+
+**Location:** Right side
+**Priority:** LOW
+**Icon/Label:** Thought bubble (💭) followed by "THOUGHTS"
+
+**Description:**
+Indicator that AI reasoning/thinking process display is enabled. Shows the AI's thought process during task execution.
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Indicator | Magenta | Thoughts display active |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✓ | ✓ |
+
+##### 21. Verbose Mode Indicator (🔍 VERBOSE)
+
+**Visual Example:**
+```
+🔍 VERBOSE
+```
+
+**Location:** Right side
+**Priority:** LOW
+**Icon/Label:** Magnifying glass (🔍) followed by "VERBOSE"
+
+**Description:**
+Indicator that verbose mode is active. Reminds you that you're seeing enhanced debug information and all available elements.
+
+**Color Coding:**
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Indicator | Cyan | Verbose mode active |
+
+**Visibility:**
+| Width | Compact | Normal | Verbose |
+|-------|---------|--------|---------|
+| Wide | ✗ | ✗ | ✓ |
+
+### Responsive Behavior
+
+The StatusBar automatically adapts to your terminal width using a priority-based system:
+
+| Terminal Width | Display Tier | Elements Shown |
+|----------------|--------------|----------------|
+| < 60 columns | Narrow | CRITICAL + HIGH priority only, abbreviated labels |
+| 60-160 columns | Normal | CRITICAL + HIGH + MEDIUM priority, full labels |
+| > 160 columns | Wide | All priority levels, full labels + extended details |
+
+**Responsive Features:**
+- **Automatic abbreviation**: Labels become shorter (e.g., `tokens:` → `tk:`) in narrow terminals
+- **Progressive hiding**: Lower priority elements disappear first when space is limited
+- **Value compression**: Long values are truncated with `...` when necessary
+- **Mode override**: Compact mode always shows minimal info, verbose mode overrides width constraints
+
+### Display Mode Variations
+
+#### Compact Mode
+Always shows only essential elements regardless of terminal width:
+- Connection status (●)
+- Git branch
+- Current task cost
+
+#### Normal Mode
+Respects responsive tier filtering based on terminal width:
+- Shows priority-appropriate elements for current width
+- Uses full labels when space allows
+- Hides verbose-only elements
+
+#### Verbose Mode
+Shows maximum information regardless of terminal width:
+- All 21 possible elements when data is available
+- Detailed timing breakdown
+- Token input→output breakdown
+- Session cost tracking
+- Mode indicator
+
+### Color Coding Reference
+
+The StatusBar uses consistent color coding across all elements:
+
+| Color | Usage | Examples |
+|-------|-------|----------|
+| **Green** | Success, connected, active processing | Connection (●), cost amounts, active time |
+| **Red** | Error, disconnected, failed | Connection (○) when disconnected |
+| **Yellow** | Warning, in-progress, totals | Branch names, incomplete progress, session costs |
+| **Blue** | Information, models, stage indicators | Workflow stage (▶), model names, totals |
+| **Cyan** | Progress, data, mode indicators | Token counts, session names, mode indicators |
+| **Magenta** | Agents, special features | Agent indicator (⚡), thoughts display |
+| **Gray** | Labels, secondary info, timers | All labels, session timer, secondary text |
+| **White** | Primary content | Agent names, most display values |
+
+### Troubleshooting
+
+#### Missing Information
+If expected information isn't showing:
+1. **Check display mode**: Some elements only appear in verbose mode
+2. **Check terminal width**: Narrow terminals hide lower-priority elements
+3. **Check data availability**: Elements only show when data exists (e.g., no cost display without an active task)
+
+#### Abbreviations
+If labels are too short:
+1. **Widen terminal**: Wider terminals show full labels
+2. **Switch to verbose mode**: `/verbose` overrides width constraints
+3. **Reference this guide**: Abbreviated labels are documented above
+
+#### Performance
+If the StatusBar updates slowly:
+1. **Check terminal performance**: Some terminals render slowly
+2. **Use compact mode**: `/compact` reduces rendering complexity
+3. **Check session complexity**: Very long sessions may impact performance
 
 ---
 

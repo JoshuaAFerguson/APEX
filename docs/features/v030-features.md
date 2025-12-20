@@ -839,40 +839,80 @@ function AgentActivityDisplay() {
 
 ### 5. Status Bar and Information Display
 
-#### Persistent Status Bar
+#### StatusBar Component
 
-The status bar remains visible at the bottom of the terminal with real-time information:
+The StatusBar component provides persistent, real-time information at the bottom of the terminal interface. It features intelligent responsive design with priority-based element visibility that adapts to terminal width and display modes.
 
-```
-────────────────────────────────────────────────────────────────────────────────
-⚡ APEX v0.3.0  │  🏗️ architect  │  📋 implementation  │  ⏱️ 00:04:23  │  🪙 1.2K↑ 3.4K↓  │  💰 $0.12  │  🌿 main
-```
+> **📋 Complete Documentation**: See the comprehensive [StatusBar Reference](../cli-guide.md#statusbar-reference) for detailed information about all 21 display elements, visual examples, responsive behavior, and mode variations.
 
-**Status Elements:**
-- **Version indicator** - Current APEX version
-- **Active agent** - Which agent is currently working
-- **Workflow stage** - Current stage in multi-stage workflows
-- **Session timer** - Elapsed time in current session
-- **Token counters** - Input (↑) and output (↓) token counts
-- **Cost tracker** - Running cost for current session
-- **Git branch** - Current branch name
-
-#### Responsive Status Bar
-
-The status bar adapts to terminal width:
+**Visual Example (Normal Mode, Wide Terminal):**
 
 ```
-# Wide terminal (120+ columns)
-⚡ APEX v0.3.0  │  🏗️ architect  │  📋 implementation  │  ⏱️ 00:04:23  │  🪙 1.2K↑ 3.4K↓  │  💰 $0.12  │  🌿 main
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● ⎇ main | ⚡developer | ▶implementation | 📋 [2/5]                                                tokens: 45.2k | cost: $0.1523 | model: sonnet | 05:23 │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-# Normal terminal (80-119 columns)
-⚡ APEX  │  🏗️ architect  │  📋 impl  │  ⏱️ 04:23  │  🪙 1.2K↑ 3.4K↓  │  💰 $0.12
+**Key Features:**
+- **21 Possible Elements** - Connection status, git branch, agent, workflow stage, progress, tokens, costs, timing, and mode indicators
+- **Priority System** - CRITICAL (always shown) → HIGH → MEDIUM → LOW priority elements
+- **Responsive Design** - Automatically adapts to terminal width (narrow/normal/wide breakpoints)
+- **Display Mode Support** - Different element sets for compact, normal, and verbose modes
+- **Real-time Updates** - Live session timer, cost tracking, and progress indicators
 
-# Compact terminal (60-79 columns)
-⚡ v0.3.0  │  🏗️ arch  │  ⏱️ 04:23  │  💰 $0.12
+#### Core Elements
 
-# Narrow terminal (< 60 columns)
-⚡ 🏗️ ⏱️ 04:23  💰 $0.12
+**Left Side:**
+- **Connection Status (●/○)** - Live connection indicator (green=connected, red=disconnected)
+- **Git Branch (⎇)** - Current branch name with git symbol
+- **Agent Indicator (⚡)** - Active AI agent (planner, architect, developer, tester, reviewer)
+- **Workflow Stage (▶)** - Current workflow stage (planning, implementation, etc.)
+- **Subtask Progress (📋)** - Completion status within current stage [X/Y]
+
+**Right Side:**
+- **Session Timer** - Elapsed time in MM:SS format
+- **Model Indicator** - Active AI model (opus, sonnet, haiku)
+- **Cost Display** - Current task cost with 4-decimal precision
+- **Token Count** - Total tokens with smart formatting (1.2k, 1.5M)
+
+**Verbose Mode Additions:**
+- **Detailed Timing** - Active, idle, and stage-specific time tracking
+- **Token Breakdown** - Input→output token breakdown plus total
+- **Session Costs** - Cumulative session cost tracking
+- **Server URLs** - API and Web UI port information
+- **Mode Indicators** - Visual indicators for preview, thoughts, and verbose modes
+
+#### Responsive Adaptation
+
+The StatusBar uses a sophisticated 3-tier responsive system:
+
+| Terminal Width | Display Tier | Elements Shown | Behavior |
+|----------------|--------------|----------------|----------|
+| < 60 columns | Narrow | CRITICAL + HIGH priority | Abbreviated labels, compressed values |
+| 60-160 columns | Normal | CRITICAL + HIGH + MEDIUM | Full labels, standard formatting |
+| > 160 columns | Wide | All priority levels | Extended details, verbose elements |
+
+**Smart Abbreviations:**
+- `tokens:` → `tk:` in narrow terminals
+- `model:` → `m:` when space is limited
+- Branch names truncated with `...` when too long
+- Labels hidden entirely when space is critical (cost shows just `$0.1523`)
+
+#### Display Mode Behavior
+
+**Compact Mode** - Essential information only:
+```
+● main | $0.1523
+```
+
+**Normal Mode** - Balanced information display:
+```
+● ⎇ main | ⚡developer | tokens: 1.2k | cost: $0.1523 | model: sonnet | 05:23
+```
+
+**Verbose Mode** - Maximum information:
+```
+● main | ⚡dev | ▶impl | 📋 [2/5] | 💾 session | api:3000 | web:3001    tokens: 12.5k→8.2k | total: 20.7k | cost: $0.15 | session: $1.25 | model: sonnet | active: 3m42s | idle: 1m18s | stage: 45s | 🔍 VERBOSE
 ```
 
 ### 6. Natural Language Interface
