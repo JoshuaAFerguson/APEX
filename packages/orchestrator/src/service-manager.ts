@@ -66,6 +66,35 @@ export interface ServiceFileResult {
   platform: Platform;
 }
 
+export interface InstallOptions {
+  /** Automatically enable the service after installation (default: false) */
+  enableAfterInstall?: boolean;
+  /** Force overwrite if service file already exists (default: false) */
+  force?: boolean;
+}
+
+export interface UninstallOptions {
+  /** Force uninstall even if stop fails (default: false) */
+  force?: boolean;
+  /** Timeout in ms to wait for graceful stop (default: 5000) */
+  stopTimeout?: number;
+}
+
+export interface InstallResult {
+  success: boolean;
+  servicePath: string;
+  platform: Platform;
+  enabled: boolean;
+  warnings: string[];
+}
+
+export interface UninstallResult {
+  success: boolean;
+  servicePath: string;
+  wasRunning: boolean;
+  warnings: string[];
+}
+
 // ============================================================================
 // Platform Detection
 // ============================================================================
@@ -413,7 +442,11 @@ export class ServiceManager {
   // Service Management Operations
   // ============================================================================
 
-  async install(): Promise<void> {
+  async install(options: InstallOptions = {}): Promise<InstallResult> {
+    const { enableAfterInstall = false, force = false } = options;
+    const warnings: string[] = [];
+
+    // 1. Platform validation
     if (!this.isSupported()) {
       throw new ServiceError(
         `Service management not available on ${this.platform}`,
@@ -423,52 +456,165 @@ export class ServiceManager {
 
     const serviceFile = this.generateServiceFile();
 
-    try {
-      // Ensure parent directory exists
-      await fs.mkdir(path.dirname(serviceFile.path), { recursive: true });
-
-      // Write service file
-      await fs.writeFile(serviceFile.path, serviceFile.content, 'utf-8');
-
-      // Platform-specific post-install
-      if (this.platform === 'linux') {
-        await this.systemctlReload();
+    // 2. Check for existing installation
+    if (!force) {
+      try {
+        await fs.access(serviceFile.path);
+        throw new ServiceError(
+          `Service file already exists at ${serviceFile.path}. Use force: true to overwrite.`,
+          'SERVICE_EXISTS'
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          if ((error as ServiceError).code === 'SERVICE_EXISTS') throw error;
+        }
+        // File doesn't exist, continue with installation
       }
-      // launchd doesn't require explicit reload
-
-    } catch (error) {
-      throw new ServiceError(
-        'Failed to install service',
-        'INSTALL_FAILED',
-        error as Error
-      );
     }
+
+    // 3. Create directory with permission handling
+    try {
+      await fs.mkdir(path.dirname(serviceFile.path), { recursive: true });
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        throw new ServiceError(
+          `Permission denied creating directory ${path.dirname(serviceFile.path)}. ` +
+          `For system-level installation, run with elevated privileges (sudo).`,
+          'PERMISSION_DENIED',
+          err
+        );
+      }
+      throw new ServiceError('Failed to create service directory', 'INSTALL_FAILED', err);
+    }
+
+    // 4. Write service file with permission handling
+    try {
+      await fs.writeFile(serviceFile.path, serviceFile.content, 'utf-8');
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        throw new ServiceError(
+          `Permission denied writing to ${serviceFile.path}. ` +
+          `Check directory permissions or run with elevated privileges.`,
+          'PERMISSION_DENIED',
+          err
+        );
+      }
+      throw new ServiceError('Failed to write service file', 'INSTALL_FAILED', err);
+    }
+
+    // 5. Platform-specific post-install
+    let enabled = false;
+    if (this.platform === 'linux') {
+      try {
+        await this.systemctlReload();
+      } catch (error) {
+        warnings.push(`Service installed but systemctl reload failed: ${(error as Error).message}`);
+      }
+
+      if (enableAfterInstall) {
+        try {
+          await this.enable();
+          enabled = true;
+        } catch (error) {
+          warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
+        }
+      }
+    } else if (this.platform === 'darwin' && enableAfterInstall) {
+      try {
+        await this.enable();
+        enabled = true;
+      } catch (error) {
+        warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
+      }
+    }
+
+    return {
+      success: true,
+      servicePath: serviceFile.path,
+      platform: this.platform,
+      enabled,
+      warnings,
+    };
   }
 
-  async uninstall(): Promise<void> {
+  async uninstall(options: UninstallOptions = {}): Promise<UninstallResult> {
+    const { force = false, stopTimeout = 5000 } = options;
+    const warnings: string[] = [];
+    let wasRunning = false;
+
+    const servicePath = this.getServiceFilePath();
+
+    // 1. Check if service exists
     try {
-      // Stop service first (ignore errors if not running)
-      await this.stop().catch(() => {});
-
-      // Disable service (ignore errors if not enabled)
-      await this.disable().catch(() => {});
-
-      // Remove service file
-      const servicePath = this.getServiceFilePath();
-      await fs.unlink(servicePath).catch(() => {});
-
-      // Platform-specific cleanup
-      if (this.platform === 'linux') {
-        await this.systemctlReload();
-      }
-
-    } catch (error) {
+      await fs.access(servicePath);
+    } catch {
       throw new ServiceError(
-        'Failed to uninstall service',
-        'UNINSTALL_FAILED',
-        error as Error
+        `Service not found at ${servicePath}`,
+        'SERVICE_NOT_FOUND'
       );
     }
+
+    // 2. Check if service is running and stop it
+    try {
+      const status = await this.getStatus();
+      wasRunning = status.running;
+      if (wasRunning) {
+        await this.stopWithTimeout(stopTimeout);
+      }
+    } catch (error) {
+      if (!force) {
+        throw new ServiceError(
+          `Could not stop service gracefully: ${(error as Error).message}. Use force: true to continue anyway.`,
+          'UNINSTALL_FAILED',
+          error as Error
+        );
+      } else {
+        warnings.push(`Could not stop service gracefully: ${(error as Error).message}`);
+      }
+    }
+
+    // 3. Disable service
+    try {
+      await this.disable();
+    } catch (error) {
+      warnings.push(`Could not disable service: ${(error as Error).message}`);
+    }
+
+    // 4. Remove service file with permission handling
+    try {
+      await fs.unlink(servicePath);
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        throw new ServiceError(
+          `Permission denied removing ${servicePath}. ` +
+          `The service may require elevated privileges to uninstall.`,
+          'PERMISSION_DENIED',
+          err
+        );
+      }
+      if (err.code !== 'ENOENT') {
+        throw new ServiceError('Failed to remove service file', 'UNINSTALL_FAILED', err);
+      }
+    }
+
+    // 5. Platform-specific cleanup
+    if (this.platform === 'linux') {
+      try {
+        await this.systemctlReload();
+      } catch (error) {
+        warnings.push(`Could not reload systemd: ${(error as Error).message}`);
+      }
+    }
+
+    return {
+      success: true,
+      servicePath,
+      wasRunning,
+      warnings,
+    };
   }
 
   async enable(): Promise<void> {
@@ -559,6 +705,17 @@ export class ServiceManager {
 
   private async systemctlReload(): Promise<void> {
     await this.execCommand('systemctl --user daemon-reload');
+  }
+
+  /**
+   * Stop service with timeout for graceful shutdown
+   */
+  private async stopWithTimeout(timeoutMs: number): Promise<void> {
+    const stopPromise = this.stop();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Stop timeout exceeded')), timeoutMs);
+    });
+    await Promise.race([stopPromise, timeoutPromise]);
   }
 
   private async getSystemdStatus(servicePath: string): Promise<ServiceStatus> {

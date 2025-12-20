@@ -1071,4 +1071,569 @@ describe('ServiceManager', () => {
       await expect(manager.uninstall()).resolves.not.toThrow();
     });
   });
+
+  describe('Install Method Comprehensive Testing', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'linux';
+    });
+
+    it('should install service with default options successfully', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install();
+
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(false);
+      expect(result.warnings).toEqual([]);
+      expect(result.platform).toBe('linux');
+      expect(result.servicePath).toContain('.config/systemd/user/apex-daemon.service');
+    });
+
+    it('should install and enable service when enableAfterInstall is true', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ enableAfterInstall: true });
+
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(true);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('should throw SERVICE_EXISTS error when service already exists and force is false', async () => {
+      mockFs.access.mockResolvedValue(undefined); // File exists
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.install({ force: false })).rejects.toThrow(ServiceError);
+      await expect(manager.install({ force: false })).rejects.toThrow(/already exists/);
+    });
+
+    it('should overwrite existing service when force is true', async () => {
+      mockFs.access.mockResolvedValue(undefined); // File exists
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ force: true });
+
+      expect(result.success).toBe(true);
+      expect(mockFs.writeFile).toHaveBeenCalled();
+    });
+
+    it('should handle permission denied error during directory creation', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      const permError = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+      permError.code = 'EACCES';
+      mockFs.mkdir.mockRejectedValue(permError);
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.install()).rejects.toThrow(ServiceError);
+      await expect(manager.install()).rejects.toThrow(/Permission denied creating directory/);
+    });
+
+    it('should handle permission denied error during file write', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      const permError = new Error('EPERM: operation not permitted') as NodeJS.ErrnoException;
+      permError.code = 'EPERM';
+      mockFs.writeFile.mockRejectedValue(permError);
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.install()).rejects.toThrow(ServiceError);
+      await expect(manager.install()).rejects.toThrow(/Permission denied writing to/);
+    });
+
+    it('should add warnings when systemctl reload fails but continue', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('daemon-reload')) {
+          const error = new Error('Failed to reload systemd');
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install();
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain('Service installed but systemctl reload failed: Failed to reload systemd');
+    });
+
+    it('should add warnings when enable fails but continue', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('daemon-reload')) {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('enable')) {
+          const error = new Error('Failed to enable service');
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ enableAfterInstall: true });
+
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(false);
+      expect(result.warnings).toContain('Service installed but could not be enabled: Failed to enable service');
+    });
+
+    it('should install service on macOS platform', async () => {
+      mockProcess.platform = 'darwin';
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install();
+
+      expect(result.success).toBe(true);
+      expect(result.platform).toBe('darwin');
+      expect(result.servicePath).toContain('Library/LaunchAgents');
+    });
+
+    it('should install and enable on macOS when enableAfterInstall is true', async () => {
+      mockProcess.platform = 'darwin';
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ enableAfterInstall: true });
+
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(true);
+      expect(result.platform).toBe('darwin');
+    });
+
+    it('should throw error for unsupported platform', async () => {
+      mockProcess.platform = 'win32';
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.install()).rejects.toThrow(ServiceError);
+      await expect(manager.install()).rejects.toThrow(/Service management not available on unsupported/);
+    });
+  });
+
+  describe('Uninstall Method Comprehensive Testing', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'linux';
+    });
+
+    it('should uninstall service successfully', async () => {
+      mockFs.access.mockResolvedValue(undefined); // Service exists
+      mockFs.unlink.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          // Service not running
+          const output = 'ActiveState=inactive\nLoadState=loaded\nMainPID=0\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.wasRunning).toBe(false);
+      expect(result.warnings).toEqual([]);
+      expect(mockFs.unlink).toHaveBeenCalled();
+    });
+
+    it('should stop running service during uninstall', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      let serviceStopped = false;
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const isRunning = !serviceStopped;
+          const output = `ActiveState=${isRunning ? 'active' : 'inactive'}\nLoadState=loaded\nMainPID=${isRunning ? '1234' : '0'}\n`;
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('stop')) {
+          serviceStopped = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.wasRunning).toBe(true);
+    });
+
+    it('should throw error when service file does not exist', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.uninstall()).rejects.toThrow(ServiceError);
+      await expect(manager.uninstall()).rejects.toThrow(/Service not found at/);
+    });
+
+    it('should handle stop timeout and fail without force', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=active\nLoadState=loaded\nMainPID=1234\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('stop')) {
+          const error = new Error('Service stop timeout');
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.uninstall()).rejects.toThrow(ServiceError);
+      await expect(manager.uninstall()).rejects.toThrow(/Could not stop service gracefully/);
+    });
+
+    it('should continue with warnings when stop fails with force option', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=active\nLoadState=loaded\nMainPID=1234\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('stop')) {
+          const error = new Error('Service stop failed');
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall({ force: true });
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain('Could not stop service gracefully: Service stop failed');
+    });
+
+    it('should handle permission denied during service file removal', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      const permError = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+      permError.code = 'EACCES';
+      mockFs.unlink.mockRejectedValue(permError);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=inactive\nLoadState=loaded\nMainPID=0\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.uninstall()).rejects.toThrow(ServiceError);
+      await expect(manager.uninstall()).rejects.toThrow(/Permission denied removing/);
+    });
+
+    it('should add warnings when disable fails but continue', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=inactive\nLoadState=loaded\nMainPID=0\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('disable')) {
+          const error = new Error('Failed to disable service');
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain('Could not disable service: Failed to disable service');
+    });
+
+    it('should uninstall service on macOS platform', async () => {
+      mockProcess.platform = 'darwin';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('list')) {
+          const output = '-\t0\tcom.apex.daemon'; // Not running
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.wasRunning).toBe(false);
+    });
+
+    it('should handle custom stop timeout', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      const stopStartTime = Date.now();
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=active\nLoadState=loaded\nMainPID=1234\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('stop')) {
+          // Simulate a delay to test timeout behavior
+          setTimeout(() => {
+            if (callback) callback(null, { stdout: '', stderr: '' });
+          }, 50);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall({ stopTimeout: 100 });
+
+      expect(result.success).toBe(true);
+      expect(Date.now() - stopStartTime).toBeLessThan(200); // Should complete within reasonable time
+    });
+
+    it('should ignore ENOENT error when removing already-deleted file', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      const enoentError = new Error('ENOENT: file not found') as NodeJS.ErrnoException;
+      enoentError.code = 'ENOENT';
+      mockFs.unlink.mockRejectedValue(enoentError);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=inactive\nLoadState=loaded\nMainPID=0\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toEqual(['Could not disable service: Failed to disable service']); // Only disable warning
+    });
+  });
+
+  describe('Service Lifecycle Integration Tests', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'linux';
+    });
+
+    it('should handle complete install-start-stop-uninstall lifecycle', async () => {
+      let serviceInstalled = false;
+      let serviceRunning = false;
+
+      mockFs.access.mockImplementation(() => {
+        if (serviceInstalled) {
+          return Promise.resolve();
+        }
+        return Promise.reject(new Error('ENOENT: file not found'));
+      });
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockImplementation(() => {
+        serviceInstalled = true;
+        return Promise.resolve();
+      });
+
+      mockFs.unlink.mockImplementation(() => {
+        serviceInstalled = false;
+        return Promise.resolve();
+      });
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const state = serviceRunning ? 'active' : 'inactive';
+          const pid = serviceRunning ? '1234' : '0';
+          const output = `ActiveState=${state}\nLoadState=loaded\nMainPID=${pid}\n`;
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('start')) {
+          serviceRunning = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('stop')) {
+          serviceRunning = false;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // Install
+      const installResult = await manager.install();
+      expect(installResult.success).toBe(true);
+
+      // Start
+      await expect(manager.start()).resolves.not.toThrow();
+
+      // Check running status
+      const runningStatus = await manager.getStatus();
+      expect(runningStatus.running).toBe(true);
+      expect(runningStatus.pid).toBe(1234);
+
+      // Stop
+      await expect(manager.stop()).resolves.not.toThrow();
+
+      // Check stopped status
+      const stoppedStatus = await manager.getStatus();
+      expect(stoppedStatus.running).toBe(false);
+
+      // Uninstall
+      const uninstallResult = await manager.uninstall();
+      expect(uninstallResult.success).toBe(true);
+      expect(uninstallResult.wasRunning).toBe(false);
+
+      // Check not installed status
+      const notInstalledStatus = await manager.getStatus();
+      expect(notInstalledStatus.installed).toBe(false);
+    });
+
+    it('should handle restart during service lifecycle', async () => {
+      let restartCount = 0;
+      mockFs.access.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('show')) {
+          const output = 'ActiveState=active\nLoadState=loaded\nMainPID=1234\n';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('restart')) {
+          restartCount++;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      await manager.restart();
+
+      expect(restartCount).toBe(1);
+    });
+
+    it('should handle enable/disable operations', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      let isEnabled = false;
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('enable')) {
+          isEnabled = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('disable')) {
+          isEnabled = false;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('show')) {
+          const loadState = isEnabled ? 'loaded' : 'masked';
+          const output = `ActiveState=inactive\nLoadState=${loadState}\nMainPID=0\n`;
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      await manager.enable();
+      const enabledStatus = await manager.getStatus();
+      expect(enabledStatus.enabled).toBe(true);
+
+      await manager.disable();
+      const disabledStatus = await manager.getStatus();
+      expect(disabledStatus.enabled).toBe(false);
+    });
+
+    it('should handle service recovery scenarios', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      let attemptCount = 0;
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('start')) {
+          attemptCount++;
+          if (attemptCount === 1) {
+            // First attempt fails
+            const error = new Error('Service temporarily unavailable');
+            if (callback) callback(error);
+          } else {
+            // Subsequent attempts succeed
+            if (callback) callback(null, { stdout: '', stderr: '' });
+          }
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // First start attempt should fail
+      await expect(manager.start()).rejects.toThrow();
+
+      // Second start attempt should succeed
+      await expect(manager.start()).resolves.not.toThrow();
+
+      expect(attemptCount).toBe(2);
+    });
+  });
 });

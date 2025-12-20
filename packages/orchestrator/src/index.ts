@@ -3083,6 +3083,10 @@ export {
   type ServiceManagerOptions,
   type ServiceStatus,
   type ServiceFileResult,
+  type InstallOptions,
+  type UninstallOptions,
+  type InstallResult,
+  type UninstallResult,
   type ServiceErrorCode,
   type Platform,
 } from './service-manager';
