@@ -21,8 +21,8 @@ import {
 } from '@apex/core';
 import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
 import { startServer } from '@apex/api';
-import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers';
-import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers';
+import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers.js';
+import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
 
 const VERSION = '0.1.0';
 

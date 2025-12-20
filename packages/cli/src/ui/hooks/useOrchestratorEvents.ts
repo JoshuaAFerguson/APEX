@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
+import type { ApexOrchestrator } from '@apex/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
-import type { VerboseDebugData } from '@apexcli/core/types.js';
+import type { VerboseDebugData } from '@apex/core';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -134,7 +134,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     if (!orchestrator) return;
 
     // Agent transition handler
-    const handleAgentTransition = useCallback((
+    const handleAgentTransition = (
       eventTaskId: string,
       fromAgent: string | null,
       toAgent: string
@@ -150,7 +150,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         const agentStartTime = agentStartTimeRef.current.get(fromAgent);
         if (agentStartTime) {
           const responseTime = now.getTime() - agentStartTime.getTime();
-          setVerboseData(prev => ({
+          setVerboseData((prev: VerboseDebugData) => ({
             ...prev,
             timing: {
               ...prev.timing,
@@ -167,7 +167,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       agentStartTimeRef.current.set(toAgent, now);
 
       // Set stageStartedAt for the new agent
-      setState(prev => {
+      setState((prev: OrchestratorEventState) => {
         const updatedAgents = updateAgentStatus(
           prev.agents.length > 0 ? prev.agents : derivedAgents,
           toAgent,
@@ -187,10 +187,10 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           currentTaskId: eventTaskId,
         };
       });
-    }, [taskId, log, updateAgentStatus, derivedAgents]);
+    };
 
     // Stage change handler (fallback if agent:transition not available)
-    const handleStageChange = useCallback((task: any, stageName: string) => {
+    const handleStageChange = (task: any, stageName: string) => {
       if (taskId && task.id !== taskId) return;
 
       log('Stage change', { stage: stageName, taskId: task.id });
@@ -206,7 +206,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       stageStartTimeRef.current = now;
       totalTokensRef.current = 0; // Reset for new stage
 
-      setVerboseData(prev => ({
+      setVerboseData((prev: VerboseDebugData) => ({
         ...prev,
         timing: {
           ...prev.timing,
@@ -218,7 +218,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
 
       if (stageAgent) {
-        setState(prev => {
+        setState((prev: OrchestratorEventState) => {
           const updatedAgents = updateAgentStatus(prev.agents.length > 0 ? prev.agents : derivedAgents, stageAgent, prev.currentAgent);
 
           return {
@@ -230,7 +230,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           };
         });
       }
-    }, [taskId, workflow, log, updateAgentStatus, derivedAgents]);
+    };
 
     // Parallel execution start handler
     const handleParallelStart = (eventTaskId: string, stages: string[], agents: string[]) => {
@@ -238,7 +238,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Parallel execution started', { stages, agents, taskId: eventTaskId });
 
-      setState(prev => {
+      setState((prev: OrchestratorEventState) => {
         const parallelAgents = agents.map((agent, index) => ({
           name: agent,
           status: 'parallel' as const,
@@ -260,7 +260,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Parallel execution completed', { taskId: eventTaskId });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         parallelAgents: [],
         showParallelPanel: false,
@@ -273,7 +273,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task started', { taskId: task.id });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         currentTaskId: task.id,
         agents: derivedAgents,
@@ -286,7 +286,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task completed', { taskId: task.id });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
@@ -301,7 +301,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task failed', { taskId: task.id, error: error.message });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
@@ -317,7 +317,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Subtask created', { subtaskId: subtask.id, parentTaskId });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         subtaskProgress: prev.subtaskProgress ? {
           completed: prev.subtaskProgress.completed,
@@ -331,7 +331,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Subtask completed', { subtaskId: subtask.id, parentTaskId });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         subtaskProgress: prev.subtaskProgress ? {
           completed: prev.subtaskProgress.completed + 1,
@@ -341,7 +341,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     };
 
     // Debug info handlers - adapted to match OrchestratorEvents signatures
-    const handleUsageUpdated = useCallback((
+    const handleUsageUpdated = (
       eventTaskId: string,
       usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }
     ) => {
@@ -354,7 +354,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       if (!currentAgentName) return;
 
       // Update agentTokens in verboseData
-      setVerboseData(prev => {
+      setVerboseData((prev: VerboseDebugData) => {
         const prevAgentTokens = prev.agentTokens[currentAgentName] || {
           inputTokens: 0,
           outputTokens: 0,
@@ -385,7 +385,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       });
 
       // Also update agent's debugInfo for immediate display
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
           ...debugInfo,
@@ -395,9 +395,9 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           },
         })),
       }));
-    }, [taskId, state.currentAgent, log, updateAgentDebugInfo]);
+    };
 
-    const handleToolUse = useCallback((
+    const handleToolUse = (
       eventTaskId: string,
       tool: string,
       _input: unknown
@@ -413,7 +413,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       const prevToolStart = toolStartTimeRef.current.get(tool);
       if (prevToolStart) {
         const duration = now.getTime() - prevToolStart.getTime();
-        setVerboseData(prev => ({
+        setVerboseData((prev: VerboseDebugData) => ({
           ...prev,
           timing: {
             ...prev.timing,
@@ -430,7 +430,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       // Update agentDebug tool call counts
       if (currentAgentName) {
-        setVerboseData(prev => {
+        setVerboseData((prev: VerboseDebugData) => {
           const agentToolCounts = prev.agentDebug.toolCallCounts[currentAgentName] || {};
           return {
             ...prev,
@@ -448,7 +448,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         });
 
         // Update agent's debugInfo.lastToolCall
-        setState(prev => ({
+        setState((prev: OrchestratorEventState) => ({
           ...prev,
           agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
             ...debugInfo,
@@ -456,29 +456,29 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           })),
         }));
       }
-    }, [taskId, state.currentAgent, log, updateAgentDebugInfo]);
+    };
 
-    const handleAgentTurn = useCallback((turnData: { taskId: string; agentName: string; turnNumber: number }) => {
+    const handleAgentTurn = (turnData: { taskId: string; agentName: string; turnNumber: number }) => {
       if (taskId && turnData.taskId !== taskId) return;
 
       log('Agent turn', { agent: turnData.agentName, turn: turnData.turnNumber });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         agents: updateAgentDebugInfo(prev.agents, turnData.agentName, (debugInfo) => ({
           ...debugInfo,
           turnCount: turnData.turnNumber,
         })),
       }));
-    }, [taskId, log, updateAgentDebugInfo]);
+    };
 
-    const handleError = useCallback((errorData: { taskId: string; agentName: string; error: Error }) => {
+    const handleError = (errorData: { taskId: string; agentName: string; error: Error }) => {
       if (taskId && errorData.taskId !== taskId) return;
 
       log('Agent error', { agent: errorData.agentName, error: errorData.error.message });
 
       // Update VerboseDebugData errorCounts
-      setVerboseData(prev => ({
+      setVerboseData((prev: VerboseDebugData) => ({
         ...prev,
         agentDebug: {
           ...prev.agentDebug,
@@ -490,31 +490,31 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
 
       // Also update agent's debugInfo for immediate display
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         agents: updateAgentDebugInfo(prev.agents, errorData.agentName, (debugInfo) => ({
           ...debugInfo,
           errorCount: (debugInfo?.errorCount || 0) + 1,
         })),
       }));
-    }, [taskId, log, updateAgentDebugInfo]);
+    };
 
-    const handleAgentThinking = useCallback((eventTaskId: string, agentName: string, thinking: string) => {
+    const handleAgentThinking = (eventTaskId: string, agentName: string, thinking: string) => {
       if (taskId && eventTaskId !== taskId) return;
 
       log('Agent thinking', { agent: agentName, thinking: thinking.substring(0, 100) + (thinking.length > 100 ? '...' : '') });
 
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         agents: updateAgentDebugInfo(prev.agents, agentName, (debugInfo) => ({
           ...debugInfo,
           thinking: thinking,
         })),
       }));
-    }, [taskId, log, updateAgentDebugInfo]);
+    };
 
     // Agent message handler for conversation length tracking
-    const handleAgentMessage = useCallback((eventTaskId: string, message: unknown) => {
+    const handleAgentMessage = (eventTaskId: string, message: unknown) => {
       if (taskId && eventTaskId !== taskId) return;
 
       const currentAgentName = state.currentAgent;
@@ -523,7 +523,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       log('Agent message', { taskId: eventTaskId, agent: currentAgentName });
 
       // Update conversation length in VerboseDebugData
-      setVerboseData(prev => ({
+      setVerboseData((prev: VerboseDebugData) => ({
         ...prev,
         agentDebug: {
           ...prev.agentDebug,
@@ -533,7 +533,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           },
         },
       }));
-    }, [taskId, state.currentAgent, log]);
+    };
 
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
@@ -574,12 +574,12 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Event listeners cleaned up');
     };
-  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus, updateAgentDebugInfo, handleAgentTransition, handleStageChange, handleUsageUpdated, handleToolUse, handleAgentTurn, handleAgentThinking, handleError]);
+  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus, updateAgentDebugInfo, state.currentAgent]);
 
   // Initialize agents from workflow if not already set
   useEffect(() => {
     if (derivedAgents.length > 0 && state.agents.length === 0) {
-      setState(prev => ({
+      setState((prev: OrchestratorEventState) => ({
         ...prev,
         agents: derivedAgents,
       }));
@@ -588,16 +588,16 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
   // Calculate derived metrics based on accumulated data
   useEffect(() => {
-    setVerboseData(prev => {
+    setVerboseData((prev: VerboseDebugData) => {
       // Calculate average response time
-      const responseTimes = Object.values(prev.timing.agentResponseTimes);
+      const responseTimes = Object.values(prev.timing.agentResponseTimes) as number[];
       const averageResponseTime = responseTimes.length > 0
         ? responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length
         : 0;
 
       // Calculate tool efficiency (assuming successful calls for now)
       const toolEfficiency: Record<string, number> = {};
-      Object.entries(prev.agentDebug.toolCallCounts).forEach(([agentName, toolCounts]) => {
+      Object.entries(prev.agentDebug.toolCallCounts as Record<string, Record<string, number>>).forEach(([agentName, toolCounts]) => {
         Object.entries(toolCounts).forEach(([toolName, count]) => {
           // For now, assume 100% efficiency - this would need actual success/failure tracking
           toolEfficiency[toolName] = 1.0;

@@ -297,12 +297,14 @@ export class InteractionManager extends EventEmitter<InteractionManagerEvents> {
   // ============================================================================
 
   private async processInteraction(interaction: TaskInteraction): Promise<string> {
+    const params = interaction.parameters ?? {};
+
     switch (interaction.command) {
       case 'iterate':
         return await this.iterateTask(
           interaction.taskId,
-          interaction.parameters.instructions as string,
-          interaction.parameters.context as Record<string, unknown>
+          typeof params.instructions === 'string' ? params.instructions : '',
+          (params.context as Record<string, unknown>) || {}
         );
 
       case 'inspect':
@@ -312,12 +314,15 @@ export class InteractionManager extends EventEmitter<InteractionManagerEvents> {
       case 'diff':
         const diff = await this.getTaskDiff(
           interaction.taskId,
-          interaction.parameters.staged as boolean
+          Boolean(params.staged)
         );
         return JSON.stringify(diff, null, 2);
 
       case 'pause':
-        await this.pauseTask(interaction.taskId, interaction.parameters.reason as string);
+        await this.pauseTask(
+          interaction.taskId,
+          typeof params.reason === 'string' ? params.reason : undefined
+        );
         return 'Task paused successfully';
 
       case 'resume':

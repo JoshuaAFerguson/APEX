@@ -115,7 +115,7 @@ export function TokenUsageChart({
  * Mini version of token usage chart for cards and lists
  */
 export function TokenUsageMini({ usage, className }: { usage?: TokenUsage; className?: string }) {
-  const { inputTokens = 0, outputTokens = 0, totalTokens = 0 } = usage || {}
+  const { inputTokens = 0, totalTokens = 0 } = usage || {}
 
   const formatNumber = (num: number): string => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`

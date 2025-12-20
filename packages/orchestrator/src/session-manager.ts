@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { EventEmitter } from 'eventemitter3';
 import { join } from 'path';
 import {
   Task,
@@ -20,15 +21,20 @@ export interface SessionSummary {
   progressSummary: string;
 }
 
+export interface SessionManagerEvents {
+  'session-recovered': (taskId: string) => void;
+}
+
 /**
  * Manages session recovery and continuity for long-running tasks
  */
-export class SessionManager {
+export class SessionManager extends EventEmitter<SessionManagerEvents> {
   private projectPath: string;
   private config: DaemonConfig;
   private checkpointDir: string;
 
   constructor(options: SessionRecoveryOptions) {
+    super();
     this.projectPath = options.projectPath;
     this.config = options.config;
     this.checkpointDir = join(this.projectPath, '.apex', 'checkpoints');
@@ -131,6 +137,8 @@ export class SessionManager {
       conversationHistory: checkpoint.conversationState || [],
       stageState: checkpoint.metadata?.stageState as Record<string, unknown> | undefined,
     };
+
+    this.emit('session-recovered', task.id);
 
     return { resumed: true, resumePoint };
   }

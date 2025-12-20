@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
-import { useStdoutDimensions } from '../hooks/useStdoutDimensions';
+import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 export interface ProgressBarProps {
   progress: number; // 0-100
@@ -543,5 +543,4 @@ export function MultiTaskProgress({
 
 export {
   Spinner as InkSpinner,
-  SpinnerWithText,
 };

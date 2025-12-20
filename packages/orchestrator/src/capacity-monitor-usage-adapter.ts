@@ -65,11 +65,12 @@ export class CapacityMonitorUsageAdapter implements CapacityUsageProvider {
    * Get the hours for a specific mode
    */
   private getModeHours(mode: 'day' | 'night' | 'off-hours'): number[] {
+    const timeBasedUsage = this.config.timeBasedUsage;
     switch (mode) {
       case 'day':
-        return this.config.dayHours || [9, 10, 11, 12, 13, 14, 15, 16, 17];
+        return timeBasedUsage?.dayModeHours || [9, 10, 11, 12, 13, 14, 15, 16, 17];
       case 'night':
-        return this.config.nightHours || [18, 19, 20, 21, 22, 23];
+        return timeBasedUsage?.nightModeHours || [22, 23, 0, 1, 2, 3, 4, 5, 6];
       case 'off-hours':
       default:
         return [0, 1, 2, 3, 4, 5, 6, 7, 8];

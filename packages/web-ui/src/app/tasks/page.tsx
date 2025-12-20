@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -36,11 +36,7 @@ export default function TasksPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('kanban') // Default to kanban view
 
-  useEffect(() => {
-    loadTasks()
-  }, [statusFilter])
-
-  async function loadTasks() {
+  const loadTasks = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -53,7 +49,11 @@ export default function TasksPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
+
+  useEffect(() => {
+    loadTasks()
+  }, [loadTasks])
 
   async function handleCancel(taskId: string, e: React.MouseEvent) {
     e.preventDefault()

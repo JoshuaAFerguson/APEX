@@ -7,6 +7,7 @@
 
 import * as fs from 'fs/promises';
 import { formatTokens } from '@apexcli/core';
+import type { InkAppInstance } from '../ui/index.js';
 import { Session, SessionSummary } from '../services/SessionStore.js';
 
 // Context interface for session handlers
@@ -27,10 +28,7 @@ export interface SessionContext {
     updateSessionInfo: (info: { name?: string; tags?: string[] }) => Promise<void>;
     getUnsavedChangesCount: () => number;
   } | null;
-  app: {
-    addMessage: (message: { type: string; content: string }) => void;
-    updateState: (state: any) => void;
-  } | null;
+  app: InkAppInstance | null;
 }
 
 export async function handleSession(args: string[], ctx: SessionContext): Promise<void> {

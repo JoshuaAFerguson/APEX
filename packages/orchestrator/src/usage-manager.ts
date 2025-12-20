@@ -1,3 +1,4 @@
+import { EventEmitter } from 'eventemitter3';
 import { DaemonConfig, LimitsConfig, TaskUsage } from '@apexcli/core';
 
 export interface UsageThresholds {
@@ -26,16 +27,22 @@ export interface DailyUsageStats {
   };
 }
 
+export interface UsageManagerEvents {
+  'mode-changed': (mode: TimeBasedUsage['currentMode']) => void;
+}
+
 /**
  * Manages time-based usage thresholds and tracks daily consumption
  */
-export class UsageManager {
+export class UsageManager extends EventEmitter<UsageManagerEvents> {
   private config: DaemonConfig;
   private baseLimits: LimitsConfig;
   private currentDayStats: DailyUsageStats;
   private activeTasks: Map<string, TaskUsage> = new Map();
+  private lastMode?: TimeBasedUsage['currentMode'];
 
   constructor(config: DaemonConfig, baseLimits: LimitsConfig) {
+    super();
     this.config = config;
     this.baseLimits = baseLimits;
     this.currentDayStats = this.initializeDayStats();
@@ -47,6 +54,10 @@ export class UsageManager {
   getCurrentUsage(): TimeBasedUsage {
     const now = new Date();
     const currentMode = this.getCurrentMode(now);
+    if (this.lastMode && this.lastMode !== currentMode) {
+      this.emit('mode-changed', currentMode);
+    }
+    this.lastMode = currentMode;
     const thresholds = this.getThresholds(currentMode);
     const nextModeSwitch = this.getNextModeSwitch(now);
 

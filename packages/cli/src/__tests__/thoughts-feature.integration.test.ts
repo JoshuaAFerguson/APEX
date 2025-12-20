@@ -9,10 +9,10 @@ import React from 'react';
 import { App } from '../ui/App.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 import type { ApexConfig } from '@apexcli/core';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
+import type { ApexOrchestrator } from '@apex/orchestrator';
 
 // Mock dependencies
-vi.mock('@apexcli/orchestrator');
+vi.mock('@apex/orchestrator');
 vi.mock('../services/ConversationManager.js');
 
 describe('Thoughts Feature Integration Tests', () => {

@@ -1,13 +1,31 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apexcli/core';
+import {
+  Task,
+  TaskStatus,
+  TaskPriority,
+  TaskUsage,
+  TaskLog,
+  TaskArtifact,
+  Gate,
+  GateStatus,
+  TaskCheckpoint,
+  SubtaskStrategy,
+  CreateTaskRequest,
+  AutonomyLevel,
+  TaskSessionData,
+  WorkspaceConfig,
+  generateTaskId,
+} from '@apexcli/core';
 
 export class TaskStore {
   private db!: Database.Database;
   private dbPath: string;
+  private projectPath: string;
 
   constructor(projectPath: string) {
+    this.projectPath = projectPath;
     const apexDir = path.join(projectPath, '.apex');
     if (!fs.existsSync(apexDir)) {
       fs.mkdirSync(apexDir, { recursive: true });
@@ -41,6 +59,7 @@ export class TaskStore {
       { column: 'subtask_ids', definition: 'TEXT' },
       { column: 'subtask_strategy', definition: 'TEXT' },
       { column: 'priority', definition: "TEXT DEFAULT 'normal'" },
+      { column: 'resume_attempts', definition: 'INTEGER DEFAULT 0' },
       // Rate limit pause support (v0.3.0)
       { column: 'paused_at', definition: 'TEXT' },
       { column: 'resume_after', definition: 'TEXT' },
@@ -81,6 +100,7 @@ export class TaskStore {
         pr_url TEXT,
         retry_count INTEGER DEFAULT 0,
         max_retries INTEGER DEFAULT 3,
+        resume_attempts INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         completed_at TEXT,
@@ -240,17 +260,20 @@ export class TaskStore {
   /**
    * Create a new task
    */
-  async createTask(task: Task): Promise<void> {
+  async createTask(task: Task): Promise<Task>;
+  async createTask(task: CreateTaskRequest): Promise<Task>;
+  async createTask(task: Task | CreateTaskRequest): Promise<Task> {
+    const normalizedTask = 'id' in task ? task : this.buildTaskFromRequest(task);
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
-        current_stage, project_path, branch_name, retry_count, max_retries, created_at, updated_at,
+        current_stage, project_path, branch_name, retry_count, max_retries, resume_attempts, created_at, updated_at,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
         parent_task_id, subtask_ids, subtask_strategy,
         workspace_config, session_data, last_checkpoint
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
-        @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @createdAt, @updatedAt,
+        @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @resumeAttempts, @createdAt, @updatedAt,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
         @parentTaskId, @subtaskIds, @subtaskStrategy,
         @workspaceConfig, @sessionData, @lastCheckpoint
@@ -258,44 +281,81 @@ export class TaskStore {
     `);
 
     stmt.run({
-      id: task.id,
-      description: task.description,
-      acceptanceCriteria: task.acceptanceCriteria || null,
-      workflow: task.workflow,
-      autonomy: task.autonomy,
-      status: task.status,
-      priority: task.priority || 'normal',
-      currentStage: task.currentStage || null,
-      projectPath: task.projectPath,
-      branchName: task.branchName || null,
-      retryCount: task.retryCount || 0,
-      maxRetries: task.maxRetries || 3,
-      createdAt: task.createdAt.toISOString(),
-      updatedAt: task.updatedAt.toISOString(),
-      inputTokens: task.usage.inputTokens,
-      outputTokens: task.usage.outputTokens,
-      totalTokens: task.usage.totalTokens,
-      estimatedCost: task.usage.estimatedCost,
-      parentTaskId: task.parentTaskId || null,
-      subtaskIds: task.subtaskIds && task.subtaskIds.length > 0 ? JSON.stringify(task.subtaskIds) : null,
-      subtaskStrategy: task.subtaskStrategy || null,
+      id: normalizedTask.id,
+      description: normalizedTask.description,
+      acceptanceCriteria: normalizedTask.acceptanceCriteria || null,
+      workflow: normalizedTask.workflow,
+      autonomy: normalizedTask.autonomy,
+      status: normalizedTask.status,
+      priority: normalizedTask.priority || 'normal',
+      currentStage: normalizedTask.currentStage || null,
+      projectPath: normalizedTask.projectPath,
+      branchName: normalizedTask.branchName || null,
+      retryCount: normalizedTask.retryCount || 0,
+      maxRetries: normalizedTask.maxRetries || 3,
+      resumeAttempts: normalizedTask.resumeAttempts || 0,
+      createdAt: normalizedTask.createdAt.toISOString(),
+      updatedAt: normalizedTask.updatedAt.toISOString(),
+      inputTokens: normalizedTask.usage.inputTokens,
+      outputTokens: normalizedTask.usage.outputTokens,
+      totalTokens: normalizedTask.usage.totalTokens,
+      estimatedCost: normalizedTask.usage.estimatedCost,
+      parentTaskId: normalizedTask.parentTaskId || null,
+      subtaskIds: normalizedTask.subtaskIds && normalizedTask.subtaskIds.length > 0
+        ? JSON.stringify(normalizedTask.subtaskIds)
+        : null,
+      subtaskStrategy: normalizedTask.subtaskStrategy || null,
       // v0.4.0 fields
-      workspaceConfig: task.workspace ? JSON.stringify(task.workspace) : null,
-      sessionData: task.sessionData ? JSON.stringify(task.sessionData) : null,
-      lastCheckpoint: task.sessionData?.lastCheckpoint?.toISOString() || null,
+      workspaceConfig: normalizedTask.workspace ? JSON.stringify(normalizedTask.workspace) : null,
+      sessionData: normalizedTask.sessionData ? JSON.stringify(normalizedTask.sessionData) : null,
+      lastCheckpoint: normalizedTask.sessionData?.lastCheckpoint?.toISOString() || null,
     });
 
     // Insert dependencies if any
-    if (task.dependsOn && task.dependsOn.length > 0) {
+    if (normalizedTask.dependsOn && normalizedTask.dependsOn.length > 0) {
       const depStmt = this.db.prepare(`
         INSERT INTO task_dependencies (task_id, depends_on_task_id)
         VALUES (@taskId, @dependsOnTaskId)
       `);
 
-      for (const depId of task.dependsOn) {
-        depStmt.run({ taskId: task.id, dependsOnTaskId: depId });
+      for (const depId of normalizedTask.dependsOn) {
+        depStmt.run({ taskId: normalizedTask.id, dependsOnTaskId: depId });
       }
     }
+
+    return normalizedTask;
+  }
+
+  private buildTaskFromRequest(request: CreateTaskRequest): Task {
+    const now = new Date();
+    const autonomy = (request.autonomy || 'review-before-merge') as AutonomyLevel;
+    const priority = request.priority || 'normal';
+
+    return {
+      id: generateTaskId(),
+      description: request.description,
+      acceptanceCriteria: request.acceptanceCriteria,
+      workflow: request.workflow || 'feature',
+      autonomy,
+      status: 'pending',
+      priority,
+      projectPath: request.projectPath || this.projectPath,
+      retryCount: 0,
+      maxRetries: 3,
+      resumeAttempts: 0,
+      dependsOn: [],
+      blockedBy: [],
+      createdAt: now,
+      updatedAt: now,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        estimatedCost: 0,
+      },
+      logs: [],
+      artifacts: [],
+    };
   }
 
   /**
@@ -491,6 +551,53 @@ export class TaskStore {
     }
 
     return tasks;
+  }
+
+  async getTasksByStatus(status: TaskStatus): Promise<Task[]> {
+    return this.listTasks({ status });
+  }
+
+  async getAllTasks(): Promise<Task[]> {
+    return this.listTasks();
+  }
+
+  async updateTaskStatus(
+    taskId: string,
+    status: TaskStatus,
+    stage?: string,
+    message?: string
+  ): Promise<void> {
+    const updates: Partial<{
+      status: TaskStatus;
+      currentStage: string;
+      error: string;
+      updatedAt: Date;
+      completedAt: Date;
+      pausedAt: Date | undefined;
+      pauseReason: string | undefined;
+    }> = {
+      status,
+      updatedAt: new Date(),
+    };
+
+    if (stage) {
+      updates.currentStage = stage;
+    }
+
+    if (status === 'completed') {
+      updates.completedAt = new Date();
+    }
+
+    if (status === 'paused') {
+      updates.pausedAt = new Date();
+      updates.pauseReason = message;
+    }
+
+    if (status === 'failed' || status === 'cancelled') {
+      updates.error = message;
+    }
+
+    await this.updateTask(taskId, updates);
   }
 
   /**
@@ -770,6 +877,23 @@ export class TaskStore {
     dependsOn?: string[],
     blockedBy?: string[]
   ): Task {
+    const workspace = row.workspace_config
+      ? (JSON.parse(row.workspace_config) as WorkspaceConfig)
+      : undefined;
+
+    let sessionData = row.session_data
+      ? (JSON.parse(row.session_data) as TaskSessionData)
+      : undefined;
+
+    if (sessionData?.lastCheckpoint) {
+      sessionData.lastCheckpoint = new Date(sessionData.lastCheckpoint);
+    } else if (row.last_checkpoint) {
+      sessionData = {
+        ...(sessionData || {}),
+        lastCheckpoint: new Date(row.last_checkpoint),
+      };
+    }
+
     return {
       id: row.id,
       description: row.description,
@@ -784,6 +908,7 @@ export class TaskStore {
       prUrl: row.pr_url || undefined,
       retryCount: row.retry_count || 0,
       maxRetries: row.max_retries || 3,
+      resumeAttempts: row.resume_attempts || 0,
       dependsOn: dependsOn || [],
       blockedBy: blockedBy || [],
       parentTaskId: row.parent_task_id || undefined,
@@ -804,6 +929,8 @@ export class TaskStore {
       logs,
       artifacts,
       error: row.error || undefined,
+      workspace,
+      sessionData,
     };
   }
 
@@ -1098,6 +1225,7 @@ interface TaskRow {
   pr_url: string | null;
   retry_count: number | null;
   max_retries: number | null;
+  resume_attempts: number | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -1112,6 +1240,9 @@ interface TaskRow {
   paused_at: string | null;
   resume_after: string | null;
   pause_reason: string | null;
+  workspace_config: string | null;
+  session_data: string | null;
+  last_checkpoint: string | null;
 }
 
 interface TaskLogRow {

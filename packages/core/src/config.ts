@@ -325,6 +325,14 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       pollInterval: config.daemon?.pollInterval ?? 5000,
       autoStart: config.daemon?.autoStart ?? false,
       logLevel: config.daemon?.logLevel || 'info',
+      installAsService: config.daemon?.installAsService ?? false,
+      serviceName: config.daemon?.serviceName || 'apex-daemon',
+      service: config.daemon?.service,
+      healthCheck: config.daemon?.healthCheck,
+      watchdog: config.daemon?.watchdog,
+      timeBasedUsage: config.daemon?.timeBasedUsage,
+      sessionRecovery: config.daemon?.sessionRecovery,
+      idleProcessing: config.daemon?.idleProcessing,
     },
   };
 }

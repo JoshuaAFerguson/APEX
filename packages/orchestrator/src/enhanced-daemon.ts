@@ -1,4 +1,7 @@
 import { EventEmitter } from 'eventemitter3';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'yaml';
 import { DaemonRunner, DaemonRunnerOptions } from './runner';
 import { ServiceManager, ServiceManagerOptions } from './service-manager';
 import { UsageManager } from './usage-manager';
@@ -13,10 +16,12 @@ import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
 import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
 import {
   DaemonConfig,
+  DaemonConfigSchema,
   LimitsConfig,
+  LimitsConfigSchema,
   ApexConfig,
+  ApexConfigSchema,
   Task,
-  loadConfig,
 } from '@apexcli/core';
 
 export interface EnhancedDaemonEvents {
@@ -44,15 +49,15 @@ export interface EnhancedDaemonEvents {
  * Enhanced daemon with v0.4.0 "Sleepless Mode & Autonomy" features
  */
 export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
-  private daemonRunner: DaemonRunner;
-  private serviceManager: ServiceManager;
-  private usageManager: UsageManager;
-  private sessionManager: SessionManager;
-  private workspaceManager: WorkspaceManager;
-  private interactionManager: InteractionManager;
-  private idleProcessor: IdleProcessor;
-  private thoughtCapture: ThoughtCaptureManager;
-  private capacityMonitor: CapacityMonitor;
+  private daemonRunner!: DaemonRunner;
+  private serviceManager!: ServiceManager;
+  private usageManager!: UsageManager;
+  private sessionManager!: SessionManager;
+  private workspaceManager!: WorkspaceManager;
+  private interactionManager!: InteractionManager;
+  private idleProcessor!: IdleProcessor;
+  private thoughtCapture!: ThoughtCaptureManager;
+  private capacityMonitor!: CapacityMonitor;
 
   private orchestrator: ApexOrchestrator;
   private store: TaskStore;
@@ -68,7 +73,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   constructor(projectPath: string, config?: ApexConfig) {
     super();
     this.projectPath = projectPath;
-    this.config = config || this.loadConfig();
+    this.config = config ?? this.loadConfigSync();
 
     // Initialize core components
     this.store = new TaskStore(projectPath);
@@ -222,8 +227,8 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   // ============================================================================
 
   private initializeComponents(): void {
-    const daemonConfig = this.config.daemon || {};
-    const limitsConfig = this.config.limits || {};
+    const daemonConfig = DaemonConfigSchema.parse(this.config.daemon ?? {});
+    const limitsConfig = LimitsConfigSchema.parse(this.config.limits ?? {});
 
     // Initialize daemon runner
     this.daemonRunner = new DaemonRunner({
@@ -234,7 +239,11 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     // Initialize service manager
     this.serviceManager = new ServiceManager({
       projectPath: this.projectPath,
-      config: daemonConfig,
+      serviceName: daemonConfig.serviceName,
+      workingDirectory: this.projectPath,
+      environment: {
+        APEX_PROJECT_PATH: this.projectPath,
+      },
     });
 
     // Initialize usage manager
@@ -452,15 +461,24 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   // Utility Methods
   // ============================================================================
 
-  private loadConfig(): ApexConfig {
+  private loadConfigSync(): ApexConfig {
+    const configPath = path.join(this.projectPath, '.apex', 'config.yaml');
+
     try {
-      return loadConfig(this.projectPath);
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const rawConfig = yaml.parse(content);
+      return ApexConfigSchema.parse(rawConfig);
     } catch (error) {
-      console.warn('⚠️ Failed to load config, using defaults');
-      return {
-        version: '1.0',
-        project: { name: 'apex-project' },
-      };
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== 'ENOENT') {
+        console.warn('⚠️ Failed to load config, using defaults:', err.message);
+      } else {
+        console.warn('⚠️ Config not found, using defaults');
+      }
+
+      return ApexConfigSchema.parse({
+        project: { name: path.basename(this.projectPath) || 'apex-project' },
+      });
     }
   }
 

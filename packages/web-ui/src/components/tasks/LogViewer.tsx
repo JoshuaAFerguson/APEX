@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import { Search, ChevronDown, ChevronUp, Filter } from 'lucide-react'
+import { Search, ChevronDown, Filter } from 'lucide-react'
 
 export interface LogEntry {
   timestamp: Date

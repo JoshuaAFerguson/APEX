@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join, basename, resolve } from 'path';
+import { EventEmitter } from 'eventemitter3';
 import { WorkspaceConfig, Task } from '@apexcli/core';
 
 const execAsync = promisify(exec);
@@ -23,13 +24,19 @@ export interface WorkspaceInfo {
 /**
  * Manages isolated workspaces for task execution using various strategies
  */
-export class WorkspaceManager {
+export interface WorkspaceManagerEvents {
+  'workspace-created': (taskId: string, workspacePath: string) => void;
+  'workspace-cleaned': (taskId: string) => void;
+}
+
+export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private projectPath: string;
   private defaultStrategy: WorkspaceConfig['strategy'];
   private workspacesDir: string;
   private activeWorkspaces: Map<string, WorkspaceInfo> = new Map();
 
   constructor(options: WorkspaceManagerOptions) {
+    super();
     this.projectPath = options.projectPath;
     this.defaultStrategy = options.defaultStrategy;
     this.workspacesDir = join(this.projectPath, '.apex', 'workspaces');
@@ -80,6 +87,7 @@ export class WorkspaceManager {
 
     this.activeWorkspaces.set(task.id, workspaceInfo);
     await this.saveWorkspaceInfo(workspaceInfo);
+    this.emit('workspace-created', task.id, workspaceInfo.workspacePath);
 
     return workspaceInfo;
   }
@@ -137,6 +145,7 @@ export class WorkspaceManager {
       workspace.status = 'cleaned';
       await this.saveWorkspaceInfo(workspace);
       this.activeWorkspaces.delete(taskId);
+      this.emit('workspace-cleaned', taskId);
     } catch (error) {
       console.warn(`Failed to cleanup workspace for task ${taskId}:`, error);
       workspace.status = 'cleanup-pending';

@@ -376,7 +376,7 @@ export class LaunchdGenerator {
 export class ServiceManager {
   private readonly options: Required<ServiceManagerOptions>;
   private readonly platform: Platform;
-  private readonly generator: SystemdGenerator | LaunchdGenerator | null;
+  private generator: SystemdGenerator | LaunchdGenerator | null = null;
   private enableOnBoot: boolean = false;
 
   constructor(options: ServiceManagerOptions = {}) {
@@ -465,6 +465,37 @@ export class ServiceManager {
   // ============================================================================
   // Service Management Operations
   // ============================================================================
+
+  async installService(options: InstallOptions = {}): Promise<InstallResult> {
+    return this.install(options);
+  }
+
+  async uninstallService(options: UninstallOptions = {}): Promise<UninstallResult> {
+    return this.uninstall(options);
+  }
+
+  async getServiceStatus(): Promise<ServiceStatus> {
+    return this.getStatus();
+  }
+
+  async performHealthCheck(): Promise<{ healthy: boolean; errors: string[] }> {
+    const errors: string[] = [];
+
+    if (!this.isSupported()) {
+      errors.push(`Service management not supported on ${this.platform}`);
+      return { healthy: false, errors };
+    }
+
+    const status = await this.getStatus();
+    if (!status.installed) {
+      errors.push('Service not installed');
+    }
+    if (status.installed && !status.running) {
+      errors.push('Service not running');
+    }
+
+    return { healthy: errors.length === 0, errors };
+  }
 
   async install(options: InstallOptions = {}): Promise<InstallResult> {
     const { enableAfterInstall = false, force = false, enableOnBoot = false } = options;

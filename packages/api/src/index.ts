@@ -5,6 +5,7 @@ import { WebSocket } from 'ws';
 import {
   Task,
   TaskStatus,
+  TaskUsage,
   CreateTaskRequest,
   CreateTaskResponse,
   UpdateTaskStatusRequest,
@@ -13,7 +14,7 @@ import {
   SubtaskStrategy,
   SubtaskDefinition,
 } from '@apexcli/core';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { ApexOrchestrator } from '@apex/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -86,7 +87,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     });
 
     // Start execution in background
-    orchestrator.executeTask(task.id).catch((error) => {
+    orchestrator.executeTask(task.id).catch((error: Error) => {
       app.log.error(`Task ${task.id} failed: ${error.message}`);
     });
 
@@ -215,7 +216,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
       // Reset task and start execution
       await orchestrator.updateTaskStatus(id, 'pending');
-      orchestrator.executeTask(id).catch((error) => {
+      orchestrator.executeTask(id).catch((error: Error) => {
         app.log.error(`Task ${id} retry failed: ${error.message}`);
       });
 
@@ -248,7 +249,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       // Handle pending tasks (subtasks that were never started)
       if (task.status === 'pending' || task.status === 'queued') {
         // Start execution in background
-        orchestrator.executeTask(id).catch((error) => {
+        orchestrator.executeTask(id).catch((error: Error) => {
           app.log.error(`Task ${id} failed: ${error.message}`);
         });
         return { ok: true, message: 'Task execution started', taskId: id };
@@ -260,7 +261,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         const hasPending = await orchestrator.hasPendingSubtasks(id);
         if (hasPending) {
           // Continue executing pending subtasks in background
-          orchestrator.continuePendingSubtasks(id).catch((error) => {
+          orchestrator.continuePendingSubtasks(id).catch((error: Error) => {
             app.log.error(`Task ${id} failed while continuing subtasks: ${error.message}`);
           });
           return { ok: true, message: 'Continuing execution of pending subtasks', taskId: id };
@@ -306,15 +307,19 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
-      const subtasks = await orchestrator.decomposeTask(id, subtaskDefinitions, strategy);
+      const subtasks = await orchestrator.decomposeTask(
+        id,
+        subtaskDefinitions,
+        strategy
+      ) as Task[];
 
       return {
         ok: true,
         parentTaskId: id,
-        subtasks: subtasks.map(s => ({
-          id: s.id,
-          description: s.description,
-          status: s.status,
+        subtasks: subtasks.map((subtask: Task) => ({
+          id: subtask.id,
+          description: subtask.description,
+          status: subtask.status,
         })),
         strategy,
       };
@@ -379,7 +384,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       }
 
       // Start subtask execution in background
-      orchestrator.executeSubtasks(id).catch((error) => {
+      orchestrator.executeSubtasks(id).catch((error: Error) => {
         app.log.error(`Subtask execution for ${id} failed: ${error.message}`);
       });
 
@@ -617,7 +622,7 @@ function broadcast(taskId: string, event: ApexEvent): void {
  * Set up event broadcasting from orchestrator
  */
 function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
-  orchestrator.on('task:created', (task) => {
+  orchestrator.on('task:created', (task: Task) => {
     broadcast(task.id, {
       type: 'task:created',
       taskId: task.id,
@@ -626,7 +631,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('task:started', (task) => {
+  orchestrator.on('task:started', (task: Task) => {
     broadcast(task.id, {
       type: 'task:started',
       taskId: task.id,
@@ -635,7 +640,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('task:completed', (task) => {
+  orchestrator.on('task:completed', (task: Task) => {
     broadcast(task.id, {
       type: 'task:completed',
       taskId: task.id,
@@ -644,7 +649,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('task:failed', (task, error) => {
+  orchestrator.on('task:failed', (task: Task, error: Error) => {
     broadcast(task.id, {
       type: 'task:failed',
       taskId: task.id,
@@ -653,7 +658,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('task:paused', (task, reason) => {
+  orchestrator.on('task:paused', (task: Task, reason: string) => {
     broadcast(task.id, {
       type: 'task:paused',
       taskId: task.id,
@@ -667,7 +672,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('agent:message', (taskId, message) => {
+  orchestrator.on('agent:message', (taskId: string, message: unknown) => {
     broadcast(taskId, {
       type: 'agent:message',
       taskId,
@@ -676,7 +681,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+  orchestrator.on('agent:thinking', (taskId: string, agent: string, thinking: string) => {
     broadcast(taskId, {
       type: 'agent:thinking',
       taskId,
@@ -685,7 +690,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+  orchestrator.on('agent:tool-use', (taskId: string, tool: string, input: unknown) => {
     broadcast(taskId, {
       type: 'agent:tool-use',
       taskId,
@@ -694,7 +699,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('usage:updated', (taskId, usage) => {
+  orchestrator.on('usage:updated', (taskId: string, usage: TaskUsage) => {
     broadcast(taskId, {
       type: 'usage:updated',
       taskId,
@@ -704,7 +709,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   // Subtask events
-  orchestrator.on('task:decomposed', (task, subtaskIds) => {
+  orchestrator.on('task:decomposed', (task: Task, subtaskIds: string[]) => {
     broadcast(task.id, {
       type: 'task:decomposed',
       taskId: task.id,
@@ -713,7 +718,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('subtask:created', (subtask, parentTaskId) => {
+  orchestrator.on('subtask:created', (subtask: Task, parentTaskId: string) => {
     broadcast(parentTaskId, {
       type: 'subtask:created',
       taskId: parentTaskId,
@@ -722,7 +727,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('subtask:completed', (subtask, parentTaskId) => {
+  orchestrator.on('subtask:completed', (subtask: Task, parentTaskId: string) => {
     broadcast(parentTaskId, {
       type: 'subtask:completed',
       taskId: parentTaskId,
@@ -731,7 +736,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('subtask:failed', (subtask, parentTaskId, error) => {
+  orchestrator.on('subtask:failed', (subtask: Task, parentTaskId: string, error: Error) => {
     broadcast(parentTaskId, {
       type: 'subtask:failed',
       taskId: parentTaskId,

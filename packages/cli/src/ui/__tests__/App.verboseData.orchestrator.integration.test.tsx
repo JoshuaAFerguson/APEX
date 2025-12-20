@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { App, type AppProps, type AppState } from '../App.js';
 import type { VerboseDebugData, DisplayMode, ApexConfig, Task } from '@apexcli/core';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
+import type { ApexOrchestrator } from '@apex/orchestrator';
 import { EventEmitter } from 'events';
 
 // Mock the components to focus on verboseData behavior

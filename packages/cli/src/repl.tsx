@@ -21,8 +21,11 @@ import {
   formatDuration,
   getEffectiveConfig,
   ApexConfig,
+  VerboseDebugData,
+  Task,
+  TaskUsage,
 } from '@apexcli/core';
-import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
+import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
 import { startInkApp, type InkAppInstance } from './ui/index.js';
 import { SessionStore } from './services/SessionStore.js';
 import { SessionAutoSaver } from './services/SessionAutoSaver.js';
@@ -553,7 +556,7 @@ async function handleRetry(args: string[]): Promise<void> {
   }
 
   await ctx.orchestrator.updateTaskStatus(taskId, 'pending');
-  ctx.orchestrator.executeTask(taskId).catch((error) => {
+  ctx.orchestrator.executeTask(taskId).catch((error: Error) => {
     ctx.app?.addMessage({
       type: 'error',
       content: `Task failed: ${error.message}`,
@@ -826,7 +829,7 @@ async function executeTask(description: string): Promise<void> {
       }
 
       ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
-    }).catch(async (error) => {
+    }).catch(async (error: Error) => {
       ctx.app?.addMessage({
         type: 'error',
         content: `Task failed: ${error.message}`,
@@ -981,6 +984,11 @@ async function handlePreview(args: string[]): Promise<void> {
 
   // Get current state
   const currentState = ctx.app?.getState();
+  const previewConfig = currentState?.previewConfig ?? {
+    confidenceThreshold: 0.7,
+    autoExecuteHighConfidence: false,
+    timeoutMs: 5000,
+  };
 
   switch (action) {
     case 'on':
@@ -990,9 +998,7 @@ async function handlePreview(args: string[]): Promise<void> {
         content: 'Preview mode enabled. You will see a preview before each execution.',
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case 'off':
@@ -1002,9 +1008,7 @@ async function handlePreview(args: string[]): Promise<void> {
         content: 'Preview mode disabled.',
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case undefined:
@@ -1016,16 +1020,14 @@ async function handlePreview(args: string[]): Promise<void> {
         content: `Preview mode ${newMode ? 'enabled' : 'disabled'}.`,
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case 'confidence':
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Preview confidence threshold: ${(currentState?.previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
+          content: `Preview confidence threshold: ${(previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
         });
       } else {
         const parsed = parseFloat(value);
@@ -1045,7 +1047,7 @@ async function handlePreview(args: string[]): Promise<void> {
             });
           } else {
             const newConfig = {
-              ...currentState?.previewConfig,
+              ...previewConfig,
               confidenceThreshold: threshold,
             };
             ctx.app?.updateState({ previewConfig: newConfig });
@@ -1066,7 +1068,7 @@ async function handlePreview(args: string[]): Promise<void> {
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Preview timeout: ${currentState?.previewConfig.timeoutMs / 1000}s`,
+          content: `Preview timeout: ${previewConfig.timeoutMs / 1000}s`,
         });
       } else {
         const timeout = parseInt(value, 10);
@@ -1077,7 +1079,7 @@ async function handlePreview(args: string[]): Promise<void> {
           });
         } else {
           const newConfig = {
-            ...currentState?.previewConfig,
+            ...previewConfig,
             timeoutMs: timeout * 1000,
           };
           ctx.app?.updateState({ previewConfig: newConfig });
@@ -1097,11 +1099,11 @@ async function handlePreview(args: string[]): Promise<void> {
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Auto-execute high confidence: ${currentState?.previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
+          content: `Auto-execute high confidence: ${previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
         });
       } else if (value === 'on' || value === 'true') {
         const newConfig = {
-          ...currentState?.previewConfig,
+          ...previewConfig,
           autoExecuteHighConfidence: true,
         };
         ctx.app?.updateState({ previewConfig: newConfig });
@@ -1115,7 +1117,7 @@ async function handlePreview(args: string[]): Promise<void> {
         });
       } else if (value === 'off' || value === 'false') {
         const newConfig = {
-          ...currentState?.previewConfig,
+          ...previewConfig,
           autoExecuteHighConfidence: false,
         };
         ctx.app?.updateState({ previewConfig: newConfig });
@@ -1137,7 +1139,7 @@ async function handlePreview(args: string[]): Promise<void> {
 
     case 'status':
     case 'settings':  // Add alias for settings
-      const config = currentState?.previewConfig;
+      const config = previewConfig;
       ctx.app?.addMessage({
         type: 'assistant',
         content: `Preview Settings:
@@ -1363,7 +1365,7 @@ export async function startInkREPL(): Promise<void> {
       await ctx.orchestrator.initialize();
 
       // Set up orchestrator event listeners for subtask progress tracking
-      ctx.orchestrator.on('subtask:created', (subtask, parentTaskId) => {
+      ctx.orchestrator.on('subtask:created', (subtask: Task, parentTaskId: string) => {
         // Update subtask progress in app state
         const currentProgress = ctx.app?.getState()?.subtaskProgress || { completed: 0, total: 0 };
         ctx.app?.updateState({
@@ -1371,7 +1373,7 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
-      ctx.orchestrator.on('subtask:completed', (subtask, parentTaskId) => {
+      ctx.orchestrator.on('subtask:completed', (subtask: Task, parentTaskId: string) => {
         // Update subtask progress in app state
         const currentProgress = ctx.app?.getState()?.subtaskProgress || { completed: 0, total: 0 };
         ctx.app?.updateState({
@@ -1379,14 +1381,14 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
-      ctx.orchestrator.on('task:started', (task) => {
+      ctx.orchestrator.on('task:started', (task: Task) => {
         // Reset subtask progress when a new task starts
         ctx.app?.updateState({
           subtaskProgress: { completed: 0, total: 0 },
         });
       });
 
-      ctx.orchestrator.on('task:completed', (task) => {
+      ctx.orchestrator.on('task:completed', (task: Task) => {
         // Clear subtask progress and agent state when task completes
         ctx.app?.updateState({
           subtaskProgress: undefined,
@@ -1396,7 +1398,7 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
-      ctx.orchestrator.on('task:failed', (task, error) => {
+      ctx.orchestrator.on('task:failed', (task: Task, error: Error) => {
         // Clear subtask progress and agent state when task fails
         ctx.app?.updateState({
           subtaskProgress: undefined,
@@ -1407,7 +1409,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Handle task paused events (rate limits, etc.)
-      ctx.orchestrator.on('task:paused', (task, reason) => {
+      ctx.orchestrator.on('task:paused', (task: Task, reason: string) => {
         const resumeInfo = task.resumeAfter
           ? `Will auto-resume at ${task.resumeAfter.toLocaleTimeString()}.`
           : 'Use /resume to continue.';
@@ -1425,7 +1427,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Stream agent messages to the UI in real-time
-      ctx.orchestrator.on('agent:message', (taskId, message) => {
+      ctx.orchestrator.on('agent:message', (taskId: string, message: unknown) => {
         // Extract text content from the message
         let textContent = '';
 
@@ -1462,7 +1464,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Stream agent thinking to the UI
-      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+      ctx.orchestrator.on('agent:thinking', (taskId: string, agent: string, thinking: string) => {
         // Add thinking content as a separate message type
         ctx.app?.addMessage({
           type: 'assistant',
@@ -1473,7 +1475,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Stream tool use events to the UI
-      ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+      ctx.orchestrator.on('agent:tool-use', (taskId: string, tool: string, input: unknown) => {
         // Display tool usage in a compact format
         const toolDisplay = typeof input === 'object' && input !== null
           ? `${tool}: ${JSON.stringify(input).substring(0, 100)}${JSON.stringify(input).length > 100 ? '...' : ''}`
@@ -1486,7 +1488,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Update token/cost display in real-time
-      ctx.orchestrator.on('usage:updated', (taskId, usage) => {
+      ctx.orchestrator.on('usage:updated', (taskId: string, usage: TaskUsage) => {
         ctx.app?.updateState({
           tokens: { input: usage.inputTokens, output: usage.outputTokens },
           cost: usage.estimatedCost,
@@ -1494,7 +1496,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Track agent transitions for handoff animation
-      ctx.orchestrator.on('task:stage-changed', async (task, stageName) => {
+      ctx.orchestrator.on('task:stage-changed', async (task: Task, stageName: string) => {
         // Look up the agent for this stage from the workflow
         try {
           const { loadWorkflow } = await import('@apexcli/core');
@@ -1515,7 +1517,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Track parallel execution
-      ctx.orchestrator.on('stage:parallel-started', (taskId, stages, agents) => {
+      ctx.orchestrator.on('stage:parallel-started', (taskId: string, stages: string[], agents: string[]) => {
         const parallelAgents = agents.map(name => ({
           name,
           status: 'parallel' as const,
@@ -1528,7 +1530,7 @@ export async function startInkREPL(): Promise<void> {
         });
       });
 
-      ctx.orchestrator.on('stage:parallel-completed', (taskId) => {
+      ctx.orchestrator.on('stage:parallel-completed', (taskId: string) => {
         ctx.app?.updateState({
           parallelAgents: [],
           showParallelPanel: false,
@@ -1568,7 +1570,7 @@ export async function startInkREPL(): Promise<void> {
         if (!currentVerboseData) return;
 
         const agents = Object.keys(currentVerboseData.agentTokens);
-        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes);
+        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes) as number[];
 
         if (responseTimes.length > 0) {
           currentVerboseData.metrics.averageResponseTime =
@@ -1588,20 +1590,21 @@ export async function startInkREPL(): Promise<void> {
 
         // Calculate tool efficiency based on usage vs errors
         Object.keys(currentVerboseData.timing.toolUsageTimes).forEach(tool => {
-          const errorCounts = Object.values(currentVerboseData!.agentDebug.errorCounts).reduce((sum, count) => sum + count, 0);
-          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) =>
-            sum + (toolCounts[tool] || 0), 0);
+          const errorCounts = (Object.values(currentVerboseData!.agentDebug.errorCounts) as number[])
+            .reduce((sum, count) => sum + count, 0);
+          const toolUsages = (Object.values(currentVerboseData!.agentDebug.toolCallCounts) as Record<string, number>[])
+            .reduce((sum, toolCounts) => sum + (toolCounts[tool] || 0), 0);
           currentVerboseData!.metrics.toolEfficiency[tool] = toolUsages > 0 ? 1 - (errorCounts / toolUsages) : 1;
         });
       };
 
       // Track task lifecycle for verbose data
-      ctx.orchestrator.on('task:started', (task) => {
+      ctx.orchestrator.on('task:started', (task: Task) => {
         initializeVerboseData();
         ctx.app?.updateState({ verboseData: currentVerboseData });
       });
 
-      ctx.orchestrator.on('task:stage-changed', (task, stageName) => {
+      ctx.orchestrator.on('task:stage-changed', (task: Task, stageName: string) => {
         if (currentVerboseData) {
           // Complete previous stage timing
           const now = new Date();
@@ -1618,7 +1621,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Track agent token usage
-      ctx.orchestrator.on('usage:updated', (taskId, usage) => {
+      ctx.orchestrator.on('usage:updated', (taskId: string, usage: TaskUsage) => {
         if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
           const agent = ctx.app.getState()?.activeAgent || 'unknown';
           currentVerboseData.agentTokens[agent] = {
@@ -1635,7 +1638,7 @@ export async function startInkREPL(): Promise<void> {
       const agentResponseStartTimes = new Map<string, number>();
       const toolUsageStartTimes = new Map<string, number>();
 
-      ctx.orchestrator.on('agent:message', (taskId, message) => {
+      ctx.orchestrator.on('agent:message', (taskId: string, message: unknown) => {
         if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
           const agent = ctx.app.getState()?.activeAgent || 'unknown';
           const endTime = Date.now();
@@ -1655,12 +1658,12 @@ export async function startInkREPL(): Promise<void> {
         }
       });
 
-      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+      ctx.orchestrator.on('agent:thinking', (taskId: string, agent: string, thinking: string) => {
         // Mark agent response start time
         agentResponseStartTimes.set(agent, Date.now());
       });
 
-      ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+      ctx.orchestrator.on('agent:tool-use', (taskId: string, tool: string, input: unknown) => {
         if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
           const agent = ctx.app.getState()?.activeAgent || 'unknown';
 
@@ -1679,7 +1682,7 @@ export async function startInkREPL(): Promise<void> {
       });
 
       // Track task completion/failure for final metrics
-      ctx.orchestrator.on('task:completed', (task) => {
+      ctx.orchestrator.on('task:completed', (task: Task) => {
         if (currentVerboseData) {
           const now = new Date();
           if (stageStartTime) {
@@ -1691,7 +1694,7 @@ export async function startInkREPL(): Promise<void> {
         }
       });
 
-      ctx.orchestrator.on('task:failed', (task, error) => {
+      ctx.orchestrator.on('task:failed', (task: Task, error: Error) => {
         if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
           const agent = ctx.app.getState()?.activeAgent || 'unknown';
           currentVerboseData.agentDebug.errorCounts[agent] =

@@ -279,6 +279,7 @@ export interface Task {
   logs: TaskLog[];
   artifacts: TaskArtifact[];
   error?: string;
+  conversation?: AgentMessage[];
   // v0.4.0 enhancements
   workspace?: WorkspaceConfig;  // Workspace isolation settings
   sessionData?: TaskSessionData; // Session recovery data
@@ -406,7 +407,7 @@ export interface TaskInteraction {
 /**
  * Service installation configuration
  */
-export interface ServiceConfig {
+export interface ServiceInstallConfig {
   name: string;
   description: string;
   execPath: string;
@@ -568,6 +569,7 @@ export interface AgentUsage {
   outputTokens: number;
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
+  estimatedCost?: number;
 }
 
 /**
