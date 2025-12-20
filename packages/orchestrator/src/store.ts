@@ -925,6 +925,44 @@ export class TaskStore {
     return tasks;
   }
 
+  /**
+   * Get paused tasks that are ready for resumption
+   * Returns tasks with status='paused' and resumable pause reasons,
+   * excluding tasks with future resumeAfter dates
+   */
+  async getPausedTasksForResume(): Promise<Task[]> {
+    const now = new Date().toISOString();
+
+    const sql = `
+      SELECT t.*
+      FROM tasks t
+      WHERE t.status = 'paused'
+      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity')
+      AND (t.resume_after IS NULL OR t.resume_after <= ?)
+      ORDER BY CASE t.priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'normal' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END ASC, t.created_at ASC
+    `;
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(now) as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+    }
+
+    return tasks;
+  }
+
   // ============================================================================
   // Task Checkpoints
   // ============================================================================

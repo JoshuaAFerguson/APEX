@@ -946,4 +946,343 @@ describe('TaskStore', () => {
       expect(latest).toBeNull();
     });
   });
+
+  describe('Paused Task Resumption', () => {
+    it('should get paused tasks ready for resumption', async () => {
+      // Create tasks with different pause reasons and statuses
+      const now = new Date();
+      const future = new Date(now.getTime() + 60 * 1000); // 1 minute from now
+
+      // Task 1: Paused due to usage limit, ready for resume
+      const task1 = createTestTask();
+      task1.id = 'task_usage_limit';
+      task1.status = 'paused';
+      await store.createTask(task1);
+      await store.updateTask(task1.id, {
+        pausedAt: now,
+        pauseReason: 'usage_limit',
+        resumeAfter: undefined,
+      });
+
+      // Task 2: Paused due to budget, ready for resume
+      const task2 = createTestTask();
+      task2.id = 'task_budget';
+      task2.status = 'paused';
+      task2.priority = 'high';
+      await store.createTask(task2);
+      await store.updateTask(task2.id, {
+        pausedAt: now,
+        pauseReason: 'budget',
+        resumeAfter: undefined,
+      });
+
+      // Task 3: Paused due to capacity, ready for resume
+      const task3 = createTestTask();
+      task3.id = 'task_capacity';
+      task3.status = 'paused';
+      task3.priority = 'urgent';
+      await store.createTask(task3);
+      await store.updateTask(task3.id, {
+        pausedAt: now,
+        pauseReason: 'capacity',
+        resumeAfter: undefined,
+      });
+
+      // Task 4: Paused due to manual reason (should NOT be returned)
+      const task4 = createTestTask();
+      task4.id = 'task_manual';
+      task4.status = 'paused';
+      await store.createTask(task4);
+      await store.updateTask(task4.id, {
+        pausedAt: now,
+        pauseReason: 'manual',
+        resumeAfter: undefined,
+      });
+
+      // Task 5: Paused with future resumeAfter (should NOT be returned)
+      const task5 = createTestTask();
+      task5.id = 'task_future_resume';
+      task5.status = 'paused';
+      await store.createTask(task5);
+      await store.updateTask(task5.id, {
+        pausedAt: now,
+        pauseReason: 'usage_limit',
+        resumeAfter: future,
+      });
+
+      // Task 6: Not paused (should NOT be returned)
+      const task6 = createTestTask();
+      task6.id = 'task_not_paused';
+      task6.status = 'pending';
+      await store.createTask(task6);
+
+      // Get paused tasks ready for resumption
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      // Should return tasks 1, 2, and 3 in priority order (urgent, high, normal)
+      expect(resumableTasks).toHaveLength(3);
+      expect(resumableTasks.map(t => t.id)).toEqual([
+        'task_capacity',   // urgent priority
+        'task_budget',     // high priority
+        'task_usage_limit' // normal priority
+      ]);
+
+      // Verify each task has the expected properties
+      expect(resumableTasks[0].status).toBe('paused');
+      expect(resumableTasks[0].pauseReason).toBe('capacity');
+      expect(resumableTasks[1].status).toBe('paused');
+      expect(resumableTasks[1].pauseReason).toBe('budget');
+      expect(resumableTasks[2].status).toBe('paused');
+      expect(resumableTasks[2].pauseReason).toBe('usage_limit');
+    });
+
+    it('should return empty array when no resumable paused tasks exist', async () => {
+      const resumableTasks = await store.getPausedTasksForResume();
+      expect(resumableTasks).toHaveLength(0);
+    });
+
+    it('should handle tasks with past resumeAfter dates', async () => {
+      const past = new Date(Date.now() - 60 * 1000); // 1 minute ago
+
+      const task = createTestTask();
+      task.status = 'paused';
+      await store.createTask(task);
+      await store.updateTask(task.id, {
+        pausedAt: past,
+        pauseReason: 'usage_limit',
+        resumeAfter: past,
+      });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+      expect(resumableTasks).toHaveLength(1);
+      expect(resumableTasks[0].id).toBe(task.id);
+    });
+
+    it('should handle mixed resumeAfter scenarios correctly', async () => {
+      const now = new Date();
+      const past = new Date(now.getTime() - 60 * 1000);
+      const future = new Date(now.getTime() + 60 * 1000);
+
+      // Task with null resumeAfter (should be returned)
+      const task1 = createTestTask();
+      task1.id = 'task_null_resume';
+      task1.status = 'paused';
+      await store.createTask(task1);
+      await store.updateTask(task1.id, {
+        pauseReason: 'usage_limit',
+        resumeAfter: undefined,
+      });
+
+      // Task with past resumeAfter (should be returned)
+      const task2 = createTestTask();
+      task2.id = 'task_past_resume';
+      task2.status = 'paused';
+      await store.createTask(task2);
+      await store.updateTask(task2.id, {
+        pauseReason: 'budget',
+        resumeAfter: past,
+      });
+
+      // Task with future resumeAfter (should NOT be returned)
+      const task3 = createTestTask();
+      task3.id = 'task_future_resume';
+      task3.status = 'paused';
+      await store.createTask(task3);
+      await store.updateTask(task3.id, {
+        pauseReason: 'capacity',
+        resumeAfter: future,
+      });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+      expect(resumableTasks).toHaveLength(2);
+
+      const taskIds = resumableTasks.map(t => t.id);
+      expect(taskIds).toContain('task_null_resume');
+      expect(taskIds).toContain('task_past_resume');
+      expect(taskIds).not.toContain('task_future_resume');
+    });
+
+    it('should respect creation time ordering when priorities are equal', async () => {
+      const now = new Date();
+
+      // Create three tasks with same priority but different creation times
+      const task1 = createTestTask();
+      task1.id = 'task_first_created';
+      task1.status = 'paused';
+      task1.priority = 'normal';
+      task1.createdAt = new Date(now.getTime() - 120000); // 2 minutes ago
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { pauseReason: 'usage_limit' });
+
+      const task2 = createTestTask();
+      task2.id = 'task_second_created';
+      task2.status = 'paused';
+      task2.priority = 'normal';
+      task2.createdAt = new Date(now.getTime() - 60000); // 1 minute ago
+      await store.createTask(task2);
+      await store.updateTask(task2.id, { pauseReason: 'budget' });
+
+      const task3 = createTestTask();
+      task3.id = 'task_third_created';
+      task3.status = 'paused';
+      task3.priority = 'normal';
+      task3.createdAt = now; // now
+      await store.createTask(task3);
+      await store.updateTask(task3.id, { pauseReason: 'capacity' });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      // Should be ordered by creation time (earliest first) when priority is same
+      expect(resumableTasks.map(t => t.id)).toEqual([
+        'task_first_created',
+        'task_second_created',
+        'task_third_created'
+      ]);
+    });
+
+    it('should handle undefined and null priority values correctly', async () => {
+      // Task with undefined priority (should default to 'normal')
+      const task1 = createTestTask();
+      task1.id = 'task_undefined_priority';
+      task1.status = 'paused';
+      task1.priority = undefined as any; // Force undefined
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { pauseReason: 'usage_limit' });
+
+      // Task with explicit normal priority
+      const task2 = createTestTask();
+      task2.id = 'task_normal_priority';
+      task2.status = 'paused';
+      task2.priority = 'normal';
+      await store.createTask(task2);
+      await store.updateTask(task2.id, { pauseReason: 'budget' });
+
+      // Task with high priority
+      const task3 = createTestTask();
+      task3.id = 'task_high_priority';
+      task3.status = 'paused';
+      task3.priority = 'high';
+      await store.createTask(task3);
+      await store.updateTask(task3.id, { pauseReason: 'capacity' });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      // High priority task should come first
+      expect(resumableTasks[0].id).toBe('task_high_priority');
+
+      // Normal priority tasks should follow (order by creation time)
+      const normalPriorityTasks = resumableTasks.slice(1);
+      expect(normalPriorityTasks).toHaveLength(2);
+      expect(normalPriorityTasks.map(t => t.id)).toContain('task_undefined_priority');
+      expect(normalPriorityTasks.map(t => t.id)).toContain('task_normal_priority');
+    });
+
+    it('should handle pause reasons case-sensitively', async () => {
+      // Valid pause reason (lowercase)
+      const task1 = createTestTask();
+      task1.id = 'task_valid_reason';
+      task1.status = 'paused';
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { pauseReason: 'usage_limit' });
+
+      // Invalid pause reason (uppercase - should NOT be returned)
+      const task2 = createTestTask();
+      task2.id = 'task_invalid_reason';
+      task2.status = 'paused';
+      await store.createTask(task2);
+      await store.updateTask(task2.id, { pauseReason: 'USAGE_LIMIT' });
+
+      // Another invalid pause reason
+      const task3 = createTestTask();
+      task3.id = 'task_other_reason';
+      task3.status = 'paused';
+      await store.createTask(task3);
+      await store.updateTask(task3.id, { pauseReason: 'timeout' });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      expect(resumableTasks).toHaveLength(1);
+      expect(resumableTasks[0].id).toBe('task_valid_reason');
+    });
+
+    it('should handle tasks with null pauseReason gracefully', async () => {
+      const task = createTestTask();
+      task.status = 'paused';
+      await store.createTask(task);
+      await store.updateTask(task.id, { pauseReason: undefined });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      // Task with null pauseReason should NOT be returned
+      expect(resumableTasks).toHaveLength(0);
+    });
+
+    it('should handle edge case with exact resumeAfter timestamp', async () => {
+      // Create a task with resumeAfter set to current time (should be included)
+      const exactNow = new Date();
+
+      const task = createTestTask();
+      task.status = 'paused';
+      await store.createTask(task);
+      await store.updateTask(task.id, {
+        pauseReason: 'usage_limit',
+        resumeAfter: exactNow,
+      });
+
+      // Wait a small moment to ensure we're past the exact timestamp
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      expect(resumableTasks).toHaveLength(1);
+      expect(resumableTasks[0].id).toBe(task.id);
+    });
+
+    it('should return tasks with full object structure and relationships', async () => {
+      // Create a task with dependencies and artifacts
+      const dependencyTask = createTestTask();
+      dependencyTask.id = 'dependency_task';
+      dependencyTask.status = 'completed';
+      await store.createTask(dependencyTask);
+
+      const mainTask = createTestTask();
+      mainTask.id = 'main_paused_task';
+      mainTask.status = 'paused';
+      mainTask.priority = 'high';
+      mainTask.dependsOn = ['dependency_task'];
+      await store.createTask(mainTask);
+
+      await store.updateTask(mainTask.id, { pauseReason: 'usage_limit' });
+
+      // Add artifacts and logs
+      await store.addArtifact(mainTask.id, {
+        name: 'test-artifact.json',
+        type: 'data',
+        content: '{"test": true}',
+      });
+
+      await store.addLog(mainTask.id, {
+        level: 'info',
+        message: 'Task was paused',
+        stage: 'implementation',
+      });
+
+      const resumableTasks = await store.getPausedTasksForResume();
+
+      expect(resumableTasks).toHaveLength(1);
+      const task = resumableTasks[0];
+
+      // Verify full task structure
+      expect(task.id).toBe('main_paused_task');
+      expect(task.status).toBe('paused');
+      expect(task.priority).toBe('high');
+      expect(task.pauseReason).toBe('usage_limit');
+      expect(task.dependsOn).toEqual(['dependency_task']);
+      expect(task.artifacts).toHaveLength(1);
+      expect(task.artifacts[0].name).toBe('test-artifact.json');
+      expect(task.logs).toHaveLength(1);
+      expect(task.logs[0].message).toBe('Task was paused');
+      expect(task.blockedBy).toEqual([]); // dependency is completed, so no blockers
+    });
+  });
 });
