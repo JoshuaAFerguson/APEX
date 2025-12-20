@@ -1,4 +1,4 @@
-import { createWriteStream, WriteStream } from 'fs';
+import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
 import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
@@ -126,6 +126,7 @@ export class DaemonRunner {
   private pauseReason: string | null = null;
   private pollInterval: NodeJS.Timeout | null = null;
   private runningTasks: Map<string, Promise<void>> = new Map();
+  private stateUpdateInterval: NodeJS.Timeout | null = null;
 
   // Metrics
   private startedAt: Date | null = null;
@@ -239,6 +240,18 @@ export class DaemonRunner {
         this.log('info', 'Capacity monitoring started for auto-resume');
       }
 
+      // Write initial state file
+      await this.writeStateFile();
+
+      // Start periodic state file updates (every 30 seconds)
+      this.stateUpdateInterval = setInterval(() => {
+        if (this.isRunning && !this.isShuttingDown) {
+          this.writeStateFile().catch(err => {
+            this.log('error', `State file update error: ${err.message}`);
+          });
+        }
+      }, 30000);
+
       // Initial poll
       await this.poll();
 
@@ -270,10 +283,22 @@ export class DaemonRunner {
     this.isShuttingDown = true;
     this.log('info', 'Initiating graceful shutdown...');
 
-    // Stop polling
+    // Stop polling and state updates
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+
+    if (this.stateUpdateInterval) {
+      clearInterval(this.stateUpdateInterval);
+      this.stateUpdateInterval = null;
+    }
+
+    // Write final state file with running: false
+    try {
+      await this.writeStateFile(false);
+    } catch (error) {
+      this.log('error', `Failed to write final state file: ${(error as Error).message}`);
     }
 
     // Wait for running tasks
@@ -336,12 +361,20 @@ export class DaemonRunner {
       if (this.orchestrator) {
         this.orchestrator.emit('daemon:paused', reason || 'Capacity threshold exceeded');
       }
+      // Update state file immediately on pause
+      this.writeStateFile().catch(err => {
+        this.log('error', `Failed to update state file on pause: ${err.message}`);
+      });
     } else if (!paused && !wasUnpaused) {
       this.log('info', 'Daemon auto-resumed: Capacity threshold no longer exceeded');
       // Emit resume event through orchestrator if available
       if (this.orchestrator) {
         this.orchestrator.emit('daemon:resumed');
       }
+      // Update state file immediately on resume
+      this.writeStateFile().catch(err => {
+        this.log('error', `Failed to update state file on resume: ${err.message}`);
+      });
     }
   }
 
@@ -576,6 +609,50 @@ export class DaemonRunner {
         this.log('error', `Failed to handle capacity restoration: ${error instanceof Error ? error.message : 'Unknown error'}`);
       });
     });
+  }
+
+  /**
+   * Write current daemon state to the state file for status queries
+   */
+  private async writeStateFile(running: boolean = true): Promise<void> {
+    if (!this.startedAt) {
+      return;
+    }
+
+    const stateFilePath = join(this.options.projectPath, '.apex', 'daemon-state.json');
+
+    try {
+      let capacityInfo: any = undefined;
+
+      // Get capacity information if daemon is running and scheduler is available
+      if (running && this.daemonScheduler) {
+        const usageStats = this.daemonScheduler.getUsageStats();
+
+        capacityInfo = {
+          mode: usageStats.timeWindow.mode,
+          capacityThreshold: usageStats.capacity.threshold,
+          currentUsagePercent: usageStats.capacity.currentPercentage,
+          isAutoPaused: this.isPaused,
+          pauseReason: this.pauseReason,
+          nextModeSwitch: usageStats.timeWindow.nextTransition.toISOString(),
+          timeBasedUsageEnabled: usageStats.timeWindow.isActive || usageStats.timeWindow.mode !== 'off-hours',
+        };
+      }
+
+      const stateData = {
+        timestamp: new Date().toISOString(),
+        pid: process.pid,
+        startedAt: this.startedAt.toISOString(),
+        running,
+        capacity: capacityInfo,
+      };
+
+      await fs.writeFile(stateFilePath, JSON.stringify(stateData, null, 2));
+
+      this.log('debug', 'State file updated');
+    } catch (error) {
+      this.log('error', `Failed to write state file: ${(error as Error).message}`);
+    }
   }
 
   /**

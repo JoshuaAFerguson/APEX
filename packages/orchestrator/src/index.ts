@@ -3085,6 +3085,9 @@ export {
   DaemonError,
   type DaemonOptions,
   type DaemonStatus,
+  type ExtendedDaemonStatus,
+  type CapacityStatusInfo,
+  type DaemonStateFile,
   type DaemonErrorCode
 } from './daemon';
 export {

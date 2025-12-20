@@ -59,6 +59,57 @@ export interface DaemonStatus {
   uptime?: number; // milliseconds
 }
 
+/**
+ * Capacity status information for the daemon
+ */
+export interface CapacityStatusInfo {
+  /** Current operating mode */
+  mode: 'day' | 'night' | 'off-hours';
+
+  /** Capacity threshold for current mode (0-1, e.g., 0.90 = 90%) */
+  capacityThreshold: number;
+
+  /** Current usage as percentage of daily budget (0-1) */
+  currentUsagePercent: number;
+
+  /** Whether daemon is auto-paused due to capacity limits */
+  isAutoPaused: boolean;
+
+  /** Reason for auto-pause if applicable */
+  pauseReason?: string;
+
+  /** When the next mode switch will occur */
+  nextModeSwitch: Date;
+
+  /** Whether time-based usage is enabled */
+  timeBasedUsageEnabled: boolean;
+}
+
+/**
+ * Extended daemon status that includes capacity information
+ */
+export interface ExtendedDaemonStatus extends DaemonStatus {
+  capacity?: CapacityStatusInfo;
+}
+
+/**
+ * State file data stored by the daemon runner
+ */
+export interface DaemonStateFile {
+  timestamp: string;
+  pid: number;
+  startedAt: string;
+  capacity?: {
+    mode: 'day' | 'night' | 'off-hours';
+    capacityThreshold: number;
+    currentUsagePercent: number;
+    isAutoPaused: boolean;
+    pauseReason?: string;
+    nextModeSwitch: string;
+    timeBasedUsageEnabled: boolean;
+  };
+}
+
 interface PidFileData {
   pid: number;
   startedAt: string;
@@ -74,6 +125,7 @@ export class DaemonManager {
   private readonly projectPath: string;
   private readonly pidFilePath: string;
   private readonly logFilePath: string;
+  private readonly stateFilePath: string;
   private readonly options: DaemonOptions;
 
   constructor(options: DaemonOptions = {}) {
@@ -84,6 +136,7 @@ export class DaemonManager {
     const apexDir = join(this.projectPath, '.apex');
     this.pidFilePath = options.pidFile || join(apexDir, 'daemon.pid');
     this.logFilePath = options.logFile || join(apexDir, 'daemon.log');
+    this.stateFilePath = join(apexDir, 'daemon-state.json');
   }
 
   /**
@@ -257,6 +310,45 @@ export class DaemonManager {
   }
 
   /**
+   * Get extended daemon status including capacity information.
+   */
+  async getExtendedStatus(): Promise<ExtendedDaemonStatus> {
+    // Get basic status first
+    const basicStatus = await this.getStatus();
+
+    if (!basicStatus.running) {
+      return basicStatus;
+    }
+
+    // Try to read capacity information from state file
+    try {
+      const stateData = await this.readStateFile();
+
+      if (stateData && stateData.capacity) {
+        const capacity: CapacityStatusInfo = {
+          mode: stateData.capacity.mode,
+          capacityThreshold: stateData.capacity.capacityThreshold,
+          currentUsagePercent: stateData.capacity.currentUsagePercent,
+          isAutoPaused: stateData.capacity.isAutoPaused,
+          pauseReason: stateData.capacity.pauseReason,
+          nextModeSwitch: new Date(stateData.capacity.nextModeSwitch),
+          timeBasedUsageEnabled: stateData.capacity.timeBasedUsageEnabled,
+        };
+
+        return {
+          ...basicStatus,
+          capacity,
+        };
+      }
+    } catch (error) {
+      // Log error but don't fail - just return basic status
+      this.writeToLog(`Failed to read capacity state: ${(error as Error).message}`);
+    }
+
+    return basicStatus;
+  }
+
+  /**
    * Force kill the daemon (SIGKILL). Use as last resort.
    */
   async killDaemon(): Promise<boolean> {
@@ -338,6 +430,41 @@ export class DaemonManager {
         'PID_FILE_CORRUPTED',
         error as Error
       );
+    }
+  }
+
+  /**
+   * Read and parse the daemon state file.
+   */
+  private async readStateFile(): Promise<DaemonStateFile | null> {
+    try {
+      const content = await fs.readFile(this.stateFilePath, 'utf-8');
+      const data = JSON.parse(content) as DaemonStateFile;
+
+      // Validate required fields
+      if (typeof data.pid !== 'number' || !data.timestamp || !data.startedAt) {
+        return null; // Invalid state file
+      }
+
+      // Check if state file is stale (older than 2 minutes)
+      const stateTimestamp = new Date(data.timestamp);
+      const now = new Date();
+      const ageMs = now.getTime() - stateTimestamp.getTime();
+
+      if (ageMs > 120000) { // 2 minutes
+        this.writeToLog(`State file is stale (${Math.floor(ageMs / 1000)}s old), ignoring capacity data`);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null; // File doesn't exist
+      }
+
+      // Log the error but don't throw - capacity info is optional
+      this.writeToLog(`Failed to read state file: ${(error as Error).message}`);
+      return null;
     }
   }
 

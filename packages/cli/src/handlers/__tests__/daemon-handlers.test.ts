@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import chalk from 'chalk';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from '../daemon-handlers';
-import { DaemonManager, DaemonError, DaemonStatus } from '@apex/orchestrator';
+import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
 
 // Mock DaemonManager
 vi.mock('@apex/orchestrator', () => ({
@@ -43,6 +43,7 @@ describe('daemon-handlers', () => {
       stopDaemon: vi.fn(),
       killDaemon: vi.fn(),
       getStatus: vi.fn(),
+      getExtendedStatus: vi.fn(),
     };
 
     mockDaemonManager.mockReturnValue(mockManager);
@@ -202,51 +203,253 @@ describe('daemon-handlers', () => {
   describe('handleDaemonStatus', () => {
     const ctx = { cwd: '/test/project', initialized: true };
 
-    it('should display running daemon status', async () => {
-      const status: DaemonStatus = {
+    it('should display running daemon status with capacity information', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.45,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
         running: true,
         pid: 12345,
         startedAt: new Date('2023-01-01T10:00:00Z'),
         uptime: 3600000, // 1 hour in ms
+        capacity,
       };
-      mockManager.getStatus.mockResolvedValue(status);
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
 
       await handleDaemonStatus(ctx);
 
+      // Check daemon status section
       expect(consoleSpy).toHaveBeenCalledWith('\nDaemon Status');
       expect(consoleSpy).toHaveBeenCalledWith('─'.repeat(36));
-      expect(consoleSpy).toHaveBeenCalledWith('  State:      running');
-      expect(consoleSpy).toHaveBeenCalledWith('  PID:        12345');
-      expect(consoleSpy).toHaveBeenCalledWith('  Started:    1/1/2023, 10:00:00 AM');
-      expect(consoleSpy).toHaveBeenCalledWith('  Uptime:     1h 0m');
-      expect(consoleSpy).toHaveBeenCalledWith('  Log file:   .apex/daemon.log');
+      expect(consoleSpy).toHaveBeenCalledWith('  State:           running');
+      expect(consoleSpy).toHaveBeenCalledWith('  PID:             12345');
+      expect(consoleSpy).toHaveBeenCalledWith('  Started:         1/1/2023, 10:00:00 AM');
+      expect(consoleSpy).toHaveBeenCalledWith('  Uptime:          1h 0m');
+      expect(consoleSpy).toHaveBeenCalledWith('  Log file:        .apex/daemon.log');
+
+      // Check capacity status section
+      expect(consoleSpy).toHaveBeenCalledWith('Capacity Status');
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            day (9:00 AM - 6:00 PM)');
+      expect(consoleSpy).toHaveBeenCalledWith('  Threshold:       80%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   45.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      No');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       night at 10:00:00 PM');
+    });
+
+    it('should display night mode daemon status', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'night',
+        capacityThreshold: 0.90,
+        currentUsagePercent: 0.75,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-02T09:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T22:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            night (10:00 PM - 6:00 AM)');
+      expect(consoleSpy).toHaveBeenCalledWith('  Threshold:       90%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   75.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       day at 9:00:00 AM');
+    });
+
+    it('should display off-hours mode daemon status', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'off-hours',
+        capacityThreshold: 0.95,
+        currentUsagePercent: 0.20,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-02T09:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T18:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            off-hours');
+      expect(consoleSpy).toHaveBeenCalledWith('  Threshold:       95%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   20.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       active hours at 9:00:00 AM');
+    });
+
+    it('should display auto-paused daemon status with reason', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.95,
+        isAutoPaused: true,
+        pauseReason: 'Daily budget exceeded',
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   95.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      Yes (Daily budget exceeded)');
+      expect(consoleSpy).toHaveBeenCalledWith('  ⚠ Tasks paused. Will resume when capacity available or mode changes.');
+    });
+
+    it('should display auto-paused daemon status without reason', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.95,
+        isAutoPaused: true,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      Yes');
+    });
+
+    it('should show color-coded usage percentages', async () => {
+      const testCases = [
+        { usage: 0.30, expectedColor: 'green' },
+        { usage: 0.85, expectedColor: 'yellow' },
+        { usage: 0.95, expectedColor: 'red' },
+      ];
+
+      for (const testCase of testCases) {
+        vi.clearAllMocks();
+
+        const capacity: CapacityStatusInfo = {
+          mode: 'day',
+          capacityThreshold: 0.80,
+          currentUsagePercent: testCase.usage,
+          isAutoPaused: false,
+          nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+          timeBasedUsageEnabled: true,
+        };
+
+        const extendedStatus: ExtendedDaemonStatus = {
+          running: true,
+          pid: 12345,
+          startedAt: new Date('2023-01-01T10:00:00Z'),
+          uptime: 3600000,
+          capacity,
+        };
+        mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+        await handleDaemonStatus(ctx);
+
+        const expectedUsage = (testCase.usage * 100).toFixed(1);
+        expect(consoleSpy).toHaveBeenCalledWith(`  Current Usage:   ${expectedUsage}%`);
+      }
+    });
+
+    it('should display daemon status when time-based usage is disabled', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.45,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: false,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Capacity Status');
+      expect(consoleSpy).toHaveBeenCalledWith('  Time-based usage is disabled.');
+      expect(consoleSpy).toHaveBeenCalledWith('  Configure in .apex/config.yaml under daemon.timeBasedUsage');
+    });
+
+    it('should display daemon status when capacity info is not available', async () => {
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        // No capacity information
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus(ctx);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Capacity Status');
+      expect(consoleSpy).toHaveBeenCalledWith('  ⚠ State file not found. Daemon may be starting up.');
+      expect(consoleSpy).toHaveBeenCalledWith('    Capacity information will be available once daemon is fully initialized.');
     });
 
     it('should display stopped daemon status', async () => {
-      const status: DaemonStatus = {
+      const extendedStatus: ExtendedDaemonStatus = {
         running: false,
       };
-      mockManager.getStatus.mockResolvedValue(status);
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
 
       await handleDaemonStatus(ctx);
 
       expect(consoleSpy).toHaveBeenCalledWith('\nDaemon Status');
       expect(consoleSpy).toHaveBeenCalledWith('─'.repeat(36));
-      expect(consoleSpy).toHaveBeenCalledWith('  State:      stopped');
+      expect(consoleSpy).toHaveBeenCalledWith('  State:           stopped');
       expect(consoleSpy).toHaveBeenCalledWith("Use '/daemon start' to start the daemon.");
     });
 
     it('should handle partial status data', async () => {
-      const status: DaemonStatus = {
+      const extendedStatus: ExtendedDaemonStatus = {
         running: true,
         pid: 12345,
         // Missing startedAt and uptime
       };
-      mockManager.getStatus.mockResolvedValue(status);
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
 
       await handleDaemonStatus(ctx);
 
-      expect(consoleSpy).toHaveBeenCalledWith('  State:      stopped');
+      expect(consoleSpy).toHaveBeenCalledWith('  State:           stopped');
     });
   });
 
@@ -285,6 +488,245 @@ describe('daemon-handlers', () => {
       await handleDaemonStart({ cwd: '/test', initialized: true }, []);
 
       expect(consoleSpy).toHaveBeenCalledWith('Unknown error');
+    });
+  });
+
+  describe('utility functions', () => {
+    // Since formatModeDisplay and getNextModeText are not exported,
+    // we test them indirectly through handleDaemonStatus behavior
+    it('should format day mode display correctly', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.45,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            day (9:00 AM - 6:00 PM)');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       night at 10:00:00 PM');
+    });
+
+    it('should format night mode display correctly', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'night',
+        capacityThreshold: 0.90,
+        currentUsagePercent: 0.75,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-02T09:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T22:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            night (10:00 PM - 6:00 AM)');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       day at 9:00:00 AM');
+    });
+
+    it('should format off-hours mode display correctly', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'off-hours',
+        capacityThreshold: 0.95,
+        currentUsagePercent: 0.20,
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-02T09:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T18:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Mode:            off-hours');
+      expect(consoleSpy).toHaveBeenCalledWith('  Next Mode:       active hours at 9:00:00 AM');
+    });
+
+    it('should handle usage percentage color coding thresholds', async () => {
+      const testCases = [
+        { usage: 0.30, description: 'green for usage under 80%' },
+        { usage: 0.75, description: 'green for usage under 80%' },
+        { usage: 0.85, description: 'yellow for usage 80-99% but below threshold' },
+        { usage: 0.95, description: 'red for usage at or above threshold' },
+      ];
+
+      for (const testCase of testCases) {
+        vi.clearAllMocks();
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        const capacity: CapacityStatusInfo = {
+          mode: 'day',
+          capacityThreshold: 0.90, // Set threshold at 90%
+          currentUsagePercent: testCase.usage,
+          isAutoPaused: testCase.usage >= 0.90,
+          nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+          timeBasedUsageEnabled: true,
+        };
+
+        const extendedStatus: ExtendedDaemonStatus = {
+          running: true,
+          pid: 12345,
+          startedAt: new Date('2023-01-01T10:00:00Z'),
+          uptime: 3600000,
+          capacity,
+        };
+        mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+        await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+        const expectedUsage = (testCase.usage * 100).toFixed(1);
+        expect(consoleSpy).toHaveBeenCalledWith(`  Current Usage:   ${expectedUsage}%`);
+      }
+    });
+
+    it('should format threshold percentages correctly', async () => {
+      const testThresholds = [0.75, 0.80, 0.90, 0.95];
+
+      for (const threshold of testThresholds) {
+        vi.clearAllMocks();
+        consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        const capacity: CapacityStatusInfo = {
+          mode: 'day',
+          capacityThreshold: threshold,
+          currentUsagePercent: 0.45,
+          isAutoPaused: false,
+          nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+          timeBasedUsageEnabled: true,
+        };
+
+        const extendedStatus: ExtendedDaemonStatus = {
+          running: true,
+          pid: 12345,
+          startedAt: new Date('2023-01-01T10:00:00Z'),
+          uptime: 3600000,
+          capacity,
+        };
+        mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+        await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+        const expectedThreshold = (threshold * 100).toFixed(0);
+        expect(consoleSpy).toHaveBeenCalledWith(`  Threshold:       ${expectedThreshold}%`);
+      }
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle capacity with edge case values', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 1.0, // 100%
+        currentUsagePercent: 0.0, // 0%
+        isAutoPaused: false,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Threshold:       100%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   0.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      No');
+    });
+
+    it('should handle exactly at threshold usage', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.80, // Exactly at threshold
+        isAutoPaused: true,
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Current Usage:   80.0%');
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      Yes');
+    });
+
+    it('should handle daemon with missing required properties', async () => {
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        // Missing pid, startedAt, uptime
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      // Should fall back to stopped display due to missing required properties
+      expect(consoleSpy).toHaveBeenCalledWith('  State:           stopped');
+    });
+
+    it('should handle empty pause reason gracefully', async () => {
+      const capacity: CapacityStatusInfo = {
+        mode: 'day',
+        capacityThreshold: 0.80,
+        currentUsagePercent: 0.95,
+        isAutoPaused: true,
+        pauseReason: '', // Empty string
+        nextModeSwitch: new Date('2023-01-01T22:00:00Z'),
+        timeBasedUsageEnabled: true,
+      };
+
+      const extendedStatus: ExtendedDaemonStatus = {
+        running: true,
+        pid: 12345,
+        startedAt: new Date('2023-01-01T10:00:00Z'),
+        uptime: 3600000,
+        capacity,
+      };
+      mockManager.getExtendedStatus.mockResolvedValue(extendedStatus);
+
+      await handleDaemonStatus({ cwd: '/test', initialized: true });
+
+      expect(consoleSpy).toHaveBeenCalledWith('  Auto-Pause:      Yes');
     });
   });
 });

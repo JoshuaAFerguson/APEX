@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { DaemonManager, DaemonError, DaemonStatus } from '@apex/orchestrator';
+import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
 import { formatDuration } from '@apex/core';
 
 /**
@@ -104,23 +104,112 @@ export async function handleDaemonStatus(ctx: ApexContext): Promise<void> {
     projectPath: ctx.cwd,
   });
 
-  const status = await manager.getStatus();
+  const extendedStatus = await manager.getExtendedStatus();
 
   console.log(chalk.cyan('\nDaemon Status'));
   console.log(chalk.gray('─'.repeat(36)));
 
-  if (status.running && status.pid && status.startedAt && status.uptime) {
-    console.log(`  State:      ${chalk.green('running')}`);
-    console.log(`  PID:        ${status.pid}`);
-    console.log(`  Started:    ${status.startedAt.toLocaleString()}`);
-    console.log(`  Uptime:     ${formatDuration(status.uptime)}`);
-    console.log(`  Log file:   ${chalk.gray('.apex/daemon.log')}`);
+  if (extendedStatus.running && extendedStatus.pid && extendedStatus.startedAt && extendedStatus.uptime) {
+    console.log(`  State:           ${chalk.green('running')}`);
+    console.log(`  PID:             ${extendedStatus.pid}`);
+    console.log(`  Started:         ${extendedStatus.startedAt.toLocaleString()}`);
+    console.log(`  Uptime:          ${formatDuration(extendedStatus.uptime)}`);
+    console.log(`  Log file:        ${chalk.gray('.apex/daemon.log')}`);
+
+    // Display capacity information if available
+    if (extendedStatus.capacity) {
+      displayCapacityStatus(extendedStatus.capacity);
+    } else {
+      console.log();
+      console.log(chalk.cyan('Capacity Status'));
+      console.log(chalk.gray('─'.repeat(36)));
+      console.log(`  ${chalk.yellow('⚠')} State file not found. Daemon may be starting up.`);
+      console.log('    Capacity information will be available once daemon is fully initialized.');
+    }
   } else {
-    console.log(`  State:      ${chalk.gray('stopped')}`);
+    console.log(`  State:           ${chalk.gray('stopped')}`);
     console.log();
     console.log(chalk.gray("Use '/daemon start' to start the daemon."));
   }
   console.log();
+}
+
+/**
+ * Display capacity status information
+ */
+function displayCapacityStatus(capacity: CapacityStatusInfo): void {
+  console.log();
+  console.log(chalk.cyan('Capacity Status'));
+  console.log(chalk.gray('─'.repeat(36)));
+
+  if (!capacity.timeBasedUsageEnabled) {
+    console.log('  Time-based usage is disabled.');
+    console.log('  Configure in .apex/config.yaml under daemon.timeBasedUsage');
+    return;
+  }
+
+  // Format mode display
+  const modeText = formatModeDisplay(capacity.mode);
+  console.log(`  Mode:            ${modeText}`);
+
+  // Format threshold
+  const thresholdPercent = (capacity.capacityThreshold * 100).toFixed(0);
+  console.log(`  Threshold:       ${thresholdPercent}%`);
+
+  // Format current usage
+  const usagePercent = (capacity.currentUsagePercent * 100).toFixed(1);
+  const usageColor = capacity.currentUsagePercent >= capacity.capacityThreshold ? chalk.red :
+                     capacity.currentUsagePercent >= 0.8 ? chalk.yellow : chalk.green;
+  console.log(`  Current Usage:   ${usageColor(usagePercent + '%')}`);
+
+  // Auto-pause status
+  const pauseText = capacity.isAutoPaused ?
+    `${chalk.red('Yes')}${capacity.pauseReason ? ` (${capacity.pauseReason})` : ''}` :
+    chalk.green('No');
+  console.log(`  Auto-Pause:      ${pauseText}`);
+
+  // Next mode switch
+  const nextModeTime = capacity.nextModeSwitch.toLocaleTimeString();
+  const nextModeText = getNextModeText(capacity.mode);
+  console.log(`  Next Mode:       ${nextModeText} at ${nextModeTime}`);
+
+  // Show warning if auto-paused
+  if (capacity.isAutoPaused) {
+    console.log();
+    console.log(`  ${chalk.yellow('⚠')} Tasks paused. Will resume when capacity available or mode changes.`);
+  }
+}
+
+/**
+ * Format mode display with time range
+ */
+function formatModeDisplay(mode: 'day' | 'night' | 'off-hours'): string {
+  switch (mode) {
+    case 'day':
+      return `${chalk.yellow('day')} ${chalk.gray('(9:00 AM - 6:00 PM)')}`;
+    case 'night':
+      return `${chalk.blue('night')} ${chalk.gray('(10:00 PM - 6:00 AM)')}`;
+    case 'off-hours':
+      return chalk.gray('off-hours');
+    default:
+      return mode;
+  }
+}
+
+/**
+ * Get the text for the next mode transition
+ */
+function getNextModeText(currentMode: 'day' | 'night' | 'off-hours'): string {
+  switch (currentMode) {
+    case 'day':
+      return 'night';
+    case 'night':
+      return 'day';
+    case 'off-hours':
+      return 'active hours';
+    default:
+      return 'next mode';
+  }
 }
 
 /**
