@@ -2381,5 +2381,242 @@ You are a developer agent that implements code changes.
       expect(status.utilization).toBeGreaterThan(0);
       expect(status.recommendation).toBe('continue');
     });
+
+    describe('session limit checkpointing', () => {
+      it('should save checkpoint and pause task when session limit reached during executeWorkflowStage', async () => {
+        // Create a task with a conversation that will trigger checkpoint threshold
+        const longText = 'x'.repeat(240000); // ~60k tokens to trigger checkpoint at 80% of 75k
+        const task = await orchestrator.createTask({
+          description: 'Session limit checkpoint test',
+          conversation: [
+            {
+              type: 'user',
+              content: [{ type: 'text', text: longText }],
+            },
+          ],
+        });
+
+        // Mock workflow and stage
+        const workflow: WorkflowDefinition = {
+          name: 'test-workflow',
+          description: 'Test workflow',
+          stages: [
+            {
+              name: 'test-stage',
+              agent: 'developer',
+              dependencies: [],
+            },
+          ],
+        };
+
+        const stage: WorkflowStage = {
+          name: 'test-stage',
+          agent: 'developer',
+          dependencies: [],
+        };
+
+        const agent: AgentDefinition = {
+          name: 'developer',
+          role: 'Test Agent',
+          model: 'haiku',
+          instructions: 'Test instructions',
+        };
+
+        // Try to execute stage with small context window to trigger session limit
+        try {
+          await (orchestrator as any).executeWorkflowStage(
+            task,
+            stage,
+            agent,
+            workflow,
+            new Map()
+          );
+          // Should not reach this point as it should throw
+          throw new Error('Expected session limit error');
+        } catch (error) {
+          expect((error as Error).message).toContain('Session limit reached');
+        }
+
+        // Verify task was paused with correct reason
+        const updatedTask = await orchestrator.store.getTask(task.id);
+        expect(updatedTask?.status).toBe('paused');
+        expect(updatedTask?.pauseReason).toBe('session_limit');
+
+        // Verify checkpoint was saved
+        const checkpoint = await orchestrator.getLatestCheckpoint(task.id);
+        expect(checkpoint).toBeTruthy();
+        expect(checkpoint?.stage).toBe('test-stage');
+        expect(checkpoint?.metadata?.pauseReason).toBe('session_limit');
+        expect(checkpoint?.metadata?.resumePoint).toBe('stage_start');
+        expect(checkpoint?.conversationState).toEqual(task.conversation);
+
+        // Verify logs contain session limit messages
+        const logs = await orchestrator.store.getTaskLogs(task.id);
+        const sessionLimitLogs = logs.filter(log =>
+          log.message.includes('Session limit detected') ||
+          log.message.includes('Task paused due to session limit')
+        );
+        expect(sessionLimitLogs.length).toBeGreaterThanOrEqual(2);
+      });
+
+      it('should save checkpoint and pause task when session limit reached during runWorkflow', async () => {
+        // Create a task with conversation that will trigger checkpoint threshold
+        const longText = 'x'.repeat(240000); // ~60k tokens
+        const task = await orchestrator.createTask({
+          description: 'Workflow session limit test',
+          conversation: [
+            {
+              type: 'user',
+              content: [{ type: 'text', text: longText }],
+            },
+          ],
+        });
+
+        const workflow: WorkflowDefinition = {
+          name: 'test-workflow',
+          description: 'Test workflow',
+          stages: [
+            {
+              name: 'test-stage',
+              agent: 'developer',
+              dependencies: [],
+            },
+          ],
+        };
+
+        // Try to run workflow with small context window
+        try {
+          const completed = await (orchestrator as any).runWorkflow(task, workflow);
+          expect(completed).toBe(false); // Should return false when paused
+        } catch (error) {
+          // If it throws, that's also acceptable
+        }
+
+        // Verify task was paused with correct reason
+        const updatedTask = await orchestrator.store.getTask(task.id);
+        expect(updatedTask?.status).toBe('paused');
+        expect(updatedTask?.pauseReason).toBe('session_limit');
+
+        // Verify checkpoint was saved
+        const checkpoint = await orchestrator.getLatestCheckpoint(task.id);
+        expect(checkpoint).toBeTruthy();
+        expect(checkpoint?.stage).toBe('workflow');
+        expect(checkpoint?.metadata?.pauseReason).toBe('session_limit');
+        expect(checkpoint?.metadata?.resumePoint).toBe('workflow_continue');
+        expect(checkpoint?.conversationState).toEqual(task.conversation);
+
+        // Verify workflow state was preserved in checkpoint
+        expect(checkpoint?.metadata?.completedStages).toEqual([]);
+        expect(checkpoint?.metadata?.inProgressStages).toEqual([]);
+        expect(checkpoint?.metadata?.stageResults).toEqual({});
+      });
+
+      it('should not pause task when session is healthy', async () => {
+        // Create task with small conversation
+        const task = await orchestrator.createTask({
+          description: 'Healthy session test',
+          conversation: [
+            {
+              type: 'user',
+              content: [{ type: 'text', text: 'Short message' }],
+            },
+          ],
+        });
+
+        const workflow: WorkflowDefinition = {
+          name: 'test-workflow',
+          description: 'Test workflow',
+          stages: [
+            {
+              name: 'test-stage',
+              agent: 'developer',
+              dependencies: [],
+            },
+          ],
+        };
+
+        // Mock the query function to avoid actual agent execution
+        const mockQuery = vi.fn().mockImplementation(async function* () {
+          yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+        });
+
+        // Mock query for this test
+        vi.mocked(query).mockImplementationOnce(mockQuery);
+
+        try {
+          const completed = await (orchestrator as any).runWorkflow(task, workflow);
+          // Should proceed normally without pausing
+        } catch (error) {
+          // If execution fails, verify it's not due to session limits
+          expect((error as Error).message).not.toContain('Session limit reached');
+        }
+
+        // Verify task was not paused due to session limits
+        const updatedTask = await orchestrator.store.getTask(task.id);
+        expect(updatedTask?.pauseReason).not.toBe('session_limit');
+      });
+
+      it('should include session limit status in checkpoint metadata', async () => {
+        // Create task with conversation triggering checkpoint
+        const longText = 'x'.repeat(240000);
+        const task = await orchestrator.createTask({
+          description: 'Checkpoint metadata test',
+          conversation: [
+            {
+              type: 'user',
+              content: [{ type: 'text', text: longText }],
+            },
+          ],
+        });
+
+        const workflow: WorkflowDefinition = {
+          name: 'test-workflow',
+          description: 'Test workflow',
+          stages: [
+            {
+              name: 'test-stage',
+              agent: 'developer',
+              dependencies: [],
+            },
+          ],
+        };
+
+        const stage: WorkflowStage = {
+          name: 'test-stage',
+          agent: 'developer',
+          dependencies: [],
+        };
+
+        const agent: AgentDefinition = {
+          name: 'developer',
+          role: 'Test Agent',
+          model: 'haiku',
+          instructions: 'Test instructions',
+        };
+
+        try {
+          await (orchestrator as any).executeWorkflowStage(
+            task,
+            stage,
+            agent,
+            workflow,
+            new Map()
+          );
+        } catch (error) {
+          // Expected to throw
+        }
+
+        // Verify checkpoint contains session limit status
+        const checkpoint = await orchestrator.getLatestCheckpoint(task.id);
+        expect(checkpoint?.metadata?.sessionLimitStatus).toBeTruthy();
+
+        const sessionStatus = checkpoint?.metadata?.sessionLimitStatus as any;
+        expect(sessionStatus.nearLimit).toBe(true);
+        expect(['checkpoint', 'handoff']).toContain(sessionStatus.recommendation);
+        expect(sessionStatus.utilization).toBeGreaterThan(0.8);
+        expect(sessionStatus.currentTokens).toBeGreaterThan(0);
+        expect(sessionStatus.message).toContain('Context window');
+      });
+    });
   });
 });

@@ -508,7 +508,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
@@ -820,6 +820,46 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         return false; // Task was cancelled, don't mark as completed
       }
 
+      // Check session limits before continuing workflow execution
+      const sessionLimitStatus = await this.detectSessionLimit(task.id);
+
+      if (sessionLimitStatus.recommendation === 'checkpoint' || sessionLimitStatus.recommendation === 'handoff') {
+        // Session is approaching or at limit - save checkpoint and pause workflow
+        await this.store.addLog(task.id, {
+          level: 'warn',
+          message: `Session limit detected in workflow: ${sessionLimitStatus.message}. Saving checkpoint and pausing task.`,
+        });
+
+        // Get current conversation state for checkpoint
+        const conversationState = currentTask?.conversation || [];
+
+        // Save checkpoint with current workflow state
+        const checkpointId = await this.saveCheckpoint(task.id, {
+          stage: 'workflow',
+          stageIndex: 0, // workflow level checkpoint
+          conversationState,
+          metadata: {
+            sessionLimitStatus,
+            pauseReason: 'session_limit',
+            resumePoint: 'workflow_continue',
+            completedStages: Array.from(completedStages),
+            inProgressStages: Array.from(inProgressStages),
+            stageResults: Object.fromEntries(stageResults),
+          },
+        });
+
+        // Pause task with session_limit reason
+        await this.pauseTask(task.id, 'session_limit');
+
+        // Log session limit event
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Workflow paused due to session limit. Checkpoint ${checkpointId} saved. Use /resume ${task.id} to continue from this point.`,
+        });
+
+        return false; // Task should not be marked as completed, it's paused
+      }
+
       // Find all stages ready to run (dependencies met, not completed, not in progress)
       const readyStages = workflow.stages.filter(stage =>
         !completedStages.has(stage.name) &&
@@ -1082,6 +1122,49 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
                      agent.model === 'haiku' ? 'claude-3-5-haiku-20241022' :
                      'claude-sonnet-4-20250514';
+
+    // Check session limits before starting agent query
+    const sessionLimitStatus = await this.detectSessionLimit(task.id);
+
+    if (sessionLimitStatus.recommendation === 'checkpoint' || sessionLimitStatus.recommendation === 'handoff') {
+      // Session is approaching or at limit - save checkpoint and pause task
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Session limit detected: ${sessionLimitStatus.message}. Saving checkpoint and pausing task.`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      // Get current conversation state for checkpoint
+      const currentTask = await this.store.getTask(task.id);
+      const conversationState = currentTask?.conversation || [];
+
+      // Save checkpoint with current conversation state
+      const checkpointId = await this.saveCheckpoint(task.id, {
+        stage: stage.name,
+        stageIndex: workflow.stages.findIndex(s => s.name === stage.name),
+        conversationState,
+        metadata: {
+          sessionLimitStatus,
+          pauseReason: 'session_limit',
+          resumePoint: 'stage_start',
+        },
+      });
+
+      // Pause task with session_limit reason
+      await this.pauseTask(task.id, 'session_limit');
+
+      // Log session limit event
+      await this.store.addLog(task.id, {
+        level: 'info',
+        message: `Task paused due to session limit. Checkpoint ${checkpointId} saved. Use /resume ${task.id} to continue from this point.`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      // Throw a specific error to halt execution gracefully
+      throw new Error(`Session limit reached: ${sessionLimitStatus.message}. Task paused at checkpoint ${checkpointId}.`);
+    }
 
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
