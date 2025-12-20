@@ -8,7 +8,9 @@ import { InteractionManager } from './interaction-manager';
 import { IdleProcessor } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
 import { TaskStore } from './store';
-import { ApexOrchestrator } from './index';
+import { ApexOrchestrator, TasksAutoResumedEvent } from './index';
+import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
+import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
 import {
   DaemonConfig,
   LimitsConfig,
@@ -30,6 +32,12 @@ export interface EnhancedDaemonEvents {
   'idle:suggestion': (suggestion: any) => void;
   'thought:captured': (thought: any) => void;
   'interaction:received': (interaction: any) => void;
+
+  // Capacity events forwarded from CapacityMonitor
+  'capacity:restored': (event: CapacityRestoredEvent) => void;
+
+  // Auto-resume event forwarded from orchestrator/DaemonRunner
+  'tasks:auto-resumed': (event: TasksAutoResumedEvent) => void;
 }
 
 /**
@@ -44,6 +52,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   private interactionManager: InteractionManager;
   private idleProcessor: IdleProcessor;
   private thoughtCapture: ThoughtCaptureManager;
+  private capacityMonitor: CapacityMonitor;
 
   private orchestrator: ApexOrchestrator;
   private store: TaskStore;
@@ -90,6 +99,9 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       // Start idle processing
       await this.idleProcessor.start();
 
+      // Start capacity monitoring
+      this.capacityMonitor.start();
+
       // Setup health monitoring
       this.setupHealthMonitoring();
 
@@ -114,6 +126,9 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   async stop(): Promise<void> {
     try {
       this.isRunning = false;
+
+      // Stop capacity monitoring
+      this.capacityMonitor.stop();
 
       // Clear health check interval
       if (this.healthCheckInterval) {
@@ -173,6 +188,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     workspaces: any;
     thoughts: any;
     health: any;
+    capacity: any;
   }> {
     const [
       daemonMetrics,
@@ -197,6 +213,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       workspaces: workspaceStats,
       thoughts: thoughtStats,
       health: healthStatus,
+      capacity: this.capacityMonitor.getStatus(),
     };
   }
 
@@ -249,6 +266,19 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     this.thoughtCapture = new ThoughtCaptureManager(
       this.projectPath,
       this.store
+    );
+
+    // Initialize CapacityMonitor with UsageManager adapter
+    const capacityUsageProvider = new CapacityMonitorUsageAdapter(
+      this.usageManager,
+      daemonConfig,
+      limitsConfig
+    );
+
+    this.capacityMonitor = new CapacityMonitor(
+      daemonConfig,
+      limitsConfig,
+      capacityUsageProvider
     );
   }
 
@@ -314,6 +344,16 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       if (!task.workspace?.cleanup) {
         await this.workspaceManager.cleanupWorkspace(task.id);
       }
+    });
+
+    // CapacityMonitor events
+    this.capacityMonitor.on('capacity:restored', (event: CapacityRestoredEvent) => {
+      this.emit('capacity:restored', event);
+    });
+
+    // Forward tasks:auto-resumed from orchestrator to EnhancedDaemon
+    this.orchestrator.on('tasks:auto-resumed', (event: TasksAutoResumedEvent) => {
+      this.emit('tasks:auto-resumed', event);
     });
   }
 
@@ -494,6 +534,13 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
    */
   getIdleProcessor(): IdleProcessor {
     return this.idleProcessor;
+  }
+
+  /**
+   * Get capacity monitor for CLI commands
+   */
+  getCapacityMonitor(): CapacityMonitor {
+    return this.capacityMonitor;
   }
 
   /**

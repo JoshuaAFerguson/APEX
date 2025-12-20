@@ -107,6 +107,58 @@ vi.mock('./index', () => ({
   })),
 }));
 
+vi.mock('./capacity-monitor', () => ({
+  CapacityMonitor: vi.fn().mockImplementation(() => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+    getStatus: vi.fn().mockReturnValue({
+      isRunning: true,
+      hasModeSwitchTimer: true,
+      hasMidnightTimer: true,
+      nextModeSwitch: new Date(),
+      nextMidnight: new Date(),
+      lastUsage: {
+        currentTokens: 1000,
+        currentCost: 0.05,
+        activeTasks: 1,
+        maxTokensPerTask: 500000,
+        maxCostPerTask: 10.0,
+        maxConcurrentTasks: 3,
+        dailyBudget: 100.0,
+        dailySpent: 5.0,
+      },
+    }),
+    on: vi.fn(),
+  })),
+}));
+
+vi.mock('./capacity-monitor-usage-adapter', () => ({
+  CapacityMonitorUsageAdapter: vi.fn().mockImplementation(() => ({
+    getCurrentUsage: vi.fn().mockReturnValue({
+      currentTokens: 1000,
+      currentCost: 0.05,
+      activeTasks: 1,
+      maxTokensPerTask: 500000,
+      maxCostPerTask: 10.0,
+      maxConcurrentTasks: 3,
+      dailyBudget: 100.0,
+      dailySpent: 5.0,
+    }),
+    getModeInfo: vi.fn().mockReturnValue({
+      mode: 'day',
+      modeHours: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+      nextModeSwitch: new Date(),
+      nextMidnight: new Date(),
+    }),
+    getThresholds: vi.fn().mockReturnValue({
+      tokensThreshold: 50000,
+      costThreshold: 1.0,
+      budgetThreshold: 10.0,
+      concurrentThreshold: 2,
+    }),
+  })),
+}));
+
 vi.mock('@apexcli/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@apexcli/core')>();
   return {
@@ -357,12 +409,15 @@ describe('EnhancedDaemon', () => {
       expect(status).toHaveProperty('workspaces');
       expect(status).toHaveProperty('thoughts');
       expect(status).toHaveProperty('health');
+      expect(status).toHaveProperty('capacity');
 
       expect(status.daemon.uptime).toBe(1000);
       expect(status.service.installed).toBe(true);
       expect(status.usage.current.currentMode).toBe('day');
       expect(status.workspaces.activeWorkspaces).toBe(2);
       expect(status.health.healthy).toBe(true);
+      expect(status.capacity.isRunning).toBe(true);
+      expect(status.capacity.lastUsage.currentCost).toBe(0.05);
     });
   });
 
@@ -622,9 +677,252 @@ describe('EnhancedDaemon', () => {
       expect(idleProcessor).toBeDefined();
     });
 
+    it('should provide access to capacity monitor', () => {
+      const capacityMonitor = enhancedDaemon.getCapacityMonitor();
+      expect(capacityMonitor).toBeDefined();
+    });
+
     it('should provide access to service manager', () => {
       const serviceManager = enhancedDaemon.getServiceManager();
       expect(serviceManager).toBeDefined();
+    });
+  });
+
+  describe('CapacityMonitor integration', () => {
+    beforeEach(async () => {
+      await enhancedDaemon.start();
+    });
+
+    it('should initialize CapacityMonitor with correct dependencies', () => {
+      const { CapacityMonitor } = require('./capacity-monitor');
+      const { CapacityMonitorUsageAdapter } = require('./capacity-monitor-usage-adapter');
+
+      expect(CapacityMonitorUsageAdapter).toHaveBeenCalledWith(
+        expect.any(Object), // UsageManager
+        mockConfig.daemon,
+        mockConfig.limits
+      );
+
+      expect(CapacityMonitor).toHaveBeenCalledWith(
+        mockConfig.daemon,
+        mockConfig.limits,
+        expect.any(Object) // CapacityMonitorUsageAdapter instance
+      );
+    });
+
+    it('should start CapacityMonitor when daemon starts', async () => {
+      const capacityMonitor = enhancedDaemon['capacityMonitor'];
+      expect(capacityMonitor.start).toHaveBeenCalled();
+    });
+
+    it('should stop CapacityMonitor when daemon stops', async () => {
+      const capacityMonitor = enhancedDaemon['capacityMonitor'];
+
+      await enhancedDaemon.stop();
+
+      expect(capacityMonitor.stop).toHaveBeenCalled();
+    });
+
+    it('should forward capacity:restored events', async () => {
+      const capacityRestoredSpy = vi.fn();
+      enhancedDaemon.on('capacity:restored', capacityRestoredSpy);
+
+      const capacityMonitor = enhancedDaemon['capacityMonitor'];
+      const mockEvent = {
+        reason: 'capacity_dropped' as const,
+        timestamp: new Date(),
+        previousUsage: {
+          currentTokens: 5000,
+          currentCost: 0.25,
+          activeTasks: 2,
+          maxTokensPerTask: 500000,
+          maxCostPerTask: 10.0,
+          maxConcurrentTasks: 3,
+          dailyBudget: 100.0,
+          dailySpent: 10.0,
+        },
+        currentUsage: {
+          currentTokens: 1000,
+          currentCost: 0.05,
+          activeTasks: 1,
+          maxTokensPerTask: 500000,
+          maxCostPerTask: 10.0,
+          maxConcurrentTasks: 3,
+          dailyBudget: 100.0,
+          dailySpent: 5.0,
+        },
+        modeInfo: {
+          mode: 'day' as const,
+          modeHours: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+          nextModeSwitch: new Date(),
+          nextMidnight: new Date(),
+        },
+      };
+
+      // Simulate capacity:restored event from CapacityMonitor
+      const eventHandler = vi.mocked(capacityMonitor.on).mock.calls.find(
+        call => call[0] === 'capacity:restored'
+      )?.[1] as Function;
+
+      eventHandler(mockEvent);
+
+      expect(capacityRestoredSpy).toHaveBeenCalledWith(mockEvent);
+    });
+
+    it('should forward tasks:auto-resumed events from orchestrator', async () => {
+      const tasksAutoResumedSpy = vi.fn();
+      enhancedDaemon.on('tasks:auto-resumed', tasksAutoResumedSpy);
+
+      const orchestrator = enhancedDaemon['orchestrator'];
+      const mockEvent = {
+        reason: 'capacity_restored' as const,
+        timestamp: new Date(),
+        resumedTaskIds: ['task-1', 'task-2'],
+        totalResumed: 2,
+      };
+
+      // Simulate tasks:auto-resumed event from orchestrator
+      const eventHandler = vi.mocked(orchestrator.on).mock.calls.find(
+        call => call[0] === 'tasks:auto-resumed'
+      )?.[1] as Function;
+
+      eventHandler(mockEvent);
+
+      expect(tasksAutoResumedSpy).toHaveBeenCalledWith(mockEvent);
+    });
+
+    it('should include capacity status in getStatus response', async () => {
+      const status = await enhancedDaemon.getStatus();
+      const capacityMonitor = enhancedDaemon['capacityMonitor'];
+
+      expect(capacityMonitor.getStatus).toHaveBeenCalled();
+      expect(status.capacity).toEqual({
+        isRunning: true,
+        hasModeSwitchTimer: true,
+        hasMidnightTimer: true,
+        nextModeSwitch: expect.any(Date),
+        nextMidnight: expect.any(Date),
+        lastUsage: {
+          currentTokens: 1000,
+          currentCost: 0.05,
+          activeTasks: 1,
+          maxTokensPerTask: 500000,
+          maxCostPerTask: 10.0,
+          maxConcurrentTasks: 3,
+          dailyBudget: 100.0,
+          dailySpent: 5.0,
+        },
+      });
+    });
+
+    it('should provide access to CapacityMonitor through public API', () => {
+      const capacityMonitor = enhancedDaemon.getCapacityMonitor();
+
+      expect(capacityMonitor).toBeDefined();
+      expect(capacityMonitor.start).toBeDefined();
+      expect(capacityMonitor.stop).toBeDefined();
+      expect(capacityMonitor.getStatus).toBeDefined();
+    });
+  });
+
+  describe('event forwarding integration', () => {
+    beforeEach(async () => {
+      await enhancedDaemon.start();
+    });
+
+    it('should emit all capacity and auto-resume events correctly', async () => {
+      const capacityRestoredSpy = vi.fn();
+      const tasksAutoResumedSpy = vi.fn();
+
+      enhancedDaemon.on('capacity:restored', capacityRestoredSpy);
+      enhancedDaemon.on('tasks:auto-resumed', tasksAutoResumedSpy);
+
+      const capacityMonitor = enhancedDaemon['capacityMonitor'];
+      const orchestrator = enhancedDaemon['orchestrator'];
+
+      // Test capacity:restored event
+      const capacityEvent = {
+        reason: 'mode_switch' as const,
+        timestamp: new Date(),
+        previousUsage: {
+          currentTokens: 10000,
+          currentCost: 0.5,
+          activeTasks: 3,
+          maxTokensPerTask: 250000,
+          maxCostPerTask: 5.0,
+          maxConcurrentTasks: 1,
+          dailyBudget: 50.0,
+          dailySpent: 25.0,
+        },
+        currentUsage: {
+          currentTokens: 1000,
+          currentCost: 0.05,
+          activeTasks: 1,
+          maxTokensPerTask: 500000,
+          maxCostPerTask: 10.0,
+          maxConcurrentTasks: 3,
+          dailyBudget: 100.0,
+          dailySpent: 5.0,
+        },
+        modeInfo: {
+          mode: 'night' as const,
+          modeHours: [22, 23, 0, 1, 2, 3, 4, 5, 6],
+          nextModeSwitch: new Date(),
+          nextMidnight: new Date(),
+        },
+      };
+
+      const capacityEventHandler = vi.mocked(capacityMonitor.on).mock.calls.find(
+        call => call[0] === 'capacity:restored'
+      )?.[1] as Function;
+
+      capacityEventHandler(capacityEvent);
+
+      // Test tasks:auto-resumed event
+      const autoResumeEvent = {
+        reason: 'budget_reset' as const,
+        timestamp: new Date(),
+        resumedTaskIds: ['task-a', 'task-b', 'task-c'],
+        totalResumed: 3,
+      };
+
+      const autoResumeEventHandler = vi.mocked(orchestrator.on).mock.calls.find(
+        call => call[0] === 'tasks:auto-resumed'
+      )?.[1] as Function;
+
+      autoResumeEventHandler(autoResumeEvent);
+
+      // Verify both events were forwarded
+      expect(capacityRestoredSpy).toHaveBeenCalledWith(capacityEvent);
+      expect(tasksAutoResumedSpy).toHaveBeenCalledWith(autoResumeEvent);
+
+      // Verify the events have the correct structure
+      expect(capacityRestoredSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: 'mode_switch',
+          timestamp: expect.any(Date),
+          previousUsage: expect.objectContaining({
+            currentCost: 0.5,
+            activeTasks: 3,
+          }),
+          currentUsage: expect.objectContaining({
+            currentCost: 0.05,
+            activeTasks: 1,
+          }),
+          modeInfo: expect.objectContaining({
+            mode: 'night',
+          }),
+        })
+      );
+
+      expect(tasksAutoResumedSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: 'budget_reset',
+          timestamp: expect.any(Date),
+          resumedTaskIds: ['task-a', 'task-b', 'task-c'],
+          totalResumed: 3,
+        })
+      );
     });
   });
 

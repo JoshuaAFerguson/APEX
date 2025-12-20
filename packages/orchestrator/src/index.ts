@@ -72,6 +72,23 @@ export interface OrchestratorEvents {
 
   // Agent transition event (more explicit than task:stage-changed)
   'agent:transition': (taskId: string, fromAgent: string | null, toAgent: string) => void;
+
+  // Auto-resume event (emitted when capacity is restored and tasks are auto-resumed)
+  'tasks:auto-resumed': (event: TasksAutoResumedEvent) => void;
+}
+
+/**
+ * Event payload for tasks:auto-resumed event
+ */
+export interface TasksAutoResumedEvent {
+  reason: string;           // Capacity restoration reason (mode_switch, budget_reset, capacity_dropped)
+  totalTasks: number;       // Total paused tasks found
+  resumedCount: number;     // Successfully resumed count
+  errors: Array<{           // Failed resume attempts
+    taskId: string;
+    error: string;
+  }>;
+  timestamp: Date;
 }
 
 export interface PRResult {
