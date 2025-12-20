@@ -590,6 +590,16 @@ describe('DaemonScheduler', () => {
       expect(resetTime.getDate()).toBe(11); // Next day
       expect(resetTime.getHours()).toBe(0); // Midnight regardless of DST
     });
+
+    it('should handle DST fall-back transition correctly', () => {
+      // Fall DST transition (2024-11-03 in US)
+      const fallBackTime = new Date('2024-11-03T01:30:00');
+      const timeUntilReset = scheduler.getTimeUntilBudgetReset(fallBackTime);
+
+      const nextMidnight = new Date('2024-11-04T00:00:00');
+      const expectedMs = nextMidnight.getTime() - fallBackTime.getTime();
+      expect(timeUntilReset).toBe(expectedMs);
+    });
   });
 
   describe('Performance and Memory', () => {
