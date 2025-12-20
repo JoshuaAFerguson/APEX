@@ -23,6 +23,15 @@ vi.mock('@apexcli/core', () => ({
   getEffectiveConfig: vi.fn(),
 }));
 
+vi.mock('./usage-manager', () => ({
+  UsageManager: vi.fn(),
+}));
+
+vi.mock('./daemon-scheduler', () => ({
+  DaemonScheduler: vi.fn(),
+  UsageManagerProvider: vi.fn(),
+}));
+
 // Mock stream
 const mockStream = {
   write: vi.fn(),
@@ -35,6 +44,7 @@ const mockOrchestrator = {
   initialize: vi.fn(),
   executeTask: vi.fn(),
   on: vi.fn(),
+  emit: vi.fn(),
 };
 
 // Mock store
@@ -43,6 +53,20 @@ const mockStore = {
   close: vi.fn(),
   getNextQueuedTask: vi.fn(),
 };
+
+// Mock usage manager
+const mockUsageManager = {
+  trackTaskStart: vi.fn(),
+  trackTaskCompletion: vi.fn(),
+};
+
+// Mock daemon scheduler
+const mockDaemonScheduler = {
+  shouldPauseTasks: vi.fn(),
+};
+
+// Mock usage provider
+const mockUsageProvider = {};
 
 // Mock task
 const mockTask = {
@@ -77,6 +101,20 @@ describe('DaemonRunner', () => {
     (createWriteStream as MockedFunction<typeof createWriteStream>).mockReturnValue(mockStream as any);
     (ApexOrchestrator as any).mockImplementation(() => mockOrchestrator);
     (TaskStore as any).mockImplementation(() => mockStore);
+
+    // Mock new dependencies
+    const { UsageManager } = require('./usage-manager');
+    const { DaemonScheduler, UsageManagerProvider } = require('./daemon-scheduler');
+    UsageManager.mockImplementation(() => mockUsageManager);
+    DaemonScheduler.mockImplementation(() => mockDaemonScheduler);
+    UsageManagerProvider.mockImplementation(() => mockUsageProvider);
+
+    // Setup default shouldPauseTasks return value
+    mockDaemonScheduler.shouldPauseTasks.mockReturnValue({
+      shouldPause: false,
+      timeWindow: { mode: 'day', isActive: true },
+      capacity: { currentPercentage: 0.5, threshold: 0.90, shouldPause: false },
+    });
 
     // Mock loadConfig and getEffectiveConfig
     const { loadConfig, getEffectiveConfig } = require('@apexcli/core');
@@ -341,6 +379,53 @@ describe('DaemonRunner', () => {
 
       expect(mockOrchestrator.executeTask).not.toHaveBeenCalled();
     });
+
+    it('should pause when capacity threshold is exceeded', async () => {
+      // Mock scheduler to return shouldPause=true
+      mockDaemonScheduler.shouldPauseTasks.mockReturnValue({
+        shouldPause: true,
+        reason: 'Capacity threshold exceeded (95% >= 90%)',
+        timeWindow: { mode: 'day', isActive: true },
+        capacity: { currentPercentage: 0.95, threshold: 0.90, shouldPause: true },
+      });
+
+      await (daemonRunner as any).poll();
+
+      // Should not start any tasks when paused
+      expect(mockStore.getNextQueuedTask).not.toHaveBeenCalled();
+      expect(mockOrchestrator.executeTask).not.toHaveBeenCalled();
+
+      // Should emit pause event
+      expect(mockOrchestrator.emit).toHaveBeenCalledWith('daemon:paused', expect.any(String));
+
+      // Check metrics show paused state
+      const metrics = daemonRunner.getMetrics();
+      expect(metrics.isPaused).toBe(true);
+      expect(metrics.pauseReason).toContain('Capacity threshold exceeded');
+    });
+
+    it('should resume when capacity threshold is no longer exceeded', async () => {
+      // First set the daemon to paused state
+      (daemonRunner as any).isPaused = true;
+      (daemonRunner as any).pauseReason = 'Previously paused';
+
+      // Mock scheduler to return shouldPause=false
+      mockDaemonScheduler.shouldPauseTasks.mockReturnValue({
+        shouldPause: false,
+        timeWindow: { mode: 'day', isActive: true },
+        capacity: { currentPercentage: 0.75, threshold: 0.90, shouldPause: false },
+      });
+
+      await (daemonRunner as any).poll();
+
+      // Should emit resume event
+      expect(mockOrchestrator.emit).toHaveBeenCalledWith('daemon:resumed');
+
+      // Check metrics show resumed state
+      const metrics = daemonRunner.getMetrics();
+      expect(metrics.isPaused).toBe(false);
+      expect(metrics.pauseReason).toBeUndefined();
+    });
   });
 
   describe('getMetrics', () => {
@@ -366,6 +451,8 @@ describe('DaemonRunner', () => {
         activeTaskCount: 0,
         activeTaskIds: [],
         pollCount: expect.any(Number),
+        isPaused: false,
+        pauseReason: undefined,
       });
       expect(metrics.startedAt).toBeInstanceOf(Date);
     });

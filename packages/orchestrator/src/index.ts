@@ -62,6 +62,10 @@ export interface OrchestratorEvents {
   'pr:created': (taskId: string, prUrl: string) => void;
   'pr:failed': (taskId: string, error: string) => void;
 
+  // Daemon capacity events
+  'daemon:paused': (reason: string) => void;
+  'daemon:resumed': () => void;
+
   // New events for parallel execution
   'stage:parallel-started': (taskId: string, stages: string[], agents: string[]) => void;
   'stage:parallel-completed': (taskId: string) => void;

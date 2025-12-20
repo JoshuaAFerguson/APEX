@@ -3,6 +3,8 @@ import { join } from 'path';
 import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig } from '@apexcli/core';
+import { UsageManager } from './usage-manager';
+import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 
 // ============================================================================
 // Interface Definitions
@@ -83,6 +85,12 @@ export interface DaemonMetrics {
 
   /** Whether the runner is accepting new tasks */
   isRunning: boolean;
+
+  /** Whether task processing is paused due to capacity limits */
+  isPaused: boolean;
+
+  /** Reason for pausing if applicable */
+  pauseReason?: string;
 }
 
 export interface DaemonLogEntry {
@@ -102,6 +110,8 @@ export class DaemonRunner {
   private orchestrator: ApexOrchestrator | null = null;
   private store: TaskStore | null = null;
   private config: ApexConfig | null = null;
+  private usageManager: UsageManager | null = null;
+  private daemonScheduler: DaemonScheduler | null = null;
 
   // Configuration
   private readonly options: Required<DaemonRunnerOptions>;
@@ -109,6 +119,8 @@ export class DaemonRunner {
   // State
   private isRunning = false;
   private isShuttingDown = false;
+  private isPaused = false;
+  private pauseReason: string | null = null;
   private pollInterval: NodeJS.Timeout | null = null;
   private runningTasks: Map<string, Promise<void>> = new Map();
 
@@ -181,6 +193,15 @@ export class DaemonRunner {
         projectPath: this.options.projectPath,
       });
       await this.orchestrator.initialize();
+
+      // Initialize UsageManager and DaemonScheduler for capacity monitoring
+      this.usageManager = new UsageManager(effectiveConfig.daemon || {}, effectiveConfig.limits);
+      const usageProvider = new UsageManagerProvider(this.usageManager);
+      this.daemonScheduler = new DaemonScheduler(
+        effectiveConfig.daemon || {},
+        effectiveConfig.limits,
+        usageProvider
+      );
 
       // Subscribe to orchestrator events for logging
       this.setupOrchestratorEvents();
@@ -272,21 +293,60 @@ export class DaemonRunner {
       lastPollAt: this.lastPollAt ?? undefined,
       pollCount: this.pollCount,
       isRunning: this.isRunning,
+      isPaused: this.isPaused,
+      pauseReason: this.pauseReason ?? undefined,
     };
+  }
+
+  /**
+   * Set the paused state and emit appropriate events
+   */
+  private setPaused(paused: boolean, reason?: string): void {
+    const wasUnpaused = !this.isPaused;
+    this.isPaused = paused;
+    this.pauseReason = reason ?? null;
+
+    if (paused && wasUnpaused) {
+      this.log('warn', `Daemon auto-paused: ${reason || 'Capacity threshold exceeded'}`);
+      // Emit pause event through orchestrator if available
+      if (this.orchestrator) {
+        this.orchestrator.emit('daemon:paused', reason || 'Capacity threshold exceeded');
+      }
+    } else if (!paused && !wasUnpaused) {
+      this.log('info', 'Daemon auto-resumed: Capacity threshold no longer exceeded');
+      // Emit resume event through orchestrator if available
+      if (this.orchestrator) {
+        this.orchestrator.emit('daemon:resumed');
+      }
+    }
   }
 
   /**
    * Poll for new tasks and execute them
    */
   private async poll(): Promise<void> {
-    if (this.isShuttingDown || !this.store) {
+    if (this.isShuttingDown || !this.store || !this.daemonScheduler) {
       return;
     }
 
     this.pollCount++;
     this.lastPollAt = new Date();
 
-    // Check capacity
+    // Check capacity threshold using DaemonScheduler
+    const schedulingDecision = this.daemonScheduler.shouldPauseTasks();
+
+    if (schedulingDecision.shouldPause) {
+      if (!this.isPaused) {
+        // Just became paused
+        this.setPaused(true, schedulingDecision.reason || 'Capacity threshold exceeded');
+      }
+      return;
+    } else if (this.isPaused) {
+      // Resume from pause
+      this.setPaused(false);
+    }
+
+    // Check available concurrent task slots
     const availableSlots = this.options.maxConcurrentTasks - this.runningTasks.size;
     if (availableSlots <= 0) {
       this.log('debug', `At capacity (${this.runningTasks.size}/${this.options.maxConcurrentTasks})`);
@@ -318,12 +378,15 @@ export class DaemonRunner {
    * Start executing a task in the background
    */
   private startTask(taskId: string): void {
-    if (!this.orchestrator) {
+    if (!this.orchestrator || !this.usageManager) {
       return;
     }
 
     this.log('info', `Starting task ${taskId}`, { taskId });
     this.tasksProcessed++;
+
+    // Track task start with UsageManager
+    this.usageManager.trackTaskStart(taskId);
 
     const startTime = Date.now();
 
@@ -332,11 +395,29 @@ export class DaemonRunner {
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         this.log('info', `Task ${taskId} completed (${duration}s)`, { taskId });
         this.tasksSucceeded++;
+
+        // Track task completion with estimated usage (we can improve this later with actual usage)
+        const estimatedUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+        };
+        this.usageManager!.trackTaskCompletion(taskId, estimatedUsage, true);
       })
       .catch((error: Error) => {
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         this.log('error', `Task ${taskId} failed (${duration}s): ${error.message}`, { taskId });
         this.tasksFailed++;
+
+        // Track task completion as failed
+        const estimatedUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+        };
+        this.usageManager!.trackTaskCompletion(taskId, estimatedUsage, false);
       })
       .finally(() => {
         this.runningTasks.delete(taskId);
