@@ -179,6 +179,8 @@ export const DaemonConfigSchema = z.object({
     autoResume: z.boolean().optional().default(true),
     checkpointInterval: z.number().optional().default(60000), // 1 minute
     contextSummarizationThreshold: z.number().optional().default(50), // messages
+    maxResumeAttempts: z.number().optional().default(3), // Maximum number of resume attempts before giving up
+    contextWindowThreshold: z.number().min(0).max(1).optional().default(0.8), // Percentage (0-1) of context window before summarization
   }).optional(),
   // Idle processing
   idleProcessing: z.object({
@@ -260,6 +262,7 @@ export interface Task {
   prUrl?: string;
   retryCount: number;
   maxRetries: number;
+  resumeAttempts: number; // Number of times this task has been resumed from checkpoint
   dependsOn?: string[];  // Task IDs this task depends on
   blockedBy?: string[];  // Computed: tasks that are blocking this one
   // Subtask support
