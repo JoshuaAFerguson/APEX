@@ -13,6 +13,7 @@ This comprehensive guide covers all CLI commands, keyboard shortcuts, session ma
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Natural Language Tasks](#natural-language-tasks)
 - [Server Management](#server-management)
+- [Service Management](#service-management)
 - [Task Management](#task-management)
 - [Configuration](#configuration)
 
@@ -2599,6 +2600,80 @@ webUI:
   port: 3001
   autoStart: true
 ```
+
+---
+
+## Service Management
+
+APEX can be installed and managed as a system service on Linux (systemd) and macOS (launchd) for automatic startup and background operation.
+
+### `install-service` - Install System Service
+
+Install APEX daemon as a system service.
+
+**Usage:**
+```bash
+apex install-service [options]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--enable` | - | Enable service to start on boot |
+| `--force` | `-f` | Overwrite existing service file |
+| `--name <name>` | `-n` | Custom service name (default: apex-daemon) |
+
+**Examples:**
+```bash
+apex install-service                    # Basic installation
+apex install-service --enable           # Install and enable for boot
+apex install-service --name my-daemon   # Custom service name
+```
+
+### `uninstall-service` - Remove System Service
+
+Remove APEX daemon system service.
+
+**Usage:**
+```bash
+apex uninstall-service [options]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | `-f` | Force removal even if stop fails |
+| `--timeout <ms>` | `-t` | Graceful stop timeout (default: 5000) |
+
+**Examples:**
+```bash
+apex uninstall-service              # Remove service
+apex uninstall-service --force      # Force removal
+```
+
+### Platform-Specific Commands
+
+**Linux (systemd):**
+```bash
+systemctl --user start apex-daemon      # Start service
+systemctl --user stop apex-daemon       # Stop service
+systemctl --user enable apex-daemon     # Enable boot startup
+systemctl --user status apex-daemon     # Check status
+journalctl --user -u apex-daemon -f     # View logs
+```
+
+**macOS (launchd):**
+```bash
+launchctl start com.apex.daemon         # Start service
+launchctl stop com.apex.daemon          # Stop service
+launchctl load ~/Library/LaunchAgents/com.apex.daemon.plist   # Load service
+launchctl list | grep apex              # Check status
+tail -f .apex/daemon.out.log             # View logs
+```
+
+> 📖 **See [Service Management Guide](service-management.md)** for comprehensive documentation including configuration, troubleshooting, and platform-specific details.
 
 ---
 

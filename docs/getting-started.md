@@ -388,6 +388,22 @@ apex run "Fix memory leak" --background
 apex status --background
 ```
 
+### Production Deployment
+
+For production environments or continuous operation, install APEX as a system service:
+
+```bash
+# Install as system service
+apex install-service --enable
+
+# Service will auto-start on boot and restart on failure
+# View service status
+systemctl --user status apex-daemon  # Linux
+launchctl list | grep apex           # macOS
+```
+
+> 📖 **See [Service Management Guide](service-management.md)** for complete installation, configuration, and troubleshooting instructions.
+
 ## Keyboard Shortcuts & Tab Completion
 
 ### Tab Completion
@@ -478,6 +494,7 @@ apex logs task_abc123_def456
 
 ### Complete Documentation
 - [CLI Guide](cli-guide.md) - Complete command reference and advanced features
+- [Service Management](service-management.md) - Install and manage APEX as a system service
 - [Configure your agents](agents.md) - Customize agent behavior
 - [Define workflows](workflows.md) - Create custom development workflows
 - [API Reference](api-reference.md) - Integrate with your tools

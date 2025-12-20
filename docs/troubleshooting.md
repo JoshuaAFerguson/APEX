@@ -511,6 +511,7 @@ apex run "Step 2"
 ### Check Documentation
 
 - [Getting Started](getting-started.md)
+- [Service Management Guide](service-management.md)
 - [Agent Authoring Guide](agents.md)
 - [Workflow Authoring Guide](workflows.md)
 - [Best Practices](best-practices.md)

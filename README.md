@@ -75,6 +75,7 @@ apex run "Add user authentication with JWT tokens"
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Configuration](docs/configuration.md) | Project configuration options |
+| [Service Management](docs/service-management.md) | Install and manage as system service |
 | [Agents](docs/agents.md) | Built-in agents and customization |
 | [Workflows](docs/workflows.md) | Defining development workflows |
 | [API Reference](docs/api-reference.md) | REST API documentation |
