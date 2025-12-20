@@ -10,7 +10,7 @@ import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog'
 import { KanbanBoard } from '@/components/tasks/KanbanBoard'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId, cn } from '@/lib/utils'
-import type { Task, TaskStatus } from '@apex/core'
+import type { Task, TaskStatus } from '@apexcli/core'
 import { Filter, RefreshCw, ChevronRight, Plus, XCircle, RotateCcw, LayoutGrid, List } from 'lucide-react'
 import Link from 'next/link'
 

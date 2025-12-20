@@ -7,7 +7,7 @@
  * 3. Pruning redundant information
  */
 
-import type { AgentMessage, AgentContentBlock } from '@apex/core';
+import type { AgentMessage, AgentContentBlock } from '@apexcli/core';
 
 export interface ContextCompactionOptions {
   /** Maximum tokens to keep in context (approximate) */

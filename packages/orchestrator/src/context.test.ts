@@ -10,7 +10,7 @@ import {
   createContextSummary,
   analyzeConversation,
 } from './context';
-import type { AgentMessage } from '@apex/core';
+import type { AgentMessage } from '@apexcli/core';
 
 describe('Context Compaction', () => {
   describe('estimateTokens', () => {

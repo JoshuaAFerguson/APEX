@@ -24,7 +24,7 @@ import {
   generateTaskId,
   generateBranchName,
   calculateCost,
-} from '@apex/core';
+} from '@apexcli/core';
 import { TaskStore } from './store';
 import {
   buildOrchestratorPrompt,
@@ -50,7 +50,7 @@ export interface OrchestratorEvents {
   'task:stage-changed': (task: Task, stage: string) => void;
   'task:completed': (task: Task) => void;
   'task:failed': (task: Task, error: Error) => void;
-  'task:paused': (task: Task, gate: string) => void;
+  'task:paused': (task: Task, reason: string) => void;
   'task:decomposed': (task: Task, subtaskIds: string[]) => void;
   'subtask:created': (subtask: Task, parentTaskId: string) => void;
   'subtask:completed': (subtask: Task, parentTaskId: string) => void;
@@ -60,6 +60,13 @@ export interface OrchestratorEvents {
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
   'pr:failed': (taskId: string, error: string) => void;
+
+  // New events for parallel execution
+  'stage:parallel-started': (taskId: string, stages: string[], agents: string[]) => void;
+  'stage:parallel-completed': (taskId: string) => void;
+
+  // Agent transition event (more explicit than task:stage-changed)
+  'agent:transition': (taskId: string, fromAgent: string | null, toAgent: string) => void;
 }
 
 export interface PRResult {
@@ -254,9 +261,50 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         await this.updateTaskStatus(taskId, 'completed');
         const completedTask = await this.store.getTask(taskId);
         this.emit('task:completed', completedTask!);
+
+        // Handle git operations (push and PR creation) for parent tasks only
+        if (!task.parentTaskId && completedTask) {
+          try {
+            const prResult = await this.handleTaskGitOperations(completedTask);
+            if (prResult?.success && prResult.prUrl) {
+              await this.store.addLog(taskId, {
+                level: 'info',
+                message: `Pull request created: ${prResult.prUrl}`,
+              });
+            }
+          } catch (error) {
+            // Log but don't fail the task if git operations fail
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Git operations failed: ${(error as Error).message}`,
+            });
+          }
+        }
+
         return; // Success - exit the retry loop
       } catch (error) {
         lastError = error as Error;
+
+        // Check if this is a pausable error (rate limit or usage limit)
+        const pauseReason = this.isPausableError(lastError);
+        if (pauseReason) {
+          if (pauseReason === 'rate_limit') {
+            const retryAfterSeconds = this.extractRetryAfterSeconds(lastError);
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
+            });
+            await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+          } else {
+            // Usage limit - no auto-resume, user needs to add credits or wait for reset
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Usage limit reached. Task paused. Resume manually when limit resets or credits are added.`,
+            });
+            await this.pauseTask(taskId, 'usage_limit');
+          }
+          return; // Exit - task is paused, not failed
+        }
 
         // Check if we should retry
         const canRetry = autoRetry && attempt < maxRetries && this.isRetryableError(lastError);
@@ -309,6 +357,248 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Check if an error is a rate limit error that should pause the task
+   */
+  private isRateLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('rate limit') ||
+           message.includes('too many requests') ||
+           message.includes('429') ||
+           message.includes('overloaded');
+  }
+
+  /**
+   * Check if an error is a usage/billing limit error that should pause the task
+   */
+  private isUsageLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('usage limit') ||
+           message.includes('credit') ||
+           message.includes('billing') ||
+           message.includes('quota') ||
+           message.includes('spending limit') ||
+           message.includes('insufficient') ||
+           message.includes('exceeded your') ||
+           message.includes('limit exceeded') ||
+           message.includes('monthly limit') ||
+           message.includes('daily limit');
+  }
+
+  /**
+   * Check if an error should pause the task (rate limit or usage limit)
+   */
+  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | false {
+    if (this.isRateLimitError(error)) {
+      return 'rate_limit';
+    }
+    if (this.isUsageLimitError(error)) {
+      return 'usage_limit';
+    }
+    return false;
+  }
+
+  /**
+   * Extract retry-after time from rate limit error (in seconds)
+   * Returns default of 60 seconds if not found
+   */
+  private extractRetryAfterSeconds(error: Error): number {
+    const message = error.message;
+
+    // Try to extract retry-after from error message
+    // Common patterns: "retry after 60 seconds", "retry-after: 60", "wait 60s"
+    const patterns = [
+      /retry[- ]?after[:\s]+(\d+)/i,
+      /wait[:\s]+(\d+)\s*s/i,
+      /(\d+)\s*seconds?/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const seconds = parseInt(match[1], 10);
+        if (seconds > 0 && seconds < 3600) { // Sanity check: max 1 hour
+          return seconds;
+        }
+      }
+    }
+
+    // Default: 60 seconds
+    return 60;
+  }
+
+  /**
+   * Pause a task due to rate limiting or other pausable conditions
+   */
+  async pauseTask(
+    taskId: string,
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual',
+    resumeAfterSeconds?: number
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const now = new Date();
+    const resumeAfter = resumeAfterSeconds
+      ? new Date(now.getTime() + resumeAfterSeconds * 1000)
+      : undefined;
+
+    await this.store.updateTask(taskId, {
+      status: 'paused',
+      pausedAt: now,
+      pauseReason: reason,
+      resumeAfter,
+      updatedAt: now,
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: resumeAfter
+        ? `Task paused (${reason}). Will auto-resume after ${resumeAfter.toISOString()}`
+        : `Task paused (${reason}). Use /resume ${taskId} to continue.`,
+    });
+
+    const task = await this.store.getTask(taskId);
+    if (task) {
+      this.emit('task:paused', task, reason);
+
+      // If this is a subtask, pause the parent task too
+      if (task.parentTaskId) {
+        await this.pauseParentTask(task.parentTaskId, taskId, reason);
+      }
+    }
+
+    // Schedule auto-resume if resumeAfter is set
+    if (resumeAfter && resumeAfterSeconds) {
+      this.scheduleAutoResume(taskId, resumeAfterSeconds * 1000);
+    }
+  }
+
+  /**
+   * Pause a parent task because a subtask was paused
+   */
+  private async pauseParentTask(
+    parentTaskId: string,
+    subtaskId: string,
+    reason: string
+  ): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || parentTask.status === 'paused') {
+      return; // Already paused or doesn't exist
+    }
+
+    await this.store.updateTask(parentTaskId, {
+      status: 'paused',
+      pausedAt: new Date(),
+      pauseReason: `subtask_paused:${subtaskId}`,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Parent task paused because subtask ${subtaskId} was paused (${reason})`,
+    });
+
+    this.emit('task:paused', parentTask, `subtask_paused:${subtaskId}`);
+  }
+
+  /**
+   * Schedule auto-resume of a task after a delay
+   */
+  private scheduleAutoResume(taskId: string, delayMs: number): void {
+    setTimeout(async () => {
+      try {
+        const task = await this.store.getTask(taskId);
+        if (task && task.status === 'paused' && task.resumeAfter) {
+          // Only resume if the task is still paused and the resume time has passed
+          if (new Date() >= task.resumeAfter) {
+            await this.store.addLog(taskId, {
+              level: 'info',
+              message: 'Auto-resuming task after rate limit cooldown',
+            });
+            await this.resumePausedTask(taskId);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to auto-resume task ${taskId}:`, error);
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Resume a paused task
+   */
+  async resumePausedTask(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return false;
+    }
+
+    if (task.status !== 'paused') {
+      return false; // Not paused
+    }
+
+    // Clear pause-related fields
+    await this.store.updateTask(taskId, {
+      status: 'in-progress',
+      pausedAt: undefined,
+      pauseReason: undefined,
+      resumeAfter: undefined,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: 'Task resumed',
+    });
+
+    // Resume execution from checkpoint
+    const resumed = await this.resumeTask(taskId);
+
+    // If this is a subtask, check if parent should also resume
+    if (task.parentTaskId) {
+      await this.checkAndResumeParent(task.parentTaskId);
+    }
+
+    return resumed;
+  }
+
+  /**
+   * Check if a parent task should resume (all subtasks are no longer paused)
+   */
+  private async checkAndResumeParent(parentTaskId: string): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || parentTask.status !== 'paused') {
+      return;
+    }
+
+    // Check if the pause was due to a subtask
+    if (!parentTask.pauseReason?.startsWith('subtask_paused:')) {
+      return;
+    }
+
+    // Check if all subtasks are no longer paused
+    const subtasks = await this.getSubtasks(parentTaskId);
+    const anyPaused = subtasks.some(s => s.status === 'paused');
+
+    if (!anyPaused) {
+      // All subtasks are no longer paused, resume parent
+      await this.store.updateTask(parentTaskId, {
+        status: 'in-progress',
+        pausedAt: undefined,
+        pauseReason: undefined,
+        resumeAfter: undefined,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'Parent task resumed - all subtasks unpaused',
+      });
+    }
+  }
+
+  /**
    * Parse and enhance error messages from Claude SDK
    * Extracts specific error types for better user feedback
    */
@@ -349,6 +639,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Budget exceeded
     if (lowerMessage.includes('budget') || lowerMessage.includes('cost limit')) {
       return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${message}`;
+    }
+
+    // Usage/billing limit exceeded
+    if (lowerMessage.includes('usage limit') || lowerMessage.includes('credit') ||
+        lowerMessage.includes('billing') || lowerMessage.includes('quota') ||
+        lowerMessage.includes('spending limit') || lowerMessage.includes('insufficient') ||
+        lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
+        lowerMessage.includes('daily limit')) {
+      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
     }
 
     // Process exit errors
@@ -470,6 +769,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           level: 'info',
           message: `Running ${readyStages.length} stages in parallel: ${readyStages.map(s => s.name).join(', ')}`,
         });
+
+        // Emit parallel execution started event
+        const stageNames = readyStages.map(s => s.name);
+        const agentNames = readyStages.map(s => s.agent);
+        this.emit('stage:parallel-started', task.id, stageNames, agentNames);
       }
 
       // Mark stages as in progress
@@ -492,6 +796,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           });
         }
         this.emit('task:stage-changed', task, stage.name);
+
+        // Emit agent transition event - we'll let the REPL track previous agent
+        this.emit('agent:transition', task.id, null, stage.agent);
 
         await this.store.addLog(task.id, {
           level: 'info',
@@ -570,6 +877,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         if (decompReq?.shouldDecompose) {
           decompositionRequest = decompReq;
         }
+      }
+
+      // Emit parallel execution completed event if we just finished parallel execution
+      if (results.length > 1) {
+        this.emit('stage:parallel-completed', task.id);
       }
 
       // If any stage failed, throw the first error
@@ -678,7 +990,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Convert agent model to SDK model format
     const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                     agent.model === 'haiku' ? 'claude-haiku-3-5-20241022' :
+                     agent.model === 'haiku' ? 'claude-3-5-haiku-20241022' :
                      'claude-sonnet-4-20250514';
 
     // Execute stage via Claude Agent SDK
@@ -1011,7 +1323,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get task logs
    */
-  async getTaskLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<import('@apex/core').TaskLog[]> {
+  async getTaskLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<import('@apexcli/core').TaskLog[]> {
     await this.ensureInitialized();
     return this.store.getLogs(taskId, options);
   }
@@ -1035,7 +1347,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get a gate
    */
-  async getGate(taskId: string, gateName: string): Promise<import('@apex/core').Gate | null> {
+  async getGate(taskId: string, gateName: string): Promise<import('@apexcli/core').Gate | null> {
     await this.ensureInitialized();
     return this.store.getGate(taskId, gateName);
   }
@@ -1043,7 +1355,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get all gates for a task
    */
-  async getAllGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+  async getAllGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getAllGates(taskId);
   }
@@ -1051,9 +1363,218 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Get pending gates for a task
    */
-  async getPendingGates(taskId: string): Promise<import('@apex/core').Gate[]> {
+  async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
+  }
+
+  // ============================================================================
+  // Git Operations
+  // ============================================================================
+
+  /**
+   * Check if there are uncommitted changes in the repository
+   */
+  async hasUncommittedChanges(): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync('git status --porcelain', { cwd: this.projectPath });
+      return stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Commit changes after a subtask completes
+   */
+  async gitCommitSubtask(subtask: Task, parentTask: Task): Promise<boolean> {
+    // Check if commit after subtask is enabled
+    if (!this.effectiveConfig.git.commitAfterSubtask) {
+      return false;
+    }
+
+    // Check if there are changes to commit
+    const hasChanges = await this.hasUncommittedChanges();
+    if (!hasChanges) {
+      await this.store.addLog(subtask.id, {
+        level: 'debug',
+        message: 'No changes to commit after subtask',
+      });
+      return false;
+    }
+
+    try {
+      // Stage all changes
+      await execAsync('git add -A', { cwd: this.projectPath });
+
+      // Generate commit message based on format
+      const commitMessage = this.generateSubtaskCommitMessage(subtask, parentTask);
+
+      // Commit
+      await execAsync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, { cwd: this.projectPath });
+
+      await this.store.addLog(subtask.id, {
+        level: 'info',
+        message: `Committed changes: ${commitMessage.split('\n')[0]}`,
+      });
+
+      return true;
+    } catch (error) {
+      await this.store.addLog(subtask.id, {
+        level: 'warn',
+        message: `Failed to commit changes: ${(error as Error).message}`,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Generate a commit message for a subtask
+   */
+  private generateSubtaskCommitMessage(subtask: Task, parentTask: Task): string {
+    const format = this.effectiveConfig.git.commitFormat;
+
+    if (format === 'conventional') {
+      // Extract type from workflow
+      const typeMap: Record<string, string> = {
+        feature: 'feat',
+        bugfix: 'fix',
+        refactor: 'refactor',
+        docs: 'docs',
+        test: 'test',
+        devops: 'ci',
+      };
+      const type = typeMap[parentTask.workflow] || 'chore';
+
+      // Truncate description for first line
+      const desc = subtask.description.length > 50
+        ? subtask.description.slice(0, 47) + '...'
+        : subtask.description;
+
+      return `${type}: ${desc}
+
+Subtask of: ${parentTask.description.slice(0, 72)}
+Task ID: ${parentTask.id}
+Subtask ID: ${subtask.id}
+
+🤖 Generated by APEX`;
+    } else {
+      // Simple format
+      return `[APEX] ${subtask.description}
+
+Parent: ${parentTask.description}`;
+    }
+  }
+
+  /**
+   * Push changes to remote after a task completes
+   */
+  async gitPushTask(task: Task): Promise<boolean> {
+    // Check if push after task is enabled
+    if (!this.effectiveConfig.git.pushAfterTask) {
+      return false;
+    }
+
+    if (!task.branchName) {
+      await this.store.addLog(task.id, {
+        level: 'debug',
+        message: 'No branch name set, skipping push',
+      });
+      return false;
+    }
+
+    try {
+      // Push to remote
+      await execAsync(`git push -u origin ${task.branchName}`, { cwd: this.projectPath });
+
+      await this.store.addLog(task.id, {
+        level: 'info',
+        message: `Pushed changes to origin/${task.branchName}`,
+      });
+
+      return true;
+    } catch (error) {
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Failed to push changes: ${(error as Error).message}`,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Handle git operations after a task completes (push and optionally create PR)
+   */
+  async handleTaskGitOperations(task: Task): Promise<PRResult | null> {
+    // Push changes if enabled
+    const pushed = await this.gitPushTask(task);
+
+    // Check if we should create a PR
+    const createPR = this.effectiveConfig.git.createPR;
+
+    if (createPR === 'never') {
+      return null;
+    }
+
+    if (createPR === 'ask') {
+      // For 'ask' mode, we just log that a PR could be created
+      // The user can use /pr command to create it manually
+      if (pushed) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Changes pushed. Use /pr ${task.id} to create a pull request.`,
+        });
+      }
+      return null;
+    }
+
+    // createPR === 'always' - create PR automatically
+    if (!pushed && !task.prUrl) {
+      // Nothing pushed and no existing PR
+      return null;
+    }
+
+    // Skip if PR already exists
+    if (task.prUrl) {
+      return { success: true, prUrl: task.prUrl };
+    }
+
+    // Create PR
+    const prOptions = {
+      draft: this.effectiveConfig.git.prDraft,
+    };
+
+    const result = await this.createPullRequest(task.id, prOptions);
+
+    // Add labels if configured
+    if (result.success && result.prUrl && this.effectiveConfig.git.prLabels?.length) {
+      try {
+        const prNumber = result.prUrl.split('/').pop();
+        const labels = this.effectiveConfig.git.prLabels.join(',');
+        await execAsync(`gh pr edit ${prNumber} --add-label "${labels}"`, { cwd: this.projectPath });
+      } catch (error) {
+        await this.store.addLog(task.id, {
+          level: 'warn',
+          message: `Failed to add labels to PR: ${(error as Error).message}`,
+        });
+      }
+    }
+
+    // Request reviewers if configured
+    if (result.success && result.prUrl && this.effectiveConfig.git.prReviewers?.length) {
+      try {
+        const prNumber = result.prUrl.split('/').pop();
+        const reviewers = this.effectiveConfig.git.prReviewers.join(',');
+        await execAsync(`gh pr edit ${prNumber} --add-reviewer "${reviewers}"`, { cwd: this.projectPath });
+      } catch (error) {
+        await this.store.addLog(task.id, {
+          level: 'warn',
+          message: `Failed to add reviewers to PR: ${(error as Error).message}`,
+        });
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -1752,6 +2273,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         const completedSubtask = await this.store.getTask(subtaskId);
         if (completedSubtask) {
           this.emit('subtask:completed', completedSubtask, parentTask.id);
+
+          // Commit changes after subtask completes
+          await this.gitCommitSubtask(completedSubtask, parentTask);
         }
       } catch (error) {
         const failedSubtask = await this.store.getTask(subtaskId);
@@ -1779,12 +2303,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       const batch = subtaskIds.slice(i, i + maxConcurrent);
+      const completedSubtasks: Task[] = [];
+
       const results = await Promise.allSettled(
         batch.map(async (subtaskId) => {
           await this.executeTask(subtaskId);
           const completedSubtask = await this.store.getTask(subtaskId);
           if (completedSubtask) {
             this.emit('subtask:completed', completedSubtask, parentTask.id);
+            completedSubtasks.push(completedSubtask);
           }
         })
       );
@@ -1802,6 +2329,35 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           }
         }
         throw failures[0].reason;
+      }
+
+      // Commit changes after each batch of parallel subtasks completes
+      // Use the first completed subtask as the representative for the commit message
+      if (completedSubtasks.length > 0) {
+        // Generate a combined commit for the batch
+        const hasChanges = await this.hasUncommittedChanges();
+        if (hasChanges && this.effectiveConfig.git.commitAfterSubtask) {
+          try {
+            await execAsync('git add -A', { cwd: this.projectPath });
+            const descriptions = completedSubtasks.map(s => `- ${s.description.slice(0, 50)}`).join('\n');
+            const format = this.effectiveConfig.git.commitFormat;
+            const typeMap: Record<string, string> = { feature: 'feat', bugfix: 'fix', refactor: 'refactor', docs: 'docs', test: 'test', devops: 'ci' };
+            const type = typeMap[parentTask.workflow] || 'chore';
+            const message = format === 'conventional'
+              ? `${type}: complete ${completedSubtasks.length} subtask(s)\n\n${descriptions}\n\nTask ID: ${parentTask.id}\n\n🤖 Generated by APEX`
+              : `[APEX] Complete ${completedSubtasks.length} subtask(s)\n\n${descriptions}`;
+            await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: this.projectPath });
+            await this.store.addLog(parentTask.id, {
+              level: 'info',
+              message: `Committed batch of ${completedSubtasks.length} subtask(s)`,
+            });
+          } catch (error) {
+            await this.store.addLog(parentTask.id, {
+              level: 'warn',
+              message: `Failed to commit batch: ${(error as Error).message}`,
+            });
+          }
+        }
       }
     }
   }
@@ -1878,30 +2434,75 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         })
       );
 
-      // Process results
+      // Process results and collect completed subtasks for commit
+      const completedInBatch: Task[] = [];
+      let firstError: Error | null = null;
+
       for (let i = 0; i < batch.length; i++) {
         const subtaskId = batch[i];
         inProgressSubtasks.delete(subtaskId);
         completedSubtasks.add(subtaskId);
 
         if (results[i].status === 'rejected') {
-          throw (results[i] as PromiseRejectedResult).reason;
+          if (!firstError) {
+            firstError = (results[i] as PromiseRejectedResult).reason;
+          }
+        } else {
+          const completedSubtask = await this.store.getTask(subtaskId);
+          if (completedSubtask) {
+            completedInBatch.push(completedSubtask);
+          }
         }
+      }
+
+      // Commit changes after batch completes (before throwing any error)
+      if (completedInBatch.length > 0) {
+        const hasChanges = await this.hasUncommittedChanges();
+        if (hasChanges && this.effectiveConfig.git.commitAfterSubtask) {
+          try {
+            await execAsync('git add -A', { cwd: this.projectPath });
+            const descriptions = completedInBatch.map(s => `- ${s.description.slice(0, 50)}`).join('\n');
+            const format = this.effectiveConfig.git.commitFormat;
+            const typeMap: Record<string, string> = { feature: 'feat', bugfix: 'fix', refactor: 'refactor', docs: 'docs', test: 'test', devops: 'ci' };
+            const type = typeMap[parentTask.workflow] || 'chore';
+            const message = format === 'conventional'
+              ? `${type}: complete ${completedInBatch.length} subtask(s)\n\n${descriptions}\n\nTask ID: ${parentTask.id}\n\n🤖 Generated by APEX`
+              : `[APEX] Complete ${completedInBatch.length} subtask(s)\n\n${descriptions}`;
+            await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: this.projectPath });
+            await this.store.addLog(parentTask.id, {
+              level: 'info',
+              message: `Committed batch of ${completedInBatch.length} subtask(s)`,
+            });
+          } catch (error) {
+            await this.store.addLog(parentTask.id, {
+              level: 'warn',
+              message: `Failed to commit batch: ${(error as Error).message}`,
+            });
+          }
+        }
+      }
+
+      // Now throw if there was an error
+      if (firstError) {
+        throw firstError;
       }
     }
   }
 
   /**
    * Aggregate results from all subtasks into the parent task
+   * Returns true if all subtasks are complete, false if some are still pending
    */
-  private async aggregateSubtaskResults(parentTaskId: string): Promise<void> {
+  private async aggregateSubtaskResults(parentTaskId: string): Promise<boolean> {
     const parentTask = await this.store.getTask(parentTaskId);
-    if (!parentTask) return;
+    if (!parentTask) return true;
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     const allArtifacts: string[] = [];
     const subtaskSummaries: string[] = [];
+    let pendingCount = 0;
+    let failedCount = 0;
 
     for (const subtaskId of parentTask.subtaskIds || []) {
       const subtask = await this.store.getTask(subtaskId);
@@ -1918,6 +2519,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+
+      // Track incomplete subtasks
+      if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused') {
+        pendingCount++;
+      } else if (subtask.status === 'failed') {
+        failedCount++;
+      }
     }
 
     // Update parent task with aggregated usage
@@ -1931,10 +2539,168 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       updatedAt: new Date(),
     });
 
+    if (pendingCount > 0) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Subtask execution incomplete: ${pendingCount} pending, ${failedCount} failed\n${subtaskSummaries.join('\n')}`,
+      });
+      return false;
+    }
+
     await this.store.addLog(parentTaskId, {
       level: 'info',
       message: `Subtask execution complete:\n${subtaskSummaries.join('\n')}`,
     });
+    return true;
+  }
+
+  /**
+   * Continue executing pending subtasks for a parent task
+   * This is used when resuming a parent task that was interrupted
+   */
+  async continuePendingSubtasks(parentTaskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) {
+      throw new Error(`Parent task not found: ${parentTaskId}`);
+    }
+
+    if (!parentTask.subtaskIds || parentTask.subtaskIds.length === 0) {
+      throw new Error(`Task ${parentTaskId} has no subtasks`);
+    }
+
+    // Get pending subtasks
+    const pendingSubtaskIds: string[] = [];
+    for (const subtaskId of parentTask.subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued')) {
+        pendingSubtaskIds.push(subtaskId);
+      }
+    }
+
+    if (pendingSubtaskIds.length === 0) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'No pending subtasks to execute',
+      });
+      return;
+    }
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Continuing execution of ${pendingSubtaskIds.length} pending subtasks`,
+    });
+
+    // Update parent status to in-progress
+    await this.store.updateTask(parentTaskId, {
+      status: 'in-progress',
+      currentStage: 'subtask-execution',
+      updatedAt: new Date(),
+    });
+
+    this.emit('task:started', parentTask);
+
+    const strategy = parentTask.subtaskStrategy || 'sequential';
+
+    try {
+      // Execute pending subtasks based on strategy
+      if (strategy === 'sequential') {
+        for (const subtaskId of pendingSubtaskIds) {
+          const currentParent = await this.store.getTask(parentTaskId);
+          if (currentParent?.status === 'cancelled') {
+            return;
+          }
+
+          await this.executeTask(subtaskId);
+          const completedSubtask = await this.store.getTask(subtaskId);
+          if (completedSubtask) {
+            this.emit('subtask:completed', completedSubtask, parentTaskId);
+            await this.gitCommitSubtask(completedSubtask, parentTask);
+          }
+        }
+      } else {
+        // For parallel/dependency-based, execute all pending at once
+        const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
+        for (let i = 0; i < pendingSubtaskIds.length; i += maxConcurrent) {
+          const currentParent = await this.store.getTask(parentTaskId);
+          if (currentParent?.status === 'cancelled') {
+            return;
+          }
+
+          const batch = pendingSubtaskIds.slice(i, i + maxConcurrent);
+          await Promise.all(batch.map(async (subtaskId) => {
+            await this.executeTask(subtaskId);
+            const completedSubtask = await this.store.getTask(subtaskId);
+            if (completedSubtask) {
+              this.emit('subtask:completed', completedSubtask, parentTaskId);
+            }
+          }));
+        }
+      }
+
+      // Check if all subtasks are now complete
+      const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+
+      if (allComplete) {
+        await this.updateTaskStatus(parentTaskId, 'completed');
+        const completedTask = await this.store.getTask(parentTaskId);
+        if (completedTask) {
+          this.emit('task:completed', completedTask);
+
+          // Handle git operations for parent task
+          try {
+            const prResult = await this.handleTaskGitOperations(completedTask);
+            if (prResult?.success && prResult.prUrl) {
+              await this.store.addLog(parentTaskId, {
+                level: 'info',
+                message: `Pull request created: ${prResult.prUrl}`,
+              });
+            }
+          } catch (error) {
+            await this.store.addLog(parentTaskId, {
+              level: 'warn',
+              message: `Git operations failed: ${(error as Error).message}`,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      // Check if it was a rate limit that caused pausing
+      const updatedParent = await this.store.getTask(parentTaskId);
+      if (updatedParent?.status === 'paused') {
+        // Task was paused due to rate limit, don't mark as failed
+        return;
+      }
+
+      await this.updateTaskStatus(parentTaskId, 'failed', (error as Error).message);
+      const failedTask = await this.store.getTask(parentTaskId);
+      if (failedTask) {
+        this.emit('task:failed', failedTask, error as Error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a parent task has pending subtasks
+   */
+  async hasPendingSubtasks(parentTaskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask || !parentTask.subtaskIds) {
+      return false;
+    }
+
+    for (const subtaskId of parentTask.subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused')) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

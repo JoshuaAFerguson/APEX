@@ -1,8 +1,8 @@
 import React from 'react';
 import { render } from 'ink';
 import { App, type AppState, type Message } from './App.js';
-import type { ApexConfig } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexConfig } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
 export interface InkAppInstance {
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void;
@@ -102,3 +102,4 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
 
 export { App, type AppState, type AppProps, type Message } from './App.js';
 export * from './components/index.js';
+export * from './hooks/index.js';

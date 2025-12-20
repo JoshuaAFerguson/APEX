@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@apex/core'],
+  transpilePackages: ['@apexcli/core'],
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: false,

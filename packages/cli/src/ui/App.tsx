@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import {
+  AgentPanel,
   Banner,
   InputPrompt,
   ResponseStream,
@@ -9,13 +10,25 @@ import {
   TaskProgress,
   ToolCall,
 } from './components/index.js';
-import type { ApexConfig, Task } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { AgentInfo } from './components/agents/AgentPanel.js';
+import type { ApexConfig, Task } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 import { CompletionEngine, type CompletionContext } from '../services/CompletionEngine.js';
 
 const VERSION = '0.3.0';
+
+/**
+ * Build agent list from workflow configuration for AgentPanel display
+ * Note: This is a placeholder - workflows are loaded dynamically via loadWorkflow()
+ * The actual agent list is populated via orchestrator events
+ */
+function getWorkflowAgents(_workflowName: string, _config: ApexConfig | null): AgentInfo[] {
+  // Workflows are loaded separately via loadWorkflow(), not stored in config
+  // The agent list is populated dynamically via orchestrator events (task:stage-changed)
+  return [];
+}
 
 export interface Message {
   id: string;
@@ -49,6 +62,13 @@ export interface AppState {
   sessionStartTime?: Date;
   sessionName?: string;
   subtaskProgress?: { completed: number; total: number };
+
+  // Agent handoff tracking
+  previousAgent?: string;  // Previous agent for handoff animation
+
+  // Parallel execution tracking
+  parallelAgents?: AgentInfo[];  // Agents running in parallel
+  showParallelPanel?: boolean;   // Whether to show parallel section
 }
 
 export interface AppProps {
@@ -476,15 +496,23 @@ export function App({
 
         {/* Current task progress */}
         {state.currentTask && (
-          <TaskProgress
-            taskId={state.currentTask.id}
-            description={state.currentTask.description}
-            status={state.currentTask.status}
-            workflow={state.currentTask.workflow}
-            agent={state.activeAgent}
-            tokens={state.tokens}
-            cost={state.cost}
-          />
+          <>
+            <TaskProgress
+              taskId={state.currentTask.id}
+              description={state.currentTask.description}
+              status={state.currentTask.status}
+              workflow={state.currentTask.workflow}
+              agent={state.activeAgent}
+              tokens={state.tokens}
+              cost={state.cost}
+            />
+            <AgentPanel
+              agents={getWorkflowAgents(state.currentTask.workflow, state.config)}
+              currentAgent={state.activeAgent}
+              showParallel={state.showParallelPanel}
+              parallelAgents={state.parallelAgents}
+            />
+          </>
         )}
       </Box>
 

@@ -60,6 +60,42 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * Formats elapsed time from a start date to current time in a human-readable format
+ * @param startTime - The start time as a Date object
+ * @param currentTime - The current time as a Date object (defaults to now)
+ * @returns Formatted elapsed time string (e.g., "42s", "2m 15s", "1h 5m")
+ */
+export function formatElapsed(startTime: Date, currentTime: Date = new Date()): string {
+  const elapsedMs = currentTime.getTime() - startTime.getTime();
+
+  // Handle edge cases
+  if (elapsedMs < 0) {
+    return '0s';
+  }
+
+  if (elapsedMs < 1000) {
+    return '0s'; // Show 0s for sub-second durations
+  }
+
+  const seconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  // Format based on duration
+  if (hours > 0) {
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+
+  if (minutes > 0) {
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+
+  return `${seconds}s`;
+}
+
+/**
  * Format token count with commas
  */
 export function formatTokens(tokens: number): string {

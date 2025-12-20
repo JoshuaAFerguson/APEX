@@ -12,7 +12,7 @@ APEX v0.3.0 aims to provide a Claude Code-like interactive CLI experience. The r
 - Multi-agent visualization
 - Session management
 
-The current CLI (`@apex/cli`) already uses Ink (React for CLI) with several existing components:
+The current CLI (`@apexcli/cli`) already uses Ink (React for CLI) with several existing components:
 - `StatusBar` - Shows git branch, tokens, cost, model, agent, workflow stage
 - `InputPrompt` - Command input with history and suggestions
 - `ResponseStream` - Markdown and code block rendering with syntax highlighting

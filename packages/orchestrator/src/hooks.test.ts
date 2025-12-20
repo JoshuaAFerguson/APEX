@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { createHooks, createCustomHooks, HookContext, HooksConfig } from './hooks';
 import { TaskStore } from './store';
-import type { Task } from '@apex/core';
+import type { Task } from '@apexcli/core';
 
 describe('Hooks', () => {
   let testDir: string;

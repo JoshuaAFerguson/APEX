@@ -21,7 +21,7 @@ This package provides a Next.js-based web interface for managing APEX tasks, age
 - **TypeScript** - Type-safe development
 - **Tailwind CSS** - Utility-first styling
 - **Lucide React** - Icon library
-- **@apex/core** - Shared types and utilities
+- **@apexcli/core** - Shared types and utilities
 
 ## Development
 

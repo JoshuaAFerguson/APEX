@@ -17,7 +17,7 @@ This ADR provides detailed development guidance for each v0.3.0 feature, buildin
 
 ---
 
-## Feature Category 1: Rich Terminal UI (`@apex/cli`)
+## Feature Category 1: Rich Terminal UI (`@apexcli/cli`)
 
 ### 1.1 Ink-based UI Framework
 

@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { TaskStore } from './store';
-import type { Task, TaskLog, TaskArtifact, GateStatus, TaskCheckpoint, AgentMessage } from '@apex/core';
+import type { Task, TaskLog, TaskArtifact, GateStatus, TaskCheckpoint, AgentMessage } from '@apexcli/core';
 
 describe('TaskStore', () => {
   let testDir: string;

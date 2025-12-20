@@ -12,8 +12,8 @@ import {
   ApexEvent,
   SubtaskStrategy,
   SubtaskDefinition,
-} from '@apex/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+} from '@apexcli/core';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -222,6 +222,69 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       return { ok: true, message: 'Task retry started' };
     }
   );
+
+  // Resume a paused task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/resume',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      // Handle paused tasks
+      if (task.status === 'paused') {
+        const resumed = await orchestrator.resumePausedTask(id);
+        if (!resumed) {
+          return reply.status(500).send({
+            error: 'Failed to resume task. Check if the task has a valid checkpoint.'
+          });
+        }
+        return { ok: true, message: 'Task resumed from paused state', taskId: id };
+      }
+
+      // Handle pending tasks (subtasks that were never started)
+      if (task.status === 'pending' || task.status === 'queued') {
+        // Start execution in background
+        orchestrator.executeTask(id).catch((error) => {
+          app.log.error(`Task ${id} failed: ${error.message}`);
+        });
+        return { ok: true, message: 'Task execution started', taskId: id };
+      }
+
+      // Handle completed/failed/cancelled tasks that have pending subtasks
+      // This allows resuming a parent task to continue its unfinished subtasks
+      if (task.subtaskIds && task.subtaskIds.length > 0) {
+        const hasPending = await orchestrator.hasPendingSubtasks(id);
+        if (hasPending) {
+          // Continue executing pending subtasks in background
+          orchestrator.continuePendingSubtasks(id).catch((error) => {
+            app.log.error(`Task ${id} failed while continuing subtasks: ${error.message}`);
+          });
+          return { ok: true, message: 'Continuing execution of pending subtasks', taskId: id };
+        }
+      }
+
+      // For other statuses with no pending subtasks, suggest retry
+      return reply.status(400).send({
+        error: `Task cannot be resumed (current status: ${task.status}, no pending subtasks). Use /retry for failed/cancelled tasks.`
+      });
+    }
+  );
+
+  // List all paused tasks
+  app.get('/tasks/paused', async (request, reply) => {
+    const tasks = await orchestrator.listTasks({ status: 'paused' });
+    return {
+      tasks,
+      count: tasks.length,
+      message: tasks.length > 0
+        ? `${tasks.length} paused task(s) found. Use POST /tasks/:id/resume to resume.`
+        : 'No paused tasks found.'
+    };
+  });
 
   // ============================================================================
   // Subtasks API
@@ -590,6 +653,20 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
+  orchestrator.on('task:paused', (task, reason) => {
+    broadcast(task.id, {
+      type: 'task:paused',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task },
+        reason,
+        pausedAt: task.pausedAt,
+        resumeAfter: task.resumeAfter,
+      },
+    });
+  });
+
   orchestrator.on('agent:message', (taskId, message) => {
     broadcast(taskId, {
       type: 'agent:message',
@@ -676,6 +753,8 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /tasks/:id/log            - Add log entry`);
       console.log(`  POST   /tasks/:id/cancel         - Cancel a task`);
       console.log(`  POST   /tasks/:id/retry          - Retry a failed task`);
+      console.log(`  POST   /tasks/:id/resume         - Resume a paused task`);
+      console.log(`  GET    /tasks/paused             - List paused tasks`);
       console.log('');
       console.log('Subtask Endpoints:');
       console.log(`  POST   /tasks/:id/decompose      - Decompose task into subtasks`);

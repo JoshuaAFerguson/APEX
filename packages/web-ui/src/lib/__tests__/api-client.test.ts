@@ -5,7 +5,7 @@ import type {
   UpdateTaskStatusRequest,
   ApproveGateRequest,
   ApexConfig,
-} from '@apex/core';
+} from '@apexcli/core';
 
 // Mock fetch globally
 const mockFetch = vi.fn();

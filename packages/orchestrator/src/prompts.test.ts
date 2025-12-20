@@ -10,8 +10,8 @@ import {
   PromptContext,
   StagePromptContext,
 } from './prompts';
-import type { AgentDefinition, WorkflowDefinition, Task, WorkflowStage, StageResult } from '@apex/core';
-import { getEffectiveConfig, ApexConfigSchema } from '@apex/core';
+import type { AgentDefinition, WorkflowDefinition, Task, WorkflowStage, StageResult } from '@apexcli/core';
+import { getEffectiveConfig, ApexConfigSchema } from '@apexcli/core';
 
 describe('Prompts', () => {
   const createMockConfig = () => {

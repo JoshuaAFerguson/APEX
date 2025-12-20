@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apex/core';
+import { Task, TaskStatus, TaskPriority, TaskUsage, TaskLog, TaskArtifact, Gate, GateStatus, TaskCheckpoint, SubtaskStrategy } from '@apexcli/core';
 
 export class TaskStore {
   private db!: Database.Database;
@@ -41,6 +41,10 @@ export class TaskStore {
       { column: 'subtask_ids', definition: 'TEXT' },
       { column: 'subtask_strategy', definition: 'TEXT' },
       { column: 'priority', definition: "TEXT DEFAULT 'normal'" },
+      // Rate limit pause support (v0.3.0)
+      { column: 'paused_at', definition: 'TEXT' },
+      { column: 'resume_after', definition: 'TEXT' },
+      { column: 'pause_reason', definition: 'TEXT' },
     ];
 
     for (const { column, definition } of migrations) {
@@ -83,7 +87,10 @@ export class TaskStore {
         error TEXT,
         parent_task_id TEXT,
         subtask_ids TEXT,
-        subtask_strategy TEXT
+        subtask_strategy TEXT,
+        paused_at TEXT,
+        resume_after TEXT,
+        pause_reason TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -254,6 +261,9 @@ export class TaskStore {
       subtaskStrategy: SubtaskStrategy;
       dependsOn: string[];
       blockedBy: string[];
+      pausedAt: Date | undefined;
+      resumeAfter: Date | undefined;
+      pauseReason: string | undefined;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -340,6 +350,22 @@ export class TaskStore {
           depStmt.run({ taskId, dependsOnTaskId: depId });
         }
       }
+    }
+
+    // Handle pause-related fields (allow setting to null/undefined to clear them)
+    if ('pausedAt' in updates) {
+      setClauses.push('paused_at = @pausedAt');
+      params.pausedAt = updates.pausedAt ? updates.pausedAt.toISOString() : null;
+    }
+
+    if ('resumeAfter' in updates) {
+      setClauses.push('resume_after = @resumeAfter');
+      params.resumeAfter = updates.resumeAfter ? updates.resumeAfter.toISOString() : null;
+    }
+
+    if ('pauseReason' in updates) {
+      setClauses.push('pause_reason = @pauseReason');
+      params.pauseReason = updates.pauseReason ?? null;
     }
 
     if (setClauses.length === 0) return;
@@ -692,6 +718,9 @@ export class TaskStore {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      pausedAt: row.paused_at ? new Date(row.paused_at) : undefined,
+      resumeAfter: row.resume_after ? new Date(row.resume_after) : undefined,
+      pauseReason: row.pause_reason || undefined,
       usage: {
         inputTokens: row.usage_input_tokens,
         outputTokens: row.usage_output_tokens,
@@ -968,6 +997,9 @@ interface TaskRow {
   parent_task_id: string | null;
   subtask_ids: string | null;
   subtask_strategy: string | null;
+  paused_at: string | null;
+  resume_after: string | null;
+  pause_reason: string | null;
 }
 
 interface TaskLogRow {

@@ -9,7 +9,7 @@ import type {
   ApexConfig,
   SubtaskStrategy,
   SubtaskDefinition,
-} from '@apex/core'
+} from '@apexcli/core'
 import { getApiUrl } from './config'
 
 /**
@@ -154,6 +154,25 @@ export class ApexApiClient {
       method: 'POST',
       body: JSON.stringify({}),
     })
+    return response.json()
+  }
+
+  /**
+   * Resume a paused task
+   */
+  async resumeTask(taskId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/tasks/${taskId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    return response.json()
+  }
+
+  /**
+   * List all paused tasks
+   */
+  async getPausedTasks(): Promise<{ tasks: Task[]; count: number; message: string }> {
+    const response = await this.fetch('/tasks/paused')
     return response.json()
   }
 

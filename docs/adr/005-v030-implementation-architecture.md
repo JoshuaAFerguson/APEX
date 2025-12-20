@@ -34,7 +34,7 @@ This ADR serves as the master technical design document for APEX v0.3.0, consoli
 
 ### 1. Package Structure for v0.3.0
 
-Extend `@apex/cli` with a clear module structure:
+Extend `@apexcli/cli` with a clear module structure:
 
 ```
 packages/cli/src/

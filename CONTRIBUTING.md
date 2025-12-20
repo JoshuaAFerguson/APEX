@@ -110,7 +110,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 npm test
 
 # Run tests for a specific package
-npm test --workspace=@apex/core
+npm test --workspace=@apexcli/core
 
 # Run tests with coverage
 npm test -- --coverage
