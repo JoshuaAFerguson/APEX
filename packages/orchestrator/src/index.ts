@@ -3059,3 +3059,10 @@ export {
   analyzeConversation,
   type ContextCompactionOptions,
 } from './context';
+export {
+  DaemonManager,
+  DaemonError,
+  type DaemonOptions,
+  type DaemonStatus,
+  type DaemonErrorCode
+} from './daemon';

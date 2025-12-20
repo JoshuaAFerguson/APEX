@@ -39,7 +39,7 @@ function getAllAdrFiles(): AdrFile[] {
         .map(f => {
           const path = join(dir, f);
           const content = readFileSync(path, 'utf-8');
-          const statusMatch = content.match(/##\s*Status\s*\n([^\n]*)|Status:\s*([^\n]*)|**Status**:\s*([^\n]*)/i);
+          const statusMatch = content.match(/##\s*Status\s*\n([^\n]*)|Status:\s*([^\n]*)|\*\*Status\*\*:\s*([^\n]*)/i);
           const statusLine = statusMatch ? (statusMatch[1] || statusMatch[2] || statusMatch[3])?.trim() : undefined;
 
           return {
