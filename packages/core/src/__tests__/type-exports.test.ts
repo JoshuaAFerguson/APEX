@@ -3,6 +3,8 @@ import {
   ApexConfig,
   UIConfig,
   UIConfigSchema,
+  DaemonConfig,
+  DaemonConfigSchema,
   ApexConfigSchema,
   AgentDefinition,
   WorkflowDefinition,
@@ -59,7 +61,57 @@ describe('Type Exports for CLI Integration', () => {
     });
   });
 
-  describe('ApexConfig integration with UIConfig', () => {
+  describe('DaemonConfig type and schema exports', () => {
+    it('should export DaemonConfig type correctly', () => {
+      // Test that DaemonConfig type can be used for type annotations
+      const daemonConfig: DaemonConfig = {
+        pollInterval: 10000,
+        autoStart: true,
+        logLevel: 'debug',
+      };
+
+      expect(daemonConfig.pollInterval).toBe(10000);
+      expect(daemonConfig.autoStart).toBe(true);
+      expect(daemonConfig.logLevel).toBe('debug');
+    });
+
+    it('should export DaemonConfig with optional fields', () => {
+      const partialDaemonConfig: DaemonConfig = {
+        autoStart: true,
+      };
+
+      expect(partialDaemonConfig.autoStart).toBe(true);
+      expect(partialDaemonConfig.pollInterval).toBeUndefined();
+      expect(partialDaemonConfig.logLevel).toBeUndefined();
+    });
+
+    it('should export DaemonConfigSchema for runtime validation', () => {
+      const validConfig = {
+        pollInterval: 8000,
+        autoStart: false,
+        logLevel: 'warn',
+      };
+
+      const result = DaemonConfigSchema.parse(validConfig);
+      expect(result).toEqual(validConfig);
+
+      // Schema should reject invalid data
+      expect(() => DaemonConfigSchema.parse({ logLevel: 'invalid' })).toThrow();
+      expect(() => DaemonConfigSchema.parse({ pollInterval: 'not-a-number' })).toThrow();
+      expect(() => DaemonConfigSchema.parse({ autoStart: 'not-boolean' })).toThrow();
+    });
+
+    it('should apply defaults correctly via schema', () => {
+      const emptyConfig = {};
+      const result = DaemonConfigSchema.parse(emptyConfig);
+
+      expect(result.pollInterval).toBe(5000);
+      expect(result.autoStart).toBe(false);
+      expect(result.logLevel).toBe('info');
+    });
+  });
+
+  describe('ApexConfig integration with UIConfig and DaemonConfig', () => {
     it('should export ApexConfig with proper UIConfig integration', () => {
       const fullConfig: ApexConfig = {
         version: '1.0',
@@ -77,6 +129,11 @@ describe('Type Exports for CLI Integration', () => {
           autoExecuteHighConfidence: true,
           previewTimeout: 10000,
         },
+        daemon: {
+          pollInterval: 15000,
+          autoStart: true,
+          logLevel: 'warn',
+        },
         autonomy: {
           default: 'review-before-merge',
         },
@@ -90,6 +147,9 @@ describe('Type Exports for CLI Integration', () => {
       expect(fullConfig.ui?.previewConfidence).toBe(0.85);
       expect(fullConfig.ui?.autoExecuteHighConfidence).toBe(true);
       expect(fullConfig.ui?.previewTimeout).toBe(10000);
+      expect(fullConfig.daemon?.pollInterval).toBe(15000);
+      expect(fullConfig.daemon?.autoStart).toBe(true);
+      expect(fullConfig.daemon?.logLevel).toBe('warn');
     });
 
     it('should allow ApexConfig without ui field', () => {
@@ -104,6 +164,28 @@ describe('Type Exports for CLI Integration', () => {
       };
 
       expect(configWithoutUI.ui).toBeUndefined();
+    });
+
+    it('should allow ApexConfig with daemon but without ui field', () => {
+      const configWithDaemonOnly: ApexConfig = {
+        version: '1.0',
+        project: {
+          name: 'daemon-only-export-test',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        },
+        daemon: {
+          pollInterval: 12000,
+          autoStart: false,
+          logLevel: 'error',
+        },
+      };
+
+      expect(configWithDaemonOnly.ui).toBeUndefined();
+      expect(configWithDaemonOnly.daemon?.pollInterval).toBe(12000);
+      expect(configWithDaemonOnly.daemon?.autoStart).toBe(false);
+      expect(configWithDaemonOnly.daemon?.logLevel).toBe('error');
     });
 
     it('should validate ApexConfig with UIConfig via schema', () => {
@@ -128,6 +210,42 @@ describe('Type Exports for CLI Integration', () => {
       expect(result.ui?.previewConfidence).toBe(0.9);
       expect(result.ui?.autoExecuteHighConfidence).toBe(false);
       expect(result.ui?.previewTimeout).toBe(8000);
+    });
+
+    it('should validate ApexConfig with both UIConfig and DaemonConfig via schema', () => {
+      const validApexConfigWithBoth = {
+        version: '1.0',
+        project: {
+          name: 'both-configs-schema-test',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        },
+        ui: {
+          previewMode: false,
+          previewConfidence: 0.75,
+          autoExecuteHighConfidence: true,
+          previewTimeout: 6000,
+        },
+        daemon: {
+          pollInterval: 20000,
+          autoStart: true,
+          logLevel: 'debug',
+        },
+      };
+
+      const result = ApexConfigSchema.parse(validApexConfigWithBoth);
+
+      // Validate UI config
+      expect(result.ui?.previewMode).toBe(false);
+      expect(result.ui?.previewConfidence).toBe(0.75);
+      expect(result.ui?.autoExecuteHighConfidence).toBe(true);
+      expect(result.ui?.previewTimeout).toBe(6000);
+
+      // Validate daemon config
+      expect(result.daemon?.pollInterval).toBe(20000);
+      expect(result.daemon?.autoStart).toBe(true);
+      expect(result.daemon?.logLevel).toBe('debug');
     });
   });
 

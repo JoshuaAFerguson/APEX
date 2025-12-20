@@ -130,6 +130,13 @@ export const UIConfigSchema = z.object({
 });
 export type UIConfig = z.infer<typeof UIConfigSchema>;
 
+export const DaemonConfigSchema = z.object({
+  pollInterval: z.number().optional().default(5000),
+  autoStart: z.boolean().optional().default(false),
+  logLevel: z.enum(['debug', 'info', 'warn', 'error']).optional().default('info'),
+});
+export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -163,6 +170,7 @@ export const ApexConfigSchema = z.object({
       autoStart: z.boolean().optional().default(false),
     })
     .optional(),
+  daemon: DaemonConfigSchema.optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 

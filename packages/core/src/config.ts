@@ -321,5 +321,10 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       port: config.webUI?.port || 3001,
       autoStart: config.webUI?.autoStart ?? false,
     },
+    daemon: {
+      pollInterval: config.daemon?.pollInterval ?? 5000,
+      autoStart: config.daemon?.autoStart ?? false,
+      logLevel: config.daemon?.logLevel || 'info',
+    },
   };
 }

@@ -17,7 +17,7 @@ import {
   listScripts,
   getScriptsDir,
 } from './config';
-import { ApexConfig } from './types';
+import { ApexConfig, ApexConfigSchema } from './types';
 
 describe('parseAgentMarkdown', () => {
   it('should parse agent markdown with frontmatter', () => {
@@ -507,5 +507,396 @@ Prompt`;
 
     const agent = parseAgentMarkdown(markdown);
     expect(agent?.skills).toEqual(['debugging', 'testing']);
+  });
+});
+
+describe('Daemon Configuration', () => {
+  describe('ApexConfigSchema', () => {
+    it('should parse config without daemon section', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' }
+      });
+
+      expect(config.daemon).toBeUndefined();
+    });
+
+    it('should parse config with daemon section using defaults', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {}
+      });
+
+      expect(config.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+
+    it('should parse config with custom daemon values', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 10000,
+          autoStart: true,
+          logLevel: 'debug'
+        }
+      });
+
+      expect(config.daemon).toEqual({
+        pollInterval: 10000,
+        autoStart: true,
+        logLevel: 'debug'
+      });
+    });
+
+    it('should parse config with partial daemon values and apply defaults', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 3000
+          // autoStart and logLevel should default
+        }
+      });
+
+      expect(config.daemon).toEqual({
+        pollInterval: 3000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+
+    it('should validate logLevel enum values', () => {
+      const validConfig = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          logLevel: 'warn'
+        }
+      });
+
+      expect(validConfig.daemon!.logLevel).toBe('warn');
+
+      // Test invalid value
+      expect(() => {
+        ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            logLevel: 'invalid'
+          }
+        });
+      }).toThrow();
+    });
+
+    it('should validate all valid logLevel values', () => {
+      const logLevels = ['debug', 'info', 'warn', 'error'];
+
+      for (const logLevel of logLevels) {
+        const config = ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            logLevel
+          }
+        });
+
+        expect(config.daemon!.logLevel).toBe(logLevel);
+      }
+    });
+  });
+
+  describe('getEffectiveConfig with daemon', () => {
+    it('should apply daemon defaults when daemon section is missing', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+
+    it('should preserve custom daemon values', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 15000,
+          autoStart: true,
+          logLevel: 'error'
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 15000,
+        autoStart: true,
+        logLevel: 'error'
+      });
+    });
+
+    it('should apply defaults for missing daemon properties', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 8000
+          // autoStart and logLevel missing
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 8000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+
+    it('should handle daemon with only autoStart set', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          autoStart: true
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: true,
+        logLevel: 'info'
+      });
+    });
+
+    it('should handle daemon with only logLevel set', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          logLevel: 'debug'
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'debug'
+      });
+    });
+
+    it('should handle pollInterval as 0 (falsy but valid)', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 0
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.daemon).toEqual({
+        pollInterval: 0,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+  });
+
+  describe('Integration tests with real config files', () => {
+    let testDir: string;
+
+    beforeEach(async () => {
+      testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-daemon-integration-'));
+      await fs.mkdir(path.join(testDir, '.apex'));
+    });
+
+    afterEach(async () => {
+      await fs.rm(testDir, { recursive: true, force: true });
+    });
+
+    it('should save and load daemon config correctly', async () => {
+      const configWithDaemon: ApexConfig = {
+        version: '1.0',
+        project: {
+          name: 'daemon-test-project',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        },
+        daemon: {
+          pollInterval: 8000,
+          autoStart: true,
+          logLevel: 'debug'
+        }
+      };
+
+      await saveConfig(testDir, configWithDaemon);
+      const loadedConfig = await loadConfig(testDir);
+
+      expect(loadedConfig.daemon).toEqual({
+        pollInterval: 8000,
+        autoStart: true,
+        logLevel: 'debug'
+      });
+    });
+
+    it('should save and load daemon config with minimal values', async () => {
+      const configWithMinimalDaemon: ApexConfig = {
+        version: '1.0',
+        project: {
+          name: 'minimal-daemon-test',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        },
+        daemon: {
+          autoStart: true
+        }
+      };
+
+      await saveConfig(testDir, configWithMinimalDaemon);
+      const loadedConfig = await loadConfig(testDir);
+
+      expect(loadedConfig.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: true,
+        logLevel: 'info'
+      });
+    });
+
+    it('should save config without daemon and load with getEffectiveConfig defaults', async () => {
+      const configWithoutDaemon: ApexConfig = {
+        version: '1.0',
+        project: {
+          name: 'no-daemon-test',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        }
+      };
+
+      await saveConfig(testDir, configWithoutDaemon);
+      const loadedConfig = await loadConfig(testDir);
+      const effectiveConfig = getEffectiveConfig(loadedConfig);
+
+      expect(loadedConfig.daemon).toBeUndefined();
+      expect(effectiveConfig.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
+  });
+
+  describe('Edge cases and type validation', () => {
+    it('should reject invalid pollInterval types', () => {
+      expect(() => {
+        ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            pollInterval: 'invalid'
+          }
+        });
+      }).toThrow();
+
+      expect(() => {
+        ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            pollInterval: null
+          }
+        });
+      }).toThrow();
+    });
+
+    it('should reject invalid autoStart types', () => {
+      expect(() => {
+        ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            autoStart: 'true'
+          }
+        });
+      }).toThrow();
+
+      expect(() => {
+        ApexConfigSchema.parse({
+          project: { name: 'test-project' },
+          daemon: {
+            autoStart: 1
+          }
+        });
+      }).toThrow();
+    });
+
+    it('should handle negative pollInterval values', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: -1000
+        }
+      });
+
+      expect(config.daemon!.pollInterval).toBe(-1000);
+    });
+
+    it('should handle very large pollInterval values', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: Number.MAX_SAFE_INTEGER
+        }
+      });
+
+      expect(config.daemon!.pollInterval).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it('should preserve all daemon config types in getEffectiveConfig', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        daemon: {
+          pollInterval: 7500,
+          autoStart: true,
+          logLevel: 'warn'
+        }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(typeof effective.daemon.pollInterval).toBe('number');
+      expect(typeof effective.daemon.autoStart).toBe('boolean');
+      expect(typeof effective.daemon.logLevel).toBe('string');
+    });
+  });
+
+  describe('Initialization with daemon config', () => {
+    let testDir: string;
+
+    beforeEach(async () => {
+      testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-daemon-init-'));
+    });
+
+    afterEach(async () => {
+      await fs.rm(testDir, { recursive: true, force: true });
+    });
+
+    it('should initialize project with daemon defaults via ApexConfigSchema.parse()', async () => {
+      await initializeApex(testDir, { projectName: 'daemon-init-test' });
+      const config = await loadConfig(testDir);
+      const effective = getEffectiveConfig(config);
+
+      // initializeApex doesn't explicitly set daemon config, so it should use defaults from getEffectiveConfig
+      expect(config.daemon).toBeUndefined();
+      expect(effective.daemon).toEqual({
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info'
+      });
+    });
   });
 });

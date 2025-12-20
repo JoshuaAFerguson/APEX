@@ -10,6 +10,7 @@ import {
   VerboseDebugData,
   AgentUsage,
   UIConfigSchema,
+  DaemonConfigSchema,
 } from './types';
 
 describe('AgentModelSchema', () => {
@@ -77,6 +78,113 @@ describe('UIConfigSchema', () => {
     // Invalid timeout (< 1000ms)
     expect(() => UIConfigSchema.parse({ previewTimeout: 999 })).toThrow();
     expect(() => UIConfigSchema.parse({ previewTimeout: 500 })).toThrow();
+  });
+});
+
+describe('DaemonConfigSchema', () => {
+  it('should accept valid daemon config with all fields', () => {
+    const config = DaemonConfigSchema.parse({
+      pollInterval: 10000,
+      autoStart: true,
+      logLevel: 'debug',
+    });
+    expect(config.pollInterval).toBe(10000);
+    expect(config.autoStart).toBe(true);
+    expect(config.logLevel).toBe('debug');
+  });
+
+  it('should apply defaults for optional fields', () => {
+    const config = DaemonConfigSchema.parse({});
+    expect(config.pollInterval).toBe(5000);
+    expect(config.autoStart).toBe(false);
+    expect(config.logLevel).toBe('info');
+  });
+
+  it('should accept partial config with defaults', () => {
+    const config = DaemonConfigSchema.parse({
+      pollInterval: 8000,
+      logLevel: 'warn',
+    });
+    expect(config.pollInterval).toBe(8000);
+    expect(config.autoStart).toBe(false); // default
+    expect(config.logLevel).toBe('warn');
+  });
+
+  it('should validate logLevel enum values', () => {
+    const validLevels = ['debug', 'info', 'warn', 'error'];
+
+    for (const level of validLevels) {
+      const config = DaemonConfigSchema.parse({ logLevel: level });
+      expect(config.logLevel).toBe(level);
+    }
+
+    // Test invalid value
+    expect(() => {
+      DaemonConfigSchema.parse({ logLevel: 'invalid' });
+    }).toThrow();
+
+    expect(() => {
+      DaemonConfigSchema.parse({ logLevel: 'trace' });
+    }).toThrow();
+  });
+
+  it('should accept numeric pollInterval values', () => {
+    const testValues = [0, 1, 1000, 5000, 30000, 60000, Number.MAX_SAFE_INTEGER];
+
+    for (const value of testValues) {
+      const config = DaemonConfigSchema.parse({ pollInterval: value });
+      expect(config.pollInterval).toBe(value);
+    }
+  });
+
+  it('should accept boolean autoStart values', () => {
+    const configTrue = DaemonConfigSchema.parse({ autoStart: true });
+    expect(configTrue.autoStart).toBe(true);
+
+    const configFalse = DaemonConfigSchema.parse({ autoStart: false });
+    expect(configFalse.autoStart).toBe(false);
+  });
+
+  it('should reject invalid pollInterval types', () => {
+    const invalidValues = ['5000', null, undefined, [], {}, 'invalid'];
+
+    for (const value of invalidValues) {
+      expect(() => {
+        DaemonConfigSchema.parse({ pollInterval: value });
+      }).toThrow();
+    }
+  });
+
+  it('should reject invalid autoStart types', () => {
+    const invalidValues = ['true', 'false', 1, 0, null, undefined, [], {}];
+
+    for (const value of invalidValues) {
+      expect(() => {
+        DaemonConfigSchema.parse({ autoStart: value });
+      }).toThrow();
+    }
+  });
+
+  it('should handle negative pollInterval values', () => {
+    const config = DaemonConfigSchema.parse({ pollInterval: -1000 });
+    expect(config.pollInterval).toBe(-1000);
+  });
+
+  it('should handle zero pollInterval value', () => {
+    const config = DaemonConfigSchema.parse({ pollInterval: 0 });
+    expect(config.pollInterval).toBe(0);
+  });
+
+  it('should preserve all types correctly', () => {
+    const config = DaemonConfigSchema.parse({
+      pollInterval: 7500,
+      autoStart: true,
+      logLevel: 'error',
+    });
+
+    expect(typeof config.pollInterval).toBe('number');
+    expect(typeof config.autoStart).toBe('boolean');
+    expect(typeof config.logLevel).toBe('string');
   });
 });
 
@@ -253,6 +361,11 @@ describe('ApexConfigSchema', () => {
         autoExecuteHighConfidence: true,
         previewTimeout: 7500,
       },
+      daemon: {
+        pollInterval: 12000,
+        autoStart: true,
+        logLevel: 'debug',
+      },
     });
     expect(config.project.language).toBe('typescript');
     expect(config.autonomy?.default).toBe('review-before-merge');
@@ -263,6 +376,9 @@ describe('ApexConfigSchema', () => {
     expect(config.ui?.previewConfidence).toBe(0.8);
     expect(config.ui?.autoExecuteHighConfidence).toBe(true);
     expect(config.ui?.previewTimeout).toBe(7500);
+    expect(config.daemon?.pollInterval).toBe(12000);
+    expect(config.daemon?.autoStart).toBe(true);
+    expect(config.daemon?.logLevel).toBe('debug');
   });
 
   it('should apply defaults for optional fields', () => {
@@ -280,6 +396,39 @@ describe('ApexConfigSchema', () => {
         project: {},
       })
     ).toThrow();
+  });
+
+  it('should accept config with only daemon section', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'daemon-only-test' },
+      daemon: {
+        pollInterval: 15000,
+        autoStart: true,
+        logLevel: 'error',
+      },
+    });
+    expect(config.daemon?.pollInterval).toBe(15000);
+    expect(config.daemon?.autoStart).toBe(true);
+    expect(config.daemon?.logLevel).toBe('error');
+  });
+
+  it('should accept config with partial daemon section', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'partial-daemon-test' },
+      daemon: {
+        autoStart: true,
+      },
+    });
+    expect(config.daemon?.pollInterval).toBe(5000);
+    expect(config.daemon?.autoStart).toBe(true);
+    expect(config.daemon?.logLevel).toBe('info');
+  });
+
+  it('should accept config without daemon section', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'no-daemon-test' },
+    });
+    expect(config.daemon).toBeUndefined();
   });
 });
 
