@@ -620,4 +620,307 @@ describe('DaemonScheduler', () => {
       expect(elapsed).toBeLessThan(1000); // Should complete in less than 1 second
     });
   });
+
+  // ============================================================================
+  // Capacity Reset Monitoring Tests (New Feature)
+  // ============================================================================
+
+  describe('Capacity Reset Monitoring', () => {
+    beforeEach(() => {
+      // Cleanup any existing monitoring
+      scheduler.destroy();
+      scheduler = new DaemonScheduler(daemonConfig, limitsConfig, mockProvider);
+    });
+
+    describe('getTimeUntilModeSwitch()', () => {
+      it('should calculate time until next mode switch correctly', () => {
+        const currentTime = new Date('2024-01-01T14:00:00'); // Day mode (2 PM)
+        const timeUntilSwitch = scheduler.getTimeUntilModeSwitch(currentTime);
+
+        // Next switch should be to night mode at 22:00
+        const expectedMs = (22 - 14) * 60 * 60 * 1000; // 8 hours
+        expect(timeUntilSwitch).toBe(expectedMs);
+      });
+
+      it('should handle midnight wraparound correctly', () => {
+        const currentTime = new Date('2024-01-01T23:30:00'); // Night mode (11:30 PM)
+        const timeUntilSwitch = scheduler.getTimeUntilModeSwitch(currentTime);
+
+        // Next switch is to day mode at 9 AM tomorrow
+        const expected = new Date('2024-01-02T09:00:00').getTime() - currentTime.getTime();
+        expect(timeUntilSwitch).toBe(expected);
+      });
+
+      it('should handle same-day transition correctly', () => {
+        const currentTime = new Date('2024-01-01T08:00:00'); // Off-hours (8 AM)
+        const timeUntilSwitch = scheduler.getTimeUntilModeSwitch(currentTime);
+
+        // Next switch is to day mode at 9 AM same day
+        const expectedMs = 60 * 60 * 1000; // 1 hour
+        expect(timeUntilSwitch).toBe(expectedMs);
+      });
+
+      it('should use current time when not provided', () => {
+        const timeUntilSwitch = scheduler.getTimeUntilModeSwitch();
+        expect(typeof timeUntilSwitch).toBe('number');
+        expect(timeUntilSwitch).toBeGreaterThan(0);
+      });
+
+      it('should handle disabled time-based usage', () => {
+        const disabledConfig = createMockDaemonConfig({
+          timeBasedUsage: { enabled: false },
+        });
+        const disabledScheduler = new DaemonScheduler(disabledConfig, limitsConfig, mockProvider);
+
+        const currentTime = new Date('2024-01-01T14:00:00');
+        const timeUntilSwitch = disabledScheduler.getTimeUntilModeSwitch(currentTime);
+
+        // Should return time until next midnight when time-based usage disabled
+        const expectedMs = new Date('2024-01-02T00:00:00').getTime() - currentTime.getTime();
+        expect(timeUntilSwitch).toBe(expectedMs);
+
+        disabledScheduler.destroy();
+      });
+    });
+
+    describe('getTimeUntilBudgetReset()', () => {
+      it('should calculate time until next midnight correctly', () => {
+        const currentTime = new Date('2024-01-01T14:30:45.123'); // 2:30:45.123 PM
+        const timeUntilReset = scheduler.getTimeUntilBudgetReset(currentTime);
+
+        const expectedMs = new Date('2024-01-02T00:00:00').getTime() - currentTime.getTime();
+        expect(timeUntilReset).toBe(expectedMs);
+      });
+
+      it('should handle midnight wraparound correctly', () => {
+        const currentTime = new Date('2024-12-31T23:59:59'); // New Year's Eve
+        const timeUntilReset = scheduler.getTimeUntilBudgetReset(currentTime);
+
+        const expectedMs = new Date('2025-01-01T00:00:00').getTime() - currentTime.getTime();
+        expect(timeUntilReset).toBe(expectedMs);
+      });
+
+      it('should handle leap year correctly', () => {
+        const currentTime = new Date('2024-02-28T12:00:00'); // 2024 is leap year
+        const timeUntilReset = scheduler.getTimeUntilBudgetReset(currentTime);
+
+        const expectedMs = new Date('2024-02-29T00:00:00').getTime() - currentTime.getTime();
+        expect(timeUntilReset).toBe(expectedMs);
+      });
+
+      it('should use current time when not provided', () => {
+        const timeUntilReset = scheduler.getTimeUntilBudgetReset();
+        expect(typeof timeUntilReset).toBe('number');
+        expect(timeUntilReset).toBeGreaterThan(0);
+        expect(timeUntilReset).toBeLessThanOrEqual(24 * 60 * 60 * 1000); // Max 24 hours
+      });
+
+      it('should always return positive value', () => {
+        const times = [
+          new Date('2024-01-01T00:00:00'),
+          new Date('2024-06-15T12:30:45'),
+          new Date('2024-12-31T23:59:59'),
+        ];
+
+        times.forEach(time => {
+          const timeUntilReset = scheduler.getTimeUntilBudgetReset(time);
+          expect(timeUntilReset).toBeGreaterThan(0);
+        });
+      });
+    });
+
+    describe('onCapacityRestored() callback registration', () => {
+      it('should register and call capacity restored callback', async () => {
+        const callbackResults: any[] = [];
+        const callback = vi.fn((event) => callbackResults.push(event));
+
+        const unsubscribe = scheduler.onCapacityRestored(callback);
+
+        // Initially at capacity
+        mockProvider.setDailyUsage({ totalCost: 95.0 }); // 95% usage
+        mockProvider.setDailyBudget(100.0);
+
+        // Trigger initial state capture
+        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+
+        // Wait for monitoring to start
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Reduce usage to trigger restoration
+        mockProvider.setDailyUsage({ totalCost: 50.0 }); // 50% usage
+
+        // Wait for monitoring cycle
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        expect(callback).toHaveBeenCalled();
+        expect(callbackResults.length).toBeGreaterThan(0);
+
+        const event = callbackResults[0];
+        expect(event.reason).toBe('usage_decreased');
+        expect(event.previousCapacity.shouldPause).toBe(true);
+        expect(event.newCapacity.shouldPause).toBe(false);
+
+        unsubscribe();
+      });
+
+      it('should return unsubscribe function', () => {
+        const callback = vi.fn();
+        const unsubscribe = scheduler.onCapacityRestored(callback);
+
+        expect(typeof unsubscribe).toBe('function');
+
+        // Should remove callback when called
+        unsubscribe();
+        expect(scheduler['capacityCallbacks'].has(callback)).toBe(false);
+      });
+
+      it('should handle multiple callbacks', async () => {
+        const callback1 = vi.fn();
+        const callback2 = vi.fn();
+        const callback3 = vi.fn();
+
+        scheduler.onCapacityRestored(callback1);
+        scheduler.onCapacityRestored(callback2);
+        const unsubscribe3 = scheduler.onCapacityRestored(callback3);
+
+        // Set up initial blocked state
+        mockProvider.setDailyUsage({ totalCost: 95.0 });
+        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Remove one callback
+        unsubscribe3();
+
+        // Trigger restoration
+        mockProvider.setDailyUsage({ totalCost: 50.0 });
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        expect(callback1).toHaveBeenCalled();
+        expect(callback2).toHaveBeenCalled();
+        expect(callback3).not.toHaveBeenCalled();
+      });
+
+      it('should detect mode switch restoration', async () => {
+        const callback = vi.fn();
+        scheduler.onCapacityRestored(callback);
+
+        // Set up day mode with blocked capacity
+        mockProvider.setDailyUsage({ totalCost: 92.0 }); // 92% > 90% day threshold
+        mockProvider.setDailyBudget(100.0);
+
+        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00')); // Day mode
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Simulate transition to night mode
+        scheduler.shouldPauseTasks(new Date('2024-01-01T23:00:00')); // Night mode
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        expect(callback).toHaveBeenCalled();
+        const event = callback.mock.calls[0][0];
+        expect(event.reason).toBe('mode_switch');
+        expect(event.previousCapacity.shouldPause).toBe(true);
+        expect(event.newCapacity.shouldPause).toBe(false); // Night threshold 96%
+      });
+
+      it('should stop monitoring when all callbacks removed', () => {
+        const callback1 = vi.fn();
+        const callback2 = vi.fn();
+
+        const unsubscribe1 = scheduler.onCapacityRestored(callback1);
+        const unsubscribe2 = scheduler.onCapacityRestored(callback2);
+
+        expect(scheduler['monitoringTimer']).toBeDefined();
+
+        unsubscribe1();
+        expect(scheduler['monitoringTimer']).toBeDefined(); // Still has callbacks
+
+        unsubscribe2();
+        expect(scheduler['monitoringTimer']).toBeUndefined(); // No callbacks left
+      });
+
+      it('should handle callback errors gracefully', async () => {
+        const errorCallback = vi.fn(() => {
+          throw new Error('Callback error');
+        });
+        const successCallback = vi.fn();
+
+        scheduler.onCapacityRestored(errorCallback);
+        scheduler.onCapacityRestored(successCallback);
+
+        // Set up restoration scenario
+        mockProvider.setDailyUsage({ totalCost: 95.0 });
+        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        mockProvider.setDailyUsage({ totalCost: 50.0 });
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        // Both callbacks should be called despite error in first
+        expect(errorCallback).toHaveBeenCalled();
+        expect(successCallback).toHaveBeenCalled();
+      });
+    });
+
+    describe('destroy() cleanup', () => {
+      it('should clean up monitoring resources', () => {
+        const callback = vi.fn();
+        scheduler.onCapacityRestored(callback);
+
+        expect(scheduler['capacityCallbacks'].size).toBe(1);
+        expect(scheduler['monitoringTimer']).toBeDefined();
+
+        scheduler.destroy();
+
+        expect(scheduler['capacityCallbacks'].size).toBe(0);
+        expect(scheduler['monitoringTimer']).toBeUndefined();
+      });
+
+      it('should not throw when called multiple times', () => {
+        expect(() => {
+          scheduler.destroy();
+          scheduler.destroy();
+          scheduler.destroy();
+        }).not.toThrow();
+      });
+    });
+
+    describe('Monitoring edge cases', () => {
+      it('should handle rapid capacity changes', async () => {
+        const events: any[] = [];
+        scheduler.onCapacityRestored((event) => events.push(event));
+
+        // Set up blocked state
+        mockProvider.setDailyUsage({ totalCost: 95.0 });
+        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Rapid changes
+        mockProvider.setDailyUsage({ totalCost: 50.0 }); // Unblocked
+        mockProvider.setDailyUsage({ totalCost: 96.0 }); // Blocked again
+        mockProvider.setDailyUsage({ totalCost: 40.0 }); // Unblocked again
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+
+        // Should handle all transitions
+        expect(events.length).toBeGreaterThan(0);
+        events.forEach(event => {
+          expect(event.reason).toMatch(/usage_decreased|mode_switch|budget_reset/);
+        });
+      });
+
+      it('should handle timer scheduling edge cases', () => {
+        const callback = vi.fn();
+        scheduler.onCapacityRestored(callback);
+
+        // Test with time very close to transitions
+        const almostMidnight = new Date('2024-01-01T23:59:59.950');
+        scheduler.shouldPauseTasks(almostMidnight);
+
+        expect(scheduler['monitoringTimer']).toBeDefined();
+      });
+    });
+  });
 });

@@ -62,6 +62,30 @@ export interface SchedulingDecision {
   recommendations?: string[];
 }
 
+/**
+ * Reason for capacity restoration
+ */
+export type CapacityRestoredReason =
+  | 'mode_switch'      // Day/night transition
+  | 'budget_reset'     // Midnight budget reset
+  | 'usage_decreased'; // External usage update dropped below threshold
+
+/**
+ * Capacity restoration event details
+ */
+export interface CapacityRestoredEvent {
+  reason: CapacityRestoredReason;
+  previousCapacity: CapacityInfo;
+  newCapacity: CapacityInfo;
+  timeWindow: TimeWindow;
+  timestamp: Date;
+}
+
+/**
+ * Callback function for capacity restoration events
+ */
+export type CapacityRestoredCallback = (event: CapacityRestoredEvent) => void;
+
 // ============================================================================
 // DaemonScheduler Implementation
 // ============================================================================
@@ -73,6 +97,11 @@ export class DaemonScheduler {
   private config: DaemonConfig;
   private baseLimits: LimitsConfig;
   private usageProvider: UsageStatsProvider;
+
+  // Capacity restoration callback system
+  private capacityCallbacks: Set<CapacityRestoredCallback> = new Set();
+  private monitoringTimer?: ReturnType<typeof setTimeout>;
+  private lastCapacityState?: { shouldPause: boolean; capacity: CapacityInfo; timeWindow: TimeWindow };
 
   constructor(
     config: DaemonConfig,
@@ -235,6 +264,53 @@ export class DaemonScheduler {
     };
   }
 
+  /**
+   * Calculate milliseconds until the next day/night mode switch
+   * Handles edge cases: midnight wraparound, same-day transitions
+   */
+  getTimeUntilModeSwitch(now: Date = new Date()): number {
+    const timeWindow = this.getCurrentTimeWindow(now);
+    return timeWindow.nextTransition.getTime() - now.getTime();
+  }
+
+  /**
+   * Calculate milliseconds until budget resets at midnight
+   * Always returns time until next local midnight
+   */
+  getTimeUntilBudgetReset(now: Date = new Date()): number {
+    const nextMidnight = this.getNextMidnight(now);
+    return nextMidnight.getTime() - now.getTime();
+  }
+
+  /**
+   * Register a callback to be invoked when capacity is restored
+   * Capacity restoration events:
+   *   - Mode switch from day to night (higher thresholds)
+   *   - Budget reset at midnight
+   *   - Capacity drops below threshold (external usage tracking update)
+   * Returns an unsubscribe function
+   */
+  onCapacityRestored(callback: CapacityRestoredCallback): () => void {
+    this.capacityCallbacks.add(callback);
+    this.ensureMonitoring();
+
+    // Return unsubscribe function
+    return () => {
+      this.capacityCallbacks.delete(callback);
+      if (this.capacityCallbacks.size === 0) {
+        this.stopMonitoring();
+      }
+    };
+  }
+
+  /**
+   * Cleanup resources when scheduler is no longer needed
+   */
+  destroy(): void {
+    this.stopMonitoring();
+    this.capacityCallbacks.clear();
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================
@@ -312,6 +388,119 @@ export class DaemonScheduler {
     }
 
     return recommendations;
+  }
+
+  /**
+   * Ensure capacity monitoring is active when callbacks are registered
+   */
+  private ensureMonitoring(): void {
+    if (this.monitoringTimer) return;
+    this.scheduleNextCheck();
+  }
+
+  /**
+   * Stop capacity monitoring
+   */
+  private stopMonitoring(): void {
+    if (this.monitoringTimer) {
+      clearTimeout(this.monitoringTimer);
+      this.monitoringTimer = undefined;
+    }
+  }
+
+  /**
+   * Schedule the next capacity check
+   */
+  private scheduleNextCheck(): void {
+    const now = new Date();
+    const timeToModeSwitch = this.getTimeUntilModeSwitch(now);
+    const timeToBudgetReset = this.getTimeUntilBudgetReset(now);
+
+    // Check at the earlier of: mode switch, budget reset, or periodic (60s)
+    const checkIn = Math.min(
+      timeToModeSwitch,
+      timeToBudgetReset,
+      60000 // Fallback check every 60 seconds for usage changes
+    );
+
+    this.monitoringTimer = setTimeout(() => {
+      this.checkCapacityRestored();
+      this.scheduleNextCheck();
+    }, Math.max(100, checkIn)); // Minimum 100ms to prevent tight loops
+  }
+
+  /**
+   * Check if capacity has been restored and fire callbacks
+   */
+  private checkCapacityRestored(): void {
+    const now = new Date();
+    const timeWindow = this.getCurrentTimeWindow(now);
+    const capacity = this.getCapacityInfo(timeWindow, now);
+
+    // If this is the first check, just store the state
+    if (!this.lastCapacityState) {
+      this.lastCapacityState = {
+        shouldPause: capacity.shouldPause,
+        capacity: { ...capacity },
+        timeWindow: { ...timeWindow }
+      };
+      return;
+    }
+
+    // Check if capacity was restored
+    const wasBlocked = this.lastCapacityState.shouldPause;
+    const isNowUnblocked = !capacity.shouldPause;
+
+    if (wasBlocked && isNowUnblocked && this.capacityCallbacks.size > 0) {
+      // Determine the reason for restoration
+      let reason: CapacityRestoredReason;
+
+      // Check if time window mode changed
+      if (this.lastCapacityState.timeWindow.mode !== timeWindow.mode) {
+        reason = 'mode_switch';
+      }
+      // Check if it's a new day (budget reset) by comparing timestamps
+      else if (this.hasDayChanged(this.lastCapacityState.timeWindow.nextTransition, now)) {
+        reason = 'budget_reset';
+      }
+      // Otherwise it's due to usage decrease
+      else {
+        reason = 'usage_decreased';
+      }
+
+      const event: CapacityRestoredEvent = {
+        reason,
+        previousCapacity: { ...this.lastCapacityState.capacity },
+        newCapacity: { ...capacity },
+        timeWindow: { ...timeWindow },
+        timestamp: now
+      };
+
+      // Fire callbacks (wrap in try-catch to prevent one failing callback from breaking others)
+      this.capacityCallbacks.forEach(callback => {
+        try {
+          callback(event);
+        } catch (error) {
+          console.error('Error in capacity restored callback:', error);
+        }
+      });
+    }
+
+    // Update state for next check
+    this.lastCapacityState = {
+      shouldPause: capacity.shouldPause,
+      capacity: { ...capacity },
+      timeWindow: { ...timeWindow }
+    };
+  }
+
+  /**
+   * Check if the day has changed between two dates (for budget reset detection)
+   */
+  private hasDayChanged(previousDate: Date, currentDate: Date): boolean {
+    return previousDate.getDate() !== currentDate.getDate() ||
+           previousDate.getMonth() !== currentDate.getMonth() ||
+           previousDate.getFullYear() !== currentDate.getFullYear();
   }
 }
 

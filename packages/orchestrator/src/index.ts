@@ -3101,4 +3101,7 @@ export {
   type TimeWindow,
   type CapacityInfo,
   type SchedulingDecision,
+  type CapacityRestoredReason,
+  type CapacityRestoredEvent,
+  type CapacityRestoredCallback,
 } from './daemon-scheduler';
