@@ -1362,45 +1362,94 @@ If the StatusBar updates slowly:
 
 ## Keyboard Shortcuts
 
-APEX supports comprehensive keyboard shortcuts for efficient navigation and control.
+APEX supports comprehensive keyboard shortcuts for efficient navigation and control across all interfaces.
 
-> **✨ NEW in v0.3.0**: Enhanced keyboard shortcuts with improved input handling, auto-completion, and integration with new terminal interface features like display modes and input preview.
+> **✨ NEW in v0.3.0**: Complete keyboard shortcuts system with context-aware handling, session management, and quick commands. All 22 shortcuts are organized by category for easy reference.
 
 ### Global Shortcuts
+*Available in all contexts*
 
-| Shortcut | Description |
-|----------|-------------|
-| `Ctrl+C` | Cancel current operation |
-| `Ctrl+D` | Exit APEX |
-| `Ctrl+L` | Clear screen |
-| `?` | Show help (when idle) |
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+D` | Exit APEX | Global |
+| `Ctrl+L` | Clear screen | Global |
+| `Escape` | Dismiss suggestions/modal | Global |
+| `Ctrl+S` | Quick save session | Global |
+| `Ctrl+H` | Show help | Global |
 
-### Input Shortcuts
+### Session Management
+*Quick access to session operations*
 
-| Shortcut | Description |
-|----------|-------------|
-| `Ctrl+U` | Clear current line |
-| `Ctrl+W` | Delete word before cursor |
-| `Ctrl+A` | Move cursor to start of line |
-| `Ctrl+E` | Move cursor to end of line |
-| `Escape` | Cancel current input |
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+Shift+I` | Show session info | Global |
+| `Ctrl+Shift+L` | List sessions | Global |
+
+### Quick Commands
+*Instant access to status and lists*
+
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+Shift+S` | Show status | Global |
+| `Ctrl+Shift+A` | List agents | Global |
+| `Ctrl+Shift+W` | List workflows | Global |
+| `Ctrl+T` | Toggle thoughts display | Global |
+
+### Input & Editing
+*Text editing and line manipulation*
+
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+U` | Clear current line | Input |
+| `Ctrl+W` | Delete word before cursor | Input |
+| `Ctrl+A` | Move to beginning of line | Input |
+| `Ctrl+E` | Move to end of line | Input |
+| `Enter` | Submit input | Input |
+| `Shift+Enter` | Insert newline (multi-line mode) | Input |
+| `Tab` | Complete suggestion | Input |
 
 ### History Navigation
+*Command history browsing*
 
-| Shortcut | Description |
-|----------|-------------|
-| `Ctrl+P` or `↑` | Previous history item |
-| `Ctrl+N` or `↓` | Next history item |
-| `Ctrl+R` | Reverse search history |
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+P` | Previous history entry | Input |
+| `Ctrl+N` | Next history entry | Input |
+| `Ctrl+R` | Search history | Input |
 
-### Auto-Completion
+### Processing & Control
+*Operation control during task execution*
 
-| Shortcut | Description |
-|----------|-------------|
-| `Tab` | Auto-complete command or path |
-| `Tab` (with suggestions) | Select next suggestion |
-| `Shift+Tab` | Select previous suggestion |
-| `Escape` | Dismiss suggestions |
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+C` | Cancel current operation | Processing |
+
+### Context-Aware Behavior
+
+**Context Stack System**: APEX uses a context stack to determine which shortcuts are active:
+- **Global**: Available everywhere
+- **Input**: Active when typing commands or text
+- **Processing**: Active during task execution
+- **Suggestions**: Active when autocomplete suggestions are shown
+- **Modal**: Active when dialogs/modals are displayed
+
+**Smart Context Switching**: Shortcuts automatically become available based on your current activity:
+- Typing → Input shortcuts active
+- Task running → Processing shortcuts active
+- Autocomplete visible → Tab completion available
+- Modal open → Escape to dismiss
+
+### Quick Reference Card
+
+For quick access, here are the most frequently used shortcuts:
+
+| Category | Shortcuts |
+|----------|-----------|
+| **Essential** | `Ctrl+D` (exit), `Ctrl+C` (cancel), `Ctrl+L` (clear) |
+| **Input** | `Ctrl+A/E` (line start/end), `Ctrl+U` (clear line) |
+| **History** | `Ctrl+P/N` (prev/next), `Ctrl+R` (search) |
+| **Sessions** | `Ctrl+S` (save), `Ctrl+Shift+I` (info) |
+| **Quick** | `Ctrl+H` (help), `Ctrl+Shift+S` (status) |
 
 ---
 
