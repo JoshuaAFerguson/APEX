@@ -219,6 +219,137 @@ Control task execution with keyboard shortcuts:
 - 📋 Preview mode active indicator
 - 🔍 Verbose mode active indicator
 
+## Rich Terminal UI Framework
+
+APEX's terminal interface is built on a modern React-based framework designed for exceptional developer experience. This section covers the 8 core UI capabilities that power the interactive CLI.
+
+### Ink-based Rendering
+
+APEX uses Ink, a React renderer for CLI applications, enabling component-based terminal interfaces with familiar React patterns:
+
+```
+Components render as a tree, just like React DOM:
+┌─ App ─────────────────────────────────┐
+│ ├─ Banner                             │
+│ ├─ StatusBar                          │
+│ ├─ TaskProgress                       │
+│ ├─ AgentPanel                         │
+│ └─ InputPrompt                        │
+└───────────────────────────────────────┘
+```
+
+The component architecture enables maintainable, testable terminal interfaces with proper state management and event handling.
+
+### Streaming & Real-time Updates
+
+Experience live updates as agents work, with character-by-character streaming and animated cursors:
+
+```
+Streaming output with live cursor:
+┌──────────────────────────────────────┐
+│ The agent is analyzing your code...▊ │
+└──────────────────────────────────────┘
+```
+
+Text appears dynamically with typewriter effects, creating an engaging real-time development experience that shows exactly what agents are thinking and doing.
+
+### Markdown Rendering
+
+Rich markdown content renders with full formatting support, making documentation and responses easy to read:
+
+```
+Markdown renders with full formatting:
+# Header 1                    (cyan, bold)
+## Header 2                   (blue, bold)
+• Bullet points              (yellow bullets)
+1. Numbered lists            (yellow numbers)
+> Blockquotes               (gray with │ prefix)
+`inline code`               (highlighted background)
+```
+
+Headers, lists, blockquotes, and inline code all render with appropriate colors and formatting for maximum readability.
+
+### Syntax Highlighting
+
+Code blocks receive full syntax highlighting for supported languages (TypeScript, JavaScript, Python, Rust, Go):
+
+```
+┌─ typescript ────────── 5 lines ──┐
+│  1 │ const greeting = "Hello";   │
+│  2 │ function sayHello() {       │
+│  3 │   // This is a comment      │
+│  4 │   console.log(greeting);    │
+│  5 │ }                           │
+└──────────────────────────────────┘
+```
+
+Keywords, strings, and comments are color-coded with line numbers. Code automatically wraps for narrow terminals while preserving readability.
+
+### Diff Views
+
+View code changes with comprehensive diff rendering supporting three display modes:
+
+```
+Unified diff view:
+--- src/api.ts
++++ src/api.ts
+@@ -1,3 +1,4 @@
+   import express from 'express';
++  import cors from 'cors';        ← added (green)
+   const app = express();
+-  app.listen(3000);               ← removed (red)
++  app.listen(process.env.PORT);   ← added (green)
+```
+
+Unified, split, and inline modes automatically adapt to your terminal width. Line numbers, hunk headers, and color-coded additions/deletions make code changes clear.
+
+### Responsive Layouts
+
+The interface adapts to any terminal size using a 4-tier breakpoint system:
+
+```
+Breakpoint System:
+┌────────────────────────────────────────────────────────────┐
+│  Narrow   │  Compact  │   Normal   │        Wide          │
+│  < 60     │  60-99    │  100-159   │       160+           │
+│  cols     │  cols     │   cols     │       cols           │
+├───────────┼───────────┼────────────┼──────────────────────┤
+│ Minimal   │ Condensed │ Standard   │ Full with extras     │
+│ UI only   │ display   │ display    │ split diffs, etc.    │
+└────────────────────────────────────────────────────────────┘
+```
+
+Components automatically adjust their layout, information density, and visual elements based on available space using the `useStdoutDimensions` hook.
+
+### Theme Support
+
+Comprehensive theming supports both dark and light modes with agent-specific color schemes:
+
+```
+Agent Colors (Dark Theme):
+  🟡 planner    - Yellow
+  🔵 architect  - Blue
+  🟢 developer  - Green
+  🟣 reviewer   - Magenta
+  🔵 tester     - Cyan
+  🔴 devops     - Red
+```
+
+The ThemeProvider manages consistent colors across all UI components, syntax highlighting, and diff views with automatic adaptation for different terminal capabilities.
+
+### Progress Indicators
+
+Multiple progress indicator types provide clear feedback on task execution:
+
+```
+Progress indicators:
+[■■■■■■■░░░] 70%            ← Progress bar
+◐ Loading...                 ← Spinner
+Step 2 of 4: implementation  ← Step progress
+```
+
+Progress bars show completion percentages, spinners indicate background activity, and step indicators track workflow stage progress. Multi-task views coordinate progress across parallel operations.
+
 ## Session Management Basics
 
 APEX maintains session state for improved workflow continuity:
