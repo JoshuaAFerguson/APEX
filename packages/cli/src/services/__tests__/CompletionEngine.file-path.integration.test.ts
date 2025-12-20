@@ -4,6 +4,21 @@ import * as os from 'os';
 import * as path from 'path';
 import { CompletionEngine, CompletionContext } from '../CompletionEngine';
 
+/**
+ * File Path Completion Integration Tests for CompletionEngine
+ *
+ * These tests verify the file path completion provider integration with the
+ * filesystem and operating system modules.
+ *
+ * Acceptance Criteria:
+ * AC1: Absolute path completion resolves correct file/directory suggestions
+ * AC2: Relative path completion respects project context
+ * AC3: Home directory expansion (~/) works correctly
+ * AC4: Hidden files are handled appropriately based on context
+ * AC5: Directory completion appends trailing slash
+ * AC6: Error handling for non-existent paths is graceful
+ */
+
 // Mock the filesystem and OS modules
 vi.mock('fs/promises');
 vi.mock('os');

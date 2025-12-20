@@ -4,6 +4,20 @@ import * as path from 'path';
 import * as os from 'os';
 import { SessionStore, Session, SessionMessage, SessionState, ToolCallRecord } from '../SessionStore';
 
+/**
+ * State Persistence Integration Tests for SessionStore
+ *
+ * These tests verify complete state persistence across SessionStore instances,
+ * ensuring data survives process restarts. All tests use real file system operations.
+ *
+ * Acceptance Criteria:
+ * AC1: Session metadata persists correctly (name, timestamps, project path)
+ * AC2: Messages with tokens and tool calls persist with full fidelity
+ * AC3: Session state (tokens, cost, tasks) persists accurately
+ * AC4: Multiple sessions can be created and retrieved independently
+ * AC5: Input history persists and can be retrieved
+ * AC6: Child session relationships are maintained
+ */
 describe('SessionStore State Persistence Integration Tests', () => {
   let testDir: string;
   let store1: SessionStore;
