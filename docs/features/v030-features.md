@@ -837,6 +837,300 @@ function AgentActivityDisplay() {
 - `subtask:update` - Subtask status change
 - `subtask:complete` - Subtask finished
 
+#### Multi-Agent Visualization Overview
+
+The Multi-Agent Visualization system combines all visualization components to provide a comprehensive view of complex agent orchestration. This holistic approach allows users to understand the complete lifecycle of multi-agent workflows, from initial planning through parallel execution and final completion.
+
+##### Integrated Visualization Components
+
+The system seamlessly integrates multiple visualization elements:
+
+**Agent Panels**: Individual agent status displays with real-time progress tracking
+**Handoff Animations**: Smooth transitions showing work passing between agents
+**Parallel Execution Views**: Concurrent agent monitoring with resource allocation
+**Subtask Trees**: Hierarchical breakdown of complex tasks with dependency tracking
+
+##### Complete Multi-Agent Workflow Example
+
+Here's how all components work together during a typical feature implementation workflow:
+
+```
+┌─ APEX Multi-Agent Workflow ──────────────────────────────────────────────────────┐
+│                                                                                   │
+│ 📋 planner [completed] → 🏗️ architect [completed] → 👨‍💻 developer [active]          │
+│ ████████████████████████████████████████████████████████████████████████ 100%    │
+│                                                                                   │
+│ Current Stage: implementation                                                     │
+│ Active Agents: 1 primary + 2 parallel                                           │
+│ Total Progress: 67% (4/6 stages complete)                                        │
+│                                                                                   │
+│ ⚡ Primary Agent: developer                                                       │
+│   Stage: implementation [0:15:23 elapsed]                                        │
+│   Progress: ███████████████████████████████████████░░░░░░░░░░ 78%                │
+│   Subtasks: 3/4 complete                                                         │
+│                                                                                   │
+│ ⟂ Parallel Execution                                                             │
+│ ⟂ tester        [active]    ████████████████████░░░░░░░░░░░░░░░░░░░░ 60%         │
+│   Running integration tests on completed modules                                 │
+│ ⟂ reviewer      [active]    ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 35%         │
+│   Code review of authentication implementation                                   │
+│                                                                                   │
+│ 📊 Subtask Breakdown                                                             │
+│ ├─ ✅ Core authentication logic implementation                                    │
+│ ├─ ✅ Database schema updates                                                     │
+│ ├─ ✅ API endpoint creation                                                       │
+│ └─ 🔄 Frontend integration (in progress)                                         │
+│     ├─ ✅ Login component updates                                                │
+│     ├─ 🔄 Session management integration                                         │
+│     └─ ⏳ Error handling implementation                                          │
+│                                                                                   │
+│ 💡 Use '/thoughts developer' to see current reasoning                            │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Multi-Agent Coordination Patterns
+
+**Sequential Handoffs**: Traditional workflow progression with clear stage boundaries
+```
+📋 planner ⟹ 🏗️ architect ⟹ 👨‍💻 developer ⟹ 🧪 tester ⟹ 👥 reviewer
+```
+
+**Parallel + Sequential**: Mixed execution where some agents work concurrently
+```
+📋 planner ⟹ 🏗️ architect ⟹ ┌─ 👨‍💻 developer
+                              └─ 🧪 tester (parallel) ⟹ 👥 reviewer
+```
+
+**Branch & Merge**: Complex workflows with conditional paths
+```
+📋 planner ⟹ 🏗️ architect ┬─ 👨‍💻 developer (feature)    ┐
+                          └─ 🚀 devops (infrastructure) ┴─ 👥 reviewer
+```
+
+**Hierarchical Decomposition**: Large tasks broken into parallel sub-workflows
+```
+📋 planner ⟹ 🏗️ architect ┬─ 👨‍💻 developer-frontend ⟹ 🧪 tester-ui
+                          ├─ 👨‍💻 developer-backend  ⟹ 🧪 tester-api
+                          └─ 🚀 devops-deploy       ⟹ 👥 reviewer-ops
+```
+
+##### Real-Time Status Integration
+
+The multi-agent visualization provides comprehensive real-time updates:
+
+- **Progress Aggregation**: Combined progress from all active agents
+- **Resource Monitoring**: Token usage, memory consumption, execution time
+- **Dependency Tracking**: Task prerequisites and blocking relationships
+- **Error Propagation**: Issues bubble up through the agent hierarchy
+- **Performance Metrics**: Throughput, success rates, average completion times
+
+##### Responsive Multi-Agent Layouts
+
+The visualization adapts to different terminal sizes while maintaining information hierarchy:
+
+**Wide Terminals (120+ columns)**:
+- Full agent panels with detailed progress bars
+- Complete subtask tree visualization
+- Inline parallel execution monitoring
+- Comprehensive status information
+
+**Normal Terminals (80-119 columns)**:
+- Condensed agent panels with abbreviated details
+- Collapsed subtask tree (expandable on demand)
+- Summary parallel execution view
+- Key metrics only
+
+**Narrow Terminals (< 80 columns)**:
+- Compact single-line agent status
+- Hidden subtask details (accessible via commands)
+- Minimal parallel execution indicators
+- Essential status only
+
+#### /thoughts Command
+
+The `/thoughts` command provides deep insight into agent reasoning and decision-making processes. This powerful debugging and transparency feature allows users to understand exactly how agents are approaching problems and making decisions.
+
+##### Basic Usage
+
+```bash
+# View current thoughts of the active agent
+/thoughts
+
+# View thoughts of a specific agent
+/thoughts developer
+
+# View thoughts with extended context
+/thoughts architect --verbose
+
+# View historical thoughts from a completed stage
+/thoughts planner --stage planning --timestamp "5 minutes ago"
+```
+
+##### Thought Display Formats
+
+**Standard Format**:
+```
+💭 developer thoughts [0:15:23 elapsed]:
+
+"I need to implement the authentication middleware before moving on to the
+frontend components. The current session management approach won't scale
+with the new JWT requirements. Let me first analyze the existing auth flow
+to understand the integration points..."
+
+Current focus: session-management-integration
+Next planned action: analyze AuthContext.tsx dependencies
+```
+
+**Verbose Format**:
+```
+💭 developer thoughts [detailed] [0:15:23 elapsed]:
+
+🎯 Current Objective:
+Implement JWT-based authentication system to replace session cookies
+
+🧠 Analysis:
+"The existing authentication uses express-session with memory store. This
+won't work for JWT tokens which need to be stateless. I need to:
+1. Update the middleware to validate JWTs instead of sessions
+2. Modify the frontend to store tokens in localStorage/httpOnly cookies
+3. Ensure the refresh token mechanism works with the new flow"
+
+🛠️ Working On:
+- File: src/middleware/auth.ts
+- Action: Replacing session validation with JWT verification
+- Progress: Analyzing token structure and validation logic
+
+⏭️ Next Steps:
+1. Update AuthContext.tsx to handle token storage
+2. Implement token refresh mechanism
+3. Update login/logout API endpoints
+4. Test integration with existing components
+
+📊 Context:
+- Total files analyzed: 8
+- Dependencies identified: 12
+- Potential breaking changes: 3
+- Estimated remaining time: 8 minutes
+```
+
+**Historical Format**:
+```
+💭 architect thoughts [completed stage] [15 minutes ago]:
+
+"Based on the requirements analysis, I'm designing a hybrid authentication
+approach. The system needs to support both session-based auth for legacy
+components and JWT for the new API endpoints. This requires careful
+consideration of the migration path..."
+
+Stage: architecture → Status: completed → Duration: 12m 34s
+Led to: 4 implementation tasks, 2 integration points identified
+```
+
+##### Integration with Agent Panels
+
+Thoughts can be displayed inline with agent status for real-time insight:
+
+```
+┌─ Agent Activity (with Thoughts) ──────────────────────────────────────────────────┐
+│                                                                                    │
+│ ⚡ developer                                                                        │
+│   Stage: implementation [0:15:23 elapsed]                                         │
+│   Progress: ███████████████████████████████████████░░░░░░░░░░ 78%                 │
+│                                                                                    │
+│   💭 Current Thinking:                                                            │
+│   "Analyzing the AuthContext dependencies before implementing JWT                  │
+│    validation. The existing useAuth hook needs to support both token              │
+│    and session states during the migration period..."                             │
+│                                                                                    │
+│   Focus: auth-migration-compatibility                                             │
+│   Next: Update useAuth hook interface                                             │
+│                                                                                    │
+└────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Thought Categories and Tagging
+
+The system automatically categorizes thoughts to help with navigation and filtering:
+
+**Analysis**: Understanding existing code and requirements
+```
+💭 [analysis] "The current authentication system uses three different patterns..."
+```
+
+**Planning**: Deciding on implementation approach
+```
+💭 [planning] "I'll implement this in three phases to minimize breaking changes..."
+```
+
+**Implementation**: Active coding and problem-solving
+```
+💭 [implementation] "The JWT middleware needs to handle both Bearer tokens and cookies..."
+```
+
+**Problem-Solving**: Debugging and issue resolution
+```
+💭 [debugging] "The token validation is failing because the secret key format changed..."
+```
+
+**Integration**: Considering how changes affect other components
+```
+💭 [integration] "This change will require updates to the API client and error handling..."
+```
+
+##### Advanced Thought Queries
+
+**Filter by Category**:
+```bash
+/thoughts --category analysis              # Only analytical thoughts
+/thoughts --category planning,implementation # Multiple categories
+```
+
+**Time-based Filtering**:
+```bash
+/thoughts --since "10 minutes ago"         # Recent thoughts only
+/thoughts --between "1pm" "2pm"            # Specific time range
+```
+
+**Search Thought Content**:
+```bash
+/thoughts --search "authentication"        # Thoughts containing specific terms
+/thoughts --search "JWT.*middleware" --regex # Regex pattern matching
+```
+
+**Export and Analysis**:
+```bash
+/thoughts --export thoughts.json           # Export for analysis
+/thoughts --summary                        # AI-generated summary of thought patterns
+```
+
+##### Thought Privacy and Filtering
+
+Some thoughts may contain sensitive information or internal reasoning that should be filtered:
+
+**Sensitive Information Filtering**:
+- API keys, passwords, and secrets are automatically redacted
+- Personal information is masked with placeholders
+- Business-sensitive logic can be marked as internal-only
+
+**Verbosity Controls**:
+```bash
+/thoughts --level basic                    # High-level thoughts only
+/thoughts --level detailed                 # Include implementation details
+/thoughts --level debug                    # Full internal reasoning
+```
+
+##### Real-Time Thought Streaming
+
+For active agents, thoughts can be streamed in real-time:
+
+```bash
+/thoughts developer --stream               # Live thought updates
+/thoughts --all --stream --compact         # All agents, compact format
+```
+
+This provides unprecedented transparency into the AI decision-making process and helps users understand how complex tasks are being approached and solved.
+
 ### 5. Status Bar and Information Display
 
 #### StatusBar Component
