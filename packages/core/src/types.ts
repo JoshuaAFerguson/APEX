@@ -134,6 +134,51 @@ export const DaemonConfigSchema = z.object({
   pollInterval: z.number().optional().default(5000),
   autoStart: z.boolean().optional().default(false),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).optional().default('info'),
+  // v0.4.0 enhancements
+  installAsService: z.boolean().optional().default(false),
+  serviceName: z.string().optional().default('apex-daemon'),
+  healthCheck: z.object({
+    enabled: z.boolean().optional().default(true),
+    interval: z.number().optional().default(30000), // 30 seconds
+    timeout: z.number().optional().default(5000), // 5 seconds
+    retries: z.number().optional().default(3),
+  }).optional(),
+  watchdog: z.object({
+    enabled: z.boolean().optional().default(true),
+    restartDelay: z.number().optional().default(5000), // 5 seconds
+    maxRestarts: z.number().optional().default(5),
+    restartWindow: z.number().optional().default(300000), // 5 minutes
+  }).optional(),
+  // Time-based usage management
+  timeBasedUsage: z.object({
+    enabled: z.boolean().optional().default(false),
+    dayModeHours: z.array(z.number().min(0).max(23)).optional().default([9, 10, 11, 12, 13, 14, 15, 16, 17]),
+    nightModeHours: z.array(z.number().min(0).max(23)).optional().default([22, 23, 0, 1, 2, 3, 4, 5, 6]),
+    dayModeThresholds: z.object({
+      maxTokensPerTask: z.number().optional().default(100000),
+      maxCostPerTask: z.number().optional().default(5.0),
+      maxConcurrentTasks: z.number().optional().default(2),
+    }).optional(),
+    nightModeThresholds: z.object({
+      maxTokensPerTask: z.number().optional().default(1000000),
+      maxCostPerTask: z.number().optional().default(20.0),
+      maxConcurrentTasks: z.number().optional().default(5),
+    }).optional(),
+  }).optional(),
+  // Session recovery settings
+  sessionRecovery: z.object({
+    enabled: z.boolean().optional().default(true),
+    autoResume: z.boolean().optional().default(true),
+    checkpointInterval: z.number().optional().default(60000), // 1 minute
+    contextSummarizationThreshold: z.number().optional().default(50), // messages
+  }).optional(),
+  // Idle processing
+  idleProcessing: z.object({
+    enabled: z.boolean().optional().default(false),
+    idleThreshold: z.number().optional().default(300000), // 5 minutes
+    taskGenerationInterval: z.number().optional().default(3600000), // 1 hour
+    maxIdleTasks: z.number().optional().default(3),
+  }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 
@@ -223,6 +268,10 @@ export interface Task {
   logs: TaskLog[];
   artifacts: TaskArtifact[];
   error?: string;
+  // v0.4.0 enhancements
+  workspace?: WorkspaceConfig;  // Workspace isolation settings
+  sessionData?: TaskSessionData; // Session recovery data
+  thoughtCaptures?: ThoughtCapture[]; // Quick ideas related to this task
 }
 
 /**
@@ -272,6 +321,91 @@ export interface TaskArtifact {
   path?: string;
   content?: string;
   createdAt: Date;
+}
+
+// ============================================================================
+// v0.4.0 - New Types for Enhanced Features
+// ============================================================================
+
+/**
+ * Workspace isolation configuration for tasks
+ */
+export interface WorkspaceConfig {
+  /** Isolation strategy */
+  strategy: 'worktree' | 'container' | 'directory' | 'none';
+  /** Path to workspace (for worktree/directory strategies) */
+  path?: string;
+  /** Container configuration (for container strategy) */
+  container?: {
+    image: string;
+    volumes?: Record<string, string>;
+    environment?: Record<string, string>;
+  };
+  /** Whether to cleanup workspace after task completion */
+  cleanup: boolean;
+}
+
+/**
+ * Session recovery and context data for tasks
+ */
+export interface TaskSessionData {
+  /** Last checkpoint timestamp */
+  lastCheckpoint: Date;
+  /** Current conversation context (summarized) */
+  contextSummary?: string;
+  /** Full conversation history (limited size) */
+  conversationHistory?: AgentMessage[];
+  /** Stage-specific state data */
+  stageState?: Record<string, unknown>;
+  /** Resumable execution point */
+  resumePoint?: {
+    stage: string;
+    stepIndex: number;
+    metadata?: Record<string, unknown>;
+  };
+}
+
+/**
+ * Quick thought capture for ideas related to tasks
+ */
+export interface ThoughtCapture {
+  id: string;
+  content: string;
+  tags?: string[];
+  priority: 'low' | 'medium' | 'high';
+  taskId?: string;
+  createdAt: Date;
+  implementedAt?: Date;
+  status: 'captured' | 'planned' | 'implemented' | 'discarded';
+}
+
+/**
+ * Task interaction commands for managing running tasks
+ */
+export interface TaskInteraction {
+  taskId: string;
+  command: 'iterate' | 'inspect' | 'diff' | 'pause' | 'resume' | 'cancel';
+  parameters?: Record<string, unknown>;
+  requestedBy: string;
+  requestedAt: Date;
+  processedAt?: Date;
+  result?: string;
+}
+
+/**
+ * Service installation configuration
+ */
+export interface ServiceConfig {
+  name: string;
+  description: string;
+  execPath: string;
+  workingDirectory: string;
+  user?: string;
+  group?: string;
+  environment?: Record<string, string>;
+  dependencies?: string[];
+  restartPolicy: 'always' | 'on-failure' | 'no';
+  maxRestarts?: number;
 }
 
 // ============================================================================

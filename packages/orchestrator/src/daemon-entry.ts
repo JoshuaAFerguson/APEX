@@ -1,4 +1,5 @@
 import { DaemonRunner } from './runner';
+import { ApexConfig } from '@apexcli/core';
 
 /**
  * Entry point for forked daemon process
@@ -12,18 +13,38 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const pollInterval = parseInt(process.env.APEX_POLL_INTERVAL || '5000', 10);
+  // Parse optional configuration values from environment
+  // These take priority over config file if explicitly set
+  const pollIntervalMs = process.env.APEX_POLL_INTERVAL ? parseInt(process.env.APEX_POLL_INTERVAL, 10) : undefined;
+  const logLevel = process.env.APEX_LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error' | undefined;
   const logToStdout = process.env.APEX_DAEMON_DEBUG === '1';
+
+  // Check for pre-serialized config (for performance optimization)
+  let config: ApexConfig | undefined;
+  if (process.env.APEX_CONFIG_JSON) {
+    try {
+      config = JSON.parse(process.env.APEX_CONFIG_JSON);
+    } catch (error) {
+      console.warn('Failed to parse APEX_CONFIG_JSON, will load config from file:', error);
+    }
+  }
 
   console.log('Starting APEX daemon...');
   console.log(`Project path: ${projectPath}`);
-  console.log(`Poll interval: ${pollInterval}ms`);
+  if (pollIntervalMs !== undefined) {
+    console.log(`Poll interval: ${pollIntervalMs}ms (from env)`);
+  }
+  if (logLevel !== undefined) {
+    console.log(`Log level: ${logLevel} (from env)`);
+  }
   console.log(`Debug logging: ${logToStdout}`);
 
   const runner = new DaemonRunner({
     projectPath,
-    pollIntervalMs: pollInterval,
+    pollIntervalMs,
+    logLevel,
     logToStdout,
+    config, // Pass pre-loaded config if available
   });
 
   try {

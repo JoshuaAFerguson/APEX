@@ -2,7 +2,7 @@ import { createWriteStream, WriteStream } from 'fs';
 import { join } from 'path';
 import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
-import { loadConfig, getEffectiveConfig, ApexConfig, Task } from '@apexcli/core';
+import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig } from '@apexcli/core';
 
 // ============================================================================
 // Interface Definitions
@@ -17,7 +17,7 @@ export interface DaemonRunnerOptions {
 
   /**
    * Interval in milliseconds between polling for new tasks
-   * Default: 5000 (5 seconds)
+   * Default: 5000 (5 seconds) or from config.daemon.pollInterval
    * Min: 1000, Max: 60000
    */
   pollIntervalMs?: number;
@@ -39,6 +39,18 @@ export interface DaemonRunnerOptions {
    * Default: false
    */
   logToStdout?: boolean;
+
+  /**
+   * Log level for daemon logging
+   * Default: 'info' or from config.daemon.logLevel
+   */
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+
+  /**
+   * Optional pre-loaded config to avoid re-loading
+   * If not provided, config will be loaded from projectPath
+   */
+  config?: ApexConfig;
 }
 
 export interface DaemonMetrics {
@@ -112,14 +124,16 @@ export class DaemonRunner {
   private logStream: WriteStream | null = null;
 
   constructor(options: DaemonRunnerOptions) {
-    // Validate and apply defaults
+    // Store the raw options - we'll resolve defaults in start() after loading config
     this.options = {
       projectPath: options.projectPath,
-      pollIntervalMs: Math.max(1000, Math.min(60000, options.pollIntervalMs ?? 5000)),
+      pollIntervalMs: options.pollIntervalMs, // Will be resolved in start()
       maxConcurrentTasks: options.maxConcurrentTasks ?? 0, // 0 = use config
       logFile: options.logFile ?? join(options.projectPath, '.apex', 'daemon.log'),
       logToStdout: options.logToStdout ?? false,
-    };
+      logLevel: options.logLevel, // Will be resolved in start()
+      config: options.config, // Optional pre-loaded config
+    } as Required<DaemonRunnerOptions>;
   }
 
   /**
@@ -135,9 +149,23 @@ export class DaemonRunner {
     this.logStream = createWriteStream(this.options.logFile, { flags: 'a' });
 
     try {
-      // Load configuration
-      this.config = await loadConfig(this.options.projectPath);
+      // Load configuration (use pre-loaded if available)
+      this.config = this.options.config ?? await loadConfig(this.options.projectPath);
       const effectiveConfig = getEffectiveConfig(this.config);
+
+      // Resolve defaults from config
+      const daemonConfig = effectiveConfig.daemon ?? {};
+
+      // Apply config defaults if options were not explicitly provided
+      if (this.options.pollIntervalMs === undefined) {
+        this.options.pollIntervalMs = daemonConfig.pollInterval ?? 5000;
+      }
+      if (this.options.logLevel === undefined) {
+        this.options.logLevel = daemonConfig.logLevel ?? 'info';
+      }
+
+      // Validate and constrain pollIntervalMs
+      this.options.pollIntervalMs = Math.max(1000, Math.min(60000, this.options.pollIntervalMs));
 
       // Determine max concurrent tasks
       if (this.options.maxConcurrentTasks === 0) {
@@ -376,6 +404,11 @@ export class DaemonRunner {
     message: string,
     metadata?: { taskId?: string }
   ): void {
+    // Check if this log level should be written based on configured log level
+    if (!this.shouldLog(level)) {
+      return;
+    }
+
     const timestamp = new Date().toISOString();
     const levelUpper = level.toUpperCase().padEnd(5);
     const taskPrefix = metadata?.taskId ? `[${metadata.taskId.substring(0, 8)}] ` : '';
@@ -390,6 +423,19 @@ export class DaemonRunner {
     if (this.options.logToStdout) {
       process.stdout.write(logLine);
     }
+  }
+
+  /**
+   * Check if a log level should be written based on configured log level
+   */
+  private shouldLog(level: DaemonLogEntry['level']): boolean {
+    const configuredLevel = this.options.logLevel ?? 'info';
+    const levels = ['debug', 'info', 'warn', 'error'];
+    const configuredIndex = levels.indexOf(configuredLevel);
+    const messageIndex = levels.indexOf(level);
+
+    // Log if message level is at or above configured level
+    return messageIndex >= configuredIndex;
   }
 
   /**

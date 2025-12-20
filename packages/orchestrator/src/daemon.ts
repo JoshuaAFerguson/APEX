@@ -1,6 +1,7 @@
 import { fork, ChildProcess } from 'child_process';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { ApexConfig } from '@apexcli/core';
 
 // ============================================================================
 // Error Types
@@ -37,8 +38,14 @@ export interface DaemonOptions {
   pidFile?: string;
   /** Custom log file path (default: .apex/daemon.log) */
   logFile?: string;
-  /** Poll interval in milliseconds (default: 5000) */
+  /** Poll interval in milliseconds (default: 5000 or from config) */
   pollIntervalMs?: number;
+  /** Log level for daemon (default: 'info' or from config) */
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  /** Whether to enable debug output to stdout */
+  debugMode?: boolean;
+  /** Pre-loaded config to pass to daemon (optional, avoids re-loading) */
+  config?: ApexConfig;
   /** Callback for daemon output */
   onOutput?: (data: string) => void;
   /** Callback for daemon errors */
@@ -103,8 +110,20 @@ export class DaemonManager {
           ...process.env,
           APEX_DAEMON_MODE: '1',
           APEX_PROJECT_PATH: this.projectPath,
-          APEX_POLL_INTERVAL: String(this.options.pollIntervalMs ?? 5000),
-          APEX_DAEMON_DEBUG: process.env.APEX_DAEMON_DEBUG || '0',
+          // Pass optional explicit values if provided
+          ...(this.options.pollIntervalMs !== undefined && {
+            APEX_POLL_INTERVAL: String(this.options.pollIntervalMs)
+          }),
+          ...(this.options.logLevel !== undefined && {
+            APEX_LOG_LEVEL: this.options.logLevel
+          }),
+          ...(this.options.debugMode !== undefined && {
+            APEX_DAEMON_DEBUG: this.options.debugMode ? '1' : '0'
+          }),
+          // Pass serialized config if provided (for performance)
+          ...(this.options.config && {
+            APEX_CONFIG_JSON: JSON.stringify(this.options.config)
+          }),
         },
       });
 

@@ -45,6 +45,10 @@ export class TaskStore {
       { column: 'paused_at', definition: 'TEXT' },
       { column: 'resume_after', definition: 'TEXT' },
       { column: 'pause_reason', definition: 'TEXT' },
+      // v0.4.0 enhancements
+      { column: 'workspace_config', definition: 'TEXT' },
+      { column: 'session_data', definition: 'TEXT' },
+      { column: 'last_checkpoint', definition: 'TEXT' },
     ];
 
     for (const { column, definition } of migrations) {
@@ -90,7 +94,11 @@ export class TaskStore {
         subtask_strategy TEXT,
         paused_at TEXT,
         resume_after TEXT,
-        pause_reason TEXT
+        pause_reason TEXT,
+        -- v0.4.0 enhancements
+        workspace_config TEXT,
+        session_data TEXT,
+        last_checkpoint TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -159,6 +167,59 @@ export class TaskStore {
         UNIQUE(task_id, checkpoint_id)
       );
 
+      -- v0.4.0 Tables
+      CREATE TABLE IF NOT EXISTS thought_captures (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        tags TEXT,
+        priority TEXT NOT NULL DEFAULT 'medium',
+        task_id TEXT,
+        created_at TEXT NOT NULL,
+        implemented_at TEXT,
+        status TEXT NOT NULL DEFAULT 'captured',
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS task_interactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        command TEXT NOT NULL,
+        parameters TEXT,
+        requested_by TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        processed_at TEXT,
+        result TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL,
+        strategy TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        config TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        last_accessed TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        UNIQUE(task_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS idle_tasks (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        estimated_effort TEXT NOT NULL,
+        suggested_workflow TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        implemented BOOLEAN DEFAULT 0,
+        implemented_task_id TEXT,
+        FOREIGN KEY (implemented_task_id) REFERENCES tasks(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -166,6 +227,13 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id);
       CREATE INDEX IF NOT EXISTS idx_task_checkpoints_task_id ON task_checkpoints(task_id);
+      -- v0.4.0 Indexes
+      CREATE INDEX IF NOT EXISTS idx_thought_captures_status ON thought_captures(status);
+      CREATE INDEX IF NOT EXISTS idx_thought_captures_priority ON thought_captures(priority);
+      CREATE INDEX IF NOT EXISTS idx_thought_captures_task_id ON thought_captures(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_interactions_task_id ON task_interactions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_info_task_id ON workspace_info(task_id);
+      CREATE INDEX IF NOT EXISTS idx_idle_tasks_status ON idle_tasks(implemented);
     `);
   }
 
@@ -178,12 +246,14 @@ export class TaskStore {
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
         current_stage, project_path, branch_name, retry_count, max_retries, created_at, updated_at,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
-        parent_task_id, subtask_ids, subtask_strategy
+        parent_task_id, subtask_ids, subtask_strategy,
+        workspace_config, session_data, last_checkpoint
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
         @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @createdAt, @updatedAt,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
-        @parentTaskId, @subtaskIds, @subtaskStrategy
+        @parentTaskId, @subtaskIds, @subtaskStrategy,
+        @workspaceConfig, @sessionData, @lastCheckpoint
       )
     `);
 
@@ -209,6 +279,10 @@ export class TaskStore {
       parentTaskId: task.parentTaskId || null,
       subtaskIds: task.subtaskIds && task.subtaskIds.length > 0 ? JSON.stringify(task.subtaskIds) : null,
       subtaskStrategy: task.subtaskStrategy || null,
+      // v0.4.0 fields
+      workspaceConfig: task.workspace ? JSON.stringify(task.workspace) : null,
+      sessionData: task.sessionData ? JSON.stringify(task.sessionData) : null,
+      lastCheckpoint: task.sessionData?.lastCheckpoint?.toISOString() || null,
     });
 
     // Insert dependencies if any

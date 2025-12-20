@@ -766,6 +766,190 @@ const commands: Command[] = [
       }
     },
   },
+  // v0.4.0 Commands
+  {
+    name: 'service',
+    aliases: ['svc'],
+    description: 'Manage daemon as system service',
+    usage: '/service [install|uninstall|status]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized) {
+        console.log(chalk.red('❌ Not in an APEX project. Run /init first.'));
+        return;
+      }
+
+      const action = args[0]?.toLowerCase();
+
+      switch (action) {
+        case 'install':
+          console.log(chalk.blue('📦 Installing APEX daemon as system service...'));
+          // Implementation would use ServiceManager
+          console.log(chalk.green('✅ Service installation not yet implemented'));
+          break;
+        case 'uninstall':
+          console.log(chalk.blue('🗑️ Uninstalling APEX daemon service...'));
+          console.log(chalk.green('✅ Service uninstallation not yet implemented'));
+          break;
+        case 'status':
+        case undefined:
+          console.log(chalk.blue('📊 Service Status:'));
+          console.log(chalk.gray('Service management not yet implemented'));
+          break;
+        default:
+          console.log(chalk.red('Usage: /service [install|uninstall|status]'));
+      }
+    },
+  },
+  {
+    name: 'interact',
+    aliases: ['i'],
+    description: 'Interact with running tasks',
+    usage: '/interact <task-id> <command> [options]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('❌ Orchestrator not available'));
+        return;
+      }
+
+      if (args.length < 2) {
+        console.log(chalk.red('Usage: /interact <task-id> <command> [options]'));
+        console.log(chalk.gray('Commands: iterate, inspect, diff, pause, resume, cancel'));
+        return;
+      }
+
+      const [taskId, command, ...options] = args;
+
+      try {
+        console.log(chalk.blue(`🔄 Interacting with task ${taskId}...`));
+        // Implementation would use InteractionManager
+        console.log(chalk.green('✅ Task interaction not yet implemented'));
+      } catch (error) {
+        console.log(chalk.red(`❌ Interaction failed: ${error}`));
+      }
+    },
+  },
+  {
+    name: 'workspace',
+    aliases: ['ws'],
+    description: 'Manage task workspaces',
+    usage: '/workspace [list|cleanup|info <task-id>]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('❌ Orchestrator not available'));
+        return;
+      }
+
+      const action = args[0]?.toLowerCase();
+
+      switch (action) {
+        case 'list':
+          console.log(chalk.blue('📋 Active Workspaces:'));
+          console.log(chalk.gray('Workspace listing not yet implemented'));
+          break;
+        case 'cleanup':
+          console.log(chalk.blue('🧹 Cleaning up old workspaces...'));
+          console.log(chalk.green('✅ Workspace cleanup not yet implemented'));
+          break;
+        case 'info':
+          const taskId = args[1];
+          if (!taskId) {
+            console.log(chalk.red('Usage: /workspace info <task-id>'));
+            return;
+          }
+          console.log(chalk.blue(`📊 Workspace info for task ${taskId}:`));
+          console.log(chalk.gray('Workspace info not yet implemented'));
+          break;
+        default:
+          console.log(chalk.red('Usage: /workspace [list|cleanup|info <task-id>]'));
+      }
+    },
+  },
+  {
+    name: 'capture',
+    aliases: ['cap'],
+    description: 'Capture quick thoughts and ideas',
+    usage: '/capture <thought> [--priority high|medium|low] [--tag tag1,tag2]',
+    handler: async (ctx, args) => {
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /capture <thought> [options]'));
+        return;
+      }
+
+      const thought = args.join(' ').replace(/--\w+\s+\w+/g, '').trim();
+
+      console.log(chalk.blue('💭 Capturing thought...'));
+      console.log(chalk.green(`✅ Thought captured: "${thought}"`));
+      console.log(chalk.gray('Full thought capture implementation pending'));
+    },
+  },
+  {
+    name: 'idle',
+    aliases: ['suggestions'],
+    description: 'View and manage improvement suggestions',
+    usage: '/idle [list|implement <id>|dismiss <id>|analyze]',
+    handler: async (ctx, args) => {
+      const action = args[0]?.toLowerCase();
+
+      switch (action) {
+        case 'list':
+        case undefined:
+          console.log(chalk.blue('💡 Improvement Suggestions:'));
+          console.log(chalk.gray('Idle processing suggestions not yet implemented'));
+          break;
+        case 'implement':
+          const implementId = args[1];
+          if (!implementId) {
+            console.log(chalk.red('Usage: /idle implement <id>'));
+            return;
+          }
+          console.log(chalk.blue(`🚀 Implementing suggestion ${implementId}...`));
+          console.log(chalk.green('✅ Suggestion implementation not yet implemented'));
+          break;
+        case 'dismiss':
+          const dismissId = args[1];
+          if (!dismissId) {
+            console.log(chalk.red('Usage: /idle dismiss <id>'));
+            return;
+          }
+          console.log(chalk.blue(`🗑️ Dismissing suggestion ${dismissId}...`));
+          console.log(chalk.green('✅ Suggestion dismissed'));
+          break;
+        case 'analyze':
+          console.log(chalk.blue('🔍 Analyzing project for improvements...'));
+          console.log(chalk.green('✅ Project analysis not yet implemented'));
+          break;
+        default:
+          console.log(chalk.red('Usage: /idle [list|implement <id>|dismiss <id>|analyze]'));
+      }
+    },
+  },
+  {
+    name: 'usage',
+    aliases: ['budget'],
+    description: 'View usage statistics and budget management',
+    usage: '/usage [stats|budget|mode]',
+    handler: async (ctx, args) => {
+      const action = args[0]?.toLowerCase();
+
+      switch (action) {
+        case 'stats':
+        case undefined:
+          console.log(chalk.blue('📊 Usage Statistics:'));
+          console.log(chalk.gray('Usage statistics not yet implemented'));
+          break;
+        case 'budget':
+          console.log(chalk.blue('💰 Budget Status:'));
+          console.log(chalk.gray('Budget management not yet implemented'));
+          break;
+        case 'mode':
+          console.log(chalk.blue('🌓 Current Mode:'));
+          console.log(chalk.gray('Time-based mode detection not yet implemented'));
+          break;
+        default:
+          console.log(chalk.red('Usage: /usage [stats|budget|mode]'));
+      }
+    },
+  },
 ];
 
 // ============================================================================

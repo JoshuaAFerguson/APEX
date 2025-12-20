@@ -3072,3 +3072,17 @@ export {
   type DaemonMetrics,
   type DaemonLogEntry
 } from './runner';
+export {
+  ServiceManager,
+  SystemdGenerator,
+  LaunchdGenerator,
+  ServiceError,
+  detectPlatform,
+  isSystemdAvailable,
+  isLaunchdAvailable,
+  type ServiceManagerOptions,
+  type ServiceStatus,
+  type ServiceFileResult,
+  type ServiceErrorCode,
+  type Platform,
+} from './service-manager';
