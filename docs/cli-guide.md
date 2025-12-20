@@ -358,139 +358,1138 @@ Create a GitHub pull request for a completed task.
 
 ## Session Management
 
-APEX automatically manages sessions, tracking your conversation history, tasks, and costs.
+APEX automatically manages sessions, tracking your conversation history, tasks, and costs across all interactions. Session management is one of the core strengths of APEX, providing comprehensive tools for persistence, organization, and workflow optimization.
 
-> **✨ NEW in v0.3.0**: Enhanced session management with improved persistence, branching capabilities, and visual feedback. Session data now integrates seamlessly with the rich terminal interface.
+> **✨ NEW in v0.3.0**: Enhanced session management with improved persistence, branching capabilities, and visual feedback. Session data now integrates seamlessly with the rich terminal interface, providing the 7 core session features documented below.
 
-### Session Commands
+### Overview
 
-All session commands use the `/session` prefix:
+Session management in APEX encompasses seven key features designed to support both short-term interactions and long-running development workflows:
 
-| Command | Description |
-|---------|-------------|
-| `/session list` | List available sessions |
-| `/session load <id>` | Load a session |
-| `/session save <name>` | Save current session with a name |
-| `/session branch [name]` | Create a branch from current session |
-| `/session export` | Export session to file |
-| `/session delete <id>` | Delete a session |
-| `/session info` | Show current session info |
+1. **[Session Persistence](#session-persistence)** - Automatic session resumption across APEX restarts
+2. **[Session Export Formats](#session-export-formats)** - Export sessions as markdown, JSON, or HTML
+3. **[Session Branching](#session-branching)** - Create alternative conversation branches
+4. **[Named Sessions](#named-sessions)** - Organize sessions with meaningful names and tags
+5. **[Session Search](#session-search)** - Find sessions by name, content, or metadata
+6. **[Auto-Save](#auto-save)** - Intelligent automatic session persistence
+7. **[Session Commands Reference](#session-commands-reference)** - Complete command reference
 
-### `/session list` - List Sessions
+### The 7 Session Features
 
-**Usage:**
+#### 1. Session Persistence
+
+**Description**: APEX automatically persists your session state and resumes it when you restart the application. This ensures continuity of work and prevents loss of conversation history.
+
+**How It Works**:
+- Sessions are automatically stored in `.apex/sessions/`
+- Last active session resumes by default on APEX startup
+- Crash recovery restores session state from last auto-save
+- Session lifecycle is managed transparently
+
+**Examples**:
 ```bash
-/session list [--all] [--search <query>]
+# Session is automatically persisted during normal usage
+apex> Add a health check endpoint to the API
+# ... work continues, session auto-saves periodically ...
+
+# When you restart APEX, the session resumes automatically
+$ apex
+Resuming session: sess_1703123456789_abc123def...
+Previous session: "Feature Development" (45 messages, $1.23)
+
+# To start a completely fresh session instead
+$ apex --new-session
+Starting new session...
+```
+
+**Configuration**:
+```yaml
+# .apex/config.yaml
+session:
+  autoResume: true          # Resume last session on startup
+  crashRecovery: true       # Enable crash recovery
+  maxSessions: 100          # Maximum stored sessions
+```
+
+**Tips**:
+- Session resumption includes full conversation context
+- Unsaved work is preserved across unexpected shutdowns
+- Use `--new-session` flag when you want to start completely fresh
+
+#### 2. Session Export Formats
+
+**Description**: Export your sessions to various formats for documentation, sharing, or archival purposes. Three formats are supported: markdown for readability, JSON for programmatic use, and HTML for rich presentation.
+
+**Commands**:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session export` | Preview in markdown format | Display session content |
+| `/session export --format md` | Export as markdown | Same as default |
+| `/session export --format json` | Export as structured JSON | For API integration |
+| `/session export --format html` | Export as styled HTML | For sharing/reports |
+| `/session export --output <file>` | Save to specific file | Write to disk |
+
+**Examples**:
+```bash
+# Preview session as markdown (default)
+/session export
+
+# Export to JSON for programmatic processing
+/session export --format json --output session-data.json
+
+# Export to HTML for team sharing
+/session export --format html --output project-session.html
+
+# Export current session to markdown file
+/session export --format md --output session-backup.md
+```
+
+**Sample Output Formats**:
+
+**Markdown Format**:
+```markdown
+# APEX Session: Feature Development
+
+**Created:** 2024-12-15T10:30:00.000Z
+**Last Updated:** 2024-12-15T12:45:00.000Z
+**Total Messages:** 45
+**Total Cost:** $1.2345
+**Tokens:** 125,456 (input: 89,123 | output: 36,333)
+
+---
+
+### **User** *(2024-12-15 10:30:15)*
+
+Add a health check endpoint to the API
+
+### **Assistant (planner)** *(2024-12-15 10:30:45)*
+
+I'll analyze your codebase and create a plan for implementing a health check endpoint...
+
+[Agent: planner | Stage: planning | Tokens: 1,234 | Cost: $0.0012]
+
+### **User** *(2024-12-15 10:35:22)*
+
+Make sure it includes database connectivity status
+```
+
+**JSON Format**:
+```json
+{
+  "id": "sess_1703123456789_abc123def",
+  "name": "Feature Development",
+  "created": "2024-12-15T10:30:00.000Z",
+  "lastUpdated": "2024-12-15T12:45:00.000Z",
+  "metadata": {
+    "tags": ["feature", "api", "health-check"],
+    "parentSessionId": null,
+    "branchCount": 2
+  },
+  "messages": [
+    {
+      "id": "msg_001",
+      "index": 0,
+      "timestamp": "2024-12-15T10:30:15.000Z",
+      "role": "user",
+      "content": "Add a health check endpoint to the API"
+    },
+    {
+      "id": "msg_002",
+      "index": 1,
+      "timestamp": "2024-12-15T10:30:45.000Z",
+      "role": "assistant",
+      "content": "I'll analyze your codebase...",
+      "metadata": {
+        "agent": "planner",
+        "stage": "planning",
+        "tokens": {"input": 850, "output": 384},
+        "cost": 0.0012
+      }
+    }
+  ],
+  "state": {
+    "totalTokens": {"input": 89123, "output": 36333},
+    "totalCost": 1.2345,
+    "currentAgent": "developer",
+    "currentStage": "implementation"
+  }
+}
+```
+
+**HTML Format**:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>APEX Session: Feature Development</title>
+    <style>
+        .message { margin: 1rem 0; padding: 1rem; border-radius: 8px; }
+        .user { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .assistant { background: #f3e5f5; border-left: 4px solid #9c27b0; }
+        .metadata { font-size: 0.8em; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>APEX Session: Feature Development</h1>
+    <div class="session-info">
+        <p><strong>Created:</strong> December 15, 2024, 10:30:00 AM</p>
+        <p><strong>Messages:</strong> 45 | <strong>Cost:</strong> $1.2345</p>
+    </div>
+
+    <div class="message user">
+        <h3>User <span class="metadata">(10:30:15)</span></h3>
+        <p>Add a health check endpoint to the API</p>
+    </div>
+
+    <div class="message assistant">
+        <h3>Assistant (planner) <span class="metadata">(10:30:45)</span></h3>
+        <p>I'll analyze your codebase and create a plan...</p>
+        <div class="metadata">Tokens: 1,234 | Cost: $0.0012</div>
+    </div>
+</body>
+</html>
+```
+
+**Configuration**: No additional configuration required - export formats work with default settings.
+
+**Tips**:
+- Use markdown for documentation and team reviews
+- Use JSON for integration with other tools or analysis
+- Use HTML for polished reports and presentations
+- Preview with `/session export` before saving to file
+
+#### 3. Session Branching
+
+**Description**: Create alternative conversation branches from any point in your session. This powerful feature allows you to explore different approaches, try alternative solutions, or backtrack to earlier decisions without losing your original conversation flow.
+
+**Commands**:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session branch <name>` | Create branch from current point | Create new direction |
+| `/session branch <name> --from <index>` | Create branch from specific message | Branch from earlier point |
+| `/session info` | View branch relationships | See parent/child sessions |
+
+**Examples**:
+```bash
+# Create a branch from the current conversation point
+/session branch "Alternative Approach"
+
+# Create a branch from a specific message (0-based index)
+/session branch "Try Redux Implementation" --from 15
+
+# Create an unnamed branch (auto-generated name)
+/session branch
+
+# View current session's branch relationships
+/session info
+```
+
+**Branch Workflow Visualization**:
+```
+Session: "Main Development"
+├── Message 1: User: "Implement user authentication"
+├── Message 2: AI: "I'll create a JWT-based auth system..."
+├── Message 3: User: "Actually, let's also consider OAuth"
+├── Message 4: AI: "Here's a comparison of JWT vs OAuth..." ◄─── Branch point
+│   │
+│   └── Branch: "OAuth Implementation"
+│       ├── Message 5 (branch): User: "Let's go with OAuth"
+│       ├── Message 6 (branch): AI: "I'll implement OAuth with Google..."
+│       └── Message 7 (branch): User: "Add GitHub provider too"
+│
+├── Message 5: User: "Let's stick with JWT for now"
+├── Message 6: AI: "I'll implement the JWT solution..."
+└── Message 7: User: "Add password reset functionality"
+```
+
+**Output Examples**:
+
+When creating a branch:
+```bash
+apex> /session branch "OAuth Approach" --from 4
+
+✅ Created session branch
+   Name: OAuth Approach
+   Branched from: Message 4 in "Main Development"
+   New session ID: sess_1703123567890_def456ghi
+
+Switched to branch session. Use /session load sess_1703123456789_abc123def to return to parent.
+```
+
+When viewing session info with branches:
+```bash
+apex> /session info
+
+Current Session:
+  ID: sess_1703123456789_abc123def
+  Name: Main Development
+  Messages: 8
+  Created: 12/15/2024, 9:00:00 AM
+  Updated: 12/15/2024, 11:30:00 AM
+
+Parent Session: None
+Child Branches: 2
+├── sess_1703123567890_def456ghi: "OAuth Approach" (3 messages)
+└── sess_1703123678901_ghi789jkl: "Redis Caching" (5 messages)
+
+Total Cost: $1.2345
+Tokens: 125,456
+```
+
+**Configuration**: No additional configuration required - branching works with default session settings.
+
+**Tips**:
+- Use branches to explore "what if" scenarios without losing your main conversation
+- Branch before making significant changes to your approach
+- View `/session info` to understand branch relationships
+- Use `/session list` to see all your session branches
+
+#### 4. Named Sessions
+
+**Description**: Organize your sessions with meaningful names and tags for better discoverability and project management. Named sessions transform anonymous session IDs into recognizable, searchable work units.
+
+**Commands**:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session save <name>` | Save current session with a name | Assign meaningful name |
+| `/session save <name> --tags <tags>` | Save with organizational tags | Add searchable metadata |
+| `/session load <name>` | Load session by name | Load by name instead of ID |
+| `/session list` | View named sessions | See all named sessions |
+
+**Examples**:
+```bash
+# Save current session with a descriptive name
+/session save "Auth Implementation"
+
+# Save with tags for better organization
+/session save "Sprint 5 Work" --tags sprint5,auth,backend,api
+
+# Save with multiple organizational tags
+/session save "Database Refactor" --tags refactor,database,performance,sprint3
+
+# Load a session by its name
+/session load "Auth Implementation"
+
+# Load by partial name match (if unique)
+/session load "Auth"
+```
+
+**Session Naming Best Practices**:
+```bash
+# Feature-based naming
+/session save "User Profile Management"
+/session save "Payment Integration"
+/session save "Email Notifications"
+
+# Sprint/iteration-based naming
+/session save "Sprint 3 - Authentication"
+/session save "v2.0 API Updates"
+/session save "Bug Fix - User Login Issue"
+
+# Component-based naming
+/session save "Frontend: React Components"
+/session save "Backend: Database Layer"
+/session save "DevOps: CI/CD Pipeline"
+```
+
+**Output Examples**:
+
+When saving a named session:
+```bash
+apex> /session save "Auth Feature Development" --tags auth,feature,backend
+
+✅ Session saved successfully
+   Name: Auth Feature Development
+   Tags: auth, feature, backend
+   ID: sess_1703123456789_abc123def
+   Messages: 23 | Cost: $0.89 | Created: 2h 15m ago
+```
+
+Session list with names:
+```bash
+apex> /session list
+
+Sessions:
+
+  🔖 Auth Feature Development    │ 23 msgs │ $0.89  │ 2h ago    │ #auth #feature
+  🔖 Database Refactor          │ 15 msgs │ $0.45  │ 1d ago    │ #refactor #db
+  📁 Sprint 3 Planning          │ 8 msgs  │ $0.23  │ 3d ago    │ #sprint3
+  💡 Bug Investigation          │ 12 msgs │ $0.34  │ 5d ago    │ #bugfix
+     sess_1703120000000_old123  │ 5 msgs  │ $0.15  │ 1w ago    │ (unnamed)
+```
+
+Loading by name:
+```bash
+apex> /session load "Auth"
+
+🔍 Multiple sessions match "Auth":
+   1. Auth Feature Development (23 msgs, $0.89)
+   2. Authentication Refactor (15 msgs, $0.45)
+
+Select session [1-2]: 1
+
+✅ Loaded session: Auth Feature Development
+   Resuming at message 23...
+```
+
+**Configuration**:
+```yaml
+# .apex/config.yaml
+session:
+  naming:
+    suggestNames: true        # AI suggests names based on content
+    requireTags: false        # Whether tags are required
+    maxTagsPerSession: 10     # Limit number of tags
+```
+
+**Tips**:
+- Use consistent naming patterns across your project
+- Tags help organize sessions across multiple projects
+- Load sessions by name for faster access than remembering IDs
+- Use AI suggestions for naming (when `suggestNames: true`)
+
+#### 5. Session Search
+
+**Description**: Search across your session history by name, content, tags, or metadata. Powerful search capabilities help you find relevant conversations quickly, even with extensive session history.
+
+**Commands**:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session list --search <query>` | Search by name/content | Find specific sessions |
+| `/session list --all --search <query>` | Include archived sessions | Search all history |
+| `/session list --search <tag>` | Search by tag | Find tagged sessions |
+
+**Examples**:
+```bash
+# Search by session name
+/session list --search "auth"
+
+# Search by content keywords
+/session list --search "database migration"
+
+# Search by specific tags
+/session list --search "#backend"
+
+# Search across all sessions including archived
+/session list --all --search "payment"
+
+# Search with multiple terms
+/session list --search "react component"
+```
+
+**Advanced Search Examples**:
+```bash
+# Find all authentication-related work
+/session list --search "auth"
+
+# Find specific feature discussions
+/session list --search "user profile"
+
+# Search by technology stack
+/session list --search "redis"
+/session list --search "postgresql"
+
+# Search by development phase
+/session list --search "#planning"
+/session list --search "#implementation"
+
+# Find error investigation sessions
+/session list --search "error"
+/session list --search "bug"
+```
+
+**Output Examples**:
+
+Basic search results:
+```bash
+apex> /session list --search "auth"
+
+Search Results for "auth" (4 matches):
+
+  🔖 Auth Feature Development    │ 23 msgs │ $0.89  │ 2h ago    │ #auth #feature
+  🔖 Authentication Refactor     │ 15 msgs │ $0.45  │ 1d ago    │ #auth #refactor
+  💡 OAuth Integration           │ 8 msgs  │ $0.23  │ 3d ago    │ #auth #oauth
+  📁 User Auth Bug Fix          │ 12 msgs │ $0.34  │ 5d ago    │ #auth #bugfix
+```
+
+Detailed search with content preview:
+```bash
+apex> /session list --search "database" --verbose
+
+Search Results for "database" (2 matches):
+
+┌─ Database Refactor ─────────────────────────────────────────┐
+│ ID: sess_1703123456789_abc123def                            │
+│ Messages: 15 | Cost: $0.45 | Created: 1d ago               │
+│ Tags: #refactor #database #performance                      │
+│ Content preview: "Let's refactor the user table to improve │
+│ query performance and add proper indexing..."               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─ Database Migration Planning ───────────────────────────────┐
+│ ID: sess_1703123567890_def456ghi                            │
+│ Messages: 8 | Cost: $0.23 | Created: 3d ago                │
+│ Tags: #planning #database #migration                        │
+│ Content preview: "Plan the migration from MySQL to         │
+│ PostgreSQL for better JSON support..."                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+No results found:
+```bash
+apex> /session list --search "kubernetes"
+
+No sessions found matching "kubernetes"
+
+Suggestions:
+• Try broader search terms
+• Check spelling
+• Use /session list --all to include archived sessions
+• Use /session list to see all available sessions
+```
+
+**Search Tips and Patterns**:
+```bash
+# Find sessions by development stage
+/session list --search "#planning"
+/session list --search "#implementation"
+/session list --search "#testing"
+
+# Find sessions by project component
+/session list --search "frontend"
+/session list --search "api"
+/session list --search "database"
+
+# Find sessions by time frame
+/session list --search "#sprint3"
+/session list --search "#v2"
+
+# Find troubleshooting sessions
+/session list --search "error"
+/session list --search "debug"
+/session list --search "fix"
+```
+
+**Configuration**:
+```yaml
+# .apex/config.yaml
+session:
+  search:
+    caseSensitive: false      # Case-insensitive search by default
+    maxResults: 20            # Maximum search results to show
+    contentPreview: true      # Show content preview in results
+    highlightMatches: true    # Highlight search terms in results
+```
+
+**Tips**:
+- Use tags consistently for better searchability
+- Search terms match both session names and content
+- Use `--all` flag to search archived sessions
+- Combine multiple search terms for more specific results
+
+#### 6. Auto-Save
+
+**Description**: Intelligent automatic session persistence that saves your work based on configurable triggers. Auto-save prevents data loss and ensures session continuity without manual intervention.
+
+**How Auto-Save Works**:
+- **Interval-based saving**: Saves every N seconds of activity
+- **Message threshold saving**: Saves after N new messages
+- **Smart triggers**: Saves before potentially risky operations
+- **Unsaved changes tracking**: Shows count of unsaved messages
+- **Background operation**: Non-intrusive, happens transparently
+
+**Configuration**:
+```yaml
+# .apex/config.yaml
+session:
+  autoSave:
+    enabled: true             # Enable auto-save functionality
+    intervalMs: 30000         # Save every 30 seconds (during activity)
+    maxUnsavedMessages: 5     # Save after 5 unsaved messages
+    onCriticalOperations: true # Save before risky operations
+    onSessionSwitch: true     # Save when switching sessions
+    onExit: true              # Save when exiting APEX
+```
+
+**Commands**:
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session save <name>` | Force immediate save | Manual save override |
+| `/session info` | Check unsaved changes | See unsaved count |
+| `Ctrl+S` | Quick save session | Keyboard shortcut |
+
+**Examples**:
+```bash
+# Auto-save happens automatically - no commands needed!
+apex> Add authentication to the API
+# ... conversation continues ...
+# [Auto-saved: 5 messages] (shown in verbose mode)
+
+# Force manual save at any time
+/session save "Auth Work in Progress"
+
+# Check if there are unsaved changes
+/session info
+# Shows: Unsaved changes: 3
+
+# Quick save with keyboard shortcut
+# Press Ctrl+S
+✅ Session saved (forced save)
+```
+
+**Auto-Save Triggers and Notifications**:
+
+Interval-based auto-save:
+```bash
+apex> # Working on a feature...
+# After 30 seconds of activity:
+# [Auto-saved: interval trigger] (verbose mode only)
+```
+
+Message threshold auto-save:
+```bash
+apex> Message 1
+apex> Message 2
+apex> Message 3
+apex> Message 4
+apex> Message 5
+# [Auto-saved: 5 messages threshold] (verbose mode only)
+```
+
+Critical operation auto-save:
+```bash
+apex> /session branch "Alternative Approach"
+# [Auto-saved before branching]
+✅ Created session branch...
+```
+
+Session switch auto-save:
+```bash
+apex> /session load "Different Project"
+# [Auto-saved current session]
+✅ Loaded session: Different Project...
+```
+
+**Session Info with Auto-Save Details**:
+```bash
+apex> /session info
+
+Current Session:
+  ID: sess_1703123456789_abc123def
+  Name: Feature Development
+  Messages: 23
+  Created: 12/15/2024, 9:00:00 AM
+  Last Updated: 12/15/2024, 11:30:00 AM
+  Last Auto-Save: 12/15/2024, 11:28:15 AM
+
+  Unsaved Changes: 3 messages
+  Next Auto-Save: in 25 seconds (or 2 more messages)
+
+Auto-Save Status: ✅ Enabled
+  Interval: 30 seconds
+  Message threshold: 5 messages
+  Last trigger: message threshold
+```
+
+**Auto-Save Settings Management**:
+```bash
+# View current auto-save settings
+/config get session.autoSave
+
+# Disable auto-save temporarily
+/config set session.autoSave.enabled=false
+
+# Adjust save frequency
+/config set session.autoSave.intervalMs=60000    # Save every minute
+/config set session.autoSave.maxUnsavedMessages=10  # Save after 10 messages
+
+# Re-enable with new settings
+/config set session.autoSave.enabled=true
+```
+
+**Tips**:
+- Auto-save is enabled by default and works transparently
+- Use `Ctrl+S` for immediate manual saves when needed
+- Check `/session info` to see unsaved changes count
+- Adjust intervals based on your workflow - shorter for critical work
+- Auto-save respects your naming when you've used `/session save`
+
+#### 7. Session Commands Reference
+
+**Description**: Complete reference for all session-related commands with their options, arguments, and usage patterns.
+
+**Quick Reference Table**:
+
+| Command | Description | Options | Examples |
+|---------|-------------|---------|----------|
+| `/session list` | List available sessions | `--all`, `--search <query>` | `/session list --search auth` |
+| `/session load <id\|name>` | Load a session | - | `/session load "Auth Work"` |
+| `/session save <name>` | Save current session | `--tags <tag1,tag2>` | `/session save "Feature" --tags api,auth` |
+| `/session branch [name]` | Create session branch | `--from <message_index>` | `/session branch "Alt" --from 15` |
+| `/session export` | Export session | `--format <md\|json\|html>`, `--output <file>` | `/session export --format html --output report.html` |
+| `/session delete <id>` | Delete a session | - | `/session delete sess_123...` |
+| `/session info` | Show current session info | - | `/session info` |
+
+**Detailed Command Documentation**:
+
+**`/session list` - List Available Sessions**
+
+*List and search through your session history with filtering options.*
+
+**Syntax:**
+```bash
+/session list [--all] [--search <query>] [--verbose]
 ```
 
 **Options:**
+- `--all` - Include archived sessions in results
+- `--search <query>` - Filter sessions by name, content, or tags
+- `--verbose` - Show detailed information including content preview
 
-| Option | Description |
-|--------|-------------|
-| `--all` | Include archived sessions |
-| `--search <query>` | Filter by name or content |
-
-**Example Output:**
-```
-Sessions:
-
-  abc123def456 │ Feature Development     │ 45 msgs │ $1.23 │ 12/15/2024
-  xyz789ghi012 │ Bug Investigation       │ 12 msgs │ $0.34 │ 12/14/2024
-  def456jkl789 │ Unnamed                 │  8 msgs │ $0.15 │ 12/13/2024 (archived)
+**Examples:**
+```bash
+/session list                           # List recent active sessions
+/session list --all                     # Include archived sessions
+/session list --search "authentication" # Find auth-related sessions
+/session list --all --search "#bugfix"  # Search archived bugfix sessions
 ```
 
-### `/session load` - Load a Session
+**`/session load` - Load a Session**
 
-Load a previously saved session to continue where you left off.
+*Switch to a different session by ID or name.*
 
-**Usage:**
+**Syntax:**
 ```bash
 /session load <session_id|name>
 ```
 
-**Example:**
+**Arguments:**
+- `session_id` - Full session ID (e.g., `sess_1703123456789_abc123def`)
+- `name` - Session name (supports partial matching if unique)
+
+**Examples:**
 ```bash
-/session load abc123def456
-/session load "Feature Development"
+/session load sess_1703123456789_abc123def    # Load by full ID
+/session load "Auth Implementation"           # Load by exact name
+/session load "Auth"                          # Load by partial name (if unique)
 ```
 
-### `/session save` - Save Current Session
+**`/session save` - Save Current Session**
 
-Save the current session with a name and optional tags.
+*Save the current session with a name and optional organizational tags.*
 
-**Usage:**
+**Syntax:**
 ```bash
 /session save <name> [--tags <tag1,tag2,...>]
 ```
 
+**Arguments:**
+- `name` - Descriptive name for the session (quoted if contains spaces)
+
+**Options:**
+- `--tags <tag1,tag2,...>` - Comma-separated tags for organization
+
 **Examples:**
 ```bash
-/session save "Auth Implementation"
-/session save "Sprint 5 Work" --tags sprint5,auth,backend
+/session save "API Development"                    # Save with name only
+/session save "Auth Feature" --tags auth,api,v2   # Save with tags
+/session save "Bug Investigation #142" --tags bugfix,urgent
 ```
 
-### `/session branch` - Create Session Branch
+**`/session branch` - Create Session Branch**
 
-Create a new session branching from the current conversation at a specific point.
+*Create a new conversation branch from the current session or a specific message.*
 
-**Usage:**
+**Syntax:**
 ```bash
 /session branch [<name>] [--from <message_index>]
 ```
 
-**Options:**
+**Arguments:**
+- `name` - Name for the new branch (optional, auto-generated if not provided)
 
-| Option | Description |
-|--------|-------------|
-| `--from <index>` | Message index to branch from (0-based) |
+**Options:**
+- `--from <index>` - 0-based message index to branch from (default: current point)
 
 **Examples:**
 ```bash
-/session branch "Alternative Approach"
-/session branch "Try Redux" --from 15
+/session branch                              # Create unnamed branch from current point
+/session branch "Alternative Approach"      # Named branch from current point
+/session branch "Try OAuth" --from 10       # Branch from message 10
 ```
 
-### `/session export` - Export Session
+**`/session export` - Export Session**
 
-Export the current session to a file.
+*Export session content to various formats for documentation or sharing.*
 
-**Usage:**
+**Syntax:**
 ```bash
-/session export [--format md|json|html] [--output <file>]
+/session export [--format <md|json|html>] [--output <file>]
 ```
 
 **Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--format` | Output format: `md` (default), `json`, `html` |
-| `--output` | Output file path |
+- `--format <format>` - Export format: `md` (default), `json`, `html`
+- `--output <file>` - Output file path (if not provided, displays to terminal)
 
 **Examples:**
 ```bash
-/session export                           # Preview as markdown
-/session export --format json --output session.json
-/session export --format html --output report.html
+/session export                                    # Preview as markdown
+/session export --format json                     # Show as JSON
+/session export --output session-backup.md        # Save as markdown file
+/session export --format html --output report.html # Save as HTML report
+/session export --format json --output data.json  # Save structured data
 ```
 
-### `/session info` - Current Session Info
+**`/session delete` - Delete a Session**
 
-Display information about the current active session.
+*Permanently remove a session from storage.*
+
+**Syntax:**
+```bash
+/session delete <session_id>
+```
+
+**Arguments:**
+- `session_id` - Full session ID to delete
+
+**Examples:**
+```bash
+/session delete sess_1703123456789_abc123def    # Delete specific session
+```
+
+**Safety Notes:**
+- Session deletion is permanent and cannot be undone
+- You cannot delete the currently active session
+- Consider exporting important sessions before deletion
+
+**`/session info` - Show Current Session Info**
+
+*Display detailed information about the currently active session.*
+
+**Syntax:**
+```bash
+/session info
+```
 
 **Example Output:**
-```
+```bash
 Current Session:
-  ID: abc123def456ghi789
+  ID: sess_1703123456789_abc123def
   Name: Feature Development
-  Messages: 45
+  Messages: 23
   Created: 12/15/2024, 9:00:00 AM
-  Updated: 12/15/2024, 11:30:00 AM
+  Last Updated: 12/15/2024, 11:30:00 AM
+
+Branch Information:
+  Parent Session: None
+  Child Branches: 2
+  ├── sess_1703123567890_def456ghi: "OAuth Approach" (3 messages)
+  └── sess_1703123678901_ghi789jkl: "Alternative UI" (7 messages)
+
+Session State:
   Total Cost: $1.2345
-  Tokens: 125,456
-  Tags: auth, backend
-  Branches: 2
-  Unsaved changes: 3
+  Tokens: 125,456 (input: 89,123 | output: 36,333)
+  Tags: feature, authentication, api
+  Unsaved Changes: 3 messages
+  Auto-Save: ✅ Enabled (next save in 25 seconds)
 ```
+
+### Session Workflows
+
+Session management in APEX supports various development workflows. Here are common patterns and best practices:
+
+#### Workflow 1: Long-Running Feature Development
+
+*For features that span multiple days or weeks*
+
+```bash
+# Day 1: Start feature work
+apex> Implement user authentication system
+
+# Save progress with descriptive name
+/session save "User Auth - Initial Planning" --tags auth,feature,planning
+
+# Continue working...
+apex> Let's start with JWT token implementation
+
+# End of day - session auto-saves automatically
+# No manual action needed
+
+# Day 2: Resume work
+$ apex
+# Automatically resumes: "User Auth - Initial Planning"
+Previous session: User Auth - Initial Planning (45 messages, $2.34)
+
+# Continue from where you left off
+apex> Now let's add password reset functionality
+
+# Save milestone progress
+/session save "User Auth - Password Reset Added" --tags auth,feature,milestone
+
+# Day 3: Add OAuth integration
+apex> Add Google OAuth as an alternative login method
+
+# Final implementation complete
+/session save "User Auth - Complete Implementation" --tags auth,feature,complete
+
+# Export for documentation
+/session export --format html --output auth-implementation-log.html
+```
+
+#### Workflow 2: Exploring Alternative Approaches
+
+*When you want to try different solutions without losing your original work*
+
+```bash
+# Working on caching implementation
+apex> Implement a caching layer for the API
+
+# AI suggests Redis approach
+# Assistant: I recommend using Redis for caching...
+
+# You want to also explore in-memory caching
+/session branch "In-Memory Caching Approach"
+
+# Explore alternative in the new branch
+apex> Actually, let's try an in-memory caching solution instead
+
+# If in-memory approach doesn't work well, switch back
+/session load "Original Caching Work"  # Load parent session
+
+# Or continue with alternative if it's better
+# The branch preserves both approaches for comparison
+```
+
+#### Workflow 3: Bug Investigation and Resolution
+
+*Systematic approach to debugging with full documentation trail*
+
+```bash
+# Start investigating a reported bug
+apex> Users are reporting login failures after password reset
+
+# Save investigation session
+/session save "Bug #142 - Login After Reset" --tags bugfix,urgent,investigation
+
+# AI helps investigate...
+# Multiple back-and-forth debugging conversations
+
+# Found potential solution, but want to try two approaches
+/session branch "Fix Approach A - Token Validation"
+apex> Let's try fixing the token validation logic
+
+# Switch to try alternative approach
+/session branch "Fix Approach B - Session Reset" --from 15
+apex> Maybe we need to reset the session after password change
+
+# Compare approaches and choose the best one
+/session export --format json --output bug-142-investigation.json
+
+# Implement final solution in main branch
+/session load "Bug #142 - Login After Reset"
+apex> Implement the session reset approach we discussed
+
+# Document resolution
+/session save "Bug #142 - Resolved" --tags bugfix,resolved
+/session export --format html --output bug-142-resolution-report.html
+```
+
+#### Workflow 4: Code Review and Team Collaboration
+
+*Documenting review sessions and sharing insights*
+
+```bash
+# Review teammate's pull request
+apex> Review the authentication changes in PR #87
+
+# Document review session
+/session save "Code Review - PR #87 Auth Changes" --tags review,authentication
+
+# AI helps analyze the code and provides feedback
+# Session captures all review comments and suggestions
+
+# Export for team sharing
+/session export --format html --output pr-87-review-notes.html
+
+# Create follow-up session for discussing improvements
+/session branch "PR #87 - Improvement Suggestions"
+apex> Based on the review, let's discuss potential improvements
+```
+
+#### Workflow 5: Documentation and Knowledge Capture
+
+*Creating comprehensive project documentation from development sessions*
+
+```bash
+# After completing a major feature
+/session load "User Auth - Complete Implementation"
+
+# Export technical documentation
+/session export --format md --output docs/auth-implementation-process.md
+
+# Create summary session for key learnings
+/session branch "Auth Implementation - Key Learnings"
+apex> Summarize the key architectural decisions and lessons learned
+
+# Save as knowledge base entry
+/session save "Knowledge Base - Auth Architecture" --tags knowledge,auth,architecture
+
+# Export for team wiki
+/session export --format html --output wiki/auth-architecture-decisions.html
+```
+
+### Configuration
+
+Session management behavior can be customized through the `.apex/config.yaml` file:
+
+```yaml
+# Session Management Configuration
+session:
+  # Auto-resume behavior
+  autoResume: true              # Resume last session on APEX startup
+  crashRecovery: true           # Enable crash recovery from auto-saves
+
+  # Storage settings
+  storageLocation: ".apex/sessions"  # Where sessions are stored
+  maxSessions: 100              # Maximum number of sessions to keep
+  archiveAfterDays: 30          # Archive sessions after N days of inactivity
+
+  # Auto-save configuration
+  autoSave:
+    enabled: true               # Enable automatic saving
+    intervalMs: 30000           # Save every 30 seconds during activity
+    maxUnsavedMessages: 5       # Save after 5 unsaved messages
+    onCriticalOperations: true  # Save before risky operations (branch, load, etc.)
+    onSessionSwitch: true       # Save when switching sessions
+    onExit: true                # Save when exiting APEX
+
+  # Search and display
+  search:
+    caseSensitive: false        # Case-insensitive search by default
+    maxResults: 20              # Maximum search results to display
+    contentPreview: true        # Show content preview in search results
+    highlightMatches: true      # Highlight search terms in results
+
+  # Export settings
+  export:
+    defaultFormat: "md"         # Default export format
+    includeMetadata: true       # Include session metadata in exports
+    timestampFormat: "iso"      # Timestamp format: "iso", "local", "relative"
+
+  # Naming and organization
+  naming:
+    suggestNames: true          # AI suggests session names based on content
+    requireTags: false          # Whether tags are required when saving
+    maxTagsPerSession: 10       # Maximum number of tags per session
+
+  # Keyboard shortcuts (global)
+  shortcuts:
+    quickSave: "Ctrl+S"         # Quick save current session
+    sessionInfo: "Ctrl+Shift+I" # Show session info
+    sessionList: "Ctrl+Shift+L" # List sessions
+```
+
+### Keyboard Shortcuts
+
+Session management includes dedicated keyboard shortcuts for quick access:
+
+| Shortcut | Description | Context |
+|----------|-------------|---------|
+| `Ctrl+S` | Quick save session (triggers immediate save) | Global |
+| `Ctrl+Shift+I` | Show session info | Global |
+| `Ctrl+Shift+L` | List sessions | Global |
+
+### Troubleshooting
+
+Common session management issues and their solutions:
+
+#### Session Loading Issues
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **"No active session"** | Commands fail, no session context | Run `/session info` to check status, or restart APEX to auto-resume |
+| **"Session not found"** | Cannot load specific session | Use `/session list --all` to verify session exists and check ID/name |
+| **"Session corrupted"** | Load fails with error | Check `.apex/sessions/` directory permissions and disk space |
+
+#### Auto-Save Issues
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **Auto-save not working** | Changes lost between sessions | Check config: `session.autoSave.enabled: true` |
+| **Too frequent auto-saves** | Performance impact, frequent disk writes | Increase `session.autoSave.intervalMs` value |
+| **Auto-save not triggering** | Large number of unsaved changes | Check `session.autoSave.maxUnsavedMessages` setting |
+
+#### Export Issues
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **Export fails with permission error** | Cannot write to output file | Ensure output directory exists and is writable |
+| **Export incomplete or corrupted** | Missing content in exported file | Check session integrity with `/session info` |
+| **Large export takes too long** | Export command times out | Try exporting in smaller chunks or different format |
+
+#### Search and Discovery
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **Cannot find expected sessions** | Search returns no results | Use `/session list --all` to include archived sessions |
+| **Search too slow** | Long delay in search results | Consider reducing `session.search.maxResults` or cleaning old sessions |
+| **Partial name match fails** | Cannot load by partial name | Use exact name or full session ID for loading |
+
+#### Branch Management
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| **Branch index out of range** | "Message index not found" error | Use `/session info` to check total message count |
+| **Cannot find parent session** | Branch relationship lost | Check session ID in branch metadata, may need manual reconnection |
+| **Too many branches** | Confusing session hierarchy | Use meaningful names and consider cleaning up unused branches |
+
+**Debug Commands for Troubleshooting:**
+
+```bash
+# Check session system status
+/session info
+
+# Verify session storage
+/config get session
+
+# List all sessions including problematic ones
+/session list --all
+
+# Test export functionality
+/session export --format json
+
+# Force manual save to test auto-save
+/session save "Test Save"
+
+# Check APEX logs for session-related errors
+/logs --level error --search "session"
+```
+
+### Tips and Best Practices
+
+#### Session Organization
+- Use consistent naming patterns across your projects
+- Apply tags systematically for better searchability
+- Archive or delete old sessions to keep the list manageable
+- Use descriptive names that include project and feature context
+
+#### Workflow Optimization
+- Save sessions at logical milestones (end of planning, after implementation, etc.)
+- Use branching to explore alternatives without losing original work
+- Export important sessions for documentation and team sharing
+- Leverage auto-save for peace of mind, manual save for milestones
+
+#### Performance Considerations
+- Regularly clean up old or unused sessions
+- Adjust auto-save frequency based on your workflow intensity
+- Use search instead of browsing when you have many sessions
+- Archive completed project sessions to reduce active list size
+
+#### Team Collaboration
+- Export sessions in HTML format for easy sharing with team members
+- Use consistent tagging schemes across team members
+- Include session exports in project documentation
+- Name sessions descriptively for better team understanding
 
 ---
 
