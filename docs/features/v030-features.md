@@ -1258,50 +1258,291 @@ Low Confidence (0-69%):
 
 ### 7. Enhanced Input Experience
 
-#### Advanced Input with Preview
+APEX provides a sophisticated input system that enhances developer productivity through intelligent completion, command history, multi-line support, and advanced editing capabilities. All features work seamlessly together to create a powerful command-line experience.
 
-```
-┌─ Input ──────────────────────────────────────────────────────────────────────┐
-│ apex> Add a shopping cart feature with the following requirements:          │
-│       - Add/remove items                                                    │
-│       - Quantity management                                                 │
-│       - Price calculations                                                  │
-│       - Persistent storage█                                                 │
-│                                                                              │
-│ 💡 Preview: This will be interpreted as a natural language task             │
-│             Press Enter to execute, Ctrl+C to cancel                        │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+#### 7.1 Tab Completion with Fuzzy Search
 
-#### Tab Completion with Fuzzy Search
+**How to Use**: Press `Tab` to trigger intelligent completion. Continue typing to refine matches.
+
+The completion engine provides context-aware suggestions for commands, file paths, agent names, and workflow names using fuzzy search algorithms.
 
 ```
 apex> /st[TAB]
 ┌─ Suggestions ────────────────────────────────────────────────────────────────┐
-│ /status        Show task status                                              │
-│ /start         Start a new workflow                                          │
-│ /stop          Stop current task                                             │
-└──────────────────────────────────────────────────────────────────────────────┘
+│ ● /status        Show task status                                            │
+│   /start         Start a new workflow                                        │
+│   /stop          Stop current task                                           │
+└── Tab: Accept • ↑↓: Navigate • Escape: Dismiss ─────────────────────────────────┘
 
 apex> create react comp[TAB]
-┌─ Suggestions ────────────────────────────────────────────────────────────────┐
-│ create react component    Create a new React component                       │
-│ create react context      Create a React context provider                    │
-│ create react hook         Create a custom React hook                         │
+┌─ Natural Language Completions ──────────────────────────────────────────────┐
+│ ● create react component     Create a new React component                    │
+│   create react context       Create a React context provider                 │
+│   create react hook          Create a custom React hook                      │
+│   create react app          Initialize a new React application               │
+└── Tab: Accept • ↑↓: Navigate • Escape: Dismiss ─────────────────────────────────┘
+
+apex> src/components/User[TAB]
+┌─ File Path Completions ─────────────────────────────────────────────────────┐
+│ ● src/components/UserProfile.tsx                                            │
+│   src/components/UserSettings.tsx                                           │
+│   src/components/UserList.tsx                                               │
+└── Tab: Accept • ↑↓: Navigate • Escape: Dismiss ─────────────────────────────────┘
+```
+
+**Features:**
+• **Command completion** - All CLI commands (`/status`, `/help`, `/run`, etc.)
+• **File path completion** - Intelligent file system navigation with glob pattern support
+• **Agent name completion** - Available agents from your `.apex/agents/` directory
+• **Workflow name completion** - Available workflows from `.apex/workflows/`
+• **Natural language completion** - Common development phrases and patterns
+• **Fuzzy matching** - Find matches even with typos or partial input
+• **Real-time filtering** - Results update as you type
+
+#### 7.2 History Navigation
+
+**How to Use**: Press `↑`/`↓` arrows or `Ctrl+P`/`Ctrl+N` to navigate command history.
+
+Navigate through your command history with arrow keys. History persists across APEX sessions and is stored in your project's `.apex/` directory.
+
+```
+# Start with empty prompt
+apex> █
+
+# Press ↑ to navigate back through history
+apex> Add user authentication to my React app█
+
+# Press ↑ again for earlier commands
+apex> Create a login form component█
+
+# Press ↓ to move forward in history
+apex> Add user authentication to my React app█
+
+# Press ↓ again to return to empty prompt
+apex> █
+```
+
+**Features:**
+• **Persistent history** - Commands saved across sessions in `.apex/history.log`
+• **Bidirectional navigation** - Move forward and backward through history
+• **Alternative shortcuts** - `Ctrl+P` (previous) and `Ctrl+N` (next) work like arrow keys
+• **History filtering** - Only successful commands are saved to history
+• **Session-aware** - History includes context from the current project
+
+**Tips:**
+• History is stored per project in the `.apex/` directory
+• Use `Ctrl+R` for searching large command histories
+• Clear history by deleting `.apex/history.log`
+
+#### 7.3 History Search (Ctrl+R)
+
+**How to Use**: Press `Ctrl+R` to enter reverse incremental search mode.
+
+Search through command history using fuzzy matching. Especially useful for finding commands in large history files.
+
+```
+# Press Ctrl+R to start history search
+┌─ History Search Mode ────────────────────────────────────────────────────────┐
+│ (reverse-i-search)`█`: _                                                    │
+│                                                                              │
+│ Type to search command history...                                            │
+│ ↑↓: Navigate matches • Enter: Accept • Escape: Cancel • Continue typing     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+# Type "auth" to search for authentication-related commands
+┌─ History Search Mode ────────────────────────────────────────────────────────┐
+│ (reverse-i-search)`auth`: Add user authentication to my React app           │
+│                                                                              │
+│ Matches: 5 commands containing "auth"                                        │
+│ ↑↓: Navigate matches • Enter: Accept • Escape: Cancel • Continue typing     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+# Use ↑↓ to cycle through matches
+┌─ History Search Mode ────────────────────────────────────────────────────────┐
+│ (reverse-i-search)`auth`: Create OAuth integration with Google              │
+│                                                                              │
+│ Matches: 5 commands containing "auth" • Match 2 of 5                        │
+│ ↑↓: Navigate matches • Enter: Accept • Escape: Cancel • Continue typing     │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### History Search
+**Features:**
+• **Incremental search** - Results update as you type each character
+• **Fuzzy matching** - Find commands even with partial or approximate input
+• **Match highlighting** - Search term highlighted in results
+• **Multiple matches** - Navigate through all matching commands with `↑`/`↓`
+• **Match counter** - Shows current match position (e.g., "Match 2 of 5")
+• **Cancel anytime** - Press `Escape` to exit without selecting
+
+**Advanced Usage:**
+• Continue typing to refine search further
+• Use `Backspace` to modify search term
+• Press `Enter` to accept current match and return to normal input mode
+
+#### 7.4 Multi-line Input (Shift+Enter)
+
+**How to Use**: Press `Shift+Enter` to add a new line instead of submitting.
+
+Create multi-line commands for complex natural language requests, code snippets, or detailed specifications.
 
 ```
-# Press Ctrl+R to search history
-(reverse-i-search)`auth`: Add user authentication to my React app
+# Single-line input (normal mode)
+apex> Create a user authentication system█
 
-# Navigate with up/down arrows
-apex> ↑ Add user authentication to my React app
-apex> ↑ Create a login form component
-apex> ↑ /status
+# Press Shift+Enter to enter multi-line mode
+┌─ Multi-line Input ───────────────────────────────────────────────────────────┐
+│ 📝 Line 1 of 3 • Shift+Enter: New line • Enter: Submit                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Create a user authentication system                                          │
+│ with the following requirements:                                             │
+│ █                                                                            │
+│                                                                              │
+└─ Enter to submit all lines • Ctrl+C to cancel ─────────────────────────────────┘
+
+# Continue adding lines with Shift+Enter
+┌─ Multi-line Input ───────────────────────────────────────────────────────────┐
+│ 📝 Line 3 of 5 • Shift+Enter: New line • Enter: Submit                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Create a user authentication system                                          │
+│ with the following requirements:                                             │
+│ - JWT-based authentication                                                   │
+│ - Login/logout functionality                                                 │
+│ - Password reset capability█                                                 │
+└─ Enter to submit all lines • Ctrl+C to cancel ─────────────────────────────────┘
 ```
+
+**Features:**
+• **Line indicator** - Shows current line number and total lines
+• **Visual mode indicator** - Clear UI showing multi-line mode is active
+• **Flexible entry/exit** - Enter multi-line mode anytime during typing
+• **Normal editing** - All cursor movement and editing shortcuts work within lines
+• **Complete submission** - Press `Enter` to submit entire multi-line content as one command
+
+**Best Practices:**
+• Use for complex feature requests that need detailed specifications
+• Perfect for providing multiple requirements or constraints
+• Ideal for pasting code snippets or configuration examples
+• Great for step-by-step instructions or detailed user stories
+
+#### 7.5 Inline Editing
+
+**How to Use**: Use arrow keys and editing shortcuts for precise text manipulation.
+
+Full cursor-based editing with word-level operations and line navigation shortcuts commonly found in terminal applications.
+
+```
+# Initial input with cursor
+apex> Create user authentication system█
+
+# Use ← to move cursor for editing
+apex> Create user █authentication system
+
+# Use Ctrl+W to delete the previous word
+apex> Create user █system
+
+# Use Ctrl+A to jump to beginning of line
+apex> █Create user system
+
+# Use Ctrl+E to jump to end of line
+apex> Create user system█
+
+# Use Backspace for character-by-character deletion
+apex> Create user syste█
+```
+
+**Cursor Movement:**
+• `←`/`→` - Move cursor one character left/right
+• `Ctrl+A` - Jump to beginning of line
+• `Ctrl+E` - Jump to end of line
+
+**Text Deletion:**
+• `Backspace` - Delete character before cursor
+• `Delete` - Delete character at cursor position
+• `Ctrl+U` - Clear entire line (keep cursor position)
+• `Ctrl+W` - Delete previous word
+• `Ctrl+L` - Clear screen but preserve current input
+
+**Text Input:**
+• **Insert mode** - Characters inserted at cursor position (default)
+• **Character replacement** - Existing text shifts right as you type
+• **Undo support** - Use standard terminal undo where available
+
+```
+# Example: Editing a command in the middle
+┌─ Before Editing ─────────────────────────────────────────────────────────────┐
+│ apex> Create user authentication system for my React app█                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+# Move cursor and edit (press ← to position cursor)
+┌─ During Editing ─────────────────────────────────────────────────────────────┐
+│ apex> Create user authentication █system for my React app                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+# Type "and authorization "
+┌─ After Editing ──────────────────────────────────────────────────────────────┐
+│ apex> Create user authentication and authorization system for my React app█ │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 7.6 Input Preview
+
+**How to Use**: Input preview is automatically enabled for natural language commands.
+
+APEX automatically analyzes your input and provides preview information about how the command will be interpreted. For detailed preview capabilities, see the comprehensive [Input Preview Guide](../user-guide/input-preview.md).
+
+```
+┌─ Input Preview ──────────────────────────────────────────────────────────────┐
+│ apex> Add a shopping cart feature with checkout functionality█              │
+│                                                                              │
+│ 💡 Preview: Natural language task • Confidence: 92%                         │
+│ 📋 Will create: E-commerce component with cart and payment processing       │
+│ ⚡ Estimated: 15-20 minutes • 5-8 files                                     │
+│                                                                              │
+│ Press Enter to execute • Ctrl+C to cancel                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+• **Automatic detection** - No setup required, works for natural language
+• **Confidence scoring** - Shows how well APEX understands your request
+• **Scope preview** - Estimates files affected and time required
+• **Task categorization** - Identifies request type (feature, bug fix, refactor, etc.)
+
+#### Input Keyboard Shortcuts Summary
+
+Complete reference for all input-related keyboard shortcuts:
+
+| Category | Shortcut | Action | Description |
+|----------|----------|--------|-------------|
+| **Navigation** | | | |
+| | `↑` or `Ctrl+P` | Previous history | Navigate to previous command in history |
+| | `↓` or `Ctrl+N` | Next history | Navigate to next command in history |
+| | `Ctrl+R` | Search history | Enter reverse incremental search mode |
+| | `←` | Move cursor left | Move cursor one character left |
+| | `→` | Move cursor right | Move cursor one character right |
+| | `Ctrl+A` | Beginning of line | Jump cursor to start of current line |
+| | `Ctrl+E` | End of line | Jump cursor to end of current line |
+| **Editing** | | | |
+| | `Backspace` | Delete previous | Delete character before cursor |
+| | `Delete` | Delete current | Delete character at cursor position |
+| | `Ctrl+U` | Clear line | Clear entire input line |
+| | `Ctrl+W` | Delete word | Delete previous word |
+| | `Ctrl+L` | Clear screen | Clear terminal screen, preserve input |
+| **Completion** | | | |
+| | `Tab` | Complete/cycle | Accept suggestion or cycle through options |
+| | `Escape` | Dismiss suggestions | Close completion popup |
+| **Multi-line** | | | |
+| | `Shift+Enter` | New line | Insert line break (enter multi-line mode) |
+| | `Enter` | Submit | Submit single-line or complete multi-line input |
+| **Control** | | | |
+| | `Ctrl+C` | Cancel operation | Cancel current command or exit mode |
+| | `Ctrl+D` | Exit APEX | Exit the APEX application |
+
+**Context Notes:**
+• Most shortcuts work in `input` context when typing commands
+• `Ctrl+L` and `Ctrl+D` work globally across the application
+• `Escape` works in `suggestions` context when completion popup is visible
+• Multi-line shortcuts only apply when multi-line mode is enabled
 
 ### 8. Progress Indicators and Feedback
 
