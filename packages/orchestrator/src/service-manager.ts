@@ -71,6 +71,8 @@ export interface InstallOptions {
   enableAfterInstall?: boolean;
   /** Force overwrite if service file already exists (default: false) */
   force?: boolean;
+  /** Enable service to start on boot (default: false) */
+  enableOnBoot?: boolean;
 }
 
 export interface UninstallOptions {
@@ -126,7 +128,10 @@ export function isLaunchdAvailable(): boolean {
 // ============================================================================
 
 export class SystemdGenerator {
-  constructor(private readonly options: Required<ServiceManagerOptions>) {}
+  constructor(
+    private readonly options: Required<ServiceManagerOptions>,
+    private readonly enableOnBoot: boolean = false
+  ) {}
 
   generate(): string {
     const nodePath = process.execPath;
@@ -223,7 +228,10 @@ WantedBy=multi-user.target
 // ============================================================================
 
 export class LaunchdGenerator {
-  constructor(private readonly options: Required<ServiceManagerOptions>) {}
+  constructor(
+    private readonly options: Required<ServiceManagerOptions>,
+    private readonly enableOnBoot: boolean = false
+  ) {}
 
   generate(): string {
     const nodePath = process.execPath;
@@ -239,7 +247,7 @@ export class LaunchdGenerator {
         APEX_PROJECT_PATH: this.options.projectPath,
         ...this.options.environment,
       },
-      RunAtLoad: true,
+      RunAtLoad: this.enableOnBoot,
       KeepAlive: this.buildKeepAlive(),
       ThrottleInterval: this.options.restartDelaySeconds,
       StandardOutPath: path.join(logDir, 'daemon.out.log'),
@@ -369,6 +377,7 @@ export class ServiceManager {
   private readonly options: Required<ServiceManagerOptions>;
   private readonly platform: Platform;
   private readonly generator: SystemdGenerator | LaunchdGenerator | null;
+  private enableOnBoot: boolean = false;
 
   constructor(options: ServiceManagerOptions = {}) {
     this.platform = detectPlatform();
@@ -386,10 +395,25 @@ export class ServiceManager {
     };
 
     // Initialize platform-specific generator
+    this.updateGenerator();
+  }
+
+  // ============================================================================
+  // Configuration Management
+  // ============================================================================
+
+  setEnableOnBoot(enable: boolean): void {
+    if (this.enableOnBoot !== enable) {
+      this.enableOnBoot = enable;
+      this.updateGenerator();
+    }
+  }
+
+  private updateGenerator(): void {
     if (this.platform === 'linux') {
-      this.generator = new SystemdGenerator(this.options);
+      this.generator = new SystemdGenerator(this.options, this.enableOnBoot);
     } else if (this.platform === 'darwin') {
-      this.generator = new LaunchdGenerator(this.options);
+      this.generator = new LaunchdGenerator(this.options, this.enableOnBoot);
     } else {
       this.generator = null;
     }
@@ -443,7 +467,10 @@ export class ServiceManager {
   // ============================================================================
 
   async install(options: InstallOptions = {}): Promise<InstallResult> {
-    const { enableAfterInstall = false, force = false } = options;
+    const { enableAfterInstall = false, force = false, enableOnBoot = false } = options;
+
+    // Update enableOnBoot setting before generating service file
+    this.setEnableOnBoot(enableOnBoot);
     const warnings: string[] = [];
 
     // 1. Platform validation
@@ -513,7 +540,8 @@ export class ServiceManager {
         warnings.push(`Service installed but systemctl reload failed: ${(error as Error).message}`);
       }
 
-      if (enableAfterInstall) {
+      // For systemd, enable service if either enableAfterInstall or enableOnBoot is true
+      if (enableAfterInstall || enableOnBoot) {
         try {
           await this.enable();
           enabled = true;
@@ -521,12 +549,16 @@ export class ServiceManager {
           warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
         }
       }
-    } else if (this.platform === 'darwin' && enableAfterInstall) {
-      try {
-        await this.enable();
-        enabled = true;
-      } catch (error) {
-        warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
+    } else if (this.platform === 'darwin') {
+      // For launchd, enableOnBoot is controlled by RunAtLoad in the plist
+      // but we still need to load the plist if enableAfterInstall is true
+      if (enableAfterInstall) {
+        try {
+          await this.enable();
+          enabled = true;
+        } catch (error) {
+          warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
+        }
       }
     }
 

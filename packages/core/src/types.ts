@@ -130,6 +130,11 @@ export const UIConfigSchema = z.object({
 });
 export type UIConfig = z.infer<typeof UIConfigSchema>;
 
+export const ServiceConfigSchema = z.object({
+  enableOnBoot: z.boolean().optional().default(false),
+});
+export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
+
 export const DaemonConfigSchema = z.object({
   pollInterval: z.number().optional().default(5000),
   autoStart: z.boolean().optional().default(false),
@@ -137,6 +142,7 @@ export const DaemonConfigSchema = z.object({
   // v0.4.0 enhancements
   installAsService: z.boolean().optional().default(false),
   serviceName: z.string().optional().default('apex-daemon'),
+  service: ServiceConfigSchema.optional(),
   healthCheck: z.object({
     enabled: z.boolean().optional().default(true),
     interval: z.number().optional().default(30000), // 30 seconds

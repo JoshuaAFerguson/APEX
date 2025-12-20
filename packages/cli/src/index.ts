@@ -951,7 +951,7 @@ const commands: Command[] = [
     name: 'install-service',
     aliases: ['install-svc'],
     description: 'Install APEX daemon as system service',
-    usage: 'install-service [--enable] [--force] [--name <name>]',
+    usage: 'install-service [--enable|--no-enable] [--force] [--name <name>]',
     handler: async (ctx, args) => {
       await handleInstallService(ctx, args);
     },

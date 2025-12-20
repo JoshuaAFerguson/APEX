@@ -6,6 +6,7 @@ import {
   type InstallResult,
   type UninstallResult
 } from '@apex/orchestrator';
+import { loadConfig, getEffectiveConfig } from '@apex/core';
 
 /**
  * Interface representing the CLI context
@@ -18,6 +19,7 @@ interface ApexContext {
 
 interface ServiceCommandOptions {
   enable?: boolean;     // For install: enable service after install
+  noEnable?: boolean;   // For install: explicitly disable auto-start on boot
   force?: boolean;      // For install: overwrite existing; For uninstall: force remove
   timeout?: number;     // For uninstall: graceful stop timeout
   name?: string;        // Custom service name
@@ -73,6 +75,9 @@ function parseOptions(args: string[]): ServiceCommandOptions {
       case '--enable':
         options.enable = true;
         break;
+      case '--no-enable':
+        options.noEnable = true;
+        break;
       case '--force':
         options.force = true;
         break;
@@ -110,14 +115,32 @@ export async function handleInstallService(
 
   console.log(chalk.blue('📦 Installing APEX daemon as system service...'));
 
-  // 3. Create ServiceManager
+  // 3. Load configuration to determine enableOnBoot setting
+  let enableOnBoot = false;
+  try {
+    const config = await loadConfig(ctx.cwd);
+    const effective = getEffectiveConfig(config);
+    enableOnBoot = effective.daemon?.service?.enableOnBoot ?? false;
+  } catch (error) {
+    // If config can't be loaded, use default (false)
+    console.log(chalk.yellow(`⚠ Could not load config: ${(error as Error).message}. Using default settings.`));
+  }
+
+  // 4. Override with CLI flags if provided
+  if (options.enable) {
+    enableOnBoot = true;
+  } else if (options.noEnable) {
+    enableOnBoot = false;
+  }
+
+  // 5. Create ServiceManager
   const manager = new ServiceManager({
     projectPath: ctx.cwd,
     serviceName: options.name || 'apex-daemon'
   });
 
   try {
-    // 4. Check platform support
+    // 6. Check platform support
     if (!manager.isSupported()) {
       const platform = manager.getPlatform();
       console.log(chalk.red('✗ Platform not supported'));
@@ -126,23 +149,29 @@ export async function handleInstallService(
       return;
     }
 
-    // 5. Call install
+    // 7. Call install
     const result: InstallResult = await manager.install({
       enableAfterInstall: options.enable || false,
-      force: options.force || false
+      force: options.force || false,
+      enableOnBoot
     });
 
-    // 6. Display success message
+    // 8. Display success message
     console.log(chalk.green('✓ Service installed successfully'));
     console.log(`  Platform: ${getPlatformName(result.platform)}`);
     console.log(`  Service file: ${chalk.gray(result.servicePath)}`);
-    if (options.enable) {
+    if (result.enabled) {
       console.log(`  Enabled: ${chalk.green('yes')}`);
     } else {
       console.log(`  Enabled: ${chalk.gray('no')}`);
     }
+    console.log(`  Auto-start on boot: ${enableOnBoot ? chalk.green('yes') : chalk.gray('no')}`);
 
-    // 7. Show platform-specific hints
+    if (enableOnBoot) {
+      console.log(chalk.green('  ✓ Service will start automatically when the system boots'));
+    }
+
+    // 9. Show platform-specific hints
     const hints = getPlatformHints(result.platform);
     console.log();
     console.log(`  To start the service: ${chalk.cyan(hints.start)}`);
@@ -153,7 +182,7 @@ export async function handleInstallService(
     console.log();
 
   } catch (error) {
-    // 8. Handle errors
+    // 10. Handle errors
     if (error instanceof ServiceError) {
       handleServiceError(error);
     } else {
