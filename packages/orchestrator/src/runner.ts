@@ -5,6 +5,8 @@ import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig } from '@apexcli/core';
 import { UsageManager } from './usage-manager';
 import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
+import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
+import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
 
 // ============================================================================
 // Interface Definitions
@@ -112,6 +114,7 @@ export class DaemonRunner {
   private config: ApexConfig | null = null;
   private usageManager: UsageManager | null = null;
   private daemonScheduler: DaemonScheduler | null = null;
+  private capacityMonitor: CapacityMonitor | null = null;
 
   // Configuration
   private readonly options: Required<DaemonRunnerOptions>;
@@ -203,8 +206,23 @@ export class DaemonRunner {
         usageProvider
       );
 
+      // Initialize CapacityMonitor for auto-resume functionality
+      const capacityUsageProvider = new CapacityMonitorUsageAdapter(
+        this.usageManager,
+        effectiveConfig.daemon || {},
+        effectiveConfig.limits
+      );
+      this.capacityMonitor = new CapacityMonitor(
+        effectiveConfig.daemon || {},
+        effectiveConfig.limits,
+        capacityUsageProvider
+      );
+
       // Subscribe to orchestrator events for logging
       this.setupOrchestratorEvents();
+
+      // Setup capacity monitor events for auto-resume
+      this.setupCapacityMonitorEvents();
 
       // Setup signal handlers
       this.setupSignalHandlers();
@@ -214,6 +232,12 @@ export class DaemonRunner {
       this.startedAt = new Date();
 
       this.log('info', `Daemon started (poll: ${this.options.pollIntervalMs}ms, max concurrent: ${this.options.maxConcurrentTasks})`);
+
+      // Start capacity monitoring for auto-resume
+      if (this.capacityMonitor) {
+        this.capacityMonitor.start();
+        this.log('info', 'Capacity monitoring started for auto-resume');
+      }
 
       // Initial poll
       await this.poll();
@@ -318,6 +342,69 @@ export class DaemonRunner {
       if (this.orchestrator) {
         this.orchestrator.emit('daemon:resumed');
       }
+    }
+  }
+
+  /**
+   * Handle capacity restored events for auto-resume functionality
+   */
+  private async handleCapacityRestored(event: CapacityRestoredEvent): Promise<void> {
+    if (this.isShuttingDown || !this.store || !this.orchestrator) {
+      return;
+    }
+
+    try {
+      this.log('info', `Capacity restored: ${event.reason}`, {
+        taskId: undefined,
+      });
+
+      // Fetch paused tasks that can be resumed
+      const pausedTasks = await this.store.getPausedTasksForResume();
+
+      if (pausedTasks.length === 0) {
+        this.log('debug', 'No resumable paused tasks found');
+        return;
+      }
+
+      let resumedCount = 0;
+      const errors: Array<{taskId: string; error: string}> = [];
+
+      // Attempt to resume each paused task
+      for (const task of pausedTasks) {
+        try {
+          const resumed = await this.orchestrator.resumePausedTask(task.id);
+          if (resumed) {
+            resumedCount++;
+            this.log('info', `Auto-resumed task ${task.id}`, { taskId: task.id });
+          } else {
+            this.log('warn', `Failed to resume task ${task.id}: Task not in resumable state`, { taskId: task.id });
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          errors.push({ taskId: task.id, error: errorMessage });
+          this.log('error', `Error resuming task ${task.id}: ${errorMessage}`, { taskId: task.id });
+        }
+      }
+
+      // Emit auto-resumed event with summary
+      if (this.orchestrator) {
+        this.orchestrator.emit('tasks:auto-resumed', {
+          reason: event.reason,
+          totalTasks: pausedTasks.length,
+          resumedCount,
+          errors,
+          timestamp: new Date(),
+        });
+      }
+
+      this.log('info', `Auto-resume completed: ${resumedCount}/${pausedTasks.length} tasks resumed`);
+
+      if (errors.length > 0) {
+        this.log('warn', `${errors.length} tasks failed to resume during auto-resume`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.log('error', `Auto-resume process failed: ${errorMessage}`);
     }
   }
 
@@ -478,6 +565,20 @@ export class DaemonRunner {
   }
 
   /**
+   * Setup capacity monitor events for auto-resume functionality
+   */
+  private setupCapacityMonitorEvents(): void {
+    if (!this.capacityMonitor) return;
+
+    this.capacityMonitor.on('capacity:restored', (event) => {
+      // Handle capacity restoration for auto-resume
+      this.handleCapacityRestored(event).catch((error) => {
+        this.log('error', `Failed to handle capacity restoration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      });
+    });
+  }
+
+  /**
    * Log a message to the log file
    */
   private log(
@@ -523,6 +624,12 @@ export class DaemonRunner {
    * Cleanup resources
    */
   private async cleanup(): Promise<void> {
+    // Stop capacity monitor
+    if (this.capacityMonitor) {
+      this.capacityMonitor.stop();
+      this.log('info', 'Capacity monitor stopped');
+    }
+
     // Close log stream
     if (this.logStream && !this.logStream.destroyed) {
       await new Promise<void>((resolve) => {

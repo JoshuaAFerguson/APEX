@@ -32,6 +32,14 @@ vi.mock('./daemon-scheduler', () => ({
   UsageManagerProvider: vi.fn(),
 }));
 
+vi.mock('./capacity-monitor', () => ({
+  CapacityMonitor: vi.fn(),
+}));
+
+vi.mock('./capacity-monitor-usage-adapter', () => ({
+  CapacityMonitorUsageAdapter: vi.fn(),
+}));
+
 // Mock stream
 const mockStream = {
   write: vi.fn(),
@@ -67,6 +75,14 @@ const mockDaemonScheduler = {
 
 // Mock usage provider
 const mockUsageProvider = {};
+
+// Mock capacity monitor
+const mockCapacityMonitor = {
+  start: vi.fn(),
+  stop: vi.fn(),
+  on: vi.fn(),
+  emit: vi.fn(),
+};
 
 // Mock task
 const mockTask = {
@@ -105,9 +121,14 @@ describe('DaemonRunner', () => {
     // Mock new dependencies
     const { UsageManager } = require('./usage-manager');
     const { DaemonScheduler, UsageManagerProvider } = require('./daemon-scheduler');
+    const { CapacityMonitor } = require('./capacity-monitor');
+    const { CapacityMonitorUsageAdapter } = require('./capacity-monitor-usage-adapter');
+
     UsageManager.mockImplementation(() => mockUsageManager);
     DaemonScheduler.mockImplementation(() => mockDaemonScheduler);
     UsageManagerProvider.mockImplementation(() => mockUsageProvider);
+    CapacityMonitor.mockImplementation(() => mockCapacityMonitor);
+    CapacityMonitorUsageAdapter.mockImplementation(() => ({}));
 
     // Setup default shouldPauseTasks return value
     mockDaemonScheduler.shouldPauseTasks.mockReturnValue({
@@ -223,6 +244,21 @@ describe('DaemonRunner', () => {
       expect(mockProcessOn).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
     });
 
+    it('should initialize capacity monitor for auto-resume', async () => {
+      await daemonRunner.start();
+
+      expect(mockCapacityMonitor.start).toHaveBeenCalled();
+      expect(mockCapacityMonitor.on).toHaveBeenCalledWith('capacity:restored', expect.any(Function));
+    });
+
+    it('should log capacity monitoring startup', async () => {
+      await daemonRunner.start();
+
+      expect(mockStream.write).toHaveBeenCalledWith(
+        expect.stringContaining('Capacity monitoring started for auto-resume')
+      );
+    });
+
     it('should cleanup on initialization error', async () => {
       mockStore.initialize.mockRejectedValue(new Error('Init failed'));
 
@@ -297,6 +333,15 @@ describe('DaemonRunner', () => {
       await daemonRunner.stop();
 
       expect(mockStream.end).toHaveBeenCalled();
+    });
+
+    it('should stop capacity monitor during cleanup', async () => {
+      await daemonRunner.stop();
+
+      expect(mockCapacityMonitor.stop).toHaveBeenCalled();
+      expect(mockStream.write).toHaveBeenCalledWith(
+        expect.stringContaining('Capacity monitor stopped')
+      );
     });
 
     it('should return immediately if not running', async () => {

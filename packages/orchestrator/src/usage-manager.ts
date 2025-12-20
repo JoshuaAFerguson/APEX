@@ -1,4 +1,4 @@
-import { DaemonConfig, LimitsConfig, TaskUsage } from '@apex/core';
+import { DaemonConfig, LimitsConfig, TaskUsage } from '@apexcli/core';
 
 export interface UsageThresholds {
   maxTokensPerTask: number;
