@@ -18,10 +18,11 @@ import {
   formatDuration,
   getEffectiveConfig,
   ApexConfig,
-} from '@apexcli/core';
-import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
-import { startServer } from '@apexcli/api';
+} from '@apex/core';
+import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
+import { startServer } from '@apex/api';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers';
+import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers';
 
 const VERSION = '0.1.0';
 
@@ -773,30 +774,25 @@ const commands: Command[] = [
     description: 'Manage daemon as system service',
     usage: '/service [install|uninstall|status]',
     handler: async (ctx, args) => {
-      if (!ctx.initialized) {
-        console.log(chalk.red('❌ Not in an APEX project. Run /init first.'));
-        return;
-      }
-
       const action = args[0]?.toLowerCase();
 
       switch (action) {
         case 'install':
-          console.log(chalk.blue('📦 Installing APEX daemon as system service...'));
-          // Implementation would use ServiceManager
-          console.log(chalk.green('✅ Service installation not yet implemented'));
+          await handleInstallService(ctx, args.slice(1));
           break;
         case 'uninstall':
-          console.log(chalk.blue('🗑️ Uninstalling APEX daemon service...'));
-          console.log(chalk.green('✅ Service uninstallation not yet implemented'));
+          await handleUninstallService(ctx, args.slice(1));
           break;
         case 'status':
         case undefined:
-          console.log(chalk.blue('📊 Service Status:'));
-          console.log(chalk.gray('Service management not yet implemented'));
+          await handleServiceStatus(ctx);
           break;
         default:
           console.log(chalk.red('Usage: /service [install|uninstall|status]'));
+          console.log(chalk.gray('Available actions:'));
+          console.log(chalk.gray('  install   - Install APEX daemon as system service'));
+          console.log(chalk.gray('  uninstall - Remove APEX daemon system service'));
+          console.log(chalk.gray('  status    - Show service status'));
       }
     },
   },
@@ -948,6 +944,25 @@ const commands: Command[] = [
         default:
           console.log(chalk.red('Usage: /usage [stats|budget|mode]'));
       }
+    },
+  },
+  // Service management commands
+  {
+    name: 'install-service',
+    aliases: ['install-svc'],
+    description: 'Install APEX daemon as system service',
+    usage: 'install-service [--enable] [--force] [--name <name>]',
+    handler: async (ctx, args) => {
+      await handleInstallService(ctx, args);
+    },
+  },
+  {
+    name: 'uninstall-service',
+    aliases: ['uninstall-svc'],
+    description: 'Remove APEX daemon system service',
+    usage: 'uninstall-service [--force] [--timeout <ms>] [--name <name>]',
+    handler: async (ctx, args) => {
+      await handleUninstallService(ctx, args);
     },
   },
 ];
@@ -1657,6 +1672,8 @@ ${chalk.bold('Commands:')}
   retry <task_id>         Retry a failed task
   serve [--port]          Start the API server
   daemon <cmd>            Manage background daemon (start|stop|status)
+  install-service         Install APEX daemon as system service
+  uninstall-service       Remove APEX daemon system service
   pr <task_id>            Create a pull request
 
 ${chalk.bold('Init Options:')}
