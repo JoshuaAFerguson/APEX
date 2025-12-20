@@ -21,6 +21,7 @@ import {
 } from '@apexcli/core';
 import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
+import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers';
 
 const VERSION = '0.1.0';
 
@@ -564,6 +565,34 @@ const commands: Command[] = [
         } else if (target === 'web') {
           console.log(chalk.gray('Web UI is not running.'));
         }
+      }
+    },
+  },
+
+  {
+    name: 'daemon',
+    aliases: ['d'],
+    description: 'Manage background daemon process',
+    usage: '/daemon <start|stop|status> [options]',
+    handler: async (ctx, args) => {
+      const subcommand = args[0]?.toLowerCase();
+
+      switch (subcommand) {
+        case 'start':
+          await handleDaemonStart(ctx, args.slice(1));
+          break;
+        case 'stop':
+          await handleDaemonStop(ctx, args.slice(1));
+          break;
+        case 'status':
+          await handleDaemonStatus(ctx);
+          break;
+        default:
+          console.log(chalk.red('Usage: /daemon <start|stop|status>'));
+          console.log(chalk.gray('\nSubcommands:'));
+          console.log(chalk.gray('  start [--poll-interval <ms>]   Start the daemon'));
+          console.log(chalk.gray('  stop [--force]                 Stop the daemon'));
+          console.log(chalk.gray('  status                         Show daemon status'));
       }
     },
   },
@@ -1443,6 +1472,7 @@ ${chalk.bold('Commands:')}
   cancel <task_id>        Cancel a running task
   retry <task_id>         Retry a failed task
   serve [--port]          Start the API server
+  daemon <cmd>            Manage background daemon (start|stop|status)
   pr <task_id>            Create a pull request
 
 ${chalk.bold('Init Options:')}
