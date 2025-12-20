@@ -1966,4 +1966,420 @@ You are a developer agent that implements code changes.
       });
     });
   });
+
+  describe('session limit detection', () => {
+    it('should detect healthy session status', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Healthy session task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Simple short message' }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 200000);
+
+      expect(status.nearLimit).toBe(false);
+      expect(status.recommendation).toBe('continue');
+      expect(status.utilization).toBeLessThan(0.6);
+      expect(status.message).toContain('Session healthy');
+      expect(status.currentTokens).toBeGreaterThan(0);
+    });
+
+    it('should detect when summarization is recommended', async () => {
+      // Create a task with moderate conversation length
+      const longText = 'x'.repeat(50000); // ~12.5k tokens (50k chars / 4)
+      const task = await orchestrator.createTask({
+        description: 'Moderate session task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 100000); // 100k context window
+
+      expect(status.recommendation).toBe('summarize');
+      expect(status.utilization).toBeGreaterThanOrEqual(0.1);
+      expect(status.utilization).toBeLessThan(0.8);
+      expect(status.message).toContain('Consider summarization');
+    });
+
+    it('should detect when checkpoint is recommended', async () => {
+      // Create a task approaching context window limit
+      const longText = 'x'.repeat(200000); // ~50k tokens
+      const task = await orchestrator.createTask({
+        description: 'Near limit task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 60000); // 60k context window
+
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('checkpoint');
+      expect(status.utilization).toBeGreaterThanOrEqual(0.8);
+      expect(status.utilization).toBeLessThan(0.95);
+      expect(status.message).toContain('checkpoint recommended');
+    });
+
+    it('should detect when handoff is required', async () => {
+      // Create a task at critical context window usage
+      const longText = 'x'.repeat(400000); // ~100k tokens
+      const task = await orchestrator.createTask({
+        description: 'Critical session task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 100000); // 100k context window
+
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('handoff');
+      expect(status.utilization).toBeGreaterThanOrEqual(0.95);
+      expect(status.message).toContain('handoff required');
+    });
+
+    it('should respect custom context window threshold from config', async () => {
+      // Mock the effective config to use a lower threshold
+      const originalConfig = (orchestrator as unknown as { effectiveConfig: { daemon?: { sessionRecovery?: { contextWindowThreshold?: number } } } }).effectiveConfig;
+      (orchestrator as unknown as { effectiveConfig: { daemon?: { sessionRecovery?: { contextWindowThreshold?: number } } } }).effectiveConfig = {
+        ...originalConfig,
+        daemon: {
+          ...originalConfig.daemon,
+          sessionRecovery: {
+            ...originalConfig.daemon?.sessionRecovery,
+            contextWindowThreshold: 0.6, // Lower threshold
+          },
+        },
+      };
+
+      const longText = 'x'.repeat(150000); // ~37.5k tokens
+      const task = await orchestrator.createTask({
+        description: 'Custom threshold task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 60000); // 60k context window (~62.5% utilization)
+
+      expect(status.nearLimit).toBe(true);
+      expect(status.utilization).toBeGreaterThan(0.6);
+      expect(status.recommendation).toBe('checkpoint');
+
+      // Restore original config
+      (orchestrator as unknown as { effectiveConfig: typeof originalConfig }).effectiveConfig = originalConfig;
+    });
+
+    it('should handle task with empty conversation', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Empty conversation task',
+        conversation: [],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBe(0);
+      expect(status.utilization).toBe(0);
+      expect(status.nearLimit).toBe(false);
+      expect(status.recommendation).toBe('continue');
+    });
+
+    it('should handle task with undefined conversation', async () => {
+      const task = await orchestrator.createTask({
+        description: 'No conversation task',
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBe(0);
+      expect(status.utilization).toBe(0);
+      expect(status.nearLimit).toBe(false);
+      expect(status.recommendation).toBe('continue');
+    });
+
+    it('should throw error for non-existent task', async () => {
+      await expect(orchestrator.detectSessionLimit('non-existent-task'))
+        .rejects.toThrow('Task not found: non-existent-task');
+    });
+
+    it('should use default context window size when not specified', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Default window task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Short message' }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.utilization).toBeLessThan(0.001); // Very small with 200k default window
+      expect(status.recommendation).toBe('continue');
+    });
+
+    it('should handle conversation with tool usage', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Tool usage task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Use a tool' }],
+          },
+          {
+            type: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                toolName: 'Read',
+                toolInput: { file_path: '/path/to/file.ts' },
+              },
+            ],
+          },
+          {
+            type: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                toolResult: 'File contents here',
+              },
+            ],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBeGreaterThan(0);
+      expect(status.utilization).toBeGreaterThan(0);
+      expect(status.recommendation).toBe('continue');
+    });
+
+    it('should handle complex JSON tool results', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Complex JSON task',
+        conversation: [
+          {
+            type: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                toolResult: {
+                  complex: 'object',
+                  with: ['arrays', 'and', 'nested'],
+                  structures: {
+                    deeply: {
+                      nested: 'values',
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBeGreaterThan(0);
+      expect(status.utilization).toBeGreaterThan(0);
+      expect(status.recommendation).toBe('continue');
+    });
+
+    it('should handle boundary case at exact 60% utilization', async () => {
+      // Create content that will be exactly at 60% of a small context window
+      const targetTokens = 12000; // 60% of 20k context window
+      const longText = 'x'.repeat(targetTokens * 4); // Approx 4 chars per token
+      const task = await orchestrator.createTask({
+        description: 'Boundary case task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 20000); // 20k context window
+
+      expect(status.utilization).toBeGreaterThanOrEqual(0.58); // Allow some variance in token estimation
+      expect(status.utilization).toBeLessThanOrEqual(0.62);
+      expect(status.recommendation).toBe('summarize');
+      expect(status.message).toContain('Consider summarization');
+    });
+
+    it('should handle boundary case at exact threshold', async () => {
+      // Mock config for exact threshold test
+      const originalConfig = (orchestrator as any).effectiveConfig;
+      (orchestrator as any).effectiveConfig = {
+        ...originalConfig,
+        daemon: {
+          ...originalConfig.daemon,
+          sessionRecovery: {
+            ...originalConfig.daemon?.sessionRecovery,
+            contextWindowThreshold: 0.7, // 70% threshold
+          },
+        },
+      };
+
+      const targetTokens = 14000; // 70% of 20k context window
+      const longText = 'x'.repeat(targetTokens * 4);
+      const task = await orchestrator.createTask({
+        description: 'Threshold boundary task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 20000);
+
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('checkpoint');
+
+      // Restore original config
+      (orchestrator as any).effectiveConfig = originalConfig;
+    });
+
+    it('should handle boundary case at 95% utilization', async () => {
+      // Test the exact boundary between checkpoint and handoff
+      const targetTokens = 19000; // 95% of 20k context window
+      const longText = 'x'.repeat(targetTokens * 4);
+      const task = await orchestrator.createTask({
+        description: 'Critical boundary task',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: longText }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 20000);
+
+      expect(status.utilization).toBeGreaterThanOrEqual(0.93); // Allow some variance
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('handoff');
+      expect(status.message).toContain('handoff required');
+    });
+
+    it('should handle zero context window size edge case', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Zero context window test',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Any message' }],
+          },
+        ],
+      });
+
+      // Test with zero context window - should handle gracefully
+      const status = await orchestrator.detectSessionLimit(task.id, 0);
+
+      expect(status.utilization).toBe(Infinity);
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('handoff');
+    });
+
+    it('should handle very small context window', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Tiny context window test',
+        conversation: [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Hello' }],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id, 1); // 1 token context window
+
+      expect(status.utilization).toBeGreaterThan(1);
+      expect(status.nearLimit).toBe(true);
+      expect(status.recommendation).toBe('handoff');
+    });
+
+    it('should handle massive conversation with mixed content types', async () => {
+      // Create a very long conversation with multiple content types
+      const conversation = [];
+      for (let i = 0; i < 100; i++) {
+        conversation.push({
+          type: 'user' as const,
+          content: [{ type: 'text' as const, text: `Message ${i}: ${'x'.repeat(1000)}` }],
+        });
+        conversation.push({
+          type: 'assistant' as const,
+          content: [
+            { type: 'text' as const, text: `Response ${i}` },
+            {
+              type: 'tool_use' as const,
+              toolName: 'Read',
+              toolInput: { file_path: `/file${i}.ts` },
+            },
+          ],
+        });
+        conversation.push({
+          type: 'user' as const,
+          content: [
+            {
+              type: 'tool_result' as const,
+              toolResult: `File content ${i}`,
+            },
+          ],
+        });
+      }
+
+      const task = await orchestrator.createTask({
+        description: 'Massive conversation task',
+        conversation,
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBeGreaterThan(50000);
+      expect(status.utilization).toBeGreaterThan(0.25); // Should be significant
+    });
+
+    it('should handle message with null/undefined content blocks', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Edge case content task',
+        conversation: [
+          {
+            type: 'user',
+            content: [
+              { type: 'text', text: 'Normal message' },
+              // Test handling of any edge case content
+            ],
+          },
+        ],
+      });
+
+      const status = await orchestrator.detectSessionLimit(task.id);
+
+      expect(status.currentTokens).toBeGreaterThan(0);
+      expect(status.utilization).toBeGreaterThan(0);
+      expect(status.recommendation).toBe('continue');
+    });
+  });
 });

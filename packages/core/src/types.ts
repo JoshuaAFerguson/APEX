@@ -601,3 +601,19 @@ export interface VerboseDebugData {
     cpuUtilization?: number; // percentage
   };
 }
+
+/**
+ * Session limit detection status
+ */
+export interface SessionLimitStatus {
+  /** Whether the session is approaching the context window limit */
+  nearLimit: boolean;
+  /** Current token usage estimate */
+  currentTokens: number;
+  /** Current utilization percentage (0-1) */
+  utilization: number;
+  /** Recommended action based on utilization */
+  recommendation: 'continue' | 'summarize' | 'checkpoint' | 'handoff';
+  /** Human-readable description of the status */
+  message: string;
+}

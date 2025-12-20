@@ -17,6 +17,7 @@ import {
   SubtaskStrategy,
   SubtaskDefinition,
   TaskDecomposition,
+  SessionLimitStatus,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -36,6 +37,7 @@ import {
   type DecompositionRequest,
 } from './prompts';
 import { createHooks } from './hooks';
+import { estimateConversationTokens } from './context';
 
 const execAsync = promisify(exec);
 
@@ -3061,6 +3063,63 @@ Parent: ${parentTask.description}`;
       failed: subtasks.filter(s => s.status === 'failed').length,
       pending: subtasks.filter(s => s.status === 'pending').length,
       inProgress: subtasks.filter(s => s.status === 'in-progress').length,
+    };
+  }
+
+  /**
+   * Detect if the session is approaching context window limits
+   *
+   * @param taskId - The task ID to check
+   * @param contextWindowSize - The context window size in tokens (defaults to Claude's common 200k)
+   * @returns SessionLimitStatus indicating current status and recommendations
+   */
+  async detectSessionLimit(taskId: string, contextWindowSize: number = 200000): Promise<SessionLimitStatus> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Get the conversation history for the task
+    const conversation = task.conversation || [];
+
+    // Estimate current token usage
+    const currentTokens = estimateConversationTokens(conversation);
+
+    // Calculate utilization percentage
+    const utilization = currentTokens / contextWindowSize;
+
+    // Get the configured threshold (default 0.8 = 80%)
+    const threshold = this.effectiveConfig.daemon?.sessionRecovery?.contextWindowThreshold || 0.8;
+
+    // Determine if we're near the limit
+    const nearLimit = utilization >= threshold;
+
+    // Determine recommendation based on utilization levels
+    let recommendation: SessionLimitStatus['recommendation'];
+    let message: string;
+
+    if (utilization < 0.6) {
+      recommendation = 'continue';
+      message = `Session healthy: ${(utilization * 100).toFixed(1)}% of context window used`;
+    } else if (utilization < threshold) {
+      recommendation = 'summarize';
+      message = `Consider summarization: ${(utilization * 100).toFixed(1)}% of context window used`;
+    } else if (utilization < 0.95) {
+      recommendation = 'checkpoint';
+      message = `Context window near limit: ${(utilization * 100).toFixed(1)}% used - checkpoint recommended`;
+    } else {
+      recommendation = 'handoff';
+      message = `Context window critical: ${(utilization * 100).toFixed(1)}% used - handoff required`;
+    }
+
+    return {
+      nearLimit,
+      currentTokens,
+      utilization,
+      recommendation,
+      message,
     };
   }
 }
