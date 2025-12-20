@@ -1893,5 +1893,77 @@ You are a developer agent that implements code changes.
         expect(taskC?.dependsOn).toContain(subtasks[1].id);
       });
     });
+
+    describe('subtask completion status', () => {
+      it('should return false from executeSubtasks when subtasks are paused', async () => {
+        const mockQuery = vi.mocked(query);
+        let callCount = 0;
+
+        // First subtask completes, second throws usage limit error to trigger pause
+        mockQuery.mockImplementation(() => ({
+          [Symbol.asyncIterator]: async function* () {
+            callCount++;
+            if (callCount > 2) {
+              // Simulate usage limit error that causes pause
+              throw new Error('Usage limit reached: You have exhausted your monthly included credits');
+            }
+            yield { type: 'message', content: 'Done' };
+          },
+        } as unknown as ReturnType<typeof query>));
+
+        const parentTask = await orchestrator.createTask({
+          description: 'Pause test',
+        });
+
+        await orchestrator.decomposeTask(
+          parentTask.id,
+          [
+            { description: 'First subtask' },
+            { description: 'Second subtask' },
+          ],
+          'sequential'
+        );
+
+        // Execute subtasks - should return false since second subtask is paused
+        const allComplete = await orchestrator.executeSubtasks(parentTask.id);
+        expect(allComplete).toBe(false);
+
+        // Parent task should NOT be marked as completed
+        const updatedParent = await orchestrator.getTask(parentTask.id);
+        expect(updatedParent?.status).not.toBe('completed');
+      });
+
+      it('should return true from executeSubtasks when all subtasks complete', async () => {
+        const mockQuery = vi.mocked(query);
+
+        mockQuery.mockReturnValue({
+          [Symbol.asyncIterator]: async function* () {
+            yield { type: 'message', content: 'Done' };
+          },
+        } as unknown as ReturnType<typeof query>);
+
+        const parentTask = await orchestrator.createTask({
+          description: 'Complete test',
+        });
+
+        await orchestrator.decomposeTask(
+          parentTask.id,
+          [
+            { description: 'First subtask' },
+            { description: 'Second subtask' },
+          ],
+          'sequential'
+        );
+
+        // Execute subtasks - should return true since all complete
+        const allComplete = await orchestrator.executeSubtasks(parentTask.id);
+        expect(allComplete).toBe(true);
+
+        // Check subtask status
+        const status = await orchestrator.getSubtaskStatus(parentTask.id);
+        expect(status.completed).toBe(2);
+        expect(status.pending).toBe(0);
+      });
+    });
   });
 });

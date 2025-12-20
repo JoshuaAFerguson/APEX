@@ -3,9 +3,10 @@
  * Transforms orchestrator events into AgentPanel props and state
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
+import type { VerboseDebugData } from '@apexcli/core/types.js';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -22,6 +23,8 @@ export interface OrchestratorEventState {
   currentTaskId?: string;
   /** Subtask progress tracking */
   subtaskProgress?: { completed: number; total: number };
+  /** Verbose debug data populated from orchestrator events */
+  verboseData?: VerboseDebugData;
 }
 
 export interface UseOrchestratorEventsOptions {
@@ -54,6 +57,33 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     subtaskProgress: { completed: 0, total: 0 },
   });
 
+  // VerboseDebugData state for tracking detailed metrics
+  const [verboseData, setVerboseData] = useState<VerboseDebugData>(() => ({
+    agentTokens: {},
+    timing: {
+      stageStartTime: new Date(),
+      agentResponseTimes: {},
+      toolUsageTimes: {},
+    },
+    agentDebug: {
+      conversationLength: {},
+      toolCallCounts: {},
+      errorCounts: {},
+      retryAttempts: {},
+    },
+    metrics: {
+      tokensPerSecond: 0,
+      averageResponseTime: 0,
+      toolEfficiency: {},
+    },
+  }));
+
+  // Refs for timing calculations (not triggering re-renders)
+  const agentStartTimeRef = useRef<Map<string, Date>>(new Map());
+  const toolStartTimeRef = useRef<Map<string, Date>>(new Map());
+  const totalTokensRef = useRef<number>(0);
+  const stageStartTimeRef = useRef<Date>(new Date());
+
   // Debug logging helper
   const log = useCallback((message: string, data?: any) => {
     if (debug) {
@@ -82,37 +112,110 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     });
   }, []);
 
+  // Helper to update agent debug info
+  const updateAgentDebugInfo = useCallback((
+    agents: AgentInfo[],
+    agentName: string,
+    updater: (debugInfo?: AgentInfo['debugInfo']) => AgentInfo['debugInfo']
+  ): AgentInfo[] => {
+    return agents.map(agent => {
+      if (agent.name === agentName) {
+        return {
+          ...agent,
+          debugInfo: updater(agent.debugInfo),
+        };
+      }
+      return agent;
+    });
+  }, []);
+
   // Event handlers
   useEffect(() => {
     if (!orchestrator) return;
 
     // Agent transition handler
-    const handleAgentTransition = (eventTaskId: string, fromAgent: string | null, toAgent: string) => {
+    const handleAgentTransition = useCallback((
+      eventTaskId: string,
+      fromAgent: string | null,
+      toAgent: string
+    ) => {
       if (taskId && eventTaskId !== taskId) return;
 
       log('Agent transition', { from: fromAgent, to: toAgent, taskId: eventTaskId });
 
-      setState(prev => {
-        const updatedAgents = updateAgentStatus(prev.agents.length > 0 ? prev.agents : derivedAgents, toAgent, fromAgent || undefined);
+      const now = new Date();
 
+      // Calculate response time for previous agent
+      if (fromAgent) {
+        const agentStartTime = agentStartTimeRef.current.get(fromAgent);
+        if (agentStartTime) {
+          const responseTime = now.getTime() - agentStartTime.getTime();
+          setVerboseData(prev => ({
+            ...prev,
+            timing: {
+              ...prev.timing,
+              agentResponseTimes: {
+                ...prev.timing.agentResponseTimes,
+                [fromAgent]: (prev.timing.agentResponseTimes[fromAgent] || 0) + responseTime,
+              },
+            },
+          }));
+        }
+      }
+
+      // Start timing for new agent
+      agentStartTimeRef.current.set(toAgent, now);
+
+      // Set stageStartedAt for the new agent
+      setState(prev => {
+        const updatedAgents = updateAgentStatus(
+          prev.agents.length > 0 ? prev.agents : derivedAgents,
+          toAgent,
+          fromAgent || undefined
+        );
+
+        // Update stageStartedAt for new agent
         return {
           ...prev,
           currentAgent: toAgent,
           previousAgent: fromAgent || undefined,
-          agents: updatedAgents,
+          agents: updatedAgents.map(agent =>
+            agent.name === toAgent
+              ? { ...agent, debugInfo: { ...agent.debugInfo, stageStartedAt: now } }
+              : agent
+          ),
           currentTaskId: eventTaskId,
         };
       });
-    };
+    }, [taskId, log, updateAgentStatus, derivedAgents]);
 
     // Stage change handler (fallback if agent:transition not available)
-    const handleStageChange = (task: any, stageName: string) => {
+    const handleStageChange = useCallback((task: any, stageName: string) => {
       if (taskId && task.id !== taskId) return;
 
       log('Stage change', { stage: stageName, taskId: task.id });
 
-      // Try to derive agent from workflow
+      const now = new Date();
       const stageAgent = workflow?.stages.find(s => s.name === stageName)?.agent;
+
+      // Calculate previous stage duration if applicable
+      const prevStageStart = stageStartTimeRef.current;
+      const stageDuration = now.getTime() - prevStageStart.getTime();
+
+      // Update stage timing
+      stageStartTimeRef.current = now;
+      totalTokensRef.current = 0; // Reset for new stage
+
+      setVerboseData(prev => ({
+        ...prev,
+        timing: {
+          ...prev.timing,
+          stageStartTime: now,
+          stageEndTime: undefined,
+          stageDuration: undefined,
+          // Keep accumulated agentResponseTimes and toolUsageTimes
+        },
+      }));
 
       if (stageAgent) {
         setState(prev => {
@@ -127,7 +230,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           };
         });
       }
-    };
+    }, [taskId, workflow, log, updateAgentStatus, derivedAgents]);
 
     // Parallel execution start handler
     const handleParallelStart = (eventTaskId: string, stages: string[], agents: string[]) => {
@@ -237,6 +340,201 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    // Debug info handlers - adapted to match OrchestratorEvents signatures
+    const handleUsageUpdated = useCallback((
+      eventTaskId: string,
+      usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }
+    ) => {
+      if (taskId && eventTaskId !== taskId) return;
+
+      log('Usage updated', { taskId: eventTaskId, tokens: usage });
+
+      // Get current agent name from state
+      const currentAgentName = state.currentAgent;
+      if (!currentAgentName) return;
+
+      // Update agentTokens in verboseData
+      setVerboseData(prev => {
+        const prevAgentTokens = prev.agentTokens[currentAgentName] || {
+          inputTokens: 0,
+          outputTokens: 0,
+        };
+
+        const newAgentTokens = {
+          ...prev.agentTokens,
+          [currentAgentName]: {
+            inputTokens: prevAgentTokens.inputTokens + usage.inputTokens,
+            outputTokens: prevAgentTokens.outputTokens + usage.outputTokens,
+          },
+        };
+
+        // Calculate tokens per second metric
+        const now = Date.now();
+        const elapsed = (now - stageStartTimeRef.current.getTime()) / 1000;
+        totalTokensRef.current += usage.totalTokens;
+        const tokensPerSecond = elapsed > 0 ? totalTokensRef.current / elapsed : 0;
+
+        return {
+          ...prev,
+          agentTokens: newAgentTokens,
+          metrics: {
+            ...prev.metrics,
+            tokensPerSecond,
+          },
+        };
+      });
+
+      // Also update agent's debugInfo for immediate display
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
+          ...debugInfo,
+          tokensUsed: {
+            input: (debugInfo?.tokensUsed?.input || 0) + usage.inputTokens,
+            output: (debugInfo?.tokensUsed?.output || 0) + usage.outputTokens,
+          },
+        })),
+      }));
+    }, [taskId, state.currentAgent, log, updateAgentDebugInfo]);
+
+    const handleToolUse = useCallback((
+      eventTaskId: string,
+      tool: string,
+      _input: unknown
+    ) => {
+      if (taskId && eventTaskId !== taskId) return;
+
+      log('Tool use', { taskId: eventTaskId, tool });
+
+      const currentAgentName = state.currentAgent;
+      const now = new Date();
+
+      // Track tool call completion if there's a previous tool in progress
+      const prevToolStart = toolStartTimeRef.current.get(tool);
+      if (prevToolStart) {
+        const duration = now.getTime() - prevToolStart.getTime();
+        setVerboseData(prev => ({
+          ...prev,
+          timing: {
+            ...prev.timing,
+            toolUsageTimes: {
+              ...prev.timing.toolUsageTimes,
+              [tool]: (prev.timing.toolUsageTimes[tool] || 0) + duration,
+            },
+          },
+        }));
+      }
+
+      // Start timing for this tool call
+      toolStartTimeRef.current.set(tool, now);
+
+      // Update agentDebug tool call counts
+      if (currentAgentName) {
+        setVerboseData(prev => {
+          const agentToolCounts = prev.agentDebug.toolCallCounts[currentAgentName] || {};
+          return {
+            ...prev,
+            agentDebug: {
+              ...prev.agentDebug,
+              toolCallCounts: {
+                ...prev.agentDebug.toolCallCounts,
+                [currentAgentName]: {
+                  ...agentToolCounts,
+                  [tool]: (agentToolCounts[tool] || 0) + 1,
+                },
+              },
+            },
+          };
+        });
+
+        // Update agent's debugInfo.lastToolCall
+        setState(prev => ({
+          ...prev,
+          agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
+            ...debugInfo,
+            lastToolCall: tool,
+          })),
+        }));
+      }
+    }, [taskId, state.currentAgent, log, updateAgentDebugInfo]);
+
+    const handleAgentTurn = useCallback((turnData: { taskId: string; agentName: string; turnNumber: number }) => {
+      if (taskId && turnData.taskId !== taskId) return;
+
+      log('Agent turn', { agent: turnData.agentName, turn: turnData.turnNumber });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, turnData.agentName, (debugInfo) => ({
+          ...debugInfo,
+          turnCount: turnData.turnNumber,
+        })),
+      }));
+    }, [taskId, log, updateAgentDebugInfo]);
+
+    const handleError = useCallback((errorData: { taskId: string; agentName: string; error: Error }) => {
+      if (taskId && errorData.taskId !== taskId) return;
+
+      log('Agent error', { agent: errorData.agentName, error: errorData.error.message });
+
+      // Update VerboseDebugData errorCounts
+      setVerboseData(prev => ({
+        ...prev,
+        agentDebug: {
+          ...prev.agentDebug,
+          errorCounts: {
+            ...prev.agentDebug.errorCounts,
+            [errorData.agentName]: (prev.agentDebug.errorCounts[errorData.agentName] || 0) + 1,
+          },
+        },
+      }));
+
+      // Also update agent's debugInfo for immediate display
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, errorData.agentName, (debugInfo) => ({
+          ...debugInfo,
+          errorCount: (debugInfo?.errorCount || 0) + 1,
+        })),
+      }));
+    }, [taskId, log, updateAgentDebugInfo]);
+
+    const handleAgentThinking = useCallback((eventTaskId: string, agentName: string, thinking: string) => {
+      if (taskId && eventTaskId !== taskId) return;
+
+      log('Agent thinking', { agent: agentName, thinking: thinking.substring(0, 100) + (thinking.length > 100 ? '...' : '') });
+
+      setState(prev => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, agentName, (debugInfo) => ({
+          ...debugInfo,
+          thinking: thinking,
+        })),
+      }));
+    }, [taskId, log, updateAgentDebugInfo]);
+
+    // Agent message handler for conversation length tracking
+    const handleAgentMessage = useCallback((eventTaskId: string, message: unknown) => {
+      if (taskId && eventTaskId !== taskId) return;
+
+      const currentAgentName = state.currentAgent;
+      if (!currentAgentName) return;
+
+      log('Agent message', { taskId: eventTaskId, agent: currentAgentName });
+
+      // Update conversation length in VerboseDebugData
+      setVerboseData(prev => ({
+        ...prev,
+        agentDebug: {
+          ...prev.agentDebug,
+          conversationLength: {
+            ...prev.agentDebug.conversationLength,
+            [currentAgentName]: (prev.agentDebug.conversationLength[currentAgentName] || 0) + 1,
+          },
+        },
+      }));
+    }, [taskId, state.currentAgent, log]);
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -247,6 +545,12 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('task:failed', handleTaskFail);
     orchestrator.on('subtask:created', handleSubtaskCreated);
     orchestrator.on('subtask:completed', handleSubtaskCompleted);
+
+    // Register debug event listeners
+    orchestrator.on('usage:updated', handleUsageUpdated);
+    orchestrator.on('agent:tool-use', handleToolUse);
+    orchestrator.on('agent:message', handleAgentMessage);
+    orchestrator.on('agent:thinking', handleAgentThinking);
 
     log('Event listeners registered');
 
@@ -262,9 +566,15 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('subtask:created', handleSubtaskCreated);
       orchestrator.off('subtask:completed', handleSubtaskCompleted);
 
+      // Cleanup debug event listeners
+      orchestrator.off('usage:updated', handleUsageUpdated);
+      orchestrator.off('agent:tool-use', handleToolUse);
+      orchestrator.off('agent:message', handleAgentMessage);
+      orchestrator.off('agent:thinking', handleAgentThinking);
+
       log('Event listeners cleaned up');
     };
-  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus]);
+  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus, updateAgentDebugInfo, handleAgentTransition, handleStageChange, handleUsageUpdated, handleToolUse, handleAgentTurn, handleAgentThinking, handleError]);
 
   // Initialize agents from workflow if not already set
   useEffect(() => {
@@ -276,5 +586,37 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     }
   }, [derivedAgents, state.agents.length]);
 
-  return state;
+  // Calculate derived metrics based on accumulated data
+  useEffect(() => {
+    setVerboseData(prev => {
+      // Calculate average response time
+      const responseTimes = Object.values(prev.timing.agentResponseTimes);
+      const averageResponseTime = responseTimes.length > 0
+        ? responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length
+        : 0;
+
+      // Calculate tool efficiency (assuming successful calls for now)
+      const toolEfficiency: Record<string, number> = {};
+      Object.entries(prev.agentDebug.toolCallCounts).forEach(([agentName, toolCounts]) => {
+        Object.entries(toolCounts).forEach(([toolName, count]) => {
+          // For now, assume 100% efficiency - this would need actual success/failure tracking
+          toolEfficiency[toolName] = 1.0;
+        });
+      });
+
+      return {
+        ...prev,
+        metrics: {
+          ...prev.metrics,
+          averageResponseTime,
+          toolEfficiency,
+        },
+      };
+    });
+  }, [verboseData.timing.agentResponseTimes, verboseData.agentDebug.toolCallCounts]);
+
+  return {
+    ...state,
+    verboseData,
+  };
 }

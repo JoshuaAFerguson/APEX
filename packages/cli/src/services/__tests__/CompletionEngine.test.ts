@@ -154,6 +154,67 @@ describe('CompletionEngine', () => {
 
       expect(results.filter(r => r.type === 'subcommand')).toHaveLength(0);
     });
+
+    it('should complete compact command', async () => {
+      const results = await engine.getCompletions('/comp', 5, mockContext);
+
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/compact',
+          type: 'command',
+          description: 'Toggle compact mode',
+          icon: '📦'
+        })
+      );
+    });
+
+    it('should complete verbose command', async () => {
+      const results = await engine.getCompletions('/verb', 5, mockContext);
+
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/verbose',
+          type: 'command',
+          description: 'Toggle verbose mode',
+          icon: '📢'
+        })
+      );
+    });
+
+    it('should complete display mode commands with /c prefix', async () => {
+      const results = await engine.getCompletions('/c', 2, mockContext);
+
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/compact'
+        })
+      );
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/config'
+        })
+      );
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/cancel'
+        })
+      );
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/clear'
+        })
+      );
+    });
+
+    it('should complete display mode commands with /v prefix', async () => {
+      const results = await engine.getCompletions('/v', 2, mockContext);
+
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          value: '/verbose'
+        })
+      );
+    });
   });
 
   describe('file path completion', () => {

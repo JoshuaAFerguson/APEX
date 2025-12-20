@@ -122,6 +122,14 @@ export const ModelsConfigSchema = z.object({
 });
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 
+export const UIConfigSchema = z.object({
+  previewMode: z.boolean().optional().default(true),
+  previewConfidence: z.number().min(0).max(1).optional().default(0.7),
+  autoExecuteHighConfidence: z.boolean().optional().default(false),
+  previewTimeout: z.number().min(1000).optional().default(5000),
+});
+export type UIConfig = z.infer<typeof UIConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -148,6 +156,7 @@ export const ApexConfigSchema = z.object({
       autoStart: z.boolean().optional().default(false),
     })
     .optional(),
+  ui: UIConfigSchema.optional(),
   webUI: z
     .object({
       port: z.number().optional().default(3001),
@@ -356,6 +365,7 @@ export type ApexEventType =
   | 'subtask:completed'
   | 'subtask:failed'
   | 'agent:message'
+  | 'agent:thinking'
   | 'agent:tool-use'
   | 'agent:tool-result'
   | 'gate:required'
@@ -370,6 +380,18 @@ export interface ApexEvent {
   timestamp: Date;
   data: Record<string, unknown>;
 }
+
+// ============================================================================
+// UI Display Types
+// ============================================================================
+
+/**
+ * Display mode for the APEX CLI interface
+ * - normal: Standard display with all components shown
+ * - compact: Minimized display for experienced users
+ * - verbose: Detailed debug information for troubleshooting
+ */
+export type DisplayMode = 'normal' | 'compact' | 'verbose';
 
 // ============================================================================
 // Agent SDK Types (mirrors Claude Agent SDK)
@@ -393,4 +415,36 @@ export interface AgentUsage {
   outputTokens: number;
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
+}
+
+/**
+ * Extended debug data for verbose logging and analysis
+ * Provides detailed breakdowns of agent execution, timing, and performance metrics
+ */
+export interface VerboseDebugData {
+  /** Per-agent token usage breakdown */
+  agentTokens: Record<string, AgentUsage>;
+  /** Execution timing information */
+  timing: {
+    stageStartTime: Date;
+    stageEndTime?: Date;
+    stageDuration?: number; // milliseconds
+    agentResponseTimes: Record<string, number>; // agent name -> response time in ms
+    toolUsageTimes: Record<string, number>; // tool name -> cumulative usage time in ms
+  };
+  /** Agent-specific debug information */
+  agentDebug: {
+    conversationLength: Record<string, number>; // agent name -> number of messages
+    toolCallCounts: Record<string, Record<string, number>>; // agent -> tool -> count
+    errorCounts: Record<string, number>; // agent name -> error count
+    retryAttempts: Record<string, number>; // agent name -> retry count
+  };
+  /** Performance and efficiency metrics */
+  metrics: {
+    tokensPerSecond: number;
+    averageResponseTime: number; // milliseconds
+    toolEfficiency: Record<string, number>; // tool name -> success rate (0-1)
+    memoryUsage?: number; // bytes
+    cpuUtilization?: number; // percentage
+  };
 }

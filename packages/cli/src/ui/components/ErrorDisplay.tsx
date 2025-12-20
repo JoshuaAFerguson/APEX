@@ -1,5 +1,54 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/index.js';
+
+// Helper functions for responsive behavior (following ActivityLog patterns)
+const formatTimestamp = (date: Date, abbreviated: boolean = false): string => {
+  if (abbreviated) {
+    return date.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+const truncateMessage = (message: string, maxLength: number): string => {
+  if (message.length <= maxLength) return message;
+  return message.substring(0, maxLength - 3) + '...';
+};
+
+const truncateStackLine = (line: string, maxLength: number): string => {
+  if (line.length <= maxLength) return line;
+  return line.substring(0, maxLength - 3) + '...';
+};
+
+const getStackTraceConfig = (
+  breakpoint: 'narrow' | 'compact' | 'normal' | 'wide',
+  verbose: boolean
+): { maxLines: number; shouldShow: boolean } => {
+  const config = {
+    narrow: { normal: 0, verbose: 3 },
+    compact: { normal: 0, verbose: 5 },
+    normal: { normal: 5, verbose: 10 },
+    wide: { normal: 8, verbose: Infinity }, // Infinity = show all
+  };
+
+  const maxLines = verbose
+    ? config[breakpoint].verbose
+    : config[breakpoint].normal;
+
+  return {
+    maxLines,
+    shouldShow: maxLines > 0,
+  };
+};
 
 export interface ErrorSuggestion {
   title: string;
@@ -14,6 +63,7 @@ export interface ErrorDisplayProps {
   title?: string;
   suggestions?: ErrorSuggestion[];
   showStack?: boolean;
+  verbose?: boolean;
   showSuggestions?: boolean;
   context?: Record<string, unknown>;
   width?: number;
@@ -29,14 +79,27 @@ export function ErrorDisplay({
   title = 'Error',
   suggestions = [],
   showStack = false,
+  verbose = false,
   showSuggestions = true,
   context,
-  width = 80,
+  width: explicitWidth,
   onRetry,
   onDismiss,
 }: ErrorDisplayProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, breakpoint, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Calculate responsive configuration
+  const messageMaxLength = Math.max(30, width - 10); // Reserve for borders/padding
+  const suggestionDescMaxLength = Math.max(25, width - 16); // Indent + icon
+  const contextValueMaxLength = Math.max(20, width - 20);
   const errorMessage = typeof error === 'string' ? error : error.message;
   const errorStack = typeof error === 'string' ? undefined : error.stack;
+
+  // Calculate stack trace configuration based on breakpoint and verbose mode
+  const stackConfig = getStackTraceConfig(breakpoint, verbose);
+  const stackLines = errorStack ? errorStack.split('\n').filter(line => line.trim()) : [];
 
   // Auto-generate suggestions based on common error patterns
   const generateSuggestions = (message: string): ErrorSuggestion[] => {
@@ -139,26 +202,39 @@ export function ErrorDisplay({
       {context && Object.keys(context).length > 0 && (
         <Box flexDirection="column" marginBottom={1}>
           <Text color="gray" bold>Context:</Text>
-          {Object.entries(context).map(([key, value]) => (
-            <Box key={key} marginLeft={2}>
-              <Text color="gray">
-                {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </Text>
-            </Box>
-          ))}
+          {Object.entries(context).map(([key, value]) => {
+            const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            const displayValue = truncateMessage(valueStr, contextValueMaxLength);
+            return (
+              <Box key={key} marginLeft={2}>
+                <Text color="gray">
+                  {key}: {displayValue}
+                </Text>
+              </Box>
+            );
+          })}
         </Box>
       )}
 
-      {/* Stack trace */}
-      {showStack && errorStack && (
+      {/* Stack trace - responsive to width and verbose mode */}
+      {showStack && errorStack && stackConfig.shouldShow && (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="gray" bold>Stack Trace:</Text>
+          <Text color="gray" bold>
+            Stack Trace{stackConfig.maxLines !== Infinity ? ` (${Math.min(stackLines.length, stackConfig.maxLines)} lines)` : ''}:
+          </Text>
           <Box marginLeft={2} flexDirection="column">
-            {errorStack.split('\n').slice(0, 10).map((line, index) => (
-              <Text key={index} color="gray" dimColor>
-                {line}
+            {stackLines
+              .slice(0, stackConfig.maxLines === Infinity ? undefined : stackConfig.maxLines)
+              .map((line, index) => (
+                <Text key={index} color="gray" dimColor>
+                  {truncateStackLine(line, width - 4)}
+                </Text>
+              ))}
+            {stackLines.length > stackConfig.maxLines && stackConfig.maxLines !== Infinity && (
+              <Text color="gray" dimColor italic>
+                ... {stackLines.length - stackConfig.maxLines} more lines (use verbose mode to see full trace)
               </Text>
-            ))}
+            )}
           </Box>
         </Box>
       )}
@@ -179,7 +255,7 @@ export function ErrorDisplay({
                   <Text color="yellow" bold>{suggestion.title}</Text>
                 </Box>
                 <Box marginLeft={4}>
-                  <Text color="white">{suggestion.description}</Text>
+                  <Text color="white">{truncateMessage(suggestion.description, suggestionDescMaxLength)}</Text>
                 </Box>
                 {suggestion.command && (
                   <Box marginLeft={4}>
@@ -230,6 +306,7 @@ export interface ErrorSummaryProps {
   title?: string;
   maxErrors?: number;
   showTimestamps?: boolean;
+  width?: number;
 }
 
 /**
@@ -240,7 +317,15 @@ export function ErrorSummary({
   title = 'Recent Issues',
   maxErrors = 5,
   showTimestamps = true,
+  width: explicitWidth,
 }: ErrorSummaryProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, breakpoint, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Responsive configuration
+  const abbreviateTimestamp = isNarrow;
+  const messageMaxLength = Math.max(20, width - (showTimestamps ? 20 : 8));
   const recentErrors = errors.slice(-maxErrors);
   const unresolvedCount = errors.filter(e => !e.resolved).length;
 
@@ -285,11 +370,11 @@ export function ErrorSummary({
                 <Text color={color}>{icon} </Text>
                 {showTimestamps && (
                   <Text color="gray" dimColor>
-                    [{error.timestamp.toLocaleTimeString()}]
+                    [{formatTimestamp(error.timestamp, abbreviateTimestamp)}]
                   </Text>
                 )}
                 <Text color={error.resolved ? 'gray' : color} strikethrough={error.resolved}>
-                  {error.message.length > 60 ? `${error.message.substring(0, 57)}...` : error.message}
+                  {truncateMessage(error.message, messageMaxLength)}
                 </Text>
                 {error.resolved && (
                   <Text color="green"> ✓</Text>
@@ -308,6 +393,7 @@ export interface ValidationErrorProps {
   value: unknown;
   errors: string[];
   suggestions?: string[];
+  width?: number;
   onFix?: (field: string, value: unknown) => void;
 }
 
@@ -319,21 +405,29 @@ export function ValidationError({
   value,
   errors,
   suggestions = [],
+  width: explicitWidth,
   onFix,
 }: ValidationErrorProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, isNarrow } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+
+  // Responsive truncation
+  const valueMaxLength = isNarrow ? 20 : 40;
+  const errorMaxLength = Math.max(30, width - 8);
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={1}>
       {/* Field info */}
       <Box>
         <Text color="red" bold>Invalid {field}: </Text>
-        <Text color="gray">"{String(value)}"</Text>
+        <Text color="gray">"{truncateMessage(String(value), valueMaxLength)}"</Text>
       </Box>
 
       {/* Errors */}
       <Box flexDirection="column" marginLeft={2}>
         {errors.map((error, index) => (
           <Box key={index}>
-            <Text color="red">• {error}</Text>
+            <Text color="red">• {truncateMessage(error, errorMaxLength)}</Text>
           </Box>
         ))}
       </Box>
@@ -344,7 +438,7 @@ export function ValidationError({
           <Text color="yellow">Suggestions:</Text>
           {suggestions.map((suggestion, index) => (
             <Box key={index} marginLeft={2}>
-              <Text color="yellow">• {suggestion}</Text>
+              <Text color="yellow">• {truncateMessage(suggestion, errorMaxLength)}</Text>
             </Box>
           ))}
         </Box>

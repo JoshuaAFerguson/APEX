@@ -49,6 +49,14 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
     model: config?.models?.implementation || 'sonnet',
     sessionStartTime: new Date(),
     sessionName: `Session ${new Date().toLocaleDateString()}`,
+    displayMode: 'normal',
+    previewMode: (config as any)?.ui?.previewMode ?? false,
+    previewConfig: {
+      confidenceThreshold: (config as any)?.ui?.previewConfidence ?? 0.7,
+      autoExecuteHighConfidence: (config as any)?.ui?.autoExecuteHighConfidence ?? false,
+      timeoutMs: (config as any)?.ui?.previewTimeout ?? 5000,
+    },
+    showThoughts: false,
   };
 
   const { waitUntilExit, unmount } = render(

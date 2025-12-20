@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/index.js';
 
 export interface StreamingTextProps {
   text: string;
@@ -9,6 +10,7 @@ export interface StreamingTextProps {
   onComplete?: () => void;
   width?: number;
   maxLines?: number;
+  responsive?: boolean; // Enable/disable responsive behavior (default: true)
 }
 
 /**
@@ -20,9 +22,17 @@ export function StreamingText({
   isComplete = false,
   showCursor = true,
   onComplete,
-  width,
+  width: explicitWidth,
   maxLines,
+  responsive = true,
 }: StreamingTextProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : undefined);
+
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showBlinkCursor, setShowBlinkCursor] = useState(true);
@@ -61,18 +71,18 @@ export function StreamingText({
 
   // Format text with line wrapping
   const formatText = (content: string): string[] => {
-    if (!width) return content.split('\n');
+    if (!effectiveWidth) return content.split('\n');
 
     const lines: string[] = [];
     const textLines = content.split('\n');
 
     textLines.forEach(line => {
-      if (line.length <= width) {
+      if (line.length <= effectiveWidth) {
         lines.push(line);
       } else {
         // Wrap long lines
-        for (let i = 0; i < line.length; i += width) {
-          lines.push(line.substring(i, i + width));
+        for (let i = 0; i < line.length; i += effectiveWidth) {
+          lines.push(line.substring(i, i + effectiveWidth));
         }
       }
     });
@@ -85,7 +95,7 @@ export function StreamingText({
   const shouldShowCursor = showCursor && showBlinkCursor && (currentIndex >= text.length || !isComplete);
 
   return (
-    <Box flexDirection="column" width={width}>
+    <Box flexDirection="column" width={effectiveWidth}>
       {displayLines.map((line, index) => (
         <Text key={index}>
           {line}
@@ -105,6 +115,7 @@ export interface StreamingResponseProps {
   isComplete?: boolean;
   onComplete?: () => void;
   width?: number;
+  responsive?: boolean; // Enable/disable responsive behavior (default: true)
 }
 
 /**
@@ -116,8 +127,16 @@ export function StreamingResponse({
   isStreaming = false,
   isComplete = false,
   onComplete,
-  width = 80,
+  width: explicitWidth,
+  responsive = true,
 }: StreamingResponseProps): React.ReactElement {
+  // Get terminal dimensions from hook
+  const { width: terminalWidth } = useStdoutDimensions();
+
+  // Use explicit width if provided, otherwise use responsive terminal width
+  // Subtract 2 for padding/margin safety
+  const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
+
   const [chunks, setChunks] = useState<string[]>([]);
   const [currentChunk, setCurrentChunk] = useState(0);
 
@@ -157,8 +176,9 @@ export function StreamingResponse({
         text={displayContent}
         isComplete={isComplete}
         onComplete={onComplete}
-        width={width}
+        width={effectiveWidth}
         showCursor={isStreaming && !isComplete}
+        responsive={false} // Pass false since we're already handling responsiveness
       />
 
       {/* Completion indicator */}

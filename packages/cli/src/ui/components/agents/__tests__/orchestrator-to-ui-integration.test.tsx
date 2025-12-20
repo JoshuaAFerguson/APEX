@@ -213,6 +213,7 @@ describe('Orchestrator to UI Integration Tests', () => {
       model: 'claude-3-sonnet',
       activeAgent: 'planner',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

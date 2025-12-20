@@ -123,6 +123,320 @@ Cost: $0.1523
 Duration: 3m 42s
 ```
 
+## Terminal Interface (v0.3.0)
+
+APEX now features a rich terminal interface with real-time updates, enhanced visual feedback, and customizable display modes:
+
+### Progress Indicators
+
+Tasks display live progress with detailed stage information:
+
+```
+🚀 APEX Task: Add authentication middleware
+
+┌─ Task Progress ──────────────────────────────────────┐
+│ Stage: implementation [■■■■■■■░░░] 70%               │
+│ Agent: developer                                     │
+│ File: src/middleware/auth.ts                         │
+│                                                      │
+│ Recent Actions:                                      │
+│ ✓ Created auth middleware structure                  │
+│ ✓ Added JWT validation logic                        │
+│ → Writing error handling...                         │
+└──────────────────────────────────────────────────────┘
+
+Tokens: 12,456 | Cost: $0.0425 | Elapsed: 1m 23s
+```
+
+### Display Modes ✨ NEW in v0.3.0
+
+Customize how information is displayed to match your workflow:
+
+```bash
+# Toggle compact mode for minimal display
+/compact
+● main | $0.0425
+
+# Toggle verbose mode for maximum detail
+/verbose
+● main | ⚡developer | ▶implementation | tokens: 1.5k→800 | total: 2.3k | cost: $0.0425 | 🔍 VERBOSE
+
+# Return to normal balanced display
+/compact  # (toggles off)
+```
+
+**Three Display Modes:**
+- **Normal** - Balanced information display (default)
+- **Compact** - Minimal display for focus or small terminals
+- **Verbose** - Maximum information for debugging and analysis
+
+See [Display Modes Guide](user-guide/display-modes.md) for complete details.
+
+### Input Preview ✨ NEW in v0.3.0
+
+Preview what will be sent to Claude before executing commands:
+
+```bash
+# Enable preview mode
+/preview on
+
+# Now when you type commands, you'll see:
+┌─ Input Preview ─────────────────────────────────────┐
+│ Input: "implement user authentication"              │
+│                                                     │
+│ Intent: task_execution (85% confidence)            │
+│ This will be sent to the developer agent           │
+│                                                     │
+│ [Enter] Execute  [Escape] Cancel  [E] Edit          │
+└─────────────────────────────────────────────────────┘
+```
+
+**Benefits of Input Preview:**
+- Verify your intent before execution
+- See confidence levels for command interpretation
+- Catch potential issues before they happen
+- Learn how APEX processes different input types
+
+See [Input Preview Guide](user-guide/input-preview.md) for complete details.
+
+### Interactive Controls
+
+Control task execution with keyboard shortcuts:
+- `Space` - Pause/resume task
+- `q` - Quit task
+- `l` - View detailed logs
+- `Enter` - Approve current stage (manual mode)
+- `/compact` - Toggle compact display mode
+- `/verbose` - Toggle verbose display mode
+- `/preview on|off` - Control input preview mode
+
+### Color-coded Output
+
+- 🟢 Success indicators
+- 🟡 Warnings and reviews
+- 🔴 Errors and failures
+- 🔵 Information and status updates
+- 📋 Preview mode active indicator
+- 🔍 Verbose mode active indicator
+
+## Rich Terminal UI Framework
+
+APEX's terminal interface is built on a modern React-based framework designed for exceptional developer experience. This section covers the 8 core UI capabilities that power the interactive CLI.
+
+### Ink-based Rendering
+
+APEX uses Ink, a React renderer for CLI applications, enabling component-based terminal interfaces with familiar React patterns:
+
+```
+Components render as a tree, just like React DOM:
+┌─ App ─────────────────────────────────┐
+│ ├─ Banner                             │
+│ ├─ StatusBar                          │
+│ ├─ TaskProgress                       │
+│ ├─ AgentPanel                         │
+│ └─ InputPrompt                        │
+└───────────────────────────────────────┘
+```
+
+The component architecture enables maintainable, testable terminal interfaces with proper state management and event handling.
+
+### Streaming & Real-time Updates
+
+Experience live updates as agents work, with character-by-character streaming and animated cursors:
+
+```
+Streaming output with live cursor:
+┌──────────────────────────────────────┐
+│ The agent is analyzing your code...▊ │
+└──────────────────────────────────────┘
+```
+
+Text appears dynamically with typewriter effects, creating an engaging real-time development experience that shows exactly what agents are thinking and doing.
+
+### Markdown Rendering
+
+Rich markdown content renders with full formatting support, making documentation and responses easy to read:
+
+```
+Markdown renders with full formatting:
+# Header 1                    (cyan, bold)
+## Header 2                   (blue, bold)
+• Bullet points              (yellow bullets)
+1. Numbered lists            (yellow numbers)
+> Blockquotes               (gray with │ prefix)
+`inline code`               (highlighted background)
+```
+
+Headers, lists, blockquotes, and inline code all render with appropriate colors and formatting for maximum readability.
+
+### Syntax Highlighting
+
+Code blocks receive full syntax highlighting for supported languages (TypeScript, JavaScript, Python, Rust, Go):
+
+```
+┌─ typescript ────────── 5 lines ──┐
+│  1 │ const greeting = "Hello";   │
+│  2 │ function sayHello() {       │
+│  3 │   // This is a comment      │
+│  4 │   console.log(greeting);    │
+│  5 │ }                           │
+└──────────────────────────────────┘
+```
+
+Keywords, strings, and comments are color-coded with line numbers. Code automatically wraps for narrow terminals while preserving readability.
+
+### Diff Views
+
+View code changes with comprehensive diff rendering supporting three display modes:
+
+```
+Unified diff view:
+--- src/api.ts
++++ src/api.ts
+@@ -1,3 +1,4 @@
+   import express from 'express';
++  import cors from 'cors';        ← added (green)
+   const app = express();
+-  app.listen(3000);               ← removed (red)
++  app.listen(process.env.PORT);   ← added (green)
+```
+
+Unified, split, and inline modes automatically adapt to your terminal width. Line numbers, hunk headers, and color-coded additions/deletions make code changes clear.
+
+### Responsive Layouts
+
+The interface adapts to any terminal size using a 4-tier breakpoint system:
+
+```
+Breakpoint System:
+┌────────────────────────────────────────────────────────────┐
+│  Narrow   │  Compact  │   Normal   │        Wide          │
+│  < 60     │  60-99    │  100-159   │       160+           │
+│  cols     │  cols     │   cols     │       cols           │
+├───────────┼───────────┼────────────┼──────────────────────┤
+│ Minimal   │ Condensed │ Standard   │ Full with extras     │
+│ UI only   │ display   │ display    │ split diffs, etc.    │
+└────────────────────────────────────────────────────────────┘
+```
+
+Components automatically adjust their layout, information density, and visual elements based on available space using the `useStdoutDimensions` hook.
+
+### Theme Support
+
+Comprehensive theming supports both dark and light modes with agent-specific color schemes:
+
+```
+Agent Colors (Dark Theme):
+  🟡 planner    - Yellow
+  🔵 architect  - Blue
+  🟢 developer  - Green
+  🟣 reviewer   - Magenta
+  🔵 tester     - Cyan
+  🔴 devops     - Red
+```
+
+The ThemeProvider manages consistent colors across all UI components, syntax highlighting, and diff views with automatic adaptation for different terminal capabilities.
+
+### Progress Indicators
+
+Multiple progress indicator types provide clear feedback on task execution:
+
+```
+Progress indicators:
+[■■■■■■■░░░] 70%            ← Progress bar
+◐ Loading...                 ← Spinner
+Step 2 of 4: implementation  ← Step progress
+```
+
+Progress bars show completion percentages, spinners indicate background activity, and step indicators track workflow stage progress. Multi-task views coordinate progress across parallel operations.
+
+## Session Management Basics
+
+APEX maintains session state for improved workflow continuity:
+
+### Active Sessions
+
+View and manage active tasks:
+
+```bash
+# List all active sessions
+apex sessions
+
+# Resume a paused session
+apex resume task_abc123_def456
+
+# Attach to a running session
+apex attach task_abc123_def456
+```
+
+### Session Persistence
+
+Sessions survive terminal disconnections and system restarts:
+- Task state is automatically saved to `.apex/apex.db`
+- Progress is preserved across interruptions
+- Resume where you left off with full context
+
+### Background Execution
+
+Run tasks in the background:
+
+```bash
+# Start task in background
+apex run "Fix memory leak" --background
+
+# Check background tasks
+apex status --background
+```
+
+## Keyboard Shortcuts & Tab Completion
+
+### Tab Completion
+
+APEX supports intelligent tab completion for faster workflows:
+
+```bash
+# Complete commands
+apex <tab>
+# Shows: init, run, status, logs, sessions, serve
+
+# Complete task IDs
+apex status task_<tab>
+# Shows recent task IDs
+
+# Complete autonomy levels
+apex run "task" --autonomy <tab>
+# Shows: full, review-before-commit, review-before-merge, manual
+```
+
+### Essential Shortcuts
+
+| Shortcut | Action |
+|----------|---------|
+| `Ctrl+C` | Graceful task termination |
+| `Ctrl+Z` | Pause task (resume with `fg`) |
+| `↑/↓` | Navigate command history |
+| `Tab` | Auto-complete commands/options |
+| `Ctrl+L` | Clear terminal (preserves task state) |
+
+### Setup Tab Completion
+
+Add to your shell profile for persistent completion:
+
+**Bash:**
+```bash
+echo 'eval "$(apex completion bash)"' >> ~/.bashrc
+```
+
+**Zsh:**
+```bash
+echo 'eval "$(apex completion zsh)"' >> ~/.zshrc
+```
+
+**Fish:**
+```bash
+apex completion fish | source
+```
+
 ## Autonomy Levels
 
 Choose how much control to give APEX:
@@ -157,6 +471,13 @@ apex logs task_abc123_def456
 
 ## Next Steps
 
+### ✨ NEW in v0.3.0 - Enhanced Features
+- **[Complete v0.3.0 Features Overview](features/v030-features.md)** - Comprehensive guide to all new features and capabilities
+- **[Display Modes Guide](user-guide/display-modes.md)** - Customize how information is displayed (compact, normal, verbose)
+- **[Input Preview Guide](user-guide/input-preview.md)** - Preview commands before execution with intent detection
+
+### Complete Documentation
+- [CLI Guide](cli-guide.md) - Complete command reference and advanced features
 - [Configure your agents](agents.md) - Customize agent behavior
 - [Define workflows](workflows.md) - Create custom development workflows
 - [API Reference](api-reference.md) - Integrate with your tools

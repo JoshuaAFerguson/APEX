@@ -154,6 +154,7 @@ describe('Agent Handoff Complete End-to-End Tests', () => {
       cost: 0.05,
       model: 'claude-3-sonnet',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

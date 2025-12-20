@@ -1,5 +1,61 @@
+/**
+ * Responsive StatusBar Component
+ *
+ * This component implements intelligent breakpoint-based segment adaptation that adjusts
+ * the displayed information based on terminal width. It uses a priority-based system
+ * to ensure the most important information is always visible.
+ *
+ * Architecture:
+ * - 5-tier priority system: CRITICAL > HIGH > MEDIUM > LOW
+ * - 3-tier responsive display: narrow (<60), normal (60-160), wide (>160)
+ * - Progressive segment hiding and abbreviation based on available space
+ *
+ * Priority Assignments:
+ * - CRITICAL: Connection status, Session timer (always shown)
+ * - HIGH: Git branch, Agent, Cost, Model
+ * - MEDIUM: Workflow stage, Tokens, Subtask progress
+ * - LOW: Session name, API URLs, Preview/Verbose indicators
+ *
+ * Responsive Behavior:
+ * - Narrow (<60 cols): Shows only CRITICAL + HIGH priority with abbreviated labels
+ * - Normal (60-160 cols): Shows CRITICAL + HIGH + MEDIUM with full labels
+ * - Wide (>160 cols): Shows all segments with full labels and extended details
+ *
+ * Display Modes:
+ * - 'compact': Always shows minimal segments (overrides responsive)
+ * - 'normal': Respects responsive tier filtering
+ * - 'verbose': Always shows all segments (overrides responsive)
+ */
+
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text } from 'ink';
+import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
+
+// Types for segment prioritization and responsive adaptation
+type SegmentPriority = 'critical' | 'high' | 'medium' | 'low';
+type DisplayTier = 'narrow' | 'normal' | 'wide';
+type AbbreviationMode = 'full' | 'abbreviated' | 'auto';
+
+// Priority-based filtering by display tier
+const PRIORITY_BY_TIER: Record<DisplayTier, SegmentPriority[]> = {
+  narrow: ['critical', 'high'],
+  normal: ['critical', 'high', 'medium'],
+  wide: ['critical', 'high', 'medium', 'low'],
+};
+
+// Mapping of full labels to their abbreviated forms
+const LABEL_ABBREVIATIONS: Record<string, string> = {
+  'tokens:': 'tk:',
+  'cost:': '', // Cost shows just value with $ symbol in abbreviated mode
+  'model:': 'm:',
+  'active:': 'a:',
+  'idle:': 'i:',
+  'stage:': 's:',
+  'session:': 'sess:',
+  'total:': '∑:',
+  'api:': '→',
+  'web:': '↗',
+};
 
 // Helper functions for formatting
 function formatTokens(input: number, output: number): string {
@@ -12,9 +68,37 @@ function formatTokens(input: number, output: number): string {
   return total.toString();
 }
 
+function formatTokenBreakdown(input: number, output: number): string {
+  const formatValue = (val: number): string => {
+    if (val >= 1000000) {
+      return `${(val / 1000000).toFixed(1)}M`;
+    } else if (val >= 1000) {
+      return `${(val / 1000).toFixed(1)}k`;
+    }
+    return val.toString();
+  };
+
+  return `${formatValue(input)}→${formatValue(output)}`;
+}
+
 function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
+
+function formatDetailedTime(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0) {
+    return `${hours}h${minutes % 60}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
+}
+
 
 export interface StatusBarProps {
   gitBranch?: string;
@@ -30,6 +114,16 @@ export interface StatusBarProps {
   sessionStartTime?: Date;
   subtaskProgress?: { completed: number; total: number };
   sessionName?: string;
+  displayMode?: 'normal' | 'compact' | 'verbose';
+  previewMode?: boolean;
+  showThoughts?: boolean;
+  // Verbose mode timing details
+  detailedTiming?: {
+    stageStartTime?: Date;
+    totalActiveTime?: number; // milliseconds of active processing
+    totalIdleTime?: number;   // milliseconds of waiting/idle
+    currentStageElapsed?: number; // milliseconds in current stage
+  };
 }
 
 export function StatusBar({
@@ -46,9 +140,20 @@ export function StatusBar({
   sessionStartTime,
   subtaskProgress,
   sessionName,
+  displayMode = 'normal',
+  previewMode = false,
+  showThoughts = false,
+  detailedTiming,
 }: StatusBarProps): React.ReactElement {
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns || 120;
+  const { width: terminalWidth, breakpoint } = useStdoutDimensions({
+    // Use default breakpoints: narrow: 60, compact: 100, normal: 160, wide: >= 160
+    fallbackWidth: 120,
+  });
+
+  // Determine display tier based on terminal width and acceptance criteria
+  // Narrow: <60, Normal: 60-160, Wide: >160 (to show extra details per acceptance criteria)
+  const displayTier: DisplayTier = terminalWidth < 60 ? 'narrow' :
+                                  terminalWidth <= 160 ? 'normal' : 'wide';
 
   // Session timer
   const [elapsed, setElapsed] = useState('00:00');
@@ -69,7 +174,8 @@ export function StatusBar({
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
-  // Calculate what fits in terminal width
+
+  // Build responsive segments based on terminal width and display mode
   const segments = buildSegments({
     gitBranch,
     tokens,
@@ -84,7 +190,11 @@ export function StatusBar({
     sessionStartTime,
     subtaskProgress,
     sessionName,
-  }, elapsed, terminalWidth);
+    displayMode,
+    previewMode,
+    showThoughts,
+    detailedTiming,
+  }, elapsed, terminalWidth, displayTier);
 
   return (
     <Box
@@ -97,7 +207,8 @@ export function StatusBar({
       <Box gap={2}>
         {segments.left.map((seg, i) => (
           <Text key={i}>
-            <Text color={seg.iconColor}>{seg.icon}</Text>
+            {seg.icon && <Text color={seg.iconColor}>{seg.icon}</Text>}
+            {seg.label && <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>}
             <Text color={seg.valueColor}>{seg.value}</Text>
           </Text>
         ))}
@@ -106,7 +217,7 @@ export function StatusBar({
       <Box gap={2}>
         {segments.right.map((seg, i) => (
           <Text key={i}>
-            <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>
+            {seg.label && <Text color={seg.labelColor || 'gray'}>{seg.label}</Text>}
             <Text color={seg.valueColor}>{seg.value}</Text>
           </Text>
         ))}
@@ -119,156 +230,587 @@ interface Segment {
   icon?: string;
   iconColor?: string;
   label?: string;
+  abbreviatedLabel?: string;
   labelColor?: string;
   value: string;
   valueColor: string;
   minWidth: number;
+  priority?: SegmentPriority; // Added for priority-aware trimToFit
+}
+
+// Enhanced segment interface with priority and responsive support
+interface ResponsiveSegment extends Segment {
+  id: string;
+  priority: SegmentPriority;
+  side: 'left' | 'right';
+  shouldShow: boolean;
+  narrowModeConfig?: {
+    hideLabel?: boolean;
+    hideValue?: boolean;
+    compressValue?: (value: string) => string;
+  };
 }
 
 function buildSegments(
   props: StatusBarProps,
   elapsed: string,
-  terminalWidth: number
+  terminalWidth: number,
+  displayTier: DisplayTier
 ): { left: Segment[]; right: Segment[] } {
-  const left: Segment[] = [];
-  const right: Segment[] = [];
+  // 1. Build all potential segments with their configurations
+  const allSegments = createSegmentConfigs(props, elapsed);
 
-  // Left side segments
-  left.push({
+  // 2. Filter by display mode (compact/normal/verbose)
+  const modeFiltered = filterByDisplayMode(allSegments, props.displayMode || 'normal');
+
+  // 3. Apply responsive tier filtering (narrow/normal/wide)
+  const tierFiltered = filterByTier(modeFiltered, displayTier);
+
+  // 4. Apply abbreviations and separate by side
+  const formatted = applyAbbreviations(tierFiltered, displayTier);
+
+  // 5. Final width-based trimming (fallback safety)
+  return trimToFit(formatted, terminalWidth);
+}
+
+// Create segment configurations with priority and responsive settings
+function createSegmentConfigs(
+  props: StatusBarProps,
+  elapsed: string
+): ResponsiveSegment[] {
+  const segments: ResponsiveSegment[] = [];
+
+  // Connection status - CRITICAL, always shown
+  segments.push({
+    id: 'connection',
+    side: 'left',
+    priority: 'critical',
     icon: props.isConnected !== false ? '●' : '○',
     iconColor: props.isConnected !== false ? 'green' : 'red',
+    label: undefined,
+    abbreviatedLabel: undefined,
+    labelColor: undefined,
     value: '',
     valueColor: 'white',
     minWidth: 2,
+    shouldShow: true,
   });
 
+  // Git branch - HIGH priority
   if (props.gitBranch) {
-    left.push({
+    segments.push({
+      id: 'gitBranch',
+      side: 'left',
+      priority: 'high',
       icon: '',
       iconColor: 'cyan',
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
       value: props.gitBranch,
       valueColor: 'yellow',
       minWidth: props.gitBranch.length + 3,
+      shouldShow: true,
+      narrowModeConfig: {
+        compressValue: (v) => v.length > 12 ? v.slice(0, 9) + '...' : v,
+      },
     });
   }
 
+  // Agent - HIGH priority
   if (props.agent) {
-    left.push({
+    segments.push({
+      id: 'agent',
+      side: 'left',
+      priority: 'high',
       icon: '⚡',
       iconColor: 'magenta',
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
       value: props.agent,
       valueColor: 'white',
       minWidth: props.agent.length + 2,
+      shouldShow: true,
     });
   }
 
+  // Workflow stage - MEDIUM priority
   if (props.workflowStage) {
-    left.push({
+    segments.push({
+      id: 'workflowStage',
+      side: 'left',
+      priority: 'medium',
       icon: '▶',
       iconColor: 'blue',
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
       value: props.workflowStage,
       valueColor: 'gray',
       minWidth: props.workflowStage.length + 2,
+      shouldShow: true,
     });
   }
 
+  // Subtask progress - MEDIUM priority
   if (props.subtaskProgress && props.subtaskProgress.total > 0) {
     const { completed, total } = props.subtaskProgress;
-    left.push({
+    segments.push({
+      id: 'subtaskProgress',
+      side: 'left',
+      priority: 'medium',
       icon: '📋',
       iconColor: 'cyan',
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
       value: `[${completed}/${total}]`,
       valueColor: completed === total ? 'green' : 'yellow',
       minWidth: 8,
+      shouldShow: true,
     });
   }
 
+  // Session name - LOW priority
   if (props.sessionName) {
-    left.push({
+    segments.push({
+      id: 'sessionName',
+      side: 'left',
+      priority: 'low',
       icon: '💾',
       iconColor: 'blue',
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
       value: props.sessionName.length > 15 ? props.sessionName.slice(0, 12) + '...' : props.sessionName,
       valueColor: 'cyan',
       minWidth: Math.min(props.sessionName.length + 2, 17),
+      shouldShow: true,
     });
   }
 
+  // API URL - LOW priority
   if (props.apiUrl) {
-    left.push({
+    segments.push({
+      id: 'apiUrl',
+      side: 'left',
+      priority: 'low',
+      icon: undefined,
+      iconColor: undefined,
       label: 'api:',
+      abbreviatedLabel: '→',
       labelColor: 'gray',
       value: props.apiUrl.replace('http://localhost:', ''),
       valueColor: 'green',
       minWidth: 10,
+      shouldShow: true,
     });
   }
 
+  // Web URL - LOW priority
   if (props.webUrl) {
-    left.push({
+    segments.push({
+      id: 'webUrl',
+      side: 'left',
+      priority: 'low',
+      icon: undefined,
+      iconColor: undefined,
       label: 'web:',
+      abbreviatedLabel: '↗',
       labelColor: 'gray',
       value: props.webUrl.replace('http://localhost:', ''),
       valueColor: 'green',
       minWidth: 10,
+      shouldShow: true,
     });
   }
 
-  // Right side segments
-  right.push({
-    label: '',
+  // Session timer - CRITICAL, always shown
+  segments.push({
+    id: 'sessionTimer',
+    side: 'right',
+    priority: 'critical',
+    icon: undefined,
+    iconColor: undefined,
+    label: undefined,
+    abbreviatedLabel: undefined,
+    labelColor: undefined,
     value: elapsed,
     valueColor: 'gray',
     minWidth: 6,
+    shouldShow: true,
   });
 
-  if (props.tokens) {
-    const total = props.tokens.input + props.tokens.output;
-    right.push({
-      label: 'tokens:',
-      labelColor: 'gray',
-      value: formatTokens(props.tokens.input, props.tokens.output),
-      valueColor: 'cyan',
-      minWidth: 14,
-    });
+  // Verbose mode timing details
+  if (props.displayMode === 'verbose' && props.detailedTiming) {
+    const { totalActiveTime, totalIdleTime, currentStageElapsed } = props.detailedTiming;
+
+    if (totalActiveTime !== undefined && totalIdleTime !== undefined) {
+      segments.push({
+        id: 'activeTime',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'active:',
+        abbreviatedLabel: 'a:',
+        labelColor: 'gray',
+        value: formatDetailedTime(totalActiveTime),
+        valueColor: 'green',
+        minWidth: 12,
+        shouldShow: true,
+      });
+
+      segments.push({
+        id: 'idleTime',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'idle:',
+        abbreviatedLabel: 'i:',
+        labelColor: 'gray',
+        value: formatDetailedTime(totalIdleTime),
+        valueColor: 'yellow',
+        minWidth: 10,
+        shouldShow: true,
+      });
+    }
+
+    if (currentStageElapsed !== undefined && props.workflowStage) {
+      segments.push({
+        id: 'stageTime',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'stage:',
+        abbreviatedLabel: 's:',
+        labelColor: 'gray',
+        value: formatDetailedTime(currentStageElapsed),
+        valueColor: 'cyan',
+        minWidth: 12,
+        shouldShow: true,
+      });
+    }
   }
 
+  // Tokens - MEDIUM priority
+  if (props.tokens) {
+    if (props.displayMode === 'verbose') {
+      // In verbose mode, show input→output breakdown
+      segments.push({
+        id: 'tokensBreakdown',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'tokens:',
+        abbreviatedLabel: 'tk:',
+        labelColor: 'gray',
+        value: formatTokenBreakdown(props.tokens.input, props.tokens.output),
+        valueColor: 'cyan',
+        minWidth: 18,
+        shouldShow: true,
+      });
+
+      // Also show total for clarity
+      segments.push({
+        id: 'tokensTotal',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'total:',
+        abbreviatedLabel: '∑:',
+        labelColor: 'gray',
+        value: formatTokens(props.tokens.input, props.tokens.output),
+        valueColor: 'blue',
+        minWidth: 12,
+        shouldShow: true,
+      });
+    } else {
+      segments.push({
+        id: 'tokens',
+        side: 'right',
+        priority: 'medium',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'tokens:',
+        abbreviatedLabel: 'tk:',
+        labelColor: 'gray',
+        value: formatTokens(props.tokens.input, props.tokens.output),
+        valueColor: 'cyan',
+        minWidth: 14,
+        shouldShow: true,
+      });
+    }
+  }
+
+  // Cost - HIGH priority
   if (props.cost !== undefined) {
-    right.push({
+    segments.push({
+      id: 'cost',
+      side: 'right',
+      priority: 'high',
+      icon: undefined,
+      iconColor: undefined,
       label: 'cost:',
+      abbreviatedLabel: '', // Empty abbreviation means no label when abbreviated
       labelColor: 'gray',
-      value: `$${props.cost.toFixed(4)}`,
+      value: formatCost(props.cost),
       valueColor: 'green',
       minWidth: 12,
+      shouldShow: true,
     });
+
+    // In verbose mode, also show session cost if different
+    if (props.displayMode === 'verbose' && props.sessionCost !== undefined && props.sessionCost !== props.cost) {
+      segments.push({
+        id: 'sessionCost',
+        side: 'right',
+        priority: 'low',
+        icon: undefined,
+        iconColor: undefined,
+        label: 'session:',
+        abbreviatedLabel: 'sess:',
+        labelColor: 'gray',
+        value: formatCost(props.sessionCost),
+        valueColor: 'yellow',
+        minWidth: 14,
+        shouldShow: true,
+      });
+    }
   }
 
+  // Model - HIGH priority
   if (props.model) {
-    right.push({
+    segments.push({
+      id: 'model',
+      side: 'right',
+      priority: 'high',
+      icon: undefined,
+      iconColor: undefined,
       label: 'model:',
+      abbreviatedLabel: 'm:',
       labelColor: 'gray',
       value: props.model,
       valueColor: 'blue',
       minWidth: props.model.length + 7,
+      shouldShow: true,
     });
   }
 
-  // Filter segments based on available width
-  const minLeftWidth = left.reduce((sum, s) => sum + s.minWidth + 1, 0);
-  const minRightWidth = right.reduce((sum, s) => sum + s.minWidth + 1, 0);
-  const padding = 6; // Border and spacing
+  // Preview mode indicator - LOW priority
+  if (props.previewMode) {
+    segments.push({
+      id: 'previewMode',
+      side: 'right',
+      priority: 'low',
+      icon: undefined,
+      iconColor: undefined,
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
+      value: '📋 PREVIEW',
+      valueColor: 'cyan',
+      minWidth: 9,
+      shouldShow: true,
+    });
+  }
 
-  if (minLeftWidth + minRightWidth + padding > terminalWidth) {
-    // Remove lower priority segments from left side
-    while (left.length > 3 &&
-           left.reduce((sum, s) => sum + s.minWidth + 1, 0) +
-           right.reduce((sum, s) => sum + s.minWidth + 1, 0) +
-           padding > terminalWidth) {
-      // Remove services first, then stage, keeping branch and agent
-      if (left.length > 3) {
-        left.splice(left.length - 1, 1);
+  // Show thoughts indicator - LOW priority
+  if (props.showThoughts) {
+    segments.push({
+      id: 'showThoughts',
+      side: 'right',
+      priority: 'low',
+      icon: undefined,
+      iconColor: undefined,
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
+      value: '💭 THOUGHTS',
+      valueColor: 'magenta',
+      minWidth: 10,
+      shouldShow: true,
+    });
+  }
+
+  // Verbose mode indicator - LOW priority
+  if (props.displayMode === 'verbose') {
+    segments.push({
+      id: 'verboseMode',
+      side: 'right',
+      priority: 'low',
+      icon: undefined,
+      iconColor: undefined,
+      label: undefined,
+      abbreviatedLabel: undefined,
+      labelColor: undefined,
+      value: '🔍 VERBOSE',
+      valueColor: 'cyan',
+      minWidth: 9,
+      shouldShow: true,
+    });
+  }
+
+  return segments;
+}
+
+// Filter segments by display mode
+function filterByDisplayMode(
+  segments: ResponsiveSegment[],
+  displayMode: 'normal' | 'compact' | 'verbose'
+): ResponsiveSegment[] {
+  if (displayMode === 'compact') {
+    // In compact mode, show only connection, git branch, and cost
+    return segments.filter(s =>
+      s.id === 'connection' ||
+      s.id === 'gitBranch' ||
+      s.id === 'cost'
+    );
+  }
+
+  // In verbose mode, show all segments
+  if (displayMode === 'verbose') {
+    return segments;
+  }
+
+  // In normal mode, exclude verbose-only timing details
+  return segments.filter(s =>
+    s.id !== 'activeTime' &&
+    s.id !== 'idleTime' &&
+    s.id !== 'stageTime' &&
+    s.id !== 'tokensBreakdown' &&
+    s.id !== 'tokensTotal' &&
+    s.id !== 'sessionCost'
+  );
+}
+
+// Filter segments by display tier based on priority
+function filterByTier(
+  segments: ResponsiveSegment[],
+  tier: DisplayTier
+): ResponsiveSegment[] {
+  const allowedPriorities = PRIORITY_BY_TIER[tier];
+  return segments.filter(s => allowedPriorities.includes(s.priority));
+}
+
+// Apply abbreviations and separate segments by side
+function applyAbbreviations(
+  segments: ResponsiveSegment[],
+  tier: DisplayTier
+): { left: Segment[]; right: Segment[] } {
+  const useAbbrev = tier === 'narrow';
+  const left: Segment[] = [];
+  const right: Segment[] = [];
+
+  segments.forEach(config => {
+    let effectiveLabel: string | undefined = config.label;
+    let effectiveValue = config.value;
+
+    if (useAbbrev) {
+      // Use abbreviated label if available
+      if (config.abbreviatedLabel !== undefined) {
+        effectiveLabel = config.abbreviatedLabel === '' ? undefined : config.abbreviatedLabel;
       }
+
+      // Apply value compression if available
+      if (config.narrowModeConfig?.compressValue) {
+        effectiveValue = config.narrowModeConfig.compressValue(config.value);
+      }
+    }
+
+    const segment: Segment = {
+      icon: config.icon,
+      iconColor: config.iconColor,
+      label: effectiveLabel,
+      abbreviatedLabel: config.abbreviatedLabel,
+      labelColor: config.labelColor,
+      value: effectiveValue,
+      valueColor: config.valueColor,
+      minWidth: config.minWidth,
+      priority: config.priority, // Preserve priority for trimToFit
+    };
+
+    // Add to the appropriate side
+    if (config.side === 'left') {
+      left.push(segment);
+    } else {
+      right.push(segment);
+    }
+  });
+
+  return { left, right };
+}
+
+// Priority-to-numeric mapping for sorting
+const PRIORITY_ORDER: Record<SegmentPriority, number> = {
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+};
+
+// Enhanced width-based trimming with priority-aware removal
+function trimToFit(
+  segments: { left: Segment[]; right: Segment[] },
+  terminalWidth: number
+): { left: Segment[]; right: Segment[] } {
+  // Calculate actual content width (not minWidth estimates)
+  const calculateActualWidth = (segs: Segment[]) =>
+    segs.reduce((sum, s) => {
+      const iconWidth = s.icon ? 2 : 0;
+      const labelWidth = s.label ? s.label.length : 0;
+      const valueWidth = s.value.length;
+      return sum + iconWidth + labelWidth + valueWidth + 1; // +1 for gap
+    }, 0);
+
+  const padding = 6; // Box border (2) + paddingX (2 each side)
+  const centerGap = 2; // Gap between left and right sections
+
+  let leftSegs = [...segments.left];
+  let rightSegs = [...segments.right];
+
+  // Helper to get numeric priority from segment
+  const getPriority = (seg: Segment): number => {
+    return seg.priority ? PRIORITY_ORDER[seg.priority] : 3; // Default to medium
+  };
+
+  // Sort remaining segments by priority (lowest first for removal)
+  // Keep tracking which side each segment is on
+  const getAllWithMeta = () => [
+    ...leftSegs.map((s, i) => ({ seg: s, side: 'left' as const, index: i, priority: getPriority(s) })),
+    ...rightSegs.map((s, i) => ({ seg: s, side: 'right' as const, index: i, priority: getPriority(s) })),
+  ].sort((a, b) => b.priority - a.priority); // Lowest priority first (higher number = lower priority)
+
+  // Iteratively remove lowest priority segment until fits
+  while (true) {
+    const leftWidth = calculateActualWidth(leftSegs);
+    const rightWidth = calculateActualWidth(rightSegs);
+    const totalWidth = leftWidth + rightWidth + padding + centerGap;
+
+    if (totalWidth <= terminalWidth) break;
+    if (leftSegs.length + rightSegs.length <= 2) break; // Keep at least connection + timer
+
+    // Find and remove lowest priority segment
+    const candidates = getAllWithMeta().filter(m =>
+      // Don't remove critical segments
+      m.priority !== 1 && // critical = 1 in numeric form
+      (m.side === 'left' ? leftSegs.length > 1 : rightSegs.length > 1)
+    );
+
+    if (candidates.length === 0) break;
+
+    const toRemove = candidates[0]; // Lowest priority
+    if (toRemove.side === 'left') {
+      leftSegs = leftSegs.filter((_, i) => i !== toRemove.index);
+    } else {
+      rightSegs = rightSegs.filter((_, i) => i !== toRemove.index);
     }
   }
 
-  return { left, right };
+  return { left: leftSegs, right: rightSegs };
 }

@@ -73,4 +73,19 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Smooth height animation using grid for ThoughtDisplay component */
+  .animate-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms ease-in-out;
+  }
+
+  .animate-collapse[data-expanded="true"] {
+    grid-template-rows: 1fr;
+  }
+
+  .animate-collapse-inner {
+    overflow: hidden;
+  }
 }

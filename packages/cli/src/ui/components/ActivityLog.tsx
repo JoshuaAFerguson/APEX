@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { useStdoutDimensions, type Breakpoint } from '../hooks/index.js';
 
 // Helper functions moved outside components for reuse
 const getLevelIcon = (level: string): { icon: string; color: string } => {
@@ -17,13 +18,70 @@ const getLevelIcon = (level: string): { icon: string; color: string } => {
   }
 };
 
-const formatTimestamp = (date: Date): string => {
-  return date.toLocaleTimeString('en-US', {
+const formatTimestamp = (date: Date, abbreviated: boolean = false, verbose: boolean = false): string => {
+  if (abbreviated) {
+    return date.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  const base = date.toLocaleTimeString('en-US', {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   });
+
+  // Add milliseconds in verbose mode
+  if (verbose) {
+    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    return `${base}.${ms}`;
+  }
+
+  return base;
+};
+
+// Responsive utility functions
+const calculateMessageMaxLength = (
+  totalWidth: number,
+  hasTimestamp: boolean,
+  hasAgent: boolean,
+  hasIcon: boolean,
+  isNarrow: boolean
+): number => {
+  // Reserve space for UI elements
+  let reserved = 4; // borders and padding
+  if (hasIcon) reserved += 3; // icon + space
+  if (hasTimestamp) reserved += isNarrow ? 8 : 12; // [HH:MM] or [HH:MM:SS] + brackets + space
+  if (hasAgent) reserved += 12; // average agent name [developer]
+
+  return Math.max(20, totalWidth - reserved);
+};
+
+const truncateMessage = (message: string, maxLength: number): string => {
+  if (message.length <= maxLength) return message;
+  return message.substring(0, maxLength - 3) + '...';
+};
+
+interface ResponsiveConfig {
+  messageMaxLength: number;
+  abbreviateTimestamp: boolean;
+  showIcons: boolean;
+}
+
+const getResponsiveConfig = (
+  width: number,
+  breakpoint: Breakpoint,
+  options: { hasTimestamp: boolean; hasAgent: boolean; hasIcon: boolean }
+): ResponsiveConfig => {
+  const isNarrow = breakpoint === 'narrow';
+  return {
+    messageMaxLength: calculateMessageMaxLength(width, options.hasTimestamp, options.hasAgent, options.hasIcon, isNarrow),
+    abbreviateTimestamp: isNarrow,
+    showIcons: !isNarrow || width >= 40, // Hide icons only in extremely narrow terminals
+  };
 };
 
 export interface LogEntry {
@@ -49,6 +107,7 @@ export interface ActivityLogProps {
   height?: number;
   title?: string;
   autoScroll?: boolean;
+  displayMode?: 'normal' | 'compact' | 'verbose';
 }
 
 /**
@@ -60,12 +119,24 @@ export function ActivityLog({
   showTimestamps = true,
   showAgents = true,
   allowCollapse = true,
-  filterLevel = 'debug',
-  width = 80,
-  height = 20,
+  filterLevel,
+  width: explicitWidth,
+  height: explicitHeight,
   title = 'Activity Log',
   autoScroll = true,
+  displayMode = 'normal',
 }: ActivityLogProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, height: terminalHeight, breakpoint } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+  const height = explicitHeight ?? terminalHeight;
+
+  // Get responsive configuration
+  const responsiveConfig = getResponsiveConfig(width, breakpoint, {
+    hasTimestamp: showTimestamps,
+    hasAgent: showAgents,
+    hasIcon: true,
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [filter, setFilter] = useState('');
@@ -73,9 +144,14 @@ export function ActivityLog({
 
   const levelOrder = { debug: 0, info: 1, warn: 2, error: 3, success: 1 };
 
+  // Determine effective filter level - auto-set to debug in verbose mode
+  const effectiveFilterLevel = displayMode === 'verbose'
+    ? (filterLevel ?? 'debug')  // If verbose, default to debug if no explicit level
+    : (filterLevel ?? 'info');   // Otherwise, default to info if no explicit level
+
   // Filter entries based on level and search
   const filteredEntries = entries
-    .filter(entry => levelOrder[entry.level] >= levelOrder[filterLevel])
+    .filter(entry => levelOrder[entry.level] >= levelOrder[effectiveFilterLevel])
     .filter(entry =>
       filter === '' ||
       entry.message.toLowerCase().includes(filter.toLowerCase()) ||
@@ -139,7 +215,10 @@ export function ActivityLog({
       <Box paddingX={1} paddingY={0}>
         <Text color="gray">Filter: </Text>
         <Text color="white">{filter || 'none'}</Text>
-        <Text color="gray"> | Level: {filterLevel}+</Text>
+        <Text color="gray"> | Level: {effectiveFilterLevel}+</Text>
+        {displayMode === 'verbose' && !filterLevel && (
+          <Text color="cyan"> (auto: verbose)</Text>
+        )}
       </Box>
 
       {/* Log entries */}
@@ -158,10 +237,10 @@ export function ActivityLog({
                 <Box>
                   {showTimestamps && (
                     <Text color="gray" dimColor>
-                      [{formatTimestamp(entry.timestamp)}]
+                      [{formatTimestamp(entry.timestamp, displayMode !== 'verbose' && responsiveConfig.abbreviateTimestamp, displayMode === 'verbose')}]
                     </Text>
                   )}
-                  <Text color={color}>{icon} </Text>
+                  {responsiveConfig.showIcons && <Text color={color}>{icon} </Text>}
                   {showAgents && entry.agent && (
                     <Text color="magenta" bold>[{entry.agent}] </Text>
                   )}
@@ -170,7 +249,7 @@ export function ActivityLog({
                   )}
                   <Text color={color}>
                     {isCollapsed ? '▶ ' : ''}
-                    {entry.message}
+                    {displayMode === 'verbose' ? entry.message : truncateMessage(entry.message, responsiveConfig.messageMaxLength)}
                   </Text>
                   {entry.duration && (
                     <Text color="gray" dimColor> ({formatDuration(entry.duration)})</Text>
@@ -178,7 +257,7 @@ export function ActivityLog({
                 </Box>
 
                 {/* Expanded data */}
-                {!isCollapsed && entry.data && Object.keys(entry.data).length > 0 && (
+                {((displayMode === 'verbose' && entry.data && Object.keys(entry.data).length > 0) || (!isCollapsed && entry.data && Object.keys(entry.data).length > 0)) && (
                   <Box marginLeft={showTimestamps ? 12 : 4} flexDirection="column">
                     {Object.entries(entry.data).map(([key, value]) => (
                       <Text key={key} color="gray" dimColor>
@@ -222,9 +301,20 @@ export function LogStream({
   onNewEntry,
   realTime = true,
   bufferSize = 1000,
-  width = 80,
-  height = 15,
+  width: explicitWidth,
+  height: explicitHeight,
 }: LogStreamProps): React.ReactElement {
+  // Use responsive dimensions when explicit values aren't provided
+  const { width: terminalWidth, height: terminalHeight, breakpoint } = useStdoutDimensions();
+  const width = explicitWidth ?? terminalWidth;
+  const height = explicitHeight ?? terminalHeight;
+
+  // Get responsive configuration
+  const responsiveConfig = getResponsiveConfig(width, breakpoint, {
+    hasTimestamp: true, // LogStream always shows timestamps
+    hasAgent: true,
+    hasIcon: true,
+  });
   const [buffer, setBuffer] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
@@ -270,13 +360,13 @@ export function LogStream({
           return (
             <Box key={`${entry.id}-${index}`}>
               <Text color="gray" dimColor>
-                {formatTimestamp(entry.timestamp)}
+                {formatTimestamp(entry.timestamp, responsiveConfig.abbreviateTimestamp)}
               </Text>
-              <Text color={color}>{icon} </Text>
+              {responsiveConfig.showIcons && <Text color={color}>{icon} </Text>}
               {entry.agent && (
                 <Text color="magenta" bold>[{entry.agent}] </Text>
               )}
-              <Text>{entry.message}</Text>
+              <Text>{truncateMessage(entry.message, responsiveConfig.messageMaxLength)}</Text>
             </Box>
           );
         })}

@@ -1,5 +1,5 @@
-import type { AgentInfo } from '../../AgentPanel';
-import type { ParallelAgent } from '../../ParallelExecutionView';
+import type { AgentInfo } from '../../AgentPanel.js';
+import type { ParallelAgent } from '../../ParallelExecutionView.js';
 
 // Standard workflow agents
 export const standardWorkflowAgents: AgentInfo[] = [

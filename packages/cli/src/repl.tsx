@@ -27,6 +27,10 @@ import { startInkApp, type InkAppInstance } from './ui/index.js';
 import { SessionStore } from './services/SessionStore.js';
 import { SessionAutoSaver } from './services/SessionAutoSaver.js';
 import { ConversationManager } from './services/ConversationManager.js';
+import {
+  handleSession as handleSessionCommand,
+  type SessionContext
+} from './handlers/session-handlers.js';
 
 // ============================================================================
 // Context
@@ -713,326 +717,18 @@ function getLevelIcon(level: string): string {
 // ============================================================================
 
 async function handleSession(args: string[]): Promise<void> {
-  if (!ctx.initialized || !ctx.sessionStore) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'APEX not initialized. Run /init first.',
-    });
-    return;
-  }
+  // Create session context from current REPL context
+  const sessionContext: SessionContext = {
+    initialized: ctx.initialized,
+    sessionStore: ctx.sessionStore,
+    sessionAutoSaver: ctx.sessionAutoSaver,
+    app: ctx.app,
+  };
 
-  const subcommand = args[0];
-
-  switch (subcommand) {
-    case 'list':
-      await handleSessionList(args.slice(1));
-      break;
-    case 'load':
-      await handleSessionLoad(args[1]);
-      break;
-    case 'save':
-      await handleSessionSave(args.slice(1));
-      break;
-    case 'branch':
-      await handleSessionBranch(args.slice(1));
-      break;
-    case 'export':
-      await handleSessionExport(args.slice(1));
-      break;
-    case 'delete':
-      await handleSessionDelete(args[1]);
-      break;
-    case 'info':
-      await handleSessionInfo();
-      break;
-    default:
-      ctx.app?.addMessage({
-        type: 'error',
-        content: `Unknown session command: ${subcommand || 'none'}\n\nUsage:\n  /session list [--all] [--search <query>]\n  /session load <id|name>\n  /session save <name> [--tags <tags>]\n  /session branch [<name>] [--from <index>]\n  /session export [--format md|json|html] [--output <file>]\n  /session delete <id>\n  /session info`,
-      });
-  }
+  // Delegate to extracted session handler
+  await handleSessionCommand(args, sessionContext);
 }
 
-async function handleSessionList(args: string[]): Promise<void> {
-  if (!ctx.sessionStore) return;
-
-  const all = args.includes('--all');
-  const searchIndex = args.indexOf('--search');
-  const search = searchIndex >= 0 ? args[searchIndex + 1] : undefined;
-
-  const sessions = await ctx.sessionStore.listSessions({ all, search, limit: 20 });
-
-  if (sessions.length === 0) {
-    ctx.app?.addMessage({
-      type: 'system',
-      content: 'No sessions found.',
-    });
-    return;
-  }
-
-  const lines = ['**Sessions:**\n'];
-  for (const session of sessions) {
-    const name = session.name || 'Unnamed';
-    const date = new Date(session.updatedAt).toLocaleDateString();
-    const archived = session.isArchived ? ' (archived)' : '';
-    lines.push(`  ${session.id.slice(0, 12)} │ ${name.padEnd(20)} │ ${session.messageCount} msgs │ $${session.totalCost.toFixed(2)} │ ${date}${archived}`);
-  }
-
-  ctx.app?.addMessage({
-    type: 'assistant',
-    content: lines.join('\n'),
-  });
-}
-
-async function handleSessionLoad(sessionId: string): Promise<void> {
-  if (!ctx.sessionStore || !ctx.sessionAutoSaver || !sessionId) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'Usage: /session load <session_id>',
-    });
-    return;
-  }
-
-  try {
-    const session = await ctx.sessionStore.getSession(sessionId);
-    if (!session) {
-      ctx.app?.addMessage({
-        type: 'error',
-        content: `Session not found: ${sessionId}`,
-      });
-      return;
-    }
-
-    // Save current session before switching
-    await ctx.sessionAutoSaver.save();
-
-    // Load the new session
-    await ctx.sessionAutoSaver.start(sessionId);
-    await ctx.sessionStore.setActiveSession(sessionId);
-
-    ctx.app?.addMessage({
-      type: 'system',
-      content: `Loaded session: ${session.name || sessionId}\nMessages: ${session.messages.length}, Cost: $${session.state.totalCost.toFixed(4)}`,
-    });
-
-    // Update app state with session info
-    ctx.app?.updateState({
-      sessionName: session.name,
-      sessionStartTime: session.lastAccessedAt,
-    });
-
-  } catch (error) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Failed to load session: ${(error as Error).message}`,
-    });
-  }
-}
-
-async function handleSessionSave(args: string[]): Promise<void> {
-  if (!ctx.sessionAutoSaver || !args[0]) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'Usage: /session save <name> [--tags tag1,tag2]',
-    });
-    return;
-  }
-
-  const name = args[0];
-  const tagsIndex = args.indexOf('--tags');
-  const tags = tagsIndex >= 0 ? args[tagsIndex + 1]?.split(',') || [] : [];
-
-  try {
-    await ctx.sessionAutoSaver.updateSessionInfo({ name, tags });
-    await ctx.sessionAutoSaver.save();
-
-    ctx.app?.addMessage({
-      type: 'system',
-      content: `Session saved as "${name}"${tags.length > 0 ? ` with tags: ${tags.join(', ')}` : ''}`,
-    });
-
-    ctx.app?.updateState({ sessionName: name });
-  } catch (error) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Failed to save session: ${(error as Error).message}`,
-    });
-  }
-}
-
-async function handleSessionBranch(args: string[]): Promise<void> {
-  if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
-
-  const currentSession = ctx.sessionAutoSaver.getSession();
-  if (!currentSession) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'No active session to branch from.',
-    });
-    return;
-  }
-
-  const name = args[0];
-  const fromIndex = args.includes('--from') ?
-    parseInt(args[args.indexOf('--from') + 1], 10) :
-    currentSession.messages.length - 1;
-
-  if (isNaN(fromIndex) || fromIndex < 0 || fromIndex >= currentSession.messages.length) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Invalid message index: ${fromIndex}. Must be between 0 and ${currentSession.messages.length - 1}`,
-    });
-    return;
-  }
-
-  try {
-    const branchedSession = await ctx.sessionStore.branchSession(
-      currentSession.id,
-      fromIndex,
-      name
-    );
-
-    // Switch to the new branch
-    await ctx.sessionAutoSaver.start(branchedSession.id);
-    await ctx.sessionStore.setActiveSession(branchedSession.id);
-
-    ctx.app?.addMessage({
-      type: 'system',
-      content: `Created and switched to branch: ${branchedSession.name}\nBranched from message ${fromIndex + 1} of ${currentSession.messages.length}`,
-    });
-
-    ctx.app?.updateState({
-      sessionName: branchedSession.name,
-      sessionStartTime: branchedSession.createdAt,
-    });
-  } catch (error) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Failed to create branch: ${(error as Error).message}`,
-    });
-  }
-}
-
-async function handleSessionExport(args: string[]): Promise<void> {
-  if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
-
-  const currentSession = ctx.sessionAutoSaver.getSession();
-  if (!currentSession) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'No active session to export.',
-    });
-    return;
-  }
-
-  const formatIndex = args.indexOf('--format');
-  const format = (formatIndex >= 0 ? args[formatIndex + 1] : 'md') as 'md' | 'json' | 'html';
-
-  const outputIndex = args.indexOf('--output');
-  const outputFile = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
-
-  try {
-    const exported = await ctx.sessionStore.exportSession(currentSession.id, format);
-
-    if (outputFile) {
-      await fs.writeFile(outputFile, exported, 'utf-8');
-      ctx.app?.addMessage({
-        type: 'system',
-        content: `Session exported to ${outputFile} (${format.toUpperCase()} format)`,
-      });
-    } else {
-      // Show first 500 characters as preview
-      const preview = exported.length > 500 ? exported.slice(0, 500) + '...' : exported;
-      ctx.app?.addMessage({
-        type: 'assistant',
-        content: `**Session Export (${format.toUpperCase()}):**\n\`\`\`${format}\n${preview}\n\`\`\``,
-      });
-    }
-  } catch (error) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Failed to export session: ${(error as Error).message}`,
-    });
-  }
-}
-
-async function handleSessionDelete(sessionId: string): Promise<void> {
-  if (!ctx.sessionStore || !sessionId) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'Usage: /session delete <session_id>',
-    });
-    return;
-  }
-
-  try {
-    const session = await ctx.sessionStore.getSession(sessionId);
-    if (!session) {
-      ctx.app?.addMessage({
-        type: 'error',
-        content: `Session not found: ${sessionId}`,
-      });
-      return;
-    }
-
-    await ctx.sessionStore.deleteSession(sessionId);
-    ctx.app?.addMessage({
-      type: 'system',
-      content: `Deleted session: ${session.name || sessionId}`,
-    });
-  } catch (error) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: `Failed to delete session: ${(error as Error).message}`,
-    });
-  }
-}
-
-async function handleSessionInfo(): Promise<void> {
-  if (!ctx.sessionAutoSaver) return;
-
-  const currentSession = ctx.sessionAutoSaver.getSession();
-  if (!currentSession) {
-    ctx.app?.addMessage({
-      type: 'error',
-      content: 'No active session.',
-    });
-    return;
-  }
-
-  const lines = [
-    `**Current Session:**`,
-    `  ID: ${currentSession.id}`,
-    `  Name: ${currentSession.name || 'Unnamed'}`,
-    `  Messages: ${currentSession.messages.length}`,
-    `  Created: ${currentSession.createdAt.toLocaleString()}`,
-    `  Updated: ${currentSession.updatedAt.toLocaleString()}`,
-    `  Total Cost: $${currentSession.state.totalCost.toFixed(4)}`,
-    `  Tokens: ${formatTokens(currentSession.state.totalTokens.input + currentSession.state.totalTokens.output)}`,
-  ];
-
-  if (currentSession.tags.length > 0) {
-    lines.push(`  Tags: ${currentSession.tags.join(', ')}`);
-  }
-
-  if (currentSession.parentSessionId) {
-    lines.push(`  Branched from: ${currentSession.parentSessionId}`);
-  }
-
-  if (currentSession.childSessionIds.length > 0) {
-    lines.push(`  Branches: ${currentSession.childSessionIds.length}`);
-  }
-
-  const unsavedChanges = ctx.sessionAutoSaver.getUnsavedChangesCount();
-  if (unsavedChanges > 0) {
-    lines.push(`  Unsaved changes: ${unsavedChanges}`);
-  }
-
-  ctx.app?.addMessage({
-    type: 'assistant',
-    content: lines.join('\n'),
-  });
-}
 
 // ============================================================================
 // Task Execution
@@ -1220,6 +916,297 @@ function setConfigValue(config: ApexConfig, key: string, value: string): void {
 }
 
 // ============================================================================
+// Display Mode Command Handlers
+// ============================================================================
+
+async function handleCompact(): Promise<void> {
+  // Get current state to implement toggle behavior
+  const currentState = ctx.app?.getState();
+  const newMode = currentState?.displayMode === 'compact' ? 'normal' : 'compact';
+
+  ctx.app?.updateState({ displayMode: newMode });
+  ctx.app?.addMessage({
+    type: 'system',
+    content: newMode === 'compact'
+      ? 'Display mode set to compact: Single-line status, condensed output'
+      : 'Display mode set to normal: Standard display with all components shown',
+  });
+}
+
+async function handleVerbose(): Promise<void> {
+  // Get current state to implement toggle behavior
+  const currentState = ctx.app?.getState();
+  const newMode = currentState?.displayMode === 'verbose' ? 'normal' : 'verbose';
+
+  ctx.app?.updateState({ displayMode: newMode });
+  ctx.app?.addMessage({
+    type: 'system',
+    content: newMode === 'verbose'
+      ? 'Display mode set to verbose: Detailed debug output, full information'
+      : 'Display mode set to normal: Standard display with all components shown',
+  });
+}
+
+// Helper function to persist preview configuration changes to disk
+async function persistPreviewConfig(previewConfig: {
+  confidenceThreshold: number;
+  autoExecuteHighConfidence: boolean;
+  timeoutMs: number;
+}): Promise<void> {
+  if (!ctx.config || !ctx.initialized) return;
+
+  // Update config object with current state
+  ctx.config.ui = {
+    ...ctx.config.ui,
+    previewMode: ctx.app?.getState()?.previewMode ?? ctx.config.ui?.previewMode ?? true,
+    previewConfidence: previewConfig.confidenceThreshold,
+    autoExecuteHighConfidence: previewConfig.autoExecuteHighConfidence,
+    previewTimeout: previewConfig.timeoutMs,
+  };
+
+  // Persist to file
+  try {
+    await saveConfig(ctx.cwd, ctx.config);
+  } catch (error) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Failed to persist config: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function handlePreview(args: string[]): Promise<void> {
+  const action = args[0]?.toLowerCase();
+  const value = args[1];
+
+  // Get current state
+  const currentState = ctx.app?.getState();
+
+  switch (action) {
+    case 'on':
+      ctx.app?.updateState({ previewMode: true, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Preview mode enabled. You will see a preview before each execution.',
+      });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
+      break;
+
+    case 'off':
+      ctx.app?.updateState({ previewMode: false, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Preview mode disabled.',
+      });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
+      break;
+
+    case undefined:
+    case 'toggle':
+      const newMode = !currentState?.previewMode;
+      ctx.app?.updateState({ previewMode: newMode, pendingPreview: undefined });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: `Preview mode ${newMode ? 'enabled' : 'disabled'}.`,
+      });
+      // Persist the preview mode change
+      if (currentState?.previewConfig) {
+        await persistPreviewConfig(currentState.previewConfig);
+      }
+      break;
+
+    case 'confidence':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Preview confidence threshold: ${(currentState?.previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
+        });
+      } else {
+        const parsed = parseFloat(value);
+        if (isNaN(parsed)) {
+          ctx.app?.addMessage({
+            type: 'error',
+            content: 'Confidence must be a number between 0-1 (e.g., 0.7) or 0-100 (e.g., 70).',
+          });
+        } else {
+          // Auto-detect range: 0-1 vs 0-100
+          const threshold = parsed > 1 ? parsed / 100 : parsed;
+
+          if (threshold < 0 || threshold > 1) {
+            ctx.app?.addMessage({
+              type: 'error',
+              content: 'Confidence threshold must be between 0-1 (or 0-100).',
+            });
+          } else {
+            const newConfig = {
+              ...currentState?.previewConfig,
+              confidenceThreshold: threshold,
+            };
+            ctx.app?.updateState({ previewConfig: newConfig });
+
+            // Persist to config file
+            await persistPreviewConfig(newConfig);
+
+            ctx.app?.addMessage({
+              type: 'system',
+              content: `Preview confidence threshold set to ${(threshold * 100).toFixed(0)}%.`,
+            });
+          }
+        }
+      }
+      break;
+
+    case 'timeout':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Preview timeout: ${currentState?.previewConfig.timeoutMs / 1000}s`,
+        });
+      } else {
+        const timeout = parseInt(value, 10);
+        if (isNaN(timeout) || timeout < 1) {
+          ctx.app?.addMessage({
+            type: 'error',
+            content: 'Timeout must be a positive number (in seconds).',
+          });
+        } else {
+          const newConfig = {
+            ...currentState?.previewConfig,
+            timeoutMs: timeout * 1000,
+          };
+          ctx.app?.updateState({ previewConfig: newConfig });
+
+          // Persist to config file
+          await persistPreviewConfig(newConfig);
+
+          ctx.app?.addMessage({
+            type: 'system',
+            content: `Preview timeout set to ${timeout}s.`,
+          });
+        }
+      }
+      break;
+
+    case 'auto':
+      if (value === undefined) {
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: `Auto-execute high confidence: ${currentState?.previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
+        });
+      } else if (value === 'on' || value === 'true') {
+        const newConfig = {
+          ...currentState?.previewConfig,
+          autoExecuteHighConfidence: true,
+        };
+        ctx.app?.updateState({ previewConfig: newConfig });
+
+        // Persist to config file
+        await persistPreviewConfig(newConfig);
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: 'Auto-execute for high confidence inputs enabled.',
+        });
+      } else if (value === 'off' || value === 'false') {
+        const newConfig = {
+          ...currentState?.previewConfig,
+          autoExecuteHighConfidence: false,
+        };
+        ctx.app?.updateState({ previewConfig: newConfig });
+
+        // Persist to config file
+        await persistPreviewConfig(newConfig);
+
+        ctx.app?.addMessage({
+          type: 'system',
+          content: 'Auto-execute for high confidence inputs disabled.',
+        });
+      } else {
+        ctx.app?.addMessage({
+          type: 'error',
+          content: 'Usage: /preview auto [on|off]',
+        });
+      }
+      break;
+
+    case 'status':
+    case 'settings':  // Add alias for settings
+      const config = currentState?.previewConfig;
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `Preview Settings:
+• Mode: ${currentState?.previewMode ? 'enabled' : 'disabled'}
+• Confidence threshold: ${(config?.confidenceThreshold * 100).toFixed(0)}%
+• Auto-execute high confidence: ${config?.autoExecuteHighConfidence ? 'enabled' : 'disabled'}
+• Timeout: ${config?.timeoutMs / 1000}s`,
+      });
+      break;
+
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: 'Usage: /preview [on|off|toggle|status|settings|confidence|timeout|auto]',
+      });
+  }
+}
+
+async function handleThoughts(args: string[]): Promise<void> {
+  const action = args[0]?.toLowerCase();
+
+  // Get current state
+  const currentState = ctx.app?.getState();
+
+  switch (action) {
+    case 'on':
+      ctx.app?.updateState({ showThoughts: true });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Thought visibility enabled: AI reasoning will be shown',
+      });
+      break;
+
+    case 'off':
+      ctx.app?.updateState({ showThoughts: false });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Thought visibility disabled: AI reasoning will be hidden',
+      });
+      break;
+
+    case undefined:
+    case 'toggle':
+      const newShowThoughts = !currentState?.showThoughts;
+      ctx.app?.updateState({ showThoughts: newShowThoughts });
+      ctx.app?.addMessage({
+        type: 'system',
+        content: newShowThoughts
+          ? 'Thought visibility enabled: AI reasoning will be shown'
+          : 'Thought visibility disabled: AI reasoning will be hidden',
+      });
+      break;
+
+    case 'status':
+      ctx.app?.addMessage({
+        type: 'assistant',
+        content: `Thought visibility is currently ${currentState?.showThoughts ? 'enabled' : 'disabled'}.`,
+      });
+      break;
+
+    default:
+      ctx.app?.addMessage({
+        type: 'error',
+        content: 'Usage: /thoughts [on|off|toggle|status]',
+      });
+  }
+}
+
+// ============================================================================
 // Command Router
 // ============================================================================
 
@@ -1265,6 +1252,19 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
       break;
     case 'session':
       await handleSession(args);
+      break;
+    case 'compact':
+      await handleCompact();
+      break;
+    case 'verbose':
+      await handleVerbose();
+      break;
+    case 'preview':
+    case 'p':
+      await handlePreview(args);
+      break;
+    case 'thoughts':
+      await handleThoughts(args);
       break;
     default:
       ctx.app?.addMessage({
@@ -1461,6 +1461,17 @@ export async function startInkREPL(): Promise<void> {
         }
       });
 
+      // Stream agent thinking to the UI
+      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+        // Add thinking content as a separate message type
+        ctx.app?.addMessage({
+          type: 'assistant',
+          content: '', // No visible content, thinking is stored separately
+          agent,
+          thinking,
+        });
+      });
+
       // Stream tool use events to the UI
       ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
         // Display tool usage in a compact format
@@ -1522,6 +1533,172 @@ export async function startInkREPL(): Promise<void> {
           parallelAgents: [],
           showParallelPanel: false,
         });
+      });
+
+      // Aggregate verbose debug data from orchestrator events
+      let currentVerboseData: VerboseDebugData | undefined;
+      let stageStartTime: Date | undefined;
+
+      // Helper to initialize verbose data for a task
+      const initializeVerboseData = () => {
+        currentVerboseData = {
+          agentTokens: {},
+          timing: {
+            stageStartTime: new Date(),
+            agentResponseTimes: {},
+            toolUsageTimes: {},
+          },
+          agentDebug: {
+            conversationLength: {},
+            toolCallCounts: {},
+            errorCounts: {},
+            retryAttempts: {},
+          },
+          metrics: {
+            tokensPerSecond: 0,
+            averageResponseTime: 0,
+            toolEfficiency: {},
+          },
+        };
+        stageStartTime = new Date();
+      };
+
+      // Helper to calculate performance metrics
+      const updatePerformanceMetrics = () => {
+        if (!currentVerboseData) return;
+
+        const agents = Object.keys(currentVerboseData.agentTokens);
+        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes);
+
+        if (responseTimes.length > 0) {
+          currentVerboseData.metrics.averageResponseTime =
+            responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+        }
+
+        // Calculate tokens per second based on total tokens and elapsed time
+        const totalTokens = agents.reduce((sum, agent) => {
+          const usage = currentVerboseData!.agentTokens[agent];
+          return sum + usage.inputTokens + usage.outputTokens;
+        }, 0);
+
+        if (stageStartTime && totalTokens > 0) {
+          const elapsedSeconds = (Date.now() - stageStartTime.getTime()) / 1000;
+          currentVerboseData.metrics.tokensPerSecond = elapsedSeconds > 0 ? totalTokens / elapsedSeconds : 0;
+        }
+
+        // Calculate tool efficiency based on usage vs errors
+        Object.keys(currentVerboseData.timing.toolUsageTimes).forEach(tool => {
+          const errorCounts = Object.values(currentVerboseData!.agentDebug.errorCounts).reduce((sum, count) => sum + count, 0);
+          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) =>
+            sum + (toolCounts[tool] || 0), 0);
+          currentVerboseData!.metrics.toolEfficiency[tool] = toolUsages > 0 ? 1 - (errorCounts / toolUsages) : 1;
+        });
+      };
+
+      // Track task lifecycle for verbose data
+      ctx.orchestrator.on('task:started', (task) => {
+        initializeVerboseData();
+        ctx.app?.updateState({ verboseData: currentVerboseData });
+      });
+
+      ctx.orchestrator.on('task:stage-changed', (task, stageName) => {
+        if (currentVerboseData) {
+          // Complete previous stage timing
+          const now = new Date();
+          if (stageStartTime) {
+            currentVerboseData.timing.stageEndTime = now;
+            currentVerboseData.timing.stageDuration = now.getTime() - stageStartTime.getTime();
+          }
+          // Start new stage
+          stageStartTime = now;
+          currentVerboseData.timing.stageStartTime = now;
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track agent token usage
+      ctx.orchestrator.on('usage:updated', (taskId, usage) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          currentVerboseData.agentTokens[agent] = {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            estimatedCost: usage.estimatedCost,
+          };
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track agent response times and tool usage
+      const agentResponseStartTimes = new Map<string, number>();
+      const toolUsageStartTimes = new Map<string, number>();
+
+      ctx.orchestrator.on('agent:message', (taskId, message) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          const endTime = Date.now();
+          const startTime = agentResponseStartTimes.get(agent);
+
+          if (startTime) {
+            currentVerboseData.timing.agentResponseTimes[agent] = endTime - startTime;
+            agentResponseStartTimes.delete(agent);
+          }
+
+          // Update conversation length
+          currentVerboseData.agentDebug.conversationLength[agent] =
+            (currentVerboseData.agentDebug.conversationLength[agent] || 0) + 1;
+
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      ctx.orchestrator.on('agent:thinking', (taskId, agent, thinking) => {
+        // Mark agent response start time
+        agentResponseStartTimes.set(agent, Date.now());
+      });
+
+      ctx.orchestrator.on('agent:tool-use', (taskId, tool, input) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+
+          // Track tool usage start time
+          toolUsageStartTimes.set(tool, Date.now());
+
+          // Update tool call counts
+          if (!currentVerboseData.agentDebug.toolCallCounts[agent]) {
+            currentVerboseData.agentDebug.toolCallCounts[agent] = {};
+          }
+          currentVerboseData.agentDebug.toolCallCounts[agent][tool] =
+            (currentVerboseData.agentDebug.toolCallCounts[agent][tool] || 0) + 1;
+
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Track task completion/failure for final metrics
+      ctx.orchestrator.on('task:completed', (task) => {
+        if (currentVerboseData) {
+          const now = new Date();
+          if (stageStartTime) {
+            currentVerboseData.timing.stageEndTime = now;
+            currentVerboseData.timing.stageDuration = now.getTime() - stageStartTime.getTime();
+          }
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      ctx.orchestrator.on('task:failed', (task, error) => {
+        if (currentVerboseData && ctx.app?.getState()?.activeAgent) {
+          const agent = ctx.app.getState()?.activeAgent || 'unknown';
+          currentVerboseData.agentDebug.errorCounts[agent] =
+            (currentVerboseData.agentDebug.errorCounts[agent] || 0) + 1;
+          updatePerformanceMetrics();
+          ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
       });
 
       // Initialize session management

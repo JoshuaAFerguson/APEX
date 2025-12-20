@@ -107,6 +107,7 @@ describe('REPL Orchestrator Integration', () => {
       model: 'claude-3-sonnet',
       activeAgent: 'planner',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

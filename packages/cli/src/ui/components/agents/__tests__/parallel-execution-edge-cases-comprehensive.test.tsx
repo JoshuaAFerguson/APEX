@@ -52,6 +52,7 @@ describe('Parallel Execution Edge Cases - Comprehensive Testing', () => {
       model: 'claude-3-sonnet',
       activeAgent: 'agent-0',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
 
     onCommand = vi.fn();

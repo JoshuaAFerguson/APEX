@@ -9,6 +9,12 @@ vi.mock('../../hooks/useElapsedTime.js', () => ({
   useElapsedTime: mockUseElapsedTime,
 }));
 
+// Mock the useStdoutDimensions hook
+const mockUseStdoutDimensions = vi.fn();
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
+  useStdoutDimensions: mockUseStdoutDimensions,
+}));
+
 // Mock the ProgressBar component
 vi.mock('../ProgressIndicators.js', () => ({
   ProgressBar: vi.fn(({ progress, showPercentage }) => `[ProgressBar: ${progress}%${showPercentage ? ' shown' : ''}]`),
@@ -17,6 +23,17 @@ vi.mock('../ProgressIndicators.js', () => ({
 describe('ParallelExecutionView', () => {
   beforeEach(() => {
     mockUseElapsedTime.mockReturnValue('1m 23s');
+    // Mock useStdoutDimensions with default values that don't interfere with existing tests
+    mockUseStdoutDimensions.mockReturnValue({
+      width: 120,
+      height: 30,
+      isNarrow: false,
+      isCompact: false,
+      isNormal: true,
+      isWide: false,
+      breakpoint: 'normal',
+      isAvailable: true,
+    });
   });
 
   afterEach(() => {

@@ -101,6 +101,48 @@ describe('getEffectiveConfig', () => {
     expect(effective.autonomy.default).toBe('full');
     expect(effective.limits.maxCostPerTask).toBe(5.0);
   });
+
+  it('should apply UI config defaults', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.ui.previewMode).toBe(true);
+    expect(effective.ui.previewConfidence).toBe(0.7);
+    expect(effective.ui.autoExecuteHighConfidence).toBe(false);
+    expect(effective.ui.previewTimeout).toBe(5000);
+  });
+
+  it('should preserve explicit UI config values', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        previewMode: false,
+        previewConfidence: 0.9,
+        autoExecuteHighConfidence: true,
+        previewTimeout: 7500,
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.ui.previewMode).toBe(false);
+    expect(effective.ui.previewConfidence).toBe(0.9);
+    expect(effective.ui.autoExecuteHighConfidence).toBe(true);
+    expect(effective.ui.previewTimeout).toBe(7500);
+  });
 });
 
 describe('isApexInitialized', () => {

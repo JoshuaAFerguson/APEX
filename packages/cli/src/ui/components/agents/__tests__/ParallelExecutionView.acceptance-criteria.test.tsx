@@ -16,6 +16,12 @@ vi.mock('../../hooks/useElapsedTime.js', () => ({
   useElapsedTime: mockUseElapsedTime,
 }));
 
+// Mock the useStdoutDimensions hook
+const mockUseStdoutDimensions = vi.fn();
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
+  useStdoutDimensions: mockUseStdoutDimensions,
+}));
+
 // Mock the ProgressBar component
 vi.mock('../ProgressIndicators.js', () => ({
   ProgressBar: vi.fn(({ progress, showPercentage, color }) =>
@@ -27,6 +33,17 @@ describe('ParallelExecutionView - Acceptance Criteria Tests', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockUseElapsedTime.mockReturnValue('1m 23s');
+    // Mock useStdoutDimensions with default values that don't interfere with existing tests
+    mockUseStdoutDimensions.mockReturnValue({
+      width: 120,
+      height: 30,
+      isNarrow: false,
+      isCompact: false,
+      isNormal: true,
+      isWide: false,
+      breakpoint: 'normal',
+      isAvailable: true,
+    });
   });
 
   afterEach(() => {

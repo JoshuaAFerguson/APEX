@@ -1,12 +1,14 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import SyntaxHighlight from 'ink-syntax-highlight';
+import type { DisplayMode } from '@apexcli/core';
 
 export interface ResponseStreamProps {
   content: string;
   isStreaming?: boolean;
   agent?: string;
   type?: 'text' | 'tool' | 'error' | 'system';
+  displayMode?: DisplayMode;
 }
 
 interface CodeBlock {
@@ -19,6 +21,7 @@ export function ResponseStream({
   isStreaming = false,
   agent,
   type = 'text',
+  displayMode = 'normal',
 }: ResponseStreamProps): React.ReactElement {
   const getTypeColor = () => {
     switch (type) {
@@ -191,6 +194,21 @@ export function ResponseStream({
 
   // Render code block with syntax highlighting
   const renderCodeBlock = (block: CodeBlock, index: number) => {
+    // In compact mode, show simplified code blocks
+    if (displayMode === 'compact') {
+      const lines = block.code.split('\n');
+      const truncatedLines = lines.length > 3 ? [...lines.slice(0, 3), `... ${lines.length - 3} more lines`] : lines;
+      return (
+        <Box key={`code-${index}`} flexDirection="column" marginY={1} paddingX={1}>
+          <Text color="gray" dimColor>
+            [{block.language}] {truncatedLines.join(' | ')}
+          </Text>
+        </Box>
+      );
+    }
+
+    // Normal and verbose mode
+    const shouldShowLineNumbers = displayMode === 'verbose';
     return (
       <Box key={`code-${index}`} flexDirection="column" marginY={1} borderStyle="round" borderColor="gray" paddingX={1}>
         <Box marginBottom={1}>
@@ -200,12 +218,16 @@ export function ResponseStream({
         </Box>
         {block.code.split('\n').map((line, lineIdx) => (
           <Box key={lineIdx}>
-            <Text color="gray" dimColor>
-              {String(lineIdx + 1).padStart(3, ' ')}
-            </Text>
-            <Text color="gray" dimColor>
-              {' │ '}
-            </Text>
+            {shouldShowLineNumbers && (
+              <>
+                <Text color="gray" dimColor>
+                  {String(lineIdx + 1).padStart(3, ' ')}
+                </Text>
+                <Text color="gray" dimColor>
+                  {' │ '}
+                </Text>
+              </>
+            )}
             <SyntaxHighlight language={block.language} code={line} />
           </Box>
         ))}
@@ -229,13 +251,40 @@ export function ResponseStream({
     });
   };
 
+  // Compact mode: single line with truncated content
+  if (displayMode === 'compact') {
+    const truncatedContent = content.length > 80 ? content.slice(0, 80) + '...' : content;
+    return (
+      <Box gap={1}>
+        {agent && (
+          <Text color="magenta">[{agent}]</Text>
+        )}
+        {type !== 'text' && (
+          <Text color={getTypeColor()}>
+            {getTypePrefix()}
+          </Text>
+        )}
+        <Text>{truncatedContent.replace(/\n/g, ' ')}</Text>
+        {isStreaming && (
+          <Text color="cyan" dimColor>
+            █
+          </Text>
+        )}
+      </Box>
+    );
+  }
+
+  // Normal and verbose mode
   return (
     <Box flexDirection="column" marginY={1}>
-      {/* Agent header */}
+      {/* Agent header - show more details in verbose mode */}
       {agent && (
         <Box marginBottom={1}>
           <Text color="magenta" bold>
             [{agent}]
+            {displayMode === 'verbose' && type !== 'text' && (
+              <Text color="gray" dimColor> ({type})</Text>
+            )}
           </Text>
         </Box>
       )}
@@ -245,6 +294,7 @@ export function ResponseStream({
         {type !== 'text' && (
           <Text color={getTypeColor()}>
             {getTypePrefix()}
+            {displayMode === 'verbose' && <Text color="gray" dimColor> [{type}]</Text>}
           </Text>
         )}
         {renderContent()}

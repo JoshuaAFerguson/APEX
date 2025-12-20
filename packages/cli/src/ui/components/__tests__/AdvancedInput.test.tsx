@@ -180,22 +180,178 @@ describe('AdvancedInput', () => {
       expect(onSubmit).toHaveBeenCalledWith('/help');
     });
 
-    it('handles arrow keys for suggestion navigation', () => {
-      render(
-        <AdvancedInput
-          {...defaultProps}
-          suggestions={mockSuggestions}
-          value="/s"
-        />
-      );
+    describe('Arrow key navigation', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+      });
 
-      const inputHandler = mockUseInput.mock.calls[0][0];
+      it('moves selection down from index 0 to 1', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/help"
+            onSubmit={onSubmit}
+          />
+        );
 
-      // Navigate suggestions with arrow keys
-      inputHandler('', { downArrow: true });
-      inputHandler('', { upArrow: true });
+        const inputHandler = mockUseInput.mock.calls[0][0];
 
-      // Should navigate through suggestions (implementation details)
+        // Verify suggestions are shown
+        expect(screen.getByText('Suggestions (Tab to complete):')).toBeInTheDocument();
+
+        // Navigate down (from index 0 to 1)
+        inputHandler('', { downArrow: true });
+
+        // Submit to verify the selected suggestion (should be second one: /status)
+        inputHandler('', { return: true });
+
+        // Since /help matches first in mockSuggestions, after one down arrow we should be at /status
+        expect(onSubmit).toHaveBeenCalledWith('/status');
+      });
+
+      it('moves selection up from index 1 to 0', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/help"
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Navigate down then up (index 0 -> 1 -> 0)
+        inputHandler('', { downArrow: true });  // Move to index 1
+        inputHandler('', { upArrow: true });    // Move back to index 0
+
+        // Submit to verify the selected suggestion (should be back at /help)
+        inputHandler('', { return: true });
+
+        expect(onSubmit).toHaveBeenCalledWith('/help');
+      });
+
+      it('stays at index 0 when pressing up arrow at boundary', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/help"
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Try to navigate up from index 0 (should stay at 0)
+        inputHandler('', { upArrow: true });
+
+        // Submit to verify still at first suggestion
+        inputHandler('', { return: true });
+
+        expect(onSubmit).toHaveBeenCalledWith('/help');
+      });
+
+      it('stays at last index when pressing down arrow at boundary', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="test"  // This should match the file suggestion
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Navigate to the last suggestion
+        inputHandler('', { downArrow: true }); // index 1
+        inputHandler('', { downArrow: true }); // index 2 (last available)
+
+        // Try to go past the last index
+        inputHandler('', { downArrow: true }); // Should stay at last index
+
+        // Submit to verify we're still at the last suggestion
+        inputHandler('', { return: true });
+
+        // The last suggestion should be 'src/test.ts' which matches "test"
+        expect(onSubmit).toHaveBeenCalledWith('src/test.ts');
+      });
+
+      it('submits selected suggestion when Enter is pressed', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/status"
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Should auto-select /status as first match, submit it
+        inputHandler('', { return: true });
+
+        expect(onSubmit).toHaveBeenCalledWith('/status');
+      });
+
+      it('navigates through all suggestions with arrow keys', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/" // Should match all command suggestions
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Start at index 0 (/help), navigate down twice to reach last suggestion
+        inputHandler('', { downArrow: true }); // index 1 (/status)
+        inputHandler('', { downArrow: true }); // index 2 (src/test.ts)
+
+        // Submit the currently selected suggestion
+        inputHandler('', { return: true });
+
+        // Should submit the third suggestion
+        expect(onSubmit).toHaveBeenCalledWith('src/test.ts');
+      });
+
+      it('cycles selection correctly with multiple up/down presses', () => {
+        const onSubmit = vi.fn();
+        render(
+          <AdvancedInput
+            {...defaultProps}
+            suggestions={mockSuggestions}
+            value="/"
+            onSubmit={onSubmit}
+          />
+        );
+
+        const inputHandler = mockUseInput.mock.calls[0][0];
+
+        // Complex navigation: down, down, up, down, up, up
+        inputHandler('', { downArrow: true });  // index 0 -> 1
+        inputHandler('', { downArrow: true });  // index 1 -> 2
+        inputHandler('', { upArrow: true });    // index 2 -> 1
+        inputHandler('', { downArrow: true });  // index 1 -> 2
+        inputHandler('', { upArrow: true });    // index 2 -> 1
+        inputHandler('', { upArrow: true });    // index 1 -> 0
+
+        // Submit to verify final position (should be index 0)
+        inputHandler('', { return: true });
+
+        expect(onSubmit).toHaveBeenCalledWith('/help');
+      });
     });
 
     it('shows suggestion icons when available', () => {

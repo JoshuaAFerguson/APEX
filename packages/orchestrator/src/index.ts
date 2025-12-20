@@ -56,6 +56,7 @@ export interface OrchestratorEvents {
   'subtask:completed': (subtask: Task, parentTaskId: string) => void;
   'subtask:failed': (subtask: Task, parentTaskId: string, error: Error) => void;
   'agent:message': (taskId: string, message: unknown) => void;
+  'agent:thinking': (taskId: string, agent: string, thinking: string) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
@@ -211,6 +212,41 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task not found: ${taskId}`);
     }
 
+    // Check if this task already has subtasks that need to be continued
+    // This happens when resuming a task that was previously decomposed
+    if (task.subtaskIds && task.subtaskIds.length > 0) {
+      const hasWorkToDo = await this.hasPendingSubtasks(taskId, true);
+      if (hasWorkToDo) {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Task has existing subtasks - continuing those instead of re-running workflow`,
+        });
+        await this.continuePendingSubtasks(taskId);
+        return;
+      }
+      // All subtasks are done - aggregate and complete
+      const allComplete = await this.aggregateSubtaskResults(taskId);
+      if (allComplete) {
+        await this.updateTaskStatus(taskId, 'completed');
+        const completedTask = await this.store.getTask(taskId);
+        if (completedTask) {
+          this.emit('task:completed', completedTask);
+          // Handle git operations for completed task
+          if (!task.parentTaskId) {
+            try {
+              await this.handleTaskGitOperations(completedTask);
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Git operations failed: ${(error as Error).message}`,
+              });
+            }
+          }
+        }
+        return;
+      }
+    }
+
     // Load workflow
     const workflow = await loadWorkflow(this.projectPath, task.workflow);
     if (!workflow) {
@@ -257,31 +293,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           });
         }
 
-        await this.runWorkflow(task, workflow);
-        await this.updateTaskStatus(taskId, 'completed');
-        const completedTask = await this.store.getTask(taskId);
-        this.emit('task:completed', completedTask!);
+        const shouldComplete = await this.runWorkflow(task, workflow);
 
-        // Handle git operations (push and PR creation) for parent tasks only
-        if (!task.parentTaskId && completedTask) {
-          try {
-            const prResult = await this.handleTaskGitOperations(completedTask);
-            if (prResult?.success && prResult.prUrl) {
+        if (shouldComplete) {
+          await this.updateTaskStatus(taskId, 'completed');
+          const completedTask = await this.store.getTask(taskId);
+          this.emit('task:completed', completedTask!);
+
+          // Handle git operations (push and PR creation) for parent tasks only
+          if (!task.parentTaskId && completedTask) {
+            try {
+              const prResult = await this.handleTaskGitOperations(completedTask);
+              if (prResult?.success && prResult.prUrl) {
+                await this.store.addLog(taskId, {
+                  level: 'info',
+                  message: `Pull request created: ${prResult.prUrl}`,
+                });
+              }
+            } catch (error) {
+              // Log but don't fail the task if git operations fail
               await this.store.addLog(taskId, {
-                level: 'info',
-                message: `Pull request created: ${prResult.prUrl}`,
+                level: 'warn',
+                message: `Git operations failed: ${(error as Error).message}`,
               });
             }
-          } catch (error) {
-            // Log but don't fail the task if git operations fail
-            await this.store.addLog(taskId, {
-              level: 'warn',
-              message: `Git operations failed: ${(error as Error).message}`,
-            });
           }
         }
+        // If shouldComplete is false, subtasks are paused/incomplete
+        // Task stays in-progress and can be resumed later
 
-        return; // Success - exit the retry loop
+        return; // Exit the retry loop (either completed or staying in-progress)
       } catch (error) {
         lastError = error as Error;
 
@@ -349,6 +390,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       'authentication',
       'unauthorized',
       'forbidden',
+      // Usage limit patterns - don't retry, just pause
+      'usage limit',
+      'limit reached',
+      '/upgrade',
+      'extra-usage',
+      'credit',
+      'billing',
+      'quota',
     ];
 
     return !nonRetryablePatterns.some(pattern =>
@@ -381,7 +430,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
            message.includes('exceeded your') ||
            message.includes('limit exceeded') ||
            message.includes('monthly limit') ||
-           message.includes('daily limit');
+           message.includes('daily limit') ||
+           // Claude Code specific patterns
+           message.includes('limit reached') ||
+           (message.includes('resets') && message.includes('upgrade')) ||
+           message.includes('/upgrade') ||
+           message.includes('extra-usage');
   }
 
   /**
@@ -646,7 +700,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         lowerMessage.includes('billing') || lowerMessage.includes('quota') ||
         lowerMessage.includes('spending limit') || lowerMessage.includes('insufficient') ||
         lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
-        lowerMessage.includes('daily limit')) {
+        lowerMessage.includes('daily limit') || lowerMessage.includes('limit reached') ||
+        lowerMessage.includes('/upgrade') || lowerMessage.includes('extra-usage')) {
       return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
     }
 
@@ -717,8 +772,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   /**
    * Run the workflow for a task - with parallel stage execution
+   * Returns true if the task should be marked as completed, false if it should stay in-progress
    */
-  private async runWorkflow(task: Task, workflow: WorkflowDefinition): Promise<void> {
+  private async runWorkflow(task: Task, workflow: WorkflowDefinition): Promise<boolean> {
     const stageResults = new Map<string, StageResult>();
     const completedStages = new Set<string>();
     const inProgressStages = new Set<string>();
@@ -738,7 +794,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           level: 'info',
           message: 'Task was cancelled, stopping workflow execution',
         });
-        return;
+        return false; // Task was cancelled, don't mark as completed
       }
 
       // Find all stages ready to run (dependencies met, not completed, not in progress)
@@ -916,15 +972,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
         // Execute subtasks according to strategy
-        await this.executeSubtasks(task.id);
+        const allSubtasksComplete = await this.executeSubtasks(task.id);
 
-        // All subtasks completed successfully - workflow is done
-        await this.store.addLog(task.id, {
-          level: 'info',
-          message: `All subtasks completed. Workflow finished via decomposition.`,
-        });
-
-        return; // Exit workflow - subtasks handled the work
+        if (allSubtasksComplete) {
+          // All subtasks completed successfully - workflow is done
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `All subtasks completed. Workflow finished via decomposition.`,
+          });
+          return true; // Task can be marked as completed
+        } else {
+          // Some subtasks are incomplete (paused, pending, or failed)
+          // Task should stay in-progress, not be marked as completed
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `Subtask execution paused or incomplete. Task will remain in-progress.`,
+          });
+          return false; // Task should NOT be marked as completed
+        }
       }
     }
 
@@ -932,6 +997,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       level: 'info',
       message: `Workflow "${workflow.name}" completed successfully. Stages completed: ${Array.from(completedStages).join(', ')}`,
     });
+
+    return true; // Workflow completed, task can be marked as completed
   }
 
   /**
@@ -994,6 +1061,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                      'claude-sonnet-4-20250514';
 
     // Execute stage via Claude Agent SDK
+    // Wrap in try-catch to detect limit errors from collected messages
+    try {
     for await (const message of query({
       prompt: stagePrompt,
       options: {
@@ -1019,22 +1088,39 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       // Collect text content for summary extraction and log AI responses
       if (message && typeof message === 'object') {
-        // Extract text content from SDK message format
+        // Extract text content and thinking from SDK message format
         // SDK messages have type: 'assistant' with nested message.content array
         // or type: 'result' with result string
         let textContent = '';
+        let thinkingContent = '';
 
         const msg = message as Record<string, unknown>;
 
         if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
           // Assistant messages have content as array of blocks
-          const apiMessage = msg.message as { content?: Array<{ type: string; text?: string }> };
+          const apiMessage = msg.message as {
+            content?: Array<{
+              type: string;
+              text?: string;
+              thinking?: string;
+            }>;
+            thinking?: string;
+          };
+
           if (Array.isArray(apiMessage.content)) {
             for (const block of apiMessage.content) {
               if (block.type === 'text' && block.text) {
                 textContent += block.text + '\n';
+              } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
+                // Extract thinking content from content blocks
+                thinkingContent += block.thinking;
               }
             }
+          }
+
+          // Fallback: Extract thinking content if available as direct property (legacy support)
+          if (typeof apiMessage.thinking === 'string' && !thinkingContent) {
+            thinkingContent = apiMessage.thinking;
           }
         } else if (msg.type === 'result' && typeof msg.result === 'string') {
           textContent = msg.result;
@@ -1053,6 +1139,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           await this.store.addLog(task.id, {
             level: 'info',
             message: truncated,
+            stage: stage.name,
+            agent: agent.name,
+          });
+        }
+
+        // Emit thinking content if available
+        if (thinkingContent.trim().length > 0) {
+          this.emit('agent:thinking', task.id, agent.name, thinkingContent);
+
+          // Log thinking content for debugging (verbose only)
+          await this.store.addLog(task.id, {
+            level: 'debug',
+            message: `[THINKING] ${thinkingContent.length > 200 ? thinkingContent.substring(0, 200) + '...' : thinkingContent}`,
             stage: stage.name,
             agent: agent.name,
           });
@@ -1084,6 +1183,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           `Task exceeded budget: $${currentTask.usage.estimatedCost.toFixed(4)} > $${this.effectiveConfig.limits.maxCostPerTask}`
         );
       }
+    }
+    } catch (error) {
+      // Check if collected messages contain limit-related text
+      // This catches cases where "Limit reached" is logged before process exits
+      const fullOutput = messages.join('\n').toLowerCase();
+      const isLimitError = fullOutput.includes('limit reached') ||
+                          fullOutput.includes('/upgrade') ||
+                          fullOutput.includes('extra-usage') ||
+                          fullOutput.includes('resets') && fullOutput.includes('upgrade');
+
+      if (isLimitError) {
+        // Rethrow with limit-specific message so it can be detected and paused
+        throw new Error(`Usage limit reached: ${(error as Error).message}. Recent output: ${messages.slice(-2).join(' ').substring(0, 200)}`);
+      }
+
+      // Rethrow original error
+      throw error;
     }
 
     // Extract stage summary and outputs from the final messages
@@ -2220,8 +2336,9 @@ Parent: ${parentTask.description}`;
 
   /**
    * Execute subtasks according to their strategy
+   * Returns true if all subtasks completed successfully, false if any are incomplete/paused
    */
-  async executeSubtasks(parentTaskId: string): Promise<void> {
+  async executeSubtasks(parentTaskId: string): Promise<boolean> {
     await this.ensureInitialized();
 
     const parentTask = await this.store.getTask(parentTaskId);
@@ -2253,8 +2370,9 @@ Parent: ${parentTask.description}`;
         break;
     }
 
-    // After all subtasks complete, aggregate results and complete parent
-    await this.aggregateSubtaskResults(parentTaskId);
+    // After subtask execution, aggregate results and check if all are complete
+    const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+    return allComplete;
   }
 
   /**
@@ -2555,8 +2673,9 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Continue executing pending subtasks for a parent task
+   * Continue executing pending/failed subtasks for a parent task
    * This is used when resuming a parent task that was interrupted
+   * Processes subtasks in their ORIGINAL order (respects sequential dependencies)
    */
   async continuePendingSubtasks(parentTaskId: string): Promise<void> {
     await this.ensureInitialized();
@@ -2570,26 +2689,41 @@ Parent: ${parentTask.description}`;
       throw new Error(`Task ${parentTaskId} has no subtasks`);
     }
 
-    // Get pending subtasks
-    const pendingSubtaskIds: string[] = [];
+    // Collect subtasks that need processing IN ORIGINAL ORDER
+    // This respects sequential dependencies
+    const subtasksToProcess: Array<{ id: string; status: string; isRetry: boolean }> = [];
+    let failedCount = 0;
+    let pausedCount = 0;
+    let pendingCount = 0;
+
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
-      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued')) {
-        pendingSubtaskIds.push(subtaskId);
+      if (!subtask) continue;
+
+      if (subtask.status === 'failed') {
+        subtasksToProcess.push({ id: subtaskId, status: 'failed', isRetry: true });
+        failedCount++;
+      } else if (subtask.status === 'paused') {
+        subtasksToProcess.push({ id: subtaskId, status: 'paused', isRetry: false });
+        pausedCount++;
+      } else if (subtask.status === 'pending' || subtask.status === 'queued') {
+        subtasksToProcess.push({ id: subtaskId, status: 'pending', isRetry: false });
+        pendingCount++;
       }
+      // Skip completed/cancelled subtasks
     }
 
-    if (pendingSubtaskIds.length === 0) {
+    if (subtasksToProcess.length === 0) {
       await this.store.addLog(parentTaskId, {
         level: 'info',
-        message: 'No pending subtasks to execute',
+        message: 'No subtasks need processing (all completed or cancelled)',
       });
       return;
     }
 
     await this.store.addLog(parentTaskId, {
       level: 'info',
-      message: `Continuing execution of ${pendingSubtaskIds.length} pending subtasks`,
+      message: `Continuing ${subtasksToProcess.length} subtasks in order: ${failedCount} failed, ${pausedCount} paused, ${pendingCount} pending`,
     });
 
     // Update parent status to in-progress
@@ -2603,36 +2737,146 @@ Parent: ${parentTask.description}`;
 
     const strategy = parentTask.subtaskStrategy || 'sequential';
 
-    try {
-      // Execute pending subtasks based on strategy
-      if (strategy === 'sequential') {
-        for (const subtaskId of pendingSubtaskIds) {
-          const currentParent = await this.store.getTask(parentTaskId);
-          if (currentParent?.status === 'cancelled') {
-            return;
+    // Helper to execute a subtask and check for pause/cancel
+    // Handles nested subtasks recursively
+    const executeSubtaskWithCheck = async (subtaskId: string, isRetry: boolean): Promise<boolean> => {
+      const currentParent = await this.store.getTask(parentTaskId);
+      if (currentParent?.status === 'cancelled') {
+        return false; // Stop execution
+      }
+
+      const subtask = await this.store.getTask(subtaskId);
+      if (!subtask) return true;
+
+      // Check if this subtask has its own pending/failed subtasks
+      // If so, recursively continue those first
+      if (subtask.subtaskIds && subtask.subtaskIds.length > 0) {
+        const hasNestedWork = await this.hasPendingSubtasks(subtaskId, false);
+        if (hasNestedWork) {
+          await this.store.addLog(parentTaskId, {
+            level: 'info',
+            message: `Subtask ${subtaskId} has nested subtasks to process`,
+          });
+
+          // Update subtask status to in-progress and recursively continue its subtasks
+          await this.store.updateTask(subtaskId, {
+            status: 'in-progress',
+            updatedAt: new Date(),
+          });
+
+          try {
+            await this.continuePendingSubtasks(subtaskId);
+            const afterContinue = await this.store.getTask(subtaskId);
+            if (afterContinue?.status === 'paused') {
+              // Nested subtask hit a limit, propagate pause up
+              await this.pauseParentTask(parentTaskId, subtaskId, afterContinue.pauseReason || 'usage_limit');
+              return false;
+            }
+          } catch (error) {
+            // Nested continuation failed
+            const failedSubtask = await this.store.getTask(subtaskId);
+            if (failedSubtask?.status === 'paused') {
+              await this.pauseParentTask(parentTaskId, subtaskId, failedSubtask.pauseReason || 'usage_limit');
+              return false;
+            }
+            throw error;
           }
 
-          await this.executeTask(subtaskId);
-          const completedSubtask = await this.store.getTask(subtaskId);
-          if (completedSubtask) {
-            this.emit('subtask:completed', completedSubtask, parentTaskId);
-            await this.gitCommitSubtask(completedSubtask, parentTask);
+          return true; // Continue with next subtask
+        }
+      }
+
+      // For failed subtasks without nested work, reset status before retry
+      if (isRetry) {
+        await this.store.updateTask(subtaskId, {
+          status: 'pending',
+          error: undefined,
+          updatedAt: new Date(),
+        });
+        await this.store.addLog(parentTaskId, {
+          level: 'info',
+          message: `Retrying failed subtask: ${subtaskId}`,
+        });
+      }
+
+      await this.executeTask(subtaskId);
+
+      // Check if subtask was paused (limit hit)
+      const completedSubtask = await this.store.getTask(subtaskId);
+      if (completedSubtask?.status === 'paused') {
+        // Propagate pause to parent
+        await this.pauseParentTask(parentTaskId, subtaskId, completedSubtask.pauseReason || 'usage_limit');
+        return false; // Stop execution - we're paused
+      }
+
+      if (completedSubtask?.status === 'completed') {
+        this.emit('subtask:completed', completedSubtask, parentTaskId);
+        await this.gitCommitSubtask(completedSubtask, parentTask);
+      }
+
+      return true; // Continue execution
+    };
+
+    try {
+      // Process subtasks in ORIGINAL ORDER to respect sequential dependencies
+      // Each subtask is handled based on its status (failed=retry, paused=resume, pending=execute)
+
+      if (strategy === 'sequential') {
+        // Sequential: process one at a time in order
+        for (const { id: subtaskId, status, isRetry } of subtasksToProcess) {
+          // Handle paused subtasks: clear pause state first
+          if (status === 'paused') {
+            await this.store.updateTask(subtaskId, {
+              status: 'pending',
+              pausedAt: undefined,
+              pauseReason: undefined,
+              resumeAfter: undefined,
+              updatedAt: new Date(),
+            });
+            await this.store.addLog(parentTaskId, {
+              level: 'info',
+              message: `Resuming paused subtask: ${subtaskId}`,
+            });
           }
+
+          const shouldContinue = await executeSubtaskWithCheck(subtaskId, isRetry);
+          if (!shouldContinue) return;
         }
       } else {
-        // For parallel/dependency-based, execute all pending at once
+        // For parallel/dependency-based, execute in batches but respect order within batches
         const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-        for (let i = 0; i < pendingSubtaskIds.length; i += maxConcurrent) {
+        for (let i = 0; i < subtasksToProcess.length; i += maxConcurrent) {
           const currentParent = await this.store.getTask(parentTaskId);
-          if (currentParent?.status === 'cancelled') {
+          if (currentParent?.status === 'cancelled' || currentParent?.status === 'paused') {
             return;
           }
 
-          const batch = pendingSubtaskIds.slice(i, i + maxConcurrent);
-          await Promise.all(batch.map(async (subtaskId) => {
+          const batch = subtasksToProcess.slice(i, i + maxConcurrent);
+
+          // Clear pause state for paused subtasks in this batch
+          for (const { id: subtaskId, status } of batch) {
+            if (status === 'paused') {
+              await this.store.updateTask(subtaskId, {
+                status: 'pending',
+                pausedAt: undefined,
+                pauseReason: undefined,
+                resumeAfter: undefined,
+                updatedAt: new Date(),
+              });
+            }
+          }
+
+          await Promise.all(batch.map(async ({ id: subtaskId, isRetry }) => {
+            if (isRetry) {
+              await this.store.updateTask(subtaskId, {
+                status: 'pending',
+                error: undefined,
+                updatedAt: new Date(),
+              });
+            }
             await this.executeTask(subtaskId);
             const completedSubtask = await this.store.getTask(subtaskId);
-            if (completedSubtask) {
+            if (completedSubtask?.status === 'completed') {
               this.emit('subtask:completed', completedSubtask, parentTaskId);
             }
           }));
@@ -2683,9 +2927,10 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Check if a parent task has pending subtasks
+   * Check if a parent task has pending subtasks (recursive)
+   * Also checks if any subtask has its own pending/failed subtasks
    */
-  async hasPendingSubtasks(parentTaskId: string): Promise<boolean> {
+  async hasPendingSubtasks(parentTaskId: string, recursive = true): Promise<boolean> {
     await this.ensureInitialized();
 
     const parentTask = await this.store.getTask(parentTaskId);
@@ -2695,8 +2940,24 @@ Parent: ${parentTask.description}`;
 
     for (const subtaskId of parentTask.subtaskIds) {
       const subtask = await this.store.getTask(subtaskId);
-      if (subtask && (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused')) {
+      if (!subtask) continue;
+
+      // Include failed subtasks - they can be retried via resume
+      if (
+        subtask.status === 'pending' ||
+        subtask.status === 'queued' ||
+        subtask.status === 'paused' ||
+        subtask.status === 'failed'
+      ) {
         return true;
+      }
+
+      // Recursively check if this subtask has its own pending/failed subtasks
+      if (recursive && subtask.subtaskIds && subtask.subtaskIds.length > 0) {
+        const hasNestedPending = await this.hasPendingSubtasks(subtaskId, true);
+        if (hasNestedPending) {
+          return true;
+        }
       }
     }
 

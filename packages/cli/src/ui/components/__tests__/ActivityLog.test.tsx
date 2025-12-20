@@ -232,6 +232,300 @@ describe('ActivityLog', () => {
     expect(screen.getByText('step: 1')).toBeInTheDocument();
     expect(screen.getByText('value: test')).toBeInTheDocument();
   });
+
+  describe('verbose mode', () => {
+    it('should auto-set filter level to debug in verbose mode', () => {
+      render(
+        <ActivityLog
+          entries={mockEntries}
+          displayMode="verbose"
+        />
+      );
+
+      // Should show debug entries in verbose mode
+      expect(screen.getByText('Debug information')).toBeInTheDocument();
+      expect(screen.getByText('Level: debug+ (auto: verbose)')).toBeInTheDocument();
+    });
+
+    it('should respect explicit filter level even in verbose mode', () => {
+      render(
+        <ActivityLog
+          entries={mockEntries}
+          displayMode="verbose"
+          filterLevel="error"
+        />
+      );
+
+      // Should not show auto verbose indicator when explicit level is set
+      expect(screen.queryByText('(auto: verbose)')).not.toBeInTheDocument();
+      expect(screen.getByText('Level: error+')).toBeInTheDocument();
+
+      // Should only show error and higher level entries
+      expect(screen.getByText('An error occurred')).toBeInTheDocument();
+      expect(screen.queryByText('Task started')).not.toBeInTheDocument(); // info level
+      expect(screen.queryByText('Debug information')).not.toBeInTheDocument(); // debug level
+    });
+
+    it('should show milliseconds in timestamps in verbose mode', () => {
+      const verboseEntries: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date('2023-01-01T10:00:00.123Z'),
+          level: 'info',
+          message: 'Test with milliseconds',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={verboseEntries}
+          displayMode="verbose"
+          showTimestamps={true}
+        />
+      );
+
+      // Should show milliseconds in verbose mode
+      expect(screen.getByText(/\[10:00:00\.123\]/)).toBeInTheDocument();
+    });
+
+    it('should always show data in verbose mode', () => {
+      const dataEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Entry with data',
+          data: { key: 'value', count: 42 },
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={dataEntry}
+          displayMode="verbose"
+        />
+      );
+
+      // Data should always be visible in verbose mode
+      expect(screen.getByText('key: value')).toBeInTheDocument();
+      expect(screen.getByText('count: 42')).toBeInTheDocument();
+    });
+
+    it('should show data even for collapsed entries in verbose mode', () => {
+      const dataEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Entry with data',
+          data: { key: 'value' },
+          collapsed: true,
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={dataEntry}
+          displayMode="verbose"
+        />
+      );
+
+      // In verbose mode, data should be visible even if entry would normally be collapsed
+      expect(screen.getByText('key: value')).toBeInTheDocument();
+    });
+
+    it('should handle normal mode with collapsed entries', () => {
+      const dataEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Entry with data',
+          data: { key: 'value' },
+          collapsed: true,
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={dataEntry}
+          displayMode="normal"
+        />
+      );
+
+      // In normal mode, collapsed entries should not show data
+      expect(screen.queryByText('key: value')).not.toBeInTheDocument();
+    });
+
+    it('should not abbreviate timestamps in verbose mode regardless of terminal width', () => {
+      // Mock narrow terminal to test that verbose mode overrides abbreviation
+      vi.doMock('../hooks/useStdoutDimensions.js', () => ({
+        useStdoutDimensions: () => ({
+          width: 40, // Very narrow
+          height: 20,
+          breakpoint: 'narrow',
+        }),
+      }));
+
+      const verboseEntries: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date('2023-01-01T10:00:00.456Z'),
+          level: 'info',
+          message: 'Test message',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={verboseEntries}
+          displayMode="verbose"
+          showTimestamps={true}
+        />
+      );
+
+      // Should show full timestamp with milliseconds even in narrow terminal
+      expect(screen.getByText(/\[10:00:00\.456\]/)).toBeInTheDocument();
+    });
+
+    it('should show expanded data for JSON objects in verbose mode', () => {
+      const complexDataEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Complex data entry',
+          data: {
+            config: { enabled: true, timeout: 5000 },
+            results: ['item1', 'item2'],
+            metadata: { version: '1.0' },
+          },
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={complexDataEntry}
+          displayMode="verbose"
+        />
+      );
+
+      // Should show formatted JSON for complex objects
+      expect(screen.getByText(/config:/)).toBeInTheDocument();
+      expect(screen.getByText(/results:/)).toBeInTheDocument();
+      expect(screen.getByText(/metadata:/)).toBeInTheDocument();
+    });
+
+    it('should display all debug level entries in verbose mode', () => {
+      const debugEntries: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'debug',
+          message: 'Debug message 1',
+        },
+        {
+          id: '2',
+          timestamp: new Date(),
+          level: 'debug',
+          message: 'Debug message 2',
+        },
+        {
+          id: '3',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Info message',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={debugEntries}
+          displayMode="verbose"
+        />
+      );
+
+      // All entries should be visible in verbose mode
+      expect(screen.getByText('Debug message 1')).toBeInTheDocument();
+      expect(screen.getByText('Debug message 2')).toBeInTheDocument();
+      expect(screen.getByText('Info message')).toBeInTheDocument();
+    });
+
+    it('should hide debug entries in normal mode by default', () => {
+      const debugEntries: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'debug',
+          message: 'Debug message',
+        },
+        {
+          id: '2',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'Info message',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={debugEntries}
+          displayMode="normal"
+        />
+      );
+
+      // Debug should be hidden in normal mode (default filter is info+)
+      expect(screen.queryByText('Debug message')).not.toBeInTheDocument();
+      expect(screen.getByText('Info message')).toBeInTheDocument();
+      expect(screen.getByText('Level: info+')).toBeInTheDocument();
+    });
+
+    it('should not truncate messages in verbose mode', () => {
+      const longMessageEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'This is a very long message that would normally be truncated in normal or compact mode but should be displayed in full without any truncation in verbose display mode',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={longMessageEntry}
+          displayMode="verbose"
+          width={80} // Small width to force truncation in other modes
+        />
+      );
+
+      // Full message should be visible without truncation
+      expect(screen.getByText('This is a very long message that would normally be truncated in normal or compact mode but should be displayed in full without any truncation in verbose display mode')).toBeInTheDocument();
+    });
+
+    it('should truncate messages in normal mode with narrow width', () => {
+      const longMessageEntry: LogEntry[] = [
+        {
+          id: '1',
+          timestamp: new Date(),
+          level: 'info',
+          message: 'This is a very long message that should be truncated in normal mode',
+        },
+      ];
+
+      render(
+        <ActivityLog
+          entries={longMessageEntry}
+          displayMode="normal"
+          width={60} // Small width to force truncation
+        />
+      );
+
+      // Message should be truncated (won't match the full text)
+      expect(screen.queryByText('This is a very long message that should be truncated in normal mode')).not.toBeInTheDocument();
+      // Should contain the beginning of the message
+      expect(screen.getByText(/This is a very long message/)).toBeInTheDocument();
+    });
+  });
 });
 
 describe('LogStream', () => {

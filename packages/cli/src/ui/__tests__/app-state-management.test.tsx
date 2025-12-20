@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, waitFor } from '../test-utils';
+import { render, screen, act, waitFor } from '../../__tests__/test-utils';
 import { App, type AppState, type AppProps } from '../App';
 
 describe('App State Management for Agent Handoff', () => {
@@ -53,6 +53,7 @@ describe('App State Management for Agent Handoff', () => {
       cost: 0,
       model: 'claude-3-sonnet',
       sessionStartTime: new Date(),
+      displayMode: 'normal',
     };
   });
 
@@ -630,6 +631,156 @@ describe('App State Management for Agent Handoff', () => {
         expect(state.cost).toBe(0.05);
         expect(state.model).toBe('claude-3-opus');
       });
+    });
+  });
+
+  describe('displayMode state management', () => {
+    it('updates displayMode correctly', async () => {
+      let appInstance: any = null;
+
+      render(
+        <App
+          initialState={baseInitialState}
+          onCommand={mockOnCommand}
+          onTask={mockOnTask}
+          onExit={mockOnExit}
+        />
+      );
+
+      await waitFor(() => {
+        appInstance = (globalThis as any).__apexApp;
+        expect(appInstance).toBeDefined();
+      });
+
+      // Initial state should be normal
+      expect(appInstance.getState().displayMode).toBe('normal');
+
+      // Update to compact
+      act(() => {
+        appInstance.updateState({ displayMode: 'compact' });
+      });
+
+      await waitFor(() => {
+        const state = appInstance.getState();
+        expect(state.displayMode).toBe('compact');
+      });
+
+      // Update to verbose
+      act(() => {
+        appInstance.updateState({ displayMode: 'verbose' });
+      });
+
+      await waitFor(() => {
+        const state = appInstance.getState();
+        expect(state.displayMode).toBe('verbose');
+      });
+    });
+
+    it('preserves displayMode when updating other state', async () => {
+      let appInstance: any = null;
+
+      const initialStateWithDisplayMode = {
+        ...baseInitialState,
+        displayMode: 'compact',
+      };
+
+      render(
+        <App
+          initialState={initialStateWithDisplayMode}
+          onCommand={mockOnCommand}
+          onTask={mockOnTask}
+          onExit={mockOnExit}
+        />
+      );
+
+      await waitFor(() => {
+        appInstance = (globalThis as any).__apexApp;
+        expect(appInstance).toBeDefined();
+      });
+
+      // Update other properties but not displayMode
+      act(() => {
+        appInstance.updateState({
+          tokens: { input: 100, output: 200 },
+          cost: 0.05,
+          activeAgent: 'developer',
+        });
+      });
+
+      await waitFor(() => {
+        const state = appInstance.getState();
+        expect(state.displayMode).toBe('compact'); // Should remain unchanged
+        expect(state.tokens).toEqual({ input: 100, output: 200 });
+        expect(state.activeAgent).toBe('developer');
+      });
+    });
+
+    it('handles displayMode updates with other properties', async () => {
+      let appInstance: any = null;
+
+      render(
+        <App
+          initialState={baseInitialState}
+          onCommand={mockOnCommand}
+          onTask={mockOnTask}
+          onExit={mockOnExit}
+        />
+      );
+
+      await waitFor(() => {
+        appInstance = (globalThis as any).__apexApp;
+        expect(appInstance).toBeDefined();
+      });
+
+      // Update displayMode along with other properties
+      act(() => {
+        appInstance.updateState({
+          displayMode: 'verbose',
+          activeAgent: 'tester',
+          isProcessing: true,
+          tokens: { input: 50, output: 100 },
+        });
+      });
+
+      await waitFor(() => {
+        const state = appInstance.getState();
+        expect(state.displayMode).toBe('verbose');
+        expect(state.activeAgent).toBe('tester');
+        expect(state.isProcessing).toBe(true);
+        expect(state.tokens).toEqual({ input: 50, output: 100 });
+      });
+    });
+
+    it('cycles through all display modes correctly', async () => {
+      let appInstance: any = null;
+
+      render(
+        <App
+          initialState={baseInitialState}
+          onCommand={mockOnCommand}
+          onTask={mockOnTask}
+          onExit={mockOnExit}
+        />
+      );
+
+      await waitFor(() => {
+        appInstance = (globalThis as any).__apexApp;
+        expect(appInstance).toBeDefined();
+      });
+
+      // Cycle through all modes
+      const modes = ['normal', 'compact', 'verbose', 'normal'] as const;
+
+      for (let i = 0; i < modes.length; i++) {
+        act(() => {
+          appInstance.updateState({ displayMode: modes[i] });
+        });
+
+        await waitFor(() => {
+          const state = appInstance.getState();
+          expect(state.displayMode).toBe(modes[i]);
+        });
+      }
     });
   });
 

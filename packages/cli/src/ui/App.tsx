@@ -1,23 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import {
+  ActivityLog,
   AgentPanel,
   Banner,
   InputPrompt,
+  PreviewPanel,
   ResponseStream,
   ServicesPanel,
   StatusBar,
   TaskProgress,
+  ThoughtDisplay,
   ToolCall,
+  type LogEntry,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
-import type { ApexConfig, Task } from '@apexcli/core';
+import type { ApexConfig, Task, DisplayMode, VerboseDebugData } from '@apexcli/core';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 import { CompletionEngine, type CompletionContext } from '../services/CompletionEngine.js';
 
 const VERSION = '0.3.0';
+
+/**
+ * High confidence threshold for auto-execute feature
+ * When autoExecuteHighConfidence is enabled, inputs must have >= 0.95 confidence to auto-execute
+ */
+const HIGH_CONFIDENCE_THRESHOLD = 0.95;
 
 /**
  * Build agent list from workflow configuration for AgentPanel display
@@ -30,6 +40,119 @@ function getWorkflowAgents(_workflowName: string, _config: ApexConfig | null): A
   return [];
 }
 
+/**
+ * Converts VerboseDebugData to ActivityLog LogEntry format
+ * Transforms debug metrics into structured log entries for display
+ */
+export function convertVerboseDataToLogEntries(verboseData: VerboseDebugData): LogEntry[] {
+  const entries: LogEntry[] = [];
+  const timestamp = new Date();
+
+  // Add timing information
+  if (verboseData.timing.stageDuration) {
+    entries.push({
+      id: `timing_${timestamp.getTime()}`,
+      timestamp,
+      level: 'info',
+      message: `Stage completed in ${verboseData.timing.stageDuration}ms`,
+      category: 'timing',
+      data: {
+        stageStartTime: verboseData.timing.stageStartTime,
+        stageEndTime: verboseData.timing.stageEndTime,
+        duration: verboseData.timing.stageDuration,
+      },
+    });
+  }
+
+  // Add agent response times
+  Object.entries(verboseData.timing.agentResponseTimes).forEach(([agent, responseTime]) => {
+    entries.push({
+      id: `agent_response_${agent}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 1),
+      level: 'debug',
+      message: `Agent response time: ${responseTime}ms`,
+      agent,
+      category: 'performance',
+      duration: responseTime,
+      data: {
+        responseTime,
+        agent,
+      },
+    });
+  });
+
+  // Add performance metrics
+  if (verboseData.metrics.tokensPerSecond > 0) {
+    entries.push({
+      id: `metrics_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 2),
+      level: 'info',
+      message: `Processing rate: ${verboseData.metrics.tokensPerSecond.toFixed(2)} tokens/sec`,
+      category: 'metrics',
+      data: {
+        tokensPerSecond: verboseData.metrics.tokensPerSecond,
+        averageResponseTime: verboseData.metrics.averageResponseTime,
+        memoryUsage: verboseData.metrics.memoryUsage,
+        cpuUtilization: verboseData.metrics.cpuUtilization,
+      },
+    });
+  }
+
+  // Add agent token usage
+  Object.entries(verboseData.agentTokens).forEach(([agent, usage]) => {
+    entries.push({
+      id: `tokens_${agent}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 3),
+      level: 'debug',
+      message: `Token usage: ${usage.inputTokens + usage.outputTokens} total (${usage.inputTokens} in, ${usage.outputTokens} out)`,
+      agent,
+      category: 'tokens',
+      data: {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        estimatedCost: usage.estimatedCost,
+      },
+    });
+  });
+
+  // Add tool usage statistics
+  Object.entries(verboseData.timing.toolUsageTimes).forEach(([tool, usageTime]) => {
+    entries.push({
+      id: `tool_${tool}_${timestamp.getTime()}`,
+      timestamp: new Date(timestamp.getTime() + 4),
+      level: 'debug',
+      message: `Tool ${tool} used for ${usageTime}ms`,
+      category: 'tools',
+      duration: usageTime,
+      data: {
+        tool,
+        usageTime,
+        efficiency: verboseData.metrics.toolEfficiency[tool] || 0,
+      },
+    });
+  });
+
+  // Add error and retry information
+  Object.entries(verboseData.agentDebug.errorCounts).forEach(([agent, errorCount]) => {
+    if (errorCount > 0) {
+      entries.push({
+        id: `errors_${agent}_${timestamp.getTime()}`,
+        timestamp: new Date(timestamp.getTime() + 5),
+        level: 'warn',
+        message: `Agent ${agent} encountered ${errorCount} error(s)`,
+        agent,
+        category: 'errors',
+        data: {
+          errorCount,
+          retryAttempts: verboseData.agentDebug.retryAttempts[agent] || 0,
+        },
+      });
+    }
+  });
+
+  return entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+}
+
 export interface Message {
   id: string;
   type: 'user' | 'assistant' | 'tool' | 'system' | 'error';
@@ -40,6 +163,7 @@ export interface Message {
   toolOutput?: string;
   toolStatus?: 'pending' | 'running' | 'success' | 'error';
   toolDuration?: number;
+  thinking?: string; // Agent's reasoning/thought process
   timestamp: Date;
 }
 
@@ -63,12 +187,46 @@ export interface AppState {
   sessionName?: string;
   subtaskProgress?: { completed: number; total: number };
 
+  // Display mode for UI customization
+  displayMode: DisplayMode;
+
   // Agent handoff tracking
   previousAgent?: string;  // Previous agent for handoff animation
 
   // Parallel execution tracking
   parallelAgents?: AgentInfo[];  // Agents running in parallel
   showParallelPanel?: boolean;   // Whether to show parallel section
+
+  // Preview mode state
+  previewMode: boolean;
+  previewConfig: {
+    confidenceThreshold: number;
+    autoExecuteHighConfidence: boolean;
+    timeoutMs: number;
+  };
+  pendingPreview?: {
+    input: string;
+    intent: {
+      type: 'command' | 'task' | 'question' | 'clarification';
+      confidence: number;
+      command?: string;
+      args?: string[];
+      metadata?: Record<string, unknown>;
+    };
+    timestamp: Date;
+  };
+
+  // Show thoughts state
+  showThoughts: boolean;
+
+  // Edit mode state for returning input to text field
+  editModeInput?: string;
+
+  // Preview countdown state - remaining time in milliseconds for preview timeout
+  remainingMs?: number;
+
+  // Verbose debug data populated from orchestrator events
+  verboseData?: VerboseDebugData;
 }
 
 export interface AppProps {
@@ -183,6 +341,57 @@ export function App({
           return;
         }
 
+        if (cmd === 'compact') {
+          setState((prev) => {
+            const newMode = prev.displayMode === 'compact' ? 'normal' : 'compact';
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newMode === 'compact'
+                  ? 'Display mode set to compact: Single-line status, condensed output'
+                  : 'Display mode set to normal: Standard display with all components shown'
+              });
+            }, 0);
+            return { ...prev, displayMode: newMode };
+          });
+          return;
+        }
+
+        if (cmd === 'verbose') {
+          setState((prev) => {
+            const newMode = prev.displayMode === 'verbose' ? 'normal' : 'verbose';
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newMode === 'verbose'
+                  ? 'Display mode set to verbose: Detailed debug output, full information'
+                  : 'Display mode set to normal: Standard display with all components shown'
+              });
+            }, 0);
+            return { ...prev, displayMode: newMode };
+          });
+          return;
+        }
+
+        if (cmd === 'thoughts') {
+          setState((prev) => {
+            const newShowThoughts = !prev.showThoughts;
+            // Add confirmation message
+            setTimeout(() => {
+              addMessage({
+                type: 'system',
+                content: newShowThoughts
+                  ? 'Thought visibility enabled: AI reasoning will be shown'
+                  : 'Thought visibility disabled: AI reasoning will be hidden'
+              });
+            }, 0);
+            return { ...prev, showThoughts: newShowThoughts };
+          });
+          return;
+        }
+
         setState((prev) => ({ ...prev, isProcessing: true }));
         try {
           await onCommand(cmd, args);
@@ -216,6 +425,10 @@ export function App({
       '/serve',
       '/web',
       '/stop',
+      '/compact',
+      '/verbose',
+      '/preview',
+      '/thoughts',
       '/clear',
       '/exit',
       '/quit',
@@ -228,6 +441,41 @@ export function App({
 
   // Handle global keyboard shortcuts
   useInput((input, key) => {
+    // Handle preview mode navigation first
+    if (state.pendingPreview) {
+      if (key.return) {
+        // Confirm - execute the pending action
+        const pendingPreview = state.pendingPreview;
+        setState((prev) => ({ ...prev, pendingPreview: undefined }));
+
+        // Execute the original input
+        handleInput(pendingPreview.input);
+        return;
+      } else if (key.escape) {
+        // Cancel - clear the preview
+        setState(prev => ({ ...prev, pendingPreview: undefined }));
+        addMessage({ type: 'system', content: 'Preview cancelled.' });
+        return;
+      } else if (input?.toLowerCase() === 'e') {
+        // Edit - return input to text box for modification
+        const pendingInput = state.pendingPreview.input;
+        setState(prev => ({
+          ...prev,
+          pendingPreview: undefined,
+          editModeInput: pendingInput
+        }));
+        addMessage({ type: 'system', content: 'Returning to edit mode...' });
+        return;
+      } else {
+        // Any other keypress - cancel countdown but keep preview visible
+        setState(prev => ({ ...prev, remainingMs: undefined }));
+        addMessage({ type: 'system', content: 'Auto-execute cancelled.' });
+        return;
+      }
+      // Don't process other shortcuts in preview mode
+      return;
+    }
+
     // Convert ink key event to ShortcutEvent
     const shortcutEvent: ShortcutEvent = {
       key: input || (key.tab ? 'Tab' : key.escape ? 'Escape' : key.return ? 'Enter' : ''),
@@ -295,6 +543,59 @@ export function App({
       // Detect intent
       const intent = conversationManager.detectIntent(input);
 
+      // Check if preview mode is enabled and this isn't the preview command itself
+      if (state.previewMode && !input.startsWith('/preview')) {
+        // Check if auto-execute is enabled and confidence is high enough
+        // For auto-execute, we enforce a minimum threshold of 0.95 regardless of user-configured threshold
+        if (
+          state.previewConfig.autoExecuteHighConfidence &&
+          intent.confidence >= HIGH_CONFIDENCE_THRESHOLD
+        ) {
+          // Auto-execute without preview for high confidence inputs
+          addMessage({
+            type: 'system',
+            content: `Auto-executing (confidence: ${(intent.confidence * 100).toFixed(0)}% ≥ ${(HIGH_CONFIDENCE_THRESHOLD * 100).toFixed(0)}%)`,
+          });
+          // Continue to normal execution below
+        } else {
+          // Parse command/task details for preview
+          let command: string | undefined;
+          let args: string[] = [];
+
+          if (input.startsWith('/')) {
+            const parts = input.slice(1).split(/\s+/);
+            command = parts[0].toLowerCase();
+            args = parts.slice(1);
+          }
+
+          // Store pending preview
+          setState((prev) => ({
+            ...prev,
+            pendingPreview: {
+              input,
+              intent: {
+                type: intent.type,
+                confidence: intent.confidence,
+                command,
+                args,
+                metadata: intent.metadata,
+              },
+              timestamp: new Date(),
+            },
+          }));
+
+          // Don't execute - show preview panel instead
+          return;
+        }
+      }
+
+      // Handle pending preview confirmation (if user is navigating preview)
+      if (state.pendingPreview) {
+        // Preview confirmation is handled by keyboard events, not text input
+        // If we reach here, treat it as normal input processing
+        setState((prev) => ({ ...prev, pendingPreview: undefined }));
+      }
+
       // Check if it's a command
       if (input.startsWith('/') || intent.type === 'command') {
         const parts = input.startsWith('/') ? input.slice(1).split(/\s+/) : input.split(/\s+/);
@@ -318,6 +619,63 @@ export function App({
         if (command === 'help' || command === 'h' || command === '?') {
           setShowHelp(true);
           setTimeout(() => setShowHelp(false), 10000);
+          return;
+        }
+
+        // Handle display mode commands
+        if (command === 'compact') {
+          setState((prev) => ({
+            ...prev,
+            displayMode: 'compact',
+            messages: [
+              ...prev.messages,
+              {
+                id: `msg_${Date.now()}`,
+                type: 'system',
+                content: 'Display mode set to compact: Single-line status, condensed output',
+                timestamp: new Date(),
+              },
+            ],
+          }));
+          return;
+        }
+
+        if (command === 'verbose') {
+          setState((prev) => ({
+            ...prev,
+            displayMode: 'verbose',
+            messages: [
+              ...prev.messages,
+              {
+                id: `msg_${Date.now()}`,
+                type: 'system',
+                content: 'Display mode set to verbose: Detailed debug output, full information',
+                timestamp: new Date(),
+              },
+            ],
+          }));
+          return;
+        }
+
+        if (command === 'thoughts') {
+          setState((prev) => {
+            const newShowThoughts = !prev.showThoughts;
+            return {
+              ...prev,
+              showThoughts: newShowThoughts,
+              messages: [
+                ...prev.messages,
+                {
+                  id: `msg_${Date.now()}`,
+                  type: 'system',
+                  content: newShowThoughts
+                    ? 'Thought visibility enabled: AI reasoning will be shown'
+                    : 'Thought visibility disabled: AI reasoning will be hidden',
+                  timestamp: new Date(),
+                },
+              ],
+            };
+          });
           return;
         }
 
@@ -365,7 +723,7 @@ export function App({
         }
       }
     },
-    [handleExit, onCommand, onTask, conversationManager, addMessage]
+    [handleExit, onCommand, onTask, conversationManager, addMessage, state.previewMode, state.previewConfig]
   );
 
   // Method to update state from outside
@@ -399,6 +757,62 @@ export function App({
     };
   }, [addMessage, updateState, state]);
 
+  // Preview countdown and timeout handler
+  useEffect(() => {
+    if (!state.pendingPreview) {
+      // No pending preview, reset countdown state
+      setState((prev) => ({ ...prev, remainingMs: undefined }));
+      return;
+    }
+
+    // Initialize countdown state when preview starts
+    setState((prev) => ({
+      ...prev,
+      remainingMs: prev.previewConfig.timeoutMs,
+    }));
+
+    // Set up interval for countdown updates (100ms for smooth updates)
+    const intervalId = setInterval(() => {
+      setState((prev) => {
+        if (!prev.pendingPreview || !prev.remainingMs) {
+          return prev;
+        }
+
+        const newRemainingMs = prev.remainingMs - 100;
+
+        if (newRemainingMs <= 0) {
+          // Countdown reached 0 - auto-execute the preview
+          const pendingPreview = prev.pendingPreview;
+
+          // Clear preview state first
+          const newState = {
+            ...prev,
+            pendingPreview: undefined,
+            remainingMs: undefined,
+          };
+
+          // Execute the pending input using setTimeout to avoid state update conflicts
+          setTimeout(() => {
+            addMessage({
+              type: 'system',
+              content: `Auto-executing after ${prev.previewConfig.timeoutMs / 1000}s timeout.`,
+            });
+            handleInput(pendingPreview.input);
+          }, 0);
+
+          return newState;
+        }
+
+        return { ...prev, remainingMs: newRemainingMs };
+      });
+    }, 100);
+
+    // Cleanup interval when preview is cancelled manually or confirmed
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [state.pendingPreview, state.previewConfig.timeoutMs, addMessage, handleInput]);
+
   return (
     <Box flexDirection="column" minHeight={20}>
       {/* Banner */}
@@ -410,6 +824,34 @@ export function App({
 
       {/* Services Panel - shows when API or Web UI are running */}
       <ServicesPanel apiUrl={state.apiUrl} webUrl={state.webUrl} />
+
+      {/* Preview Panel - shows when there's a pending preview */}
+      {state.pendingPreview && (
+        <PreviewPanel
+          input={state.pendingPreview.input}
+          intent={state.pendingPreview.intent}
+          workflow={state.pendingPreview.intent.metadata?.suggestedWorkflow as string}
+          remainingMs={state.remainingMs}
+          onConfirm={() => {
+            const pendingPreview = state.pendingPreview!;
+            setState((prev) => ({ ...prev, pendingPreview: undefined }));
+            handleInput(pendingPreview.input);
+          }}
+          onCancel={() => {
+            setState(prev => ({ ...prev, pendingPreview: undefined }));
+            addMessage({ type: 'system', content: 'Preview cancelled.' });
+          }}
+          onEdit={() => {
+            const pendingInput = state.pendingPreview!.input;
+            setState(prev => ({
+              ...prev,
+              pendingPreview: undefined,
+              editModeInput: pendingInput
+            }));
+            addMessage({ type: 'system', content: 'Returning to edit mode...' });
+          }}
+        />
+      )}
 
       {/* Help overlay */}
       {showHelp && (
@@ -454,6 +896,22 @@ export function App({
               <Text color="gray"> - Start Web UI</Text>
             </Text>
             <Text>
+              <Text color="yellow">/compact</Text>
+              <Text color="gray"> - Toggle compact display mode</Text>
+            </Text>
+            <Text>
+              <Text color="yellow">/verbose</Text>
+              <Text color="gray"> - Toggle verbose display mode</Text>
+            </Text>
+            <Text>
+              <Text color="yellow">/preview</Text>
+              <Text color="gray"> - Toggle input preview mode</Text>
+            </Text>
+            <Text>
+              <Text color="yellow">/thoughts</Text>
+              <Text color="gray"> - Toggle thought visibility</Text>
+            </Text>
+            <Text>
               <Text color="yellow">/clear</Text>
               <Text color="gray"> - Clear messages</Text>
             </Text>
@@ -470,7 +928,19 @@ export function App({
 
       {/* Messages area */}
       <Box flexDirection="column" flexGrow={1} marginBottom={1}>
-        {state.messages.slice(-20).map((msg) => {
+        {state.messages.slice(-20).filter((msg) => {
+          // Filter messages based on display mode
+          if (state.displayMode === 'compact') {
+            // In compact mode, hide system messages and tool calls to save space
+            return msg.type !== 'system' && msg.type !== 'tool';
+          } else if (state.displayMode === 'verbose') {
+            // In verbose mode, show all messages including debug info
+            return true;
+          } else {
+            // In normal mode, show most messages but may filter some debug info
+            return true;
+          }
+        }).map((msg) => {
           if (msg.type === 'tool' && msg.toolName) {
             return (
               <ToolCall
@@ -480,17 +950,33 @@ export function App({
                 output={msg.toolOutput}
                 status={msg.toolStatus || 'success'}
                 duration={msg.toolDuration}
+                displayMode={state.displayMode}
               />
             );
           }
 
           return (
-            <ResponseStream
-              key={msg.id}
-              content={msg.content}
-              agent={msg.agent}
-              type={msg.type === 'error' ? 'error' : msg.type === 'system' ? 'system' : 'text'}
-            />
+            <Box key={msg.id} flexDirection="column">
+              {/* Show regular message content if it exists */}
+              {msg.content && msg.content.trim().length > 0 && (
+                <ResponseStream
+                  content={msg.content}
+                  agent={msg.agent}
+                  type={msg.type === 'error' ? 'error' : msg.type === 'system' ? 'system' : 'text'}
+                  displayMode={state.displayMode}
+                />
+              )}
+
+              {/* Show thinking content if enabled and available */}
+              {state.showThoughts && msg.thinking && msg.thinking.trim().length > 0 && msg.agent && (
+                <ThoughtDisplay
+                  thinking={msg.thinking}
+                  agent={msg.agent}
+                  displayMode={state.displayMode}
+                  compact={state.displayMode === 'compact'}
+                />
+              )}
+            </Box>
           );
         })}
 
@@ -505,13 +991,30 @@ export function App({
               agent={state.activeAgent}
               tokens={state.tokens}
               cost={state.cost}
+              displayMode={state.displayMode}
             />
             <AgentPanel
               agents={getWorkflowAgents(state.currentTask.workflow, state.config)}
               currentAgent={state.activeAgent}
               showParallel={state.showParallelPanel}
               parallelAgents={state.parallelAgents}
+              displayMode={state.displayMode}
+              showThoughts={state.showThoughts}
             />
+
+            {/* Activity Log - shows in verbose mode with debug data */}
+            {state.displayMode === 'verbose' && state.verboseData && (
+              <ActivityLog
+                entries={convertVerboseDataToLogEntries(state.verboseData)}
+                displayMode={state.displayMode}
+                title="Debug Activity Log"
+                maxEntries={50}
+                showTimestamps={true}
+                showAgents={true}
+                allowCollapse={true}
+                filterLevel="debug"
+              />
+            )}
           </>
         )}
       </Box>
@@ -529,6 +1032,8 @@ export function App({
         history={state.inputHistory}
         suggestions={getSmartSuggestions()}
         disabled={state.isProcessing}
+        initialValue={state.editModeInput}
+        onValueCleared={() => setState(prev => ({ ...prev, editModeInput: undefined }))}
       />
 
       {/* Status bar */}
@@ -544,6 +1049,9 @@ export function App({
         sessionStartTime={state.sessionStartTime}
         sessionName={state.sessionName}
         subtaskProgress={state.subtaskProgress}
+        displayMode={state.displayMode}
+        previewMode={state.previewMode}
+        showThoughts={state.showThoughts}
       />
     </Box>
   );

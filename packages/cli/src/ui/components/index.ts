@@ -39,6 +39,21 @@ export {
   type QuickSuccessProps
 } from './SuccessCelebration.js';
 export { IntentDetector, SmartSuggestions, type IntentDetectorProps, type Intent, type SmartSuggestionsProps } from './IntentDetector.js';
+export { PreviewPanel, type PreviewPanelProps } from './PreviewPanel.js';
+export { ThoughtDisplay, type ThoughtDisplayProps } from './ThoughtDisplay.js';
+export { CollapsibleSection, type CollapsibleSectionProps } from './CollapsibleSection.js';
+export { AgentThoughts, type AgentThoughtsProps } from './AgentThoughts.js';
 
 // Agent components
-export { AgentPanel, HandoffIndicator, type AgentInfo, type AgentPanelProps, type HandoffIndicatorProps } from './agents/index.js';
+export {
+  AgentPanel,
+  HandoffIndicator,
+  ParallelExecutionView,
+  SubtaskTree,
+  type AgentInfo,
+  type AgentPanelProps,
+  type HandoffIndicatorProps,
+  type ParallelExecutionViewProps,
+  type SubtaskNode,
+  type SubtaskTreeProps
+} from './agents/index.js';

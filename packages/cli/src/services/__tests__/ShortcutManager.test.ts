@@ -22,6 +22,7 @@ describe('ShortcutManager', () => {
       expect(shortcuts.some(s => s.id === 'cancel')).toBe(true);
       expect(shortcuts.some(s => s.id === 'exit')).toBe(true);
       expect(shortcuts.some(s => s.id === 'clear')).toBe(true);
+      expect(shortcuts.some(s => s.id === 'toggleThoughts')).toBe(true);
     });
 
     it('should start with global context', () => {
@@ -568,6 +569,15 @@ describe('ShortcutManager', () => {
       const workflowsEvent: ShortcutEvent = { key: 'w', ctrl: true, alt: false, shift: true, meta: false };
       expect(manager.handleKey(workflowsEvent)).toBe(true);
       expect(commandHandler).toHaveBeenCalledWith('/workflows');
+    });
+
+    it('should handle thoughts shortcut (Ctrl+T)', () => {
+      const commandHandler = vi.fn();
+      manager.on('command', commandHandler);
+
+      const event: ShortcutEvent = { key: 't', ctrl: true, alt: false, shift: false, meta: false };
+      expect(manager.handleKey(event)).toBe(true);
+      expect(commandHandler).toHaveBeenCalledWith('/thoughts');
     });
   });
 
