@@ -1,4 +1,4 @@
-import { DaemonConfig, LimitsConfig, TaskUsage } from '@apexcli/core';
+import { DaemonConfig, LimitsConfig, TaskUsage } from '@apex/core';
 
 export interface UsageThresholds {
   maxTokensPerTask: number;
@@ -159,6 +159,13 @@ export class UsageManager {
    */
   updateTaskUsage(taskId: string, usage: TaskUsage): void {
     this.activeTasks.set(taskId, usage);
+  }
+
+  /**
+   * Get base limits configuration
+   */
+  getBaseLimits(): LimitsConfig {
+    return this.baseLimits;
   }
 
   /**

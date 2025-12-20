@@ -3090,3 +3090,11 @@ export {
   type ServiceErrorCode,
   type Platform,
 } from './service-manager';
+export {
+  DaemonScheduler,
+  UsageManagerProvider,
+  type UsageStatsProvider,
+  type TimeWindow,
+  type CapacityInfo,
+  type SchedulingDecision,
+} from './daemon-scheduler';
