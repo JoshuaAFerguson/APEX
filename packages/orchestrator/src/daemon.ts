@@ -37,6 +37,8 @@ export interface DaemonOptions {
   pidFile?: string;
   /** Custom log file path (default: .apex/daemon.log) */
   logFile?: string;
+  /** Poll interval in milliseconds (default: 5000) */
+  pollIntervalMs?: number;
   /** Callback for daemon output */
   onOutput?: (data: string) => void;
   /** Callback for daemon errors */
@@ -91,16 +93,18 @@ export class DaemonManager {
     await this.ensureApexDirectory();
 
     try {
-      // Create a detached child process
-      // Note: In a real implementation, this would fork a specific daemon script
-      // For now, we'll create a long-running process that can be managed
-      const child = fork(process.argv[1], [], {
+      // Fork the daemon entry point script
+      const entryPoint = join(__dirname, 'daemon-entry.js'); // Compiled output
+
+      const child = fork(entryPoint, [], {
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         env: {
           ...process.env,
           APEX_DAEMON_MODE: '1',
           APEX_PROJECT_PATH: this.projectPath,
+          APEX_POLL_INTERVAL: String(this.options.pollIntervalMs ?? 5000),
+          APEX_DAEMON_DEBUG: process.env.APEX_DAEMON_DEBUG || '0',
         },
       });
 

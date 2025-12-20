@@ -3066,3 +3066,9 @@ export {
   type DaemonStatus,
   type DaemonErrorCode
 } from './daemon';
+export {
+  DaemonRunner,
+  type DaemonRunnerOptions,
+  type DaemonMetrics,
+  type DaemonLogEntry
+} from './runner';
