@@ -188,6 +188,243 @@ describe('DaemonConfigSchema', () => {
   });
 });
 
+describe('DaemonConfigSchema - Capacity Thresholds', () => {
+  describe('timeBasedUsage configuration', () => {
+    it('should apply default values for capacity thresholds', () => {
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+        },
+      });
+
+      expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.90);
+      expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.96);
+    });
+
+    it('should accept custom capacity threshold values', () => {
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 0.75,
+          nightModeCapacityThreshold: 0.88,
+        },
+      });
+
+      expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.75);
+      expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.88);
+    });
+
+    it('should accept boundary values for capacity thresholds', () => {
+      // Test minimum boundary (0)
+      const configMin = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 0.0,
+          nightModeCapacityThreshold: 0.0,
+        },
+      });
+
+      expect(configMin.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.0);
+      expect(configMin.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.0);
+
+      // Test maximum boundary (1)
+      const configMax = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 1.0,
+          nightModeCapacityThreshold: 1.0,
+        },
+      });
+
+      expect(configMax.timeBasedUsage?.dayModeCapacityThreshold).toBe(1.0);
+      expect(configMax.timeBasedUsage?.nightModeCapacityThreshold).toBe(1.0);
+    });
+
+    it('should reject capacity threshold values below 0', () => {
+      expect(() => {
+        DaemonConfigSchema.parse({
+          timeBasedUsage: {
+            enabled: true,
+            dayModeCapacityThreshold: -0.1,
+          },
+        });
+      }).toThrow();
+
+      expect(() => {
+        DaemonConfigSchema.parse({
+          timeBasedUsage: {
+            enabled: true,
+            nightModeCapacityThreshold: -0.5,
+          },
+        });
+      }).toThrow();
+    });
+
+    it('should reject capacity threshold values above 1', () => {
+      expect(() => {
+        DaemonConfigSchema.parse({
+          timeBasedUsage: {
+            enabled: true,
+            dayModeCapacityThreshold: 1.1,
+          },
+        });
+      }).toThrow();
+
+      expect(() => {
+        DaemonConfigSchema.parse({
+          timeBasedUsage: {
+            enabled: true,
+            nightModeCapacityThreshold: 1.5,
+          },
+        });
+      }).toThrow();
+    });
+
+    it('should reject invalid types for capacity thresholds', () => {
+      const invalidValues = ['0.9', null, undefined, [], {}, 'high', true];
+
+      for (const value of invalidValues) {
+        expect(() => {
+          DaemonConfigSchema.parse({
+            timeBasedUsage: {
+              enabled: true,
+              dayModeCapacityThreshold: value,
+            },
+          });
+        }).toThrow();
+
+        expect(() => {
+          DaemonConfigSchema.parse({
+            timeBasedUsage: {
+              enabled: true,
+              nightModeCapacityThreshold: value,
+            },
+          });
+        }).toThrow();
+      }
+    });
+
+    it('should work with complete timeBasedUsage configuration', () => {
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeHours: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+          nightModeHours: [22, 23, 0, 1, 2, 3, 4, 5, 6],
+          dayModeCapacityThreshold: 0.80,
+          nightModeCapacityThreshold: 0.95,
+          dayModeThresholds: {
+            maxTokensPerTask: 50000,
+            maxCostPerTask: 3.0,
+            maxConcurrentTasks: 1,
+          },
+          nightModeThresholds: {
+            maxTokensPerTask: 2000000,
+            maxCostPerTask: 25.0,
+            maxConcurrentTasks: 8,
+          },
+        },
+      });
+
+      expect(config.timeBasedUsage?.enabled).toBe(true);
+      expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.80);
+      expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.95);
+      expect(config.timeBasedUsage?.dayModeThresholds?.maxTokensPerTask).toBe(50000);
+      expect(config.timeBasedUsage?.nightModeThresholds?.maxTokensPerTask).toBe(2000000);
+    });
+
+    it('should preserve type safety for capacity threshold values', () => {
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 0.85,
+          nightModeCapacityThreshold: 0.92,
+        },
+      });
+
+      expect(typeof config.timeBasedUsage?.dayModeCapacityThreshold).toBe('number');
+      expect(typeof config.timeBasedUsage?.nightModeCapacityThreshold).toBe('number');
+    });
+
+    it('should work without timeBasedUsage section', () => {
+      const config = DaemonConfigSchema.parse({
+        pollInterval: 5000,
+        autoStart: false,
+      });
+
+      expect(config.timeBasedUsage).toBeUndefined();
+    });
+
+    it('should work with disabled timeBasedUsage but configured thresholds', () => {
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: false,
+          dayModeCapacityThreshold: 0.70,
+          nightModeCapacityThreshold: 0.85,
+        },
+      });
+
+      expect(config.timeBasedUsage?.enabled).toBe(false);
+      expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.70);
+      expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.85);
+    });
+
+    it('should handle partial capacity threshold configuration', () => {
+      // Only day mode threshold specified
+      const configDayOnly = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 0.85,
+        },
+      });
+
+      expect(configDayOnly.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.85);
+      expect(configDayOnly.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.96); // default
+
+      // Only night mode threshold specified
+      const configNightOnly = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          nightModeCapacityThreshold: 0.89,
+        },
+      });
+
+      expect(configNightOnly.timeBasedUsage?.dayModeCapacityThreshold).toBe(0.90); // default
+      expect(configNightOnly.timeBasedUsage?.nightModeCapacityThreshold).toBe(0.89);
+    });
+
+    it('should handle common threshold percentage values', () => {
+      const commonThresholds = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99];
+
+      for (const threshold of commonThresholds) {
+        const config = DaemonConfigSchema.parse({
+          timeBasedUsage: {
+            enabled: true,
+            dayModeCapacityThreshold: threshold,
+            nightModeCapacityThreshold: threshold,
+          },
+        });
+
+        expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBe(threshold);
+        expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBe(threshold);
+      }
+    });
+
+    it('should handle floating point precision edge cases', () => {
+      // Test very precise decimal values
+      const config = DaemonConfigSchema.parse({
+        timeBasedUsage: {
+          enabled: true,
+          dayModeCapacityThreshold: 0.8999999999999999,
+          nightModeCapacityThreshold: 0.9600000000000001,
+        },
+      });
+
+      expect(config.timeBasedUsage?.dayModeCapacityThreshold).toBeCloseTo(0.9, 10);
+      expect(config.timeBasedUsage?.nightModeCapacityThreshold).toBeCloseTo(0.96, 10);
+    });
+  });
+});
+
 describe('AgentDefinitionSchema', () => {
   it('should parse valid agent definition', () => {
     const agent = AgentDefinitionSchema.parse({

@@ -160,6 +160,8 @@ export const DaemonConfigSchema = z.object({
     enabled: z.boolean().optional().default(false),
     dayModeHours: z.array(z.number().min(0).max(23)).optional().default([9, 10, 11, 12, 13, 14, 15, 16, 17]),
     nightModeHours: z.array(z.number().min(0).max(23)).optional().default([22, 23, 0, 1, 2, 3, 4, 5, 6]),
+    dayModeCapacityThreshold: z.number().min(0).max(1).optional().default(0.90),
+    nightModeCapacityThreshold: z.number().min(0).max(1).optional().default(0.96),
     dayModeThresholds: z.object({
       maxTokensPerTask: z.number().optional().default(100000),
       maxCostPerTask: z.number().optional().default(5.0),
