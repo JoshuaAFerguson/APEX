@@ -206,7 +206,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
 | Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
-| Documentation updates | ⚪ | 1 day | `docs/` |
+| Documentation updates | 🟢 Complete | 1 day | `docs/` |
 
 **Estimated Remaining**: 2 days (testing + documentation)
 
