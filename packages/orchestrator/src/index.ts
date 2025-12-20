@@ -2744,8 +2744,8 @@ Parent: ${parentTask.description}`;
 
       subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
 
-      // Track incomplete subtasks
-      if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused') {
+      // Track incomplete subtasks (including in-progress!)
+      if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused' || subtask.status === 'in-progress') {
         pendingCount++;
       } else if (subtask.status === 'failed') {
         failedCount++;
@@ -3048,11 +3048,12 @@ Parent: ${parentTask.description}`;
       const subtask = await this.store.getTask(subtaskId);
       if (!subtask) continue;
 
-      // Include failed subtasks - they can be retried via resume
+      // Include in-progress and failed subtasks - they still have work to do
       if (
         subtask.status === 'pending' ||
         subtask.status === 'queued' ||
         subtask.status === 'paused' ||
+        subtask.status === 'in-progress' ||
         subtask.status === 'failed'
       ) {
         return true;
@@ -3219,8 +3220,16 @@ export {
   compactConversation,
   pruneToolResults,
   createContextSummary,
+  createContextSummaryData,
+  extractKeyDecisions,
+  extractProgressInfo,
+  extractFileModifications,
   analyzeConversation,
   type ContextCompactionOptions,
+  type KeyDecision,
+  type ProgressInfo,
+  type FileModification,
+  type ContextSummaryData,
 } from './context';
 export {
   DaemonManager,

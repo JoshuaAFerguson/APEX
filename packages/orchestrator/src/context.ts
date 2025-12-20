@@ -9,6 +9,74 @@
 
 import type { AgentMessage, AgentContentBlock } from '@apexcli/core';
 
+// ============================================================================
+// Enhanced Context Summary Types
+// ============================================================================
+
+/**
+ * Represents a key decision made during conversation
+ */
+export interface KeyDecision {
+  /** Decision content text */
+  text: string;
+  /** Message index where decision was found */
+  messageIndex: number;
+  /** Confidence level of decision detection (0-1) */
+  confidence: number;
+  /** Category of decision */
+  category: 'implementation' | 'architecture' | 'approach' | 'workflow' | 'other';
+}
+
+/**
+ * Represents progress tracking information
+ */
+export interface ProgressInfo {
+  /** Completed stages/steps */
+  completed: string[];
+  /** Current active stage/step */
+  current?: string;
+  /** Overall progress percentage (0-100) */
+  percentage: number;
+  /** Last activity timestamp */
+  lastActivity?: Date;
+}
+
+/**
+ * Enhanced file modification tracking
+ */
+export interface FileModification {
+  /** File path */
+  path: string;
+  /** Type of action performed */
+  action: 'read' | 'write' | 'edit' | 'create' | 'delete';
+  /** Number of times this action was performed */
+  count: number;
+  /** Last message index where action occurred */
+  lastMessageIndex: number;
+}
+
+/**
+ * Structured context summary containing enhanced information
+ */
+export interface ContextSummaryData {
+  /** Basic conversation metrics */
+  metrics: {
+    messageCount: number;
+    userRequestCount: number;
+    toolUsageCount: number;
+  };
+  /** Key decisions extracted from conversation */
+  keyDecisions: KeyDecision[];
+  /** Progress tracking information */
+  progress: ProgressInfo;
+  /** Enhanced file modification tracking */
+  fileModifications: FileModification[];
+  /** Tools used with frequency */
+  toolsUsed: Record<string, number>;
+  /** Recent user requests (last 3) */
+  recentRequests: string[];
+}
+
 export interface ContextCompactionOptions {
   /** Maximum tokens to keep in context (approximate) */
   maxTokens?: number;
@@ -29,6 +97,175 @@ const DEFAULT_OPTIONS: ContextCompactionOptions = {
   summarizeOlder: true,
   keepLastNToolResults: 5,
 };
+
+// ============================================================================
+// Enhanced Context Analysis Functions
+// ============================================================================
+
+/**
+ * Decision extraction patterns with confidence scoring
+ */
+const DECISION_PATTERNS = [
+  // High confidence patterns
+  { pattern: /(?:I will|I'll|I'm going to|I've decided to|Let me|I plan to)\s+(.{1,150})/gi, confidence: 0.9, category: 'implementation' as const },
+  { pattern: /(?:decided to|choosing|opted for|selected|going with)\s+(.{1,100})/gi, confidence: 0.85, category: 'approach' as const },
+  { pattern: /(?:implementing|building|creating|developing)\s+(.{1,100})/gi, confidence: 0.8, category: 'implementation' as const },
+
+  // Medium confidence patterns
+  { pattern: /(?:approach|strategy|solution|method)\s+(?:will be|is|involves)\s+(.{1,100})/gi, confidence: 0.7, category: 'architecture' as const },
+  { pattern: /(?:using|utilizing|employing)\s+(.{1,80})\s+(?:for|to|because)/gi, confidence: 0.65, category: 'approach' as const },
+  { pattern: /(?:workflow|process|steps)\s+(?:will|should)\s+(.{1,100})/gi, confidence: 0.6, category: 'workflow' as const },
+
+  // Lower confidence patterns
+  { pattern: /(?:think|believe|suggest|recommend)\s+(?:we should|to)\s+(.{1,80})/gi, confidence: 0.5, category: 'other' as const }
+];
+
+/**
+ * Progress tracking patterns
+ */
+const PROGRESS_PATTERNS = [
+  /(?:completed|finished|done with)\s+(.{1,50})/gi,
+  /(?:currently|now|next)\s+(?:working on|implementing|building)\s+(.{1,50})/gi,
+  /(?:stage|phase|step)\s+(\d+|\w+)\s+(?:completed|finished|done)/gi,
+  /(?:progress|status):\s*(.{1,100})/gi
+];
+
+/**
+ * Extract key decisions from assistant messages
+ */
+export function extractKeyDecisions(messages: AgentMessage[]): KeyDecision[] {
+  const decisions: KeyDecision[] = [];
+
+  messages.forEach((message, messageIndex) => {
+    // Only look at assistant messages for decisions
+    if (message.type !== 'assistant') return;
+
+    message.content.forEach((block) => {
+      if (block.type === 'text' && block.text) {
+        // Apply each decision pattern
+        DECISION_PATTERNS.forEach(({ pattern, confidence, category }) => {
+          const matches = [...block.text!.matchAll(pattern)];
+          matches.forEach((match) => {
+            const text = match[1]?.trim();
+            if (text && text.length > 10) { // Filter out very short matches
+              decisions.push({
+                text,
+                messageIndex,
+                confidence,
+                category
+              });
+            }
+          });
+        });
+      }
+    });
+  });
+
+  // Remove duplicates and sort by confidence
+  const uniqueDecisions = decisions
+    .filter((decision, index, self) =>
+      index === self.findIndex(d => d.text.toLowerCase() === decision.text.toLowerCase())
+    )
+    .sort((a, b) => b.confidence - a.confidence);
+
+  // Return top 10 decisions to avoid overwhelming the summary
+  return uniqueDecisions.slice(0, 10);
+}
+
+/**
+ * Track progress indicators from conversation
+ */
+export function extractProgressInfo(messages: AgentMessage[]): ProgressInfo {
+  const completed: string[] = [];
+  let current: string | undefined;
+  let lastActivity: Date | undefined;
+
+  messages.forEach((message) => {
+    message.content.forEach((block) => {
+      if (block.type === 'text' && block.text) {
+        // Look for completion indicators
+        const completedMatches = [...block.text.matchAll(PROGRESS_PATTERNS[0])];
+        completedMatches.forEach((match) => {
+          const item = match[1]?.trim();
+          if (item && !completed.includes(item)) {
+            completed.push(item);
+            lastActivity = new Date();
+          }
+        });
+
+        // Look for current activity
+        const currentMatches = [...block.text.matchAll(PROGRESS_PATTERNS[1])];
+        if (currentMatches.length > 0) {
+          current = currentMatches[currentMatches.length - 1][1]?.trim();
+          lastActivity = new Date();
+        }
+      }
+    });
+  });
+
+  // Calculate percentage based on completed vs total identified items
+  const totalIdentified = completed.length + (current ? 1 : 0);
+  const percentage = totalIdentified > 0 ? Math.round((completed.length / totalIdentified) * 100) : 0;
+
+  return {
+    completed,
+    current,
+    percentage,
+    lastActivity
+  };
+}
+
+/**
+ * Enhanced file modification tracking with action types
+ */
+export function extractFileModifications(messages: AgentMessage[]): FileModification[] {
+  const modifications = new Map<string, FileModification>();
+
+  messages.forEach((message, messageIndex) => {
+    message.content.forEach((block) => {
+      if (block.type === 'tool_use' && block.toolName && block.toolInput) {
+        const input = block.toolInput as Record<string, unknown>;
+        const filePath = input.file_path as string;
+
+        if (!filePath) return;
+
+        // Determine action type based on tool name
+        let action: FileModification['action'];
+        switch (block.toolName) {
+          case 'Read':
+            action = 'read';
+            break;
+          case 'Write':
+            action = 'write';
+            break;
+          case 'Edit':
+            action = 'edit';
+            break;
+          default:
+            return; // Skip unknown tools
+        }
+
+        const key = `${filePath}:${action}`;
+        const existing = modifications.get(key);
+
+        if (existing) {
+          existing.count += 1;
+          existing.lastMessageIndex = messageIndex;
+        } else {
+          modifications.set(key, {
+            path: filePath,
+            action,
+            count: 1,
+            lastMessageIndex: messageIndex
+          });
+        }
+      }
+    });
+  });
+
+  return Array.from(modifications.values())
+    .sort((a, b) => b.lastMessageIndex - a.lastMessageIndex);
+}
 
 /**
  * Estimate token count for a string (rough approximation: ~4 chars per token)
@@ -239,61 +476,115 @@ export function pruneToolResults(
 }
 
 /**
- * Create a context summary for including at the start of resumed conversations
+ * Create enhanced structured context summary data
  */
-export function createContextSummary(messages: AgentMessage[]): string {
-  const toolsUsed = new Set<string>();
-  const filesRead = new Set<string>();
-  const filesEdited = new Set<string>();
-  let messageCount = 0;
-  let userRequests: string[] = [];
+export function createContextSummaryData(messages: AgentMessage[]): ContextSummaryData {
+  const toolUsage = new Map<string, number>();
+  const userRequests: string[] = [];
+  let toolUsageCount = 0;
 
+  // Extract basic metrics
   for (const msg of messages) {
-    messageCount++;
     for (const block of msg.content) {
       if (block.type === 'tool_use' && block.toolName) {
-        toolsUsed.add(block.toolName);
-
-        // Extract file paths from common tools
-        if (block.toolInput && typeof block.toolInput === 'object') {
-          const input = block.toolInput as Record<string, unknown>;
-          if (block.toolName === 'Read' && input.file_path) {
-            filesRead.add(String(input.file_path));
-          }
-          if ((block.toolName === 'Write' || block.toolName === 'Edit') && input.file_path) {
-            filesEdited.add(String(input.file_path));
-          }
-        }
+        const count = toolUsage.get(block.toolName) || 0;
+        toolUsage.set(block.toolName, count + 1);
+        toolUsageCount++;
       }
 
       // Extract user requests
       if (msg.type === 'user' && block.type === 'text' && block.text) {
-        const request = block.text.substring(0, 100);
+        const request = block.text.substring(0, 150);
         userRequests.push(request);
       }
     }
   }
 
+  // Extract enhanced data using new functions
+  const keyDecisions = extractKeyDecisions(messages);
+  const progress = extractProgressInfo(messages);
+  const fileModifications = extractFileModifications(messages);
+
+  return {
+    metrics: {
+      messageCount: messages.length,
+      userRequestCount: userRequests.length,
+      toolUsageCount
+    },
+    keyDecisions,
+    progress,
+    fileModifications,
+    toolsUsed: Object.fromEntries(toolUsage),
+    recentRequests: userRequests.slice(-3)
+  };
+}
+
+/**
+ * Create a context summary for including at the start of resumed conversations
+ * Enhanced version with decision tracking, progress monitoring, and detailed file operations
+ */
+export function createContextSummary(messages: AgentMessage[]): string {
+  // Use the enhanced data extraction
+  const data = createContextSummaryData(messages);
+
   let summary = '## Previous Context Summary\n\n';
-  summary += `- Messages exchanged: ${messageCount}\n`;
-  summary += `- Tools used: ${Array.from(toolsUsed).join(', ') || 'none'}\n`;
 
-  if (filesRead.size > 0) {
-    summary += `- Files read: ${Array.from(filesRead).slice(0, 10).join(', ')}`;
-    if (filesRead.size > 10) {
-      summary += ` (+${filesRead.size - 10} more)`;
+  // Basic metrics
+  summary += `- Messages exchanged: ${data.metrics.messageCount}\n`;
+  summary += `- Tools used: ${Object.keys(data.toolsUsed).join(', ') || 'none'}\n`;
+
+  // Enhanced file modification tracking
+  if (data.fileModifications.length > 0) {
+    const readFiles = data.fileModifications.filter(f => f.action === 'read');
+    const writeFiles = data.fileModifications.filter(f => f.action === 'write');
+    const editFiles = data.fileModifications.filter(f => f.action === 'edit');
+
+    if (readFiles.length > 0) {
+      const paths = readFiles.slice(0, 10).map(f => f.path);
+      summary += `- Files read: ${paths.join(', ')}`;
+      if (readFiles.length > 10) {
+        summary += ` (+${readFiles.length - 10} more)`;
+      }
+      summary += '\n';
     }
-    summary += '\n';
+
+    if (writeFiles.length > 0) {
+      summary += `- Files written: ${writeFiles.map(f => f.path).join(', ')}\n`;
+    }
+
+    if (editFiles.length > 0) {
+      summary += `- Files edited: ${editFiles.map(f => f.path).join(', ')}\n`;
+    }
   }
 
-  if (filesEdited.size > 0) {
-    summary += `- Files modified: ${Array.from(filesEdited).join(', ')}\n`;
+  // Progress tracking
+  if (data.progress.completed.length > 0 || data.progress.current) {
+    summary += '\n### Progress Tracking\n';
+    if (data.progress.completed.length > 0) {
+      summary += `- Completed: ${data.progress.completed.join(', ')}\n`;
+    }
+    if (data.progress.current) {
+      summary += `- Currently: ${data.progress.current}\n`;
+    }
+    if (data.progress.percentage > 0) {
+      summary += `- Overall progress: ${data.progress.percentage}%\n`;
+    }
   }
 
-  if (userRequests.length > 0) {
-    summary += '\nKey requests:\n';
-    for (const req of userRequests.slice(-3)) {
-      summary += `- ${req}${req.length >= 100 ? '...' : ''}\n`;
+  // Key decisions made
+  if (data.keyDecisions.length > 0) {
+    summary += '\n### Key Decisions Made\n';
+    // Show top 5 highest confidence decisions
+    for (const decision of data.keyDecisions.slice(0, 5)) {
+      summary += `- [${decision.category}] ${decision.text}\n`;
+    }
+  }
+
+  // Recent user requests
+  if (data.recentRequests.length > 0) {
+    summary += '\n### Recent Requests\n';
+    for (const req of data.recentRequests) {
+      summary += `- ${req}${req.length >= 150 ? '...' : ''}\n`;
     }
   }
 
