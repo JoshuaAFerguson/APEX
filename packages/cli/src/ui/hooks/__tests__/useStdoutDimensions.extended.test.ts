@@ -123,10 +123,10 @@ describe('useStdoutDimensions - Extended Tests for New Features', () => {
       }));
 
       // 75 should be compact with these thresholds
-      expect(result.current.breakpoint).toBe('normal');
-      expect(result.current.isNormal).toBe(true);
+      expect(result.current.breakpoint).toBe('compact');
+      expect(result.current.isCompact).toBe(true);
       expect(result.current.isNarrow).toBe(false);
-      expect(result.current.isCompact).toBe(false);
+      expect(result.current.isNormal).toBe(false);
       expect(result.current.isWide).toBe(false);
     });
 
@@ -319,9 +319,9 @@ describe('useStdoutDimensions - Extended Tests for New Features', () => {
         }
       }));
 
-      // 100 < 150 (compact), so should be normal per the logic
-      expect(result.current.breakpoint).toBe('wide'); // >= 80 (normal)
-      expect(result.current.isWide).toBe(true);
+      // With out-of-order thresholds, the first matching rule applies (100 < 200)
+      expect(result.current.breakpoint).toBe('narrow');
+      expect(result.current.isNarrow).toBe(true);
     });
   });
 

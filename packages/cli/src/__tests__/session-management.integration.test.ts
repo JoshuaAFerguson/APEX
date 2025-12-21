@@ -242,7 +242,7 @@ describe('Session Management Integration Tests', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining(`${testSession.id}.json`),
-        expect.stringContaining('"name":"Updated Lifecycle Test"')
+        expect.stringContaining('"name": "Updated Lifecycle Test"')
       );
 
       // DELETE
@@ -257,7 +257,10 @@ describe('Session Management Integration Tests', () => {
       // ARCHIVE
       await sessionStore.archiveSession(testSession.id);
 
-      expect(mockGzip).toHaveBeenCalledWith(JSON.stringify(testSession));
+      expect(mockGzip).toHaveBeenCalledWith(
+        JSON.stringify(testSession),
+        expect.any(Function)
+      );
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining(`${testSession.id}.json.gz`),
         Buffer.from('compressed')
@@ -457,14 +460,14 @@ describe('Session Management Integration Tests', () => {
       });
 
       expect(testAutoSaver.hasUnsavedChanges()).toBe(true);
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(2); // Initial session save + active session
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(3); // Initial session save + active session + index
 
       // Advance timer
       vi.advanceTimersByTime(1000);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
 
       // Should have saved
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(3); // Initial + active + auto-save
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(5); // Initial + active + index + auto-save + index
       expect(testAutoSaver.hasUnsavedChanges()).toBe(false);
     });
 
@@ -480,13 +483,13 @@ describe('Session Management Integration Tests', () => {
       // Add first message
       await testAutoSaver.addMessage({ role: 'user', content: 'Message 1' });
       expect(testAutoSaver.getUnsavedChangesCount()).toBe(1);
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(2); // Initial setup
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(3); // Initial setup + index
 
       // Add second message - should trigger auto-save
       await testAutoSaver.addMessage({ role: 'user', content: 'Message 2' });
 
       expect(testAutoSaver.getUnsavedChangesCount()).toBe(0); // Reset after auto-save
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(3); // Initial + active + auto-save
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(5); // Initial + active + index + auto-save + index
     });
 
     it('should handle timer errors gracefully', async () => {
@@ -512,7 +515,7 @@ describe('Session Management Integration Tests', () => {
       await testAutoSaver.addMessage({ role: 'user', content: 'Test message' });
 
       vi.advanceTimersByTime(1000);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.any(Error));
       expect(testAutoSaver.hasUnsavedChanges()).toBe(true); // Changes still pending
@@ -533,7 +536,7 @@ describe('Session Management Integration Tests', () => {
 
       await testAutoSaver.stop();
 
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(3); // Initial + active + stop save
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(5); // Initial + active + index + stop save + index
       expect(testAutoSaver.hasUnsavedChanges()).toBe(false);
     });
   });
@@ -1589,7 +1592,9 @@ describe('Session Management Integration Tests', () => {
         return Promise.reject(new Error('File not found'));
       });
 
-      mockGzip.mockRejectedValue(new Error('Compression failed'));
+      mockGzip.mockImplementation((data: unknown, callback: (error: Error | null, result?: Buffer) => void) => {
+        callback(new Error('Compression failed'));
+      });
 
       await expect(
         sessionStore.archiveSession(testSession.id)
@@ -1773,7 +1778,7 @@ describe('Session Management Integration Tests', () => {
 
       // Timer should restart with new interval
       vi.advanceTimersByTime(500);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(mockFs.writeFile).toHaveBeenCalled(); // Auto-save occurred
       expect(autoSaver.hasUnsavedChanges()).toBe(false);

@@ -33,22 +33,27 @@ describe('useStdoutDimensions - Coverage Tests', () => {
 
   describe('function coverage', () => {
     it('should cover getBreakpoint function with all branches', () => {
-      // Test all three branches of getBreakpoint function
+      // Test all four branches of getBreakpoint function
 
       // Branch 1: width < narrowThreshold (return 'narrow')
       mockBaseHook.mockReturnValue([30, 24]);
       const { result: narrowResult } = renderHook(() => useStdoutDimensions());
       expect(narrowResult.current.breakpoint).toBe('narrow');
 
-      // Branch 2: width >= wideThreshold (return 'wide')
-      mockBaseHook.mockReturnValue([150, 24]);
-      const { result: wideResult } = renderHook(() => useStdoutDimensions());
-      expect(wideResult.current.breakpoint).toBe('wide');
-
-      // Branch 3: narrowThreshold <= width < wideThreshold (return 'normal')
+      // Branch 2: width < compact threshold (return 'compact')
       mockBaseHook.mockReturnValue([80, 24]);
+      const { result: compactResult } = renderHook(() => useStdoutDimensions());
+      expect(compactResult.current.breakpoint).toBe('compact');
+
+      // Branch 3: width < normal threshold (return 'normal')
+      mockBaseHook.mockReturnValue([150, 24]);
       const { result: normalResult } = renderHook(() => useStdoutDimensions());
       expect(normalResult.current.breakpoint).toBe('normal');
+
+      // Branch 4: width >= normal threshold (return 'wide')
+      mockBaseHook.mockReturnValue([180, 24]);
+      const { result: wideResult } = renderHook(() => useStdoutDimensions());
+      expect(wideResult.current.breakpoint).toBe('wide');
     });
 
     it('should cover all option destructuring paths', () => {
@@ -149,7 +154,7 @@ describe('useStdoutDimensions - Coverage Tests', () => {
       mockBaseHook.mockReturnValue([80, 24]);
 
       // Initial render
-      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.breakpoint).toBe('compact');
 
       // Change width (should trigger recalculation)
       mockBaseHook.mockReturnValue([50, 24]);
@@ -207,7 +212,7 @@ describe('useStdoutDimensions - Coverage Tests', () => {
       // Test middle branch (narrowThreshold <= width < wideThreshold)
       mockBaseHook.mockReturnValue([80, 24]);
       const { result: middle } = renderHook(() => useStdoutDimensions(options));
-      expect(middle.current.breakpoint).toBe('normal');
+      expect(middle.current.breakpoint).toBe('compact');
     });
   });
 

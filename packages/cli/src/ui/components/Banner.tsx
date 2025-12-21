@@ -36,11 +36,15 @@ function getDisplayMode(width: number): BannerDisplayMode {
  */
 function truncatePath(path: string, maxLen: number): string {
   if (path.length <= maxLen) return path;
+  if (maxLen <= 3) return '.'.repeat(Math.max(0, maxLen));
   const parts = path.split('/');
   // Keep last few segments with ellipsis
   let result = '.../' + parts.slice(-2).join('/');
   if (result.length > maxLen) {
     result = '...' + path.slice(-(maxLen - 3));
+  }
+  if (result.length > maxLen) {
+    result = result.slice(0, maxLen);
   }
   return result;
 }

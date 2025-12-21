@@ -47,7 +47,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
       expect(result.current.width).toBe(initialWidth);
       // Object reference should be different due to new object creation,
       // but values should remain consistent
-      expect(result.current.breakpoint).toBe('normal');
+      expect(result.current.breakpoint).toBe('compact');
     });
 
     it('should recalculate breakpoint only when relevant values change', () => {

@@ -229,7 +229,7 @@ describe('Session Export Formats - Documentation Validation', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         '/test/export.json',
-        expect.stringContaining('"name":"Feature Development"')
+        expect.stringContaining('"name": "Feature Development"')
       );
 
       // Test HTML export to file

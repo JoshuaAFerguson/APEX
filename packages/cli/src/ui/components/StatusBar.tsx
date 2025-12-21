@@ -713,7 +713,7 @@ function applyAbbreviations(
 
     if (useAbbrev) {
       // Use abbreviated label if available
-      if (config.abbreviatedLabel !== undefined) {
+      if (config.abbreviatedLabel != null) {
         effectiveLabel = config.abbreviatedLabel === '' ? undefined : config.abbreviatedLabel;
       }
 

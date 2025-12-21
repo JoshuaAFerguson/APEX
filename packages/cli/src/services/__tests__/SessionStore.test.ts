@@ -125,7 +125,7 @@ describe('SessionStore', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         path.join(mockProjectPath, '.apex', 'sessions', `${session.id}.json`),
-        expect.stringContaining('"name":"Test Session"')
+        expect.stringContaining('"name": "Test Session"')
       );
     });
 
@@ -274,7 +274,7 @@ describe('SessionStore', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         path.join(mockProjectPath, '.apex', 'sessions', 'test-session.json'),
-        expect.stringContaining('"name":"Updated Name"')
+        expect.stringContaining('"name": "Updated Name"')
       );
     });
 
@@ -486,7 +486,7 @@ describe('SessionStore', () => {
 
       const branchedSession = await sessionStore.branchSession('parent-session', 0);
 
-      expect(branchedSession.name).toBe('Branch of Parent Session');
+      expect(branchedSession.name).toBe('Branch from Parent Session');
     });
 
     it('should update parent session with child reference', async () => {

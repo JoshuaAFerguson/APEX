@@ -208,7 +208,7 @@ export class SessionStore {
       new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
 
-    return options?.limit ? sessions.slice(0, options.limit) : sessions;
+    return options?.limit !== undefined ? sessions.slice(0, options.limit) : sessions;
   }
 
   async branchSession(
@@ -225,7 +225,7 @@ export class SessionStore {
     const branched: Session = {
       ...parent,
       id: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: name || `Branch of ${parent.name || parent.id}`,
+      name: name || `Branch from ${parent.name || parent.id}`,
       createdAt: now,
       updatedAt: now,
       lastAccessedAt: now,
@@ -253,20 +253,31 @@ export class SessionStore {
 
   async exportSession(
     id: string,
-    format: 'md' | 'json' | 'html' = 'md'
+    format: 'md' | 'json' | 'html' = 'md',
+    outputPath?: string
   ): Promise<string> {
     const session = await this.getSession(id);
     if (!session) throw new Error(`Session not found: ${id}`);
 
+    let exported: string;
     switch (format) {
       case 'json':
-        return JSON.stringify(session, null, 2);
+        exported = this.exportToJson(session);
+        break;
       case 'html':
-        return this.exportToHtml(session);
+        exported = this.exportToHtml(session);
+        break;
       case 'md':
       default:
-        return this.exportToMarkdown(session);
+        exported = this.exportToMarkdown(session);
+        break;
     }
+
+    if (outputPath) {
+      await fs.writeFile(outputPath, exported, 'utf-8');
+    }
+
+    return exported;
   }
 
   async archiveSession(id: string): Promise<void> {
@@ -381,6 +392,11 @@ export class SessionStore {
   }
 
   private exportToMarkdown(session: Session): string {
+    const formatNumber = (value: number): string => value.toLocaleString('en-US');
+    const formatTimestamp = (value: Date): string =>
+      value.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+    const totalTokens = session.state.totalTokens.input + session.state.totalTokens.output;
+
     const lines: string[] = [
       `# APEX Session: ${session.name || session.id}`,
       ``,
@@ -388,6 +404,7 @@ export class SessionStore {
       `**Last Updated:** ${session.updatedAt.toISOString()}`,
       `**Total Messages:** ${session.messages.length}`,
       `**Total Cost:** $${session.state.totalCost.toFixed(4)}`,
+      `**Tokens:** ${formatNumber(totalTokens)} (input: ${formatNumber(session.state.totalTokens.input)} | output: ${formatNumber(session.state.totalTokens.output)})`,
       ``,
       `---`,
       ``,
@@ -398,7 +415,18 @@ export class SessionStore {
                        msg.role === 'assistant' ? `**Assistant${msg.agent ? ` (${msg.agent})` : ''}**` :
                        msg.role === 'system' ? '*System*' : '*Tool*';
 
-      lines.push(`### ${roleLabel}`);
+      lines.push(`### ${roleLabel} *(${formatTimestamp(msg.timestamp)})*`);
+      if (msg.agent || msg.stage || msg.tokens) {
+        const tokenTotal = (msg.tokens?.input || 0) + (msg.tokens?.output || 0);
+        const messageCost = tokenTotal * 0.001 / 1000;
+        const metaParts = [
+          msg.agent ? `Agent: ${msg.agent}` : null,
+          msg.stage ? `Stage: ${msg.stage}` : null,
+          msg.tokens ? `Tokens: ${formatNumber(tokenTotal)}` : null,
+          msg.tokens ? `Cost: $${messageCost.toFixed(4)}` : null,
+        ].filter(Boolean);
+        lines.push(`[${metaParts.join(' | ')}]`);
+      }
       lines.push(``);
       lines.push(msg.content);
       lines.push(``);
@@ -410,8 +438,53 @@ export class SessionStore {
     return lines.join('\n');
   }
 
+  private exportToJson(session: Session): string {
+    const formatMessage = (message: SessionMessage) => {
+      const tokenTotal = (message.tokens?.input || 0) + (message.tokens?.output || 0);
+      const messageCost = message.tokens ? Number((tokenTotal * 0.001 / 1000).toFixed(4)) : undefined;
+      const metadata = {
+        agent: message.agent,
+        stage: message.stage,
+        tokens: message.tokens,
+        cost: messageCost,
+      };
+
+      return {
+        id: message.id,
+        index: message.index,
+        timestamp: message.timestamp.toISOString(),
+        role: message.role,
+        content: message.content,
+        metadata: Object.values(metadata).some(value => value !== undefined) ? metadata : undefined,
+      };
+    };
+
+    const exportData = {
+      id: session.id,
+      name: session.name,
+      created: session.createdAt.toISOString(),
+      lastUpdated: session.updatedAt.toISOString(),
+      metadata: {
+        tags: session.tags,
+        parentSessionId: session.parentSessionId ?? null,
+        branchCount: session.childSessionIds.length,
+      },
+      messages: session.messages.map(formatMessage),
+      state: {
+        totalTokens: session.state.totalTokens,
+        totalCost: session.state.totalCost,
+      },
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  }
+
   private exportToHtml(session: Session): string {
-    // Basic HTML export
+    const formatNumber = (value: number): string => value.toLocaleString('en-US');
+    const formatDate = (value: Date): string =>
+      value.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const totalTokens = session.state.totalTokens.input + session.state.totalTokens.output;
+
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -422,15 +495,29 @@ export class SessionStore {
     .user { background: #e3f2fd; }
     .assistant { background: #f5f5f5; }
     .system { background: #fff3e0; font-style: italic; }
+    .metadata { color: #555; font-size: 0.9em; margin: 4px 0 0; }
     pre { background: #263238; color: #fff; padding: 10px; overflow-x: auto; }
   </style>
 </head>
 <body>
   <h1>APEX Session: ${session.name || session.id}</h1>
-  <p>Created: ${session.createdAt.toISOString()}</p>
+  <div class="metadata">
+    <p><strong>Created:</strong> ${formatDate(session.createdAt)}</p>
+    <p><strong>Messages:</strong> ${session.messages.length}</p>
+    <p><strong>Cost:</strong> $${session.state.totalCost.toFixed(4)}</p>
+    <p><strong>Tokens:</strong> ${formatNumber(totalTokens)} (input: ${formatNumber(session.state.totalTokens.input)} | output: ${formatNumber(session.state.totalTokens.output)})</p>
+  </div>
   ${session.messages.map(m => `
     <div class="message ${m.role}">
       <strong>${m.role}${m.agent ? ` (${m.agent})` : ''}</strong>
+      ${m.agent || m.stage || m.tokens ? `<div class="metadata">` +
+        [
+          m.agent ? `Agent: ${m.agent}` : null,
+          m.stage ? `Stage: ${m.stage}` : null,
+          m.tokens ? `Tokens: ${formatNumber((m.tokens.input || 0) + (m.tokens.output || 0))}` : null,
+          m.tokens ? `Cost: $${(((m.tokens.input || 0) + (m.tokens.output || 0)) * 0.001 / 1000).toFixed(4)}` : null,
+        ].filter(Boolean).join(' | ')
+      + `</div>` : ''}
       <p>${m.content.replace(/\n/g, '<br>')}</p>
     </div>
   `).join('')}

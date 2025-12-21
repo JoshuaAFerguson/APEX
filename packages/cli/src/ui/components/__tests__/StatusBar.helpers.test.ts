@@ -29,7 +29,7 @@ function getEffectiveLabel(
     abbreviationMode === 'abbreviated' ||
     (abbreviationMode === 'auto' && terminalWidth < 80);
 
-  if (useAbbreviated && segment.abbreviatedLabel !== undefined) {
+  if (useAbbreviated && segment.abbreviatedLabel != null) {
     // Empty string abbreviation means no label should be shown when abbreviated
     return segment.abbreviatedLabel === '' ? undefined : segment.abbreviatedLabel;
   }

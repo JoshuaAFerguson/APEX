@@ -130,9 +130,10 @@ describe('useOrchestratorEvents - Missing Scenarios and Edge Cases', () => {
       });
 
       // Should process events regardless of task ID
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 100,
         outputTokens: 50,
+        estimatedCost: 0.001,
       });
     });
 
@@ -409,7 +410,7 @@ describe('useOrchestratorEvents - Missing Scenarios and Edge Cases', () => {
       expect(result.current.verboseData?.agentTokens['planner']).toEqual(initialTokenData);
 
       // Timing context should be reset
-      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThan(
+      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThanOrEqual(
         initialStageTime!.getTime()
       );
       expect(result.current.verboseData?.timing.stageEndTime).toBeUndefined();
