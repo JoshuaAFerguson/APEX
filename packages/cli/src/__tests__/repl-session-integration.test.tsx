@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { VerboseDebugData } from '@apexcli/core';
+import type { VerboseDebugData } from '@apex/core';
 import { startInkREPL } from '../repl';
 
 // Mock dependencies but keep them more realistic for session testing
-vi.mock('@apexcli/core', () => ({
+vi.mock('@apex/core', () => ({
   isApexInitialized: vi.fn(),
   initializeApex: vi.fn(),
   loadConfig: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('@apexcli/core', () => ({
   getEffectiveConfig: vi.fn(),
 }));
 
-vi.mock('@apexcli/orchestrator', () => ({
+vi.mock('@apex/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     initialize: vi.fn(),
     createTask: vi.fn(),
@@ -115,7 +115,7 @@ describe('REPL + Session Integration Tests', () => {
     // Set up mock implementations
     const { SessionStore } = require('../services/SessionStore');
     const { SessionAutoSaver } = require('../services/SessionAutoSaver');
-    const { ApexOrchestrator } = require('@apexcli/orchestrator');
+    const { ApexOrchestrator } = require('@apex/orchestrator');
     const { startInkApp } = require('../ui/index.js');
 
     mockSessionStore = new SessionStore();
@@ -142,7 +142,7 @@ describe('REPL + Session Integration Tests', () => {
 
   describe('REPL Initialization with Session Management', () => {
     it('should initialize SessionStore and SessionAutoSaver when APEX is initialized', async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -189,7 +189,7 @@ describe('REPL + Session Integration Tests', () => {
     });
 
     it('should create new session when no active session exists', async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -224,7 +224,7 @@ describe('REPL + Session Integration Tests', () => {
     });
 
     it('should handle session initialization errors gracefully', async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -249,7 +249,7 @@ describe('REPL + Session Integration Tests', () => {
     });
 
     it('should not initialize session management when APEX is not initialized', async () => {
-      const { isApexInitialized } = await import('@apexcli/core');
+      const { isApexInitialized } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(false);
 
@@ -273,7 +273,7 @@ describe('REPL + Session Integration Tests', () => {
 
   describe('Active Session Tracking Across REPL Operations', () => {
     beforeEach(async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -441,7 +441,7 @@ describe('REPL + Session Integration Tests', () => {
 
   describe('Session State Updates During Task Execution', () => {
     beforeEach(async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -574,7 +574,7 @@ describe('REPL + Session Integration Tests', () => {
 
   describe('Cleanup on REPL Exit', () => {
     beforeEach(async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(true);
       (loadConfig as any).mockResolvedValue({ api: { autoStart: false } });
@@ -705,7 +705,7 @@ describe('REPL + Session Integration Tests', () => {
 
     it('should cleanup without session when session management not initialized', async () => {
       // Test when APEX is not initialized (no session management)
-      const { isApexInitialized } = await import('@apexcli/core');
+      const { isApexInitialized } = await import('@apex/core');
 
       (isApexInitialized as any).mockResolvedValue(false);
 

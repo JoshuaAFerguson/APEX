@@ -18,11 +18,11 @@ import {
   loadWorkflows,
   formatCost,
   formatTokens,
-  formatDuration,
   getEffectiveConfig,
   ApexConfig,
-} from '@apexcli/core';
-import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
+  type VerboseDebugData,
+} from '@apex/core';
+import { ApexOrchestrator } from '@apex/orchestrator';
 import { startInkApp, type InkAppInstance } from './ui/index.js';
 import { SessionStore } from './services/SessionStore.js';
 import { SessionAutoSaver } from './services/SessionAutoSaver.js';
@@ -154,10 +154,10 @@ async function handleInit(args: string[]): Promise<void> {
       config: ctx.config,
       orchestrator: ctx.orchestrator,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
-      content: `Failed to initialize: ${(error as Error).message}`,
+      content: `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -387,10 +387,10 @@ async function handleServe(args: string[]): Promise<void> {
       type: 'assistant',
       content: `API server running at ${apiUrl}`,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
-      content: `Failed to start API server: ${(error as Error).message}`,
+      content: `Failed to start API server: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -553,7 +553,7 @@ async function handleRetry(args: string[]): Promise<void> {
   }
 
   await ctx.orchestrator.updateTaskStatus(taskId, 'pending');
-  ctx.orchestrator.executeTask(taskId).catch((error) => {
+  ctx.orchestrator.executeTask(taskId).catch((error: Error) => {
     ctx.app?.addMessage({
       type: 'error',
       content: `Task failed: ${error.message}`,
@@ -826,7 +826,7 @@ async function executeTask(description: string): Promise<void> {
       }
 
       ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
-    }).catch(async (error) => {
+    }).catch(async (error: Error) => {
       ctx.app?.addMessage({
         type: 'error',
         content: `Task failed: ${error.message}`,
@@ -847,8 +847,8 @@ async function executeTask(description: string): Promise<void> {
 
       ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
     });
-  } catch (error) {
-    const errorMessage = `Failed to create task: ${(error as Error).message}`;
+  } catch (error: unknown) {
+    const errorMessage = `Failed to create task: ${error instanceof Error ? error.message : String(error)}`;
     ctx.app?.addMessage({
       type: 'error',
       content: errorMessage,
@@ -967,7 +967,7 @@ async function persistPreviewConfig(previewConfig: {
   // Persist to file
   try {
     await saveConfig(ctx.cwd, ctx.config);
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
       content: `Failed to persist config: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -981,6 +981,11 @@ async function handlePreview(args: string[]): Promise<void> {
 
   // Get current state
   const currentState = ctx.app?.getState();
+  const previewConfig = currentState?.previewConfig ?? {
+    confidenceThreshold: ctx.config?.ui?.previewConfidence ?? 0.7,
+    autoExecuteHighConfidence: ctx.config?.ui?.autoExecuteHighConfidence ?? false,
+    timeoutMs: ctx.config?.ui?.previewTimeout ?? 5000,
+  };
 
   switch (action) {
     case 'on':
@@ -990,9 +995,7 @@ async function handlePreview(args: string[]): Promise<void> {
         content: 'Preview mode enabled. You will see a preview before each execution.',
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case 'off':
@@ -1002,9 +1005,7 @@ async function handlePreview(args: string[]): Promise<void> {
         content: 'Preview mode disabled.',
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case undefined:
@@ -1016,16 +1017,14 @@ async function handlePreview(args: string[]): Promise<void> {
         content: `Preview mode ${newMode ? 'enabled' : 'disabled'}.`,
       });
       // Persist the preview mode change
-      if (currentState?.previewConfig) {
-        await persistPreviewConfig(currentState.previewConfig);
-      }
+      await persistPreviewConfig(previewConfig);
       break;
 
     case 'confidence':
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Preview confidence threshold: ${(currentState?.previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
+          content: `Preview confidence threshold: ${(previewConfig.confidenceThreshold * 100).toFixed(0)}%`,
         });
       } else {
         const parsed = parseFloat(value);
@@ -1045,7 +1044,7 @@ async function handlePreview(args: string[]): Promise<void> {
             });
           } else {
             const newConfig = {
-              ...currentState?.previewConfig,
+              ...previewConfig,
               confidenceThreshold: threshold,
             };
             ctx.app?.updateState({ previewConfig: newConfig });
@@ -1066,7 +1065,7 @@ async function handlePreview(args: string[]): Promise<void> {
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Preview timeout: ${currentState?.previewConfig.timeoutMs / 1000}s`,
+          content: `Preview timeout: ${previewConfig.timeoutMs / 1000}s`,
         });
       } else {
         const timeout = parseInt(value, 10);
@@ -1077,7 +1076,7 @@ async function handlePreview(args: string[]): Promise<void> {
           });
         } else {
           const newConfig = {
-            ...currentState?.previewConfig,
+            ...previewConfig,
             timeoutMs: timeout * 1000,
           };
           ctx.app?.updateState({ previewConfig: newConfig });
@@ -1097,11 +1096,11 @@ async function handlePreview(args: string[]): Promise<void> {
       if (value === undefined) {
         ctx.app?.addMessage({
           type: 'assistant',
-          content: `Auto-execute high confidence: ${currentState?.previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
+          content: `Auto-execute high confidence: ${previewConfig.autoExecuteHighConfidence ? 'enabled' : 'disabled'}`,
         });
       } else if (value === 'on' || value === 'true') {
         const newConfig = {
-          ...currentState?.previewConfig,
+          ...previewConfig,
           autoExecuteHighConfidence: true,
         };
         ctx.app?.updateState({ previewConfig: newConfig });
@@ -1115,7 +1114,7 @@ async function handlePreview(args: string[]): Promise<void> {
         });
       } else if (value === 'off' || value === 'false') {
         const newConfig = {
-          ...currentState?.previewConfig,
+          ...previewConfig,
           autoExecuteHighConfidence: false,
         };
         ctx.app?.updateState({ previewConfig: newConfig });
@@ -1137,7 +1136,7 @@ async function handlePreview(args: string[]): Promise<void> {
 
     case 'status':
     case 'settings':  // Add alias for settings
-      const config = currentState?.previewConfig;
+      const config = previewConfig;
       ctx.app?.addMessage({
         type: 'assistant',
         content: `Preview Settings:
@@ -1497,7 +1496,7 @@ export async function startInkREPL(): Promise<void> {
       ctx.orchestrator.on('task:stage-changed', async (task, stageName) => {
         // Look up the agent for this stage from the workflow
         try {
-          const { loadWorkflow } = await import('@apexcli/core');
+          const { loadWorkflow } = await import('@apex/core');
           const workflow = await loadWorkflow(ctx.cwd, task.workflow);
           const stage = workflow?.stages.find(s => s.name === stageName);
 
@@ -1508,9 +1507,9 @@ export async function startInkREPL(): Promise<void> {
               activeAgent: stage.agent,                   // Set new current
             });
           }
-        } catch (error) {
+        } catch (error: unknown) {
           // Gracefully handle workflow lookup failures
-          console.warn(`Failed to lookup workflow for agent transition: ${error}`);
+          console.warn(`Failed to lookup workflow for agent transition: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
 
@@ -1568,7 +1567,7 @@ export async function startInkREPL(): Promise<void> {
         if (!currentVerboseData) return;
 
         const agents = Object.keys(currentVerboseData.agentTokens);
-        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes);
+        const responseTimes = Object.values(currentVerboseData.timing.agentResponseTimes) as number[];
 
         if (responseTimes.length > 0) {
           currentVerboseData.metrics.averageResponseTime =
@@ -1588,9 +1587,12 @@ export async function startInkREPL(): Promise<void> {
 
         // Calculate tool efficiency based on usage vs errors
         Object.keys(currentVerboseData.timing.toolUsageTimes).forEach(tool => {
-          const errorCounts = Object.values(currentVerboseData!.agentDebug.errorCounts).reduce((sum, count) => sum + count, 0);
-          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) =>
-            sum + (toolCounts[tool] || 0), 0);
+          const errorCounts = (Object.values(currentVerboseData!.agentDebug.errorCounts) as number[])
+            .reduce((sum, count) => sum + count, 0);
+          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) => {
+            const counts = toolCounts as Record<string, number>;
+            return sum + (counts[tool] || 0);
+          }, 0);
           currentVerboseData!.metrics.toolEfficiency[tool] = toolUsages > 0 ? 1 - (errorCounts / toolUsages) : 1;
         });
       };

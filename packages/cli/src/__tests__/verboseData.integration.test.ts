@@ -4,8 +4,8 @@
  */
 import { EventEmitter } from 'events';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
-import type { VerboseDebugData, Task, AgentUsage } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { VerboseDebugData, Task, AgentUsage } from '@apex/core';
 
 // Mock the ApexOrchestrator to simulate events
 class MockApexOrchestrator extends EventEmitter implements Partial<ApexOrchestrator> {

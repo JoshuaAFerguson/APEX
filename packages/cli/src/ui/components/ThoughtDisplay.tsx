@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 export interface ThoughtDisplayProps {
   thinking: string;

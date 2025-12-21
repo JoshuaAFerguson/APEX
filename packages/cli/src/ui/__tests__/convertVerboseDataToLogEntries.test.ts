@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { convertVerboseDataToLogEntries } from '../App.js';
-import type { VerboseDebugData } from '@apexcli/core';
+import type { VerboseDebugData } from '@apex/core';
 import type { LogEntry } from '../components/ActivityLog.js';
 
 describe('convertVerboseDataToLogEntries', () => {

@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '../test-utils';
 import React from 'react';
 import { EventEmitter } from 'events';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
+import type { ApexOrchestrator } from '@apex/orchestrator';
 import { App, type AppState } from '../App';
 
 // Mock orchestrator that can simulate real event flow
@@ -95,7 +95,7 @@ class MockOrchestrator extends EventEmitter {
 
 // Mock the loadWorkflow function with realistic workflow
 const mockLoadWorkflow = vi.fn();
-vi.mock('@apexcli/core', () => ({
+vi.mock('@apex/core', () => ({
   loadWorkflow: mockLoadWorkflow,
 }));
 

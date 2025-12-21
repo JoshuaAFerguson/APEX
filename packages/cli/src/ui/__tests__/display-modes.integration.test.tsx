@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent, waitFor } from '../../__tests__/test-utils';
 import { App, AppState, AppProps } from '../App';
-import type { ApexConfig } from '@apexcli/core';
+import type { ApexConfig } from '@apex/core';
 
 describe('Display Modes - Integration Tests', () => {
   let mockOnCommand: ReturnType<typeof vi.fn>;

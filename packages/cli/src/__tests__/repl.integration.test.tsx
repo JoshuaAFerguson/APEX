@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { startInkREPL } from '../repl';
 
 // Mock dependencies
-vi.mock('@apexcli/core', () => ({
+vi.mock('@apex/core', () => ({
   isApexInitialized: vi.fn(),
   loadConfig: vi.fn(),
   loadAgents: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('@apexcli/core', () => ({
   getEffectiveConfig: vi.fn(),
 }));
 
-vi.mock('@apexcli/orchestrator', () => ({
+vi.mock('@apex/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     initialize: vi.fn(),
     createTask: vi.fn(),
@@ -68,7 +68,7 @@ describe('REPL Integration Tests', () => {
 
   describe('REPL Initialization', () => {
     it('starts REPL without errors', async () => {
-      const { isApexInitialized } = await import('@apexcli/core');
+      const { isApexInitialized } = await import('@apex/core');
       const { startInkApp } = await import('../ui/index.js');
 
       (isApexInitialized as any).mockResolvedValue(false);
@@ -94,8 +94,8 @@ describe('REPL Integration Tests', () => {
     });
 
     it('handles initialized project correctly', async () => {
-      const { isApexInitialized, loadConfig } = await import('@apexcli/core');
-      const { ApexOrchestrator } = await import('@apexcli/orchestrator');
+      const { isApexInitialized, loadConfig } = await import('@apex/core');
+      const { ApexOrchestrator } = await import('@apex/orchestrator');
       const { startInkApp } = await import('../ui/index.js');
 
       (isApexInitialized as any).mockResolvedValue(true);
@@ -192,7 +192,7 @@ describe('REPL Integration Tests', () => {
 
   describe('Auto-start Services', () => {
     it('auto-starts API when configured', async () => {
-      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apex/core');
       const { spawn } = await import('child_process');
       const { startInkApp } = await import('../ui/index.js');
 
@@ -234,7 +234,7 @@ describe('REPL Integration Tests', () => {
     });
 
     it('auto-starts Web UI when configured', async () => {
-      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apex/core');
       const { spawn } = await import('child_process');
       const { startInkApp } = await import('../ui/index.js');
       const fs = await import('fs/promises');
@@ -304,7 +304,7 @@ describe('REPL Integration Tests', () => {
     });
 
     it('cleans up processes on signal', async () => {
-      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apex/core');
       const { spawn } = await import('child_process');
       const { startInkApp } = await import('../ui/index.js');
 
@@ -352,7 +352,7 @@ describe('REPL Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('handles initialization errors gracefully', async () => {
-      const { isApexInitialized } = await import('@apexcli/core');
+      const { isApexInitialized } = await import('@apex/core');
       const { startInkApp } = await import('../ui/index.js');
 
       (isApexInitialized as any).mockRejectedValue(new Error('Init failed'));
@@ -378,7 +378,7 @@ describe('REPL Integration Tests', () => {
     });
 
     it('handles service startup errors gracefully', async () => {
-      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apexcli/core');
+      const { isApexInitialized, loadConfig, getEffectiveConfig } = await import('@apex/core');
       const { spawn } = await import('child_process');
       const { startInkApp } = await import('../ui/index.js');
 

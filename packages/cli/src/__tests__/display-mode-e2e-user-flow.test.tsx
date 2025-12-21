@@ -9,7 +9,7 @@ import '@testing-library/jest-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { App, type AppState } from '../ui/App';
 import { ThemeProvider } from '../ui/context/ThemeContext';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 // Mock ink hooks
 const mockUseInput = vi.fn();

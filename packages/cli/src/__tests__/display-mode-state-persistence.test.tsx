@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { App, type AppState, type Message } from '../ui/App';
-import type { DisplayMode, Task } from '@apexcli/core';
+import type { DisplayMode, Task } from '@apex/core';
 
 // Mock ink hooks
 const mockUseInput = vi.fn();

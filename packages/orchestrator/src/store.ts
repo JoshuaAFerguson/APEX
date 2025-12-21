@@ -710,6 +710,7 @@ export class TaskStore {
       prUrl: row.pr_url || undefined,
       retryCount: row.retry_count || 0,
       maxRetries: row.max_retries || 3,
+      resumeAttempts: 0,
       dependsOn: dependsOn || [],
       blockedBy: blockedBy || [],
       parentTaskId: row.parent_task_id || undefined,

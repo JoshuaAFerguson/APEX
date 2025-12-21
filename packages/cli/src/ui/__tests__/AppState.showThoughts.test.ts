@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppState, AppProps } from '../App';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 describe('AppState showThoughts Integration', () => {
   let mockAppState: AppState;

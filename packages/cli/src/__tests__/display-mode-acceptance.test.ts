@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 describe('Display Mode Feature - Acceptance Criteria Validation', () => {
   // Mock implementation of the complete display mode system

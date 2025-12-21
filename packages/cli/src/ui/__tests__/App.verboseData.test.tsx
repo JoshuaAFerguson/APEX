@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { App, type AppProps, type AppState } from '../App.js';
-import type { VerboseDebugData, DisplayMode } from '@apexcli/core';
+import type { VerboseDebugData, DisplayMode } from '@apex/core';
 
 // Mock the components to avoid rendering complexity in unit tests
 vi.mock('../components/index.js', () => ({

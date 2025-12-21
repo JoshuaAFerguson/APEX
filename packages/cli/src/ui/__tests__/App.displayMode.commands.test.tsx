@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '../__tests__/test-utils';
 import { App, type AppProps, type AppState } from '../App';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 // Mock ink and its hooks
 vi.mock('ink', async () => {

@@ -85,8 +85,12 @@ export function validateTerminalFit(content: string, terminalWidth: number): str
  * @param terminalWidth - Simulated terminal width
  * @returns Measurement result with overflow detection
  */
+type TextContentElement = {
+  textContent?: string | null;
+};
+
 export function mockTerminalMeasurement(
-  element: HTMLElement | string,
+  element: TextContentElement | string,
   terminalWidth: number
 ): {
   fits: boolean;

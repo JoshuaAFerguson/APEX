@@ -15,8 +15,8 @@ import {
   type LogEntry,
 } from './components/index.js';
 import type { AgentInfo } from './components/agents/AgentPanel.js';
-import type { ApexConfig, Task, DisplayMode, VerboseDebugData } from '@apexcli/core';
-import type { ApexOrchestrator } from '@apexcli/orchestrator';
+import type { ApexConfig, Task, DisplayMode, VerboseDebugData } from '@apex/core';
+import type { ApexOrchestrator } from '@apex/orchestrator';
 import { ConversationManager } from '../services/ConversationManager.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 import { CompletionEngine, type CompletionContext } from '../services/CompletionEngine.js';

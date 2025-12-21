@@ -199,6 +199,7 @@ export interface Task {
   prUrl?: string;
   retryCount: number;
   maxRetries: number;
+  resumeAttempts: number;
   dependsOn?: string[];  // Task IDs this task depends on
   blockedBy?: string[];  // Computed: tasks that are blocking this one
   // Subtask support
@@ -415,6 +416,7 @@ export interface AgentUsage {
   outputTokens: number;
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
+  estimatedCost?: number;
 }
 
 /**

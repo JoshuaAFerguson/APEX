@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../../__tests__/test-utils';
 import { AgentPanel, type AgentInfo } from '../AgentPanel';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 /**
  * Integration tests for AgentPanel display mode switching and behavior

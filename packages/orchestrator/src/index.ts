@@ -163,6 +163,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       branchName,
       retryCount: 0,
       maxRetries,
+      resumeAttempts: 0,
       dependsOn: options.dependsOn || [],
       blockedBy: options.dependsOn || [], // Initially blocked by all dependencies
       parentTaskId: options.parentTaskId,

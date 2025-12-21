@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { formatElapsed } from '@apexcli/core';
+import { formatElapsed } from '@apex/core';
 
 /**
  * Custom hook for tracking elapsed time since a start date

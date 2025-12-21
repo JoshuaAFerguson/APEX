@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import SyntaxHighlight from 'ink-syntax-highlight';
-import type { DisplayMode } from '@apexcli/core';
+import type { DisplayMode } from '@apex/core';
 
 export interface ResponseStreamProps {
   content: string;

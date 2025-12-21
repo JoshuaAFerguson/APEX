@@ -21,7 +21,7 @@ vi.mock('../HandoffIndicator.js', () => ({
 
 // Mock the formatElapsed function to return predictable results
 const mockFormatElapsed = vi.fn();
-vi.mock('@apexcli/core', () => ({
+vi.mock('@apex/core', () => ({
   formatElapsed: mockFormatElapsed,
 }));
 

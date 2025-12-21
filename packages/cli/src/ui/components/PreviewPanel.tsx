@@ -214,12 +214,13 @@ export function PreviewPanel({
   };
 
   const confidencePercentage = Math.round(intent.confidence * 100);
+  const borderStyle = config.borderStyle === 'none' ? 'single' : config.borderStyle;
 
   // Main container with responsive border and padding
   const containerProps = config.showBorder
     ? {
-        borderStyle: config.borderStyle,
-        borderColor: "cyan",
+        borderStyle,
+        borderColor: 'cyan',
         paddingX: config.paddingX,
         paddingY: config.paddingY,
         marginBottom: config.marginBottom,
