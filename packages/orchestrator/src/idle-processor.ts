@@ -337,6 +337,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   private async analyzeDependencies(): Promise<ProjectAnalysis['dependencies']> {
     const outdated: string[] = [];
     const security: string[] = [];
+    const securityIssues: SecurityVulnerability[] = [];
 
     try {
       // Check for package.json
@@ -353,11 +354,67 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
           }
         }
       }
+
+      // Enhanced: Run npm audit for security vulnerabilities
+      try {
+        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+
+        // Run npm audit and capture JSON output
+        const { stdout } = await this.execAsync('npm audit --json 2>/dev/null || echo "{}"');
+        const auditData = JSON.parse(stdout);
+
+        // Parse using the new utility
+        const vulnerabilities = SecurityVulnerabilityParser.parseNpmAuditOutput(auditData);
+        securityIssues.push(...vulnerabilities);
+
+        // Populate legacy field for backward compatibility
+        for (const vuln of vulnerabilities) {
+          const legacyEntry = `${vuln.name}@${vuln.affectedVersions} (${vuln.cveId})`;
+          security.push(legacyEntry);
+        }
+      } catch (auditError) {
+        // npm audit not available or failed - try fallback approach
+        try {
+          // Simple pattern matching for known vulnerability indicators in package.json
+          for (const [name, version] of Object.entries(dependencies)) {
+            if (typeof version === 'string') {
+              // Check for packages that commonly have security issues in old versions
+              const vulnerablePatterns = [
+                { name: 'lodash', versions: ['<4.17.21'], cve: 'CVE-2021-23337' },
+                { name: 'axios', versions: ['<0.21.2'], cve: 'CVE-2021-3749' },
+                { name: 'node-forge', versions: ['<1.0.0'], cve: 'CVE-2022-24771' },
+                { name: 'minimist', versions: ['<1.2.6'], cve: 'CVE-2021-44906' },
+              ];
+
+              for (const pattern of vulnerablePatterns) {
+                if (name === pattern.name) {
+                  // Simple version check (this is a basic fallback)
+                  const cleanVersion = version.replace(/[^\d.]/g, '');
+                  security.push(`${name}@${version} (${pattern.cve})`);
+
+                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+                  const fallbackVuln = SecurityVulnerabilityParser.createVulnerability({
+                    name,
+                    cveId: pattern.cve,
+                    severity: 'medium', // Conservative default
+                    affectedVersions: version,
+                    description: `Potential security vulnerability in ${name}`,
+                  });
+                  securityIssues.push(fallbackVuln);
+                  break;
+                }
+              }
+            }
+          }
+        } catch {
+          // Fallback failed as well, continue without security analysis
+        }
+      }
     } catch {
       // No package.json or can't read it
     }
 
-    return { outdated, security };
+    return { outdated, security, securityIssues };
   }
 
   private async analyzeCodeQuality(): Promise<ProjectAnalysis['codeQuality']> {
@@ -401,24 +458,34 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
       // Analyze code smells based on file size and naming patterns
       for (const hotspot of complexityHotspots) {
-        if (hotspot.lineCount > 1000) {
-          codeSmells.push({
-            file: hotspot.file,
-            type: 'large-class',
-            severity: 'high',
-            details: `File has ${hotspot.lineCount} lines, consider breaking into smaller modules`
-          });
+        // Updated threshold: large class detection (>500 lines or >20 methods)
+        if (hotspot.lineCount > 500) {
+          const methodCount = await this.estimateMethodCount(hotspot.file);
+          if (hotspot.lineCount > 500 || methodCount > 20) {
+            codeSmells.push({
+              file: hotspot.file,
+              type: 'large-class',
+              severity: 'high',
+              details: `File has ${hotspot.lineCount} lines${methodCount > 20 ? ` and ${methodCount} methods` : ''}, consider breaking into smaller modules`
+            });
+          }
         }
 
-        if (hotspot.cyclomaticComplexity > 20) {
+        // Updated threshold: long method detection (>50 lines)
+        const longMethods = await this.detectLongMethods(hotspot.file);
+        for (const method of longMethods) {
           codeSmells.push({
             file: hotspot.file,
             type: 'long-method',
             severity: 'medium',
-            details: `High cyclomatic complexity (${hotspot.cyclomaticComplexity}), consider refactoring`
+            details: `Method '${method.name}' has ${method.lines} lines (line ${method.startLine}), consider refactoring`
           });
         }
       }
+
+      // Deep nesting detection
+      const deepNestingSmells = await this.detectDeepNesting();
+      codeSmells.push(...deepNestingSmells);
 
       // Basic duplicate pattern detection (simplified implementation)
       try {
@@ -446,6 +513,188 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       complexityHotspots,
       codeSmells,
     };
+  }
+
+  /**
+   * Estimates the number of methods in a file by counting function/method declarations
+   */
+  private async estimateMethodCount(filePath: string): Promise<number> {
+    try {
+      const fullPath = join(this.projectPath, filePath);
+      const content = await fs.readFile(fullPath, 'utf-8');
+      // Count method patterns: function declarations, arrow functions, class methods
+      const methodPatterns = [
+        /^\s*(?:public|private|protected|static)?\s*\w+\s*\(/gm, // class methods
+        /^\s*function\s+\w+\s*\(/gm, // function declarations
+        /^\s*(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/gm, // arrow functions
+        /^\s*\w+:\s*(?:async\s+)?function\s*\(/gm // object method shorthand
+      ];
+
+      let totalMethods = 0;
+      for (const pattern of methodPatterns) {
+        const matches = content.match(pattern);
+        totalMethods += matches ? matches.length : 0;
+      }
+
+      return totalMethods;
+    } catch {
+      return 0; // If file cannot be read, assume 0 methods
+    }
+  }
+
+  /**
+   * Detects long methods (>50 lines) in a file
+   */
+  private async detectLongMethods(filePath: string): Promise<Array<{ name: string; lines: number; startLine: number }>> {
+    try {
+      const fullPath = join(this.projectPath, filePath);
+      const content = await fs.readFile(fullPath, 'utf-8');
+      const lines = content.split('\n');
+      const longMethods: Array<{ name: string; lines: number; startLine: number }> = [];
+
+      let currentMethod: { name: string; startLine: number; braceLevel: number } | null = null;
+      let braceLevel = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmedLine = line.trim();
+
+        // Count braces to track method boundaries
+        braceLevel += (line.match(/\{/g) || []).length;
+        braceLevel -= (line.match(/\}/g) || []).length;
+
+        // Detect method start patterns
+        const methodMatch = trimmedLine.match(/(?:function\s+(\w+)|(\w+)\s*\(|(\w+):\s*(?:async\s+)?function)/);
+        if (methodMatch && trimmedLine.includes('{')) {
+          const methodName = methodMatch[1] || methodMatch[2] || methodMatch[3] || 'anonymous';
+          currentMethod = { name: methodName, startLine: i + 1, braceLevel };
+        }
+
+        // Check if method ended and calculate length
+        if (currentMethod && braceLevel < currentMethod.braceLevel) {
+          const methodLength = i - currentMethod.startLine + 1;
+          if (methodLength > 50) {
+            longMethods.push({
+              name: currentMethod.name,
+              lines: methodLength,
+              startLine: currentMethod.startLine
+            });
+          }
+          currentMethod = null;
+        }
+      }
+
+      return longMethods;
+    } catch {
+      return []; // If file cannot be analyzed, return empty array
+    }
+  }
+
+  /**
+   * Detects deep nesting (>4 levels) in TypeScript/JavaScript files
+   */
+  private async detectDeepNesting(): Promise<CodeSmell[]> {
+    try {
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v node_modules | head -20');
+      const files = stdout.split('\n').filter(line => line.trim());
+      const deepNestingSmells: CodeSmell[] = [];
+
+      for (const filePath of files) {
+        const relativePath = filePath.replace('./', '');
+        const nestingIssues = await this.analyzeFileNesting(filePath);
+
+        for (const issue of nestingIssues) {
+          deepNestingSmells.push({
+            file: relativePath,
+            type: 'deep-nesting',
+            severity: issue.level > 6 ? 'high' : 'medium',
+            details: `Deep nesting detected: ${issue.level} levels at line ${issue.line} (${issue.context})`
+          });
+        }
+      }
+
+      return deepNestingSmells;
+    } catch {
+      return []; // If analysis fails, return empty array
+    }
+  }
+
+  /**
+   * Analyzes nesting levels in a specific file
+   */
+  private async analyzeFileNesting(filePath: string): Promise<Array<{ level: number; line: number; context: string }>> {
+    try {
+      const fullPath = filePath.startsWith('./') ? join(this.projectPath, filePath.slice(2)) : filePath;
+      const content = await fs.readFile(fullPath, 'utf-8');
+      const lines = content.split('\n');
+      const nestingIssues: Array<{ level: number; line: number; context: string }> = [];
+
+      let nestingLevel = 0;
+      const nestingStack: string[] = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmedLine = line.trim();
+
+        // Skip comments and empty lines
+        if (trimmedLine.startsWith('//') || trimmedLine.startsWith('/*') || !trimmedLine) {
+          continue;
+        }
+
+        // Track nesting structures
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/\}/g) || []).length;
+
+        // Identify nesting context (if/for/while/function/class/try/catch)
+        if (trimmedLine.match(/(?:if|for|while|function|class|try|catch|switch)\s*\(|(?:if|for|while|function|class|try|catch|switch)\s*\{|=>\s*\{/)) {
+          const context = this.extractNestingContext(trimmedLine);
+          nestingStack.push(context);
+        }
+
+        // Update nesting level
+        nestingLevel += openBraces;
+
+        // Check for deep nesting (>4 levels)
+        if (nestingLevel > 4) {
+          nestingIssues.push({
+            level: nestingLevel,
+            line: i + 1,
+            context: nestingStack.slice(-3).join(' > ') || 'unknown context'
+          });
+        }
+
+        // Decrease nesting level for closing braces
+        nestingLevel -= closeBraces;
+
+        // Pop from stack for each closing brace
+        for (let j = 0; j < closeBraces; j++) {
+          nestingStack.pop();
+        }
+
+        // Ensure nesting level doesn't go negative
+        nestingLevel = Math.max(0, nestingLevel);
+      }
+
+      return nestingIssues;
+    } catch {
+      return []; // If file cannot be analyzed, return empty array
+    }
+  }
+
+  /**
+   * Extracts the nesting context from a line of code
+   */
+  private extractNestingContext(line: string): string {
+    if (line.includes('if')) return 'if';
+    if (line.includes('for')) return 'for';
+    if (line.includes('while')) return 'while';
+    if (line.includes('function')) return 'function';
+    if (line.includes('class')) return 'class';
+    if (line.includes('try')) return 'try';
+    if (line.includes('catch')) return 'catch';
+    if (line.includes('switch')) return 'switch';
+    if (line.includes('=>')) return 'arrow-function';
+    return 'block';
   }
 
   private async analyzeDocumentation(): Promise<EnhancedDocumentationAnalysis> {

@@ -11,6 +11,8 @@ import {
   AgentUsage,
   UIConfigSchema,
   DaemonConfigSchema,
+  OutdatedDocsConfigSchema,
+  DocumentationAnalysisConfigSchema,
 } from './types';
 
 describe('AgentModelSchema', () => {
@@ -1250,5 +1252,324 @@ describe('VerboseDebugData', () => {
         });
       });
     });
+  });
+});
+
+describe('OutdatedDocsConfigSchema', () => {
+  it('should parse with all default values when empty config provided', () => {
+    const config = OutdatedDocsConfigSchema.parse({});
+
+    expect(config.todoAgeThresholdDays).toBe(30);
+    expect(config.versionCheckPatterns).toEqual([
+      'v\\d+\\.\\d+\\.\\d+',
+      'version\\s+\\d+\\.\\d+',
+      '\\d+\\.\\d+\\s+release',
+      'npm\\s+install.*@\\d+\\.\\d+\\.\\d+',
+    ]);
+    expect(config.deprecationRequiresMigration).toBe(true);
+    expect(config.crossReferenceEnabled).toBe(true);
+  });
+
+  it('should parse with custom values', () => {
+    const config = OutdatedDocsConfigSchema.parse({
+      todoAgeThresholdDays: 60,
+      versionCheckPatterns: ['custom\\d+\\.\\d+', 'release-v\\d+'],
+      deprecationRequiresMigration: false,
+      crossReferenceEnabled: false,
+    });
+
+    expect(config.todoAgeThresholdDays).toBe(60);
+    expect(config.versionCheckPatterns).toEqual(['custom\\d+\\.\\d+', 'release-v\\d+']);
+    expect(config.deprecationRequiresMigration).toBe(false);
+    expect(config.crossReferenceEnabled).toBe(false);
+  });
+
+  it('should apply defaults for missing optional fields', () => {
+    const config = OutdatedDocsConfigSchema.parse({
+      todoAgeThresholdDays: 45,
+    });
+
+    expect(config.todoAgeThresholdDays).toBe(45);
+    expect(config.versionCheckPatterns).toEqual([
+      'v\\d+\\.\\d+\\.\\d+',
+      'version\\s+\\d+\\.\\d+',
+      '\\d+\\.\\d+\\s+release',
+      'npm\\s+install.*@\\d+\\.\\d+\\.\\d+',
+    ]); // default
+    expect(config.deprecationRequiresMigration).toBe(true); // default
+    expect(config.crossReferenceEnabled).toBe(true); // default
+  });
+
+  it('should reject todoAgeThresholdDays less than 1', () => {
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: 0 });
+    }).toThrow();
+
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: -5 });
+    }).toThrow();
+  });
+
+  it('should accept todoAgeThresholdDays equal to 1', () => {
+    const config = OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: 1 });
+    expect(config.todoAgeThresholdDays).toBe(1);
+  });
+
+  it('should accept large todoAgeThresholdDays values', () => {
+    const config = OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: 365 });
+    expect(config.todoAgeThresholdDays).toBe(365);
+  });
+
+  it('should accept empty versionCheckPatterns array', () => {
+    const config = OutdatedDocsConfigSchema.parse({
+      versionCheckPatterns: [],
+    });
+    expect(config.versionCheckPatterns).toEqual([]);
+  });
+
+  it('should validate versionCheckPatterns array', () => {
+    const config = OutdatedDocsConfigSchema.parse({
+      versionCheckPatterns: ['pattern1', 'pattern2', 'v\\d+\\.\\d+'],
+    });
+    expect(config.versionCheckPatterns).toHaveLength(3);
+    expect(config.versionCheckPatterns[2]).toBe('v\\d+\\.\\d+');
+  });
+
+  it('should reject invalid types for fields', () => {
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: 'thirty' });
+    }).toThrow();
+
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ versionCheckPatterns: 'not-an-array' });
+    }).toThrow();
+
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ deprecationRequiresMigration: 'yes' });
+    }).toThrow();
+
+    expect(() => {
+      OutdatedDocsConfigSchema.parse({ crossReferenceEnabled: 1 });
+    }).toThrow();
+  });
+
+  it('should handle decimal todoAgeThresholdDays values', () => {
+    const config = OutdatedDocsConfigSchema.parse({ todoAgeThresholdDays: 7.5 });
+    expect(config.todoAgeThresholdDays).toBe(7.5);
+  });
+});
+
+describe('DocumentationAnalysisConfigSchema', () => {
+  it('should parse with all default values when empty config provided', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.outdatedDocs).toBeUndefined();
+    expect(config.jsdocAnalysis).toBeUndefined();
+  });
+
+  it('should parse with custom values for all fields', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({
+      enabled: false,
+      outdatedDocs: {
+        todoAgeThresholdDays: 45,
+        versionCheckPatterns: ['custom-pattern'],
+        deprecationRequiresMigration: false,
+        crossReferenceEnabled: true,
+      },
+      jsdocAnalysis: {
+        enabled: true,
+        requirePublicExports: false,
+        checkReturnTypes: false,
+        checkParameterTypes: true,
+      },
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.outdatedDocs?.todoAgeThresholdDays).toBe(45);
+    expect(config.outdatedDocs?.versionCheckPatterns).toEqual(['custom-pattern']);
+    expect(config.outdatedDocs?.deprecationRequiresMigration).toBe(false);
+    expect(config.outdatedDocs?.crossReferenceEnabled).toBe(true);
+    expect(config.jsdocAnalysis?.enabled).toBe(true);
+    expect(config.jsdocAnalysis?.requirePublicExports).toBe(false);
+    expect(config.jsdocAnalysis?.checkReturnTypes).toBe(false);
+    expect(config.jsdocAnalysis?.checkParameterTypes).toBe(true);
+  });
+
+  it('should parse with only outdatedDocs configuration', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({
+      outdatedDocs: {
+        todoAgeThresholdDays: 21,
+        deprecationRequiresMigration: false,
+      },
+    });
+
+    expect(config.enabled).toBe(true); // default
+    expect(config.outdatedDocs?.todoAgeThresholdDays).toBe(21);
+    expect(config.outdatedDocs?.versionCheckPatterns).toEqual([
+      'v\\d+\\.\\d+\\.\\d+',
+      'version\\s+\\d+\\.\\d+',
+      '\\d+\\.\\d+\\s+release',
+      'npm\\s+install.*@\\d+\\.\\d+\\.\\d+',
+    ]); // default from OutdatedDocsConfigSchema
+    expect(config.outdatedDocs?.deprecationRequiresMigration).toBe(false);
+    expect(config.outdatedDocs?.crossReferenceEnabled).toBe(true); // default
+    expect(config.jsdocAnalysis).toBeUndefined();
+  });
+
+  it('should parse with only jsdocAnalysis configuration', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({
+      jsdocAnalysis: {
+        requirePublicExports: false,
+        checkReturnTypes: true,
+      },
+    });
+
+    expect(config.enabled).toBe(true); // default
+    expect(config.outdatedDocs).toBeUndefined();
+    expect(config.jsdocAnalysis?.enabled).toBe(true); // default
+    expect(config.jsdocAnalysis?.requirePublicExports).toBe(false);
+    expect(config.jsdocAnalysis?.checkReturnTypes).toBe(true);
+    expect(config.jsdocAnalysis?.checkParameterTypes).toBe(true); // default
+  });
+
+  it('should apply jsdocAnalysis defaults when provided as empty object', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({
+      jsdocAnalysis: {},
+    });
+
+    expect(config.jsdocAnalysis?.enabled).toBe(true);
+    expect(config.jsdocAnalysis?.requirePublicExports).toBe(true);
+    expect(config.jsdocAnalysis?.checkReturnTypes).toBe(true);
+    expect(config.jsdocAnalysis?.checkParameterTypes).toBe(true);
+  });
+
+  it('should reject invalid types for fields', () => {
+    expect(() => {
+      DocumentationAnalysisConfigSchema.parse({ enabled: 'yes' });
+    }).toThrow();
+
+    expect(() => {
+      DocumentationAnalysisConfigSchema.parse({
+        outdatedDocs: { todoAgeThresholdDays: 'invalid' }
+      });
+    }).toThrow();
+
+    expect(() => {
+      DocumentationAnalysisConfigSchema.parse({
+        jsdocAnalysis: { enabled: 'true' }
+      });
+    }).toThrow();
+  });
+
+  it('should validate nested outdatedDocs schema constraints', () => {
+    expect(() => {
+      DocumentationAnalysisConfigSchema.parse({
+        outdatedDocs: { todoAgeThresholdDays: 0 }
+      });
+    }).toThrow();
+  });
+
+  it('should handle partial jsdocAnalysis configuration', () => {
+    const config = DocumentationAnalysisConfigSchema.parse({
+      jsdocAnalysis: {
+        enabled: false,
+        checkParameterTypes: false,
+      },
+    });
+
+    expect(config.jsdocAnalysis?.enabled).toBe(false);
+    expect(config.jsdocAnalysis?.requirePublicExports).toBe(true); // default
+    expect(config.jsdocAnalysis?.checkReturnTypes).toBe(true); // default
+    expect(config.jsdocAnalysis?.checkParameterTypes).toBe(false);
+  });
+});
+
+describe('ApexConfigSchema - Documentation Integration', () => {
+  it('should parse ApexConfig with documentation field', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      documentation: {
+        enabled: true,
+        outdatedDocs: {
+          todoAgeThresholdDays: 14,
+          deprecationRequiresMigration: false,
+        },
+        jsdocAnalysis: {
+          enabled: true,
+          requirePublicExports: false,
+        },
+      },
+    });
+
+    expect(config.documentation?.enabled).toBe(true);
+    expect(config.documentation?.outdatedDocs?.todoAgeThresholdDays).toBe(14);
+    expect(config.documentation?.outdatedDocs?.deprecationRequiresMigration).toBe(false);
+    expect(config.documentation?.jsdocAnalysis?.enabled).toBe(true);
+    expect(config.documentation?.jsdocAnalysis?.requirePublicExports).toBe(false);
+  });
+
+  it('should parse ApexConfig without documentation field', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+    });
+
+    expect(config.documentation).toBeUndefined();
+  });
+
+  it('should parse ApexConfig with empty documentation object', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      documentation: {},
+    });
+
+    expect(config.documentation?.enabled).toBe(true); // default
+    expect(config.documentation?.outdatedDocs).toBeUndefined();
+    expect(config.documentation?.jsdocAnalysis).toBeUndefined();
+  });
+
+  it('should preserve existing ApexConfig functionality with documentation field', () => {
+    const config = ApexConfigSchema.parse({
+      version: '1.0',
+      project: {
+        name: 'test-project',
+        language: 'typescript',
+        framework: 'nextjs',
+      },
+      autonomy: {
+        default: 'review-before-merge',
+      },
+      git: {
+        branchPrefix: 'feature/',
+        commitFormat: 'conventional',
+      },
+      documentation: {
+        enabled: false,
+        outdatedDocs: {
+          todoAgeThresholdDays: 7,
+        },
+      },
+    });
+
+    expect(config.version).toBe('1.0');
+    expect(config.project.name).toBe('test-project');
+    expect(config.project.language).toBe('typescript');
+    expect(config.autonomy?.default).toBe('review-before-merge');
+    expect(config.git?.branchPrefix).toBe('feature/');
+    expect(config.documentation?.enabled).toBe(false);
+    expect(config.documentation?.outdatedDocs?.todoAgeThresholdDays).toBe(7);
+  });
+
+  it('should reject invalid documentation configuration in ApexConfig', () => {
+    expect(() => {
+      ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        documentation: {
+          outdatedDocs: {
+            todoAgeThresholdDays: -1,
+          },
+        },
+      });
+    }).toThrow();
   });
 });

@@ -247,6 +247,7 @@ export const ApexConfigSchema = z.object({
     })
     .optional(),
   daemon: DaemonConfigSchema.optional(),
+  documentation: DocumentationAnalysisConfigSchema.optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -689,6 +690,44 @@ export interface SessionLimitStatus {
 // ============================================================================
 // Enhanced Documentation Analysis Types (v0.4.0)
 // ============================================================================
+
+/**
+ * Configuration for outdated documentation detection
+ */
+export const OutdatedDocsConfigSchema = z.object({
+  /** Number of days after which a TODO comment is considered outdated */
+  todoAgeThresholdDays: z.number().min(1).optional().default(30),
+  /** Array of regex patterns for detecting version references in documentation */
+  versionCheckPatterns: z.array(z.string()).optional().default([
+    'v\\d+\\.\\d+\\.\\d+',
+    'version\\s+\\d+\\.\\d+',
+    '\\d+\\.\\d+\\s+release',
+    'npm\\s+install.*@\\d+\\.\\d+\\.\\d+',
+  ]),
+  /** Whether deprecated APIs require migration documentation */
+  deprecationRequiresMigration: z.boolean().optional().default(true),
+  /** Whether to enable cross-reference validation between documentation and code */
+  crossReferenceEnabled: z.boolean().optional().default(true),
+});
+export type OutdatedDocsConfig = z.infer<typeof OutdatedDocsConfigSchema>;
+
+/**
+ * Configuration wrapper for documentation analysis settings
+ */
+export const DocumentationAnalysisConfigSchema = z.object({
+  /** Enable documentation analysis features */
+  enabled: z.boolean().optional().default(true),
+  /** Configuration for outdated documentation detection */
+  outdatedDocs: OutdatedDocsConfigSchema.optional(),
+  /** Configuration for JSDoc analysis (existing functionality) */
+  jsdocAnalysis: z.object({
+    enabled: z.boolean().optional().default(true),
+    requirePublicExports: z.boolean().optional().default(true),
+    checkReturnTypes: z.boolean().optional().default(true),
+    checkParameterTypes: z.boolean().optional().default(true),
+  }).optional(),
+});
+export type DocumentationAnalysisConfig = z.infer<typeof DocumentationAnalysisConfigSchema>;
 
 /**
  * Represents an export that is missing JSDoc documentation

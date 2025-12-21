@@ -334,5 +334,10 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       sessionRecovery: config.daemon?.sessionRecovery,
       idleProcessing: config.daemon?.idleProcessing,
     },
+    documentation: {
+      enabled: config.documentation?.enabled ?? true,
+      outdatedDocs: config.documentation?.outdatedDocs,
+      jsdocAnalysis: config.documentation?.jsdocAnalysis,
+    },
   };
 }

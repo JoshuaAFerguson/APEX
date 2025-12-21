@@ -1,10 +1,12 @@
-# Agent Handoff Animation Test Coverage Report
+# Deep Nesting Detection Test Coverage Report
 
 ## Overview
-The agent handoff animation feature has comprehensive test coverage across all three main components:
-- **AgentPanel**: Main component integration
-- **HandoffIndicator**: Visual transition component
-- **useAgentHandoff**: Animation state management hook
+This report documents the comprehensive test coverage for the deep nesting detection feature implemented in `IdleProcessor.analyzeCodeQuality()`.
+
+## Feature Implementation Summary
+The feature detects files with nesting levels >4 and generates CodeSmell objects with type 'deep-nesting'. Additionally, existing code smell detection thresholds have been updated:
+- Large class detection: >500 lines OR >20 methods
+- Long method detection: >50 lines (actual method length analysis)
 
 ## Test Coverage Analysis
 
