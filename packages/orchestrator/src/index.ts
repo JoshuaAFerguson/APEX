@@ -92,6 +92,9 @@ export interface TasksAutoResumedEvent {
     error: string;
   }>;
   timestamp: Date;
+  // v0.4.0 enhancements
+  resumeReason?: string;    // Detailed string description of why tasks were resumed
+  contextSummary?: string;  // Aggregated context summary for all resumed tasks
 }
 
 export interface PRResult {

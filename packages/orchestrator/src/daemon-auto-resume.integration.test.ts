@@ -294,6 +294,15 @@ describe('DaemonRunner Auto-Resume Integration', () => {
       expect(autoResumedEvent.resumedCount).toBe(1);
       expect(autoResumedEvent.errors).toEqual([]);
       expect(autoResumedEvent.timestamp).toBeInstanceOf(Date);
+
+      // Verify enhanced fields (v0.4.0)
+      expect(autoResumedEvent.resumeReason).toBeDefined();
+      expect(typeof autoResumedEvent.resumeReason).toBe('string');
+      expect(autoResumedEvent.resumeReason).toContain('budget');
+
+      expect(autoResumedEvent.contextSummary).toBeDefined();
+      expect(typeof autoResumedEvent.contextSummary).toBe('string');
+      expect(autoResumedEvent.contextSummary).toContain('1'); // task count
     }
 
     await daemonRunner.stop();
