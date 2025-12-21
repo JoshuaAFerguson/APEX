@@ -9,6 +9,7 @@ import {
   ApexConfig
 } from '@apexcli/core';
 import { TaskStore } from './store';
+import { IdleTaskGenerator } from './idle-task-generator';
 
 export interface IdleTask {
   id: string;
@@ -70,12 +71,18 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   private isProcessing = false;
   private lastAnalysis?: ProjectAnalysis;
   private generatedTasks: Map<string, IdleTask> = new Map();
+  private taskGenerator: IdleTaskGenerator;
 
   constructor(projectPath: string, config: DaemonConfig, store: TaskStore) {
     super();
     this.projectPath = projectPath;
     this.config = config;
     this.store = store;
+
+    // Initialize the IdleTaskGenerator with strategy weights from config
+    this.taskGenerator = new IdleTaskGenerator(
+      config.idleProcessing?.strategyWeights
+    );
   }
 
   /**
@@ -397,6 +404,9 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       return; // Already have enough suggestions
     }
 
+    // Reset the task generator for a new generation cycle
+    this.taskGenerator.reset();
+
     const tasks = await this.generateTasksFromAnalysis(this.lastAnalysis);
 
     for (const task of tasks.slice(0, maxTasks - currentTaskCount)) {
@@ -407,85 +417,17 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
   private async generateTasksFromAnalysis(analysis: ProjectAnalysis): Promise<IdleTask[]> {
     const tasks: IdleTask[] = [];
+    const maxTasks = this.config.idleProcessing?.maxIdleTasks || 3;
 
-    // Test coverage improvement
-    if (analysis.testCoverage && analysis.testCoverage.percentage < 70) {
-      tasks.push({
-        id: `idle-${Date.now()}-test-coverage`,
-        type: 'improvement',
-        title: 'Improve Test Coverage',
-        description: `Add tests to increase coverage from ${analysis.testCoverage.percentage.toFixed(1)}% to at least 70%`,
-        priority: 'normal',
-        estimatedEffort: 'medium',
-        suggestedWorkflow: 'testing',
-        rationale: 'Low test coverage increases risk of bugs and makes refactoring harder',
-        createdAt: new Date(),
-        implemented: false,
-      });
-    }
-
-    // Documentation improvement
-    if (analysis.documentation.coverage < 50) {
-      tasks.push({
-        id: `idle-${Date.now()}-documentation`,
-        type: 'documentation',
-        title: 'Add Missing Documentation',
-        description: 'Add README files and inline documentation for key components',
-        priority: 'low',
-        estimatedEffort: 'low',
-        suggestedWorkflow: 'documentation',
-        rationale: 'Good documentation improves maintainability and onboarding',
-        createdAt: new Date(),
-        implemented: false,
-      });
-    }
-
-    // Dependency updates
-    if (analysis.dependencies.outdated.length > 0) {
-      tasks.push({
-        id: `idle-${Date.now()}-dependencies`,
-        type: 'maintenance',
-        title: 'Update Outdated Dependencies',
-        description: `Update ${analysis.dependencies.outdated.length} outdated dependencies`,
-        priority: analysis.dependencies.security.length > 0 ? 'high' : 'normal',
-        estimatedEffort: 'medium',
-        suggestedWorkflow: 'maintenance',
-        rationale: 'Outdated dependencies may have security vulnerabilities and missing features',
-        createdAt: new Date(),
-        implemented: false,
-      });
-    }
-
-    // Code quality improvement
-    if (analysis.codeQuality.lintIssues > 50) {
-      tasks.push({
-        id: `idle-${Date.now()}-lint`,
-        type: 'improvement',
-        title: 'Fix Linting Issues',
-        description: `Fix ${analysis.codeQuality.lintIssues} linting issues`,
-        priority: 'normal',
-        estimatedEffort: 'medium',
-        suggestedWorkflow: 'refactoring',
-        rationale: 'Linting issues indicate code quality problems that could lead to bugs',
-        createdAt: new Date(),
-        implemented: false,
-      });
-    }
-
-    // Performance optimization
-    if (analysis.performance.bottlenecks.length > 0) {
-      tasks.push({
-        id: `idle-${Date.now()}-performance`,
-        type: 'optimization',
-        title: 'Optimize Performance Bottlenecks',
-        description: 'Review and optimize identified performance bottlenecks',
-        priority: 'normal',
-        estimatedEffort: 'high',
-        suggestedWorkflow: 'optimization',
-        rationale: 'Performance bottlenecks can significantly impact user experience',
-        createdAt: new Date(),
-        implemented: false,
-      });
+    // Generate tasks using the weighted strategy approach
+    for (let i = 0; i < maxTasks; i++) {
+      const task = this.taskGenerator.generateTask(analysis);
+      if (task) {
+        tasks.push(task);
+      } else {
+        // No more tasks can be generated
+        break;
+      }
     }
 
     return tasks;

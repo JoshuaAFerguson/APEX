@@ -3402,3 +3402,12 @@ export {
   type CapacityRestoredEvent,
   type CapacityRestoredCallback,
 } from './daemon-scheduler';
+export {
+  IdleTaskGenerator,
+  MaintenanceAnalyzer,
+  RefactoringAnalyzer,
+  DocsAnalyzer,
+  TestsAnalyzer,
+  type TaskCandidate,
+  type StrategyAnalyzer,
+} from './idle-task-generator';
