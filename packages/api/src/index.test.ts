@@ -6,7 +6,7 @@ import { createServer, ServerOptions } from './index';
 import { FastifyInstance } from 'fastify';
 
 // Mock the orchestrator to avoid SQLite issues in tests
-vi.mock('@apexcli/orchestrator', () => {
+vi.mock('@apex/orchestrator', () => {
   const mockTask = {
     id: 'task_123_abc',
     description: 'Test task',

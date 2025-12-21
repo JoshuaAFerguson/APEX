@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import WebSocket from 'ws';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { ApexOrchestrator } from '@apex/orchestrator';
 import { initializeApex } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { createServer } from './index';
