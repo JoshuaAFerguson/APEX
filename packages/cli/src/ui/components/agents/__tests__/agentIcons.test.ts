@@ -11,6 +11,18 @@ import {
   AGENT_ICONS,
   AGENT_ICONS_ASCII,
 } from '../agentIcons.js';
+import * as agentIcons from '../agentIcons.js';
+
+const originalEnv = process.env;
+
+beforeEach(() => {
+  process.env = { ...originalEnv };
+});
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+  vi.restoreAllMocks();
+});
 
 describe('agentIcons', () => {
   describe('AGENT_ICONS', () => {
@@ -239,9 +251,7 @@ describe('agentIcons', () => {
       process.env.COLORTERM = '';
       process.env.TERM_PROGRAM = '';
 
-      // Since we default to true, even unsupported should return true
-      // This is intentional as emoji support is widespread now
-      expect(detectEmojiSupport()).toBe(true);
+      expect(detectEmojiSupport()).toBe(false);
     });
   });
 
@@ -252,19 +262,17 @@ describe('agentIcons', () => {
     });
 
     it('should auto-detect when forceAscii is undefined', () => {
-      // Mock detectEmojiSupport for predictable testing
-      const originalDetect = detectEmojiSupport;
-
-      // Test when emoji support is detected
-      (global as any).detectEmojiSupport = jest.fn(() => true);
+      // Test when emoji support is detected (no explicit terminal info)
+      process.env.TERM = '';
+      process.env.COLORTERM = '';
+      process.env.TERM_PROGRAM = '';
       expect(shouldUseAsciiIcons()).toBe(false);
 
       // Test when emoji support is not detected
-      (global as any).detectEmojiSupport = jest.fn(() => false);
+      process.env.TERM = 'dumb';
+      process.env.COLORTERM = '';
+      process.env.TERM_PROGRAM = '';
       expect(shouldUseAsciiIcons()).toBe(true);
-
-      // Restore original function
-      (global as any).detectEmojiSupport = originalDetect;
     });
   });
 

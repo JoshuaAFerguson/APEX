@@ -23,7 +23,13 @@ import { SessionStore, Session, SessionMessage, SessionState, SessionSummary } f
 import { SessionAutoSaver, AutoSaveOptions } from '../services/SessionAutoSaver.js';
 
 // Mock file system
-vi.mock('fs/promises');
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  writeFile: vi.fn(),
+  readdir: vi.fn(),
+  unlink: vi.fn(),
+  readFile: vi.fn(),
+}));
 const mockFs = vi.mocked(fs);
 
 // Test utilities

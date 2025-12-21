@@ -3,7 +3,14 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
+    environment: 'jsdom',
+    environmentMatchGlobs: [
+      ['**/packages/orchestrator/src/**', 'node'],
+      ['**/packages/core/src/**', 'node'],
+      ['**/packages/api/src/**', 'node'],
+      ['**/packages/cli/src/__tests__/**', 'node'],
+      ['**/packages/cli/src/services/**', 'node'],
+    ],
     include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.integration.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',

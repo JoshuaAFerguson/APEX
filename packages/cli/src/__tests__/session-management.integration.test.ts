@@ -22,17 +22,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as zlib from 'zlib';
-import { promisify } from 'util';
 import { SessionStore, Session, SessionMessage, ToolCallRecord, SessionState } from '../services/SessionStore';
 import { SessionAutoSaver, AutoSaveOptions } from '../services/SessionAutoSaver';
 
 // Mock dependencies
-vi.mock('fs/promises');
-vi.mock('zlib');
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  writeFile: vi.fn(),
+  readdir: vi.fn(),
+  unlink: vi.fn(),
+  readFile: vi.fn(),
+}));
+vi.mock('zlib', () => ({
+  gzip: vi.fn(),
+  gunzip: vi.fn(),
+}));
 
 const mockFs = vi.mocked(fs);
-const mockGzip = vi.mocked(promisify(zlib.gzip));
-const mockGunzip = vi.mocked(promisify(zlib.gunzip));
+const mockGzip = vi.mocked(zlib.gzip);
+const mockGunzip = vi.mocked(zlib.gunzip);
 
 // Test data factories
 const createTestSession = (overrides: Partial<Session> = {}): Session => ({
@@ -103,8 +111,12 @@ describe('Session Management Integration Tests', () => {
     mockFs.readdir.mockResolvedValue([]);
 
     // Setup compression mocks
-    mockGzip.mockResolvedValue(Buffer.from('compressed'));
-    mockGunzip.mockResolvedValue(Buffer.from('{}'));
+    mockGzip.mockImplementation((data: unknown, callback: (error: Error | null, result?: Buffer) => void) => {
+      callback(null, Buffer.from('compressed'));
+    });
+    mockGunzip.mockImplementation((data: unknown, callback: (error: Error | null, result?: Buffer) => void) => {
+      callback(null, Buffer.from('{}'));
+    });
   });
 
   afterEach(() => {
@@ -139,7 +151,7 @@ describe('Session Management Integration Tests', () => {
       // Verify session saved to filesystem
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining(`${session.id}.json`),
-        expect.stringContaining('"name":"Integration Test Session"')
+        expect.stringContaining('"name": "Integration Test Session"')
       );
 
       // Verify active session set

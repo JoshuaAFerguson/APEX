@@ -25,8 +25,13 @@ export class SessionAutoSaver {
   }
 
   async start(sessionId?: string): Promise<Session> {
-    if (sessionId) {
-      this.currentSession = await this.store.getSession(sessionId);
+    let resolvedSessionId = sessionId;
+    if (!resolvedSessionId) {
+      resolvedSessionId = await this.store.getActiveSessionId() || undefined;
+    }
+
+    if (resolvedSessionId) {
+      this.currentSession = await this.store.getSession(resolvedSessionId);
     }
 
     if (!this.currentSession) {

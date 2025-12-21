@@ -71,6 +71,7 @@ export interface SessionSummary {
 }
 
 export class SessionStore {
+  private projectPath: string;
   private sessionsDir: string;
   private archiveDir: string;
   private indexPath: string;
@@ -78,6 +79,7 @@ export class SessionStore {
   private index: SessionIndex | null = null;
 
   constructor(projectPath: string) {
+    this.projectPath = projectPath;
     this.sessionsDir = path.join(projectPath, '.apex', 'sessions');
     this.archiveDir = path.join(this.sessionsDir, 'archive');
     this.indexPath = path.join(this.sessionsDir, 'index.json');
@@ -97,7 +99,7 @@ export class SessionStore {
     const session: Session = {
       id,
       name,
-      projectPath: path.dirname(this.sessionsDir),
+      projectPath: this.projectPath,
       createdAt: now,
       updatedAt: now,
       lastAccessedAt: now,
@@ -146,7 +148,15 @@ export class SessionStore {
 
   async updateSession(id: string, updates: Partial<Session>): Promise<void> {
     const session = await this.getSession(id);
-    if (!session) throw new Error(`Session not found: ${id}`);
+    if (!session) {
+      if (this.isFullSession(updates)) {
+        const updated = { ...updates, updatedAt: new Date() };
+        await this.saveSession(updated);
+        await this.updateIndex(updated, 'update');
+        return;
+      }
+      throw new Error(`Session not found: ${id}`);
+    }
 
     const updated = { ...session, ...updates, updatedAt: new Date() };
     await this.saveSession(updated);
@@ -291,6 +301,22 @@ export class SessionStore {
   private async saveSession(session: Session): Promise<void> {
     const sessionPath = path.join(this.sessionsDir, `${session.id}.json`);
     await fs.writeFile(sessionPath, JSON.stringify(session, null, 2));
+  }
+
+  private isFullSession(updates: Partial<Session>): updates is Session {
+    return Boolean(
+      updates &&
+      updates.id &&
+      updates.projectPath &&
+      updates.createdAt &&
+      updates.updatedAt &&
+      updates.lastAccessedAt &&
+      updates.messages &&
+      updates.inputHistory &&
+      updates.state &&
+      updates.childSessionIds &&
+      updates.tags
+    );
   }
 
   private async loadIndex(): Promise<void> {

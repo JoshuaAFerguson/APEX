@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { useStdout } from 'ink';
+import { useMemo } from 'react';
+import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
 
 /**
  * Breakpoint helpers interface with boolean flags
@@ -190,33 +190,8 @@ export function useStdoutDimensions(
     return DEFAULT_BREAKPOINTS;
   }, [customBreakpoints, narrowThreshold, wideThreshold]);
 
-  // Get stdout from ink's useStdout hook
-  const { stdout } = useStdout();
-
-  // Track dimensions with state to handle resize events
-  const [dimensions, setDimensions] = useState<[number | undefined, number | undefined]>(() => [
-    stdout?.columns,
-    stdout?.rows
-  ]);
-
-  // Listen for resize events
-  useEffect(() => {
-    if (!stdout) return;
-
-    const handleResize = () => {
-      setDimensions([stdout.columns, stdout.rows]);
-    };
-
-    // Set initial dimensions
-    handleResize();
-
-    // Listen for resize
-    stdout.on('resize', handleResize);
-
-    return () => {
-      stdout.off('resize', handleResize);
-    };
-  }, [stdout]);
+  const [baseWidth, baseHeight] = useStdoutDimensionsBase();
+  const dimensions: [number | undefined, number | undefined] = [baseWidth, baseHeight];
 
   const [width, height] = dimensions;
 
