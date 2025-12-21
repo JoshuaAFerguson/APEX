@@ -582,7 +582,7 @@ export interface CodeSmell {
   /** File path relative to project root */
   file: string;
   /** Type of code smell */
-  type: 'long-method' | 'large-class' | 'duplicate-code' | 'dead-code' | 'magic-numbers' | 'feature-envy' | 'data-clumps';
+  type: 'long-method' | 'large-class' | 'duplicate-code' | 'dead-code' | 'magic-numbers' | 'feature-envy' | 'data-clumps' | 'deep-nesting';
   /** Severity level of the code smell */
   severity: 'low' | 'medium' | 'high' | 'critical';
   /** Additional details about the code smell */

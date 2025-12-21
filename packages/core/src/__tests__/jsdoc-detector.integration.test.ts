@@ -1,0 +1,945 @@
+import { describe, it, expect } from 'vitest';
+import {
+  analyzeFile,
+  analyzeFiles,
+  type DetectionConfig,
+} from '../jsdoc-detector.js';
+
+describe('JSDoc Detector - Real-World Integration Tests', () => {
+  describe('Complex TypeScript Project Scenarios', () => {
+    it('analyzes typical API service module', () => {
+      const apiServiceSource = `
+        import { HttpClient } from './http-client';
+        import type { User, CreateUserRequest, UpdateUserRequest } from './types';
+
+        /**
+         * Service for managing user operations
+         * Provides CRUD operations for user entities with proper error handling
+         * and validation.
+         *
+         * @example
+         * \`\`\`typescript
+         * const userService = new UserService(httpClient);
+         * const users = await userService.getUsers();
+         * \`\`\`
+         *
+         * @since 1.0.0
+         */
+        export class UserService {
+          constructor(private httpClient: HttpClient) {}
+
+          /**
+           * Retrieves all users from the API
+           * @returns Promise that resolves to array of users
+           * @throws {ApiError} When the API request fails
+           */
+          async getUsers(): Promise<User[]> {
+            return this.httpClient.get('/users');
+          }
+
+          /**
+           * Gets a single user by ID
+           * @param id - The user ID to retrieve
+           * @returns Promise that resolves to user data or null if not found
+           * @throws {ValidationError} When ID is invalid
+           * @throws {ApiError} When the API request fails
+           */
+          async getUserById(id: string): Promise<User | null> {
+            if (!id?.trim()) {
+              throw new Error('User ID is required');
+            }
+            return this.httpClient.get(\`/users/\${id}\`);
+          }
+
+          /**
+           * Creates a new user
+           * @param userData - User data for creation
+           * @returns Promise that resolves to created user
+           * @throws {ValidationError} When user data is invalid
+           * @throws {ConflictError} When user already exists
+           */
+          async createUser(userData: CreateUserRequest): Promise<User> {
+            return this.httpClient.post('/users', userData);
+          }
+
+          // Missing documentation for update method
+          async updateUser(id: string, userData: UpdateUserRequest): Promise<User> {
+            return this.httpClient.patch(\`/users/\${id}\`, userData);
+          }
+
+          /**
+           * Deletes a user by ID
+           * @param id User identifier
+           * @returns Promise resolving to deletion confirmation
+           */
+          async deleteUser(id: string): Promise<void> {
+            await this.httpClient.delete(\`/users/\${id}\`);
+          }
+        }
+
+        /**
+         * Configuration options for user operations
+         */
+        export interface UserServiceConfig {
+          /** API base URL */
+          baseUrl: string;
+          /** Request timeout in milliseconds */
+          timeout?: number;
+          /** Number of retry attempts for failed requests */
+          retries?: number;
+        }
+
+        /**
+         * Error codes returned by user service operations
+         */
+        export enum UserErrorCode {
+          USER_NOT_FOUND = 'USER_NOT_FOUND',
+          INVALID_DATA = 'INVALID_DATA',
+          PERMISSION_DENIED = 'PERMISSION_DENIED',
+        }
+
+        /**
+         * Factory function for creating user service instances
+         * @param config - Service configuration options
+         * @returns Configured UserService instance
+         */
+        export function createUserService(config: UserServiceConfig): UserService {
+          const httpClient = new HttpClient(config);
+          return new UserService(httpClient);
+        }
+
+        // Utility constants
+        export const DEFAULT_CONFIG: UserServiceConfig = {
+          baseUrl: 'https://api.example.com',
+          timeout: 5000,
+          retries: 3,
+        };
+
+        // Missing documentation
+        export const CACHE_TTL = 60000;
+
+        // Export with alias
+        export { UserService as UserManager };
+      `;
+
+      const result = analyzeFile('src/services/user-service.ts', apiServiceSource);
+
+      expect(result.exports.length).toBeGreaterThan(5);
+      expect(result.stats.totalExports).toBeGreaterThanOrEqual(6);
+      expect(result.stats.documentedExports).toBeGreaterThan(3);
+      expect(result.stats.undocumentedExports).toBeGreaterThan(0);
+
+      // Should identify the undocumented updateUser method
+      const updateUserDoc = result.documentation.find(
+        d => d.export.name === 'updateUser'
+      );
+      expect(updateUserDoc).toBeDefined();
+      expect(updateUserDoc!.isDocumented).toBe(false);
+
+      // Should identify the undocumented CACHE_TTL constant
+      const cacheTtlDoc = result.documentation.find(
+        d => d.export.name === 'CACHE_TTL'
+      );
+      expect(cacheTtlDoc).toBeDefined();
+      expect(cacheTtlDoc!.isDocumented).toBe(false);
+
+      // Well-documented items should be marked as documented
+      const userServiceDoc = result.documentation.find(
+        d => d.export.name === 'UserService'
+      );
+      expect(userServiceDoc).toBeDefined();
+      expect(userServiceDoc!.isDocumented).toBe(true);
+    });
+
+    it('analyzes React component file with TypeScript', () => {
+      const reactComponentSource = `
+        import React from 'react';
+        import { ReactNode } from 'react';
+
+        /**
+         * Props for the Button component
+         */
+        export interface ButtonProps {
+          /** Button text content */
+          children: ReactNode;
+          /** Button variant style */
+          variant?: 'primary' | 'secondary' | 'danger';
+          /** Whether the button is disabled */
+          disabled?: boolean;
+          /** Click event handler */
+          onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+          /** Additional CSS classes */
+          className?: string;
+        }
+
+        /**
+         * Reusable button component with multiple variants
+         *
+         * Provides a consistent button interface across the application with
+         * support for different visual styles and states.
+         *
+         * @param props - Button component props
+         * @returns JSX element representing the button
+         *
+         * @example
+         * \`\`\`tsx
+         * <Button variant="primary" onClick={() => console.log('clicked')}>
+         *   Click me
+         * </Button>
+         * \`\`\`
+         */
+        export function Button({
+          children,
+          variant = 'primary',
+          disabled = false,
+          onClick,
+          className = '',
+        }: ButtonProps): JSX.Element {
+          return (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onClick}
+              className={\`btn btn--\${variant} \${className}\`}
+            >
+              {children}
+            </button>
+          );
+        }
+
+        // Missing documentation for this hook
+        export function useButtonState() {
+          const [loading, setLoading] = React.useState(false);
+          return { loading, setLoading };
+        }
+
+        /**
+         * Higher-order component for adding loading state to buttons
+         */
+        export const withLoadingState = <P extends ButtonProps>(
+          WrappedComponent: React.ComponentType<P>
+        ) => {
+          return function WithLoadingState(props: P) {
+            const { loading } = useButtonState();
+            return <WrappedComponent {...props} disabled={loading || props.disabled} />;
+          };
+        };
+
+        /**
+         * Default button styles configuration
+         */
+        export const BUTTON_STYLES = {
+          primary: 'bg-blue-500 text-white hover:bg-blue-600',
+          secondary: 'bg-gray-500 text-white hover:bg-gray-600',
+          danger: 'bg-red-500 text-white hover:bg-red-600',
+        } as const;
+
+        // Type-only export
+        export type ButtonVariant = keyof typeof BUTTON_STYLES;
+
+        // Default export
+        export default Button;
+      `;
+
+      const config: DetectionConfig = {
+        requiredTags: ['param', 'returns'],
+        minSummaryLength: 15,
+      };
+
+      const result = analyzeFile('src/components/Button.tsx', reactComponentSource, config);
+
+      expect(result.exports.length).toBeGreaterThan(5);
+
+      // Button component should be well documented
+      const buttonDoc = result.documentation.find(d => d.export.name === 'Button');
+      expect(buttonDoc).toBeDefined();
+      expect(buttonDoc!.isDocumented).toBe(true);
+      expect(buttonDoc!.jsdoc!.summary.length).toBeGreaterThan(30);
+
+      // useButtonState should be missing documentation
+      const hookDoc = result.documentation.find(d => d.export.name === 'useButtonState');
+      expect(hookDoc).toBeDefined();
+      expect(hookDoc!.isDocumented).toBe(false);
+      expect(hookDoc!.suggestions).toContain('Add JSDoc comment above the function declaration');
+
+      // Should handle default export correctly
+      const defaultDoc = result.documentation.find(
+        d => d.export.name === 'Button' && d.export.isDefault
+      );
+      expect(defaultDoc).toBeDefined();
+    });
+
+    it('analyzes utility library with mixed export patterns', () => {
+      const utilitySource = `
+        // Re-exports from other modules
+        export { validateEmail, validatePhone } from './validation';
+        export { formatDate, parseDate } from './date-utils';
+        export * from './string-utils';
+        export * as MathUtils from './math';
+
+        /**
+         * Utility functions for common operations
+         */
+        export namespace Utils {
+          /**
+           * Deeply clones an object
+           * @param obj Object to clone
+           * @returns Deep copy of the object
+           */
+          export function deepClone<T>(obj: T): T {
+            return JSON.parse(JSON.stringify(obj));
+          }
+
+          export function shallowClone<T>(obj: T): T {
+            return { ...obj as object } as T;
+          }
+        }
+
+        /**
+         * Configuration for utility operations
+         */
+        export interface UtilConfig {
+          debug?: boolean;
+          performance?: boolean;
+        }
+
+        // Function overloads
+        export function processValue(value: string): string;
+        export function processValue(value: number): number;
+        export function processValue<T>(value: T[]): T[];
+        /**
+         * Processes a value based on its type
+         * @param value - Value to process
+         * @returns Processed value
+         */
+        export function processValue<T>(value: T): T {
+          return value;
+        }
+
+        // Const assertions and complex types
+        export const API_ENDPOINTS = {
+          users: '/api/users',
+          posts: '/api/posts',
+          comments: '/api/comments',
+        } as const;
+
+        export type ApiEndpoint = typeof API_ENDPOINTS[keyof typeof API_ENDPOINTS];
+
+        // Generic utility type
+        export type DeepPartial<T> = {
+          [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+        };
+
+        // Conditional type
+        export type NonNullable<T> = T extends null | undefined ? never : T;
+
+        // Template literal type
+        export type EventName<T extends string> = \`on\${Capitalize<T>}\`;
+
+        // Class with complex inheritance
+        export abstract class BaseProcessor<TInput, TOutput> {
+          abstract process(input: TInput): TOutput | Promise<TOutput>;
+
+          /**
+           * Processes multiple inputs in batch
+           * @param inputs Array of inputs to process
+           * @returns Promise resolving to processed outputs
+           */
+          async processBatch(inputs: TInput[]): Promise<TOutput[]> {
+            return Promise.all(inputs.map(input => this.process(input)));
+          }
+        }
+
+        // Implementation of abstract class
+        export class StringProcessor extends BaseProcessor<string, string> {
+          process(input: string): string {
+            return input.toUpperCase();
+          }
+        }
+      `;
+
+      const config: DetectionConfig = {
+        includeReExports: true,
+        minSummaryLength: 10,
+      };
+
+      const result = analyzeFile('src/utils/index.ts', utilitySource, config);
+
+      expect(result.exports.length).toBeGreaterThan(10);
+
+      // Should find re-exports
+      const reExports = result.exports.filter(e => e.isReExport);
+      expect(reExports.length).toBeGreaterThan(0);
+
+      // Should handle namespace exports
+      const namespaceExport = result.exports.find(e => e.name === 'Utils');
+      expect(namespaceExport).toBeDefined();
+
+      // Should handle abstract class
+      const abstractClass = result.exports.find(e => e.name === 'BaseProcessor');
+      expect(abstractClass).toBeDefined();
+
+      // Should identify undocumented exports
+      const undocumented = result.documentation.filter(d => !d.isDocumented);
+      expect(undocumented.length).toBeGreaterThan(0);
+    });
+
+    it('analyzes complex type definition file', () => {
+      const typesSource = `
+        /**
+         * Base API response structure
+         */
+        export interface ApiResponse<T = unknown> {
+          data: T;
+          success: boolean;
+          message?: string;
+          errors?: ApiError[];
+        }
+
+        /**
+         * API error structure
+         */
+        export interface ApiError {
+          code: string;
+          message: string;
+          field?: string;
+        }
+
+        /**
+         * Pagination parameters for API requests
+         */
+        export interface PaginationParams {
+          page: number;
+          limit: number;
+          sortBy?: string;
+          sortDirection?: 'asc' | 'desc';
+        }
+
+        /**
+         * Paginated response wrapper
+         */
+        export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+          pagination: {
+            page: number;
+            totalPages: number;
+            totalItems: number;
+            hasNext: boolean;
+            hasPrev: boolean;
+          };
+        }
+
+        // Union types for various statuses
+        export type RequestStatus = 'idle' | 'loading' | 'success' | 'error';
+        export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+        export type ContentType = 'json' | 'form-data' | 'text';
+
+        // Complex mapped types
+        export type Partial<T> = { [P in keyof T]?: T[P] };
+        export type Required<T> = { [P in keyof T]-?: T[P] };
+        export type Readonly<T> = { readonly [P in keyof T]: T[P] };
+
+        // Conditional types
+        export type NonFunction<T> = T extends Function ? never : T;
+        export type ExtractArrayType<T> = T extends (infer U)[] ? U : never;
+
+        // Template literal types
+        export type HttpRoute = \`/api/\${string}\`;
+        export type DatabaseTable = \`tbl_\${string}\`;
+
+        // Module augmentation helper
+        export interface GlobalConfig {
+          apiBaseUrl: string;
+          timeout: number;
+          retries: number;
+        }
+
+        // Utility type for creating variants
+        export type CreateVariant<T, K extends keyof T> = {
+          [P in K]: T[P];
+        } & {
+          [P in Exclude<keyof T, K>]?: T[P];
+        };
+
+        // Function type definitions
+        export type Predicate<T> = (value: T) => boolean;
+        export type Transformer<T, U> = (value: T) => U;
+        export type AsyncTransformer<T, U> = (value: T) => Promise<U>;
+
+        // Event system types
+        export type EventHandler<T = unknown> = (event: T) => void;
+        export type EventMap = Record<string, unknown>;
+        export type EventListener<T extends EventMap, K extends keyof T> = EventHandler<T[K]>;
+
+        // Missing documentation for this type
+        export type DeepMutable<T> = {
+          -readonly [P in keyof T]: T[P] extends object ? DeepMutable<T[P]> : T[P];
+        };
+      `;
+
+      const result = analyzeFile('src/types/api.ts', typesSource);
+
+      expect(result.exports.length).toBeGreaterThan(15);
+
+      // Should have high documentation coverage for type definitions
+      expect(result.stats.documentedExports).toBeGreaterThan(5);
+
+      // Should identify the undocumented DeepMutable type
+      const deepMutableDoc = result.documentation.find(
+        d => d.export.name === 'DeepMutable'
+      );
+      expect(deepMutableDoc).toBeDefined();
+      expect(deepMutableDoc!.isDocumented).toBe(false);
+
+      // Well-documented interfaces should be marked as documented
+      const apiResponseDoc = result.documentation.find(
+        d => d.export.name === 'ApiResponse'
+      );
+      expect(apiResponseDoc).toBeDefined();
+      expect(apiResponseDoc!.isDocumented).toBe(true);
+    });
+
+    it('analyzes Node.js backend service module', () => {
+      const backendServiceSource = `
+        import { EventEmitter } from 'events';
+        import { Server } from 'http';
+
+        /**
+         * Options for configuring the application server
+         */
+        export interface ServerOptions {
+          /** Port number to listen on */
+          port: number;
+          /** Host address to bind to */
+          host?: string;
+          /** Enable CORS support */
+          cors?: boolean;
+          /** Request timeout in milliseconds */
+          timeout?: number;
+        }
+
+        /**
+         * Main application server class
+         * Extends EventEmitter to provide event-driven architecture
+         *
+         * @fires ServerApplication#ready - When server is ready to accept connections
+         * @fires ServerApplication#error - When an error occurs
+         * @fires ServerApplication#request - When a request is received
+         */
+        export class ServerApplication extends EventEmitter {
+          private server?: Server;
+          private isRunning = false;
+
+          constructor(private options: ServerOptions) {
+            super();
+          }
+
+          /**
+           * Starts the server and begins listening for requests
+           * @returns Promise that resolves when server is listening
+           * @throws {ServerError} When server fails to start
+           */
+          async start(): Promise<void> {
+            if (this.isRunning) {
+              throw new Error('Server is already running');
+            }
+
+            return new Promise((resolve, reject) => {
+              this.server = new Server();
+              this.server.listen(this.options.port, this.options.host, () => {
+                this.isRunning = true;
+                this.emit('ready');
+                resolve();
+              });
+              this.server.on('error', reject);
+            });
+          }
+
+          /**
+           * Gracefully shuts down the server
+           * @param timeout - Maximum time to wait for graceful shutdown
+           * @returns Promise that resolves when server is closed
+           */
+          async stop(timeout = 5000): Promise<void> {
+            if (!this.isRunning || !this.server) {
+              return;
+            }
+
+            return new Promise((resolve) => {
+              const timer = setTimeout(() => {
+                this.server?.destroy();
+                resolve();
+              }, timeout);
+
+              this.server?.close(() => {
+                clearTimeout(timer);
+                this.isRunning = false;
+                resolve();
+              });
+            });
+          }
+
+          // Missing documentation
+          getServerInfo() {
+            return {
+              isRunning: this.isRunning,
+              address: this.server?.address(),
+            };
+          }
+        }
+
+        /**
+         * Middleware function type definition
+         */
+        export type MiddlewareFunction = (
+          req: Request,
+          res: Response,
+          next: () => void
+        ) => void;
+
+        /**
+         * Route handler function type
+         */
+        export type RouteHandler = (req: Request, res: Response) => Promise<void> | void;
+
+        /**
+         * HTTP request context
+         */
+        export interface RequestContext {
+          method: string;
+          url: string;
+          headers: Record<string, string>;
+          query: Record<string, string>;
+          body?: unknown;
+          params?: Record<string, string>;
+        }
+
+        /**
+         * Creates a new server instance with the given options
+         * @param options - Server configuration options
+         * @returns Configured server instance
+         * @example
+         * const server = createServer({ port: 3000, cors: true });
+         * await server.start();
+         */
+        export function createServer(options: ServerOptions): ServerApplication {
+          return new ServerApplication(options);
+        }
+
+        /**
+         * Default server configuration
+         */
+        export const DEFAULT_SERVER_OPTIONS: ServerOptions = {
+          port: 3000,
+          host: '0.0.0.0',
+          cors: false,
+          timeout: 30000,
+        };
+
+        // Error classes
+        export class ServerError extends Error {
+          constructor(message: string, public code: string) {
+            super(message);
+            this.name = 'ServerError';
+          }
+        }
+
+        export class ValidationError extends ServerError {
+          constructor(message: string, public field: string) {
+            super(message, 'VALIDATION_ERROR');
+            this.name = 'ValidationError';
+          }
+        }
+
+        // Missing docs for these utilities
+        export function parseJsonSafely(json: string): unknown | null {
+          try {
+            return JSON.parse(json);
+          } catch {
+            return null;
+          }
+        }
+
+        export const HTTP_STATUS_CODES = {
+          OK: 200,
+          CREATED: 201,
+          BAD_REQUEST: 400,
+          UNAUTHORIZED: 401,
+          NOT_FOUND: 404,
+          INTERNAL_SERVER_ERROR: 500,
+        } as const;
+      `;
+
+      const config: DetectionConfig = {
+        minSummaryLength: 20,
+        includePrivate: false,
+      };
+
+      const result = analyzeFile('src/server/app.ts', backendServiceSource, config);
+
+      expect(result.exports.length).toBeGreaterThan(8);
+
+      // Should identify well-documented server class
+      const serverDoc = result.documentation.find(
+        d => d.export.name === 'ServerApplication'
+      );
+      expect(serverDoc).toBeDefined();
+      expect(serverDoc!.isDocumented).toBe(true);
+
+      // Should identify missing documentation
+      const undocumented = result.documentation.filter(d => !d.isDocumented);
+      expect(undocumented.length).toBeGreaterThan(2);
+
+      // Should find the undocumented utility functions
+      const parseJsonDoc = result.documentation.find(
+        d => d.export.name === 'parseJsonSafely'
+      );
+      expect(parseJsonDoc).toBeDefined();
+      expect(parseJsonDoc!.isDocumented).toBe(false);
+    });
+  });
+
+  describe('Multi-file Analysis Scenarios', () => {
+    it('analyzes entire project structure with different documentation standards', () => {
+      const projectFiles = [
+        {
+          path: 'src/types/index.ts',
+          content: `
+            /** User entity */
+            export interface User {
+              id: string;
+              name: string;
+              email: string;
+            }
+
+            export type UserRole = 'admin' | 'user' | 'guest';
+          `,
+        },
+        {
+          path: 'src/utils/helpers.ts',
+          content: `
+            /**
+             * Formats a user's display name
+             * @param user - User object
+             * @returns Formatted display name
+             */
+            export function formatUserName(user: { name: string }): string {
+              return user.name.trim();
+            }
+
+            // No documentation
+            export function generateId(): string {
+              return Math.random().toString(36);
+            }
+          `,
+        },
+        {
+          path: 'src/services/api.ts',
+          content: `
+            export class ApiService {
+              constructor(private baseUrl: string) {}
+
+              async get(endpoint: string) {
+                return fetch(this.baseUrl + endpoint);
+              }
+            }
+          `,
+        },
+        {
+          path: 'tests/setup.ts',
+          content: `
+            export function setupTests() {
+              // Test setup code
+            }
+          `,
+        },
+      ];
+
+      const strictConfig: DetectionConfig = {
+        requiredTags: ['param', 'returns'],
+        minSummaryLength: 15,
+        includePrivate: true,
+        extensions: ['.ts'],
+      };
+
+      const results = analyzeFiles(projectFiles, strictConfig);
+
+      expect(results).toHaveLength(4);
+
+      // Calculate overall project statistics
+      const totalStats = results.reduce(
+        (acc, result) => ({
+          totalExports: acc.totalExports + result.stats.totalExports,
+          documentedExports: acc.documentedExports + result.stats.documentedExports,
+          undocumentedExports: acc.undocumentedExports + result.stats.undocumentedExports,
+        }),
+        { totalExports: 0, documentedExports: 0, undocumentedExports: 0 }
+      );
+
+      expect(totalStats.totalExports).toBeGreaterThan(5);
+      expect(totalStats.undocumentedExports).toBeGreaterThan(0);
+
+      // Verify each file was analyzed correctly
+      const typesFile = results.find(r => r.filePath === 'src/types/index.ts')!;
+      expect(typesFile.exports.length).toBe(2);
+
+      const helpersFile = results.find(r => r.filePath === 'src/utils/helpers.ts')!;
+      expect(helpersFile.exports.length).toBe(2);
+      expect(helpersFile.stats.documentedExports).toBe(1);
+      expect(helpersFile.stats.undocumentedExports).toBe(1);
+
+      const apiFile = results.find(r => r.filePath === 'src/services/api.ts')!;
+      expect(apiFile.exports.length).toBe(1);
+      expect(apiFile.stats.documentedExports).toBe(0); // Class is undocumented
+    });
+
+    it('handles project with mixed quality documentation standards', () => {
+      const mixedQualityFiles = [
+        {
+          path: 'excellent.ts',
+          content: `
+            /**
+             * Excellent documentation with all required elements
+             * This function demonstrates best practices for JSDoc documentation
+             * including comprehensive parameter descriptions and examples.
+             *
+             * @param data - Input data to be processed
+             * @param options - Configuration options for processing
+             * @returns Promise resolving to processed result
+             * @throws {ValidationError} When input data is invalid
+             * @example
+             * const result = await excellentFunction(data, { strict: true });
+             * @since 1.0.0
+             * @see {@link https://example.com/docs}
+             */
+            export async function excellentFunction(
+              data: unknown,
+              options: { strict: boolean }
+            ): Promise<unknown> {
+              return data;
+            }
+          `,
+        },
+        {
+          path: 'poor.ts',
+          content: `
+            /** Bad */
+            export function poorFunction(a: string, b: number): void {}
+
+            export function noDocumentation(param1: any, param2: any) {
+              return param1 + param2;
+            }
+
+            /** */
+            export const EMPTY_DOCS = true;
+          `,
+        },
+        {
+          path: 'mixed.ts',
+          content: `
+            /**
+             * Decent documentation but missing some elements
+             * @param input The input parameter
+             */
+            export function decentFunction(input: string, missing: number): string {
+              return input + missing;
+            }
+
+            /**
+             * Good interface documentation
+             */
+            export interface GoodInterface {
+              prop: string;
+            }
+          `,
+        },
+      ];
+
+      const highStandardConfig: DetectionConfig = {
+        minSummaryLength: 50,
+        requiredTags: ['param', 'returns', 'example'],
+      };
+
+      const results = analyzeFiles(mixedQualityFiles, highStandardConfig);
+
+      // Only the excellent function should pass the high standards
+      const excellentFile = results.find(r => r.filePath === 'excellent.ts')!;
+      expect(excellentFile.stats.coveragePercent).toBe(100);
+
+      const poorFile = results.find(r => r.filePath === 'poor.ts')!;
+      expect(poorFile.stats.coveragePercent).toBe(0);
+
+      const mixedFile = results.find(r => r.filePath === 'mixed.ts')!;
+      expect(mixedFile.stats.coveragePercent).toBeLessThan(100);
+
+      // Verify suggestions are generated appropriately
+      const poorFileUndocumented = poorFile.documentation.filter(d => !d.isDocumented);
+      expect(poorFileUndocumented.length).toBeGreaterThan(0);
+
+      poorFileUndocumented.forEach(doc => {
+        expect(doc.suggestions.length).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe('Performance and Stress Testing', () => {
+    it('handles very large files efficiently', () => {
+      const generateLargeFile = (numExports: number) => {
+        const exports = [];
+        for (let i = 0; i < numExports; i++) {
+          exports.push(`
+            /**
+             * Generated function number ${i}
+             * @param input Input parameter ${i}
+             * @returns Output value ${i}
+             */
+            export function generatedFunction${i}(input: string): string {
+              return input + '${i}';
+            }
+          `);
+        }
+        return exports.join('\n');
+      };
+
+      const largeFileSource = generateLargeFile(500);
+
+      const startTime = performance.now();
+      const result = analyzeFile('large-file.ts', largeFileSource);
+      const endTime = performance.now();
+
+      // Should complete within reasonable time (< 500ms for 500 exports)
+      expect(endTime - startTime).toBeLessThan(500);
+
+      expect(result.exports).toHaveLength(500);
+      expect(result.stats.totalExports).toBe(500);
+      expect(result.stats.documentedExports).toBe(500);
+      expect(result.stats.coveragePercent).toBe(100);
+    });
+
+    it('processes many files concurrently without issues', () => {
+      const manyFiles = Array.from({ length: 50 }, (_, i) => ({
+        path: \`file\${i}.ts\`,
+        content: \`
+          /** Function \${i} */
+          export function func\${i}(): void {}
+
+          export const CONST_\${i} = \${i};
+        \`,
+      }));
+
+      const startTime = performance.now();
+      const results = analyzeFiles(manyFiles);
+      const endTime = performance.now();
+
+      // Should process all files efficiently
+      expect(endTime - startTime).toBeLessThan(1000);
+
+      expect(results).toHaveLength(50);
+
+      results.forEach((result, index) => {
+        expect(result.filePath).toBe(\`file\${index}.ts\`);
+        expect(result.exports).toHaveLength(2);
+        expect(result.stats.totalExports).toBe(2);
+      });
+    });
+  });
+});

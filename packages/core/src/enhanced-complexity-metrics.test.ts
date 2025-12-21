@@ -121,6 +121,7 @@ describe('Enhanced Complexity Metrics Types', () => {
         | 'magic-numbers'
         | 'feature-envy'
         | 'data-clumps'
+        | 'deep-nesting'
       > = [
         'long-method',
         'large-class',
@@ -129,6 +130,7 @@ describe('Enhanced Complexity Metrics Types', () => {
         'magic-numbers',
         'feature-envy',
         'data-clumps',
+        'deep-nesting',
       ];
 
       smellTypes.forEach((type) => {
@@ -153,6 +155,7 @@ describe('Enhanced Complexity Metrics Types', () => {
         'Magic number 42 used without explanation',
         'Method accesses too many fields from other classes',
         'Parameters user, userId, userName should be grouped',
+        'Nested if-else statements reach depth of 7 levels',
       ];
 
       testCases.forEach((details, index) => {
@@ -164,6 +167,7 @@ describe('Enhanced Complexity Metrics Types', () => {
           'magic-numbers',
           'feature-envy',
           'data-clumps',
+          'deep-nesting',
         ] as const;
 
         const codeSmell: CodeSmell = {

@@ -19,6 +19,14 @@ const testCodeSmell: CodeSmell = {
   details: 'Method has too many lines',
 };
 
+// Validate CodeSmell interface with deep-nesting type
+const testDeepNestingSmell: CodeSmell = {
+  file: 'src/nested.ts',
+  type: 'deep-nesting',
+  severity: 'medium',
+  details: 'Function has nested depth exceeding 6 levels',
+};
+
 // Validate DuplicatePattern interface
 const testDuplicatePattern: DuplicatePattern = {
   pattern: 'if (condition) { return true; }',
@@ -36,7 +44,7 @@ export function validateTypes(): boolean {
 
   // Test CodeSmell properties
   const smellFile: string = testCodeSmell.file;
-  const smellType: 'long-method' | 'large-class' | 'duplicate-code' | 'dead-code' | 'magic-numbers' | 'feature-envy' | 'data-clumps' = testCodeSmell.type;
+  const smellType: 'long-method' | 'large-class' | 'duplicate-code' | 'dead-code' | 'magic-numbers' | 'feature-envy' | 'data-clumps' | 'deep-nesting' = testCodeSmell.type;
   const severity: 'low' | 'medium' | 'high' | 'critical' = testCodeSmell.severity;
   const details: string = testCodeSmell.details;
 
@@ -63,7 +71,7 @@ export function validateTypes(): boolean {
 
 // Test array compatibility
 const complexityHotspots: ComplexityHotspot[] = [testHotspot];
-const codeSmells: CodeSmell[] = [testCodeSmell];
+const codeSmells: CodeSmell[] = [testCodeSmell, testDeepNestingSmell];
 const duplicatePatterns: DuplicatePattern[] = [testDuplicatePattern];
 
 // Mock codeQuality structure matching ProjectAnalysis
