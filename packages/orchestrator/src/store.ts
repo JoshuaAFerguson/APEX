@@ -390,6 +390,7 @@ export class TaskStore {
       completedAt: Date;
       prUrl: string;
       retryCount: number;
+      resumeAttempts: number;
       parentTaskId: string;
       subtaskIds: string[];
       subtaskStrategy: SubtaskStrategy;
@@ -452,6 +453,11 @@ export class TaskStore {
     if (updates.retryCount !== undefined) {
       setClauses.push('retry_count = @retryCount');
       params.retryCount = updates.retryCount;
+    }
+
+    if (updates.resumeAttempts !== undefined) {
+      setClauses.push('resume_attempts = @resumeAttempts');
+      params.resumeAttempts = updates.resumeAttempts;
     }
 
     if (updates.parentTaskId !== undefined) {

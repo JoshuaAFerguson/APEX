@@ -571,6 +571,38 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Fail a task when maximum resume attempts have been exceeded
+   */
+  private async failTaskWithMaxResumeError(
+    taskId: string,
+    attemptCount: number,
+    maxAttempts: number
+  ): Promise<void> {
+    const errorMessage = `Task failed: Maximum resume attempts exceeded (${attemptCount}/${maxAttempts}). ` +
+      `This task has been resumed too many times without completing successfully. ` +
+      `Consider: (1) Breaking the task into smaller subtasks, ` +
+      `(2) Increasing maxResumeAttempts in daemon.sessionRecovery config, ` +
+      `(3) Manually investigating the root cause of repeated pauses.`;
+
+    await this.store.addLog(taskId, {
+      level: 'error',
+      message: errorMessage,
+      metadata: {
+        resumeAttempts: attemptCount,
+        maxResumeAttempts: maxAttempts,
+        failureReason: 'max_resume_attempts_exceeded',
+      },
+    });
+
+    await this.updateTaskStatus(taskId, 'failed', undefined, errorMessage);
+
+    const failedTask = await this.store.getTask(taskId);
+    if (failedTask) {
+      this.emit('task:failed', failedTask, new Error(errorMessage));
+    }
+  }
+
+  /**
    * Pause a parent task because a subtask was paused
    */
   private async pauseParentTask(
@@ -634,6 +666,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     if (task.status !== 'paused') {
       return false; // Not paused
+    }
+
+    // Pre-check max resume attempts before clearing pause state
+    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 3;
+    const nextAttempt = task.resumeAttempts + 1;
+
+    if (nextAttempt > maxResumeAttempts) {
+      await this.failTaskWithMaxResumeError(taskId, nextAttempt, maxResumeAttempts);
+      return false;
     }
 
     // Clear pause-related fields
@@ -1507,7 +1548,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       status,
       error,
       updatedAt: new Date(),
-      ...(status === 'completed' ? { completedAt: new Date() } : {}),
+      ...(status === 'completed' ? {
+        completedAt: new Date(),
+        resumeAttempts: 0  // Reset resume attempts counter on successful completion
+      } : {}),
     });
   }
 
@@ -2265,6 +2309,20 @@ Parent: ${parentTask.description}`;
     const task = await this.store.getTask(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Increment resume attempts counter
+    const newResumeAttempts = task.resumeAttempts + 1;
+    await this.store.updateTask(taskId, {
+      resumeAttempts: newResumeAttempts,
+      updatedAt: new Date(),
+    });
+
+    // Check if max resume attempts exceeded
+    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 3;
+    if (newResumeAttempts > maxResumeAttempts) {
+      await this.failTaskWithMaxResumeError(taskId, newResumeAttempts, maxResumeAttempts);
+      return false;
     }
 
     // Get checkpoint to resume from
