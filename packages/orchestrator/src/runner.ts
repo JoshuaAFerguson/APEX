@@ -380,6 +380,11 @@ export class DaemonRunner {
 
   /**
    * Handle capacity restored events for auto-resume functionality
+   *
+   * Resume order:
+   * 1. Parent tasks (tasks with subtasks) by priority
+   * 2. Their subtasks (if paused with resumable reasons)
+   * 3. Remaining non-parent paused tasks by priority
    */
   private async handleCapacityRestored(event: CapacityRestoredEvent): Promise<void> {
     if (this.isShuttingDown || !this.store || !this.orchestrator) {
@@ -391,31 +396,59 @@ export class DaemonRunner {
         taskId: undefined,
       });
 
-      // Fetch paused tasks that can be resumed
-      const pausedTasks = await this.store.getPausedTasksForResume();
-
-      if (pausedTasks.length === 0) {
-        this.log('debug', 'No resumable paused tasks found');
-        return;
-      }
-
-      let resumedCount = 0;
+      let totalResumedCount = 0;
       const errors: Array<{taskId: string; error: string}> = [];
 
-      // Attempt to resume each paused task
-      for (const task of pausedTasks) {
-        try {
-          const resumed = await this.orchestrator.resumePausedTask(task.id);
-          if (resumed) {
-            resumedCount++;
-            this.log('info', `Auto-resumed task ${task.id}`, { taskId: task.id });
-          } else {
-            this.log('warn', `Failed to resume task ${task.id}: Task not in resumable state`, { taskId: task.id });
+      // Phase 1: Resume highest priority parent tasks first
+      const pausedParentTasks = await this.store.findHighestPriorityParentTask();
+
+      if (pausedParentTasks.length > 0) {
+        this.log('info', `Found ${pausedParentTasks.length} paused parent task(s) for resume`);
+
+        for (const parentTask of pausedParentTasks) {
+          try {
+            const resumed = await this.orchestrator.resumePausedTask(parentTask.id);
+            if (resumed) {
+              totalResumedCount++;
+              this.log('info', `Auto-resumed parent task ${parentTask.id}`, { taskId: parentTask.id });
+
+              // Parent resumed - also check and resume its subtasks if needed
+              await this.resumeParentSubtasksIfNeeded(parentTask.id);
+            } else {
+              this.log('warn', `Failed to resume parent task ${parentTask.id}: Task not in resumable state`, { taskId: parentTask.id });
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            errors.push({ taskId: parentTask.id, error: errorMessage });
+            this.log('error', `Error resuming parent task ${parentTask.id}: ${errorMessage}`, { taskId: parentTask.id });
           }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          errors.push({ taskId: task.id, error: errorMessage });
-          this.log('error', `Error resuming task ${task.id}: ${errorMessage}`, { taskId: task.id });
+        }
+      }
+
+      // Phase 2: Resume remaining paused tasks (non-parent) by priority
+      const allPausedTasks = await this.store.getPausedTasksForResume();
+      const resumedParentIds = new Set(pausedParentTasks.map(p => p.id));
+
+      // Filter out already-resumed parent tasks
+      const remainingTasks = allPausedTasks.filter(task => !resumedParentIds.has(task.id));
+
+      if (remainingTasks.length > 0) {
+        this.log('info', `Found ${remainingTasks.length} remaining paused task(s) for resume`);
+
+        for (const task of remainingTasks) {
+          try {
+            const resumed = await this.orchestrator.resumePausedTask(task.id);
+            if (resumed) {
+              totalResumedCount++;
+              this.log('info', `Auto-resumed task ${task.id}`, { taskId: task.id });
+            } else {
+              this.log('warn', `Failed to resume task ${task.id}: Task not in resumable state`, { taskId: task.id });
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            errors.push({ taskId: task.id, error: errorMessage });
+            this.log('error', `Error resuming task ${task.id}: ${errorMessage}`, { taskId: task.id });
+          }
         }
       }
 
@@ -423,14 +456,14 @@ export class DaemonRunner {
       if (this.orchestrator) {
         this.orchestrator.emit('tasks:auto-resumed', {
           reason: event.reason,
-          totalTasks: pausedTasks.length,
-          resumedCount,
+          totalTasks: allPausedTasks.length,
+          resumedCount: totalResumedCount,
           errors,
           timestamp: new Date(),
         });
       }
 
-      this.log('info', `Auto-resume completed: ${resumedCount}/${pausedTasks.length} tasks resumed`);
+      this.log('info', `Auto-resume completed: ${totalResumedCount}/${allPausedTasks.length} tasks resumed`);
 
       if (errors.length > 0) {
         this.log('warn', `${errors.length} tasks failed to resume during auto-resume`);
@@ -438,6 +471,64 @@ export class DaemonRunner {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.log('error', `Auto-resume process failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Resume paused subtasks of a parent task when the parent is resumed.
+   * Only resumes subtasks that were paused due to resumable reasons.
+   */
+  private async resumeParentSubtasksIfNeeded(parentTaskId: string): Promise<void> {
+    if (!this.store || !this.orchestrator) {
+      return;
+    }
+
+    try {
+      const parentTask = await this.store.getTask(parentTaskId);
+      if (!parentTask?.subtaskIds?.length) {
+        this.log('debug', `Parent task ${parentTaskId} has no subtasks to resume`);
+        return;
+      }
+
+      this.log('info', `Checking ${parentTask.subtaskIds.length} subtask(s) for auto-resume after parent task ${parentTaskId} resumed`);
+
+      let subtasksResumedCount = 0;
+
+      for (const subtaskId of parentTask.subtaskIds) {
+        try {
+          const subtask = await this.store.getTask(subtaskId);
+
+          if (subtask?.status === 'paused' &&
+              ['usage_limit', 'budget', 'capacity'].includes(subtask.pauseReason || '')) {
+
+            // Check if subtask can be resumed (resumeAfter date check)
+            if (subtask.resumeAfter && subtask.resumeAfter > new Date()) {
+              this.log('debug', `Subtask ${subtaskId} has future resumeAfter date, skipping auto-resume`);
+              continue;
+            }
+
+            const resumed = await this.orchestrator.resumePausedTask(subtaskId);
+            if (resumed) {
+              subtasksResumedCount++;
+              this.log('info', `Auto-resumed subtask ${subtaskId} after parent resume`, { taskId: subtaskId });
+            } else {
+              this.log('warn', `Failed to resume subtask ${subtaskId}: Task not in resumable state`, { taskId: subtaskId });
+            }
+          } else {
+            this.log('debug', `Subtask ${subtaskId} is not paused with resumable reason (status: ${subtask?.status}, reason: ${subtask?.pauseReason})`);
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.log('error', `Error resuming subtask ${subtaskId}: ${errorMessage}`, { taskId: subtaskId });
+        }
+      }
+
+      if (subtasksResumedCount > 0) {
+        this.log('info', `Resumed ${subtasksResumedCount} subtask(s) for parent task ${parentTaskId}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.log('error', `Error in resumeParentSubtasksIfNeeded for parent ${parentTaskId}: ${errorMessage}`);
     }
   }
 

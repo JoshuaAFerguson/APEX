@@ -1090,6 +1090,55 @@ export class TaskStore {
     return tasks;
   }
 
+  /**
+   * Find paused parent tasks (tasks with subtasks) ordered by priority.
+   * This is used for priority-based auto-resume when capacity is restored.
+   *
+   * A parent task is defined as a task where:
+   * - status = 'paused'
+   * - pause_reason IN ('usage_limit', 'budget', 'capacity')
+   * - resume_after is null or in the past
+   * - subtask_ids is a non-empty JSON array
+   *
+   * @returns Array of parent tasks sorted by priority (urgent > high > normal > low),
+   *          then by creation time (oldest first)
+   */
+  async findHighestPriorityParentTask(): Promise<Task[]> {
+    const now = new Date().toISOString();
+
+    const sql = `
+      SELECT t.*
+      FROM tasks t
+      WHERE t.status = 'paused'
+      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity')
+      AND (t.resume_after IS NULL OR t.resume_after <= ?)
+      AND t.subtask_ids IS NOT NULL
+      AND t.subtask_ids != '[]'
+      AND t.subtask_ids != 'null'
+      ORDER BY CASE t.priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'normal' THEN 3
+        WHEN 'low' THEN 4
+        ELSE 5
+      END ASC, t.created_at ASC
+    `;
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(now) as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+    }
+
+    return tasks;
+  }
+
   // ============================================================================
   // Task Checkpoints
   // ============================================================================

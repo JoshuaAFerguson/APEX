@@ -67,6 +67,8 @@ describe('DaemonRunner Auto-Resume', () => {
     close: vi.fn(),
     getNextQueuedTask: vi.fn(),
     getPausedTasksForResume: vi.fn(),
+    findHighestPriorityParentTask: vi.fn(),
+    getTask: vi.fn(),
   };
 
   const mockCapacityMonitor = {
@@ -293,6 +295,7 @@ describe('DaemonRunner Auto-Resume', () => {
       await (daemonRunner as any).handleCapacityRestored(mockEvent);
 
       // Should not have called any methods
+      expect(mockStore.findHighestPriorityParentTask).not.toHaveBeenCalled();
       expect(mockStore.getPausedTasksForResume).not.toHaveBeenCalled();
       expect(mockOrchestrator.resumePausedTask).not.toHaveBeenCalled();
     });
@@ -317,17 +320,20 @@ describe('DaemonRunner Auto-Resume', () => {
 
       await (daemonRunner as any).handleCapacityRestored(mockEvent);
 
-      // Should not have called getPausedTasksForResume
+      // Should not have called store methods
+      expect(mockStore.findHighestPriorityParentTask).not.toHaveBeenCalled();
       expect(mockStore.getPausedTasksForResume).not.toHaveBeenCalled();
     });
 
     it('should handle no resumable paused tasks gracefully', async () => {
+      mockStore.findHighestPriorityParentTask.mockResolvedValue([]);
       mockStore.getPausedTasksForResume.mockResolvedValue([]);
 
       const mockEvent = createMockEvent('budget_reset');
 
       await (daemonRunner as any).handleCapacityRestored(mockEvent);
 
+      expect(mockStore.findHighestPriorityParentTask).toHaveBeenCalled();
       expect(mockStore.getPausedTasksForResume).toHaveBeenCalled();
       expect(mockOrchestrator.resumePausedTask).not.toHaveBeenCalled();
       expect(mockStream.write).toHaveBeenCalledWith(
@@ -339,6 +345,7 @@ describe('DaemonRunner Auto-Resume', () => {
       const task1 = createMockTask('task-1', 'capacity');
       const task2 = createMockTask('task-2', 'budget');
 
+      mockStore.findHighestPriorityParentTask.mockResolvedValue([]);
       mockStore.getPausedTasksForResume.mockResolvedValue([task1, task2]);
       mockOrchestrator.resumePausedTask.mockResolvedValue(true);
 
@@ -346,6 +353,7 @@ describe('DaemonRunner Auto-Resume', () => {
 
       await (daemonRunner as any).handleCapacityRestored(mockEvent);
 
+      expect(mockStore.findHighestPriorityParentTask).toHaveBeenCalled();
       expect(mockStore.getPausedTasksForResume).toHaveBeenCalled();
       expect(mockOrchestrator.resumePausedTask).toHaveBeenCalledTimes(2);
       expect(mockOrchestrator.resumePausedTask).toHaveBeenCalledWith('task-1');

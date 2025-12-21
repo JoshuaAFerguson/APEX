@@ -222,6 +222,208 @@ describe('TaskStore', () => {
     });
   });
 
+  describe('findHighestPriorityParentTask', () => {
+    it('should return only parent tasks with subtasks in priority order', async () => {
+      const now = new Date();
+
+      // Create parent task (high priority) with subtasks
+      const parentTask1 = createTestTask();
+      parentTask1.id = 'parent_high';
+      parentTask1.status = 'paused';
+      parentTask1.priority = 'high';
+      parentTask1.subtaskIds = ['subtask1', 'subtask2'];
+      await store.createTask(parentTask1);
+      await store.updateTask(parentTask1.id, { pauseReason: 'usage_limit' });
+
+      // Create parent task (urgent priority) with subtasks
+      const parentTask2 = createTestTask();
+      parentTask2.id = 'parent_urgent';
+      parentTask2.status = 'paused';
+      parentTask2.priority = 'urgent';
+      parentTask2.subtaskIds = ['subtask3'];
+      await store.createTask(parentTask2);
+      await store.updateTask(parentTask2.id, { pauseReason: 'capacity' });
+
+      // Create regular paused task (not a parent)
+      const regularTask = createTestTask();
+      regularTask.id = 'regular_task';
+      regularTask.status = 'paused';
+      regularTask.priority = 'urgent';
+      await store.createTask(regularTask);
+      await store.updateTask(regularTask.id, { pauseReason: 'budget' });
+
+      // Create parent task without resumable pause reason
+      const nonResumableParent = createTestTask();
+      nonResumableParent.id = 'non_resumable_parent';
+      nonResumableParent.status = 'paused';
+      nonResumableParent.priority = 'urgent';
+      nonResumableParent.subtaskIds = ['subtask4'];
+      await store.createTask(nonResumableParent);
+      await store.updateTask(nonResumableParent.id, { pauseReason: 'manual' });
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+
+      // Should return only parent tasks with resumable pause reasons, ordered by priority
+      expect(parentTasks).toHaveLength(2);
+      expect(parentTasks[0].id).toBe('parent_urgent'); // urgent priority first
+      expect(parentTasks[1].id).toBe('parent_high'); // high priority second
+
+      // Verify they are indeed parent tasks
+      expect(parentTasks[0].subtaskIds).toEqual(['subtask3']);
+      expect(parentTasks[1].subtaskIds).toEqual(['subtask1', 'subtask2']);
+    });
+
+    it('should return empty array when no parent tasks are paused with resumable reasons', async () => {
+      // Create regular paused task
+      const task1 = createTestTask();
+      task1.status = 'paused';
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { pauseReason: 'usage_limit' });
+
+      // Create parent task but not paused
+      const task2 = createTestTask();
+      task2.id = 'parent_not_paused';
+      task2.status = 'in-progress';
+      task2.subtaskIds = ['subtask1'];
+      await store.createTask(task2);
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+      expect(parentTasks).toHaveLength(0);
+    });
+
+    it('should exclude parent tasks with future resumeAfter dates', async () => {
+      const future = new Date(Date.now() + 60 * 1000); // 1 minute from now
+
+      // Create parent task with future resumeAfter
+      const parentTask = createTestTask();
+      parentTask.id = 'parent_future_resume';
+      parentTask.status = 'paused';
+      parentTask.priority = 'urgent';
+      parentTask.subtaskIds = ['subtask1'];
+      await store.createTask(parentTask);
+      await store.updateTask(parentTask.id, {
+        pauseReason: 'usage_limit',
+        resumeAfter: future,
+      });
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+      expect(parentTasks).toHaveLength(0);
+    });
+
+    it('should include parent tasks with past resumeAfter dates', async () => {
+      const past = new Date(Date.now() - 60 * 1000); // 1 minute ago
+
+      // Create parent task with past resumeAfter
+      const parentTask = createTestTask();
+      parentTask.id = 'parent_past_resume';
+      parentTask.status = 'paused';
+      parentTask.priority = 'normal';
+      parentTask.subtaskIds = ['subtask1'];
+      await store.createTask(parentTask);
+      await store.updateTask(parentTask.id, {
+        pauseReason: 'capacity',
+        resumeAfter: past,
+      });
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+      expect(parentTasks).toHaveLength(1);
+      expect(parentTasks[0].id).toBe('parent_past_resume');
+    });
+
+    it('should exclude tasks with empty or null subtaskIds', async () => {
+      // Create task with null subtaskIds
+      const task1 = createTestTask();
+      task1.id = 'task_null_subtasks';
+      task1.status = 'paused';
+      task1.subtaskIds = undefined;
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { pauseReason: 'usage_limit' });
+
+      // Create task with empty subtaskIds array
+      const task2 = createTestTask();
+      task2.id = 'task_empty_subtasks';
+      task2.status = 'paused';
+      task2.subtaskIds = [];
+      await store.createTask(task2);
+      await store.updateTask(task2.id, { pauseReason: 'budget' });
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+      expect(parentTasks).toHaveLength(0);
+    });
+
+    it('should respect creation time ordering when priorities are equal', async () => {
+      const now = new Date();
+      const earlier = new Date(now.getTime() - 10000); // 10 seconds earlier
+
+      // Create second parent task (normal priority, created later)
+      const parentTask2 = createTestTask();
+      parentTask2.id = 'parent_second';
+      parentTask2.status = 'paused';
+      parentTask2.priority = 'normal';
+      parentTask2.subtaskIds = ['subtask2'];
+      parentTask2.createdAt = now;
+      await store.createTask(parentTask2);
+      await store.updateTask(parentTask2.id, { pauseReason: 'capacity' });
+
+      // Create first parent task (normal priority, created earlier)
+      const parentTask1 = createTestTask();
+      parentTask1.id = 'parent_first';
+      parentTask1.status = 'paused';
+      parentTask1.priority = 'normal';
+      parentTask1.subtaskIds = ['subtask1'];
+      parentTask1.createdAt = earlier;
+      await store.createTask(parentTask1);
+      await store.updateTask(parentTask1.id, { pauseReason: 'usage_limit' });
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+
+      expect(parentTasks).toHaveLength(2);
+      expect(parentTasks[0].id).toBe('parent_first'); // created earlier should come first
+      expect(parentTasks[1].id).toBe('parent_second');
+    });
+
+    it('should only include tasks with valid resumable pause reasons', async () => {
+      const resumableReasons = ['usage_limit', 'budget', 'capacity'];
+      const nonResumableReasons = ['manual', 'timeout', 'error', 'user_requested'];
+
+      // Create parent tasks with resumable pause reasons
+      for (let i = 0; i < resumableReasons.length; i++) {
+        const parentTask = createTestTask();
+        parentTask.id = `parent_resumable_${i}`;
+        parentTask.status = 'paused';
+        parentTask.priority = 'normal';
+        parentTask.subtaskIds = [`subtask_${i}`];
+        await store.createTask(parentTask);
+        await store.updateTask(parentTask.id, { pauseReason: resumableReasons[i] });
+      }
+
+      // Create parent tasks with non-resumable pause reasons
+      for (let i = 0; i < nonResumableReasons.length; i++) {
+        const parentTask = createTestTask();
+        parentTask.id = `parent_non_resumable_${i}`;
+        parentTask.status = 'paused';
+        parentTask.priority = 'urgent'; // Even higher priority
+        parentTask.subtaskIds = [`subtask_non_${i}`];
+        await store.createTask(parentTask);
+        await store.updateTask(parentTask.id, { pauseReason: nonResumableReasons[i] });
+      }
+
+      const parentTasks = await store.findHighestPriorityParentTask();
+
+      // Should only return tasks with resumable pause reasons
+      expect(parentTasks).toHaveLength(resumableReasons.length);
+
+      const pauseReasons = parentTasks.map(t => t.pauseReason);
+      for (const reason of resumableReasons) {
+        expect(pauseReasons).toContain(reason);
+      }
+
+      for (const reason of nonResumableReasons) {
+        expect(pauseReasons).not.toContain(reason);
+      }
+    });
+  });
+
   describe('Gates', () => {
     it('should create and update gate status', async () => {
       const task = createTestTask();
