@@ -594,7 +594,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
 
-    await this.updateTaskStatus(taskId, 'failed', undefined, errorMessage);
+    await this.updateTaskStatus(taskId, 'failed', errorMessage);
 
     const failedTask = await this.store.getTask(taskId);
     if (failedTask) {

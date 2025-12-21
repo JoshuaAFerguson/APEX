@@ -925,7 +925,7 @@ export class DaemonRunner {
   private log(
     level: DaemonLogEntry['level'],
     message: string,
-    metadata?: { taskId?: string }
+    metadata?: { taskId?: string; [key: string]: unknown }
   ): void {
     // Check if this log level should be written based on configured log level
     if (!this.shouldLog(level)) {
