@@ -3210,7 +3210,7 @@ Parent: ${parentTask.description}`;
 }
 
 export { TaskStore } from './store';
-export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt } from './prompts';
+export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
 export {
   estimateTokens,

@@ -8,6 +8,7 @@ import {
   StageResult,
   SubtaskDefinition,
   SubtaskStrategy,
+  TaskCheckpoint,
   getEffectiveConfig,
 } from '@apexcli/core';
 
@@ -526,6 +527,140 @@ export function parseDecompositionRequest(output: string): DecompositionRequest 
  */
 export function isPlanningStage(stage: WorkflowStage): boolean {
   return stage.name === 'planning' || stage.name === 'plan' || stage.agent === 'planner';
+}
+
+/**
+ * Build a resume prompt that combines context summary with original task for session resume
+ *
+ * @param task - The task being resumed
+ * @param checkpoint - The checkpoint data containing stage and conversation state
+ * @param contextSummary - A summarized version of the prior conversation context
+ * @returns A formatted prompt section explaining the resume context
+ */
+export function buildResumePrompt(
+  task: Task,
+  checkpoint: TaskCheckpoint,
+  contextSummary: string
+): string {
+  const resumeTimestamp = new Date().toISOString();
+  const checkpointAge = new Date().getTime() - checkpoint.createdAt.getTime();
+  const formattedAge = formatDuration(checkpoint.createdAt, new Date());
+
+  // Extract key decisions and accomplishments from the context summary
+  const accomplishments = extractAccomplishments(contextSummary);
+  const keyDecisions = extractKeyDecisions(contextSummary);
+
+  return `## 🔄 SESSION RESUME CONTEXT
+
+**Resuming Task**: ${task.description}
+**Last Checkpoint**: ${checkpoint.createdAt.toISOString()} (${formattedAge} ago)
+**Resume Point**: Stage "${checkpoint.stage || 'unknown'}" (index ${checkpoint.stageIndex})
+**Resume Time**: ${resumeTimestamp}
+
+### Prior Context Summary
+${contextSummary}
+
+### What Was Accomplished
+${accomplishments.length > 0
+  ? accomplishments.map(item => `- ${item}`).join('\n')
+  : '- No specific accomplishments identified in prior context'
+}
+
+### Key Decisions Made
+${keyDecisions.length > 0
+  ? keyDecisions.map(item => `- ${item}`).join('\n')
+  : '- No significant decisions identified in prior context'
+}
+
+### What Happens Next
+You are resuming work from where the previous session left off. Use the context above to understand:
+1. What has already been completed
+2. What decisions were made and why
+3. What the next logical steps should be
+
+**Important**: This is a continuation of previous work, not a fresh start. Build upon the existing context and avoid repeating completed work.
+
+---
+`;
+}
+
+/**
+ * Extract accomplishments from context summary using pattern matching
+ * Looks for common patterns that indicate completed work
+ *
+ * @param contextSummary - The summarized context to analyze
+ * @returns Array of accomplishment strings
+ */
+function extractAccomplishments(contextSummary: string): string[] {
+  const accomplishments: string[] = [];
+  const lines = contextSummary.split('\n');
+
+  // Patterns that typically indicate accomplishments
+  const accomplishmentPatterns = [
+    /(?:completed|finished|implemented|created|built|added|fixed|updated|wrote|generated|developed)\s+(.+)/i,
+    /(?:successfully|✓|✅)\s*(.+)/i,
+    /(?:done|ready|finished):\s*(.+)/i,
+    /(?:^|\s+)-\s*(.+(?:completed|implemented|created|built|added|fixed|updated|wrote|generated|developed).+)/i
+  ];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    for (const pattern of accomplishmentPatterns) {
+      const match = trimmed.match(pattern);
+      if (match && match[1]) {
+        const accomplishment = match[1].trim();
+        if (accomplishment.length > 10 && accomplishment.length < 200) {
+          accomplishments.push(accomplishment);
+          break; // Only match first pattern per line
+        }
+      }
+    }
+  }
+
+  // Remove duplicates and limit to most recent 5
+  return [...new Set(accomplishments)].slice(0, 5);
+}
+
+/**
+ * Extract key decisions from context summary using pattern matching
+ * Looks for common patterns that indicate important decisions
+ *
+ * @param contextSummary - The summarized context to analyze
+ * @returns Array of key decision strings
+ */
+function extractKeyDecisions(contextSummary: string): string[] {
+  const decisions: string[] = [];
+  const lines = contextSummary.split('\n');
+
+  // Patterns that typically indicate decisions
+  const decisionPatterns = [
+    /(?:decided|chose|selected|opted|determined)\s+(?:to\s+)?(.+)/i,
+    /(?:decision|approach|strategy|method):\s*(.+)/i,
+    /(?:using|will use|plan to use)\s+(.+)/i,
+    /(?:architecture|design|pattern):\s*(.+)/i,
+    /(?:because|since|due to)\s+(.+)/i
+  ];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    for (const pattern of decisionPatterns) {
+      const match = trimmed.match(pattern);
+      if (match && match[1]) {
+        const decision = match[1].trim();
+        if (decision.length > 10 && decision.length < 200) {
+          decisions.push(decision);
+          break; // Only match first pattern per line
+        }
+      }
+    }
+  }
+
+  // Remove duplicates and limit to most recent 5
+  return [...new Set(decisions)].slice(0, 5);
 }
 
 /**

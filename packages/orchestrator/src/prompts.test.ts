@@ -7,10 +7,11 @@ import {
   buildPlannerStagePrompt,
   parseDecompositionRequest,
   isPlanningStage,
+  buildResumePrompt,
   PromptContext,
   StagePromptContext,
 } from './prompts';
-import type { AgentDefinition, WorkflowDefinition, Task, WorkflowStage, StageResult } from '@apexcli/core';
+import type { AgentDefinition, WorkflowDefinition, Task, WorkflowStage, StageResult, TaskCheckpoint } from '@apexcli/core';
 import { getEffectiveConfig, ApexConfigSchema } from '@apexcli/core';
 
 describe('Prompts', () => {
@@ -838,6 +839,500 @@ This task should be decomposed into multiple subtasks.
       };
 
       expect(isPlanningStage(stage)).toBe(false);
+    });
+  });
+
+  describe('buildResumePrompt', () => {
+    const createMockCheckpoint = (
+      stage: string = 'implementation',
+      stageIndex: number = 1,
+      createdAt: Date = new Date('2024-12-20T10:30:00Z')
+    ): TaskCheckpoint => ({
+      taskId: 'task_123_abc',
+      checkpointId: 'checkpoint_xyz',
+      stage,
+      stageIndex,
+      createdAt,
+    });
+
+    it('should include task description', () => {
+      const task = createMockTask();
+      task.description = 'Implement user authentication system';
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = 'The planner completed the planning stage successfully.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('Implement user authentication system');
+    });
+
+    it('should include checkpoint information', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint('implementation', 2);
+      const contextSummary = 'Previous work accomplished.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('Resume Point**: Stage "implementation" (index 2)');
+      expect(prompt).toContain('Last Checkpoint**:');
+    });
+
+    it('should include context summary', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = 'The developer agent completed the architecture design and identified key components.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('Prior Context Summary');
+      expect(prompt).toContain('The developer agent completed the architecture design and identified key components.');
+    });
+
+    it('should extract accomplishments from context summary', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = `
+        The developer agent completed the authentication module implementation.
+        Successfully created the login endpoint.
+        Built the JWT token validation service.
+      `;
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('What Was Accomplished');
+      expect(prompt).toContain('the authentication module implementation');
+      expect(prompt).toContain('the login endpoint');
+    });
+
+    it('should extract key decisions from context summary', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = `
+        Decided to use JWT tokens for authentication.
+        Architecture: RESTful API with Express middleware.
+        Using bcrypt for password hashing because of security requirements.
+      `;
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('Key Decisions Made');
+      expect(prompt).toContain('use JWT tokens for authentication');
+      expect(prompt).toContain('RESTful API with Express middleware');
+    });
+
+    it('should handle empty context summary gracefully', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = '';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('No specific accomplishments identified');
+      expect(prompt).toContain('No significant decisions identified');
+    });
+
+    it('should include resume instructions', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = 'Previous work context.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('What Happens Next');
+      expect(prompt).toContain('continuation of previous work');
+      expect(prompt).toContain('avoid repeating completed work');
+    });
+
+    it('should format checkpoint age correctly', () => {
+      const task = createMockTask();
+      // Create a checkpoint that's 1 hour and 30 minutes old
+      const oldCheckpoint = createMockCheckpoint('planning', 0, new Date(Date.now() - (90 * 60 * 1000)));
+      const contextSummary = 'Previous context.';
+
+      const prompt = buildResumePrompt(task, oldCheckpoint, contextSummary);
+
+      expect(prompt).toContain('1h 30m ago');
+    });
+
+    it('should handle missing stage gracefully', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      checkpoint.stage = undefined;
+      const contextSummary = 'Previous work context.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('Stage "unknown"');
+    });
+
+    it('should include session resume header', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = 'Context summary here.';
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      expect(prompt).toContain('🔄 SESSION RESUME CONTEXT');
+      expect(prompt).toContain('Resuming Task**:');
+    });
+
+    it('should limit extracted accomplishments and decisions', () => {
+      const task = createMockTask();
+      const checkpoint = createMockCheckpoint();
+      const contextSummary = `
+        Completed task 1. Finished task 2. Implemented task 3.
+        Built task 4. Created task 5. Developed task 6.
+        Added task 7. Fixed task 8. Updated task 9.
+      `;
+
+      const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+      // Should only include first 5 accomplishments (see extractAccomplishments function)
+      const accomplishmentLines = prompt.split('\n').filter(line =>
+        line.includes('task') && (line.includes('Completed') || line.includes('Finished') || line.includes('Implemented'))
+      );
+      expect(accomplishmentLines.length).toBeLessThanOrEqual(5);
+    });
+
+    describe('extractAccomplishments (via buildResumePrompt)', () => {
+      it('should extract accomplishments with action words', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Completed the user authentication module.
+          Finished implementing the password reset feature.
+          Created the JWT token service successfully.
+          Built the database schema for users.
+          Added validation middleware to endpoints.
+          Fixed security vulnerabilities in the login flow.
+          Updated the API documentation.
+          Wrote comprehensive unit tests.
+          Generated API response types.
+          Developed the logout functionality.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('What Was Accomplished');
+        expect(prompt).toContain('the user authentication module');
+        expect(prompt).toContain('implementing the password reset feature');
+        expect(prompt).toContain('the JWT token service successfully');
+        expect(prompt).toContain('the database schema for users');
+        expect(prompt).toContain('validation middleware to endpoints');
+      });
+
+      it('should extract accomplishments with success indicators', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          ✓ Database connection established
+          Successfully migrated all user data
+          ✅ All tests are now passing
+          Done: API rate limiting implementation
+          Ready: Production deployment configuration
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('Database connection established');
+        expect(prompt).toContain('migrated all user data');
+        expect(prompt).toContain('All tests are now passing');
+        expect(prompt).toContain('API rate limiting implementation');
+        expect(prompt).toContain('Production deployment configuration');
+      });
+
+      it('should extract bulleted accomplishments', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          - Implemented OAuth2 authentication flow
+          - Added error handling for network failures
+          - Created user preference settings page
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('OAuth2 authentication flow');
+        expect(prompt).toContain('error handling for network failures');
+        expect(prompt).toContain('user preference settings page');
+      });
+
+      it('should filter accomplishments by length', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Completed x.
+          Added this extremely long accomplishment description that goes on and on and provides way too much detail about every single aspect of the implementation including technical details that are not really necessary for a high-level summary and should be filtered out because it exceeds the character limit.
+          Built the authentication system with proper validation.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).not.toContain('Completed x');
+        expect(prompt).not.toContain('extremely long accomplishment');
+        expect(prompt).toContain('the authentication system with proper validation');
+      });
+
+      it('should remove duplicate accomplishments', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Implemented user authentication.
+          Successfully implemented user authentication.
+          Built user authentication system.
+          Completed user registration feature.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        const accomplishmentSection = prompt.split('### What Was Accomplished')[1];
+        const userAuthMatches = (accomplishmentSection || '').match(/user authentication/gi) || [];
+        expect(userAuthMatches.length).toBe(1); // Should deduplicate similar accomplishments
+      });
+
+      it('should handle accomplishments with various patterns', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          The system generated new API tokens automatically.
+          Development of the caching layer is now complete.
+          User interface updated to support dark mode.
+          Password hashing written using bcrypt library.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('new API tokens automatically');
+        expect(prompt).toContain('the caching layer is now complete');
+        expect(prompt).toContain('to support dark mode');
+        expect(prompt).toContain('using bcrypt library');
+      });
+    });
+
+    describe('extractKeyDecisions (via buildResumePrompt)', () => {
+      it('should extract decisions with decision verbs', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Decided to use PostgreSQL for the main database.
+          Chose React for the frontend framework.
+          Selected JWT tokens for authentication.
+          Opted for Docker for containerization.
+          Determined that Redis would handle session storage.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('Key Decisions Made');
+        expect(prompt).toContain('use PostgreSQL for the main database');
+        expect(prompt).toContain('React for the frontend framework');
+        expect(prompt).toContain('JWT tokens for authentication');
+        expect(prompt).toContain('Docker for containerization');
+        expect(prompt).toContain('Redis would handle session storage');
+      });
+
+      it('should extract decisions from structured decision statements', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Decision: Use microservices architecture for scalability.
+          Approach: Implement API-first design pattern.
+          Strategy: Deploy using blue-green deployment.
+          Method: Test using Jest and React Testing Library.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('Use microservices architecture for scalability');
+        expect(prompt).toContain('Implement API-first design pattern');
+        expect(prompt).toContain('Deploy using blue-green deployment');
+        expect(prompt).toContain('Test using Jest and React Testing Library');
+      });
+
+      it('should extract technology and tool usage decisions', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Using TypeScript for better type safety.
+          Will use Prisma as the ORM for database access.
+          Plan to use GitHub Actions for CI/CD pipeline.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('TypeScript for better type safety');
+        expect(prompt).toContain('Prisma as the ORM for database access');
+        expect(prompt).toContain('GitHub Actions for CI/CD pipeline');
+      });
+
+      it('should extract architectural and design decisions', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Architecture: Layered architecture with separation of concerns.
+          Design: Component-based UI with reusable elements.
+          Pattern: Repository pattern for data access layer.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('Layered architecture with separation of concerns');
+        expect(prompt).toContain('Component-based UI with reusable elements');
+        expect(prompt).toContain('Repository pattern for data access layer');
+      });
+
+      it('should extract reason-based decisions', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Because of performance requirements, we chose Redis for caching.
+          Since security is critical, implemented OAuth2 authentication.
+          Due to team expertise, selected Node.js for backend development.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('performance requirements, we chose Redis for caching');
+        expect(prompt).toContain('security is critical, implemented OAuth2 authentication');
+        expect(prompt).toContain('team expertise, selected Node.js for backend development');
+      });
+
+      it('should filter decisions by length', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Decided to use X.
+          Selected this extremely detailed technology stack that includes a comprehensive list of every possible library and framework that could potentially be used in this project including their versions and configuration options and reasoning for each choice which makes this decision statement way too long for practical use.
+          Chose GraphQL for API design.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).not.toContain('Decided to use X');
+        expect(prompt).not.toContain('extremely detailed technology stack');
+        expect(prompt).toContain('GraphQL for API design');
+      });
+
+      it('should remove duplicate decisions', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          Decided to use React for frontend development.
+          Chose React as the main UI framework.
+          Selected React for user interface implementation.
+          Opted for Vue.js for component management.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        const decisionsSection = prompt.split('### Key Decisions Made')[1];
+        const reactMatches = (decisionsSection || '').match(/React/gi) || [];
+        expect(reactMatches.length).toBe(1); // Should deduplicate similar decisions
+      });
+    });
+
+    describe('buildResumePrompt edge cases', () => {
+      it('should handle very long context summaries gracefully', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const longContext = 'A'.repeat(10000) + ' Completed the main feature. ' + 'B'.repeat(10000);
+
+        const prompt = buildResumePrompt(task, checkpoint, longContext);
+
+        expect(prompt).toContain('🔄 SESSION RESUME CONTEXT');
+        expect(prompt).toContain('the main feature');
+        expect(prompt.length).toBeLessThan(20000); // Reasonable prompt size
+      });
+
+      it('should handle context with only whitespace and newlines', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = '\n\n   \t   \n\n   \n';
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('No specific accomplishments identified');
+        expect(prompt).toContain('No significant decisions identified');
+      });
+
+      it('should handle context with special characters and emojis', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          ✅ Successfully implemented OAuth2 🔐 authentication!
+          🚀 Built the API endpoints with rate limiting @100 req/min.
+          ⚡ Optimized database queries (50% faster).
+          Decision: Use Redis for caching 📦 because of speed requirements.
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('OAuth2 🔐 authentication');
+        expect(prompt).toContain('the API endpoints with rate limiting @100 req/min');
+        expect(prompt).toContain('Redis for caching 📦 because of speed requirements');
+      });
+
+      it('should handle malformed context summary', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = `
+          incomplete sentence about authentication
+          Completed
+          built something but no details
+          Very very very very very very very very very very long line that might cause issues with regex matching and pattern detection but should still be handled gracefully without causing any errors or exceptions
+        `;
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('🔄 SESSION RESUME CONTEXT');
+        // Should handle gracefully without throwing errors
+        expect(() => buildResumePrompt(task, checkpoint, contextSummary)).not.toThrow();
+      });
+
+      it('should handle checkpoint with future timestamp', () => {
+        const task = createMockTask();
+        const futureCheckpoint = createMockCheckpoint('planning', 0, new Date(Date.now() + (60 * 60 * 1000))); // 1 hour in future
+        const contextSummary = 'Previous work context.';
+
+        expect(() => {
+          const prompt = buildResumePrompt(task, futureCheckpoint, contextSummary);
+          expect(prompt).toContain('🔄 SESSION RESUME CONTEXT');
+        }).not.toThrow();
+      });
+
+      it('should handle task with missing optional fields', () => {
+        const task = createMockTask();
+        task.acceptanceCriteria = undefined;
+        task.branchName = undefined;
+        const checkpoint = createMockCheckpoint();
+        const contextSummary = 'Work was completed on the main features.';
+
+        const prompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        expect(prompt).toContain('Resuming Task**:');
+        expect(prompt).toContain('the main features');
+        expect(prompt).not.toContain('Acceptance Criteria');
+      });
+
+      it('should format checkpoint age correctly for different durations', () => {
+        const task = createMockTask();
+        const contextSummary = 'Context summary.';
+
+        // Test seconds only
+        const recentCheckpoint = createMockCheckpoint('testing', 1, new Date(Date.now() - (30 * 1000)));
+        const recentPrompt = buildResumePrompt(task, recentCheckpoint, contextSummary);
+        expect(recentPrompt).toMatch(/30s ago/);
+
+        // Test minutes and seconds
+        const minuteCheckpoint = createMockCheckpoint('testing', 1, new Date(Date.now() - (150 * 1000)));
+        const minutePrompt = buildResumePrompt(task, minuteCheckpoint, contextSummary);
+        expect(minutePrompt).toMatch(/2m 30s ago/);
+
+        // Test hours and minutes
+        const hourCheckpoint = createMockCheckpoint('testing', 1, new Date(Date.now() - (7380 * 1000)));
+        const hourPrompt = buildResumePrompt(task, hourCheckpoint, contextSummary);
+        expect(hourPrompt).toMatch(/2h 3m ago/);
+      });
     });
   });
 });
