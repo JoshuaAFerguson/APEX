@@ -1334,5 +1334,211 @@ This task should be decomposed into multiple subtasks.
         expect(hourPrompt).toMatch(/2h 3m ago/);
       });
     });
+
+    describe('Resume Context Integration', () => {
+      it('should integrate with createContextSummary for resume scenarios', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+
+        // Mock conversation state with various content types
+        const conversationMessages: AgentMessage[] = [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Please build a REST API for user management' }]
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'text',
+              text: 'I will create a comprehensive REST API. I\'ve decided to use Express.js with TypeScript. The approach will be to implement CRUD operations with proper validation.'
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'tool_use',
+              toolName: 'Write',
+              toolInput: { file_path: '/src/routes/users.ts', content: 'export const userRoutes = express.Router();' }
+            }],
+          },
+          {
+            type: 'user',
+            content: [{
+              type: 'tool_result',
+              toolResult: 'File created successfully'
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'text',
+              text: 'Completed the user routes implementation. Built the validation middleware. Currently working on implementing authentication.'
+            }],
+          },
+        ];
+
+        // Use actual createContextSummary function
+        const contextSummary = require('./context').createContextSummary(conversationMessages);
+        const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        // Verify integration works correctly
+        expect(resumePrompt).toContain('🔄 SESSION RESUME CONTEXT');
+        expect(resumePrompt).toContain('Prior Context Summary');
+        expect(resumePrompt).toContain('Messages exchanged: 5');
+        expect(resumePrompt).toContain('Express.js with TypeScript');
+        expect(resumePrompt).toContain('user routes implementation');
+        expect(resumePrompt).toContain('Files written: /src/routes/users.ts');
+      });
+
+      it('should handle resume context from checkpoint with minimal content', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+
+        // Minimal conversation state
+        const conversationMessages: AgentMessage[] = [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Start working' }]
+          },
+        ];
+
+        const contextSummary = require('./context').createContextSummary(conversationMessages);
+        const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        // Should still generate valid resume prompt
+        expect(resumePrompt).toContain('🔄 SESSION RESUME CONTEXT');
+        expect(resumePrompt).toContain('Messages exchanged: 1');
+        expect(resumePrompt).toContain('No specific accomplishments identified');
+        expect(resumePrompt).toContain('No significant decisions identified');
+      });
+
+      it('should extract enhanced context information for resume', () => {
+        const task = createMockTask();
+        task.description = 'Implement advanced search functionality';
+        const checkpoint = createMockCheckpoint('implementation', 1);
+
+        // Rich conversation with multiple decisions and progress
+        const conversationMessages: AgentMessage[] = [
+          {
+            type: 'user',
+            content: [{ type: 'text', text: 'Implement advanced search with filters, sorting, and pagination' }]
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'text',
+              text: 'I will implement a comprehensive search system. I\'ve decided to use Elasticsearch for full-text search because of performance requirements. Architecture: search service layer with caching. Using Redis for caching search results.'
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'tool_use',
+              toolName: 'Write',
+              toolInput: { file_path: '/src/search/elasticsearch-client.ts', content: 'export class ElasticsearchClient {}' }
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'tool_use',
+              toolName: 'Write',
+              toolInput: { file_path: '/src/search/search-service.ts', content: 'export class SearchService {}' }
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'text',
+              text: 'Completed the Elasticsearch integration. Finished the search service implementation. Built the result aggregation system. Currently working on implementing the filtering logic.'
+            }],
+          },
+          {
+            type: 'assistant',
+            content: [{
+              type: 'tool_use',
+              toolName: 'Edit',
+              toolInput: { file_path: '/src/search/filters.ts', old_string: 'basic filters', new_string: 'advanced filters with validation' }
+            }],
+          },
+        ];
+
+        const contextSummary = require('./context').createContextSummary(conversationMessages);
+        const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        // Verify comprehensive resume context
+        expect(resumePrompt).toContain('Implement advanced search functionality');
+        expect(resumePrompt).toContain('Stage "implementation" (index 1)');
+
+        // Key decisions should be extracted
+        expect(resumePrompt).toContain('Key Decisions Made');
+        expect(resumePrompt).toContain('Elasticsearch for full-text search');
+        expect(resumePrompt).toContain('search service layer with caching');
+        expect(resumePrompt).toContain('Redis for caching search results');
+
+        // Accomplishments should be extracted
+        expect(resumePrompt).toContain('What Was Accomplished');
+        expect(resumePrompt).toContain('Elasticsearch integration');
+        expect(resumePrompt).toContain('search service implementation');
+        expect(resumePrompt).toContain('result aggregation system');
+
+        // File modifications should be tracked
+        expect(resumePrompt).toContain('Files written: /src/search/elasticsearch-client.ts, /src/search/search-service.ts');
+        expect(resumePrompt).toContain('Files edited: /src/search/filters.ts');
+
+        // Progress tracking
+        expect(resumePrompt).toContain('implementing the filtering logic');
+      });
+
+      it('should format resume prompt consistently with buildResumePrompt patterns', () => {
+        const task = createMockTask();
+        task.description = 'Test consistent formatting';
+        const checkpoint = createMockCheckpoint('testing', 2, new Date(Date.now() - (45 * 60 * 1000))); // 45 min ago
+
+        const conversationMessages: AgentMessage[] = [
+          {
+            type: 'assistant',
+            content: [{
+              type: 'text',
+              text: 'Built comprehensive test suite. ✅ All unit tests passing. Decided to use Jest for testing framework.'
+            }],
+          },
+        ];
+
+        const contextSummary = require('./context').createContextSummary(conversationMessages);
+        const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        // Verify consistent formatting
+        expect(resumePrompt).toContain('🔄 SESSION RESUME CONTEXT');
+        expect(resumePrompt).toMatch(/\*\*Resuming Task\*\*: Test consistent formatting/);
+        expect(resumePrompt).toMatch(/\*\*Resume Point\*\*: Stage "testing" \(index 2\)/);
+        expect(resumePrompt).toMatch(/\*\*Last Checkpoint\*\*: 45m 0s ago/);
+        expect(resumePrompt).toContain('### Prior Context Summary');
+        expect(resumePrompt).toContain('### What Was Accomplished');
+        expect(resumePrompt).toContain('### Key Decisions Made');
+        expect(resumePrompt).toContain('### What Happens Next');
+        expect(resumePrompt).toContain('comprehensive test suite');
+        expect(resumePrompt).toContain('Jest for testing framework');
+      });
+
+      it('should handle edge case with null/undefined values in context', () => {
+        const task = createMockTask();
+        const checkpoint = createMockCheckpoint();
+
+        // Context summary with potential null/undefined handling
+        const contextSummary = ''; // Empty context
+
+        const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+
+        // Should still generate valid prompt without errors
+        expect(resumePrompt).toContain('🔄 SESSION RESUME CONTEXT');
+        expect(resumePrompt).toContain('No specific accomplishments identified');
+        expect(resumePrompt).toContain('No significant decisions identified');
+        expect(resumePrompt).toContain('What Happens Next');
+
+        // Should not throw error
+        expect(() => buildResumePrompt(task, checkpoint, contextSummary)).not.toThrow();
+      });
+    });
   });
 });

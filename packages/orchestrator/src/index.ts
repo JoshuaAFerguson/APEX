@@ -32,12 +32,13 @@ import {
   buildAgentDefinitions,
   buildStagePrompt,
   buildPlannerStagePrompt,
+  buildResumePrompt,
   parseDecompositionRequest,
   isPlanningStage,
   type DecompositionRequest,
 } from './prompts';
 import { createHooks } from './hooks';
-import { estimateConversationTokens } from './context';
+import { estimateConversationTokens, createContextSummary } from './context';
 
 const execAsync = promisify(exec);
 
@@ -928,7 +929,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
         try {
-          const result = await this.executeWorkflowStage(task, stage, agent, workflow, stageResults);
+          const result = await this.executeWorkflowStage(task, stage, agent, workflow, stageResults, undefined);
 
           await this.store.addLog(task.id, {
             level: 'info',
@@ -1074,14 +1075,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     stage: WorkflowStage,
     agent: AgentDefinition,
     workflow: WorkflowDefinition,
-    previousResults: Map<string, StageResult>
+    previousResults: Map<string, StageResult>,
+    resumeContext?: string
   ): Promise<StageResult & { decompositionRequest?: DecompositionRequest }> {
     const startedAt = new Date();
     const isPlanner = isPlanningStage(stage);
 
     // Build focused prompt for this stage
     // Use special planner prompt if this is a planning stage
-    const stagePrompt = isPlanner
+    let stagePrompt = isPlanner
       ? buildPlannerStagePrompt({
           task,
           stage,
@@ -1098,6 +1100,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           config: this.effectiveConfig,
           previousStageResults: previousResults,
         });
+
+    // Inject resume context if available (only for the first stage being resumed)
+    if (resumeContext) {
+      stagePrompt = `${resumeContext}\n\n${stagePrompt}`;
+    }
 
     // Create hooks for this stage
     const hooks = createHooks({
@@ -2256,6 +2263,34 @@ Parent: ${parentTask.description}`;
     // Update task status to in-progress
     await this.updateTaskStatus(taskId, 'in-progress', `Resuming from checkpoint: ${checkpoint.checkpointId}`);
 
+    // Generate resume context from checkpoint conversation state
+    let resumeContext: string | undefined;
+    if (checkpoint.conversationState && checkpoint.conversationState.length > 0) {
+      const contextSummary = createContextSummary(checkpoint.conversationState);
+      resumeContext = buildResumePrompt(task, checkpoint, contextSummary);
+
+      await this.store.addLog(taskId, {
+        level: 'debug',
+        message: `Generated resume context for checkpoint: ${checkpoint.checkpointId}`,
+        stage: checkpoint.stage,
+        metadata: {
+          checkpointId: checkpoint.checkpointId,
+          contextSummaryLength: contextSummary.length,
+          resumeContextLength: resumeContext.length,
+          conversationMessageCount: checkpoint.conversationState.length,
+        },
+      });
+    } else {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `No conversation state available in checkpoint: ${checkpoint.checkpointId}`,
+        stage: checkpoint.stage,
+        metadata: {
+          checkpointId: checkpoint.checkpointId,
+        },
+      });
+    }
+
     await this.store.addLog(taskId, {
       level: 'info',
       message: `Resuming task from checkpoint: ${checkpoint.checkpointId}`,
@@ -2264,6 +2299,7 @@ Parent: ${parentTask.description}`;
         checkpointId: checkpoint.checkpointId,
         stageIndex: checkpoint.stageIndex,
         checkpointCreatedAt: checkpoint.createdAt.toISOString(),
+        hasResumeContext: !!resumeContext,
       },
     });
 
@@ -2290,6 +2326,7 @@ Parent: ${parentTask.description}`;
 
     // Execute remaining stages
     const remainingStages = workflow.stages.slice(startIndex);
+    let isFirstStage = true;
 
     for (const stage of remainingStages) {
       // Check if task was cancelled during execution
@@ -2324,8 +2361,19 @@ Parent: ${parentTask.description}`;
       }
 
       // Execute the stage using the new stage execution method
-      const result = await this.executeWorkflowStage(task, stage, agentDef, workflow, stageResults);
+      // Pass resume context only to the first stage being resumed
+      const result = await this.executeWorkflowStage(
+        task,
+        stage,
+        agentDef,
+        workflow,
+        stageResults,
+        isFirstStage ? resumeContext : undefined
+      );
       stageResults.set(stage.name, result);
+
+      // After the first stage, don't pass resume context anymore
+      isFirstStage = false;
 
       // Save checkpoint after each stage
       await this.saveCheckpoint(taskId, {
