@@ -27,10 +27,8 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:00:05Z'); // 5 seconds later
 
+    vi.setSystemTime(currentTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
-
-    // Mock Date.now to return our test current time
-    vi.spyOn(Date, 'now').mockReturnValue(currentTime.getTime());
 
     act(() => {
       vi.advanceTimersByTime(1000); // Advance by 1 second to trigger update
@@ -43,9 +41,8 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:02:15Z'); // 2 minutes 15 seconds later
 
+    vi.setSystemTime(currentTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
-
-    vi.spyOn(Date, 'now').mockReturnValue(currentTime.getTime());
 
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -58,9 +55,8 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T01:05:00Z'); // 1 hour 5 minutes later
 
+    vi.setSystemTime(currentTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
-
-    vi.spyOn(Date, 'now').mockReturnValue(currentTime.getTime());
 
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -70,7 +66,8 @@ describe('useElapsedTime', () => {
   });
 
   it('updates in real-time with custom interval', () => {
-    const startTime = new Date();
+    const startTime = new Date('2023-01-01T00:00:00Z');
+    vi.setSystemTime(startTime);
     const { result } = renderHook(() => useElapsedTime(startTime, 500)); // 500ms intervals
 
     // Initial state
@@ -85,7 +82,9 @@ describe('useElapsedTime', () => {
   });
 
   it('handles negative elapsed time gracefully', () => {
-    const futureTime = new Date(Date.now() + 5000); // 5 seconds in future
+    const now = new Date('2023-01-01T00:00:00Z');
+    vi.setSystemTime(now);
+    const futureTime = new Date(now.getTime() + 5000); // 5 seconds in future
     const { result } = renderHook(() => useElapsedTime(futureTime));
     expect(result.current).toBe('0s');
   });
@@ -110,9 +109,8 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2020-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:00:00Z'); // 3 years later
 
+    vi.setSystemTime(currentTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
-
-    vi.spyOn(Date, 'now').mockReturnValue(currentTime.getTime());
 
     act(() => {
       vi.advanceTimersByTime(1000);

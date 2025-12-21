@@ -197,6 +197,10 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
+        mockOrchestrator.simulateStageChange('test-task', 'planning', 'planner');
+      });
+
+      act(() => {
         mockOrchestrator.simulateUsageUpdate('test-task', {
           inputTokens: 200,
           outputTokens: 100,

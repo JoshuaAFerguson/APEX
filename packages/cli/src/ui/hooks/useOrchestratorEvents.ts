@@ -103,6 +103,17 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     stage: stage.name,
   })) : [];
 
+  useEffect(() => {
+    if (workflow && derivedAgents.length > 0 && stateRef.current.agents.length === 0) {
+      const nextState = {
+        ...stateRef.current,
+        agents: derivedAgents,
+      };
+      stateRef.current = nextState;
+      setState(nextState);
+    }
+  }, [workflow, derivedAgents.length]);
+
   // Update agent status based on current and previous agents
   const updateAgentStatus = useCallback((agents: AgentInfo[], current?: string, previous?: string): AgentInfo[] => {
     return agents.map(agent => {
@@ -171,26 +182,27 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       agentStartTimeRef.current.set(toAgent, now);
 
       // Set stageStartedAt for the new agent
-      setState((prev: OrchestratorEventState) => {
-        const updatedAgents = updateAgentStatus(
-          prev.agents.length > 0 ? prev.agents : derivedAgents,
-          toAgent,
-          fromAgent || undefined
-        );
+      const currentState = stateRef.current;
+      const updatedAgents = updateAgentStatus(
+        currentState.agents.length > 0 ? currentState.agents : derivedAgents,
+        toAgent,
+        fromAgent || undefined
+      );
 
-        // Update stageStartedAt for new agent
-        return {
-          ...prev,
-          currentAgent: toAgent,
-          previousAgent: fromAgent || undefined,
-          agents: updatedAgents.map(agent =>
-            agent.name === toAgent
-              ? { ...agent, debugInfo: { ...agent.debugInfo, stageStartedAt: now } }
-              : agent
-          ),
-          currentTaskId: eventTaskId,
-        };
-      });
+      const nextState = {
+        ...currentState,
+        currentAgent: toAgent,
+        previousAgent: fromAgent || undefined,
+        agents: updatedAgents.map(agent =>
+          agent.name === toAgent
+            ? { ...agent, debugInfo: { ...agent.debugInfo, stageStartedAt: now } }
+            : agent
+        ),
+        currentTaskId: eventTaskId,
+      };
+
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     // Stage change handler (fallback if agent:transition not available)
@@ -222,37 +234,45 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
 
       if (stageAgent) {
-        setState(prev => {
-          const updatedAgents = updateAgentStatus(prev.agents.length > 0 ? prev.agents : derivedAgents, stageAgent, prev.currentAgent);
+        const currentState = stateRef.current;
+        const updatedAgents = updateAgentStatus(
+          currentState.agents.length > 0 ? currentState.agents : derivedAgents,
+          stageAgent,
+          currentState.currentAgent
+        );
 
-          return {
-            ...prev,
-            currentAgent: stageAgent,
-            previousAgent: prev.currentAgent,
-            agents: updatedAgents,
-            currentTaskId: task.id,
-          };
-        });
+        const nextState = {
+          ...currentState,
+          currentAgent: stageAgent,
+          previousAgent: currentState.currentAgent,
+          agents: updatedAgents,
+          currentTaskId: task.id,
+        };
+        stateRef.current = nextState;
+        setState(nextState);
       }
     };
 
     // Parallel execution start handler
-    const handleParallelStart = (eventTaskId: string, stages: string[], agents: string[]) => {
+    const handleParallelStart = (eventTaskId: string, stages?: string[], agents?: string[]) => {
       if (taskId && eventTaskId !== taskId) return;
 
-      log('Parallel execution started', { stages, agents, taskId: eventTaskId });
+      const safeStages = stages ?? [];
+      const safeAgents = agents ?? [];
+
+      log('Parallel execution started', { stages: safeStages, agents: safeAgents, taskId: eventTaskId });
 
       setState((prev: OrchestratorEventState) => {
-        const parallelAgents = agents.map((agent, index) => ({
+        const parallelAgents = safeAgents.map((agent, index) => ({
           name: agent,
           status: 'parallel' as const,
-          stage: stages[index],
+          stage: safeStages[index],
         }));
 
         return {
           ...prev,
           parallelAgents,
-          showParallelPanel: agents.length > 1,
+          showParallelPanel: safeAgents.length > 1,
           currentTaskId: eventTaskId,
         };
       });
@@ -294,6 +314,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
+        currentTaskId: undefined,
         parallelAgents: [],
         showParallelPanel: false,
         subtaskProgress: undefined,
@@ -309,6 +330,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
+        currentTaskId: undefined,
         parallelAgents: [],
         showParallelPanel: false,
         subtaskProgress: undefined,
@@ -499,6 +521,20 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    const handleAgentTurn = (event: { taskId: string; agentName: string; turnNumber: number }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Agent turn', event);
+
+      setState((prev: OrchestratorEventState) => ({
+        ...prev,
+        agents: updateAgentDebugInfo(prev.agents, event.agentName, (debugInfo) => ({
+          ...debugInfo,
+          turnCount: event.turnNumber,
+        })),
+      }));
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -515,6 +551,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('agent:tool-use', handleToolUse);
     orchestrator.on('agent:message', handleAgentMessage);
     orchestrator.on('agent:thinking', handleAgentThinking);
+    orchestrator.on('agent:turn', handleAgentTurn);
 
     log('Event listeners registered');
 
@@ -532,9 +569,10 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       // Cleanup debug event listeners
       orchestrator.off('usage:updated', handleUsageUpdated);
-      orchestrator.off('agent:tool-use', handleToolUse);
-      orchestrator.off('agent:message', handleAgentMessage);
-      orchestrator.off('agent:thinking', handleAgentThinking);
+    orchestrator.off('agent:tool-use', handleToolUse);
+    orchestrator.off('agent:message', handleAgentMessage);
+    orchestrator.off('agent:thinking', handleAgentThinking);
+    orchestrator.off('agent:turn', handleAgentTurn);
 
       log('Event listeners cleaned up');
     };

@@ -188,24 +188,19 @@ describe('useOrchestratorEvents thinking functionality', () => {
 
     // Emit various debug events
     act(() => {
-      mockOrchestrator.emit('usage:updated', {
-        taskId,
-        agentName: 'developer',
-        tokensUsed: { input: 1000, output: 1500 },
+      mockOrchestrator.simulateAgentTransition(taskId, null, 'developer');
+      mockOrchestrator.simulateUsageUpdate(taskId, {
+        inputTokens: 1000,
+        outputTokens: 1500,
+        totalTokens: 2500,
+        estimatedCost: 0,
       });
-
-      mockOrchestrator.emit('tool:use', {
-        taskId,
-        agentName: 'developer',
-        toolName: 'Edit',
-      });
-
-      mockOrchestrator.emit('agent:turn', {
+      mockOrchestrator.simulateToolUse(taskId, 'Edit', { file: 'src/index.ts' });
+      mockOrchestrator.simulateAgentTurn({
         taskId,
         agentName: 'developer',
         turnNumber: 3,
       });
-
       mockOrchestrator.emit('agent:thinking', taskId, 'developer', 'Thinking about the implementation...');
     });
 

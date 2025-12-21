@@ -127,7 +127,7 @@ describe('useStdoutDimensions - Coverage Tests', () => {
       // Verify all destructured variables are used
       expect(typeof result.current.width).toBe('number');
       expect(typeof result.current.height).toBe('number');
-      expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+      expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
       expect(typeof result.current.isAvailable).toBe('boolean');
     });
 
@@ -299,7 +299,7 @@ describe('useStdoutDimensions - Coverage Tests', () => {
 
         expect(typeof result.current.width).toBe('number');
         expect(typeof result.current.height).toBe('number');
-        expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+        expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
         expect(typeof result.current.isAvailable).toBe('boolean');
 
         unmount();

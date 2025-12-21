@@ -147,7 +147,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
         const { result, unmount } = renderHook(() => useStdoutDimensions());
 
         // Verify breakpoint is computed correctly
-        expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+        expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
 
         unmount();
       });
@@ -175,7 +175,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
 
         expect(result.current.width).toBe(config.fallbackWidth);
         expect(result.current.height).toBe(config.fallbackHeight);
-        expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+        expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
 
         unmount();
       });
@@ -236,7 +236,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
       const secondBreakpoint = result.current.breakpoint;
 
       // Should detect the change and recalculate
-      expect(firstBreakpoint).toBe('normal'); // 80 >= 60 and < 120
+      expect(firstBreakpoint).toBe('compact'); // 80 >= 60 and < 120
       expect(secondBreakpoint).toBe('narrow'); // 80 < 90
     });
   });
@@ -258,7 +258,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
         // Verify state remains consistent
         expect(result.current.width).toBe(width);
         expect(result.current.height).toBe(height);
-        expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+        expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
       }
 
       const endTime = performance.now();
@@ -284,7 +284,7 @@ describe('useStdoutDimensions - Performance Tests', () => {
         const { result, unmount } = renderHook(() => useStdoutDimensions());
 
         expect(typeof result.current.breakpoint).toBe('string');
-        expect(['narrow', 'normal', 'wide']).toContain(result.current.breakpoint);
+        expect(['narrow', 'compact', 'normal', 'wide']).toContain(result.current.breakpoint);
 
         unmount();
       });

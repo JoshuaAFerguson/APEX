@@ -61,7 +61,8 @@ describe('useStdoutDimensions - Functional Tests', () => {
 
         // Check that the expected boolean helper is true
         Object.entries(expectedHelpers).forEach(([helper, expected]) => {
-          expect(result.current[helper as keyof typeof result.current]).toBe(expected);
+          const actualHelper = helper.replace(/^expected/, '').replace(/^Is/, 'is');
+          expect(result.current[actualHelper as keyof typeof result.current]).toBe(expected);
         });
       });
     });
@@ -220,10 +221,8 @@ describe('useStdoutDimensions - Functional Tests', () => {
 
   describe('performance in realistic usage', () => {
     it('should not cause excessive re-calculations during normal usage', () => {
-      const { result, rerender } = renderHook(() => useStdoutDimensions());
-
-      // Simulate normal terminal usage with stable dimensions
       mockBaseHook.mockReturnValue([120, 30]);
+      const { result, rerender } = renderHook(() => useStdoutDimensions());
 
       const initialBreakpoint = result.current.breakpoint;
       const initialHelpers = {
