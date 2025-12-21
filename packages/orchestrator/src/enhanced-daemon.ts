@@ -11,7 +11,7 @@ import { InteractionManager } from './interaction-manager';
 import { IdleProcessor } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
 import { TaskStore } from './store';
-import { ApexOrchestrator, TasksAutoResumedEvent } from './index';
+import { ApexOrchestrator, TasksAutoResumedEvent, TaskSessionResumedEvent } from './index';
 import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
 import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
 import {
@@ -43,6 +43,9 @@ export interface EnhancedDaemonEvents {
 
   // Auto-resume event forwarded from orchestrator/DaemonRunner
   'tasks:auto-resumed': (event: TasksAutoResumedEvent) => void;
+
+  // Task session resumed event forwarded from orchestrator
+  'task:session-resumed': (event: TaskSessionResumedEvent) => void;
 }
 
 /**
@@ -363,6 +366,11 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     // Forward tasks:auto-resumed from orchestrator to EnhancedDaemon
     this.orchestrator.on('tasks:auto-resumed', (event: TasksAutoResumedEvent) => {
       this.emit('tasks:auto-resumed', event);
+    });
+
+    // Forward task:session-resumed from orchestrator to EnhancedDaemon
+    this.orchestrator.on('task:session-resumed', (event: TaskSessionResumedEvent) => {
+      this.emit('task:session-resumed', event);
     });
   }
 
