@@ -483,8 +483,14 @@ describe('RefactoringAnalyzer', () => {
 
     const candidates = analyzer.analyze(analysis);
 
-    const complexTasks = candidates.filter((c) => c.title.includes('Simplify'));
+    const complexTasks = candidates.filter((c) => c.title.includes('Refactor'));
     expect(complexTasks.length).toBe(2);
+
+    // Verify the tasks contain complexity scores
+    const firstTask = complexTasks[0];
+    expect(firstTask.description).toContain('Cyclomatic Complexity:');
+    expect(firstTask.description).toContain('Cognitive Complexity:');
+    expect(firstTask.rationale).toContain('Recommended actions:');
   });
 
   it('should generate lint issues task for high issue count', () => {
@@ -505,6 +511,87 @@ describe('RefactoringAnalyzer', () => {
 
     const lintTask = candidates.find((c) => c.title.includes('Linting'));
     expect(lintTask).toBeDefined();
+  });
+
+  it('should prioritize critical complexity hotspots', () => {
+    const analysis: ProjectAnalysis = {
+      codebaseSize: { files: 10, lines: 1000, languages: {} },
+      dependencies: { outdated: [], security: [] },
+      codeQuality: {
+        lintIssues: 0,
+        duplicatedCode: [],
+        complexityHotspots: [
+          { file: 'src/critical.ts', cyclomaticComplexity: 60, cognitiveComplexity: 70, lineCount: 2500 },
+          { file: 'src/medium.ts', cyclomaticComplexity: 15, cognitiveComplexity: 20, lineCount: 300 }
+        ],
+        codeSmells: []
+      },
+      documentation: { coverage: 50, missingDocs: [] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    const candidates = analyzer.analyze(analysis);
+
+    const complexTasks = candidates.filter((c) => c.title.includes('Refactor'));
+    expect(complexTasks.length).toBe(2);
+
+    // First task should be the critical one and have urgent priority
+    const criticalTask = complexTasks[0];
+    expect(criticalTask.title).toContain('critical.ts');
+    expect(criticalTask.priority).toBe('urgent');
+    expect(criticalTask.description).toContain('critical');
+    expect(criticalTask.description).toContain('immediate attention');
+  });
+
+  it('should handle legacy string format complexity hotspots', () => {
+    const analysis: ProjectAnalysis = {
+      codebaseSize: { files: 10, lines: 1000, languages: {} },
+      dependencies: { outdated: [], security: [] },
+      codeQuality: {
+        lintIssues: 0,
+        duplicatedCode: [],
+        complexityHotspots: ['src/legacy.ts', 'src/old.ts'] as any, // Legacy string format
+        codeSmells: []
+      },
+      documentation: { coverage: 50, missingDocs: [] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    const candidates = analyzer.analyze(analysis);
+
+    const complexTasks = candidates.filter((c) => c.title.includes('Refactor'));
+    expect(complexTasks.length).toBe(2);
+
+    // Should generate tasks with default complexity values
+    const firstTask = complexTasks[0];
+    expect(firstTask.description).toContain('Cyclomatic Complexity: 15');
+    expect(firstTask.description).toContain('Cognitive Complexity: 20');
+  });
+
+  it('should generate sweep task for many hotspots', () => {
+    const analysis: ProjectAnalysis = {
+      codebaseSize: { files: 10, lines: 1000, languages: {} },
+      dependencies: { outdated: [], security: [] },
+      codeQuality: {
+        lintIssues: 0,
+        duplicatedCode: [],
+        complexityHotspots: [
+          { file: 'src/file1.ts', cyclomaticComplexity: 25, cognitiveComplexity: 30, lineCount: 400 },
+          { file: 'src/file2.ts', cyclomaticComplexity: 20, cognitiveComplexity: 25, lineCount: 350 },
+          { file: 'src/file3.ts', cyclomaticComplexity: 18, cognitiveComplexity: 22, lineCount: 300 },
+          { file: 'src/file4.ts', cyclomaticComplexity: 22, cognitiveComplexity: 28, lineCount: 380 }
+        ],
+        codeSmells: []
+      },
+      documentation: { coverage: 50, missingDocs: [] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    const candidates = analyzer.analyze(analysis);
+
+    const sweepTask = candidates.find((c) => c.title.includes('Address Codebase Complexity'));
+    expect(sweepTask).toBeDefined();
+    expect(sweepTask?.description).toContain('4 complexity hotspots');
   });
 });
 

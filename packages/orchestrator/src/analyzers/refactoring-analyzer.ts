@@ -265,45 +265,75 @@ export class RefactoringAnalyzer extends BaseAnalyzer {
       );
     }
 
-    // Priority 2: Complexity hotspots (large files)
+    // Priority 2: Enhanced Complexity Hotspots Analysis
     if (analysis.codeQuality.complexityHotspots.length > 0) {
       const hotspots = analysis.codeQuality.complexityHotspots;
-      const hotspotCount = hotspots.length;
 
-      // Create task for each major hotspot (up to 3)
-      for (let i = 0; i < Math.min(3, hotspotCount); i++) {
-        const file = hotspots[i];
-        const fileName = file.split('/').pop() || file;
+      // Handle legacy string format or ComplexityHotspot objects
+      const complexityHotspots: ComplexityHotspot[] = hotspots.map(hotspot => {
+        if (typeof hotspot === 'string') {
+          // Legacy format - create a basic ComplexityHotspot with default values
+          return {
+            file: hotspot,
+            cyclomaticComplexity: 15, // Default medium complexity
+            cognitiveComplexity: 20,  // Default medium complexity
+            lineCount: 300,           // Default medium size
+          };
+        }
+        return hotspot as ComplexityHotspot;
+      });
+
+      // Calculate priority scores and sort by score (highest first)
+      const scoredHotspots = complexityHotspots
+        .map(hotspot => ({ hotspot, score: this.calculatePriorityScore(hotspot) }))
+        .sort((a, b) => b.score - a.score);
+
+      // Generate candidates for top hotspots (up to 3)
+      for (let i = 0; i < Math.min(3, scoredHotspots.length); i++) {
+        const { hotspot, score } = scoredHotspots[i];
+        const severity = this.calculateSeverity(hotspot);
+        const fileName = hotspot.file.split('/').pop() || hotspot.file;
+        const recommendations = this.getRefactoringRecommendations(hotspot);
 
         candidates.push(
           this.createCandidate(
-            `complexity-${i}`,
-            `Simplify ${fileName}`,
-            `Reduce complexity in ${file} by extracting functions or splitting into modules`,
+            `complexity-hotspot-${i}`,
+            `Refactor ${fileName}`,
+            this.generateHotspotDescription(hotspot),
             {
-              priority: 'normal',
-              effort: 'high',
+              priority: this.severityToTaskPriority(severity.overallSeverity),
+              effort: severity.overallSeverity === 'critical' ? 'high' :
+                      severity.overallSeverity === 'high' ? 'high' : 'medium',
               workflow: 'refactoring',
-              rationale: 'Large, complex files are harder to understand, test, and maintain',
-              score: 0.7 - i * 0.1, // Decreasing priority for subsequent hotspots
+              rationale: `Complexity Analysis:\n` +
+                `- Cyclomatic: ${hotspot.cyclomaticComplexity} (${severity.cyclomaticSeverity})\n` +
+                `- Cognitive: ${hotspot.cognitiveComplexity} (${severity.cognitiveSeverity})\n` +
+                `- Lines: ${hotspot.lineCount}\n\n` +
+                `Recommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`,
+              score: Math.min(0.95, 0.6 + score * 0.35), // Base 0.6, max 0.95
             }
           )
         );
       }
 
-      // If many hotspots, also suggest a comprehensive refactoring task
-      if (hotspotCount > 3) {
+      // Aggregate task for many hotspots
+      if (scoredHotspots.length > 3) {
+        const criticalCount = scoredHotspots.filter(
+          ({ hotspot }) => this.calculateSeverity(hotspot).overallSeverity === 'critical'
+        ).length;
+
         candidates.push(
           this.createCandidate(
             'complexity-sweep',
-            'Address Complexity Hotspots',
-            `Review and refactor ${hotspotCount} high-complexity files identified in the codebase`,
+            'Address Codebase Complexity',
+            `Systematic refactoring of ${scoredHotspots.length} complexity hotspots` +
+            (criticalCount > 0 ? ` (${criticalCount} critical)` : ''),
             {
-              priority: 'normal',
+              priority: criticalCount > 0 ? 'high' : 'normal',
               effort: 'high',
               workflow: 'refactoring',
-              rationale: 'Multiple high-complexity files indicate a systemic issue that needs attention',
-              score: 0.6,
+              rationale: 'Multiple complexity hotspots indicate systemic code quality issues',
+              score: 0.55,
             }
           )
         );

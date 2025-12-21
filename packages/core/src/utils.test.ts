@@ -7,6 +7,10 @@ import {
   formatDuration,
   formatTokens,
   formatCost,
+  parseSemver,
+  isPreRelease,
+  compareVersions,
+  getUpdateType,
   parseConventionalCommit,
   createConventionalCommit,
   safeJsonParse,
@@ -23,6 +27,8 @@ import {
   detectConflicts,
   suggestConflictResolution,
   formatConflictReport,
+  type SemVer,
+  type UpdateType,
 } from './utils';
 
 describe('generateTaskId', () => {
@@ -139,6 +145,379 @@ describe('formatCost', () => {
 
   it('should pad to 4 decimal places', () => {
     expect(formatCost(1)).toBe('$1.0000');
+  });
+});
+
+// ============================================================================
+// SEMANTIC VERSIONING TESTS
+// ============================================================================
+
+describe('parseSemver', () => {
+  // Valid versions
+  it('should parse basic version', () => {
+    const result = parseSemver('1.2.3');
+    expect(result).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      raw: '1.2.3',
+    });
+  });
+
+  it('should parse version with v prefix', () => {
+    const result = parseSemver('v1.2.3');
+    expect(result).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      raw: 'v1.2.3',
+    });
+  });
+
+  it('should parse version with prerelease', () => {
+    const result = parseSemver('1.0.0-alpha.1');
+    expect(result).toEqual({
+      major: 1,
+      minor: 0,
+      patch: 0,
+      prerelease: ['alpha', '1'],
+      raw: '1.0.0-alpha.1',
+    });
+  });
+
+  it('should parse version with build metadata', () => {
+    const result = parseSemver('1.0.0+build.123');
+    expect(result).toEqual({
+      major: 1,
+      minor: 0,
+      patch: 0,
+      build: ['build', '123'],
+      raw: '1.0.0+build.123',
+    });
+  });
+
+  it('should parse version with prerelease and build', () => {
+    const result = parseSemver('1.0.0-alpha.1+build.123');
+    expect(result).toEqual({
+      major: 1,
+      minor: 0,
+      patch: 0,
+      prerelease: ['alpha', '1'],
+      build: ['build', '123'],
+      raw: '1.0.0-alpha.1+build.123',
+    });
+  });
+
+  it('should parse zero version', () => {
+    const result = parseSemver('0.0.0');
+    expect(result?.major).toBe(0);
+    expect(result?.minor).toBe(0);
+    expect(result?.patch).toBe(0);
+  });
+
+  it('should parse large version numbers', () => {
+    const result = parseSemver('100.200.300');
+    expect(result?.major).toBe(100);
+    expect(result?.minor).toBe(200);
+    expect(result?.patch).toBe(300);
+  });
+
+  it('should parse simple prerelease identifiers', () => {
+    const result = parseSemver('1.0.0-alpha');
+    expect(result?.prerelease).toEqual(['alpha']);
+  });
+
+  it('should parse complex prerelease identifiers', () => {
+    const result = parseSemver('1.0.0-rc.1.2.3');
+    expect(result?.prerelease).toEqual(['rc', '1', '2', '3']);
+  });
+
+  it('should parse numeric prerelease', () => {
+    const result = parseSemver('1.0.0-1');
+    expect(result?.prerelease).toEqual(['1']);
+  });
+
+  // Invalid versions
+  it('should return null for empty string', () => {
+    expect(parseSemver('')).toBeNull();
+  });
+
+  it('should return null for whitespace-only string', () => {
+    expect(parseSemver('   ')).toBeNull();
+  });
+
+  it('should return null for incomplete version', () => {
+    expect(parseSemver('1.2')).toBeNull();
+    expect(parseSemver('1')).toBeNull();
+    expect(parseSemver('1.')).toBeNull();
+    expect(parseSemver('1.2.')).toBeNull();
+  });
+
+  it('should return null for too many segments', () => {
+    expect(parseSemver('1.2.3.4')).toBeNull();
+  });
+
+  it('should return null for non-numeric segments', () => {
+    expect(parseSemver('a.b.c')).toBeNull();
+    expect(parseSemver('1.a.3')).toBeNull();
+  });
+
+  it('should return null for negative numbers', () => {
+    expect(parseSemver('-1.2.3')).toBeNull();
+    expect(parseSemver('1.-2.3')).toBeNull();
+  });
+
+  it('should return null for random text', () => {
+    expect(parseSemver('invalid')).toBeNull();
+    expect(parseSemver('not-a-version')).toBeNull();
+    expect(parseSemver('version 1.2.3')).toBeNull();
+  });
+
+  it('should return null for null input', () => {
+    expect(parseSemver(null as any)).toBeNull();
+    expect(parseSemver(undefined as any)).toBeNull();
+  });
+
+  it('should return null for non-string input', () => {
+    expect(parseSemver(123 as any)).toBeNull();
+    expect(parseSemver({} as any)).toBeNull();
+  });
+});
+
+describe('isPreRelease', () => {
+  it('should return true for prerelease versions', () => {
+    expect(isPreRelease('1.0.0-alpha')).toBe(true);
+    expect(isPreRelease('1.0.0-alpha.1')).toBe(true);
+    expect(isPreRelease('1.0.0-beta')).toBe(true);
+    expect(isPreRelease('1.0.0-rc.1')).toBe(true);
+    expect(isPreRelease('1.0.0-0')).toBe(true);
+    expect(isPreRelease('2.5.10-beta.2')).toBe(true);
+  });
+
+  it('should return false for stable versions', () => {
+    expect(isPreRelease('1.0.0')).toBe(false);
+    expect(isPreRelease('2.5.10')).toBe(false);
+    expect(isPreRelease('0.0.0')).toBe(false);
+    expect(isPreRelease('v1.0.0')).toBe(false);
+  });
+
+  it('should return false for versions with only build metadata', () => {
+    expect(isPreRelease('1.0.0+build.123')).toBe(false);
+    expect(isPreRelease('2.1.0+20230101')).toBe(false);
+  });
+
+  it('should work with SemVer objects', () => {
+    const prerelease = parseSemver('1.0.0-alpha')!;
+    const stable = parseSemver('1.0.0')!;
+    expect(isPreRelease(prerelease)).toBe(true);
+    expect(isPreRelease(stable)).toBe(false);
+  });
+
+  it('should return false for invalid versions', () => {
+    expect(isPreRelease('invalid')).toBe(false);
+    expect(isPreRelease('')).toBe(false);
+    expect(isPreRelease('1.2')).toBe(false);
+  });
+
+  it('should return false for null SemVer object', () => {
+    expect(isPreRelease(null as any)).toBe(false);
+  });
+});
+
+describe('compareVersions', () => {
+  // Basic comparisons
+  it('should compare major versions', () => {
+    expect(compareVersions('2.0.0', '1.0.0')).toBe(1);
+    expect(compareVersions('1.0.0', '2.0.0')).toBe(-1);
+    expect(compareVersions('10.0.0', '2.0.0')).toBe(1);
+  });
+
+  it('should compare minor versions', () => {
+    expect(compareVersions('1.2.0', '1.1.0')).toBe(1);
+    expect(compareVersions('1.1.0', '1.2.0')).toBe(-1);
+    expect(compareVersions('1.10.0', '1.2.0')).toBe(1);
+  });
+
+  it('should compare patch versions', () => {
+    expect(compareVersions('1.0.2', '1.0.1')).toBe(1);
+    expect(compareVersions('1.0.1', '1.0.2')).toBe(-1);
+    expect(compareVersions('1.0.10', '1.0.2')).toBe(1);
+  });
+
+  it('should return 0 for equal versions', () => {
+    expect(compareVersions('1.2.3', '1.2.3')).toBe(0);
+    expect(compareVersions('0.0.0', '0.0.0')).toBe(0);
+  });
+
+  // Prerelease comparisons
+  it('should rank stable higher than prerelease', () => {
+    expect(compareVersions('1.0.0', '1.0.0-alpha')).toBe(1);
+    expect(compareVersions('1.0.0-alpha', '1.0.0')).toBe(-1);
+    expect(compareVersions('1.0.0', '1.0.0-rc.1')).toBe(1);
+  });
+
+  it('should compare prerelease identifiers alphabetically', () => {
+    expect(compareVersions('1.0.0-beta', '1.0.0-alpha')).toBe(1);
+    expect(compareVersions('1.0.0-alpha', '1.0.0-beta')).toBe(-1);
+    expect(compareVersions('1.0.0-rc', '1.0.0-beta')).toBe(1);
+  });
+
+  it('should compare numeric prerelease identifiers numerically', () => {
+    expect(compareVersions('1.0.0-alpha.2', '1.0.0-alpha.1')).toBe(1);
+    expect(compareVersions('1.0.0-alpha.10', '1.0.0-alpha.2')).toBe(1);
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha.10')).toBe(-1);
+  });
+
+  it('should rank numeric identifiers lower than alphanumeric', () => {
+    expect(compareVersions('1.0.0-alpha', '1.0.0-1')).toBe(1);
+    expect(compareVersions('1.0.0-1', '1.0.0-alpha')).toBe(-1);
+    expect(compareVersions('1.0.0-beta', '1.0.0-2')).toBe(1);
+  });
+
+  it('should compare prerelease with more identifiers as greater', () => {
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha')).toBe(1);
+    expect(compareVersions('1.0.0-alpha', '1.0.0-alpha.1')).toBe(-1);
+    expect(compareVersions('1.0.0-alpha.1.2', '1.0.0-alpha.1')).toBe(1);
+  });
+
+  it('should handle complex prerelease comparisons', () => {
+    expect(compareVersions('1.0.0-alpha.beta', '1.0.0-alpha.1')).toBe(1);
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha.beta')).toBe(-1);
+    expect(compareVersions('1.0.0-alpha.beta.1', '1.0.0-alpha.beta')).toBe(1);
+  });
+
+  it('should compare equal prerelease versions correctly', () => {
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0-alpha.1')).toBe(0);
+    expect(compareVersions('1.0.0-beta', '1.0.0-beta')).toBe(0);
+  });
+
+  // Build metadata ignored
+  it('should ignore build metadata in comparisons', () => {
+    expect(compareVersions('1.0.0+build.1', '1.0.0+build.2')).toBe(0);
+    expect(compareVersions('1.0.0', '1.0.0+build')).toBe(0);
+    expect(compareVersions('1.0.0-alpha+build.1', '1.0.0-alpha+build.2')).toBe(0);
+  });
+
+  // Edge cases
+  it('should handle v prefix', () => {
+    expect(compareVersions('v1.0.0', '1.0.0')).toBe(0);
+    expect(compareVersions('v2.0.0', 'v1.0.0')).toBe(1);
+    expect(compareVersions('v1.0.0-alpha', 'v1.0.0')).toBe(-1);
+  });
+
+  it('should work with SemVer objects', () => {
+    const a = parseSemver('2.0.0')!;
+    const b = parseSemver('1.0.0')!;
+    expect(compareVersions(a, b)).toBe(1);
+    expect(compareVersions(b, a)).toBe(-1);
+    expect(compareVersions(a, '2.0.0')).toBe(0);
+  });
+
+  it('should handle invalid versions as 0.0.0', () => {
+    expect(compareVersions('invalid', '1.0.0')).toBe(-1);
+    expect(compareVersions('1.0.0', 'invalid')).toBe(1);
+    expect(compareVersions('invalid', 'invalid')).toBe(0);
+    expect(compareVersions('', '1.0.0')).toBe(-1);
+  });
+
+  it('should handle mixed valid and invalid versions', () => {
+    expect(compareVersions('1.0.0', '')).toBe(1);
+    expect(compareVersions('0.0.0', 'invalid')).toBe(0);
+    expect(compareVersions('1.0.0-alpha', 'bad')).toBe(1);
+  });
+});
+
+describe('getUpdateType', () => {
+  it('should detect major updates', () => {
+    expect(getUpdateType('1.0.0', '2.0.0')).toBe('major');
+    expect(getUpdateType('1.5.10', '3.0.0')).toBe('major');
+    expect(getUpdateType('0.9.9', '1.0.0')).toBe('major');
+  });
+
+  it('should detect minor updates', () => {
+    expect(getUpdateType('1.0.0', '1.1.0')).toBe('minor');
+    expect(getUpdateType('1.2.3', '1.5.0')).toBe('minor');
+    expect(getUpdateType('2.0.0', '2.1.0')).toBe('minor');
+  });
+
+  it('should detect patch updates', () => {
+    expect(getUpdateType('1.0.0', '1.0.1')).toBe('patch');
+    expect(getUpdateType('1.2.3', '1.2.5')).toBe('patch');
+    expect(getUpdateType('2.5.0', '2.5.10')).toBe('patch');
+  });
+
+  it('should detect prerelease updates', () => {
+    expect(getUpdateType('1.0.0-alpha', '1.0.0-beta')).toBe('prerelease');
+    expect(getUpdateType('1.0.0-alpha.1', '1.0.0-alpha.2')).toBe('prerelease');
+    expect(getUpdateType('1.0.0-alpha', '1.0.0')).toBe('prerelease');
+    expect(getUpdateType('1.0.0', '1.0.0-alpha')).toBe('prerelease');
+  });
+
+  it('should detect no change', () => {
+    expect(getUpdateType('1.0.0', '1.0.0')).toBe('none');
+    expect(getUpdateType('v1.0.0', '1.0.0')).toBe('none');
+    expect(getUpdateType('1.0.0-alpha', '1.0.0-alpha')).toBe('none');
+    expect(getUpdateType('1.0.0+build.1', '1.0.0+build.2')).toBe('none');
+  });
+
+  it('should detect downgrades', () => {
+    expect(getUpdateType('2.0.0', '1.0.0')).toBe('downgrade');
+    expect(getUpdateType('1.1.0', '1.0.0')).toBe('downgrade');
+    expect(getUpdateType('1.0.1', '1.0.0')).toBe('downgrade');
+    expect(getUpdateType('1.0.0', '1.0.0-alpha')).toBe('downgrade');
+    expect(getUpdateType('1.0.0-beta', '1.0.0-alpha')).toBe('downgrade');
+  });
+
+  it('should handle promotion from prerelease to stable as prerelease update', () => {
+    expect(getUpdateType('1.0.0-alpha', '1.0.0')).toBe('prerelease');
+    expect(getUpdateType('2.0.0-rc.1', '2.0.0')).toBe('prerelease');
+  });
+
+  it('should handle demotion from stable to prerelease as prerelease update', () => {
+    expect(getUpdateType('1.0.0', '1.0.0-alpha')).toBe('prerelease');
+  });
+
+  it('should prioritize major over prerelease changes', () => {
+    expect(getUpdateType('1.0.0-alpha', '2.0.0')).toBe('major');
+    expect(getUpdateType('1.0.0', '2.0.0-beta')).toBe('major');
+  });
+
+  it('should prioritize minor over prerelease changes', () => {
+    expect(getUpdateType('1.0.0-alpha', '1.1.0')).toBe('minor');
+    expect(getUpdateType('1.0.0', '1.1.0-beta')).toBe('minor');
+  });
+
+  it('should prioritize patch over prerelease changes', () => {
+    expect(getUpdateType('1.0.0-alpha', '1.0.1')).toBe('patch');
+    expect(getUpdateType('1.0.0', '1.0.1-beta')).toBe('patch');
+  });
+
+  it('should return none for invalid versions', () => {
+    expect(getUpdateType('invalid', '1.0.0')).toBe('none');
+    expect(getUpdateType('1.0.0', 'invalid')).toBe('none');
+    expect(getUpdateType('invalid', 'invalid')).toBe('none');
+    expect(getUpdateType('', '1.0.0')).toBe('none');
+  });
+
+  it('should work with SemVer objects', () => {
+    const current = parseSemver('1.0.0')!;
+    const latest = parseSemver('2.0.0')!;
+    expect(getUpdateType(current, latest)).toBe('major');
+
+    const currentPre = parseSemver('1.0.0-alpha')!;
+    const latestPre = parseSemver('1.0.0-beta')!;
+    expect(getUpdateType(currentPre, latestPre)).toBe('prerelease');
+  });
+
+  it('should handle edge cases correctly', () => {
+    // Mixed string and SemVer
+    const semver = parseSemver('1.0.0')!;
+    expect(getUpdateType(semver, '2.0.0')).toBe('major');
+    expect(getUpdateType('1.0.0', semver)).toBe('none');
+
+    // v prefix combinations
+    expect(getUpdateType('v1.0.0', '1.0.0')).toBe('none');
+    expect(getUpdateType('1.0.0', 'v1.1.0')).toBe('minor');
   });
 });
 

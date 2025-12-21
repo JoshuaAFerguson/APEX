@@ -109,6 +109,198 @@ export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
+// ============================================================================
+// Semantic Versioning Utilities
+// ============================================================================
+
+/**
+ * Parsed semantic version components
+ */
+export interface SemVer {
+  /** Major version number (breaking changes) */
+  major: number;
+  /** Minor version number (new features, backwards compatible) */
+  minor: number;
+  /** Patch version number (bug fixes, backwards compatible) */
+  patch: number;
+  /** Prerelease identifiers (e.g., ['alpha', '1'] for 1.0.0-alpha.1) */
+  prerelease?: string[];
+  /** Build metadata identifiers (e.g., ['build', '123'] for 1.0.0+build.123) */
+  build?: string[];
+  /** Original version string */
+  raw: string;
+}
+
+/**
+ * Type of version update
+ */
+export type UpdateType = 'major' | 'minor' | 'patch' | 'prerelease' | 'none' | 'downgrade';
+
+/**
+ * Parse a semantic version string into components
+ * @param version - Version string to parse (e.g., "1.2.3", "v1.0.0-alpha.1+build.123")
+ * @returns Parsed SemVer object or null if invalid
+ */
+export function parseSemver(version: string): SemVer | null {
+  if (typeof version !== 'string' || !version.trim()) {
+    return null;
+  }
+
+  const regex = /^v?(\d+)\.(\d+)\.(\d+)(?:-([\w.-]+))?(?:\+([\w.-]+))?$/;
+  const match = version.match(regex);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, major, minor, patch, prerelease, build] = match;
+
+  return {
+    major: parseInt(major, 10),
+    minor: parseInt(minor, 10),
+    patch: parseInt(patch, 10),
+    prerelease: prerelease ? prerelease.split('.') : undefined,
+    build: build ? build.split('.') : undefined,
+    raw: version,
+  };
+}
+
+/**
+ * Check if a version is a prerelease
+ * @param version - Version string or parsed SemVer
+ * @returns true if the version has prerelease identifiers
+ */
+export function isPreRelease(version: string | SemVer): boolean {
+  const parsed = typeof version === 'string' ? parseSemver(version) : version;
+  if (!parsed) {
+    return false;
+  }
+  return !!(parsed.prerelease && parsed.prerelease.length > 0);
+}
+
+/**
+ * Compare two identifiers according to semver precedence rules
+ * @param a - First identifier
+ * @param b - Second identifier
+ * @returns -1 if a < b, 0 if a === b, 1 if a > b
+ */
+function compareIdentifiers(a: string, b: string): -1 | 0 | 1 {
+  const aNum = parseInt(a, 10);
+  const bNum = parseInt(b, 10);
+  const aIsNum = !isNaN(aNum) && String(aNum) === a;
+  const bIsNum = !isNaN(bNum) && String(bNum) === b;
+
+  if (aIsNum && bIsNum) {
+    return aNum < bNum ? -1 : aNum > bNum ? 1 : 0;
+  }
+  if (aIsNum) return -1; // numeric < alphanumeric
+  if (bIsNum) return 1;
+  return a < b ? -1 : a > b ? 1 : 0; // lexical comparison
+}
+
+/**
+ * Compare two semantic versions
+ * @param a - First version (string or SemVer)
+ * @param b - Second version (string or SemVer)
+ * @returns -1 if a < b, 0 if a === b, 1 if a > b
+ */
+export function compareVersions(a: string | SemVer, b: string | SemVer): -1 | 0 | 1 {
+  const parsedA = typeof a === 'string' ? parseSemver(a) : a;
+  const parsedB = typeof b === 'string' ? parseSemver(b) : b;
+
+  // Treat invalid versions as 0.0.0 for graceful degradation
+  const versionA = parsedA || { major: 0, minor: 0, patch: 0, raw: '0.0.0' };
+  const versionB = parsedB || { major: 0, minor: 0, patch: 0, raw: '0.0.0' };
+
+  // Compare major, minor, patch
+  if (versionA.major !== versionB.major) {
+    return versionA.major < versionB.major ? -1 : 1;
+  }
+  if (versionA.minor !== versionB.minor) {
+    return versionA.minor < versionB.minor ? -1 : 1;
+  }
+  if (versionA.patch !== versionB.patch) {
+    return versionA.patch < versionB.patch ? -1 : 1;
+  }
+
+  // Handle prerelease comparison
+  const aHasPre = !!(versionA.prerelease && versionA.prerelease.length > 0);
+  const bHasPre = !!(versionB.prerelease && versionB.prerelease.length > 0);
+
+  if (!aHasPre && bHasPre) return 1; // stable > prerelease
+  if (aHasPre && !bHasPre) return -1; // prerelease < stable
+  if (!aHasPre && !bHasPre) return 0; // both stable, equal
+
+  // Both have prerelease - compare identifiers
+  const aPre = versionA.prerelease!;
+  const bPre = versionB.prerelease!;
+  const maxLength = Math.max(aPre.length, bPre.length);
+
+  for (let i = 0; i < maxLength; i++) {
+    const aId = aPre[i];
+    const bId = bPre[i];
+
+    if (aId === undefined) return -1; // fewer identifiers < more
+    if (bId === undefined) return 1; // more identifiers > fewer
+
+    const result = compareIdentifiers(aId, bId);
+    if (result !== 0) return result;
+  }
+
+  return 0;
+}
+
+/**
+ * Determine the type of update between two versions
+ * @param current - Current version
+ * @param latest - Latest/target version
+ * @returns The type of update required
+ */
+export function getUpdateType(current: string | SemVer, latest: string | SemVer): UpdateType {
+  const parsedCurrent = typeof current === 'string' ? parseSemver(current) : current;
+  const parsedLatest = typeof latest === 'string' ? parseSemver(latest) : latest;
+
+  // If either version is invalid, return 'none'
+  if (!parsedCurrent || !parsedLatest) {
+    return 'none';
+  }
+
+  const comparison = compareVersions(parsedCurrent, parsedLatest);
+
+  if (comparison === 0) {
+    return 'none';
+  }
+
+  if (comparison > 0) {
+    return 'downgrade';
+  }
+
+  // latest > current, determine update type
+  if (parsedLatest.major > parsedCurrent.major) {
+    return 'major';
+  }
+  if (parsedLatest.minor > parsedCurrent.minor) {
+    return 'minor';
+  }
+  if (parsedLatest.patch > parsedCurrent.patch) {
+    return 'patch';
+  }
+
+  // Same version numbers, check prerelease difference
+  const currentHasPre = !!(parsedCurrent.prerelease && parsedCurrent.prerelease.length > 0);
+  const latestHasPre = !!(parsedLatest.prerelease && parsedLatest.prerelease.length > 0);
+
+  if (currentHasPre || latestHasPre) {
+    return 'prerelease';
+  }
+
+  return 'none';
+}
+
+// ============================================================================
+// Conventional Commits
+// ============================================================================
+
 /**
  * Parse conventional commit message
  */
