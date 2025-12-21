@@ -10,9 +10,31 @@ export function createMinimalAnalysis(): ProjectAnalysis {
   return {
     codebaseSize: { files: 10, lines: 1000, languages: { ts: 10 } },
     testCoverage: { percentage: 50, uncoveredFiles: [] },
-    dependencies: { outdated: [], security: [] },
-    codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
-    documentation: { coverage: 50, missingDocs: [] },
+    dependencies: {
+      outdated: [],
+      security: [],
+      outdatedPackages: [],
+      securityIssues: [],
+      deprecatedPackages: []
+    },
+    codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
+    documentation: {
+      coverage: 50,
+      missingDocs: [],
+      undocumentedExports: [],
+      outdatedDocs: [],
+      missingReadmeSections: [],
+      apiCompleteness: {
+        percentage: 57.5,
+        details: {
+          totalEndpoints: 20,
+          documentedEndpoints: 11,
+          undocumentedItems: [],
+          wellDocumentedExamples: [],
+          commonIssues: []
+        }
+      }
+    },
     performance: { slowTests: [], bottlenecks: [] },
   };
 }
@@ -30,6 +52,9 @@ export function createAnalysisWithIssues(issueType: 'maintenance' | 'refactoring
         dependencies: {
           outdated: ['old-dep@^1.0.0'],
           security: ['vuln-dep@1.0.0'],
+          outdatedPackages: [],
+          securityIssues: [],
+          deprecatedPackages: []
         },
       };
 
@@ -38,8 +63,23 @@ export function createAnalysisWithIssues(issueType: 'maintenance' | 'refactoring
         ...base,
         codeQuality: {
           lintIssues: 100,
-          duplicatedCode: ['src/duplicate.ts'],
-          complexityHotspots: ['src/complex.ts'],
+          duplicatedCode: [{
+            pattern: 'if (user) { return user.name; }',
+            locations: ['src/user.ts:42', 'src/profile.ts:18'],
+            similarity: 0.95
+          }],
+          complexityHotspots: [{
+            file: 'src/complex.ts',
+            cyclomaticComplexity: 15,
+            cognitiveComplexity: 22,
+            lineCount: 120
+          }],
+          codeSmells: [{
+            file: 'src/smelly.ts',
+            type: 'long-method',
+            severity: 'high',
+            details: 'Method has 85 lines and 12 parameters'
+          }]
         },
       };
 
@@ -49,6 +89,28 @@ export function createAnalysisWithIssues(issueType: 'maintenance' | 'refactoring
         documentation: {
           coverage: 20,
           missingDocs: ['src/undocumented.ts'],
+          undocumentedExports: [{
+            file: 'src/undocumented.ts',
+            exportName: 'MyFunction',
+            type: 'function',
+            line: 42
+          }],
+          outdatedDocs: [],
+          missingReadmeSections: [{
+            file: 'README.md',
+            section: 'API Reference',
+            reason: 'No API documentation found'
+          }],
+          apiCompleteness: {
+            percentage: 32.5,
+            details: {
+              totalEndpoints: 40,
+              documentedEndpoints: 13,
+              undocumentedItems: [],
+              wellDocumentedExamples: [],
+              commonIssues: []
+            }
+          }
         },
       };
 
@@ -73,9 +135,102 @@ export function createHealthyAnalysis(): ProjectAnalysis {
   return {
     codebaseSize: { files: 50, lines: 8000, languages: { ts: 50 } },
     testCoverage: { percentage: 95, uncoveredFiles: [] },
-    dependencies: { outdated: [], security: [] },
-    codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
-    documentation: { coverage: 90, missingDocs: [] },
+    dependencies: {
+      outdated: [],
+      security: [],
+      outdatedPackages: [],
+      securityIssues: [],
+      deprecatedPackages: []
+    },
+    codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
+    documentation: {
+      coverage: 90,
+      missingDocs: [],
+      undocumentedExports: [],
+      outdatedDocs: [],
+      missingReadmeSections: [],
+      apiCompleteness: {
+        publicExportsDocumented: 0.95,
+        internalReferencesComplete: 0.9,
+        exampleCoverage: 0.8,
+        typeDefinitionsComplete: 0.95,
+        completenessScore: 0.9
+      }
+    },
+    performance: { slowTests: [], bottlenecks: [] },
+  };
+}
+
+/**
+ * Creates a project analysis with rich dependency data for testing
+ */
+export function createAnalysisWithRichDependencies(): ProjectAnalysis {
+  return {
+    codebaseSize: { files: 20, lines: 3000, languages: { ts: 20 } },
+    testCoverage: { percentage: 75, uncoveredFiles: [] },
+    dependencies: {
+      outdated: ['lodash@4.17.15'],
+      security: ['vulnerable-pkg@1.0.0'],
+      outdatedPackages: [
+        {
+          name: 'lodash',
+          currentVersion: '4.17.15',
+          latestVersion: '4.17.21',
+          updateType: 'patch',
+        },
+        {
+          name: 'react',
+          currentVersion: '16.14.0',
+          latestVersion: '18.2.0',
+          updateType: 'major',
+        },
+      ],
+      securityIssues: [
+        {
+          name: 'vulnerable-pkg',
+          cveId: 'CVE-2024-12345',
+          severity: 'high',
+          affectedVersions: '<2.0.0',
+          description: 'Remote code execution vulnerability',
+        },
+        {
+          name: 'insecure-lib',
+          cveId: 'CVE-2023-98765',
+          severity: 'critical',
+          affectedVersions: '<=1.5.0',
+          description: 'Authentication bypass vulnerability',
+        },
+      ],
+      deprecatedPackages: [
+        {
+          name: 'old-library',
+          currentVersion: '1.2.3',
+          replacement: 'new-library',
+          reason: 'Unmaintained since 2022',
+        },
+        {
+          name: 'legacy-utils',
+          currentVersion: '2.1.0',
+          replacement: null,
+          reason: 'Functionality moved to native ES2022',
+        },
+      ],
+    },
+    codeQuality: { lintIssues: 15, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
+    documentation: {
+      coverage: 60,
+      missingDocs: [],
+      undocumentedExports: [],
+      outdatedDocs: [],
+      missingReadmeSections: [],
+      apiCompleteness: {
+        publicExportsDocumented: 0.6,
+        internalReferencesComplete: 0.65,
+        exampleCoverage: 0.4,
+        typeDefinitionsComplete: 0.75,
+        completenessScore: 0.6
+      }
+    },
     performance: { slowTests: [], bottlenecks: [] },
   };
 }

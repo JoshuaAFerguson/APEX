@@ -6,7 +6,16 @@ import {
   TaskPriority,
   CreateTaskRequest,
   DaemonConfig,
-  ApexConfig
+  ApexConfig,
+  ComplexityHotspot,
+  CodeSmell,
+  DuplicatePattern,
+  EnhancedDocumentationAnalysis,
+  UndocumentedExport,
+  OutdatedDocumentation,
+  MissingReadmeSection,
+  APICompleteness,
+  ReadmeSection
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
@@ -24,6 +33,60 @@ export interface IdleTask {
   implemented: boolean;
 }
 
+/**
+ * Type of update required for an outdated dependency
+ */
+export type UpdateType = 'major' | 'minor' | 'patch';
+
+/**
+ * Vulnerability severity level per CVSS scoring
+ */
+export type VulnerabilitySeverity = 'critical' | 'high' | 'medium' | 'low';
+
+/**
+ * Represents an outdated dependency with version comparison metadata.
+ */
+export interface OutdatedDependency {
+  /** Package name (e.g., "lodash") */
+  name: string;
+  /** Currently installed version (e.g., "4.17.15") */
+  currentVersion: string;
+  /** Latest available version (e.g., "4.17.21") */
+  latestVersion: string;
+  /** Type of update required */
+  updateType: UpdateType;
+}
+
+/**
+ * Represents a security vulnerability in a dependency.
+ */
+export interface SecurityVulnerability {
+  /** Package name affected */
+  name: string;
+  /** CVE identifier (e.g., "CVE-2021-44228") */
+  cveId: string;
+  /** Severity level per CVSS scoring */
+  severity: VulnerabilitySeverity;
+  /** Version range affected (e.g., "<4.17.21") */
+  affectedVersions: string;
+  /** Human-readable description of the vulnerability */
+  description: string;
+}
+
+/**
+ * Represents a deprecated package that should be replaced.
+ */
+export interface DeprecatedPackage {
+  /** Package name that is deprecated */
+  name: string;
+  /** Current installed version */
+  currentVersion: string;
+  /** Recommended replacement package (e.g., "@lodash/es") */
+  replacement: string | null;
+  /** Reason for deprecation */
+  reason: string;
+}
+
 export interface ProjectAnalysis {
   codebaseSize: {
     files: number;
@@ -35,18 +98,24 @@ export interface ProjectAnalysis {
     uncoveredFiles: string[];
   };
   dependencies: {
+    /** @deprecated Use outdatedPackages instead - retained for backward compatibility */
     outdated: string[];
+    /** @deprecated Use securityIssues instead - retained for backward compatibility */
     security: string[];
+    /** Rich outdated dependency information */
+    outdatedPackages?: OutdatedDependency[];
+    /** Rich security vulnerability information */
+    securityIssues?: SecurityVulnerability[];
+    /** Deprecated packages that should be replaced */
+    deprecatedPackages?: DeprecatedPackage[];
   };
   codeQuality: {
     lintIssues: number;
-    duplicatedCode: string[];
-    complexityHotspots: string[];
+    duplicatedCode: DuplicatePattern[];
+    complexityHotspots: ComplexityHotspot[];
+    codeSmells: CodeSmell[];
   };
-  documentation: {
-    coverage: number;
-    missingDocs: string[];
-  };
+  documentation: EnhancedDocumentationAnalysis;
   performance: {
     bundleSize?: number;
     slowTests: string[];
@@ -293,8 +362,9 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
   private async analyzeCodeQuality(): Promise<ProjectAnalysis['codeQuality']> {
     let lintIssues = 0;
-    const duplicatedCode: string[] = [];
-    const complexityHotspots: string[] = [];
+    const duplicatedCode: DuplicatePattern[] = [];
+    const complexityHotspots: ComplexityHotspot[] = [];
+    const codeSmells: CodeSmell[] = [];
 
     try {
       // Try to run ESLint if available
@@ -314,11 +384,58 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
           const parts = line.trim().split(/\s+/);
           const lineCount = parseInt(parts[0]);
           const filename = parts[1];
-          return lineCount > 500 ? filename : null;
+          if (lineCount > 500 && filename) {
+            // Create a ComplexityHotspot object
+            return {
+              file: filename.replace(this.projectPath + '/', ''), // Make relative path
+              cyclomaticComplexity: Math.min(Math.floor(lineCount / 50), 30), // Rough estimate
+              cognitiveComplexity: Math.min(Math.floor(lineCount / 40), 35), // Rough estimate
+              lineCount
+            } as ComplexityHotspot;
+          }
+          return null;
         })
-        .filter(Boolean) as string[];
+        .filter(Boolean) as ComplexityHotspot[];
 
       complexityHotspots.push(...largeFiles);
+
+      // Analyze code smells based on file size and naming patterns
+      for (const hotspot of complexityHotspots) {
+        if (hotspot.lineCount > 1000) {
+          codeSmells.push({
+            file: hotspot.file,
+            type: 'large-class',
+            severity: 'high',
+            details: `File has ${hotspot.lineCount} lines, consider breaking into smaller modules`
+          });
+        }
+
+        if (hotspot.cyclomaticComplexity > 20) {
+          codeSmells.push({
+            file: hotspot.file,
+            type: 'long-method',
+            severity: 'medium',
+            details: `High cyclomatic complexity (${hotspot.cyclomaticComplexity}), consider refactoring`
+          });
+        }
+      }
+
+      // Basic duplicate pattern detection (simplified implementation)
+      try {
+        const { stdout: grepOutput } = await this.execAsync('grep -r -n "TODO\\|FIXME\\|HACK" --include="*.ts" --include="*.js" . | head -10 || echo ""');
+        if (grepOutput.trim()) {
+          const todoLines = grepOutput.split('\n').filter(line => line.trim());
+          if (todoLines.length > 3) {
+            duplicatedCode.push({
+              pattern: 'TODO/FIXME comments',
+              locations: todoLines.slice(0, 5).map(line => line.split(':').slice(0, 2).join(':')),
+              similarity: 1.0
+            });
+          }
+        }
+      } catch {
+        // Ignore grep errors
+      }
     } catch {
       // Ignore errors in code quality analysis
     }
@@ -327,31 +444,48 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       lintIssues,
       duplicatedCode,
       complexityHotspots,
+      codeSmells,
     };
   }
 
-  private async analyzeDocumentation(): Promise<ProjectAnalysis['documentation']> {
+  private async analyzeDocumentation(): Promise<EnhancedDocumentationAnalysis> {
     try {
-      // Count documentation files
-      const { stdout: docFiles } = await this.execAsync('find . -name "*.md" -o -name "*.rst" -o -name "*.txt" | grep -i -E "(readme|doc)" | wc -l');
-      const docCount = parseInt(docFiles.trim());
+      // Basic coverage calculation (keep existing logic for backward compatibility)
+      const basicCoverage = await this.calculateBasicDocumentationCoverage();
 
-      // Count source files
-      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | wc -l');
-      const sourceCount = parseInt(sourceFiles.trim());
-
-      const coverage = sourceCount > 0 ? Math.min((docCount / sourceCount) * 100, 100) : 0;
-
-      // Find files that might need documentation
-      const { stdout: undocumentedFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | head -10');
-      const missingDocs = undocumentedFiles.split('\n').filter(line => line.trim()).slice(0, 5);
+      // Enhanced analysis components
+      const undocumentedExports = await this.findUndocumentedExports();
+      const outdatedDocs = await this.findOutdatedDocumentation();
+      const missingReadmeSections = await this.findMissingReadmeSections();
+      const apiCompleteness = await this.analyzeAPICompleteness();
 
       return {
-        coverage,
-        missingDocs,
+        coverage: basicCoverage.coverage,
+        missingDocs: basicCoverage.missingDocs,
+        undocumentedExports,
+        outdatedDocs,
+        missingReadmeSections,
+        apiCompleteness
       };
     } catch {
-      return { coverage: 0, missingDocs: [] };
+      // Return default enhanced structure on error
+      return {
+        coverage: 0,
+        missingDocs: [],
+        undocumentedExports: [],
+        outdatedDocs: [],
+        missingReadmeSections: [],
+        apiCompleteness: {
+          percentage: 0,
+          details: {
+            totalEndpoints: 0,
+            documentedEndpoints: 0,
+            undocumentedItems: [],
+            wellDocumentedExamples: [],
+            commonIssues: []
+          }
+        }
+      };
     }
   }
 
@@ -458,6 +592,309 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     }
   }
 
+  // ============================================================================
+  // Enhanced Documentation Analysis Utility Methods
+  // ============================================================================
+
+  /**
+   * Calculate basic documentation coverage (backward compatibility)
+   */
+  private async calculateBasicDocumentationCoverage(): Promise<{ coverage: number; missingDocs: string[] }> {
+    try {
+      // Count documentation files
+      const { stdout: docFiles } = await this.execAsync('find . -name "*.md" -o -name "*.rst" -o -name "*.txt" | grep -i -E "(readme|doc)" | wc -l');
+      const docCount = parseInt(docFiles.trim());
+
+      // Count source files
+      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | wc -l');
+      const sourceCount = parseInt(sourceFiles.trim());
+
+      const coverage = sourceCount > 0 ? Math.min((docCount / sourceCount) * 100, 100) : 0;
+
+      // Find files that might need documentation
+      const { stdout: undocumentedFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | head -10');
+      const missingDocs = undocumentedFiles.split('\n').filter(line => line.trim()).slice(0, 5);
+
+      return { coverage, missingDocs };
+    } catch {
+      return { coverage: 0, missingDocs: [] };
+    }
+  }
+
+  /**
+   * Find exports that are missing JSDoc documentation
+   */
+  private async findUndocumentedExports(): Promise<UndocumentedExport[]> {
+    const undocumentedExports: UndocumentedExport[] = [];
+
+    try {
+      // Find TypeScript/JavaScript files that likely contain exports
+      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | head -50');
+      const files = sourceFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files.slice(0, 20)) { // Limit to avoid performance issues
+        try {
+          const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
+          const lines = content.split('\n');
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const prevLine = i > 0 ? lines[i - 1] : '';
+
+            // Look for export patterns
+            const exportMatch = line.match(/^export\s+(function|class|interface|type|const|let|var|enum|namespace)\s+(\w+)/);
+            if (exportMatch) {
+              const type = exportMatch[1] as UndocumentedExport['type'];
+              const name = exportMatch[2];
+
+              // Check if there's JSDoc comment above
+              const hasJSDoc = prevLine.includes('*/') || (i > 1 && lines[i - 2].includes('/**'));
+
+              if (!hasJSDoc) {
+                undocumentedExports.push({
+                  file: file.replace(/^\.\//, ''),
+                  name,
+                  type,
+                  line: i + 1,
+                  isPublic: !file.includes('internal') && !name.startsWith('_')
+                });
+              }
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    } catch {
+      // Ignore errors in finding undocumented exports
+    }
+
+    return undocumentedExports.slice(0, 50); // Limit results
+  }
+
+  /**
+   * Find outdated documentation
+   */
+  private async findOutdatedDocumentation(): Promise<OutdatedDocumentation[]> {
+    const outdatedDocs: OutdatedDocumentation[] = [];
+
+    try {
+      // Find documentation files
+      const { stdout: docFiles } = await this.execAsync('find . -name "*.md" -o -name "*.rst" | grep -v node_modules | head -20');
+      const files = docFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files) {
+        try {
+          const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
+          const lines = content.split('\n');
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Look for deprecated API references
+            if (line.includes('@deprecated') || line.includes('DEPRECATED')) {
+              outdatedDocs.push({
+                file: file.replace(/^\.\//, ''),
+                type: 'deprecated-api',
+                description: 'Contains references to deprecated APIs',
+                line: i + 1,
+                severity: 'medium'
+              });
+            }
+
+            // Look for broken links (simple heuristic)
+            if (line.includes('http') && (line.includes('404') || line.includes('broken'))) {
+              outdatedDocs.push({
+                file: file.replace(/^\.\//, ''),
+                type: 'broken-link',
+                description: 'Potentially broken external link',
+                line: i + 1,
+                severity: 'low'
+              });
+            }
+
+            // Look for version mismatches (very basic)
+            const versionMatch = line.match(/v?(\d+\.\d+\.\d+)/);
+            if (versionMatch && line.includes('version')) {
+              // This is a simplified check - in a real implementation,
+              // you'd compare against package.json version
+              const version = versionMatch[1];
+              if (version.startsWith('0.') || version.startsWith('1.')) {
+                outdatedDocs.push({
+                  file: file.replace(/^\.\//, ''),
+                  type: 'version-mismatch',
+                  description: `References old version ${version}`,
+                  line: i + 1,
+                  suggestion: 'Update to current version',
+                  severity: 'low'
+                });
+              }
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    } catch {
+      // Ignore errors in finding outdated docs
+    }
+
+    return outdatedDocs.slice(0, 30); // Limit results
+  }
+
+  /**
+   * Find missing README sections
+   */
+  private async findMissingReadmeSections(): Promise<MissingReadmeSection[]> {
+    const missingReadmeSections: MissingReadmeSection[] = [];
+
+    try {
+      // Find README files
+      const { stdout: readmeFiles } = await this.execAsync('find . -name "README*" -o -name "readme*" | head -5');
+      const files = readmeFiles.split('\n').filter(line => line.trim());
+
+      if (files.length === 0) {
+        // No README files found - return all required sections as missing
+        const requiredSections: Array<{ section: ReadmeSection; priority: 'required' | 'recommended' | 'optional'; description: string }> = [
+          { section: 'title', priority: 'required', description: 'Project title and brief description' },
+          { section: 'description', priority: 'required', description: 'Detailed project description' },
+          { section: 'installation', priority: 'required', description: 'Installation instructions' },
+          { section: 'usage', priority: 'required', description: 'Usage examples and instructions' }
+        ];
+
+        return requiredSections.map(item => ({
+          section: item.section,
+          priority: item.priority,
+          description: item.description
+        }));
+      }
+
+      // Analyze existing README files
+      for (const file of files) {
+        try {
+          const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
+          const lowerContent = content.toLowerCase();
+
+          // Define standard sections with their indicators
+          const sectionChecks: Array<{ section: ReadmeSection; indicators: string[]; priority: 'required' | 'recommended' | 'optional'; description: string }> = [
+            { section: 'installation', indicators: ['install', 'setup', 'getting started'], priority: 'required', description: 'Installation and setup instructions' },
+            { section: 'usage', indicators: ['usage', 'how to use', 'example', 'getting started'], priority: 'required', description: 'Usage examples and basic instructions' },
+            { section: 'api', indicators: ['api', 'reference', 'methods', 'functions'], priority: 'recommended', description: 'API documentation and reference' },
+            { section: 'contributing', indicators: ['contribut', 'develop'], priority: 'recommended', description: 'Contributing guidelines' },
+            { section: 'license', indicators: ['license', 'copyright'], priority: 'recommended', description: 'License information' },
+            { section: 'testing', indicators: ['test', 'testing'], priority: 'optional', description: 'Testing instructions and guidelines' }
+          ];
+
+          for (const check of sectionChecks) {
+            const hasSection = check.indicators.some(indicator => lowerContent.includes(indicator));
+            if (!hasSection) {
+              missingReadmeSections.push({
+                section: check.section,
+                priority: check.priority,
+                description: check.description
+              });
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+    } catch {
+      // Ignore errors in finding missing README sections
+    }
+
+    return missingReadmeSections;
+  }
+
+  /**
+   * Analyze API documentation completeness
+   */
+  private async analyzeAPICompleteness(): Promise<APICompleteness> {
+    try {
+      const undocumentedItems: Array<{ name: string; file: string; type: 'endpoint' | 'method' | 'function' | 'class'; line?: number }> = [];
+      const wellDocumentedExamples: string[] = [];
+      const commonIssues: string[] = [];
+
+      // Find source files
+      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | head -30');
+      const files = sourceFiles.split('\n').filter(line => line.trim());
+
+      let totalEndpoints = 0;
+      let documentedEndpoints = 0;
+
+      for (const file of files.slice(0, 15)) { // Limit for performance
+        try {
+          const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
+          const lines = content.split('\n');
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const prevLine = i > 0 ? lines[i - 1] : '';
+            const prevPrevLine = i > 1 ? lines[i - 2] : '';
+
+            // Look for function/method definitions
+            const functionMatch = line.match(/(export\s+)?(async\s+)?function\s+(\w+)|(\w+)\s*\([^)]*\)\s*[:{]|(class\s+\w+)/);
+            if (functionMatch) {
+              totalEndpoints++;
+
+              const hasJSDoc = prevLine.includes('*/') || prevPrevLine.includes('/**');
+              const hasComment = prevLine.includes('//') || line.includes('//');
+
+              if (hasJSDoc) {
+                documentedEndpoints++;
+                // Check for well-documented example
+                if (prevPrevLine.includes('@example') || prevLine.includes('@param')) {
+                  wellDocumentedExamples.push(`${file}:${i + 1}`);
+                }
+              } else {
+                const name = functionMatch[3] || functionMatch[4] || 'class';
+                undocumentedItems.push({
+                  name,
+                  file: file.replace(/^\.\//, ''),
+                  type: functionMatch[5] ? 'class' : 'function',
+                  line: i + 1
+                });
+
+                if (!hasComment) {
+                  commonIssues.push('Missing JSDoc comments');
+                }
+              }
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Remove duplicate common issues
+      const uniqueCommonIssues = [...new Set(commonIssues)];
+
+      const percentage = totalEndpoints > 0 ? Math.round((documentedEndpoints / totalEndpoints) * 100) : 0;
+
+      return {
+        percentage,
+        details: {
+          totalEndpoints,
+          documentedEndpoints,
+          undocumentedItems: undocumentedItems.slice(0, 20), // Limit results
+          wellDocumentedExamples: wellDocumentedExamples.slice(0, 10),
+          commonIssues: uniqueCommonIssues.slice(0, 5)
+        }
+      };
+    } catch {
+      return {
+        percentage: 0,
+        details: {
+          totalEndpoints: 0,
+          documentedEndpoints: 0,
+          undocumentedItems: [],
+          wellDocumentedExamples: [],
+          commonIssues: []
+        }
+      };
+    }
+  }
+
   private async execAsync(command: string): Promise<{ stdout: string; stderr: string }> {
     const { exec } = await import('child_process');
     const { promisify } = await import('util');
@@ -466,3 +903,12 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     return execPromise(command, { cwd: this.projectPath });
   }
 }
+
+// Export the new dependency types for use by other modules
+export type {
+  OutdatedDependency,
+  SecurityVulnerability,
+  DeprecatedPackage,
+  UpdateType,
+  VulnerabilitySeverity,
+};

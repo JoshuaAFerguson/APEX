@@ -36,7 +36,13 @@ describe('IdleTaskGenerator', () => {
       codeQuality: {
         lintIssues: 25,
         duplicatedCode: [],
-        complexityHotspots: ['src/complex.ts'],
+        complexityHotspots: [{
+          file: 'src/complex.ts',
+          cyclomaticComplexity: 15,
+          cognitiveComplexity: 20,
+          lineCount: 300
+        }],
+        codeSmells: []
       },
       documentation: { coverage: 35, missingDocs: ['src/core.ts', 'src/api/index.ts'] },
       performance: { slowTests: [], bottlenecks: [] },
@@ -235,7 +241,7 @@ describe('IdleTaskGenerator', () => {
       const analysisWithOnlyMaintenance: ProjectAnalysis = {
         ...mockAnalysis,
         testCoverage: { percentage: 95, uncoveredFiles: [] },
-        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
         documentation: { coverage: 90, missingDocs: [] },
       };
 
@@ -260,7 +266,7 @@ describe('IdleTaskGenerator', () => {
         codebaseSize: { files: 50, lines: 5000, languages: { ts: 50 } },
         testCoverage: { percentage: 95, uncoveredFiles: [] },
         dependencies: { outdated: [], security: [] },
-        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
         documentation: { coverage: 90, missingDocs: [] },
         performance: { slowTests: [], bottlenecks: [] },
       };
@@ -359,7 +365,7 @@ describe('MaintenanceAnalyzer', () => {
         outdated: [],
         security: ['vulnerable-lib@1.0.0', 'another-vuln@2.0.0'],
       },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -380,7 +386,7 @@ describe('MaintenanceAnalyzer', () => {
         outdated: ['old-lib@^1.0.0', 'legacy@^2.0.0'],
         security: [],
       },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -399,7 +405,7 @@ describe('MaintenanceAnalyzer', () => {
         outdated: ['beta-lib@^0.1.0', 'alpha-lib@~0.5.0', 'stable@^2.0.0'],
         security: [],
       },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -415,7 +421,7 @@ describe('MaintenanceAnalyzer', () => {
     const analysis: ProjectAnalysis = {
       codebaseSize: { files: 10, lines: 1000, languages: {} },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -445,6 +451,7 @@ describe('RefactoringAnalyzer', () => {
         lintIssues: 0,
         duplicatedCode: ['src/utils.ts', 'src/helpers.ts'],
         complexityHotspots: [],
+        codeSmells: []
       },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
@@ -464,7 +471,11 @@ describe('RefactoringAnalyzer', () => {
       codeQuality: {
         lintIssues: 0,
         duplicatedCode: [],
-        complexityHotspots: ['src/complex1.ts', 'src/complex2.ts'],
+        complexityHotspots: [
+          { file: 'src/complex1.ts', cyclomaticComplexity: 18, cognitiveComplexity: 25, lineCount: 400 },
+          { file: 'src/complex2.ts', cyclomaticComplexity: 22, cognitiveComplexity: 28, lineCount: 350 }
+        ],
+        codeSmells: []
       },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
@@ -484,6 +495,7 @@ describe('RefactoringAnalyzer', () => {
         lintIssues: 100,
         duplicatedCode: [],
         complexityHotspots: [],
+        codeSmells: []
       },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
@@ -511,7 +523,7 @@ describe('DocsAnalyzer', () => {
     const analysis: ProjectAnalysis = {
       codebaseSize: { files: 10, lines: 1000, languages: {} },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 10, missingDocs: ['src/index.ts'] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -527,7 +539,7 @@ describe('DocsAnalyzer', () => {
     const analysis: ProjectAnalysis = {
       codebaseSize: { files: 10, lines: 1000, languages: {} },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: {
         coverage: 40,
         missingDocs: ['src/core.ts', 'src/api/index.ts', 'src/utils.ts'],
@@ -558,7 +570,7 @@ describe('TestsAnalyzer', () => {
       codebaseSize: { files: 10, lines: 1000, languages: {} },
       testCoverage: { percentage: 15, uncoveredFiles: [] },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -578,7 +590,7 @@ describe('TestsAnalyzer', () => {
         uncoveredFiles: ['src/service.ts', 'src/controller.ts', 'src/utils.ts'],
       },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -595,7 +607,7 @@ describe('TestsAnalyzer', () => {
       codebaseSize: { files: 10, lines: 1000, languages: {} },
       testCoverage: { percentage: 80, uncoveredFiles: [] },
       dependencies: { outdated: [], security: [] },
-      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
       documentation: { coverage: 50, missingDocs: [] },
       performance: { slowTests: ['test/slow.test.ts'], bottlenecks: [] },
     };
@@ -689,7 +701,12 @@ describe('Edge Cases and Error Handling', () => {
       codebaseSize: { files: 50, lines: 5000, languages: { ts: 40, js: 10 } },
       testCoverage: { percentage: 45, uncoveredFiles: ['src/utils.ts'] },
       dependencies: { outdated: ['old-lib@^0.1.0'], security: [] },
-      codeQuality: { lintIssues: 25, duplicatedCode: [], complexityHotspots: ['src/complex.ts'] },
+      codeQuality: {
+        lintIssues: 25,
+        duplicatedCode: [],
+        complexityHotspots: [{ file: 'src/complex.ts', cyclomaticComplexity: 20, cognitiveComplexity: 24, lineCount: 380 }],
+        codeSmells: []
+      },
       documentation: { coverage: 35, missingDocs: ['src/core.ts'] },
       performance: { slowTests: [], bottlenecks: [] },
     };
@@ -936,7 +953,12 @@ describe('Type Mapping', () => {
       codebaseSize: { files: 10, lines: 1000, languages: { ts: 10 } },
       testCoverage: { percentage: 20, uncoveredFiles: ['test.ts'] },
       dependencies: { outdated: ['dep@^1.0.0'], security: ['vuln@1.0.0'] },
-      codeQuality: { lintIssues: 50, duplicatedCode: ['dup.ts'], complexityHotspots: ['complex.ts'] },
+      codeQuality: {
+        lintIssues: 50,
+        duplicatedCode: [{ pattern: 'duplicate pattern', locations: ['dup.ts'], similarity: 0.9 }],
+        complexityHotspots: [{ file: 'complex.ts', cyclomaticComplexity: 25, cognitiveComplexity: 30, lineCount: 500 }],
+        codeSmells: []
+      },
       documentation: { coverage: 30, missingDocs: ['missing.ts'] },
       performance: { slowTests: [], bottlenecks: [] },
     };

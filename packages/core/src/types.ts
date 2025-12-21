@@ -558,6 +558,50 @@ export interface ApexEvent {
 }
 
 // ============================================================================
+// Enhanced Complexity Metrics Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Represents a complexity hotspot in the codebase
+ */
+export interface ComplexityHotspot {
+  /** File path relative to project root */
+  file: string;
+  /** Cyclomatic complexity score */
+  cyclomaticComplexity: number;
+  /** Cognitive complexity score */
+  cognitiveComplexity: number;
+  /** Number of lines in the file */
+  lineCount: number;
+}
+
+/**
+ * Represents a code smell detected in the codebase
+ */
+export interface CodeSmell {
+  /** File path relative to project root */
+  file: string;
+  /** Type of code smell */
+  type: 'long-method' | 'large-class' | 'duplicate-code' | 'dead-code' | 'magic-numbers' | 'feature-envy' | 'data-clumps';
+  /** Severity level of the code smell */
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  /** Additional details about the code smell */
+  details: string;
+}
+
+/**
+ * Represents a pattern of duplicated code in the codebase
+ */
+export interface DuplicatePattern {
+  /** The duplicated code pattern or snippet */
+  pattern: string;
+  /** Array of file locations where this pattern appears */
+  locations: string[];
+  /** Similarity percentage (0-1) */
+  similarity: number;
+}
+
+// ============================================================================
 // UI Display Types
 // ============================================================================
 
@@ -640,4 +684,122 @@ export interface SessionLimitStatus {
   recommendation: 'continue' | 'summarize' | 'checkpoint' | 'handoff';
   /** Human-readable description of the status */
   message: string;
+}
+
+// ============================================================================
+// Enhanced Documentation Analysis Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Represents an export that is missing JSDoc documentation
+ */
+export interface UndocumentedExport {
+  /** File path where the export is located */
+  file: string;
+  /** Name of the exported function, class, or variable */
+  name: string;
+  /** Type of export (function, class, interface, type, variable, etc.) */
+  type: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace';
+  /** Line number where the export is defined */
+  line: number;
+  /** Whether the export is publicly accessible (not internal) */
+  isPublic: boolean;
+}
+
+/**
+ * Represents documentation that is outdated or references deprecated APIs
+ */
+export interface OutdatedDocumentation {
+  /** File path of the documentation */
+  file: string;
+  /** Type of outdated content */
+  type: 'version-mismatch' | 'deprecated-api' | 'broken-link' | 'outdated-example' | 'stale-reference';
+  /** Description of the outdated content */
+  description: string;
+  /** Line number where the issue occurs (if applicable) */
+  line?: number;
+  /** Suggested fix or update */
+  suggestion?: string;
+  /** Severity of the issue */
+  severity: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Standard sections that should be present in a README
+ */
+export type ReadmeSection =
+  | 'title'
+  | 'description'
+  | 'installation'
+  | 'usage'
+  | 'api'
+  | 'examples'
+  | 'contributing'
+  | 'license'
+  | 'changelog'
+  | 'troubleshooting'
+  | 'faq'
+  | 'dependencies'
+  | 'testing'
+  | 'deployment';
+
+/**
+ * Information about missing README sections
+ */
+export interface MissingReadmeSection {
+  /** The section that is missing */
+  section: ReadmeSection;
+  /** Priority/importance of this section */
+  priority: 'required' | 'recommended' | 'optional';
+  /** Brief description of what this section should contain */
+  description: string;
+}
+
+/**
+ * Detailed information about API documentation completeness
+ */
+export interface APIDocumentationDetails {
+  /** Total number of public API endpoints/methods/functions */
+  totalEndpoints: number;
+  /** Number of documented endpoints */
+  documentedEndpoints: number;
+  /** List of undocumented API items */
+  undocumentedItems: Array<{
+    name: string;
+    file: string;
+    type: 'endpoint' | 'method' | 'function' | 'class';
+    line?: number;
+  }>;
+  /** Examples of well-documented items */
+  wellDocumentedExamples: string[];
+  /** Common documentation issues found */
+  commonIssues: string[];
+}
+
+/**
+ * Overall API documentation completeness assessment
+ */
+export interface APICompleteness {
+  /** Percentage of API coverage (0-100) */
+  percentage: number;
+  /** Detailed breakdown of what's documented and what isn't */
+  details: APIDocumentationDetails;
+}
+
+/**
+ * Enhanced documentation analysis result structure
+ */
+export interface EnhancedDocumentationAnalysis {
+  /** Current coverage percentage */
+  coverage: number;
+  /** Files that might need documentation (legacy field) */
+  missingDocs: string[];
+  /** List of exports missing JSDoc documentation */
+  undocumentedExports: UndocumentedExport[];
+  /** Documentation that references outdated or deprecated content */
+  outdatedDocs: OutdatedDocumentation[];
+  /** Missing sections in README files */
+  missingReadmeSections: MissingReadmeSection[];
+  /** API documentation completeness analysis */
+  apiCompleteness: APICompleteness;
 }

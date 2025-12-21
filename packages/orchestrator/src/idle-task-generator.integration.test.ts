@@ -26,7 +26,7 @@ describe('IdleTaskGenerator Integration Tests', () => {
         codebaseSize: { files: 5, lines: 200, languages: { ts: 5 } },
         testCoverage: { percentage: 0, uncoveredFiles: ['src/index.ts', 'src/utils.ts'] },
         dependencies: { outdated: [], security: [] },
-        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
         documentation: { coverage: 0, missingDocs: ['src/index.ts', 'src/utils.ts'] },
         performance: { slowTests: [], bottlenecks: [] },
       };
@@ -259,7 +259,7 @@ describe('IdleTaskGenerator Integration Tests', () => {
         codebaseSize: { files: 5, lines: 500, languages: { ts: 5 } },
         testCoverage: { percentage: 95, uncoveredFiles: [] },
         dependencies: { outdated: ['single-dep@^1.0.0'], security: [] },
-        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [] },
+        codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
         documentation: { coverage: 90, missingDocs: [] },
         performance: { slowTests: [], bottlenecks: [] },
       };
