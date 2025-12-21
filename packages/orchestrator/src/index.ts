@@ -11,6 +11,7 @@ import {
   TaskStatus,
   TaskUsage,
   TaskCheckpoint,
+  TaskSessionData,
   StageResult,
   ApexEvent,
   ApexEventType,
@@ -78,6 +79,9 @@ export interface OrchestratorEvents {
 
   // Auto-resume event (emitted when capacity is restored and tasks are auto-resumed)
   'tasks:auto-resumed': (event: TasksAutoResumedEvent) => void;
+
+  // Task session resumed event (emitted when a task session is resumed from a checkpoint)
+  'task:session-resumed': (event: TaskSessionResumedEvent) => void;
 }
 
 /**
@@ -95,6 +99,18 @@ export interface TasksAutoResumedEvent {
   // v0.4.0 enhancements
   resumeReason?: string;    // Detailed string description of why tasks were resumed
   contextSummary?: string;  // Aggregated context summary for all resumed tasks
+}
+
+/**
+ * Event payload for task:session-resumed event
+ */
+export interface TaskSessionResumedEvent {
+  taskId: string;              // The task that was resumed
+  resumeReason: string;        // Reason for resuming (e.g., 'checkpoint_restore', 'manual_resume', 'auto_resume')
+  contextSummary: string;      // Summary of the task context being resumed
+  previousStatus: TaskStatus;  // Status the task had before being resumed
+  sessionData: TaskSessionData; // Session recovery data
+  timestamp: Date;             // When the resume occurred
 }
 
 export interface PRResult {

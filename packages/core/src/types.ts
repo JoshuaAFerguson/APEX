@@ -514,6 +514,7 @@ export type ApexEventType =
   | 'task:completed'
   | 'task:failed'
   | 'task:paused'
+  | 'task:session-resumed'
   | 'task:decomposed'
   | 'subtask:created'
   | 'subtask:completed'
