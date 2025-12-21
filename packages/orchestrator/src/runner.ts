@@ -1,12 +1,13 @@
 import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
-import { ApexOrchestrator } from './index';
+import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
-import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig } from '@apexcli/core';
+import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig, TaskSessionData } from '@apexcli/core';
 import { UsageManager } from './usage-manager';
 import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
 import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
+import { createContextSummary } from './context';
 
 // ============================================================================
 // Interface Definitions
@@ -379,6 +380,139 @@ export class DaemonRunner {
   }
 
   /**
+   * Generate an aggregated context summary for all resumed tasks.
+   * This provides a high-level overview of what tasks were resumed and their context.
+   *
+   * @param resumedTasks - Array of successfully resumed tasks with their session data
+   * @param failedTasks - Array of tasks that failed to resume with error details
+   * @param reason - The capacity restoration reason
+   * @returns A formatted context summary string
+   */
+  private generateAggregatedContextSummary(
+    resumedTasks: Array<{
+      task: Task;
+      sessionData?: TaskSessionData;
+    }>,
+    failedTasks: Array<{ taskId: string; error: string }>,
+    reason: string
+  ): string {
+    const summaryParts: string[] = [];
+
+    // Header with capacity restoration reason
+    summaryParts.push(`Auto-resume triggered by: ${reason}`);
+
+    if (resumedTasks.length > 0) {
+      summaryParts.push(`\nSuccessfully resumed ${resumedTasks.length} task(s):`);
+
+      for (const { task, sessionData } of resumedTasks) {
+        const taskSummary = [
+          `• ${task.id} (${task.priority})`,
+          task.description.length > 60 ? `${task.description.substring(0, 57)}...` : task.description
+        ];
+
+        // Add context from session data if available
+        if (sessionData?.contextSummary) {
+          const trimmedContext = sessionData.contextSummary.length > 100
+            ? `${sessionData.contextSummary.substring(0, 97)}...`
+            : sessionData.contextSummary;
+          taskSummary.push(`Context: ${trimmedContext}`);
+        }
+
+        if (task.currentStage) {
+          taskSummary.push(`Stage: ${task.currentStage}`);
+        }
+
+        summaryParts.push(`  ${taskSummary.join(', ')}`);
+      }
+    }
+
+    if (failedTasks.length > 0) {
+      summaryParts.push(`\nFailed to resume ${failedTasks.length} task(s):`);
+      for (const { taskId, error } of failedTasks) {
+        const errorSummary = error.length > 80 ? `${error.substring(0, 77)}...` : error;
+        summaryParts.push(`  • ${taskId}: ${errorSummary}`);
+      }
+    }
+
+    return summaryParts.join('\n');
+  }
+
+  /**
+   * Generate a detailed resume reason based on the capacity restoration event
+   * @param eventReason - The original capacity restoration reason
+   * @returns A human-readable detailed description
+   */
+  private generateDetailedResumeReason(eventReason: string): string {
+    const reasonMap: Record<string, string> = {
+      'mode_switch': 'Time-based mode switched from day to night mode, increasing capacity thresholds',
+      'budget_reset': 'Daily budget was reset, allowing new tasks to be processed',
+      'capacity_dropped': 'System usage dropped below capacity thresholds, freeing up resources',
+      'manual_override': 'Capacity limits were manually adjusted or disabled',
+      'usage_expired': 'Previous high-usage period expired, restoring normal capacity'
+    };
+
+    return reasonMap[eventReason] || `Capacity restored: ${eventReason}`;
+  }
+
+  /**
+   * Emit a task:session-resumed event for an individual task.
+   * This provides detailed context about the specific task that was resumed.
+   *
+   * @param task - The task that was resumed
+   * @param resumeReason - Detailed reason for the resume
+   * @param sessionData - Session recovery data if available
+   */
+  private emitTaskSessionResumed(
+    task: Task,
+    resumeReason: string,
+    sessionData?: TaskSessionData
+  ): void {
+    if (!this.orchestrator) {
+      return;
+    }
+
+    // Generate context summary for this specific task
+    let contextSummary = 'No previous session context available';
+
+    if (sessionData?.contextSummary) {
+      contextSummary = sessionData.contextSummary;
+    } else if (sessionData?.conversationHistory) {
+      // Generate summary from conversation history if available
+      try {
+        contextSummary = createContextSummary(sessionData.conversationHistory);
+      } catch (error) {
+        this.log('debug', `Failed to create context summary for task ${task.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        contextSummary = `Task was in stage: ${task.currentStage || 'unknown'}, previous session data partially available`;
+      }
+    } else if (task.currentStage) {
+      contextSummary = `Task was paused in stage: ${task.currentStage}, resuming from checkpoint`;
+    }
+
+    const event: TaskSessionResumedEvent = {
+      taskId: task.id,
+      resumeReason,
+      contextSummary,
+      previousStatus: 'paused', // We know it was paused since we're resuming it
+      sessionData: sessionData || {
+        lastCheckpoint: new Date(),
+        contextSummary,
+      },
+      timestamp: new Date(),
+    };
+
+    this.orchestrator.emit('task:session-resumed', event);
+
+    this.log('debug', `Emitted task:session-resumed for ${task.id}`, {
+      taskId: task.id,
+      metadata: {
+        resumeReason,
+        contextSummaryLength: contextSummary.length,
+        hasSessionData: !!sessionData,
+      },
+    });
+  }
+
+  /**
    * Handle capacity restored events for auto-resume functionality
    *
    * Resume order:
@@ -398,6 +532,10 @@ export class DaemonRunner {
 
       let totalResumedCount = 0;
       const errors: Array<{taskId: string; error: string}> = [];
+      const resumedTasks: Array<{task: Task; sessionData?: TaskSessionData}> = [];
+
+      // Generate detailed resume reason for events
+      const detailedResumeReason = this.generateDetailedResumeReason(event.reason);
 
       // Phase 1: Resume highest priority parent tasks first
       const pausedParentTasks = await this.store.findHighestPriorityParentTask();
@@ -407,10 +545,19 @@ export class DaemonRunner {
 
         for (const parentTask of pausedParentTasks) {
           try {
+            // Get task session data before resuming
+            const sessionData = parentTask.sessionData;
+
             const resumed = await this.orchestrator.resumePausedTask(parentTask.id);
             if (resumed) {
               totalResumedCount++;
               this.log('info', `Auto-resumed parent task ${parentTask.id}`, { taskId: parentTask.id });
+
+              // Track resumed task with session data
+              resumedTasks.push({ task: parentTask, sessionData });
+
+              // Emit task:session-resumed event for this individual task
+              this.emitTaskSessionResumed(parentTask, detailedResumeReason, sessionData);
 
               // Parent resumed - also check and resume its subtasks if needed
               await this.resumeParentSubtasksIfNeeded(parentTask.id);
@@ -437,10 +584,19 @@ export class DaemonRunner {
 
         for (const task of remainingTasks) {
           try {
+            // Get task session data before resuming
+            const sessionData = task.sessionData;
+
             const resumed = await this.orchestrator.resumePausedTask(task.id);
             if (resumed) {
               totalResumedCount++;
               this.log('info', `Auto-resumed task ${task.id}`, { taskId: task.id });
+
+              // Track resumed task with session data
+              resumedTasks.push({ task, sessionData });
+
+              // Emit task:session-resumed event for this individual task
+              this.emitTaskSessionResumed(task, detailedResumeReason, sessionData);
             } else {
               this.log('warn', `Failed to resume task ${task.id}: Task not in resumable state`, { taskId: task.id });
             }
@@ -452,7 +608,14 @@ export class DaemonRunner {
         }
       }
 
-      // Emit auto-resumed event with summary
+      // Generate aggregated context summary from all resumed tasks
+      const contextSummary = this.generateAggregatedContextSummary(
+        resumedTasks,
+        errors,
+        event.reason
+      );
+
+      // Emit enhanced auto-resumed event with populated contextSummary
       if (this.orchestrator) {
         this.orchestrator.emit('tasks:auto-resumed', {
           reason: event.reason,
@@ -460,6 +623,9 @@ export class DaemonRunner {
           resumedCount: totalResumedCount,
           errors,
           timestamp: new Date(),
+          // v0.4.0 enhanced fields
+          resumeReason: detailedResumeReason,
+          contextSummary,
         });
       }
 
@@ -493,6 +659,7 @@ export class DaemonRunner {
       this.log('info', `Checking ${parentTask.subtaskIds.length} subtask(s) for auto-resume after parent task ${parentTaskId} resumed`);
 
       let subtasksResumedCount = 0;
+      const subtaskResumeReason = `Parent task ${parentTaskId} was resumed, allowing dependent subtasks to continue`;
 
       for (const subtaskId of parentTask.subtaskIds) {
         try {
@@ -507,10 +674,16 @@ export class DaemonRunner {
               continue;
             }
 
+            // Get subtask session data before resuming
+            const sessionData = subtask.sessionData;
+
             const resumed = await this.orchestrator.resumePausedTask(subtaskId);
             if (resumed) {
               subtasksResumedCount++;
               this.log('info', `Auto-resumed subtask ${subtaskId} after parent resume`, { taskId: subtaskId });
+
+              // Emit task:session-resumed event for this subtask
+              this.emitTaskSessionResumed(subtask, subtaskResumeReason, sessionData);
             } else {
               this.log('warn', `Failed to resume subtask ${subtaskId}: Task not in resumable state`, { taskId: subtaskId });
             }
