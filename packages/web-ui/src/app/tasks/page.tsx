@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,7 +10,7 @@ import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog'
 import { KanbanBoard } from '@/components/tasks/KanbanBoard'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId, cn } from '@/lib/utils'
-import type { Task, TaskStatus } from '@apexcli/core'
+import type { Task, TaskStatus } from '@apex/core'
 import { Filter, RefreshCw, ChevronRight, Plus, XCircle, RotateCcw, LayoutGrid, List } from 'lucide-react'
 import Link from 'next/link'
 
@@ -36,11 +36,7 @@ export default function TasksPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('kanban') // Default to kanban view
 
-  useEffect(() => {
-    loadTasks()
-  }, [statusFilter])
-
-  async function loadTasks() {
+  const loadTasks = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -53,7 +49,11 @@ export default function TasksPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
+
+  useEffect(() => {
+    loadTasks()
+  }, [loadTasks])
 
   async function handleCancel(taskId: string, e: React.MouseEvent) {
     e.preventDefault()

@@ -4,7 +4,7 @@
  * Types for the /tasks/[id] route and its child components.
  */
 
-import type { Task, TaskLog, Gate, ApexEvent, TaskUsage } from '@apexcli/core'
+import type { Task, TaskLog, Gate, ApexEvent, TaskUsage } from '@apex/core'
 
 /**
  * Task detail page state

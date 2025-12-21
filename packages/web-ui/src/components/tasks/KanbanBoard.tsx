@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
 import { formatCost, getRelativeTime, truncateId, cn } from '@/lib/utils'
-import type { Task, TaskStatus } from '@apexcli/core'
+import type { Task, TaskStatus } from '@apex/core'
 import {
   Clock,
   Coins,

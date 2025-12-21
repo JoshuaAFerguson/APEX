@@ -4,7 +4,7 @@
  * Types for TokenUsageChart and BudgetGauge components.
  */
 
-import type { TaskUsage } from '@apexcli/core'
+import type { TaskUsage } from '@apex/core'
 
 /**
  * Token usage breakdown by category

@@ -9,7 +9,7 @@ import type {
   ApexConfig,
   SubtaskStrategy,
   SubtaskDefinition,
-} from '@apexcli/core'
+} from '@apex/core'
 import { getApiUrl } from './config'
 
 /**

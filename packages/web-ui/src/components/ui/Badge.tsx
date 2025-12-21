@@ -1,6 +1,6 @@
 import { HTMLAttributes, forwardRef } from 'react'
 import { cn, getStatusVariant, formatStatus } from '@/lib/utils'
-import type { TaskStatus } from '@apexcli/core'
+import type { TaskStatus } from '@apex/core'
 
 export interface BadgeProps extends HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'success' | 'warning' | 'error' | 'info'

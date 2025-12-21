@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { TaskStatus } from '@apexcli/core'
+import type { TaskStatus } from '@apex/core'
 
 /**
  * Merge Tailwind CSS classes with clsx

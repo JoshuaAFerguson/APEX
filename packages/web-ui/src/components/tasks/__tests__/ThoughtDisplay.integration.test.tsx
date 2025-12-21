@@ -242,7 +242,7 @@ This architecture should support:
     })
 
     it('should efficiently update when content changes', async () => {
-      let currentContent = 'Initial content'
+      const currentContent = 'Initial content'
 
       const { rerender } = render(
         <ThoughtDisplay
@@ -420,7 +420,7 @@ This architecture should support:
 
   describe('Real-time updates simulation', () => {
     it('should handle content streaming updates', async () => {
-      let content = 'Starting analysis'
+      const content = 'Starting analysis'
 
       const { rerender } = render(
         <ThoughtDisplay
