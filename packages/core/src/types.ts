@@ -135,6 +135,26 @@ export const ServiceConfigSchema = z.object({
 });
 export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
 
+// ============================================================================
+// Idle Task Strategy Configuration
+// ============================================================================
+
+export const IdleTaskTypeSchema = z.enum([
+  'maintenance',
+  'refactoring',
+  'docs',
+  'tests',
+]);
+export type IdleTaskType = z.infer<typeof IdleTaskTypeSchema>;
+
+export const StrategyWeightsSchema = z.object({
+  maintenance: z.number().min(0).max(1).optional().default(0.25),
+  refactoring: z.number().min(0).max(1).optional().default(0.25),
+  docs: z.number().min(0).max(1).optional().default(0.25),
+  tests: z.number().min(0).max(1).optional().default(0.25),
+});
+export type StrategyWeights = z.infer<typeof StrategyWeightsSchema>;
+
 export const DaemonConfigSchema = z.object({
   pollInterval: z.number().optional().default(5000),
   autoStart: z.boolean().optional().default(false),
@@ -188,6 +208,7 @@ export const DaemonConfigSchema = z.object({
     idleThreshold: z.number().optional().default(300000), // 5 minutes
     taskGenerationInterval: z.number().optional().default(3600000), // 1 hour
     maxIdleTasks: z.number().optional().default(3),
+    strategyWeights: StrategyWeightsSchema.optional(),
   }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
