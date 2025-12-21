@@ -9,9 +9,41 @@
 
 import { BaseAnalyzer, TaskCandidate } from './index';
 import type { ProjectAnalysis } from '../idle-processor';
+import type { ComplexityHotspot, TaskPriority } from '@apexcli/core';
 
 export class RefactoringAnalyzer extends BaseAnalyzer {
   readonly type = 'refactoring' as const;
+
+  // Complexity thresholds for severity classification
+  private static readonly CYCLOMATIC_THRESHOLDS = {
+    low: 10,
+    medium: 20,
+    high: 30,
+    critical: 50,
+  };
+
+  private static readonly COGNITIVE_THRESHOLDS = {
+    low: 15,
+    medium: 25,
+    high: 40,
+    critical: 60,
+  };
+
+  private static readonly LINE_COUNT_THRESHOLDS = {
+    low: 200,
+    medium: 500,
+    high: 1000,
+    critical: 2000,
+  };
+
+  // Prioritization weights for scoring algorithm
+  private static readonly PRIORITY_WEIGHTS = {
+    cyclomatic: 0.40,
+    cognitive: 0.35,
+    lineCount: 0.25,
+  };
+
+  private static readonly COMBINED_HIGH_COMPLEXITY_BONUS = 0.15;
 
   analyze(analysis: ProjectAnalysis): TaskCandidate[] {
     const candidates: TaskCandidate[] = [];

@@ -150,11 +150,14 @@ export function createHealthyAnalysis(): ProjectAnalysis {
       outdatedDocs: [],
       missingReadmeSections: [],
       apiCompleteness: {
-        publicExportsDocumented: 0.95,
-        internalReferencesComplete: 0.9,
-        exampleCoverage: 0.8,
-        typeDefinitionsComplete: 0.95,
-        completenessScore: 0.9
+        percentage: 90,
+        details: {
+          totalEndpoints: 10,
+          documentedEndpoints: 9,
+          undocumentedItems: [],
+          wellDocumentedExamples: [],
+          commonIssues: []
+        }
       }
     },
     performance: { slowTests: [], bottlenecks: [] },
@@ -224,11 +227,14 @@ export function createAnalysisWithRichDependencies(): ProjectAnalysis {
       outdatedDocs: [],
       missingReadmeSections: [],
       apiCompleteness: {
-        publicExportsDocumented: 0.6,
-        internalReferencesComplete: 0.65,
-        exampleCoverage: 0.4,
-        typeDefinitionsComplete: 0.75,
-        completenessScore: 0.6
+        percentage: 60,
+        details: {
+          totalEndpoints: 25,
+          documentedEndpoints: 15,
+          undocumentedItems: [],
+          wellDocumentedExamples: [],
+          commonIssues: []
+        }
       }
     },
     performance: { slowTests: [], bottlenecks: [] },
