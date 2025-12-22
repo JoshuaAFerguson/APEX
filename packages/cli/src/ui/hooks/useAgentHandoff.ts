@@ -198,6 +198,10 @@ export function useAgentHandoff(
     useAsciiIcons = false        // Use emoji by default, fallback available
   } = options;
 
+  const safeDuration = Math.max(0, duration);
+  const safeFadeDuration = Math.max(0, fadeDuration);
+  const safeFrameRate = frameRate > 0 ? frameRate : 1;
+
   const [animationState, setAnimationState] = useState<HandoffAnimationState>({
     isAnimating: false,
     previousAgent: null,
@@ -219,17 +223,16 @@ export function useAgentHandoff(
   // Track previous agent value for comparison
   const previousAgentRef = useRef<string | undefined>(currentAgent);
   const animationIdRef = useRef<NodeJS.Timeout | null>(null);
+  const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Check if agent has changed
-    if (previousAgentRef.current !== currentAgent) {
-      const prevAgent = previousAgentRef.current;
-      previousAgentRef.current = currentAgent;
+    const prevAgent = previousAgentRef.current;
+    const nextAgent = currentAgent;
+    previousAgentRef.current = currentAgent;
 
-      // Only animate if both previous and current agents exist and are different
-      if (prevAgent && currentAgent && prevAgent !== currentAgent) {
-        startHandoffAnimation(prevAgent, currentAgent);
-      }
+    // Only animate if both previous and current agents exist and are different
+    if (prevAgent && nextAgent && prevAgent !== nextAgent) {
+      startHandoffAnimation(prevAgent, nextAgent);
     }
   }, [currentAgent]);
 
@@ -238,10 +241,17 @@ export function useAgentHandoff(
     if (animationIdRef.current) {
       clearInterval(animationIdRef.current);
     }
+    if (completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current);
+      completionTimeoutRef.current = null;
+    }
 
     const startTime = Date.now();
     const handoffStartTime = new Date();
-    const frameInterval = 1000 / frameRate;
+    const frameInterval = safeFrameRate >= 60
+      ? 1000 / safeFrameRate
+      : Math.floor(1000 / safeFrameRate);
+    const fadeStartTime = Math.max(0, safeDuration - safeFadeDuration);
 
     // Initialize animation state
     setAnimationState({
@@ -262,13 +272,46 @@ export function useAgentHandoff(
       colorPhase: 'source-bright',
     });
 
+    const completeAnimation = () => {
+      if (animationIdRef.current) {
+        clearInterval(animationIdRef.current);
+        animationIdRef.current = null;
+      }
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+
+      setAnimationState({
+        isAnimating: false,
+        previousAgent: null,
+        currentAgent: null,
+        progress: 0,
+        isFading: false,
+        transitionPhase: 'idle',
+        pulseIntensity: 0,
+        arrowFrame: 0,
+        handoffStartTime: null,
+
+        // Enhanced visual properties reset
+        arrowAnimationFrame: 0,
+        iconFrame: 0,
+        colorIntensity: 0,
+        colorPhase: 'source-bright',
+      });
+    };
+
+    completionTimeoutRef.current = setTimeout(completeAnimation, Math.max(0, safeDuration));
+
     animationIdRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = safeDuration === 0
+        ? 1
+        : Math.max(0, Math.min(elapsed / safeDuration, 1));
 
       // Calculate if we're in the fade phase (last portion of animation)
-      const fadeStartTime = duration - fadeDuration;
-      const isFading = elapsed >= fadeStartTime;
+      const isFading = safeDuration === 0 || elapsed + frameInterval >= fadeStartTime;
+      const willComplete = safeDuration === 0 || elapsed + frameInterval >= safeDuration;
 
       // Calculate enhanced animation properties
       const transitionPhase = getTransitionPhase(progress);
@@ -297,29 +340,8 @@ export function useAgentHandoff(
       }));
 
       // Complete animation when duration is reached
-      if (progress >= 1) {
-        if (animationIdRef.current) {
-          clearInterval(animationIdRef.current);
-          animationIdRef.current = null;
-        }
-
-        setAnimationState({
-          isAnimating: false,
-          previousAgent: null,
-          currentAgent: null,
-          progress: 0,
-          isFading: false,
-          transitionPhase: 'idle',
-          pulseIntensity: 0,
-          arrowFrame: 0,
-          handoffStartTime: null,
-
-          // Enhanced visual properties reset
-          arrowAnimationFrame: 0,
-          iconFrame: 0,
-          colorIntensity: 0,
-          colorPhase: 'source-bright',
-        });
+      if (willComplete) {
+        completeAnimation();
       }
     }, frameInterval);
   };
@@ -329,6 +351,9 @@ export function useAgentHandoff(
     return () => {
       if (animationIdRef.current) {
         clearInterval(animationIdRef.current);
+      }
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
       }
     };
   }, []);

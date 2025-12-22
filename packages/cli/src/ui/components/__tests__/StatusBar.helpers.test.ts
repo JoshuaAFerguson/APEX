@@ -28,6 +28,7 @@ function getEffectiveLabel(
   const useAbbreviated =
     abbreviationMode === 'abbreviated' ||
     (abbreviationMode === 'auto' && terminalWidth < 80);
+  // terminalWidth >= 80 uses full labels in auto mode
 
   if (useAbbreviated && segment.abbreviatedLabel != null) {
     // Empty string abbreviation means no label should be shown when abbreviated
@@ -457,8 +458,8 @@ describe('StatusBar Helper Functions', () => {
               valueColor: 'cyan',
               minWidth: 0,
             },
-            expectedFull: 10, // tokens: (7) + 1.5k (4) = 11
-            expectedAbbreviated: 7, // tok: (4) + 1.5k (4) = 8
+            expectedFull: 11, // tokens: (7) + 1.5k (4) = 11
+            expectedAbbreviated: 8, // tok: (4) + 1.5k (4) = 8
           },
           {
             name: 'Cost display',

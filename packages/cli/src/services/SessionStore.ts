@@ -304,6 +304,7 @@ export class SessionStore {
   }
 
   async setActiveSession(id: string): Promise<void> {
+    await fs.mkdir(this.sessionsDir, { recursive: true });
     await fs.writeFile(this.activePath, JSON.stringify({ sessionId: id }));
   }
 
@@ -311,6 +312,7 @@ export class SessionStore {
 
   private async saveSession(session: Session): Promise<void> {
     const sessionPath = path.join(this.sessionsDir, `${session.id}.json`);
+    await fs.mkdir(this.sessionsDir, { recursive: true });
     await fs.writeFile(sessionPath, JSON.stringify(session, null, 2));
   }
 

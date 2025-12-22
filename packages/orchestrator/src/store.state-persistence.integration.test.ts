@@ -337,6 +337,10 @@ describe('TaskStore State Persistence Integration Tests', () => {
       parentTask.subtaskIds = ['child_1', 'child_2'];
       await store1.createTask(parentTask);
 
+      const depTask = createTestTask();
+      depTask.id = 'dependency_task';
+      await store1.createTask(depTask);
+
       const child1 = createTestTask();
       child1.id = 'child_1';
       child1.parentTaskId = 'parent_task';
@@ -347,10 +351,6 @@ describe('TaskStore State Persistence Integration Tests', () => {
       child2.id = 'child_2';
       child2.parentTaskId = 'parent_task';
       await store1.createTask(child2);
-
-      const depTask = createTestTask();
-      depTask.id = 'dependency_task';
-      await store1.createTask(depTask);
 
       // Restart store
       store1.close();

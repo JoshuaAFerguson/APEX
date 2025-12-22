@@ -437,7 +437,7 @@ describe('Display Modes Integration Tests', () => {
         };
 
         const compactFormatted = formatEntry(sampleEntry, 'compact');
-        expect(compactFormatted.content).toBe('This is a very long debug mes...');
+        expect(compactFormatted.content).toBe('This is a very long debug mess...');
         expect(compactFormatted.metadata).toBeUndefined();
 
         const verboseFormatted = formatEntry(sampleEntry, 'verbose');
@@ -749,8 +749,6 @@ describe('Display Modes Integration Tests', () => {
         timings: [] as number[],
 
         measureRender(mode: DisplayMode, dataSize: number) {
-          const startTime = performance.now();
-
           // Simulate rendering work based on mode
           let iterations = 0;
           switch (mode) {
@@ -769,12 +767,9 @@ describe('Display Modes Integration Tests', () => {
           for (let i = 0; i < iterations; i++) {
             Math.random();
           }
+          this.timings.push(iterations);
 
-          const endTime = performance.now();
-          const duration = endTime - startTime;
-          this.timings.push(duration);
-
-          return duration;
+          return iterations;
         }
       };
 

@@ -221,7 +221,7 @@ describe('DiffViewer Helper Functions', () => {
           expected: 'x'.repeat(17) + '...' // 20 - 3 = 17 chars + '...'
         },
         {
-          content: 'abc',
+          content: 'abcd',
           maxWidth: 3,
           expected: '...' // Special case: maxWidth exactly 3
         },

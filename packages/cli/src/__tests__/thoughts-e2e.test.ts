@@ -3,17 +3,31 @@
  * Tests the integration between command handling, keyboard shortcuts, state management, and UI rendering
  */
 
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup } from 'ink-testing-library';
+import { render, cleanup, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
 
 // Mock the App component for testing
-const MockApp = ({ onThoughtsToggle }: { onThoughtsToggle: (enabled: boolean) => void }) => {
+const MockApp = ({
+  onThoughtsToggle,
+  shortcutManager,
+}: {
+  onThoughtsToggle: (enabled: boolean) => void;
+  shortcutManager?: ShortcutManager;
+}) => {
   const [showThoughts, setShowThoughts] = React.useState(false);
   const [messages, setMessages] = React.useState<string[]>([]);
+  const Box = 'div';
+  const Text = 'span';
+  const manager = React.useMemo(
+    () => shortcutManager ?? new ShortcutManager(),
+    [shortcutManager]
+  );
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     // Simulate command handling
     const handleCommand = (command: string) => {
       if (command === '/thoughts') {
@@ -29,16 +43,17 @@ const MockApp = ({ onThoughtsToggle }: { onThoughtsToggle: (enabled: boolean) =>
     };
 
     // Simulate keyboard shortcut setup
-    const shortcutManager = new ShortcutManager();
-    shortcutManager.on('command', handleCommand);
+    manager.on('command', handleCommand);
 
     return () => {
-      shortcutManager.off('command', handleCommand);
+      manager.off('command', handleCommand);
     };
-  }, [showThoughts, onThoughtsToggle]);
+  }, [manager, showThoughts, onThoughtsToggle]);
 
-  return React.createElement('div', {},
-    messages.map((msg, i) => React.createElement('div', { key: i }, msg))
+  return React.createElement(
+    Box,
+    { style: { display: 'flex', flexDirection: 'column' } },
+    messages.map((msg, i) => React.createElement(Text, { key: i }, msg))
   );
 };
 
@@ -55,25 +70,21 @@ describe('Thoughts Feature End-to-End Tests', () => {
   });
 
   describe('Complete workflow integration', () => {
-    it('should handle the complete thoughts toggle workflow via command', (done) => {
-      let thoughtsState = false;
+    it('should handle the complete thoughts toggle workflow via command', async () => {
+      const onThoughtsToggle = vi.fn();
 
-      const { rerender } = render(
+      render(
         React.createElement(MockApp, {
-          onThoughtsToggle: (enabled: boolean) => {
-            thoughtsState = enabled;
-
-            // Verify state changed
-            expect(thoughtsState).toBe(true);
-            done();
-          }
+          onThoughtsToggle,
+          shortcutManager,
         })
       );
 
-      // This would normally be triggered by user input, simulated here
-      setTimeout(() => {
-        rerender(React.createElement(MockApp, { onThoughtsToggle: () => {} }));
-      }, 10);
+      await act(async () => {
+        shortcutManager.emit('command', '/thoughts');
+      });
+
+      expect(onThoughtsToggle).toHaveBeenCalledWith(true);
     });
 
     it('should register keyboard shortcut correctly during initialization', () => {
@@ -109,32 +120,30 @@ describe('Thoughts Feature End-to-End Tests', () => {
       expect(commandHandler).toHaveBeenCalledWith('/thoughts');
     });
 
-    it('should maintain state consistency across multiple toggles', () => {
+    it('should maintain state consistency across multiple toggles', async () => {
       const states: boolean[] = [];
 
-      const { rerender } = render(
+      render(
         React.createElement(MockApp, {
           onThoughtsToggle: (enabled: boolean) => {
             states.push(enabled);
-          }
+          },
+          shortcutManager,
         })
       );
 
       // Simulate multiple toggles
       for (let i = 0; i < 5; i++) {
-        setTimeout(() => {
-          rerender(React.createElement(MockApp, { onThoughtsToggle: (enabled) => states.push(enabled) }));
-        }, i * 10);
+        await act(async () => {
+          shortcutManager.emit('command', '/thoughts');
+        });
       }
 
-      // Wait for all toggles to complete
-      setTimeout(() => {
-        // Should alternate between true/false
-        expect(states).toHaveLength(5);
-        states.forEach((state, index) => {
-          expect(state).toBe(index % 2 === 0); // 0,2,4 = true; 1,3 = false
-        });
-      }, 100);
+      // Should alternate between true/false
+      await waitFor(() => expect(states).toHaveLength(5));
+      states.forEach((state, index) => {
+        expect(state).toBe(index % 2 === 0); // 0,2,4 = true; 1,3 = false
+      });
     });
   });
 
@@ -216,18 +225,18 @@ describe('Thoughts Feature End-to-End Tests', () => {
   });
 
   describe('State management integration', () => {
-    it('should properly manage thoughts state through the component lifecycle', () => {
+    it('should properly manage thoughts state through the component lifecycle', async () => {
       const stateHistory: boolean[] = [];
 
       const TestComponent = () => {
         const [showThoughts, setShowThoughts] = React.useState(false);
 
-        React.useEffect(() => {
+        React.useLayoutEffect(() => {
           stateHistory.push(showThoughts);
         }, [showThoughts]);
 
         // Simulate thoughts toggle
-        React.useEffect(() => {
+        React.useLayoutEffect(() => {
           const timer = setTimeout(() => {
             setShowThoughts(!showThoughts);
           }, 10);
@@ -235,18 +244,18 @@ describe('Thoughts Feature End-to-End Tests', () => {
           return () => clearTimeout(timer);
         }, []);
 
-        return React.createElement('div', {}, `Thoughts: ${showThoughts ? 'enabled' : 'disabled'}`);
+        return React.createElement('span', {}, `Thoughts: ${showThoughts ? 'enabled' : 'disabled'}`);
       };
 
-      const { lastFrame } = render(React.createElement(TestComponent));
+      const { container } = render(React.createElement(TestComponent));
 
       // Initially disabled
-      expect(lastFrame()).toContain('disabled');
+      expect(container.textContent).toContain('disabled');
 
       // Wait for state change
-      setTimeout(() => {
+      await waitFor(() => {
         expect(stateHistory).toEqual([false, true]);
-      }, 50);
+      });
     });
 
     it('should handle concurrent state updates correctly', async () => {
@@ -272,15 +281,15 @@ describe('Thoughts Feature End-to-End Tests', () => {
           return () => intervals.forEach(clearTimeout);
         }, []);
 
-        return React.createElement('div', {}, 'Testing');
+        return React.createElement('span', {}, 'Testing');
       };
 
       render(React.createElement(TestComponent));
 
       // Wait for all updates
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      expect(updates.length).toBeGreaterThan(1);
+      await waitFor(() => {
+        expect(updates.length).toBeGreaterThan(1);
+      });
       expect(updates[0]).toBe(false); // Initial state
     });
   });
@@ -346,12 +355,12 @@ describe('Thoughts Feature End-to-End Tests', () => {
           }
         }, []);
 
-        return React.createElement('div', {}, `State: ${typeof showThoughts}`);
+        return React.createElement('span', {}, `State: ${typeof showThoughts}`);
       };
 
-      const { lastFrame } = render(React.createElement(TestComponent));
+      const { container } = render(React.createElement(TestComponent));
 
-      expect(() => lastFrame()).not.toThrow();
+      expect(container.textContent).toContain('State:');
     });
   });
 
@@ -380,7 +389,7 @@ describe('Thoughts Feature End-to-End Tests', () => {
       expect(commandHandler).toHaveBeenCalledTimes(1000);
     });
 
-    it('should optimize state updates for frequent toggles', () => {
+    it('should optimize state updates for frequent toggles', async () => {
       const renderCount = { count: 0 };
 
       const TestComponent = () => {
@@ -400,15 +409,17 @@ describe('Thoughts Feature End-to-End Tests', () => {
           return () => toggles.forEach(clearTimeout);
         }, []);
 
-        return React.createElement('div', {}, `Renders: ${renderCount.count}`);
+        return React.createElement('span', {}, `Renders: ${renderCount.count}`);
       };
 
       render(React.createElement(TestComponent));
 
-      setTimeout(() => {
-        // Should batch updates efficiently
-        expect(renderCount.count).toBeLessThan(20); // Should be much less than 10 individual updates
-      }, 100);
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+
+      // Should batch updates efficiently
+      expect(renderCount.count).toBeLessThan(20); // Should be much less than 10 individual updates
     });
 
     it('should clean up event listeners properly', () => {

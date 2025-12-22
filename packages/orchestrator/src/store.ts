@@ -176,12 +176,14 @@ export class TaskStore {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
-        current_stage, project_path, branch_name, retry_count, max_retries, created_at, updated_at,
+        current_stage, project_path, branch_name, pr_url, retry_count, max_retries,
+        created_at, updated_at, completed_at, paused_at, resume_after, pause_reason,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
         parent_task_id, subtask_ids, subtask_strategy
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
-        @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @createdAt, @updatedAt,
+        @currentStage, @projectPath, @branchName, @prUrl, @retryCount, @maxRetries,
+        @createdAt, @updatedAt, @completedAt, @pausedAt, @resumeAfter, @pauseReason,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
         @parentTaskId, @subtaskIds, @subtaskStrategy
       )
@@ -198,10 +200,15 @@ export class TaskStore {
       currentStage: task.currentStage || null,
       projectPath: task.projectPath,
       branchName: task.branchName || null,
+      prUrl: task.prUrl || null,
       retryCount: task.retryCount || 0,
       maxRetries: task.maxRetries || 3,
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),
+      completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+      pausedAt: task.pausedAt ? task.pausedAt.toISOString() : null,
+      resumeAfter: task.resumeAfter ? task.resumeAfter.toISOString() : null,
+      pauseReason: task.pauseReason ?? null,
       inputTokens: task.usage.inputTokens,
       outputTokens: task.usage.outputTokens,
       totalTokens: task.usage.totalTokens,

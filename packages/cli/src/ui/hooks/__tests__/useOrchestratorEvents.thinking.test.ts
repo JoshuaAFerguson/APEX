@@ -22,6 +22,18 @@ const createMockOrchestrator = () => {
         events[event].forEach(handler => handler(...args));
       }
     }),
+    simulateAgentTransition: (taskId: string, fromAgent: string | null, toAgent: string) => {
+      (events['agent:transition'] || []).forEach(handler => handler(taskId, fromAgent, toAgent));
+    },
+    simulateUsageUpdate: (taskId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }) => {
+      (events['usage:updated'] || []).forEach(handler => handler(taskId, usage));
+    },
+    simulateToolUse: (taskId: string, tool: string, input: unknown) => {
+      (events['agent:tool-use'] || []).forEach(handler => handler(taskId, tool, input));
+    },
+    simulateAgentTurn: (event: { taskId: string; agentName: string; turnNumber: number }) => {
+      (events['agent:turn'] || []).forEach(handler => handler(event));
+    },
     // Helper to get registered handlers
     _getHandlers: () => events,
   };

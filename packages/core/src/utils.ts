@@ -66,10 +66,17 @@ export function formatDuration(ms: number): string {
  * @returns Formatted elapsed time string (e.g., "42s", "2m 15s", "1h 5m")
  */
 export function formatElapsed(startTime: Date, currentTime: Date = new Date()): string {
-  const elapsedMs = currentTime.getTime() - startTime.getTime();
+  const startMs = startTime?.getTime?.();
+  const currentMs = currentTime?.getTime?.();
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(currentMs)) {
+    return '0s';
+  }
+
+  const elapsedMs = currentMs - startMs;
 
   // Handle edge cases
-  if (elapsedMs < 0) {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     return '0s';
   }
 

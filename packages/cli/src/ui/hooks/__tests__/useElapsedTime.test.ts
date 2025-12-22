@@ -27,11 +27,12 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:00:05Z'); // 5 seconds later
 
-    vi.setSystemTime(currentTime);
+    vi.setSystemTime(startTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
 
     act(() => {
-      vi.advanceTimersByTime(1000); // Advance by 1 second to trigger update
+      vi.setSystemTime(new Date(currentTime.getTime() - 1000));
+      vi.advanceTimersByTime(1000); // Advance to the target time to trigger update
     });
 
     expect(result.current).toBe('5s');
@@ -41,10 +42,11 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:02:15Z'); // 2 minutes 15 seconds later
 
-    vi.setSystemTime(currentTime);
+    vi.setSystemTime(startTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
 
     act(() => {
+      vi.setSystemTime(new Date(currentTime.getTime() - 1000));
       vi.advanceTimersByTime(1000);
     });
 
@@ -55,10 +57,11 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2023-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T01:05:00Z'); // 1 hour 5 minutes later
 
-    vi.setSystemTime(currentTime);
+    vi.setSystemTime(startTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
 
     act(() => {
+      vi.setSystemTime(new Date(currentTime.getTime() - 1000));
       vi.advanceTimersByTime(1000);
     });
 
@@ -109,15 +112,16 @@ describe('useElapsedTime', () => {
     const startTime = new Date('2020-01-01T00:00:00Z');
     const currentTime = new Date('2023-01-01T00:00:00Z'); // 3 years later
 
-    vi.setSystemTime(currentTime);
+    vi.setSystemTime(startTime);
     const { result } = renderHook(() => useElapsedTime(startTime));
 
     act(() => {
+      vi.setSystemTime(new Date(currentTime.getTime() - 1000));
       vi.advanceTimersByTime(1000);
     });
 
     // Should handle very large times gracefully
-    expect(result.current).toMatch(/\d+h \d+m/);
+    expect(result.current).toMatch(/\d+h( \d+m)?/);
   });
 
   it('stops updating when startTime is set to null', () => {

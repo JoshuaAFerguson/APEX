@@ -51,8 +51,10 @@ describe('Preview Panel Utility Functions', () => {
 
     const getIntentDescription = (intent: Intent, workflow?: string): string => {
       switch (intent.type) {
-        case 'command':
-          return `Execute command: /${intent.command}${intent.args?.length ? ' ' + intent.args.join(' ') : ''}`;
+        case 'command': {
+          const args = intent.args?.length ? intent.args.map(arg => String(arg)) : [];
+          return `Execute command: /${intent.command}${args.length ? ' ' + args.join(' ') : ''}`;
+        }
         case 'task':
           return `Create task${workflow ? ` (${workflow} workflow)` : ''}`;
         case 'question':

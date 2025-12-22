@@ -250,7 +250,7 @@ Need to optimize the performance.`;
 
       expect(props.thinking).toContain('"The user asked');
       expect(props.thinking).toContain("'How does this work?'");
-      expect(props.thinking).toContain('\\"step by step\\"');
+      expect(props.thinking).toContain('"step by step"');
     });
 
     it('should handle thinking with only whitespace variations', () => {

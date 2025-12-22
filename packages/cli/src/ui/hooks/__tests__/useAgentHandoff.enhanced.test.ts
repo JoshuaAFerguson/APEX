@@ -23,16 +23,10 @@ describe('useAgentHandoff - Enhanced Animation Features', () => {
 
   describe('elapsed time display', () => {
     it('tracks handoff start time when animation begins', () => {
-      const { result } = renderHook(() => useAgentHandoff(undefined));
-
-      act(() => {
-        result.current; // Initial render
-      });
-
-      // Change agent to trigger handoff
-      const { rerender } = renderHook(({ agent }) => useAgentHandoff(agent), {
-        initialProps: { agent: 'planner' as string | undefined }
-      });
+      const { result, rerender } = renderHook(
+        ({ agent }) => useAgentHandoff(agent),
+        { initialProps: { agent: 'planner' as string | undefined } }
+      );
 
       rerender({ agent: 'developer' });
 
@@ -193,7 +187,7 @@ describe('useAgentHandoff - Enhanced Animation Features', () => {
 
     it('pulse frequency affects oscillation rate', () => {
       // Test different frequencies
-      const testFrequency = async (frequency: number) => {
+      const testFrequency = (frequency: number) => {
         const { result, rerender } = renderHook(
           ({ agent }) => useAgentHandoff(agent, { enablePulse: true, pulseFrequency: frequency }),
           { initialProps: { agent: 'planner' as string | undefined } }
@@ -204,9 +198,9 @@ describe('useAgentHandoff - Enhanced Animation Features', () => {
         const readings: number[] = [];
 
         // Sample at regular intervals
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 20; i++) {
           act(() => {
-            vi.advanceTimersByTime(200);
+            vi.advanceTimersByTime(100);
           });
           if (result.current.isAnimating) {
             readings.push(result.current.pulseIntensity);
@@ -219,9 +213,17 @@ describe('useAgentHandoff - Enhanced Animation Features', () => {
       const lowFreqReadings = testFrequency(1);
       const highFreqReadings = testFrequency(8);
 
-      // Higher frequency should show more variation in readings
-      const lowFreqVariation = new Set(lowFreqReadings.map(v => Math.round(v * 5))).size;
-      const highFreqVariation = new Set(highFreqReadings.map(v => Math.round(v * 5))).size;
+      const averageDelta = (values: number[]) => {
+        if (values.length < 2) return 0;
+        let total = 0;
+        for (let i = 1; i < values.length; i++) {
+          total += Math.abs(values[i] - values[i - 1]);
+        }
+        return total / (values.length - 1);
+      };
+
+      const lowFreqVariation = averageDelta(lowFreqReadings);
+      const highFreqVariation = averageDelta(highFreqReadings);
 
       expect(highFreqVariation).toBeGreaterThan(lowFreqVariation);
     });
@@ -438,7 +440,7 @@ describe('useAgentHandoff - Enhanced Animation Features', () => {
       rerender({ agent: 'developer' });
 
       act(() => {
-        vi.advanceTimersByTime(500);
+        vi.advanceTimersByTime(700);
       });
 
       // All enhanced features should be active mid-animation

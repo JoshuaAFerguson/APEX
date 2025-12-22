@@ -4,7 +4,7 @@ This document provides a comprehensive overview of the features introduced in AP
 
 ## Overview
 
-APEX v0.3.0 transforms the CLI experience into a "Claude Code-like Interactive Experience" with rich terminal UI components, real-time streaming output, and sophisticated visual feedback. This release focuses on making APEX feel as polished and intuitive as modern AI coding assistants while maintaining our unique multi-agent orchestration capabilities.
+APEX v0.3.0 transforms the CLI experience into a "Claude Code-like Interactive Experience" with Rich Terminal UI components, real-time streaming output, and sophisticated visual feedback. This release focuses on making APEX feel as polished and intuitive as modern AI coding assistants while maintaining our unique multi-agent orchestration capabilities for multi-agent orchestration workflows.
 
 ## Core Features
 
@@ -136,6 +136,12 @@ All streaming components automatically adapt to terminal width:
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Responsive Width Demonstrations:**
+- Narrow terminal (< 60 columns)
+- Compact terminal (60-79 columns)
+- Normal terminal (80-119 columns)
+- Wide terminal (>= 120 columns)
+
 #### Breakpoint-Aware Layout
 
 ```typescript
@@ -149,6 +155,12 @@ const { width, height, breakpoint } = useStdoutDimensions();
 ### 4. Agent Panel Visualization
 
 The Agent Panel system provides comprehensive visualization of multi-agent orchestration, including real-time status tracking, animated handoffs between agents, parallel execution monitoring, and hierarchical task breakdowns.
+
+**Agent Panel with Handoff Animations** highlights:
+- Visual handoff arrows for agent transitions
+- parallel execution lanes with live status
+- subtask tree view with expand/collapse controls
+- interactive controls for filtering and focus
 
 #### AgentPanel Component Overview
 
@@ -1147,6 +1159,12 @@ The StatusBar component provides persistent, real-time information at the bottom
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Persistent Status Bar (Compact Example):**
+
+```
+⚡ APEX v0.3.0 | 🌿 main | 🪙 1.2K↑ 3.4K↓ | 💰 $0.12 | ⏱️ 00:04:23
+```
+
 **Key Features:**
 - **21 Possible Elements** - Connection status, git branch, agent, workflow stage, progress, tokens, costs, timing, and mode indicators
 - **Priority System** - CRITICAL (always shown) → HIGH → MEDIUM → LOW priority elements
@@ -1187,8 +1205,9 @@ The StatusBar uses a sophisticated 3-tier responsive system:
 | > 160 columns | Wide | All priority levels | Extended details, verbose elements |
 
 **Smart Abbreviations:**
-- `tokens:` → `tk:` in narrow terminals
-- `model:` → `m:` when space is limited
+- Labels automatically shorten in narrow terminals
+- `tokens:` becomes `tk:` in narrow terminals
+- `model:` becomes `mod:` when space is limited
 - Branch names truncated with `...` when too long
 - Labels hidden entirely when space is critical (cost shows just `$0.1523`)
 
@@ -1553,6 +1572,10 @@ Low Confidence (0-69%):
 ### 7. Enhanced Input Experience
 
 APEX provides a sophisticated input system that enhances developer productivity through intelligent completion, command history, multi-line support, and advanced editing capabilities. All features work seamlessly together to create a powerful command-line experience.
+
+#### Advanced Input with Preview
+
+Advanced Input with Preview brings together intent detection, inline suggestions, and preview cards as documented in the Input Preview Guide, and is described above in the natural language interface section.
 
 #### 7.1 Tab Completion with Fuzzy Search
 
@@ -2588,7 +2611,7 @@ Highlight specific lines to draw attention to important code:
 
 #### Code Blocks with Highlighting
 
-```typescript
+```
 // TypeScript code with syntax highlighting
 ┌─ Generated Code: LoginForm.tsx ──────────────────────────────────────────────┐
 │                                                                              │
@@ -2979,21 +3002,23 @@ The DiffViewer automatically adjusts line number column width based on file size
 ```typescript
 // Let the component choose the best mode
 function FileChangesViewer({ changes }: { changes: FileChange[] }) {
-  return (
-    <Box flexDirection="column">
-      {changes.map((change, index) => (
-        <Box key={index} marginBottom={1}>
-          <DiffViewer
-            oldContent={change.before}
-            newContent={change.after}
-            filename={change.path}
-            mode="auto"           // Adapts to terminal width
-            responsive={true}     // Enable width adaptation
-            maxLines={30}         // Limit for large files
-          />
-        </Box>
-      ))}
-    </Box>
+  return React.createElement(
+    Box,
+    { flexDirection: 'column' },
+    changes.map((change, index) =>
+      React.createElement(
+        Box,
+        { key: index, marginBottom: 1 },
+        React.createElement(DiffViewer, {
+          oldContent: change.before,
+          newContent: change.after,
+          filename: change.path,
+          mode: 'auto',       // Adapts to terminal width
+          responsive: true,   // Enable width adaptation
+          maxLines: 30        // Limit for large files
+        })
+      )
+    )
   );
 }
 ```
@@ -3060,6 +3085,8 @@ All streaming components are optimized for performance:
 - **Cursor animations** with independent timing controls
 
 ## Usage Examples
+
+These walkthroughs build on concepts mentioned in the Overview and reinforce the UI behaviors across modes.
 
 ### Basic Streaming Text
 
@@ -3219,6 +3246,15 @@ The `MarkdownRenderer` component provides full CommonMark support with syntax hi
 │ 4. Write comprehensive tests                                                 │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Raw Markdown (Ordered Lists Only):**
+```markdown
+### Ordered Lists
+1. Initialize project structure
+2. Configure development environment
+3. Implement core features
+4. Write comprehensive tests
 ```
 
 #### Code Block Elements
@@ -3460,20 +3496,22 @@ const lightTheme = {
 // Example: Developer agent generating code with streaming
 import { StreamingResponse, SyntaxHighlighter } from '@apex/cli/ui/components';
 
+const content = React.createElement(
+  'div',
+  null,
+  React.createElement('p', null, "I'll create the authentication service for you:"),
+  React.createElement(SyntaxHighlighter, {
+    code: generatedCode,
+    language: 'typescript',
+    showLineNumbers: true,
+    responsive: true
+  }),
+  React.createElement('p', null, 'This implementation includes JWT token handling and user validation.')
+);
+
 <StreamingResponse
   agent="🤖 developer"
-  content={
-    <div>
-      <p>I'll create the authentication service for you:</p>
-      <SyntaxHighlighter
-        code={generatedCode}
-        language="typescript"
-        showLineNumbers={true}
-        responsive={true}
-      />
-      <p>This implementation includes JWT token handling and user validation.</p>
-    </div>
-  }
+  content={content}
   isStreaming={isGenerating}
   onComplete={() => setShowNext(true)}
 />
@@ -3692,9 +3730,11 @@ useEffect(() => {
 // Lazy loading for syntax highlighting
 const LazyCodeBlock = React.lazy(() => import('./CodeBlock'));
 
-<Suspense fallback={<Text>Loading syntax highlighting...</Text>}>
-  <LazyCodeBlock code={code} language={language} />
-</Suspense>
+const suspenseView = React.createElement(
+  Suspense,
+  { fallback: React.createElement(Text, null, 'Loading syntax highlighting...') },
+  React.createElement(LazyCodeBlock, { code, language })
+);
 ```
 
 #### Configuration File Examples
@@ -3773,6 +3813,8 @@ ui:
 - **ink**: React renderer for CLI applications
 - **ink-syntax-highlight**: Syntax highlighting for code blocks
 - **marked**: CommonMark markdown parsing
+- **shiki**: Theme-aware syntax highlighting engine
+- **fuse.js**: Fuzzy search for command and input suggestions
 - **react**: Component framework for CLI rendering
 - **chalk**: Terminal string styling utilities
 

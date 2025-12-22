@@ -42,8 +42,10 @@ vi.mock('ink', async () => {
 
 // Mock zlib for compression/decompression in SessionStore
 vi.mock('zlib', () => ({
-  gzip: vi.fn(),
-  gunzip: vi.fn(),
+  promises: {
+    gzip: vi.fn(),
+    gunzip: vi.fn(),
+  },
 }));
 
 describe('v0.3.0 Integration Tests', () => {
@@ -69,10 +71,8 @@ describe('v0.3.0 Integration Tests', () => {
     vi.mocked(fs.readdir).mockResolvedValue([]);
 
     // Mock compression functions
-    const gzip = vi.fn().mockResolvedValue(Buffer.from('compressed'));
-    const gunzip = vi.fn().mockResolvedValue(Buffer.from('{}'));
-    vi.mocked(zlib.gzip as any).mockImplementation(gzip);
-    vi.mocked(zlib.gunzip as any).mockImplementation(gunzip);
+    vi.mocked(zlib.promises.gzip).mockResolvedValue(Buffer.from('compressed'));
+    vi.mocked(zlib.promises.gunzip).mockResolvedValue(Buffer.from('{}'));
 
     // Initialize services
     sessionStore = new SessionStore('/test/.apex/sessions');

@@ -64,15 +64,15 @@ const mockCompletionEngine = {
 };
 
 vi.mock('../../services/ConversationManager.js', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => mockConversationManager),
+  ConversationManager: vi.fn().mockImplementation(function () { return mockConversationManager; }),
 }));
 
 vi.mock('../../services/ShortcutManager.js', () => ({
-  ShortcutManager: vi.fn().mockImplementation(() => mockShortcutManager),
+  ShortcutManager: vi.fn().mockImplementation(function () { return mockShortcutManager; }),
 }));
 
 vi.mock('../../services/CompletionEngine.js', () => ({
-  CompletionEngine: vi.fn().mockImplementation(() => mockCompletionEngine),
+  CompletionEngine: vi.fn().mockImplementation(function () { return mockCompletionEngine; }),
 }));
 
 // Mock child components to verify responsive behavior

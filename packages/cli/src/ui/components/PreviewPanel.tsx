@@ -134,6 +134,12 @@ export function PreviewPanel({
   onEdit,
   width: explicitWidth,
 }: PreviewPanelProps): React.ReactElement {
+  const safeInput = typeof input === 'string' ? input : String(input ?? '');
+  const safeIntent: PreviewPanelProps['intent'] = intent ?? {
+    type: 'clarification',
+    confidence: 0,
+  };
+
   // Get terminal dimensions and responsive configuration
   const { width: terminalWidth, breakpoint } = useStdoutDimensions({
     fallbackWidth: 80,
@@ -158,17 +164,19 @@ export function PreviewPanel({
 
   // Helper functions for content adaptation
   const formatInput = (text: string): string => {
-    if (!config.truncateInput || text.length <= config.maxInputLength) {
-      return text;
+    const normalized = typeof text === 'string' ? text : String(text ?? '');
+    if (!config.truncateInput || normalized.length <= config.maxInputLength) {
+      return normalized;
     }
-    return text.slice(0, config.maxInputLength - 3) + '...';
+    return normalized.slice(0, config.maxInputLength - 3) + '...';
   };
 
   const formatActionDescription = (description: string): string => {
-    if (description.length <= config.maxActionDescriptionLength) {
-      return description;
+    const normalized = typeof description === 'string' ? description : String(description ?? '');
+    if (normalized.length <= config.maxActionDescriptionLength) {
+      return normalized;
     }
-    return description.slice(0, config.maxActionDescriptionLength - 3) + '...';
+    return normalized.slice(0, config.maxActionDescriptionLength - 3) + '...';
   };
 
   const getIntentIcon = (type: string): string => {
@@ -181,10 +189,12 @@ export function PreviewPanel({
     }
   };
 
-  const getIntentDescription = (intent: PreviewPanelProps['intent']): string => {
-    switch (intent.type) {
-      case 'command':
-        return `Execute command: /${intent.command}${intent.args?.length ? ' ' + intent.args.join(' ') : ''}`;
+  const getIntentDescription = (intentData: PreviewPanelProps['intent']): string => {
+    switch (intentData.type) {
+      case 'command': {
+        const args = intentData.args?.length ? intentData.args.map(arg => String(arg)) : [];
+        return `Execute command: /${intentData.command}${args.length ? ' ' + args.join(' ') : ''}`;
+      }
       case 'task':
         return `Create task${workflow ? ` (${workflow} workflow)` : ''}`;
       case 'question':
@@ -213,7 +223,7 @@ export function PreviewPanel({
     return `${seconds}s`;
   };
 
-  const confidencePercentage = Math.round(intent.confidence * 100);
+  const confidencePercentage = Math.round(safeIntent.confidence * 100);
   const borderStyle = config.borderStyle === 'none' ? 'single' : config.borderStyle;
 
   // Main container with responsive border and padding
@@ -282,7 +292,7 @@ export function PreviewPanel({
       {/* Input display */}
       <Box flexDirection="column" marginBottom={config.showTitle ? 1 : 0}>
         <Text color="white">
-          <Text color="gray">Input:</Text> <Text color="white">"{formatInput(input)}"</Text>
+          <Text color="gray">Input:</Text> <Text color="white">"{formatInput(safeInput)}"</Text>
         </Text>
       </Box>
 
@@ -307,21 +317,21 @@ export function PreviewPanel({
           <Box flexDirection="column" width="100%">
             <Box justifyContent="space-between">
               <Text>
-                <Text>{getIntentIcon(intent.type)}</Text>
-                <Text color="white"> {intent.type.charAt(0).toUpperCase() + intent.type.slice(1)} Intent</Text>
+                <Text>{getIntentIcon(safeIntent.type)}</Text>
+                <Text color="white"> {safeIntent.type.charAt(0).toUpperCase() + safeIntent.type.slice(1)} Intent</Text>
               </Text>
               {config.showConfidencePercentage && (
                 <Text>
                   <Text color="gray">Confidence: </Text>
-                  <Text color={getConfidenceColor(intent.confidence)}>{confidencePercentage}%</Text>
+                  <Text color={getConfidenceColor(safeIntent.confidence)}>{confidencePercentage}%</Text>
                 </Text>
               )}
             </Box>
             <Box marginTop={0}>
               <Text color="gray">Action: </Text>
-              <Text color="white">{formatActionDescription(getIntentDescription(intent))}</Text>
+              <Text color="white">{formatActionDescription(getIntentDescription(safeIntent))}</Text>
             </Box>
-            {config.showWorkflowDetails && workflow && intent.type === 'task' && (
+            {config.showWorkflowDetails && workflow && safeIntent.type === 'task' && (
               <Box marginTop={0}>
                 <Text color="gray">Agent Flow: </Text>
                 <Text color="white">planner → architect → developer → tester</Text>

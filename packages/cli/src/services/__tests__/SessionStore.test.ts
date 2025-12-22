@@ -2,18 +2,25 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as zlib from 'zlib';
-import { promisify } from 'util';
 import { SessionStore, Session, SessionMessage, ToolCallRecord } from '../SessionStore';
 
-const gzip = promisify(zlib.gzip);
-const gunzip = promisify(zlib.gunzip);
-
-vi.mock('fs/promises');
-vi.mock('zlib');
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+  unlink: vi.fn(),
+  readdir: vi.fn(),
+}));
+vi.mock('zlib', () => ({
+  promises: {
+    gzip: vi.fn(),
+    gunzip: vi.fn(),
+  },
+}));
 
 const mockFs = vi.mocked(fs);
-const mockGzip = vi.mocked(gzip);
-const mockGunzip = vi.mocked(gunzip);
+const mockGzip = vi.mocked(zlib.promises.gzip);
+const mockGunzip = vi.mocked(zlib.promises.gunzip);
 
 describe('SessionStore', () => {
   let sessionStore: SessionStore;
@@ -451,8 +458,15 @@ describe('SessionStore', () => {
         tags: ['work']
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(parentSession));
-      mockFs.readFile.mockResolvedValue('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+      mockFs.readFile.mockImplementation((filePath) => {
+        if (filePath.includes('parent-session.json')) {
+          return Promise.resolve(JSON.stringify(parentSession));
+        }
+        if (filePath.includes('index.json')) {
+          return Promise.resolve('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
 
       const branchedSession = await sessionStore.branchSession('parent-session', 1, 'Branch Session');
 
@@ -481,8 +495,15 @@ describe('SessionStore', () => {
         tags: []
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(parentSession));
-      mockFs.readFile.mockResolvedValue('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+      mockFs.readFile.mockImplementation((filePath) => {
+        if (filePath.includes('parent-session.json')) {
+          return Promise.resolve(JSON.stringify(parentSession));
+        }
+        if (filePath.includes('index.json')) {
+          return Promise.resolve('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
 
       const branchedSession = await sessionStore.branchSession('parent-session', 0);
 
@@ -504,9 +525,15 @@ describe('SessionStore', () => {
         tags: []
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(parentSession));
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(parentSession)); // For updateSession
-      mockFs.readFile.mockResolvedValue('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+      mockFs.readFile.mockImplementation((filePath) => {
+        if (filePath.includes('parent-session.json')) {
+          return Promise.resolve(JSON.stringify(parentSession));
+        }
+        if (filePath.includes('index.json')) {
+          return Promise.resolve('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
 
       const branchedSession = await sessionStore.branchSession('parent-session', 0);
 
@@ -517,7 +544,7 @@ describe('SessionStore', () => {
       );
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining('parent-session.json'),
-        expect.stringContaining(`"childSessionIds":["${branchedSession.id}"]`)
+        expect.stringContaining(`"${branchedSession.id}"`)
       );
     });
   });
@@ -691,8 +718,15 @@ describe('SessionStore', () => {
         tags: []
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(session));
-      mockFs.readFile.mockResolvedValue('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+      mockFs.readFile.mockImplementation((filePath) => {
+        if (filePath.includes('calc-session.json')) {
+          return Promise.resolve(JSON.stringify(session));
+        }
+        if (filePath.includes('index.json')) {
+          return Promise.resolve('{"version":1,"sessions":[],"lastUpdated":"' + new Date().toISOString() + '"}');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
 
       const branchedSession = await sessionStore.branchSession('calc-session', 1);
 

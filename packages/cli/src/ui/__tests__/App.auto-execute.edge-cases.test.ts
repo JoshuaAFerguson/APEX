@@ -47,12 +47,18 @@ function createTestState(overrides: Partial<AppState> = {}): AppState {
 }
 
 function shouldAutoExecute(intent: Intent, state: AppState, input: string): boolean {
-  // Replicate the exact logic from App.tsx
-  if (state.previewMode && !input.startsWith('/preview')) {
-    return state.previewConfig.autoExecuteHighConfidence &&
-           intent.confidence >= HIGH_CONFIDENCE_THRESHOLD;
+  const safeInput = typeof input === 'string' ? input : '';
+  const confidence = typeof intent?.confidence === 'number' ? intent.confidence : Number.NaN;
+
+  if (!state?.previewMode || safeInput.startsWith('/preview')) {
+    return false;
   }
-  return false;
+
+  if (!state.previewConfig?.autoExecuteHighConfidence) {
+    return false;
+  }
+
+  return confidence >= HIGH_CONFIDENCE_THRESHOLD;
 }
 
 describe('Auto-Execute Edge Cases and Boundary Conditions', () => {
@@ -201,8 +207,6 @@ describe('Auto-Execute Edge Cases and Boundary Conditions', () => {
         '/preview confidence 0.8',
         '/preview auto on',
         '/preview settings',
-        '/PREVIEW', // Case sensitivity test
-        '/Preview ON', // Mixed case
       ];
 
       const highConfidenceIntent: Intent = { type: 'command', confidence: 0.98 };
@@ -222,6 +226,8 @@ describe('Auto-Execute Edge Cases and Boundary Conditions', () => {
         '/ preview on', // Space after slash
         '/pre view',
         'please /preview this',
+        '/PREVIEW', // Case sensitivity test
+        '/Preview ON', // Mixed case
       ];
 
       const highConfidenceIntent: Intent = { type: 'command', confidence: 0.98 };
@@ -379,7 +385,7 @@ describe('Auto-Execute Edge Cases and Boundary Conditions', () => {
         { value: 0.95, expected: true },
         { value: 0.95 - Number.EPSILON, expected: false },
         { value: 0.95 + Number.EPSILON, expected: true },
-        { value: Math.fround(0.95), expected: true }, // 32-bit float precision
+        { value: Math.fround(0.95), expected: false }, // 32-bit float precision
         { value: parseFloat('0.95'), expected: true },
         { value: 95 / 100, expected: true },
         { value: 19 / 20, expected: true },

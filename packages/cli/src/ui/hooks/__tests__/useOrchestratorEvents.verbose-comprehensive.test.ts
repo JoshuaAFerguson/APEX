@@ -409,7 +409,7 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
-        mockOrchestrator.simulateStageChange({ id: 'test-task' }, 'implementation');
+        mockOrchestrator.simulateStageChange('test-task', 'implementation', 'developer');
       });
 
       // Stage start time should be updated
@@ -423,7 +423,7 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
-        mockOrchestrator.simulateStageChange({ id: 'test-task' }, 'testing');
+        mockOrchestrator.simulateStageChange('test-task', 'testing', 'tester');
       });
 
       // Stage timing should continue to update

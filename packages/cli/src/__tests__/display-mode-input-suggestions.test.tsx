@@ -60,15 +60,15 @@ const mockShortcutManager = {
 };
 
 vi.mock('../services/ConversationManager', () => ({
-  ConversationManager: vi.fn(() => mockConversationManager),
+  ConversationManager: vi.fn(function () { return mockConversationManager; }),
 }));
 
 vi.mock('../services/CompletionEngine', () => ({
-  CompletionEngine: vi.fn(() => mockCompletionEngine),
+  CompletionEngine: vi.fn(function () { return mockCompletionEngine; }),
 }));
 
 vi.mock('../services/ShortcutManager', () => ({
-  ShortcutManager: vi.fn(() => mockShortcutManager),
+  ShortcutManager: vi.fn(function () { return mockShortcutManager; }),
 }));
 
 // Enhanced mock InputPrompt to test suggestion behavior

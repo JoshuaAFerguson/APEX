@@ -214,9 +214,11 @@ describe('StatusBar Documentation Enhancement Validation', () => {
     });
 
     it('should provide solutions for missing elements', () => {
+      const troubleshootingStart = cliGuideContent.indexOf('### Troubleshooting');
+      const troubleshootingEnd = cliGuideContent.indexOf('---', troubleshootingStart);
       const troubleshootingSection = cliGuideContent.substring(
-        cliGuideContent.indexOf('### Troubleshooting'),
-        cliGuideContent.indexOf('---')
+        troubleshootingStart,
+        troubleshootingEnd
       );
 
       expect(troubleshootingSection).toContain('**Check display mode**');
@@ -228,9 +230,11 @@ describe('StatusBar Documentation Enhancement Validation', () => {
     });
 
     it('should provide solutions for abbreviations and performance', () => {
+      const troubleshootingStart = cliGuideContent.indexOf('### Troubleshooting');
+      const troubleshootingEnd = cliGuideContent.indexOf('---', troubleshootingStart);
       const troubleshootingSection = cliGuideContent.substring(
-        cliGuideContent.indexOf('### Troubleshooting'),
-        cliGuideContent.indexOf('---')
+        troubleshootingStart,
+        troubleshootingEnd
       );
 
       expect(troubleshootingSection).toContain('**Widen terminal**');

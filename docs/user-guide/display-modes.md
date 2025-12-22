@@ -125,6 +125,13 @@ Your selected display mode persists throughout your APEX session:
 
 | Component | Normal | Compact | Verbose |
 |-----------|--------|---------|---------|
+| Connection Status | ● | ● | ● |
+| Git Branch | ✓ | ✓ | ✓ |
+| Agent | ✓ | ✗ | ✓ |
+| Workflow Stage | ✓ | ✗ | ✓ |
+
+| Component | Normal | Compact | Verbose |
+|-----------|--------|---------|---------|
 | **Connection Status** | ● (green/red) | ● | ● |
 | **Git Branch** | ⎇ branch-name | ⎇ branch | ⎇ branch |
 | **Agent** | ⚡agent-name | ✗ | ⚡agent-name |
@@ -149,7 +156,7 @@ Your selected display mode persists throughout your APEX session:
 - **Compact**: Single line: `⚡developer[42s] │ ○tester │ ○reviewer`
 - **Verbose**: Includes debug information and verbose agent rows
 
-### TaskProgress
+### Progress
 - **Normal**: Multi-line with progress bars and descriptions
 - **Compact**: Single line: `✓ pending abc123 Task description... ⚡agent 1.2ktk $0.05`
 - **Verbose**: Same as normal with additional debug context

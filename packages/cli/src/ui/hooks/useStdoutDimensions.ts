@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
+import { useEffect, useMemo, useState } from 'react';
+import { useStdout } from 'ink';
 
 /**
  * Breakpoint helpers interface with boolean flags
@@ -99,8 +99,8 @@ function getBreakpointHelpers(
  * Custom hook for tracking terminal (stdout) dimensions with responsive breakpoints
  *
  * This hook provides terminal width/height detection with resize event handling
- * and responsive breakpoint classification. It wraps ink-use-stdout-dimensions
- * to provide enhanced functionality with a 4-tier breakpoint system and boolean helpers.
+ * and responsive breakpoint classification. It reads dimensions from Ink's stdout
+ * and provides enhanced functionality with a 4-tier breakpoint system and boolean helpers.
  *
  * @param options - Configuration options for fallbacks and breakpoint thresholds
  * @returns Terminal dimensions with breakpoint classification, boolean helpers, and availability status
@@ -190,10 +190,30 @@ export function useStdoutDimensions(
     return DEFAULT_BREAKPOINTS;
   }, [customBreakpoints, narrowThreshold, wideThreshold]);
 
-  const [baseWidth, baseHeight] = useStdoutDimensionsBase();
-  const dimensions: [number | undefined, number | undefined] = [baseWidth, baseHeight];
+  const { stdout } = useStdout();
+  const readDimensions = (): [number | undefined, number | undefined] => [
+    stdout?.columns ?? process.stdout?.columns,
+    stdout?.rows ?? process.stdout?.rows,
+  ];
 
-  const [width, height] = dimensions;
+  const [[width, height], setDimensions] = useState<[number | undefined, number | undefined]>(
+    readDimensions
+  );
+
+  useEffect(() => {
+    if (!stdout?.on) {
+      return;
+    }
+
+    const handleResize = () => {
+      setDimensions(readDimensions());
+    };
+
+    stdout.on('resize', handleResize);
+    return () => {
+      stdout.off('resize', handleResize);
+    };
+  }, [stdout]);
 
   // Determine if actual dimensions are available
   const isAvailable = width !== undefined && height !== undefined;
