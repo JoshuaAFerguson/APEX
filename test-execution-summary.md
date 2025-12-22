@@ -106,13 +106,13 @@ The agent handoff animation feature has comprehensive test coverage with 7 dedic
 The tests are well-structured and should pass. To execute them:
 ```bash
 # Run all CLI package tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Run specific handoff tests
-npx vitest run src/ui/components/agents/__tests__/ --workspace=@apex/cli
+npx vitest run src/ui/components/agents/__tests__/ --workspace=@apexcli/cli
 ```
 
 ### Additional Testing (Optional)

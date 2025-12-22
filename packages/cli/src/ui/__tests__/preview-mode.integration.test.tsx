@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { App } from '../App';
 
 // Mock the orchestrator and related modules
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     on: vi.fn(),
     off: vi.fn(),

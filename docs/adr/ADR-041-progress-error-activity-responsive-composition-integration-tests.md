@@ -201,7 +201,7 @@ testWidths.forEach(width => {
 
 ```bash
 # Run all responsive integration tests
-npm test -- --grep "responsive" --workspace=@apex/cli
+npm test -- --grep "responsive" --workspace=@apexcli/cli
 
 # Run specific test suites
 npm test -- packages/cli/src/ui/components/__tests__/progress-error-activity.responsive-composition.integration.test.tsx

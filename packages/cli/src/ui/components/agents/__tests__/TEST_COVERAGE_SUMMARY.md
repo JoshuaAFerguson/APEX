@@ -205,7 +205,7 @@ All tests are designed to run with:
 
 Run tests with:
 ```bash
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 ```
 
 Coverage reports will show high coverage across all new functionality with particular strength in:

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { App, type AppProps, type AppState } from '../App.js';
-import type { VerboseDebugData, DisplayMode } from '@apex/core';
+import type { VerboseDebugData, DisplayMode } from '@apexcli/core';
 
 // Create a more detailed mock for ActivityLog to test prop passing
 const mockActivityLog = vi.fn();

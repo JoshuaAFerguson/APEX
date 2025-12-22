@@ -14,7 +14,7 @@ import {
   SubtaskStrategy,
   SubtaskDefinition,
 } from '@apexcli/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -312,10 +312,10 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       return {
         ok: true,
         parentTaskId: id,
-        subtasks: subtasks.map(s => ({
-          id: s.id,
-          description: s.description,
-          status: s.status,
+        subtasks: subtasks.map((subtask: Task) => ({
+          id: subtask.id,
+          description: subtask.description,
+          status: subtask.status,
         })),
         strategy,
       };
@@ -563,7 +563,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       app.log.info(`WebSocket client connected for task ${taskId}`);
 
       // Send current task state
-      orchestrator.getTask(taskId).then((task) => {
+      orchestrator.getTask(taskId).then((task: Task | null) => {
         if (task) {
           socket.send(
             JSON.stringify({

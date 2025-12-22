@@ -6,7 +6,7 @@
  */
 
 import * as fs from 'fs/promises';
-import { formatTokens } from '@apex/core';
+import { formatTokens } from '@apexcli/core';
 import type { InkAppInstance } from '../ui/index.js';
 import { Session, SessionSummary } from '../services/SessionStore.js';
 

@@ -150,7 +150,7 @@ npm test -- content-components-composition.integration.test.tsx
 
 Or from the CLI package:
 ```bash
-npm test --workspace=@apex/cli content-components-composition.integration.test.tsx
+npm test --workspace=@apexcli/cli content-components-composition.integration.test.tsx
 ```
 
 ## Implementation Status

@@ -201,10 +201,10 @@ describe('Multi-Agent Components Structure Validation', () => {
   describe('Import Statement Validation', () => {
     it('should provide correct import paths for all components', () => {
       const expectedImports = [
-        'import.*AgentPanel.*from.*@apex/cli/ui/components',
-        'import.*HandoffIndicator.*from.*@apex/cli/ui/components/agents',
-        'import.*ParallelExecutionView.*from.*@apex/cli/ui/components/agents',
-        'import.*SubtaskTree.*from.*@apex/cli/ui/components/agents'
+        'import.*AgentPanel.*from.*@apexcli/cli/ui/components',
+        'import.*HandoffIndicator.*from.*@apexcli/cli/ui/components/agents',
+        'import.*ParallelExecutionView.*from.*@apexcli/cli/ui/components/agents',
+        'import.*SubtaskTree.*from.*@apexcli/cli/ui/components/agents'
       ];
 
       expectedImports.forEach(importPattern => {

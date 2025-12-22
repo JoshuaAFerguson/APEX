@@ -269,10 +269,10 @@ test: {
 ### Run All Tests
 ```bash
 # Full test suite
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # With coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Specific parallel execution tests
 npm test "src/ui/components/agents/__tests__/AgentPanel.parallel-*.test.tsx"

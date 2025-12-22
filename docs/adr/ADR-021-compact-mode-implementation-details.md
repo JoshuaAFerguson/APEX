@@ -15,7 +15,7 @@ This document serves as the architecture reference for the development stage to 
 ### Analysis Summary
 
 Compact mode is **substantially implemented** across all major UI components. The architecture follows a consistent pattern of:
-1. `DisplayMode` type defined in `@apex/core`
+1. `DisplayMode` type defined in `@apexcli/core`
 2. `displayMode` state managed in `AppState` (App.tsx)
 3. Props propagation to child components
 4. Conditional rendering based on `displayMode === 'compact'`

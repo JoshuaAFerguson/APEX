@@ -24,7 +24,7 @@ import { ActivityLog } from '../ActivityLog';
 import { TaskProgress } from '../TaskProgress';
 import { ErrorDisplay } from '../ErrorDisplay';
 import type { StdoutDimensions, Breakpoint } from '../../hooks/useStdoutDimensions';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // =============================================================================
 // SECTION 1: Terminal Width Mock Infrastructure (Reusing Proven Patterns)

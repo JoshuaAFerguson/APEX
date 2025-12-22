@@ -9,7 +9,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../__tests__/test-utils';
 import { ActivityLog, CompactLog, LogStream, type LogEntry, type ActivityLogProps } from '../ActivityLog';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // Mock ink hooks
 vi.mock('ink', async () => {

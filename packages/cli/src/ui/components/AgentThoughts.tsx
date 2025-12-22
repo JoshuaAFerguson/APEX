@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 import { CollapsibleSection } from './CollapsibleSection.js';
 
 export interface AgentThoughtsProps {

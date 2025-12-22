@@ -1,5 +1,5 @@
 {
-  "name": "@apex/web-ui",
+  "name": "@apexcli/web-ui",
   "version": "0.1.0",
   "description": "APEX Web Dashboard UI",
   "private": true,

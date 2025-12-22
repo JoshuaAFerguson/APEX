@@ -2,7 +2,7 @@
 
 ## Overview
 
-Comprehensive test suite for the APEX Web UI package (`@apex/web-ui`), covering API client and utility functions.
+Comprehensive test suite for the APEX Web UI package (`@apexcli/web-ui`), covering API client and utility functions.
 
 ## Test Files Created
 
@@ -224,7 +224,7 @@ npm test api-client.test.ts
 - Clear test descriptions
 - Isolated test cases (no interdependencies)
 - Proper setup/teardown with beforeEach/afterEach
-- Type-safe test data using @apex/core types
+- Type-safe test data using @apexcli/core types
 - Consistent test structure following project patterns
 
 ---

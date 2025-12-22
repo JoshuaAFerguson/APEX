@@ -21,8 +21,8 @@ import {
   getEffectiveConfig,
   ApexConfig,
   type VerboseDebugData,
-} from '@apex/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+} from '@apexcli/core';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startInkApp, type InkAppInstance } from './ui/index.js';
 import { SessionStore } from './services/SessionStore.js';
 import { SessionAutoSaver } from './services/SessionAutoSaver.js';
@@ -1496,7 +1496,7 @@ export async function startInkREPL(): Promise<void> {
       ctx.orchestrator.on('task:stage-changed', async (task, stageName) => {
         // Look up the agent for this stage from the workflow
         try {
-          const { loadWorkflow } = await import('@apex/core');
+          const { loadWorkflow } = await import('@apexcli/core');
           const workflow = await loadWorkflow(ctx.cwd, task.workflow);
           const stage = workflow?.stages.find(s => s.name === stageName);
 

@@ -178,7 +178,7 @@ async def process_item(item: str) -> Dict:
   describe('JSON Examples', () => {
     it('renders package.json configuration correctly', () => {
       const packageJson = `{
-  "name": "@apex/cli",
+  "name": "@apexcli/cli",
   "version": "0.3.0",
   "description": "APEX Command Line Interface",
   "main": "dist/index.js",
@@ -502,7 +502,7 @@ A secure, JWT-based authentication system for modern web applications.
 ## Quick Start
 
 \`\`\`typescript
-import { AuthService } from '@apex/auth';
+import { AuthService } from '@apexcli/auth';
 
 const auth = new AuthService({
   jwtSecret: process.env.JWT_SECRET,

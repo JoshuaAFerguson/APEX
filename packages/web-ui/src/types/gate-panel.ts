@@ -4,7 +4,7 @@
  * Types for the gate approval panel component.
  */
 
-import type { Gate } from '@apex/core'
+import type { Gate } from '@apexcli/core'
 
 /**
  * Gate action request

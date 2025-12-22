@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { TaskStore } from './store';
-import type { Task, TaskUsage } from '@apex/core';
+import type { Task, TaskUsage } from '@apexcli/core';
 
 describe('TaskStore State Persistence Integration Tests', () => {
   let testDir: string;

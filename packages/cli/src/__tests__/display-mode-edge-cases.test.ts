@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // Mock performance.now for testing
 const mockPerformanceNow = vi.fn(() => Date.now());

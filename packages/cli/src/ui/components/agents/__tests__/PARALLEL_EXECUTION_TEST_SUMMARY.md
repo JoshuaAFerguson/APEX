@@ -162,16 +162,16 @@ Comprehensive test suite for AgentPanel parallel execution wiring to orchestrato
 ### Running Tests
 ```bash
 # Run all parallel execution tests
-npm test --workspace=@apex/cli -- --run --grep="Parallel.*Execution"
+npm test --workspace=@apexcli/cli -- --run --grep="Parallel.*Execution"
 
 # Run specific test suites
-npm test --workspace=@apex/cli -- --run parallel-orchestrator-event-wiring.test.tsx
-npm test --workspace=@apex/cli -- --run orchestrator-event-flow-validation.test.tsx
-npm test --workspace=@apex/cli -- --run parallel-execution-edge-cases.test.tsx
-npm test --workspace=@apex/cli -- --run parallel-execution-performance.test.tsx
+npm test --workspace=@apexcli/cli -- --run parallel-orchestrator-event-wiring.test.tsx
+npm test --workspace=@apexcli/cli -- --run orchestrator-event-flow-validation.test.tsx
+npm test --workspace=@apexcli/cli -- --run parallel-execution-edge-cases.test.tsx
+npm test --workspace=@apexcli/cli -- --run parallel-execution-performance.test.tsx
 
 # Run with coverage
-npm test --workspace=@apex/cli -- --run --coverage
+npm test --workspace=@apexcli/cli -- --run --coverage
 ```
 
 ### Test Environment

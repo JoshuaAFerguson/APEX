@@ -182,9 +182,9 @@
       }
     },
     "executionInstructions": {
-      "runAllTests": "npm run test --workspace=@apex/cli",
-      "runWithCoverage": "npm run test:coverage --workspace=@apex/cli",
-      "watchMode": "npm run test:watch --workspace=@apex/cli",
+      "runAllTests": "npm run test --workspace=@apexcli/cli",
+      "runWithCoverage": "npm run test:coverage --workspace=@apexcli/cli",
+      "watchMode": "npm run test:watch --workspace=@apexcli/cli",
       "specificSuites": {
         "componentTests": "npx vitest run \"**/*AgentPanel*.test.*\"",
         "hookTests": "npx vitest run \"**/*useAgentHandoff*.test.*\"",

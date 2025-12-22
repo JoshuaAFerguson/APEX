@@ -146,7 +146,7 @@ When tests are ready to run:
 npm test
 
 # Run CLI package tests specifically
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run with coverage
 npm run test:coverage

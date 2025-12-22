@@ -187,10 +187,10 @@ packages/cli/src/ui/components/agents/__tests__/test-utils/
 
 ```bash
 # Run all CLI tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Generate coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Run specific test types
 npm test -- packages/cli/src/services/__tests__

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOrchestratorEvents } from '../useOrchestratorEvents';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
 // Mock orchestrator
 const createMockOrchestrator = () => {

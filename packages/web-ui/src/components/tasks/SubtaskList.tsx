@@ -16,7 +16,7 @@ import {
   ListTree,
   ArrowUpRight,
 } from 'lucide-react'
-import type { Task } from '@apex/core'
+import type { Task } from '@apexcli/core'
 import { cn } from '@/lib/utils'
 
 interface SubtaskListProps {

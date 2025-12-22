@@ -27,7 +27,7 @@ The `StreamingText` component provides typewriter-style character-by-character o
 **Basic Usage:**
 
 ```typescript
-import { StreamingText } from '@apex/cli/ui/components';
+import { StreamingText } from '@apexcli/cli/ui/components';
 
 <StreamingText
   text="Implementing your feature..."
@@ -243,7 +243,7 @@ Verbose mode extends full mode with additional debugging information:
 ##### AgentPanel Component API
 
 ```typescript
-import { AgentPanel } from '@apex/cli/ui/components';
+import { AgentPanel } from '@apexcli/cli/ui/components';
 
 // Basic usage with automatic mode selection
 <AgentPanel
@@ -432,7 +432,7 @@ The handoff animation includes smooth color transitions:
 ##### HandoffIndicator Component API
 
 ```typescript
-import { HandoffIndicator } from '@apex/cli/ui/components/agents';
+import { HandoffIndicator } from '@apexcli/cli/ui/components/agents';
 
 // Basic handoff display
 <HandoffIndicator
@@ -561,7 +561,7 @@ The `ParallelExecutionView` component displays multiple agents running concurren
 ##### ParallelExecutionView Component API
 
 ```typescript
-import { ParallelExecutionView } from '@apex/cli/ui/components/agents';
+import { ParallelExecutionView } from '@apexcli/cli/ui/components/agents';
 
 // Basic parallel view with automatic column calculation
 <ParallelExecutionView
@@ -670,7 +670,7 @@ The `SubtaskTree` component provides an interactive, hierarchical view of task b
 ##### SubtaskTree Component API
 
 ```typescript
-import { SubtaskTree } from '@apex/cli/ui/components/agents';
+import { SubtaskTree } from '@apexcli/cli/ui/components/agents';
 
 // Basic tree display
 <SubtaskTree
@@ -814,7 +814,7 @@ ui:
 The AgentPanel system integrates with the APEX orchestrator through event subscriptions:
 
 ```typescript
-import { useOrchestratorEvents } from '@apex/cli/ui/hooks';
+import { useOrchestratorEvents } from '@apexcli/cli/ui/hooks';
 
 function AgentActivityDisplay() {
   const {
@@ -2111,7 +2111,7 @@ APEX supports syntax highlighting for a wide variety of programming languages an
 ┌─ Configuration: package.json ────────────────────────────────────────────────┐
 │                                                                              │
 │ {                                                                            │
-│   "name": "@apex/cli",                                                       │
+│   "name": "@apexcli/cli",                                                       │
 │   "version": "0.3.0",                                                        │
 │   "description": "APEX Command Line Interface",                              │
 │   "main": "dist/index.js",                                                   │
@@ -2386,7 +2386,7 @@ APEX supports syntax highlighting for a wide variety of programming languages an
 │ ## Quick Start                                                               │
 │                                                                              │
 │ ```typescript                                                                │
-│ import { AuthService } from '@apex/auth';                                   │
+│ import { AuthService } from '@apexcli/auth';                                   │
 │                                                                              │
 │ const auth = new AuthService({                                               │
 │   jwtSecret: process.env.JWT_SECRET,                                         │
@@ -2417,7 +2417,7 @@ APEX supports syntax highlighting for a wide variety of programming languages an
 ##### SyntaxHighlighter Component API
 
 ```typescript
-import { SyntaxHighlighter, CodeBlock } from '@apex/cli/ui/components';
+import { SyntaxHighlighter, CodeBlock } from '@apexcli/cli/ui/components';
 
 // Basic usage with SyntaxHighlighter
 <SyntaxHighlighter
@@ -2835,7 +2835,7 @@ When split mode is explicitly requested but the terminal is too narrow, the comp
 **Basic Usage:**
 
 ```typescript
-import { DiffViewer } from '@apex/cli/ui/components';
+import { DiffViewer } from '@apexcli/cli/ui/components';
 
 // Auto mode (recommended) - automatically selects best mode
 <DiffViewer
@@ -3367,7 +3367,7 @@ impact when documenting important implementation details.
 
 **Basic Usage:**
 ```typescript
-import { MarkdownRenderer } from '@apex/cli/ui/components';
+import { MarkdownRenderer } from '@apexcli/cli/ui/components';
 
 <MarkdownRenderer
   content={markdownString}
@@ -3494,7 +3494,7 @@ const lightTheme = {
 
 ```typescript
 // Example: Developer agent generating code with streaming
-import { StreamingResponse, SyntaxHighlighter } from '@apex/cli/ui/components';
+import { StreamingResponse, SyntaxHighlighter } from '@apexcli/cli/ui/components';
 
 const content = React.createElement(
   'div',
@@ -3521,7 +3521,7 @@ const content = React.createElement(
 
 ```typescript
 // Show before/after code comparison
-import { CodeBlock } from '@apex/cli/ui/components';
+import { CodeBlock } from '@apexcli/cli/ui/components';
 
 // Original file
 <CodeBlock

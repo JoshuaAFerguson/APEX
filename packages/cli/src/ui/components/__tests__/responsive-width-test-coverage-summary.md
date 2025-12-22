@@ -169,8 +169,8 @@ The new responsive width tests complement the existing test suite:
 ## Recommendations
 
 ### Test Execution
-1. Run tests with `npm test --workspace=@apex/cli`
-2. Generate coverage report with `npm run test:coverage --workspace=@apex/cli`
+1. Run tests with `npm test --workspace=@apexcli/cli`
+2. Generate coverage report with `npm run test:coverage --workspace=@apexcli/cli`
 3. Monitor test performance during CI/CD pipeline
 
 ### Continuous Testing

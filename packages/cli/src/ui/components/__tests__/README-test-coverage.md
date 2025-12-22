@@ -78,7 +78,7 @@ To run the tests manually:
 
 ```bash
 # From project root
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Or from CLI package directory
 cd packages/cli
@@ -138,8 +138,8 @@ Before considering testing complete:
 
 ## Next Steps
 
-1. Execute test suite: `npm test --workspace=@apex/cli`
-2. Review coverage report: `npm run test:coverage --workspace=@apex/cli`
+1. Execute test suite: `npm test --workspace=@apexcli/cli`
+2. Review coverage report: `npm run test:coverage --workspace=@apexcli/cli`
 3. Address any test failures or coverage gaps
 4. Verify manual testing in actual CLI environment
 5. Update documentation if needed

@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
-import type { VerboseDebugData } from '@apex/core';
+import type { VerboseDebugData } from '@apexcli/core';
 
 export interface OrchestratorEventState {
   /** Current active agent */

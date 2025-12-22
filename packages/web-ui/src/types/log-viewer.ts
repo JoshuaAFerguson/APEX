@@ -5,7 +5,7 @@
  * and filtering capabilities.
  */
 
-import type { TaskLog } from '@apex/core'
+import type { TaskLog } from '@apexcli/core'
 
 /**
  * Log level filter options

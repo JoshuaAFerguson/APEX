@@ -462,7 +462,7 @@ impl AuthService {
     describe('Configuration Languages', () => {
       it('renders JSON with complex structures', () => {
         const jsonCode = `{
-  "name": "@apex/authentication",
+  "name": "@apexcli/authentication",
   "version": "1.0.0",
   "description": "APEX authentication module with JWT support",
   "main": "dist/index.js",

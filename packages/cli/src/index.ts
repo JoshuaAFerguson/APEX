@@ -18,9 +18,9 @@ import {
   formatDuration,
   getEffectiveConfig,
   ApexConfig,
-} from '@apex/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
-import { startServer } from '@apex/api';
+} from '@apexcli/core';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { startServer } from '@apexcli/api';
 
 const VERSION = '0.1.0';
 

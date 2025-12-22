@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 import { useStdoutDimensions, type Breakpoint } from '../hooks/index.js';
 
 interface TruncationConfig {

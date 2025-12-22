@@ -7,7 +7,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '../../../__tests__/test-utils';
 import { AgentPanel, AgentInfo } from '../AgentPanel';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // Ensure proper mocking for isolated testing
 vi.mock('../../hooks/useElapsedTime', () => ({

@@ -620,13 +620,13 @@ describe('App.tsx - Responsive Integration Tests', () => {
 
 ```bash
 # Run all responsive integration tests
-npm test --workspace=@apex/cli -- App.responsive
+npm test --workspace=@apexcli/cli -- App.responsive
 
 # Run with verbose output
-npm test --workspace=@apex/cli -- App.responsive --reporter=verbose
+npm test --workspace=@apexcli/cli -- App.responsive --reporter=verbose
 
 # Run with coverage
-npm test --workspace=@apex/cli -- --coverage App.responsive
+npm test --workspace=@apexcli/cli -- --coverage App.responsive
 ```
 
 ## Success Criteria

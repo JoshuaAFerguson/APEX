@@ -270,7 +270,7 @@ packages/cli/src/ui/__tests__/App.responsive.integration.test.tsx
 
 ### Test Execution
 ```bash
-npm test --workspace=@apex/cli -- App.responsive
+npm test --workspace=@apexcli/cli -- App.responsive
 ```
 
 ### Dependencies

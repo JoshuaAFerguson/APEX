@@ -160,12 +160,12 @@ Lines: 6 lines (same as uncovered statements)
 
 ### Run All Tests
 ```bash
-npm run test --workspace=@apex/cli
+npm run test --workspace=@apexcli/cli
 ```
 
 ### Run with Coverage
 ```bash
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ### Run Specific Test Suites
@@ -185,7 +185,7 @@ npx vitest run "**/*edge-cases*.test.*"
 
 ### Watch Mode
 ```bash
-npm run test:watch --workspace=@apex/cli
+npm run test:watch --workspace=@apexcli/cli
 ```
 
 ## Test Environment Setup
@@ -244,10 +244,10 @@ export default defineConfig({
 ```yaml
 # .github/workflows/test.yml
 - name: Run CLI Tests
-  run: npm run test --workspace=@apex/cli
+  run: npm run test --workspace=@apexcli/cli
 
 - name: Generate Coverage Report
-  run: npm run test:coverage --workspace=@apex/cli
+  run: npm run test:coverage --workspace=@apexcli/cli
 
 - name: Upload Coverage
   uses: codecov/codecov-action@v3

@@ -31,7 +31,7 @@ The AgentPanel component needs enhanced verbose mode functionality to display de
    )}
    ```
 
-3. **DisplayMode type** exists in `@apex/core` as `'normal' | 'compact' | 'verbose'`
+3. **DisplayMode type** exists in `@apexcli/core` as `'normal' | 'compact' | 'verbose'`
 
 4. **VerboseDebugData interface** exists in core/types.ts (lines 414-440)
 

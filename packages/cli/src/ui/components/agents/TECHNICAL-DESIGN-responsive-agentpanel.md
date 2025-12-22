@@ -124,7 +124,7 @@ const RESPONSIVE_CONFIGS: Record<Breakpoint, ResponsiveAgentConfig> = {
 
 import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 import { useStdoutDimensions, type Breakpoint } from '../../hooks/index.js';
 import { useAgentHandoff } from '../../hooks/useAgentHandoff.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';

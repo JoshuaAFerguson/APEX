@@ -246,18 +246,18 @@ const hooks = Array.from({ length: 5 }, (_, i) =>
 ### Running All Tests
 ```bash
 # Run all agent handoff animation tests
-npm test --workspace=@apex/cli -- --testPathPattern="(useAgentHandoff|AgentPanel|HandoffIndicator)"
+npm test --workspace=@apexcli/cli -- --testPathPattern="(useAgentHandoff|AgentPanel|HandoffIndicator)"
 
 # Run specific test categories
-npm test --workspace=@apex/cli -- src/ui/hooks/__tests__/useAgentHandoff.test.ts
-npm test --workspace=@apex/cli -- src/ui/hooks/__tests__/useAgentHandoff.performance.test.ts
-npm test --workspace=@apex/cli -- src/ui/components/agents/__tests__/AgentPanel.test.tsx
-npm test --workspace=@apex/cli -- src/ui/components/agents/__tests__/AgentPanel.integration.test.tsx
-npm test --workspace=@apex/cli -- src/ui/components/agents/__tests__/HandoffIndicator.test.tsx
-npm test --workspace=@apex/cli -- src/ui/components/agents/__tests__/HandoffIndicator.edge-cases.test.tsx
+npm test --workspace=@apexcli/cli -- src/ui/hooks/__tests__/useAgentHandoff.test.ts
+npm test --workspace=@apexcli/cli -- src/ui/hooks/__tests__/useAgentHandoff.performance.test.ts
+npm test --workspace=@apexcli/cli -- src/ui/components/agents/__tests__/AgentPanel.test.tsx
+npm test --workspace=@apexcli/cli -- src/ui/components/agents/__tests__/AgentPanel.integration.test.tsx
+npm test --workspace=@apexcli/cli -- src/ui/components/agents/__tests__/HandoffIndicator.test.tsx
+npm test --workspace=@apexcli/cli -- src/ui/components/agents/__tests__/HandoffIndicator.edge-cases.test.tsx
 
 # Generate coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ### Expected Test Results

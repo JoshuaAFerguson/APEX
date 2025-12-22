@@ -171,15 +171,15 @@ truncatedLength = Math.max(minTextLength, effectiveMaxLength - 3)
 
 ```bash
 # Run all ProgressIndicators tests
-npm test --workspace=@apex/cli -- ProgressIndicators
+npm test --workspace=@apexcli/cli -- ProgressIndicators
 
 # Run specific responsive test files
-npm test --workspace=@apex/cli -- ProgressIndicators.responsive-edge-cases
-npm test --workspace=@apex/cli -- ProgressIndicators.container-integration
-npm test --workspace=@apex/cli -- ProgressIndicators.performance
+npm test --workspace=@apexcli/cli -- ProgressIndicators.responsive-edge-cases
+npm test --workspace=@apexcli/cli -- ProgressIndicators.container-integration
+npm test --workspace=@apexcli/cli -- ProgressIndicators.performance
 
 # Generate coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ## Coverage Metrics

@@ -7,7 +7,7 @@ Short, actionable guidance to help AI coding agents be productive in this reposi
 - **Big picture:** APEX is a Turbo monorepo that orchestrates Claude-based agents to automate development. Core runtime lives in `packages/orchestrator` and shared types/config live in `packages/core`. CLI and API surfaces are in `packages/cli` and `packages/api`.
 
 - **Key commands (root):** `npm install`, `npm run build`, `npm run dev`, `npm run test`, `npm run lint`, `npm run typecheck`, `npm run format`.
-    - Run a package-specific command: `npm test --workspace=@apex/core` or `npm run build --workspace=@apex/cli`.
+    - Run a package-specific command: `npm test --workspace=@apexcli/core` or `npm run build --workspace=@apexcli/cli`.
 
 - **Start points (files):** see [packages/core/src/types.ts](../packages/core/src/types.ts) for domain types and validation and [packages/core/src/config.ts](../packages/core/src/config.ts) for `.apex/config.yaml` parsing. Orchestrator entry is [packages/orchestrator/src/index.ts](../packages/orchestrator/src/index.ts) and the SQLite-backed task store is [packages/orchestrator/src/store.ts](../packages/orchestrator/src/store.ts). CLI commands live in [packages/cli/src/index.ts](../packages/cli/src/index.ts).
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ActivityLog, type ActivityLogProps, type LogEntry } from '../ActivityLog.js';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // Mock useStdoutDimensions hook
 vi.mock('../../hooks/index.js', () => ({

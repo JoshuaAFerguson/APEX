@@ -136,10 +136,10 @@ The following configuration is implemented and tested:
 ### Running Tests
 ```bash
 # Run all tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Run specific test files
 npm test ErrorDisplay.test.tsx

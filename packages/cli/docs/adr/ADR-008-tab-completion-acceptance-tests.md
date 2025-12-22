@@ -446,7 +446,7 @@ Tab completion does NOT call `onSubmit` - it just updates the input. So tests mu
 
 ### Test Execution
 ```bash
-npm test --workspace=@apex/core -- --grep "Tab Completion Acceptance"
+npm test --workspace=@apexcli/core -- --grep "Tab Completion Acceptance"
 ```
 
 ### Estimated Implementation Time

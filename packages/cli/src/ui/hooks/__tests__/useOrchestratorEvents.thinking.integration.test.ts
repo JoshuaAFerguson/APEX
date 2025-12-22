@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useOrchestratorEvents } from '../useOrchestratorEvents';
 import { createMockOrchestrator } from '../../components/agents/__tests__/test-utils/MockOrchestrator';
 import { createWorkflowStages } from '../../components/agents/__tests__/test-utils/fixtures';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
 /**
  * Integration tests for agent:thinking event handler with complete workflow scenarios

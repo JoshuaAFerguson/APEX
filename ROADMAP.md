@@ -451,7 +451,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 *Visual interface for monitoring and management with chat platform integrations*
 
-### Dashboard Core (`@apex/web-ui`)
+### Dashboard Core (`@apexcli/web-ui`)
 - 🟢 React + Next.js dashboard foundation
 - 🟢 Real-time task monitoring via WebSocket
 - 🟢 Live log streaming
@@ -518,7 +518,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 *Deep integration with development environments*
 
-### VS Code Extension (`@apex/vscode`)
+### VS Code Extension (`@apexcli/vscode`)
 - ⚪ APEX sidebar panel
 - ⚪ Task creation from editor context
 - ⚪ Inline task status indicators
@@ -845,9 +845,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 ### Observability (inspired by [claude-code-otel](https://github.com/ColeMurray/claude-code-otel))
 
 **OpenTelemetry Integration**
-- ⚪ `@apex/telemetry` package - OTEL export for metrics, traces, and logs
+- ⚪ `@apexcli/telemetry` package - OTEL export for metrics, traces, and logs
 - ⚪ OTLP exporter - gRPC (4317) and HTTP (4318) endpoints
-- ⚪ Prometheus metrics endpoint - `/metrics` in @apex/api
+- ⚪ Prometheus metrics endpoint - `/metrics` in @apexcli/api
 - ⚪ Loki log aggregation support
 - ⚪ Distributed tracing across agents and subtasks
 

@@ -154,9 +154,9 @@ The new tests complement the existing StatusBar test suite:
 ## Recommendations
 
 ### For Test Execution:
-1. Run tests with: `npm test --workspace=@apex/cli`
-2. Check coverage with: `npm run test:coverage --workspace=@apex/cli`
-3. Watch mode for development: `npm run test:watch --workspace=@apex/cli`
+1. Run tests with: `npm test --workspace=@apexcli/cli`
+2. Check coverage with: `npm run test:coverage --workspace=@apexcli/cli`
+3. Watch mode for development: `npm run test:watch --workspace=@apexcli/cli`
 
 ### For CI/CD:
 - All tests should pass with current thresholds (70% coverage)

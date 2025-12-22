@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { convertVerboseDataToLogEntries } from '../App.js';
-import type { VerboseDebugData } from '@apex/core';
+import type { VerboseDebugData } from '@apexcli/core';
 
 describe('convertVerboseDataToLogEntries', () => {
   beforeEach(() => {

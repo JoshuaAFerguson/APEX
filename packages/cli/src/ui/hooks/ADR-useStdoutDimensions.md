@@ -169,7 +169,7 @@ Current test coverage includes:
 
 1. **Add exports to `index.ts`** - Currently missing!
 2. **Add `width`/`height` aliases** - For acceptance criteria compliance
-3. **Run tests** - Verify all pass: `npm test --workspace=@apex/cli`
+3. **Run tests** - Verify all pass: `npm test --workspace=@apexcli/cli`
 4. **Consider adding `breakpoint` property** - For simplified 3-tier usage
 
 ## Example Usage

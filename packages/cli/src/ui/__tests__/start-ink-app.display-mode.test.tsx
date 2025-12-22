@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { startInkApp, type StartInkAppOptions } from '../index';
-import type { DisplayMode, ApexConfig } from '@apex/core';
+import type { DisplayMode, ApexConfig } from '@apexcli/core';
 
 describe('startInkApp DisplayMode Initialization', () => {
   let mockOnCommand: vi.Mock;

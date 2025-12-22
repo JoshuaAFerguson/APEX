@@ -30,25 +30,25 @@ jobs:
         run: npm run build
 
       # Publish packages in dependency order
-      - name: Publish @apex/core
-        run: npm publish --workspace=@apex/core --provenance --access public
+      - name: Publish @apexcli/core
+        run: npm publish --workspace=@apexcli/core --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         continue-on-error: true
 
-      - name: Publish @apex/orchestrator
-        run: npm publish --workspace=@apex/orchestrator --provenance --access public
+      - name: Publish @apexcli/orchestrator
+        run: npm publish --workspace=@apexcli/orchestrator --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         continue-on-error: true
 
-      - name: Publish @apex/api
-        run: npm publish --workspace=@apex/api --provenance --access public
+      - name: Publish @apexcli/api
+        run: npm publish --workspace=@apexcli/api --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         continue-on-error: true
 
-      - name: Publish @apex/cli
-        run: npm publish --workspace=@apex/cli --provenance --access public
+      - name: Publish @apexcli/cli
+        run: npm publish --workspace=@apexcli/cli --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

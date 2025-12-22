@@ -134,7 +134,7 @@ class HighPerformanceOrchestrator extends EventEmitter {
 
 // Mock workflow loader
 const mockLoadWorkflow = vi.fn();
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadWorkflow: mockLoadWorkflow,
 }));
 

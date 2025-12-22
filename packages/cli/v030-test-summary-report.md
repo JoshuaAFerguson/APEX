@@ -113,10 +113,10 @@
 ### Run Tests
 ```bash
 # All CLI tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Specific test types
 npm test -- src/services/__tests__

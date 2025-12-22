@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '../../../__tests__/test-utils';
 import { EventEmitter } from 'events';
 import { AgentPanel, AgentInfo } from '../AgentPanel';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { App, type AppState } from '../../../App';
 
 // Mock orchestrator with parallel execution events
@@ -55,7 +55,7 @@ class MockParallelOrchestrator extends EventEmitter {
 
 // Mock workflow loader
 const mockLoadWorkflow = vi.fn();
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadWorkflow: mockLoadWorkflow,
 }));
 

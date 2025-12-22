@@ -12,14 +12,14 @@ cd /Users/s0v3r1gn/APEX
 
 echo "Step 1: Running all tests to verify they pass..."
 echo "------------------------------------------------"
-npm test --workspace=@apex/cli 2>&1
+npm test --workspace=@apexcli/cli 2>&1
 
 TEST_EXIT_CODE=$?
 
 echo ""
 echo "Step 2: Running tests with coverage..."
 echo "---------------------------------------"
-npm run test:coverage --workspace=@apex/cli 2>&1
+npm run test:coverage --workspace=@apexcli/cli 2>&1
 
 COVERAGE_EXIT_CODE=$?
 

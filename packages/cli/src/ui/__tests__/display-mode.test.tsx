@@ -7,7 +7,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '../../__tests__/test-utils';
 import { App, type AppState, type AppProps } from '../App';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 describe('DisplayMode Functionality', () => {
   let mockOnCommand: vi.Mock;

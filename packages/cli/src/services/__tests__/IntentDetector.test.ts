@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConversationManager } from '../ConversationManager';
 
 // Mock modules
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   formatTokens: vi.fn((tokens: number) => `${tokens} tokens`),
   formatCost: vi.fn((cost: number) => `$${cost.toFixed(4)}`),
 }));

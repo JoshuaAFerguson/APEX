@@ -606,10 +606,10 @@ describe('End-to-End Session Lifecycle', () => {
 
 ```bash
 # Run all REPL session integration tests
-npm test --workspace=@apex/cli -- --grep "REPL + Session Integration"
+npm test --workspace=@apexcli/cli -- --grep "REPL + Session Integration"
 
 # Run with coverage
-npm test --workspace=@apex/cli -- --coverage --grep "REPL + Session Integration"
+npm test --workspace=@apexcli/cli -- --coverage --grep "REPL + Session Integration"
 ```
 
 ## Success Criteria

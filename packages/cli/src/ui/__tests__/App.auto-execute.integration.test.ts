@@ -11,7 +11,7 @@ import { App, type AppProps, type AppState, type Message } from '../App.js';
  */
 
 // Mock external dependencies
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   saveConfig: vi.fn().mockResolvedValue(undefined),
 }));
 

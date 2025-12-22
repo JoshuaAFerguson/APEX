@@ -8,8 +8,8 @@ import { render, cleanup } from 'ink-testing-library';
 import React from 'react';
 import { App, type AppState } from '../ui/App.js';
 import { ShortcutManager, type ShortcutEvent } from '../services/ShortcutManager.js';
-import type { ApexConfig } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexConfig } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
 const { getLatestSubmit, setLatestSubmit } = vi.hoisted(() => {
   let latestSubmit: ((input: string) => void) | null = null;
@@ -22,7 +22,7 @@ const { getLatestSubmit, setLatestSubmit } = vi.hoisted(() => {
 });
 
 // Mock dependencies
-vi.mock('@apex/orchestrator');
+vi.mock('@apexcli/orchestrator');
 vi.mock('../services/ConversationManager.js', () => ({
   ConversationManager: class MockConversationManager {
     addMessage = vi.fn();

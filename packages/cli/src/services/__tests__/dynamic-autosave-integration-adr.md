@@ -436,7 +436,7 @@ async function addTestMessage(
 
 ### Test Execution
 ```bash
-npm test --workspace=@apex/cli -- --testPathPattern="dynamic-toggle"
+npm test --workspace=@apexcli/cli -- --testPathPattern="dynamic-toggle"
 ```
 
 ---

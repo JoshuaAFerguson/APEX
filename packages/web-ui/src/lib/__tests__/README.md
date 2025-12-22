@@ -101,7 +101,7 @@ From the workspace root:
 npm test
 
 # Run web-ui tests specifically
-npm test --workspace=@apex/web-ui
+npm test --workspace=@apexcli/web-ui
 
 # Run with coverage
 npm test -- --coverage
