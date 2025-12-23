@@ -1255,7 +1255,7 @@ describe.skip('VerboseDebugData', () => {
   });
 });
 
-describe.skip('OutdatedDocsConfigSchema', () => {
+describe('OutdatedDocsConfigSchema', () => {
   it('should parse with all default values when empty config provided', () => {
     const config = OutdatedDocsConfigSchema.parse({});
 
@@ -1359,7 +1359,7 @@ describe.skip('OutdatedDocsConfigSchema', () => {
   });
 });
 
-describe.skip('DocumentationAnalysisConfigSchema', () => {
+describe('DocumentationAnalysisConfigSchema', () => {
   it('should parse with all default values when empty config provided', () => {
     const config = DocumentationAnalysisConfigSchema.parse({});
 
@@ -1485,7 +1485,7 @@ describe.skip('DocumentationAnalysisConfigSchema', () => {
   });
 });
 
-describe.skip('ApexConfigSchema - Documentation Integration', () => {
+describe('ApexConfigSchema - Documentation Integration', () => {
   it('should parse ApexConfig with documentation field', () => {
     const config = ApexConfigSchema.parse({
       project: { name: 'test-project' },

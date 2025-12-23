@@ -9,7 +9,7 @@
 
 import { BaseAnalyzer, TaskCandidate } from './index';
 import type { ProjectAnalysis } from '../idle-processor';
-import type { ComplexityHotspot, TaskPriority } from '@apexcli/core';
+import type { ComplexityHotspot, TaskPriority, CodeSmell } from '@apexcli/core';
 
 export class RefactoringAnalyzer extends BaseAnalyzer {
   readonly type = 'refactoring' as const;
@@ -340,7 +340,37 @@ export class RefactoringAnalyzer extends BaseAnalyzer {
       }
     }
 
-    // Priority 3: Linting issues (code style and potential bugs)
+    // Priority 3: Code Smells (specific anti-patterns and design issues)
+    if (analysis.codeQuality.codeSmells && analysis.codeQuality.codeSmells.length > 0) {
+      const codeSmells = analysis.codeQuality.codeSmells;
+
+      // Group code smells by type for better organization
+      const smellGroups = this.groupCodeSmellsByType(codeSmells);
+
+      // Process each smell type
+      for (const [smellType, smells] of smellGroups.entries()) {
+        const smellAnalysis = this.analyzeCodeSmellGroup(smellType, smells);
+
+        if (smellAnalysis.shouldCreateTask) {
+          candidates.push(
+            this.createCandidate(
+              `code-smell-${smellType}`,
+              smellAnalysis.title,
+              smellAnalysis.description,
+              {
+                priority: smellAnalysis.priority,
+                effort: smellAnalysis.effort,
+                workflow: 'refactoring',
+                rationale: smellAnalysis.rationale,
+                score: smellAnalysis.score,
+              }
+            )
+          );
+        }
+      }
+    }
+
+    // Priority 4: Linting issues (code style and potential bugs)
     if (analysis.codeQuality.lintIssues > 0) {
       const issueCount = analysis.codeQuality.lintIssues;
       const severity = this.calculateLintSeverity(issueCount);
@@ -362,6 +392,297 @@ export class RefactoringAnalyzer extends BaseAnalyzer {
     }
 
     return candidates;
+  }
+
+  /**
+   * Group code smells by type for organized processing.
+   */
+  private groupCodeSmellsByType(codeSmells: CodeSmell[]): Map<string, CodeSmell[]> {
+    const groups = new Map<string, CodeSmell[]>();
+
+    for (const smell of codeSmells) {
+      const type = smell.type;
+      if (!groups.has(type)) {
+        groups.set(type, []);
+      }
+      groups.get(type)!.push(smell);
+    }
+
+    return groups;
+  }
+
+  /**
+   * Analyze a group of code smells of the same type and determine task creation strategy.
+   */
+  private analyzeCodeSmellGroup(smellType: string, smells: CodeSmell[]): {
+    shouldCreateTask: boolean;
+    title: string;
+    description: string;
+    priority: TaskPriority;
+    effort: 'low' | 'medium' | 'high';
+    rationale: string;
+    score: number;
+  } {
+    const smellCount = smells.length;
+
+    // Calculate overall severity based on individual smell severities
+    const criticalCount = smells.filter(s => s.severity === 'critical').length;
+    const highCount = smells.filter(s => s.severity === 'high').length;
+    const mediumCount = smells.filter(s => s.severity === 'medium').length;
+
+    let overallSeverity: 'low' | 'medium' | 'high' | 'critical';
+    let priority: TaskPriority;
+    let effort: 'low' | 'medium' | 'high';
+    let score: number;
+
+    if (criticalCount > 0) {
+      overallSeverity = 'critical';
+      priority = 'urgent';
+      effort = 'high';
+      score = 0.85;
+    } else if (highCount > 0) {
+      overallSeverity = 'high';
+      priority = 'high';
+      effort = 'high';
+      score = 0.75;
+    } else if (mediumCount >= smellCount * 0.7) {
+      overallSeverity = 'medium';
+      priority = 'normal';
+      effort = 'medium';
+      score = 0.6;
+    } else {
+      overallSeverity = 'low';
+      priority = 'low';
+      effort = 'low';
+      score = 0.4;
+    }
+
+    // Adjust score based on count
+    if (smellCount > 5) {
+      score += 0.1;
+    }
+    if (smellCount > 10) {
+      score += 0.1;
+    }
+
+    // Generate type-specific content
+    const smellTypeInfo = this.getCodeSmellTypeInfo(smellType, smells);
+
+    return {
+      shouldCreateTask: true,
+      title: smellTypeInfo.title,
+      description: smellTypeInfo.description,
+      priority,
+      effort,
+      rationale: smellTypeInfo.rationale,
+      score: Math.min(score, 0.95), // Cap at 0.95
+    };
+  }
+
+  /**
+   * Get type-specific information for different code smell types.
+   */
+  private getCodeSmellTypeInfo(smellType: string, smells: CodeSmell[]): {
+    title: string;
+    description: string;
+    rationale: string;
+  } {
+    const smellCount = smells.length;
+    const filesList = smells.map(s => s.file.split('/').pop() || s.file).slice(0, 3);
+    const filesText = filesList.join(', ') + (smellCount > 3 ? `, and ${smellCount - 3} more` : '');
+
+    switch (smellType) {
+      case 'long-method':
+        return {
+          title: 'Refactor Long Methods',
+          description: `Address ${smellCount} long ${smellCount === 1 ? 'method' : 'methods'} in ${filesText}`,
+          rationale: this.getLongMethodRationale(smells),
+        };
+
+      case 'large-class':
+        return {
+          title: 'Break Down Large Classes',
+          description: `Refactor ${smellCount} oversized ${smellCount === 1 ? 'class' : 'classes'} in ${filesText}`,
+          rationale: this.getLargeClassRationale(smells),
+        };
+
+      case 'deep-nesting':
+        return {
+          title: 'Reduce Deep Nesting',
+          description: `Simplify ${smellCount} deeply nested code ${smellCount === 1 ? 'block' : 'blocks'} in ${filesText}`,
+          rationale: this.getDeepNestingRationale(smells),
+        };
+
+      case 'duplicate-code':
+        return {
+          title: 'Eliminate Code Duplication',
+          description: `Consolidate ${smellCount} duplicate code ${smellCount === 1 ? 'pattern' : 'patterns'} in ${filesText}`,
+          rationale: this.getDuplicateCodeRationale(smells),
+        };
+
+      case 'dead-code':
+        return {
+          title: 'Remove Dead Code',
+          description: `Clean up ${smellCount} unused code ${smellCount === 1 ? 'segment' : 'segments'} in ${filesText}`,
+          rationale: this.getDeadCodeRationale(smells),
+        };
+
+      case 'magic-numbers':
+        return {
+          title: 'Replace Magic Numbers',
+          description: `Replace ${smellCount} magic ${smellCount === 1 ? 'number' : 'numbers'} with named constants in ${filesText}`,
+          rationale: this.getMagicNumbersRationale(smells),
+        };
+
+      case 'feature-envy':
+        return {
+          title: 'Fix Feature Envy',
+          description: `Relocate ${smellCount} misplaced ${smellCount === 1 ? 'method' : 'methods'} in ${filesText}`,
+          rationale: this.getFeatureEnvyRationale(smells),
+        };
+
+      case 'data-clumps':
+        return {
+          title: 'Consolidate Data Clumps',
+          description: `Group ${smellCount} data ${smellCount === 1 ? 'clump' : 'clumps'} into cohesive objects in ${filesText}`,
+          rationale: this.getDataClumpsRationale(smells),
+        };
+
+      default:
+        return {
+          title: `Fix ${smellType} Code Smells`,
+          description: `Address ${smellCount} ${smellType} ${smellCount === 1 ? 'issue' : 'issues'} in ${filesText}`,
+          rationale: `Code smell type '${smellType}' detected. Review and refactor to improve code quality.`,
+        };
+    }
+  }
+
+  /**
+   * Generate rationale for long method code smells.
+   */
+  private getLongMethodRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Break long methods into smaller, focused functions',
+      'Extract common logic into utility methods',
+      'Use the Single Responsibility Principle',
+      'Consider using method objects for complex algorithms',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Long methods reduce readability and maintainability:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for large class code smells.
+   */
+  private getLargeClassRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Apply Single Responsibility Principle to split classes',
+      'Extract related functionality into separate modules',
+      'Use composition over inheritance where appropriate',
+      'Consider using facade pattern to simplify interfaces',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Large classes violate Single Responsibility Principle and are hard to maintain:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for deep nesting code smells.
+   */
+  private getDeepNestingRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Use early returns to reduce nesting levels',
+      'Extract nested logic into separate methods',
+      'Replace complex conditionals with polymorphism',
+      'Apply guard clauses for input validation',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Deep nesting makes code difficult to understand and test:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for duplicate code smells.
+   */
+  private getDuplicateCodeRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Extract common code into reusable functions',
+      'Create utility modules for shared logic',
+      'Use inheritance or composition for similar classes',
+      'Apply DRY (Don\'t Repeat Yourself) principle',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Duplicate code increases maintenance burden and bug risk:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for dead code smells.
+   */
+  private getDeadCodeRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Remove unused functions, variables, and imports',
+      'Clean up commented-out code blocks',
+      'Delete unreachable code paths',
+      'Use static analysis tools to identify dead code',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Dead code clutters the codebase and can confuse developers:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for magic numbers code smells.
+   */
+  private getMagicNumbersRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Replace numbers with named constants',
+      'Use enums for related constant values',
+      'Group constants in configuration objects',
+      'Add comments explaining the meaning of numbers',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Magic numbers make code less readable and harder to maintain:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for feature envy code smells.
+   */
+  private getFeatureEnvyRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Move methods closer to the data they use',
+      'Extract methods into the appropriate classes',
+      'Use delegation pattern when moving isn\'t possible',
+      'Consider creating new classes for complex interactions',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Feature envy indicates poor method placement and weak cohesion:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
+  }
+
+  /**
+   * Generate rationale for data clumps code smells.
+   */
+  private getDataClumpsRationale(smells: CodeSmell[]): string {
+    const recommendations: string[] = [
+      'Create parameter objects for grouped data',
+      'Extract data into domain-specific classes',
+      'Use value objects for related parameters',
+      'Consider using builder pattern for complex objects',
+    ];
+
+    const details = smells.map(s => `• ${s.details}`).join('\n');
+
+    return `Data clumps indicate missing abstractions and poor encapsulation:\n\n${details}\n\nRecommended actions:\n${recommendations.map(r => `• ${r}`).join('\n')}`;
   }
 
   /**

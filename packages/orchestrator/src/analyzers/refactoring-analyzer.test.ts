@@ -495,6 +495,386 @@ describe('RefactoringAnalyzer', () => {
   });
 
   // ============================================================================
+  // Code Smell Analysis Tests
+  // ============================================================================
+
+  describe('code smell analysis', () => {
+    describe('long-method code smells', () => {
+      it('should generate task for long method smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/service.ts',
+            type: 'long-method',
+            severity: 'medium',
+            details: "Method 'processData' has 75 lines (line 25), consider refactoring"
+          },
+          {
+            file: 'src/utils.ts',
+            type: 'long-method',
+            severity: 'high',
+            details: "Method 'calculateStats' has 120 lines (line 50), consider refactoring"
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        expect(longMethodTask).toBeDefined();
+        expect(longMethodTask?.title).toBe('Refactor Long Methods');
+        expect(longMethodTask?.description).toContain('2 long methods');
+        expect(longMethodTask?.description).toContain('service.ts, utils.ts');
+        expect(longMethodTask?.priority).toBe('high'); // Due to high severity smell
+        expect(longMethodTask?.estimatedEffort).toBe('high');
+        expect(longMethodTask?.rationale).toContain('Long methods reduce readability');
+        expect(longMethodTask?.rationale).toContain('Break long methods into smaller');
+        expect(longMethodTask?.rationale).toContain("Method 'processData' has 75 lines");
+        expect(longMethodTask?.score).toBeGreaterThan(0.7);
+      });
+
+      it('should handle single long method smell', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/complex.ts',
+            type: 'long-method',
+            severity: 'low',
+            details: "Method 'helper' has 55 lines (line 10), consider refactoring"
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        expect(longMethodTask).toBeDefined();
+        expect(longMethodTask?.description).toContain('1 long method');
+        expect(longMethodTask?.description).toContain('complex.ts');
+        expect(longMethodTask?.priority).toBe('low');
+        expect(longMethodTask?.estimatedEffort).toBe('low');
+      });
+
+      it('should prioritize critical long method smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/massive.ts',
+            type: 'long-method',
+            severity: 'critical',
+            details: "Method 'monolith' has 500 lines (line 1), consider refactoring"
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        expect(longMethodTask).toBeDefined();
+        expect(longMethodTask?.priority).toBe('urgent');
+        expect(longMethodTask?.estimatedEffort).toBe('high');
+        expect(longMethodTask?.score).toBeGreaterThan(0.8);
+      });
+    });
+
+    describe('large-class code smells', () => {
+      it('should generate task for large class smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/Manager.ts',
+            type: 'large-class',
+            severity: 'high',
+            details: 'File has 800 lines and 25 methods, consider breaking into smaller modules'
+          },
+          {
+            file: 'src/Controller.ts',
+            type: 'large-class',
+            severity: 'medium',
+            details: 'File has 600 lines, consider breaking into smaller modules'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const largeClassTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-large-class');
+        expect(largeClassTask).toBeDefined();
+        expect(largeClassTask?.title).toBe('Break Down Large Classes');
+        expect(largeClassTask?.description).toContain('2 oversized classes');
+        expect(largeClassTask?.description).toContain('Manager.ts, Controller.ts');
+        expect(largeClassTask?.priority).toBe('high');
+        expect(largeClassTask?.rationale).toContain('Large classes violate Single Responsibility');
+        expect(largeClassTask?.rationale).toContain('Apply Single Responsibility Principle');
+        expect(largeClassTask?.rationale).toContain('800 lines and 25 methods');
+      });
+
+      it('should handle many large class smells with truncation', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          { file: 'src/Class1.ts', type: 'large-class', severity: 'medium', details: 'Large class 1' },
+          { file: 'src/Class2.ts', type: 'large-class', severity: 'medium', details: 'Large class 2' },
+          { file: 'src/Class3.ts', type: 'large-class', severity: 'medium', details: 'Large class 3' },
+          { file: 'src/Class4.ts', type: 'large-class', severity: 'medium', details: 'Large class 4' },
+          { file: 'src/Class5.ts', type: 'large-class', severity: 'medium', details: 'Large class 5' }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const largeClassTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-large-class');
+        expect(largeClassTask).toBeDefined();
+        expect(largeClassTask?.description).toContain('5 oversized classes');
+        expect(largeClassTask?.description).toContain('Class1.ts, Class2.ts, Class3.ts, and 2 more');
+        expect(largeClassTask?.score).toBeGreaterThan(0.6); // Score increased due to high count
+      });
+    });
+
+    describe('deep-nesting code smells', () => {
+      it('should generate task for deep nesting smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/parser.ts',
+            type: 'deep-nesting',
+            severity: 'high',
+            details: 'Found 6 levels of nesting at line 45'
+          },
+          {
+            file: 'src/validator.ts',
+            type: 'deep-nesting',
+            severity: 'medium',
+            details: 'Found 5 levels of nesting at line 120'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const deepNestingTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-deep-nesting');
+        expect(deepNestingTask).toBeDefined();
+        expect(deepNestingTask?.title).toBe('Reduce Deep Nesting');
+        expect(deepNestingTask?.description).toContain('2 deeply nested code blocks');
+        expect(deepNestingTask?.description).toContain('parser.ts, validator.ts');
+        expect(deepNestingTask?.priority).toBe('high');
+        expect(deepNestingTask?.rationale).toContain('Deep nesting makes code difficult');
+        expect(deepNestingTask?.rationale).toContain('Use early returns to reduce');
+        expect(deepNestingTask?.rationale).toContain('6 levels of nesting at line 45');
+      });
+
+      it('should handle critical deep nesting', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/nightmare.ts',
+            type: 'deep-nesting',
+            severity: 'critical',
+            details: 'Found 8 levels of nesting at line 10 - immediate refactoring needed'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const deepNestingTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-deep-nesting');
+        expect(deepNestingTask).toBeDefined();
+        expect(deepNestingTask?.priority).toBe('urgent');
+        expect(deepNestingTask?.estimatedEffort).toBe('high');
+        expect(deepNestingTask?.score).toBeGreaterThan(0.8);
+      });
+    });
+
+    describe('other code smell types', () => {
+      it('should handle duplicate-code smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/auth.ts',
+            type: 'duplicate-code',
+            severity: 'medium',
+            details: 'Duplicate validation logic found in multiple methods'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const duplicateTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-duplicate-code');
+        expect(duplicateTask).toBeDefined();
+        expect(duplicateTask?.title).toBe('Eliminate Code Duplication');
+        expect(duplicateTask?.description).toContain('1 duplicate code pattern');
+        expect(duplicateTask?.rationale).toContain('Duplicate code increases maintenance burden');
+        expect(duplicateTask?.rationale).toContain('Extract common code into reusable functions');
+      });
+
+      it('should handle dead-code smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/legacy.ts',
+            type: 'dead-code',
+            severity: 'low',
+            details: 'Unused function detectLegacyPattern never called'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const deadCodeTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-dead-code');
+        expect(deadCodeTask).toBeDefined();
+        expect(deadCodeTask?.title).toBe('Remove Dead Code');
+        expect(deadCodeTask?.rationale).toContain('Dead code clutters the codebase');
+        expect(deadCodeTask?.rationale).toContain('Remove unused functions, variables, and imports');
+      });
+
+      it('should handle magic-numbers smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/config.ts',
+            type: 'magic-numbers',
+            severity: 'medium',
+            details: 'Magic number 42 used without explanation at line 15'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const magicNumbersTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-magic-numbers');
+        expect(magicNumbersTask).toBeDefined();
+        expect(magicNumbersTask?.title).toBe('Replace Magic Numbers');
+        expect(magicNumbersTask?.rationale).toContain('Magic numbers make code less readable');
+        expect(magicNumbersTask?.rationale).toContain('Replace numbers with named constants');
+      });
+
+      it('should handle feature-envy smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/service.ts',
+            type: 'feature-envy',
+            severity: 'medium',
+            details: 'Method uses more properties from User class than its own'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const featureEnvyTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-feature-envy');
+        expect(featureEnvyTask).toBeDefined();
+        expect(featureEnvyTask?.title).toBe('Fix Feature Envy');
+        expect(featureEnvyTask?.rationale).toContain('Feature envy indicates poor method placement');
+        expect(featureEnvyTask?.rationale).toContain('Move methods closer to the data they use');
+      });
+
+      it('should handle data-clumps smells', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/api.ts',
+            type: 'data-clumps',
+            severity: 'medium',
+            details: 'Parameters firstName, lastName, email always passed together'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const dataClumpsTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-data-clumps');
+        expect(dataClumpsTask).toBeDefined();
+        expect(dataClumpsTask?.title).toBe('Consolidate Data Clumps');
+        expect(dataClumpsTask?.rationale).toContain('Data clumps indicate missing abstractions');
+        expect(dataClumpsTask?.rationale).toContain('Create parameter objects for grouped data');
+      });
+
+      it('should handle unknown code smell types with fallback', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          {
+            file: 'src/custom.ts',
+            type: 'custom-smell-type' as any,
+            severity: 'medium',
+            details: 'Custom code smell detected'
+          }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const customTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-custom-smell-type');
+        expect(customTask).toBeDefined();
+        expect(customTask?.title).toBe('Fix custom-smell-type Code Smells');
+        expect(customTask?.description).toContain('1 custom-smell-type issue');
+        expect(customTask?.rationale).toContain("Code smell type 'custom-smell-type' detected");
+      });
+    });
+
+    describe('mixed code smell scenarios', () => {
+      it('should handle mixed severity levels correctly', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          { file: 'src/file1.ts', type: 'long-method', severity: 'low', details: 'Low severity method' },
+          { file: 'src/file2.ts', type: 'long-method', severity: 'medium', details: 'Medium severity method' },
+          { file: 'src/file3.ts', type: 'long-method', severity: 'medium', details: 'Another medium severity method' },
+          { file: 'src/file4.ts', type: 'long-method', severity: 'high', details: 'High severity method' }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        expect(longMethodTask).toBeDefined();
+        // Should be high priority due to presence of high severity smell
+        expect(longMethodTask?.priority).toBe('high');
+        expect(longMethodTask?.estimatedEffort).toBe('high');
+      });
+
+      it('should handle multiple code smell types in same analysis', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          { file: 'src/service.ts', type: 'long-method', severity: 'medium', details: 'Long method detected' },
+          { file: 'src/model.ts', type: 'large-class', severity: 'high', details: 'Large class detected' },
+          { file: 'src/parser.ts', type: 'deep-nesting', severity: 'medium', details: 'Deep nesting detected' }
+        ];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        // Should create separate tasks for each smell type
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        const largeClassTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-large-class');
+        const deepNestingTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-deep-nesting');
+
+        expect(longMethodTask).toBeDefined();
+        expect(largeClassTask).toBeDefined();
+        expect(deepNestingTask).toBeDefined();
+
+        // Large class task should have highest priority due to high severity
+        expect(largeClassTask?.priority).toBe('high');
+        expect(longMethodTask?.priority).toBe('normal');
+        expect(deepNestingTask?.priority).toBe('normal');
+      });
+
+      it('should adjust scores based on smell count', () => {
+        const manySmells = Array.from({ length: 12 }, (_, i) => ({
+          file: `src/file${i}.ts`,
+          type: 'long-method' as const,
+          severity: 'medium' as const,
+          details: `Long method ${i}`
+        }));
+
+        baseProjectAnalysis.codeQuality.codeSmells = manySmells;
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        expect(longMethodTask).toBeDefined();
+        // Score should be increased due to high count (>10)
+        expect(longMethodTask?.score).toBeGreaterThan(0.8);
+      });
+    });
+
+    describe('code smell integration with other issues', () => {
+      it('should prioritize code smells appropriately with complexity hotspots', () => {
+        baseProjectAnalysis.codeQuality.codeSmells = [
+          { file: 'src/critical.ts', type: 'long-method', severity: 'critical', details: 'Critical long method' }
+        ];
+        baseProjectAnalysis.codeQuality.complexityHotspots = [{
+          file: 'src/complex.ts',
+          cyclomaticComplexity: 25,
+          cognitiveComplexity: 30,
+          lineCount: 500
+        }];
+
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+        const codeSmellTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+        const complexityTask = candidates.find(c => c.candidateId === 'refactoring-complexity-hotspot-0');
+
+        expect(codeSmellTask).toBeDefined();
+        expect(complexityTask).toBeDefined();
+
+        // Critical code smell should score higher than medium complexity hotspot
+        expect(codeSmellTask?.score).toBeGreaterThan(complexityTask?.score || 0);
+      });
+    });
+  });
+
+  // ============================================================================
   // Linting Issues Analysis Tests
   // ============================================================================
 
@@ -655,7 +1035,7 @@ describe('RefactoringAnalyzer', () => {
   // ============================================================================
 
   describe('complex scenarios', () => {
-    it('should handle project with multiple refactoring issues', () => {
+    it('should handle project with multiple refactoring issues including code smells', () => {
       baseProjectAnalysis.codeQuality = {
         lintIssues: 150, // Medium priority
         duplicatedCode: ['src/dup1.ts', 'src/dup2.ts'], // High priority
@@ -673,12 +1053,15 @@ describe('RefactoringAnalyzer', () => {
             lineCount: 400
           }
         ],
-        codeSmells: []
+        codeSmells: [
+          { file: 'src/service.ts', type: 'long-method', severity: 'medium', details: 'Long method detected' },
+          { file: 'src/model.ts', type: 'large-class', severity: 'high', details: 'Large class detected' }
+        ]
       };
 
       const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
 
-      expect(candidates.length).toBeGreaterThanOrEqual(4);
+      expect(candidates.length).toBeGreaterThanOrEqual(6);
 
       // Should have duplicated code task
       const duplicateTask = candidates.find(c => c.title.includes('Duplicated Code'));
@@ -687,6 +1070,12 @@ describe('RefactoringAnalyzer', () => {
       // Should have complexity hotspot tasks
       const hotspotTasks = candidates.filter(c => c.candidateId.includes('complexity-hotspot-'));
       expect(hotspotTasks).toHaveLength(2);
+
+      // Should have code smell tasks
+      const longMethodTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-long-method');
+      const largeClassTask = candidates.find(c => c.candidateId === 'refactoring-code-smell-large-class');
+      expect(longMethodTask).toBeDefined();
+      expect(largeClassTask).toBeDefined();
 
       // Should have lint issues task
       const lintTask = candidates.find(c => c.title.includes('Linting Issues'));
@@ -717,6 +1106,31 @@ describe('RefactoringAnalyzer', () => {
 
       // Should generate no candidates for well-maintained project
       expect(candidates).toHaveLength(0);
+    });
+
+    it('should handle undefined code smells gracefully', () => {
+      baseProjectAnalysis.codeQuality = {
+        lintIssues: 0,
+        duplicatedCode: [],
+        complexityHotspots: [],
+        codeSmells: undefined as any
+      };
+
+      // Should not throw an error
+      expect(() => {
+        const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+        expect(candidates).toHaveLength(0);
+      }).not.toThrow();
+    });
+
+    it('should handle empty code smells array', () => {
+      baseProjectAnalysis.codeQuality.codeSmells = [];
+
+      const candidates = refactoringAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should not generate any code smell tasks
+      const codeSmellTasks = candidates.filter(c => c.candidateId.includes('code-smell-'));
+      expect(codeSmellTasks).toHaveLength(0);
     });
 
     it('should handle project with only minor issues', () => {
