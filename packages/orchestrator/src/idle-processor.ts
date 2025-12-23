@@ -15,7 +15,8 @@ import {
   OutdatedDocumentation,
   MissingReadmeSection,
   APICompleteness,
-  ReadmeSection
+  ReadmeSection,
+  validateDeprecatedTags
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
@@ -999,6 +1000,27 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
         } catch {
           // Skip files that can't be read
         }
+      }
+
+      // Validate @deprecated tags in source files
+      try {
+        const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" | grep -v node_modules | grep -v test | head -30');
+        const files = sourceFiles.split('\n').filter(line => line.trim());
+
+        for (const file of files) {
+          try {
+            const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
+            const relativePath = file.replace(/^\.\//, '');
+
+            // Call JSDocDetector to validate deprecated tags
+            const jsDocIssues = validateDeprecatedTags(content, relativePath);
+            outdatedDocs.push(...jsDocIssues);
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+      } catch {
+        // Ignore errors in JSDoc validation
       }
     } catch {
       // Ignore errors in finding outdated docs

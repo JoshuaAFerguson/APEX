@@ -532,6 +532,119 @@ This documentation has @deprecated functions.
       // Clean up the mock
       vi.doUnmock('./analyzers/cross-reference-validator');
     });
+
+    it('should validate @deprecated tags in source files using JSDocDetector', async () => {
+      const { exec } = await import('child_process');
+      const mockExec = exec as any;
+
+      // Mock finding documentation files first (empty result for simplicity)
+      mockExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+        if (command.includes('find . -name "*.md"')) {
+          callback(null, { stdout: '', stderr: '' });
+        }
+      });
+
+      // Mock finding source files for JSDoc validation
+      mockExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+        if (command.includes('find . -name "*.ts"')) {
+          callback(null, { stdout: './src/deprecated-utils.ts\n', stderr: '' });
+        }
+      });
+
+      const mockReadFile = fs.readFile as any;
+      mockReadFile.mockResolvedValueOnce(`
+// Source file with inadequate @deprecated tags
+export class DeprecatedClass {
+  /**
+   * @deprecated Bad
+   */
+  oldMethod() {
+    return 'old';
+  }
+
+  /**
+   * @deprecated This method is deprecated. Use newMethod() instead.
+   * @see newMethod
+   */
+  wellDocumentedDeprecated() {
+    return 'old but well documented';
+  }
+
+  /**
+   * @deprecated
+   */
+  noExplanation() {
+    return 'bad';
+  }
+}
+      `);
+
+      // Mock the validateDeprecatedTags function
+      const mockValidateDeprecatedTags = vi.fn().mockReturnValue([
+        {
+          file: 'src/deprecated-utils.ts',
+          type: 'deprecated-api',
+          description: '@deprecated tag for oldMethod lacks proper documentation: missing migration path',
+          line: 6,
+          suggestion: 'Add @see tag or include migration path information (e.g., "Use newFunction() instead")',
+          severity: 'medium'
+        },
+        {
+          file: 'src/deprecated-utils.ts',
+          type: 'deprecated-api',
+          description: '@deprecated tag for noExplanation lacks proper documentation: missing or insufficient explanation and migration path',
+          line: 18,
+          suggestion: 'Add a meaningful explanation (at least 10 characters) describing why this is deprecated; Add @see tag or include migration path information (e.g., "Use newFunction() instead")',
+          severity: 'medium'
+        }
+      ]);
+
+      // Mock the validateDeprecatedTags import
+      vi.doMock('@apexcli/core', async () => {
+        const actual = await vi.importActual('@apexcli/core') as any;
+        return {
+          ...actual,
+          validateDeprecatedTags: mockValidateDeprecatedTags
+        };
+      });
+
+      const processor = idleProcessor as any;
+      const outdatedDocs = await processor.findOutdatedDocumentation();
+
+      // Should detect JSDoc @deprecated tag issues
+      const deprecatedIssues = outdatedDocs.filter((d: any) => d.type === 'deprecated-api');
+      expect(deprecatedIssues).toHaveLength(2);
+
+      // Verify the specific issues found by JSDocDetector
+      expect(deprecatedIssues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: 'src/deprecated-utils.ts',
+            type: 'deprecated-api',
+            description: expect.stringContaining('oldMethod lacks proper documentation'),
+            line: 6,
+            suggestion: expect.stringContaining('migration path'),
+            severity: 'medium'
+          }),
+          expect.objectContaining({
+            file: 'src/deprecated-utils.ts',
+            type: 'deprecated-api',
+            description: expect.stringContaining('noExplanation lacks proper documentation'),
+            line: 18,
+            suggestion: expect.stringContaining('meaningful explanation'),
+            severity: 'medium'
+          })
+        ])
+      );
+
+      expect(mockValidateDeprecatedTags).toHaveBeenCalledWith(
+        expect.stringContaining('DeprecatedClass'),
+        'src/deprecated-utils.ts'
+      );
+
+      // Clean up the mock
+      vi.doUnmock('@apexcli/core');
+    });
   });
 
   // ============================================================================
