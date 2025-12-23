@@ -5,10 +5,12 @@ import {
   detectUndocumentedExports,
   analyzeFile,
   analyzeFiles,
+  validateDeprecatedTags,
   type ExportInfo,
   type JSDocInfo,
   type ExportDocumentation,
   type DetectionConfig,
+  type OutdatedDocumentation,
 } from '../jsdoc-detector.js';
 
 describe.skip('JSDoc Detector', () => {

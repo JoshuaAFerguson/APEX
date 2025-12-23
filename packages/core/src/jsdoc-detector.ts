@@ -112,6 +112,24 @@ export interface DetectionConfig {
 }
 
 /**
+ * Represents documentation that is outdated or references deprecated APIs
+ */
+export interface OutdatedDocumentation {
+  /** File path of the documentation */
+  file: string;
+  /** Type of outdated content */
+  type: 'version-mismatch' | 'deprecated-api' | 'broken-link' | 'outdated-example' | 'stale-reference';
+  /** Description of the outdated content */
+  description: string;
+  /** Line number where the issue occurs (if applicable) */
+  line?: number;
+  /** Suggested fix or update */
+  suggestion?: string;
+  /** Severity of the issue */
+  severity?: 'low' | 'medium' | 'high';
+}
+
+/**
  * Result of analyzing a file
  */
 export interface FileAnalysisResult {
@@ -653,4 +671,76 @@ function generateSuggestions(
   }
 
   return suggestions;
+}
+
+/**
+ * Validate @deprecated tags in documentation and detect inadequate deprecation notices
+ * @param source - The source code to analyze
+ * @param filePath - The path of the file being analyzed
+ * @param config - Configuration options
+ * @returns Array of OutdatedDocumentation issues for inadequate @deprecated tags
+ */
+export function validateDeprecatedTags(
+  source: string,
+  filePath: string,
+  config: DetectionConfig = {}
+): OutdatedDocumentation[] {
+  const issues: OutdatedDocumentation[] = [];
+  const documentation = detectUndocumentedExports(source, config);
+
+  for (const doc of documentation) {
+    if (!doc.jsdoc || !doc.jsdoc.hasContent) {
+      continue;
+    }
+
+    // Find @deprecated tags
+    const deprecatedTags = doc.jsdoc.tags.filter(tag => tag.name === 'deprecated');
+
+    for (const deprecatedTag of deprecatedTags) {
+      const suggestions: string[] = [];
+      let hasIssues = false;
+
+      // Check if @deprecated has explanation text (minimum 10 chars)
+      if (!deprecatedTag.value || deprecatedTag.value.trim().length < 10) {
+        hasIssues = true;
+        suggestions.push('Add a meaningful explanation (at least 10 characters) describing why this is deprecated');
+      }
+
+      // Check if @deprecated has @see tag or migration path information
+      const hasSeeTag = doc.jsdoc.tags.some(tag => tag.name === 'see');
+      const hasMigrationInfo = deprecatedTag.value && (
+        deprecatedTag.value.toLowerCase().includes('use ') ||
+        deprecatedTag.value.toLowerCase().includes('instead') ||
+        deprecatedTag.value.toLowerCase().includes('replace') ||
+        deprecatedTag.value.toLowerCase().includes('migrate')
+      );
+
+      if (!hasSeeTag && !hasMigrationInfo) {
+        hasIssues = true;
+        suggestions.push('Add @see tag or include migration path information (e.g., "Use newFunction() instead")');
+      }
+
+      // If there are issues, create OutdatedDocumentation entry
+      if (hasIssues) {
+        let description = `@deprecated tag for ${doc.export.name} lacks proper documentation`;
+        if (!deprecatedTag.value || deprecatedTag.value.trim().length < 10) {
+          description += ': missing or insufficient explanation';
+        }
+        if (!hasSeeTag && !hasMigrationInfo) {
+          description += description.includes(':') ? ' and migration path' : ': missing migration path';
+        }
+
+        issues.push({
+          file: filePath,
+          type: 'deprecated-api',
+          description,
+          line: doc.export.line,
+          suggestion: suggestions.join('; '),
+          severity: 'medium'
+        });
+      }
+    }
+  }
+
+  return issues;
 }
