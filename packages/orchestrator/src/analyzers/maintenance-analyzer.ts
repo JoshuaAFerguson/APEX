@@ -8,7 +8,7 @@
  */
 
 import { BaseAnalyzer, TaskCandidate } from './index';
-import type { ProjectAnalysis, SecurityVulnerability, VulnerabilitySeverity } from '../idle-processor';
+import type { ProjectAnalysis, SecurityVulnerability, VulnerabilitySeverity, DeprecatedPackage } from '../idle-processor';
 
 export class MaintenanceAnalyzer extends BaseAnalyzer {
   readonly type = 'maintenance' as const;
@@ -111,6 +111,15 @@ export class MaintenanceAnalyzer extends BaseAnalyzer {
           }
         )
       );
+    }
+
+    // Priority 3: Deprecated packages
+    if (analysis.dependencies.deprecatedPackages && analysis.dependencies.deprecatedPackages.length > 0) {
+      const deprecatedPackages = analysis.dependencies.deprecatedPackages;
+
+      for (const deprecatedPkg of deprecatedPackages) {
+        candidates.push(this.createDeprecatedPackageTask(deprecatedPkg));
+      }
     }
 
     return candidates;
@@ -244,5 +253,73 @@ export class MaintenanceAnalyzer extends BaseAnalyzer {
     }
 
     return `${baseMessage} to maintain security posture.`;
+  }
+
+  /**
+   * Create task for deprecated package replacement
+   */
+  private createDeprecatedPackageTask(deprecatedPkg: DeprecatedPackage): TaskCandidate {
+    // Determine priority based on whether there's a replacement suggestion
+    const priority = deprecatedPkg.replacement ? 'normal' : 'high';
+    const score = deprecatedPkg.replacement ? 0.6 : 0.8;
+
+    // Create title with replacement info
+    const title = deprecatedPkg.replacement
+      ? `Replace Deprecated Package: ${deprecatedPkg.name} → ${deprecatedPkg.replacement}`
+      : `Replace Deprecated Package: ${deprecatedPkg.name}`;
+
+    // Build description
+    const description = this.buildDeprecatedPackageDescription(deprecatedPkg);
+
+    // Build rationale
+    const rationale = this.buildDeprecatedPackageRationale(deprecatedPkg);
+
+    // Create a URL-safe candidate ID
+    const safePackageName = deprecatedPkg.name.replace(/[^a-zA-Z0-9-]/g, '-');
+
+    return this.createCandidate(
+      `deprecated-pkg-${safePackageName}`,
+      title,
+      description,
+      {
+        priority,
+        effort: 'medium',
+        workflow: 'maintenance',
+        rationale,
+        score,
+      }
+    );
+  }
+
+  /**
+   * Build detailed description for deprecated package
+   */
+  private buildDeprecatedPackageDescription(deprecatedPkg: DeprecatedPackage): string {
+    const parts = [
+      `Package ${deprecatedPkg.name}@${deprecatedPkg.currentVersion} is deprecated.`
+    ];
+
+    if (deprecatedPkg.reason) {
+      parts.push(`Reason: ${deprecatedPkg.reason}`);
+    }
+
+    if (deprecatedPkg.replacement) {
+      parts.push(`Recommended replacement: ${deprecatedPkg.replacement}`);
+    } else {
+      parts.push('No direct replacement available - manual migration required.');
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Build rationale for deprecated package replacement
+   */
+  private buildDeprecatedPackageRationale(deprecatedPkg: DeprecatedPackage): string {
+    if (deprecatedPkg.replacement) {
+      return `Deprecated packages may stop receiving security updates and bug fixes. Migration to ${deprecatedPkg.replacement} ensures continued support and compatibility.`;
+    }
+
+    return 'Deprecated packages may stop receiving security updates and bug fixes, requiring urgent attention to find alternative solutions.';
   }
 }

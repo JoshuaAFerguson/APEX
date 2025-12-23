@@ -489,4 +489,41 @@ describe('MaintenanceAnalyzer - Security Vulnerabilities', () => {
       expect(outdatedTasks).toHaveLength(1);
     });
   });
+
+  describe('Integration with Deprecated Packages', () => {
+    it('should handle deprecated packages alongside security and outdated dependencies', () => {
+      const analysis: ProjectAnalysis = {
+        ...createAnalysisWithVulnerabilities([createVulnerability({ severity: 'critical' })]),
+        dependencies: {
+          outdated: ['old-package@1.0.0'],
+          security: [],
+          securityIssues: [createVulnerability({ severity: 'critical' })],
+          deprecatedPackages: [
+            {
+              name: 'request',
+              currentVersion: '2.88.2',
+              replacement: 'axios',
+              reason: 'Package is deprecated'
+            }
+          ]
+        }
+      };
+
+      const candidates = analyzer.analyze(analysis);
+
+      const securityTasks = candidates.filter(c => c.candidateId.includes('security'));
+      const outdatedTasks = candidates.filter(c => c.candidateId.includes('outdated'));
+      const deprecatedTasks = candidates.filter(c => c.candidateId.startsWith('deprecated-pkg-'));
+
+      expect(securityTasks).toHaveLength(1);
+      expect(outdatedTasks).toHaveLength(1);
+      expect(deprecatedTasks).toHaveLength(1);
+
+      // Verify priority ordering: security (1.0) > outdated (0.5) > deprecated with replacement (0.6)
+      const sortedByScore = [...candidates].sort((a, b) => b.score - a.score);
+      expect(sortedByScore[0].candidateId).toContain('security');
+      expect(sortedByScore[1].candidateId).toBe('deprecated-pkg-request');
+      expect(sortedByScore[2].candidateId).toBe('outdated-deps');
+    });
+  });
 });

@@ -131,3 +131,4 @@ export { MaintenanceAnalyzer } from './maintenance-analyzer';
 export { RefactoringAnalyzer } from './refactoring-analyzer';
 export { DocsAnalyzer } from './docs-analyzer';
 export { TestsAnalyzer } from './tests-analyzer';
+export { VersionMismatchDetector } from './version-mismatch-detector';
