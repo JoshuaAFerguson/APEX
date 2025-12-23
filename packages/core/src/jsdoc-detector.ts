@@ -6,6 +6,8 @@
  * exports, default exports, and re-exports.
  */
 
+import { type OutdatedDocumentation } from './types.js';
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -109,24 +111,6 @@ export interface DetectionConfig {
   includePrivate?: boolean;
   /** File extensions to analyze (default: ['.ts', '.tsx', '.js', '.jsx']) */
   extensions?: string[];
-}
-
-/**
- * Represents documentation that is outdated or references deprecated APIs
- */
-export interface OutdatedDocumentation {
-  /** File path of the documentation */
-  file: string;
-  /** Type of outdated content */
-  type: 'version-mismatch' | 'deprecated-api' | 'broken-link' | 'outdated-example' | 'stale-reference';
-  /** Description of the outdated content */
-  description: string;
-  /** Line number where the issue occurs (if applicable) */
-  line?: number;
-  /** Suggested fix or update */
-  suggestion?: string;
-  /** Severity of the issue */
-  severity?: 'low' | 'medium' | 'high';
 }
 
 /**

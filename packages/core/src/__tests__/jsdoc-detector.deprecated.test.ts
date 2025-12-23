@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateDeprecatedTags, type OutdatedDocumentation } from '../jsdoc-detector.js';
+import { validateDeprecatedTags } from '../jsdoc-detector.js';
+import { type OutdatedDocumentation } from '../types.js';
 
 describe('JSDoc Detector - @deprecated tag validation', () => {
   describe('validateDeprecatedTags', () => {
