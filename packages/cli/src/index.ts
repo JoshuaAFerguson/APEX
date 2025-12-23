@@ -504,13 +504,18 @@ export const commands: Command[] = [
       }
 
       let port = ctx.apiPort;
+      let keepAlive = false;
       for (let i = 0; i < args.length; i++) {
         if (args[i] === '--port' || args[i] === '-p') {
           port = parseInt(args[++i], 10);
+        } else if (args[i] === '--keep-alive' || args[i] === '--foreground') {
+          keepAlive = true;
         }
       }
 
-      await startAPIServer(ctx, port);
+      // When running non-interactively (e.g., `apex serve`), keep the server alive
+      const isNonInteractive = !process.stdin.isTTY || args.includes('--keep-alive') || args.includes('--foreground');
+      await startAPIServer(ctx, port, false, isNonInteractive || keepAlive);
     },
   },
 
@@ -1049,7 +1054,7 @@ async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<
 // Server Management
 // ============================================================================
 
-async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = false): Promise<void> {
+async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = false, keepAlive: boolean = false): Promise<void> {
   if (!silent) {
     console.log(chalk.cyan(`Starting API server on port ${port}...`));
   }
@@ -1060,6 +1065,15 @@ async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = 
 
     if (!silent) {
       console.log(chalk.green(`✓ API server running at http://localhost:${port}`));
+    }
+
+    // If keepAlive is true, don't return until the process is killed
+    if (keepAlive) {
+      await new Promise(() => {
+        // This promise never resolves, keeping the server alive
+        process.on('SIGINT', () => process.exit(0));
+        process.on('SIGTERM', () => process.exit(0));
+      });
     }
   } catch (error) {
     console.error(chalk.red(`Failed to start API server: ${(error as Error).message}`));
