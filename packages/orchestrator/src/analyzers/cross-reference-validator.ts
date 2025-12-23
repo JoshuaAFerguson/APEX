@@ -292,6 +292,120 @@ export class CrossReferenceValidator {
   }
 
   /**
+   * Validate documentation references against the symbol index and report broken links
+   * Returns array of OutdatedDocumentation objects for broken references
+   */
+  validateDocumentationReferences(
+    index: SymbolIndex,
+    references: DocumentationReference[]
+  ): Array<{
+    file: string;
+    type: 'broken-link';
+    description: string;
+    line?: number;
+    suggestion?: string;
+    severity: 'low' | 'medium' | 'high';
+  }> {
+    const brokenReferences: Array<{
+      file: string;
+      type: 'broken-link';
+      description: string;
+      line?: number;
+      suggestion?: string;
+      severity: 'low' | 'medium' | 'high';
+    }> = [];
+
+    for (const reference of references) {
+      const isValid = this.validateReference(index, reference.symbolName);
+
+      if (!isValid) {
+        // Try to find similar symbol names for suggestions
+        const similarSymbols = this.findSimilarSymbols(index, reference.symbolName);
+        const suggestion = similarSymbols.length > 0
+          ? `Did you mean: ${similarSymbols.slice(0, 3).join(', ')}?`
+          : 'Symbol not found in codebase';
+
+        // Determine severity based on reference type
+        let severity: 'low' | 'medium' | 'high';
+        switch (reference.referenceType) {
+          case 'see-tag':
+            severity = 'high'; // @see tags are explicit references
+            break;
+          case 'inline-code':
+            severity = 'medium'; // Inline code is likely intentional
+            break;
+          case 'code-block':
+            severity = 'low'; // Code blocks might be examples
+            break;
+          default:
+            severity = 'medium';
+        }
+
+        brokenReferences.push({
+          file: reference.sourceFile,
+          type: 'broken-link',
+          description: `Reference to non-existent symbol '${reference.symbolName}' in ${reference.referenceType} at line ${reference.line}. Context: ${reference.context.substring(0, 100)}${reference.context.length > 100 ? '...' : ''}`,
+          line: reference.line,
+          suggestion,
+          severity,
+        });
+      }
+    }
+
+    return brokenReferences;
+  }
+
+  /**
+   * Find symbols with names similar to the given symbol name
+   * Used for providing suggestions when a reference is broken
+   */
+  private findSimilarSymbols(index: SymbolIndex, symbolName: string, threshold = 0.6): string[] {
+    const allSymbolNames = Array.from(index.byName.keys());
+    const similar: Array<{name: string, score: number}> = [];
+
+    for (const name of allSymbolNames) {
+      const score = this.calculateSimilarity(symbolName.toLowerCase(), name.toLowerCase());
+      if (score >= threshold) {
+        similar.push({name, score});
+      }
+    }
+
+    // Sort by similarity score and return just the names
+    return similar
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.name);
+  }
+
+  /**
+   * Calculate similarity between two strings using a simple algorithm
+   * Returns a score between 0 and 1, where 1 is identical
+   */
+  private calculateSimilarity(str1: string, str2: string): number {
+    // Handle identical strings
+    if (str1 === str2) return 1;
+
+    // Handle empty strings
+    if (str1.length === 0 || str2.length === 0) return 0;
+
+    // Use Jaccard similarity based on character bigrams
+    const getBigrams = (str: string): Set<string> => {
+      const bigrams = new Set<string>();
+      for (let i = 0; i < str.length - 1; i++) {
+        bigrams.add(str.substr(i, 2));
+      }
+      return bigrams;
+    };
+
+    const bigrams1 = getBigrams(str1);
+    const bigrams2 = getBigrams(str2);
+
+    const intersection = new Set([...bigrams1].filter(x => bigrams2.has(x)));
+    const union = new Set([...bigrams1, ...bigrams2]);
+
+    return union.size === 0 ? 0 : intersection.size / union.size;
+  }
+
+  /**
    * Extract symbol references from documentation content
    * Supports markdown files, JSDoc comments, and other documentation formats
    */

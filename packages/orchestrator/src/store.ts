@@ -1111,6 +1111,13 @@ export class TaskStore {
         WHEN 'normal' THEN 3
         WHEN 'low' THEN 4
         ELSE 5
+      END ASC, CASE t.effort
+        WHEN 'xs' THEN 1
+        WHEN 'small' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'large' THEN 4
+        WHEN 'xl' THEN 5
+        ELSE 3
       END ASC, t.created_at ASC
     `;
 
@@ -1160,6 +1167,13 @@ export class TaskStore {
         WHEN 'normal' THEN 3
         WHEN 'low' THEN 4
         ELSE 5
+      END ASC, CASE t.effort
+        WHEN 'xs' THEN 1
+        WHEN 'small' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'large' THEN 4
+        WHEN 'xl' THEN 5
+        ELSE 3
       END ASC, t.created_at ASC
     `;
 

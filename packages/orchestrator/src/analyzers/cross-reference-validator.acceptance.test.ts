@@ -7,6 +7,9 @@
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { CrossReferenceValidator, type DocumentationReference } from './cross-reference-validator';
 
 describe('Documentation Reference Extraction - Acceptance Criteria', () => {
@@ -198,5 +201,105 @@ class RequestValidator {
     // ✅ @see tags
     // ✅ Inline code patterns like FunctionName(), ClassName, TypeName
     expect(allReferences.length).toBeGreaterThanOrEqual(8);
+  });
+
+  test('ACCEPTANCE CRITERIA: should report broken-link issues for references to non-existent symbols with file path, line number, and context', async () => {
+    // Create a temporary symbol index with known symbols
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cross-ref-acceptance-'));
+
+    try {
+      // Create source files with symbols
+      const sourceContent = `
+export function validateData() {}
+export class ApiClient {}
+export interface RequestConfig {}
+export type ResponseType = 'success' | 'error';
+`;
+
+      await fs.writeFile(path.join(tempDir, 'api.ts'), sourceContent);
+
+      // Build the symbol index
+      const index = await validator.buildIndex(tempDir);
+
+      // Create documentation with both valid and broken references
+      const documentationContent = `
+# API Documentation
+
+Use the \`ApiClient\` class to make requests.
+Call \`validateData()\` to validate input.
+Configure using \`RequestConfig\` interface.
+Handle \`ResponseType\` appropriately.
+
+But don't use \`BrokenFunction()\` - it doesn't exist.
+The \`NonExistentClass\` is not available.
+
+\`\`\`javascript
+const client = new ApiClient();
+const result = client.processData(); // This method doesn't exist
+\`\`\`
+
+/**
+ * @see validateData
+ * @see MissingFunction
+ */
+`;
+
+      // Extract references from the documentation
+      const references = validator.extractDocumentationReferences('api-docs.md', documentationContent);
+
+      // Validate references and detect broken ones
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+
+      // Should find broken references
+      expect(brokenReferences.length).toBeGreaterThan(0);
+
+      // Verify each broken reference has required information
+      for (const brokenRef of brokenReferences) {
+        // ✅ File path
+        expect(brokenRef.file).toBe('api-docs.md');
+
+        // ✅ Type is 'broken-link'
+        expect(brokenRef.type).toBe('broken-link');
+
+        // ✅ Line number
+        expect(brokenRef.line).toBeGreaterThan(0);
+
+        // ✅ Context information
+        expect(brokenRef.description).toContain('Reference to non-existent symbol');
+        expect(brokenRef.description).toContain('Context:');
+
+        // ✅ Severity level
+        expect(['low', 'medium', 'high']).toContain(brokenRef.severity);
+
+        // ✅ Suggestion for fixing (optional but helpful)
+        expect(brokenRef.suggestion).toBeTruthy();
+      }
+
+      // Verify specific broken references are detected
+      const brokenSymbols = brokenReferences.map(ref =>
+        ref.description.match(/'([^']+)'/)?.[1]
+      );
+
+      expect(brokenSymbols).toContain('BrokenFunction');
+      expect(brokenSymbols).toContain('NonExistentClass');
+      expect(brokenSymbols).toContain('processData'); // Method doesn't exist on ApiClient
+      expect(brokenSymbols).toContain('MissingFunction');
+
+      // Verify valid references are NOT reported as broken
+      expect(brokenSymbols).not.toContain('ApiClient');
+      expect(brokenSymbols).not.toContain('validateData');
+      expect(brokenSymbols).not.toContain('RequestConfig');
+      expect(brokenSymbols).not.toContain('ResponseType');
+
+      console.log('✅ ACCEPTANCE CRITERIA MET:');
+      console.log('- CrossReferenceValidator reports \'broken-link\' issues');
+      console.log('- File path included in each report');
+      console.log('- Line number provided for each reference');
+      console.log('- Context information available');
+      console.log(`- Found ${brokenReferences.length} broken references`);
+
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

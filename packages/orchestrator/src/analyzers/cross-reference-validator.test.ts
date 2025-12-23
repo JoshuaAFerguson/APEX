@@ -971,6 +971,224 @@ export class TestClass {
       expect(classes).toHaveLength(10); // Every 100th iteration
     });
   });
+
+  describe('broken reference detection', () => {
+    let index: SymbolIndex;
+
+    beforeEach(async () => {
+      const content = `
+export function processData() {}
+export class UserService {}
+function helper() {}
+export interface Config {}
+export type Status = 'ok' | 'error';
+`;
+
+      await fs.writeFile(path.join(tempDir, 'test.ts'), content);
+      index = await validator.buildIndex(tempDir, { includePrivate: true });
+    });
+
+    test('should detect broken references in documentation', () => {
+      const references: DocumentationReference[] = [
+        {
+          symbolName: 'processData',
+          referenceType: 'inline-code',
+          sourceFile: 'docs.md',
+          line: 1,
+          column: 1,
+          context: 'Call `processData()` function',
+        },
+        {
+          symbolName: 'NonExistentFunction',
+          referenceType: 'see-tag',
+          sourceFile: 'docs.md',
+          line: 5,
+          column: 1,
+          context: '@see NonExistentFunction',
+        },
+        {
+          symbolName: 'UserService',
+          referenceType: 'code-block',
+          sourceFile: 'example.md',
+          line: 10,
+          column: 1,
+          context: 'const service = new UserService();',
+        },
+        {
+          symbolName: 'MissingClass',
+          referenceType: 'inline-code',
+          sourceFile: 'guide.md',
+          line: 3,
+          column: 1,
+          context: 'The `MissingClass` handles data',
+        },
+      ];
+
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+
+      expect(brokenReferences).toHaveLength(2);
+
+      // Check the broken references
+      const brokenNames = brokenReferences.map(ref => ref.description.match(/'([^']+)'/)?.[1]);
+      expect(brokenNames).toContain('NonExistentFunction');
+      expect(brokenNames).toContain('MissingClass');
+
+      // Verify structure of broken reference reports
+      expect(brokenReferences[0]).toMatchObject({
+        file: expect.stringContaining('.md'),
+        type: 'broken-link',
+        description: expect.stringContaining('Reference to non-existent symbol'),
+        line: expect.any(Number),
+        suggestion: expect.any(String),
+        severity: expect.stringMatching(/^(low|medium|high)$/),
+      });
+    });
+
+    test('should provide severity levels based on reference type', () => {
+      const references: DocumentationReference[] = [
+        {
+          symbolName: 'Missing1',
+          referenceType: 'see-tag',
+          sourceFile: 'test.md',
+          line: 1,
+          column: 1,
+          context: '@see Missing1',
+        },
+        {
+          symbolName: 'Missing2',
+          referenceType: 'inline-code',
+          sourceFile: 'test.md',
+          line: 2,
+          column: 1,
+          context: '`Missing2`',
+        },
+        {
+          symbolName: 'Missing3',
+          referenceType: 'code-block',
+          sourceFile: 'test.md',
+          line: 3,
+          column: 1,
+          context: 'new Missing3()',
+        },
+      ];
+
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+
+      expect(brokenReferences).toHaveLength(3);
+
+      // Check severity levels
+      const seeTagRef = brokenReferences.find(ref => ref.description.includes('Missing1'));
+      const inlineCodeRef = brokenReferences.find(ref => ref.description.includes('Missing2'));
+      const codeBlockRef = brokenReferences.find(ref => ref.description.includes('Missing3'));
+
+      expect(seeTagRef?.severity).toBe('high');
+      expect(inlineCodeRef?.severity).toBe('medium');
+      expect(codeBlockRef?.severity).toBe('low');
+    });
+
+    test('should suggest similar symbols for broken references', () => {
+      const references: DocumentationReference[] = [
+        {
+          symbolName: 'processdata', // Similar to 'processData'
+          referenceType: 'inline-code',
+          sourceFile: 'test.md',
+          line: 1,
+          column: 1,
+          context: '`processdata()`',
+        },
+        {
+          symbolName: 'UserSvc', // Similar to 'UserService'
+          referenceType: 'see-tag',
+          sourceFile: 'test.md',
+          line: 2,
+          column: 1,
+          context: '@see UserSvc',
+        },
+      ];
+
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+
+      expect(brokenReferences).toHaveLength(2);
+
+      const processDataRef = brokenReferences.find(ref => ref.description.includes('processdata'));
+      const userServiceRef = brokenReferences.find(ref => ref.description.includes('UserSvc'));
+
+      expect(processDataRef?.suggestion).toContain('processData');
+      expect(userServiceRef?.suggestion).toContain('UserService');
+    });
+
+    test('should handle empty reference list', () => {
+      const brokenReferences = validator.validateDocumentationReferences(index, []);
+      expect(brokenReferences).toHaveLength(0);
+    });
+
+    test('should handle all valid references', () => {
+      const references: DocumentationReference[] = [
+        {
+          symbolName: 'processData',
+          referenceType: 'inline-code',
+          sourceFile: 'test.md',
+          line: 1,
+          column: 1,
+          context: '`processData()`',
+        },
+        {
+          symbolName: 'UserService',
+          referenceType: 'see-tag',
+          sourceFile: 'test.md',
+          line: 2,
+          column: 1,
+          context: '@see UserService',
+        },
+      ];
+
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+      expect(brokenReferences).toHaveLength(0);
+    });
+
+    test('should provide contextual information in broken reference reports', () => {
+      const longContext = 'This is a very long context string that should be truncated when it exceeds one hundred characters in length';
+
+      const references: DocumentationReference[] = [
+        {
+          symbolName: 'MissingSymbol',
+          referenceType: 'inline-code',
+          sourceFile: 'test.md',
+          line: 42,
+          column: 15,
+          context: longContext,
+        },
+      ];
+
+      const brokenReferences = validator.validateDocumentationReferences(index, references);
+
+      expect(brokenReferences).toHaveLength(1);
+      expect(brokenReferences[0].file).toBe('test.md');
+      expect(brokenReferences[0].line).toBe(42);
+      expect(brokenReferences[0].description).toContain('MissingSymbol');
+      expect(brokenReferences[0].description).toContain('inline-code');
+      expect(brokenReferences[0].description).toContain('line 42');
+      expect(brokenReferences[0].description.length).toBeLessThan(longContext.length + 100); // Should be truncated
+    });
+  });
+
+  describe('similarity calculation', () => {
+    test('should calculate string similarity correctly', () => {
+      const validator = new CrossReferenceValidator();
+
+      // Access private method through type assertion
+      const calculateSimilarity = (validator as any).calculateSimilarity.bind(validator);
+
+      expect(calculateSimilarity('hello', 'hello')).toBe(1.0);
+      expect(calculateSimilarity('hello', 'helo')).toBeGreaterThan(0.5);
+      expect(calculateSimilarity('processData', 'processdata')).toBeGreaterThan(0.8);
+      expect(calculateSimilarity('UserService', 'UserSvc')).toBeGreaterThan(0.3);
+      expect(calculateSimilarity('hello', 'world')).toBeLessThan(0.3);
+      expect(calculateSimilarity('', 'hello')).toBe(0);
+      expect(calculateSimilarity('hello', '')).toBe(0);
+      expect(calculateSimilarity('', '')).toBe(0);
+    });
+  });
 });
 
 describe('Documentation Reference Extraction', () => {
