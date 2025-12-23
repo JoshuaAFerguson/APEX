@@ -65,22 +65,22 @@ vi.mock('ink', () => ({
 }));
 
 vi.mock('../services/ConversationManager', () => ({
-  ConversationManager: vi.fn(() => mockConversationManager),
+  ConversationManager: vi.fn(function () { return mockConversationManager; }),
 }));
 
 vi.mock('../services/ShortcutManager', () => ({
-  ShortcutManager: vi.fn(() => ({
+  ShortcutManager: vi.fn(function () { return ({
     on: vi.fn(),
     handleKey: vi.fn(),
     pushContext: vi.fn(),
     popContext: vi.fn(),
-  })),
+  }); }),
 }));
 
 vi.mock('../services/CompletionEngine', () => ({
-  CompletionEngine: vi.fn(() => ({
+  CompletionEngine: vi.fn(function () { return ({
     getSuggestions: vi.fn().mockReturnValue([]),
-  })),
+  }); }),
 }));
 
 describe('Preview Configuration Tests', () => {

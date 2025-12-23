@@ -104,11 +104,8 @@ describe('StatusBar Responsive Behavior Documentation', () => {
       ];
 
       criticalElements.forEach(element => {
-        const elementSection = cliGuideContent.substring(
-          cliGuideContent.indexOf(`**${element}**`),
-          cliGuideContent.indexOf('**', cliGuideContent.indexOf(`**${element}**`) + element.length + 4)
-        );
-        expect(elementSection).toContain('**Priority:** CRITICAL');
+        const elementPattern = new RegExp(`\\*\\*${element}\\*\\*[\\s\\S]*?\\*\\*Priority:\\*\\* CRITICAL`);
+        expect(cliGuideContent).toMatch(elementPattern);
       });
 
       // HIGH elements - visible in normal+ terminals
@@ -121,11 +118,8 @@ describe('StatusBar Responsive Behavior Documentation', () => {
       ];
 
       highElements.forEach(element => {
-        const elementSection = cliGuideContent.substring(
-          cliGuideContent.indexOf(`**${element}**`),
-          cliGuideContent.indexOf('**', cliGuideContent.indexOf(`**${element}**`) + element.length + 4)
-        );
-        expect(elementSection).toContain('**Priority:** HIGH');
+        const elementPattern = new RegExp(`\\*\\*${element}\\*\\*[\\s\\S]*?\\*\\*Priority:\\*\\* HIGH`);
+        expect(cliGuideContent).toMatch(elementPattern);
       });
     });
 
@@ -359,9 +353,11 @@ describe('StatusBar Responsive Behavior Documentation', () => {
     });
 
     it('should document mode activation commands', () => {
+      const troubleshootingStart = cliGuideContent.indexOf('### Troubleshooting');
+      const troubleshootingEnd = cliGuideContent.indexOf('---', troubleshootingStart);
       const troubleshootingSection = cliGuideContent.substring(
-        cliGuideContent.indexOf('### Troubleshooting'),
-        cliGuideContent.indexOf('---')
+        troubleshootingStart,
+        troubleshootingEnd
       );
 
       expect(troubleshootingSection).toContain('/compact');

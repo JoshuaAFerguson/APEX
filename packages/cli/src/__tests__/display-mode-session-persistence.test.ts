@@ -78,9 +78,24 @@ class DisplayModeManager {
   }
 
   async initialize(): Promise<void> {
-    const savedMode = await this.sessionStore.getDisplayMode();
-    if (savedMode && this.isValidDisplayMode(savedMode)) {
-      this.currentMode = savedMode;
+    try {
+      const savedMode = await this.sessionStore.getDisplayMode();
+      if (savedMode && this.isValidDisplayMode(savedMode)) {
+        this.currentMode = savedMode;
+        return;
+      }
+    } catch {
+      // Fall back to full session load for resilience
+    }
+
+    try {
+      const session = await this.sessionStore.load();
+      if (session?.displayMode && this.isValidDisplayMode(session.displayMode)) {
+        this.currentMode = session.displayMode;
+      }
+    } catch {
+      // Default to normal when storage is unavailable
+      this.currentMode = 'normal';
     }
   }
 

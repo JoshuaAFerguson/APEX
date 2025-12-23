@@ -230,9 +230,9 @@ The existing tests verify all acceptance criteria:
 
 ### Test Files to Run
 ```bash
-npm test --workspace=@apex/cli -- --run src/ui/__tests__/App.displayMode*.test.tsx
-npm test --workspace=@apex/cli -- --run src/ui/components/__tests__/StatusBar.display-modes.test.tsx
-npm test --workspace=@apex/cli -- --run src/ui/components/agents/__tests__/AgentPanel.display-modes.test.tsx
+npm test --workspace=@apexcli/cli -- --run src/ui/__tests__/App.displayMode*.test.tsx
+npm test --workspace=@apexcli/cli -- --run src/ui/components/__tests__/StatusBar.display-modes.test.tsx
+npm test --workspace=@apexcli/cli -- --run src/ui/components/agents/__tests__/AgentPanel.display-modes.test.tsx
 ```
 
 ## Related ADRs

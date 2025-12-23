@@ -468,8 +468,10 @@ export function App({
         return;
       } else {
         // Any other keypress - cancel countdown but keep preview visible
-        setState(prev => ({ ...prev, remainingMs: undefined }));
-        addMessage({ type: 'system', content: 'Auto-execute cancelled.' });
+        if (state.remainingMs !== undefined) {
+          setState(prev => ({ ...prev, remainingMs: undefined }));
+          addMessage({ type: 'system', content: 'Auto-execute cancelled.' });
+        }
         return;
       }
       // Don't process other shortcuts in preview mode

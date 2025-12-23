@@ -143,11 +143,8 @@ describe('StatusBar Component Integration Tests', () => {
       ];
 
       iconMappings.forEach(({ element, icon }) => {
-        const elementSection = documentationContent.substring(
-          documentationContent.indexOf(`**${element}**`),
-          documentationContent.indexOf('**', documentationContent.indexOf(`**${element}**`) + element.length + 4)
-        );
-        expect(elementSection).toContain(`**Icon:** ${icon}`);
+        const elementPattern = new RegExp(`\\*\\*${element}\\*\\*[\\s\\S]*?\\*\\*Icon:\\*\\* ${icon}`);
+        expect(documentationContent).toMatch(elementPattern);
       });
     });
 
@@ -217,9 +214,11 @@ describe('StatusBar Component Integration Tests', () => {
 
   describe('Troubleshooting Accuracy', () => {
     it('should provide accurate troubleshooting steps', () => {
+      const troubleshootingStart = documentationContent.indexOf('### Troubleshooting');
+      const troubleshootingEnd = documentationContent.indexOf('---', troubleshootingStart);
       const troubleshootingSection = documentationContent.substring(
-        documentationContent.indexOf('### Troubleshooting'),
-        documentationContent.indexOf('---')
+        troubleshootingStart,
+        troubleshootingEnd
       );
 
       // Should reference actual commands
@@ -233,9 +232,11 @@ describe('StatusBar Component Integration Tests', () => {
     });
 
     it('should provide realistic performance guidance', () => {
+      const troubleshootingStart = documentationContent.indexOf('### Troubleshooting');
+      const troubleshootingEnd = documentationContent.indexOf('---', troubleshootingStart);
       const troubleshootingSection = documentationContent.substring(
-        documentationContent.indexOf('### Troubleshooting'),
-        documentationContent.indexOf('---')
+        troubleshootingStart,
+        troubleshootingEnd
       );
 
       expect(troubleshootingSection).toContain('Some terminals render slowly');

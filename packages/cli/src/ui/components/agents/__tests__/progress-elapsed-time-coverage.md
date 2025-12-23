@@ -290,17 +290,17 @@ vi.mock('../HandoffIndicator.js', () => ({
 
 ### Running Progress Bar Tests
 ```bash
-npm test --workspace=@apex/cli -- AgentPanel.progress-bars.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.progress-bars.test.tsx
 ```
 
 ### Running Elapsed Time Tests
 ```bash
-npm test --workspace=@apex/cli -- AgentPanel.elapsed-time-complete.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.elapsed-time-complete.test.tsx
 ```
 
 ### Running All Tests
 ```bash
-npm test --workspace=@apex/cli -- --testPathPattern="AgentPanel\.(progress-bars|elapsed-time-complete)\.test\.tsx"
+npm test --workspace=@apexcli/cli -- --testPathPattern="AgentPanel\.(progress-bars|elapsed-time-complete)\.test\.tsx"
 ```
 
 ### Expected Test Results

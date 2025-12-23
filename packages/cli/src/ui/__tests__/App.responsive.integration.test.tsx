@@ -16,8 +16,8 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '../../__tests__/test-utils';
 import { App, type AppProps, type AppState, type Message } from '../App.js';
-import type { DisplayMode, ApexConfig, Task } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { DisplayMode, ApexConfig, Task } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { StdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 // Mock useStdoutDimensions hook
@@ -64,15 +64,15 @@ const mockCompletionEngine = {
 };
 
 vi.mock('../../services/ConversationManager.js', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => mockConversationManager),
+  ConversationManager: vi.fn().mockImplementation(function () { return mockConversationManager; }),
 }));
 
 vi.mock('../../services/ShortcutManager.js', () => ({
-  ShortcutManager: vi.fn().mockImplementation(() => mockShortcutManager),
+  ShortcutManager: vi.fn().mockImplementation(function () { return mockShortcutManager; }),
 }));
 
 vi.mock('../../services/CompletionEngine.js', () => ({
-  CompletionEngine: vi.fn().mockImplementation(() => mockCompletionEngine),
+  CompletionEngine: vi.fn().mockImplementation(function () { return mockCompletionEngine; }),
 }));
 
 // Mock child components to verify responsive behavior

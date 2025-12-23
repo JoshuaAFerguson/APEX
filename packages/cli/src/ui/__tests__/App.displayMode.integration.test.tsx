@@ -37,15 +37,15 @@ const mockShortcutManager = {
 };
 
 vi.mock('../../services/ConversationManager.js', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => mockConversationManager),
+  ConversationManager: vi.fn().mockImplementation(function () { return mockConversationManager; }),
 }));
 
 vi.mock('../../services/ShortcutManager.js', () => ({
-  ShortcutManager: vi.fn().mockImplementation(() => mockShortcutManager),
+  ShortcutManager: vi.fn().mockImplementation(function () { return mockShortcutManager; }),
 }));
 
 vi.mock('../../services/CompletionEngine.js', () => ({
-  CompletionEngine: vi.fn().mockImplementation(() => ({})),
+  CompletionEngine: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 // Mock child components to verify props

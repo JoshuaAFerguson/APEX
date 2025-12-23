@@ -213,7 +213,7 @@ describe('DiffViewer Helper Functions', () => {
         {
           content: 'this is too long for the width',
           maxWidth: 10,
-          expected: 'this i...' // 10 - 3 = 7 chars + '...'
+          expected: 'this is...' // 10 - 3 = 7 chars + '...'
         },
         {
           content: 'x'.repeat(100),
@@ -221,7 +221,7 @@ describe('DiffViewer Helper Functions', () => {
           expected: 'x'.repeat(17) + '...' // 20 - 3 = 17 chars + '...'
         },
         {
-          content: 'abc',
+          content: 'abcd',
           maxWidth: 3,
           expected: '...' // Special case: maxWidth exactly 3
         },

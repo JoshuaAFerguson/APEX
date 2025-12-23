@@ -143,11 +143,11 @@ The tests are designed to be run as part of the standard test suite:
 
 ```bash
 # Run all keyboard shortcut tests
-npm test --workspace=@apex/cli -- keyboard-shortcuts
+npm test --workspace=@apexcli/cli -- keyboard-shortcuts
 
 # Run specific test suites
-npm test --workspace=@apex/cli -- keyboard-shortcuts-documentation.test.ts
-npm test --workspace=@apex/cli -- keyboard-shortcuts-coverage.integration.test.ts
+npm test --workspace=@apexcli/cli -- keyboard-shortcuts-documentation.test.ts
+npm test --workspace=@apexcli/cli -- keyboard-shortcuts-coverage.integration.test.ts
 ```
 
 ## Acceptance Criteria Validation

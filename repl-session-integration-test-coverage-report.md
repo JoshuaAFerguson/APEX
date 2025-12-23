@@ -167,8 +167,8 @@ The `session-management.integration.test.ts` file provides extensive coverage of
 - **Setup Files**: Global mocks for Ink, React, and utilities
 
 ### Mock Coverage
-- **@apex/core**: Configuration, initialization, and utility functions
-- **@apex/orchestrator**: Task management and event system
+- **@apexcli/core**: Configuration, initialization, and utility functions
+- **@apexcli/orchestrator**: Task management and event system
 - **React/Ink**: UI framework mocking for component testing
 - **File System**: Complete fs/promises mocking
 - **Process Management**: Signal handling and exit mocking

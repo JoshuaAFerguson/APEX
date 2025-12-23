@@ -276,15 +276,15 @@ agents.forEach((agent, index) => {
 ### Running Tests
 ```bash
 # Run all new progress/elapsed time tests
-npm test --workspace=@apex/cli -- --testPathPattern="AgentPanel\.(progress-bars|elapsed-time-complete|acceptance-criteria-final)\.test\.tsx"
+npm test --workspace=@apexcli/cli -- --testPathPattern="AgentPanel\.(progress-bars|elapsed-time-complete|acceptance-criteria-final)\.test\.tsx"
 
 # Run specific test files
-npm test --workspace=@apex/cli -- AgentPanel.progress-bars.test.tsx
-npm test --workspace=@apex/cli -- AgentPanel.elapsed-time-complete.test.tsx
-npm test --workspace=@apex/cli -- AgentPanel.acceptance-criteria-final.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.progress-bars.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.elapsed-time-complete.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.acceptance-criteria-final.test.tsx
 
 # Generate coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ### Expected Results

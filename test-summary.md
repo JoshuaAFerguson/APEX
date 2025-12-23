@@ -177,13 +177,13 @@ When tests are run, they should verify:
 To run the elapsed time tests:
 ```bash
 # Run all elapsed time tests
-npm test --workspace=@apex/cli -- --run AgentRow.elapsed-time
+npm test --workspace=@apexcli/cli -- --run AgentRow.elapsed-time
 
 # Run specific test file
-npm test --workspace=@apex/cli -- --run AgentRow.elapsed-time.test.tsx
+npm test --workspace=@apexcli/cli -- --run AgentRow.elapsed-time.test.tsx
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli -- AgentRow.elapsed-time
+npm run test:coverage --workspace=@apexcli/cli -- AgentRow.elapsed-time
 ```
 
 ## Success Criteria

@@ -27,19 +27,27 @@ export class ConversationManager {
   private context: ConversationContext = { messages: [] };
   private maxContextMessages = 100;
   private maxContextTokens = 50000; // Approximate limit
+  private totalMessagesAdded = 0;
 
   addMessage(message: Omit<ConversationMessage, 'timestamp'>): void {
     this.context.messages.push({
       ...message,
       timestamp: new Date(),
     });
+    this.totalMessagesAdded += 1;
 
     // Prune if necessary
     this.pruneContext();
   }
 
   getContext(): ConversationContext {
-    return { ...this.context };
+    return {
+      ...this.context,
+      messages: this.context.messages.map(message => ({ ...message })),
+      pendingClarification: this.context.pendingClarification
+        ? { ...this.context.pendingClarification }
+        : undefined,
+    };
   }
 
   getRecentMessages(count: number = 10): ConversationMessage[] {
@@ -160,6 +168,14 @@ export class ConversationManager {
     const normalized = input.toLowerCase().trim();
     const metadata: Record<string, unknown> = {};
 
+    if (!normalized) {
+      return {
+        type: 'task',
+        confidence: 0.1,
+        metadata: { matchedPattern: 'empty_input' },
+      };
+    }
+
     // Command detection
     if (normalized.startsWith('/')) {
       const parts = input.slice(1).split(/\s+/);
@@ -174,12 +190,45 @@ export class ConversationManager {
       };
     }
 
+    const recentMessages = this.getRecentMessages(5);
+    const lastAssistant = [...recentMessages].reverse().find(message => message.role === 'assistant');
+    const lastAssistantAsked =
+      lastAssistant?.content.includes('?') ||
+      /^(what|how|where|when|why|who|can|could|would|should|is|are|do|does|will)\b/i.test(
+        lastAssistant?.content ?? ''
+      );
+    const yesNoResponse = ['yes', 'y', 'yeah', 'yep', 'sure', 'ok', 'okay', 'no', 'n', 'nope', 'nah'].includes(normalized);
+
     // Clarification response detection
     if (this.hasPendingClarification()) {
       return {
         type: 'clarification',
         confidence: 0.9,
         metadata: { matchedPattern: 'pending_clarification' }
+      };
+    }
+
+    if (lastAssistantAsked && (yesNoResponse || normalized.split(/\s+/).length <= 3)) {
+      return {
+        type: 'clarification',
+        confidence: 0.8,
+        metadata: { matchedPattern: 'recent_assistant_question' },
+      };
+    }
+
+    if (yesNoResponse) {
+      return {
+        type: 'clarification',
+        confidence: 0.4,
+        metadata: { matchedPattern: 'ambiguous_confirmation' },
+      };
+    }
+
+    if (/^do\s+\w+$/i.test(normalized) && !normalized.endsWith('?')) {
+      return {
+        type: 'task',
+        confidence: 0.5,
+        metadata: { matchedPattern: 'ambiguous_directive' },
       };
     }
 
@@ -206,32 +255,52 @@ export class ConversationManager {
 
     // Task patterns with complexity estimation
     const taskPatterns = [
-      { pattern: /^(create|make|build|add|implement|write|develop|generate)/i, name: 'creation_task', complexity: 'moderate' },
+      { pattern: /^(create|make|build|add|implement|write|develop|generate)/i, name: 'creation_task', complexity: 'medium' },
       { pattern: /^(fix|solve|resolve|debug|correct)/i, name: 'bugfix_task', complexity: 'simple' },
-      { pattern: /^(update|modify|change|edit|refactor)/i, name: 'modification_task', complexity: 'moderate' },
+      { pattern: /^(update|modify|change|edit|refactor)/i, name: 'modification_task', complexity: 'medium' },
       { pattern: /^(remove|delete|clean|clear)/i, name: 'deletion_task', complexity: 'simple' },
       { pattern: /^(test|check|verify|validate)/i, name: 'testing_task', complexity: 'simple' },
       { pattern: /^(deploy|install|setup|configure)/i, name: 'deployment_task', complexity: 'complex' },
+      { pattern: /^(optimize|improve|enhance)/i, name: 'optimization_task', complexity: 'medium' },
     ];
+
+    const guessWorkflow = (text: string, defaultWorkflow: string): string => {
+      if (/(bug|fix|error|issue)/i.test(text)) return 'bugfix';
+      if (/(test|testing|unit test|integration test|qa)/i.test(text)) return 'testing';
+      if (/(doc|docs|documentation|readme)/i.test(text)) return 'documentation';
+      if (/(feature|enhancement)/i.test(text)) return 'feature';
+      return defaultWorkflow;
+    };
 
     for (const { pattern, name, complexity } of taskPatterns) {
       if (pattern.test(normalized)) {
         metadata.matchedPattern = name;
-        metadata.suggestedWorkflow = name.includes('bugfix') ? 'bugfix' : 'feature';
-        metadata.estimatedComplexity = complexity;
+        metadata.suggestedWorkflow = guessWorkflow(normalized, name.includes('bugfix') ? 'bugfix' : 'feature');
+        metadata.complexity = complexity;
 
         return {
           type: 'task',
-          confidence: 0.7,
+          confidence: 0.8,
           metadata
         };
       }
     }
 
+    if (/(create|make|build|add|implement|write|develop|generate|fix|resolve|refactor|optimize|improve|update|test|deploy)/i.test(normalized)) {
+      metadata.matchedPattern = 'keyword_task';
+      metadata.suggestedWorkflow = guessWorkflow(normalized, 'feature');
+      metadata.complexity = 'medium';
+      return {
+        type: 'task',
+        confidence: 0.7,
+        metadata,
+      };
+    }
+
     // Default to task if it's not clearly a question
     metadata.matchedPattern = 'default_task';
-    metadata.suggestedWorkflow = 'feature';
-    metadata.estimatedComplexity = 'moderate';
+    metadata.suggestedWorkflow = guessWorkflow(normalized, 'feature');
+    metadata.complexity = 'medium';
 
     return {
       type: 'task',
@@ -268,7 +337,12 @@ export class ConversationManager {
           'show me the logs',
           'try a different approach'
         );
-      } else if (content.includes('completed') || content.includes('done')) {
+      } else if (
+        content.includes('completed') ||
+        content.includes('done') ||
+        content.includes('implemented') ||
+        content.includes('successfully')
+      ) {
         suggestions.push(
           'show me the changes',
           'test the implementation',
@@ -329,7 +403,9 @@ export class ConversationManager {
       0
     );
 
-    while (estimatedTokens > this.maxContextTokens && this.context.messages.length > 10) {
+    const tokenPressureHigh = estimatedTokens > this.maxContextTokens * 2;
+    const minMessages = tokenPressureHigh || this.totalMessagesAdded >= 10 ? 10 : 2;
+    while (estimatedTokens > this.maxContextTokens && this.context.messages.length > minMessages) {
       const removed = this.context.messages.shift();
       if (removed) {
         estimatedTokens -= Math.ceil(removed.content.length / 4);

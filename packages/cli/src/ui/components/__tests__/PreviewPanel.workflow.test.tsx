@@ -14,7 +14,7 @@ vi.mock('ink', async () => {
 });
 
 // Mock the orchestrator for workflow testing
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     on: vi.fn(),
     off: vi.fn(),

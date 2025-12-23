@@ -85,7 +85,7 @@ describe('Multi-Agent Visualization Integration', () => {
       interfaces.forEach(interfaceName => {
         // Check that each interface follows the same documentation pattern
         expect(docContent).toMatch(new RegExp(`interface ${interfaceName}`));
-        expect(docContent).toMatch(new RegExp(`import.*from.*@apex/cli`));
+        expect(docContent).toMatch(new RegExp(`import.*from.*@apexcli/cli`));
       });
     });
   });
@@ -250,7 +250,7 @@ describe('Multi-Agent Visualization Integration', () => {
 
     it('should provide actionable information for developers', () => {
       // Verify developers can actually implement based on documentation
-      expect(docContent).toMatch(/import.*from.*@apex/);
+      expect(docContent).toMatch(/import.*from.*@apexcli/);
       expect(docContent).toMatch(/<.*Component.*>/);
       expect(docContent).toMatch(/interface.*Props/);
       expect(docContent).toMatch(/\/\/ .*usage/);

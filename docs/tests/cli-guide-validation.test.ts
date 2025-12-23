@@ -6,12 +6,16 @@
  * shortcuts, session management, and display modes.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 // Import the actual implementations to test against
+vi.mock('ink-use-stdout-dimensions', () => ({
+  default: () => [80, 24],
+}));
+
 import { commands } from '../../packages/cli/src/index.js';
 import { ShortcutManager } from '../../packages/cli/src/services/ShortcutManager.js';
 import { SessionStore } from '../../packages/cli/src/services/SessionStore.js';

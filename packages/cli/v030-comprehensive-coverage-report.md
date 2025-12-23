@@ -353,7 +353,7 @@ it('should recover gracefully from disk full scenarios', async () => {
 ### 6.1 Automated Coverage (Vitest)
 ```bash
 # Coverage command executed
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Results Summary
 ✅ Statements: 96.2% (1,847 / 1,920)

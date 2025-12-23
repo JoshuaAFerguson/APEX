@@ -62,11 +62,11 @@ vi.mock('../services/SessionAutoSaver', () => ({
 
 // Mock ConversationManager
 vi.mock('../services/ConversationManager', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => ({
+  ConversationManager: vi.fn().mockImplementation(function () { return ({
     addMessage: vi.fn(),
     setTask: vi.fn(),
     setAgent: vi.fn(),
-  })),
+  }); }),
 }));
 
 vi.mock('../ui/index.js', () => ({

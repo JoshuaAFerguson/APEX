@@ -5,8 +5,8 @@ import { PreviewPanel, type PreviewPanelProps } from '../PreviewPanel';
 import { App } from '../../App';
 
 // Mock the config loading
-vi.mock('@apex/core', async () => {
-  const actual = await vi.importActual('@apex/core');
+vi.mock('@apexcli/core', async () => {
+  const actual = await vi.importActual('@apexcli/core');
   return {
     ...actual,
     loadConfig: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('@apex/core', async () => {
 });
 
 // Mock the orchestrator and related modules
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     on: vi.fn(),
     off: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock('ink', async () => {
 
 // Mock the conversation manager
 vi.mock('../../../services/ConversationManager', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => ({
+  ConversationManager: vi.fn().mockImplementation(function () { return ({
     addMessage: vi.fn(),
     getContext: vi.fn().mockReturnValue({ messages: [] }),
     getRecentMessages: vi.fn().mockReturnValue([]),
@@ -50,7 +50,7 @@ vi.mock('../../../services/ConversationManager', () => ({
       type: 'task',
       confidence: 0.8,
     }),
-  })),
+  }); }),
 }));
 
 // Mock session store
@@ -75,7 +75,7 @@ describe('PreviewPanel Config Integration', () => {
     mockOnEdit.mockClear();
 
     // Reset to default config
-    vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+    vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
       ui: {
         previewMode: true,
         previewConfidence: 0.7,
@@ -104,7 +104,7 @@ describe('PreviewPanel Config Integration', () => {
 
   describe('previewMode configuration', () => {
     it('should show PreviewPanel when previewMode is enabled in config', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.7,
@@ -123,7 +123,7 @@ describe('PreviewPanel Config Integration', () => {
     });
 
     it('should not show PreviewPanel when previewMode is disabled in config', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: false,
           previewConfidence: 0.7,
@@ -143,7 +143,7 @@ describe('PreviewPanel Config Integration', () => {
     });
 
     it('should default to enabled when previewMode is not specified in config', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           // previewMode not specified - should default to true
           previewConfidence: 0.7,
@@ -162,7 +162,7 @@ describe('PreviewPanel Config Integration', () => {
   describe('previewConfidence configuration', () => {
     it('should use configured confidence threshold for preview display', async () => {
       // Low confidence threshold - should show preview for medium confidence
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.5, // Low threshold
@@ -185,7 +185,7 @@ describe('PreviewPanel Config Integration', () => {
 
     it('should not show preview when confidence is below configured threshold', async () => {
       // High confidence threshold
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.9, // High threshold
@@ -216,7 +216,7 @@ describe('PreviewPanel Config Integration', () => {
       ];
 
       for (const { threshold, confidence } of edgeCases) {
-        vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+        vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
           ui: {
             previewMode: true,
             previewConfidence: threshold,
@@ -243,7 +243,7 @@ describe('PreviewPanel Config Integration', () => {
 
   describe('autoExecuteHighConfidence configuration', () => {
     it('should affect preview behavior for high confidence intents', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.7,
@@ -268,7 +268,7 @@ describe('PreviewPanel Config Integration', () => {
     });
 
     it('should not auto-execute when disabled', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.7,
@@ -294,7 +294,7 @@ describe('PreviewPanel Config Integration', () => {
 
   describe('previewTimeout configuration', () => {
     it('should handle timeout configuration gracefully', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.7,
@@ -316,7 +316,7 @@ describe('PreviewPanel Config Integration', () => {
       const timeoutValues = [0, 1, 60000, 300000]; // 0ms, 1ms, 1min, 5min
 
       for (const timeout of timeoutValues) {
-        vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+        vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
           ui: {
             previewMode: true,
             previewTimeout: timeout,
@@ -337,7 +337,7 @@ describe('PreviewPanel Config Integration', () => {
 
   describe('config loading errors', () => {
     it('should handle config loading failures gracefully', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockRejectedValue(new Error('Config load failed'));
+      vi.mocked(require('@apexcli/core').loadConfig).mockRejectedValue(new Error('Config load failed'));
 
       // Component should still render with default props
       render(<PreviewPanel {...defaultProps} />);
@@ -346,7 +346,7 @@ describe('PreviewPanel Config Integration', () => {
     });
 
     it('should handle malformed config gracefully', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: 'invalid', // Should be boolean
           previewConfidence: 'not a number', // Should be number
@@ -359,7 +359,7 @@ describe('PreviewPanel Config Integration', () => {
     });
 
     it('should handle missing ui config section', async () => {
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         // No ui section
         agents: {},
         workflows: {},
@@ -374,7 +374,7 @@ describe('PreviewPanel Config Integration', () => {
   describe('dynamic config changes', () => {
     it('should handle config updates during runtime', async () => {
       // Start with preview enabled
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: { previewMode: true },
         agents: {},
         workflows: {},
@@ -384,7 +384,7 @@ describe('PreviewPanel Config Integration', () => {
       expect(screen.getByText('📋 Input Preview')).toBeInTheDocument();
 
       // Update config to disabled
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: { previewMode: false },
         agents: {},
         workflows: {},
@@ -399,7 +399,7 @@ describe('PreviewPanel Config Integration', () => {
 
     it('should handle confidence threshold changes', async () => {
       // Start with low threshold
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.3,
@@ -411,7 +411,7 @@ describe('PreviewPanel Config Integration', () => {
       const { rerender } = render(<PreviewPanel {...defaultProps} />);
 
       // Update to high threshold
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue({
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue({
         ui: {
           previewMode: true,
           previewConfidence: 0.9,
@@ -442,7 +442,7 @@ describe('PreviewPanel Config Integration', () => {
         workflows: {},
       };
 
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue(completeConfig);
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue(completeConfig);
 
       render(<PreviewPanel {...defaultProps} />);
 
@@ -459,7 +459,7 @@ describe('PreviewPanel Config Integration', () => {
         workflows: {},
       };
 
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue(minimalConfig);
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue(minimalConfig);
 
       render(<PreviewPanel {...defaultProps} />);
 
@@ -480,7 +480,7 @@ describe('PreviewPanel Config Integration', () => {
         extraSection: { data: 'ignored' },
       };
 
-      vi.mocked(require('@apex/core').loadConfig).mockResolvedValue(configWithExtras as any);
+      vi.mocked(require('@apexcli/core').loadConfig).mockResolvedValue(configWithExtras as any);
 
       // Should handle extra properties gracefully
       expect(() => render(<PreviewPanel {...defaultProps} />)).not.toThrow();

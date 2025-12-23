@@ -18,14 +18,13 @@ import {
   loadWorkflows,
   formatCost,
   formatTokens,
-  formatDuration,
   getEffectiveConfig,
   ApexConfig,
-  VerboseDebugData,
-  Task,
-  TaskUsage,
+  type VerboseDebugData,
+  type Task,
+  type TaskUsage,
 } from '@apexcli/core';
-import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startInkApp, type InkAppInstance } from './ui/index.js';
 import { SessionStore } from './services/SessionStore.js';
 import { SessionAutoSaver } from './services/SessionAutoSaver.js';
@@ -157,10 +156,10 @@ async function handleInit(args: string[]): Promise<void> {
       config: ctx.config,
       orchestrator: ctx.orchestrator,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
-      content: `Failed to initialize: ${(error as Error).message}`,
+      content: `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -390,10 +389,10 @@ async function handleServe(args: string[]): Promise<void> {
       type: 'assistant',
       content: `API server running at ${apiUrl}`,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
-      content: `Failed to start API server: ${(error as Error).message}`,
+      content: `Failed to start API server: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -850,8 +849,8 @@ async function executeTask(description: string): Promise<void> {
 
       ctx.app?.updateState({ currentTask: undefined, activeAgent: undefined });
     });
-  } catch (error) {
-    const errorMessage = `Failed to create task: ${(error as Error).message}`;
+  } catch (error: unknown) {
+    const errorMessage = `Failed to create task: ${error instanceof Error ? error.message : String(error)}`;
     ctx.app?.addMessage({
       type: 'error',
       content: errorMessage,
@@ -970,7 +969,7 @@ async function persistPreviewConfig(previewConfig: {
   // Persist to file
   try {
     await saveConfig(ctx.cwd, ctx.config);
-  } catch (error) {
+  } catch (error: unknown) {
     ctx.app?.addMessage({
       type: 'error',
       content: `Failed to persist config: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -985,9 +984,9 @@ async function handlePreview(args: string[]): Promise<void> {
   // Get current state
   const currentState = ctx.app?.getState();
   const previewConfig = currentState?.previewConfig ?? {
-    confidenceThreshold: 0.7,
-    autoExecuteHighConfidence: false,
-    timeoutMs: 5000,
+    confidenceThreshold: ctx.config?.ui?.previewConfidence ?? 0.7,
+    autoExecuteHighConfidence: ctx.config?.ui?.autoExecuteHighConfidence ?? false,
+    timeoutMs: ctx.config?.ui?.previewTimeout ?? 5000,
   };
 
   switch (action) {
@@ -1510,9 +1509,9 @@ export async function startInkREPL(): Promise<void> {
               activeAgent: stage.agent,                   // Set new current
             });
           }
-        } catch (error) {
+        } catch (error: unknown) {
           // Gracefully handle workflow lookup failures
-          console.warn(`Failed to lookup workflow for agent transition: ${error}`);
+          console.warn(`Failed to lookup workflow for agent transition: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
 
@@ -1592,8 +1591,10 @@ export async function startInkREPL(): Promise<void> {
         Object.keys(currentVerboseData.timing.toolUsageTimes).forEach(tool => {
           const errorCounts = (Object.values(currentVerboseData!.agentDebug.errorCounts) as number[])
             .reduce((sum, count) => sum + count, 0);
-          const toolUsages = (Object.values(currentVerboseData!.agentDebug.toolCallCounts) as Record<string, number>[])
-            .reduce((sum, toolCounts) => sum + (toolCounts[tool] || 0), 0);
+          const toolUsages = Object.values(currentVerboseData!.agentDebug.toolCallCounts).reduce((sum, toolCounts) => {
+            const counts = toolCounts as Record<string, number>;
+            return sum + (counts[tool] || 0);
+          }, 0);
           currentVerboseData!.metrics.toolEfficiency[tool] = toolUsages > 0 ? 1 - (errorCounts / toolUsages) : 1;
         });
       };

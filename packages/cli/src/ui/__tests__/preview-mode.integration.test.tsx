@@ -32,11 +32,11 @@ vi.mock('ink', async () => {
 
 // Mock the conversation manager
 vi.mock('../../services/ConversationManager', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => ({
+  ConversationManager: vi.fn().mockImplementation(function () { return ({
     addMessage: vi.fn(),
     getContext: vi.fn().mockReturnValue({ messages: [] }),
     getRecentMessages: vi.fn().mockReturnValue([]),
-  })),
+  }); }),
 }));
 
 // Mock session store

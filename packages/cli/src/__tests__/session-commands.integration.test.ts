@@ -30,7 +30,13 @@ import {
 } from '../handlers/session-handlers.js';
 
 // Mock dependencies
-vi.mock('fs/promises');
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  writeFile: vi.fn(),
+  readFile: vi.fn(),
+  readdir: vi.fn(),
+  unlink: vi.fn(),
+}));
 
 const mockFs = vi.mocked(fs);
 

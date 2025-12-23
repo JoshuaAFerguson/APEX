@@ -18,7 +18,7 @@ try {
 
   // Test if the build completes
   console.log('🔨 Testing build process...');
-  execSync('npm run build --workspace=@apex/cli', { stdio: 'inherit' });
+  execSync('npm run build --workspace=@apexcli/cli', { stdio: 'inherit' });
 
   console.log('✅ Build successful!');
   console.log('🎉 Preview feature implementation verified!');

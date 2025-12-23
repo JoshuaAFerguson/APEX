@@ -24,7 +24,7 @@ interface AppState {
 
 // Mock configuration saving
 const mockSaveConfig = vi.fn();
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   saveConfig: mockSaveConfig,
 }));
 

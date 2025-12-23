@@ -233,7 +233,7 @@ vi.doMock('../hooks/useAgentHandoff.js', () => ({
 
 1. **Run existing tests to verify coverage**:
    ```bash
-   npm test --workspace=@apex/cli
+   npm test --workspace=@apexcli/cli
    ```
 
 2. **Consider consolidating mocks** into shared fixtures if adding new tests

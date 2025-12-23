@@ -53,9 +53,10 @@ describe('useOrchestratorEvents - Verbose Data Edge Cases', () => {
       });
 
       // Should handle gracefully and not break
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: -50,
         outputTokens: -25,
+        estimatedCost: -0.001,
       });
 
       // Test with very large numbers
@@ -164,9 +165,10 @@ describe('useOrchestratorEvents - Verbose Data Edge Cases', () => {
       });
 
       // Should handle the accumulation
-      expect(result.current.verboseData?.agentTokens['developer']).toEqual({
+      expect(result.current.verboseData?.agentTokens['developer']).toMatchObject({
         inputTokens: 1000,
         outputTokens: 1000,
+        estimatedCost: 0.00001,
       });
 
       // Should calculate metrics without issues
@@ -354,9 +356,10 @@ describe('useOrchestratorEvents - Verbose Data Edge Cases', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 200,
         outputTokens: 100,
+        estimatedCost: 0.002,
       });
     });
 
@@ -419,9 +422,10 @@ describe('useOrchestratorEvents - Verbose Data Edge Cases', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 0,
         outputTokens: 0,
+        estimatedCost: 0,
       });
 
       // Metrics calculation with zero values

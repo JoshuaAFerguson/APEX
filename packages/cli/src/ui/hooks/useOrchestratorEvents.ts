@@ -3,10 +3,10 @@
  * Transforms orchestrator events into AgentPanel props and state
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
-import type { VerboseDebugData } from '@apex/core';
+import type { VerboseDebugData } from '@apexcli/core';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -50,12 +50,29 @@ export interface UseOrchestratorEventsOptions {
 export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}): OrchestratorEventState {
   const { orchestrator, taskId, workflow, debug = false } = options;
 
-  const [state, setState] = useState<OrchestratorEventState>({
-    agents: [],
+  // Derive agents list from workflow
+  const derivedAgents = useMemo(() => (
+    workflow ? workflow.stages.map(stage => ({
+      name: stage.agent,
+      status: 'idle' as const,
+      stage: stage.name,
+    })) : []
+  ), [workflow]);
+  const derivedAgentsByName = useMemo(() => (
+    new Map(derivedAgents.map(agent => [agent.name, agent]))
+  ), [derivedAgents]);
+
+  const [state, setState] = useState<OrchestratorEventState>(() => ({
+    agents: derivedAgents,
     parallelAgents: [],
     showParallelPanel: false,
     subtaskProgress: { completed: 0, total: 0 },
-  });
+  }));
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // VerboseDebugData state for tracking detailed metrics
   const [verboseData, setVerboseData] = useState<VerboseDebugData>(() => ({
@@ -91,12 +108,33 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     }
   }, [debug]);
 
-  // Derive agents list from workflow
-  const derivedAgents = workflow ? workflow.stages.map(stage => ({
-    name: stage.agent,
-    status: 'idle' as const,
-    stage: stage.name,
-  })) : [];
+  useEffect(() => {
+    if (workflow && derivedAgents.length > 0 && stateRef.current.agents.length === 0) {
+      const nextState = {
+        ...stateRef.current,
+        agents: derivedAgents,
+      };
+      stateRef.current = nextState;
+      setState(nextState);
+    }
+  }, [workflow, derivedAgents.length]);
+
+  const mergeAgentsWithWorkflow = useCallback((currentAgents: AgentInfo[], nextAgents: AgentInfo[]) => {
+    const currentAgentMap = new Map(currentAgents.map(agent => [agent.name, agent]));
+    return nextAgents.map(agent => {
+      const existing = currentAgentMap.get(agent.name);
+      if (!existing) {
+        return agent;
+      }
+      return {
+        ...agent,
+        status: existing.status,
+        progress: existing.progress,
+        startedAt: existing.startedAt,
+        debugInfo: existing.debugInfo,
+      };
+    });
+  }, []);
 
   // Update agent status based on current and previous agents
   const updateAgentStatus = useCallback((agents: AgentInfo[], current?: string, previous?: string): AgentInfo[] => {
@@ -112,14 +150,38 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     });
   }, []);
 
+  const ensureAgentEntry = useCallback((agents: AgentInfo[], agentName?: string, status?: AgentInfo['status']) => {
+    if (!agentName) {
+      return agents;
+    }
+
+    const existing = agents.find(agent => agent.name === agentName);
+    if (existing) {
+      return agents;
+    }
+
+    const baseAgent = derivedAgentsByName.get(agentName);
+    return [
+      ...agents,
+      {
+        ...(baseAgent ?? { name: agentName }),
+        status: status ?? 'idle',
+      },
+    ];
+  }, [derivedAgentsByName]);
+
   // Helper to update agent debug info
   const updateAgentDebugInfo = useCallback((
     agents: AgentInfo[],
     agentName: string,
-    updater: (debugInfo?: AgentInfo['debugInfo']) => AgentInfo['debugInfo']
+    updater: (debugInfo?: AgentInfo['debugInfo']) => AgentInfo['debugInfo'],
+    fallbackAgent?: AgentInfo,
+    allowAdd: boolean = true
   ): AgentInfo[] => {
-    return agents.map(agent => {
+    let found = false;
+    const updatedAgents = agents.map(agent => {
       if (agent.name === agentName) {
+        found = true;
         return {
           ...agent,
           debugInfo: updater(agent.debugInfo),
@@ -127,13 +189,32 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }
       return agent;
     });
+
+    if (!found) {
+      if (!allowAdd) {
+        return updatedAgents;
+      }
+
+      const baseAgent: AgentInfo = fallbackAgent ?? {
+        name: agentName,
+        status: 'idle',
+      };
+      return [
+        ...updatedAgents,
+        {
+          ...baseAgent,
+          debugInfo: updater(baseAgent.debugInfo),
+        },
+      ];
+    }
+
+    return updatedAgents;
   }, []);
 
   // Event handlers
   useEffect(() => {
     if (!orchestrator) return;
 
-    // Agent transition handler
     const handleAgentTransition = (
       eventTaskId: string,
       fromAgent: string | null,
@@ -167,26 +248,29 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       agentStartTimeRef.current.set(toAgent, now);
 
       // Set stageStartedAt for the new agent
-      setState((prev: OrchestratorEventState) => {
-        const updatedAgents = updateAgentStatus(
-          prev.agents.length > 0 ? prev.agents : derivedAgents,
-          toAgent,
-          fromAgent || undefined
-        );
+      const prevState = stateRef.current;
+      let updatedAgents = updateAgentStatus(
+        prevState.agents.length > 0 ? prevState.agents : derivedAgents,
+        toAgent,
+        fromAgent || undefined
+      );
+      updatedAgents = ensureAgentEntry(updatedAgents, toAgent, 'active');
+      updatedAgents = ensureAgentEntry(updatedAgents, fromAgent ?? undefined, 'completed');
 
-        // Update stageStartedAt for new agent
-        return {
-          ...prev,
-          currentAgent: toAgent,
-          previousAgent: fromAgent || undefined,
-          agents: updatedAgents.map(agent =>
-            agent.name === toAgent
-              ? { ...agent, debugInfo: { ...agent.debugInfo, stageStartedAt: now } }
-              : agent
-          ),
-          currentTaskId: eventTaskId,
-        };
-      });
+      const nextState = {
+        ...prevState,
+        currentAgent: toAgent,
+        previousAgent: fromAgent || undefined,
+        agents: updatedAgents.map(agent =>
+          agent.name === toAgent
+            ? { ...agent, debugInfo: { ...agent.debugInfo, stageStartedAt: now } }
+            : agent
+        ),
+        currentTaskId: eventTaskId,
+      };
+
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     // Stage change handler (fallback if agent:transition not available)
@@ -218,40 +302,48 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
 
       if (stageAgent) {
-        setState((prev: OrchestratorEventState) => {
-          const updatedAgents = updateAgentStatus(prev.agents.length > 0 ? prev.agents : derivedAgents, stageAgent, prev.currentAgent);
+        const currentState = stateRef.current;
+        const updatedAgents = updateAgentStatus(
+          currentState.agents.length > 0 ? currentState.agents : derivedAgents,
+          stageAgent,
+          currentState.currentAgent
+        );
 
-          return {
-            ...prev,
-            currentAgent: stageAgent,
-            previousAgent: prev.currentAgent,
-            agents: updatedAgents,
-            currentTaskId: task.id,
-          };
-        });
+        const nextState = {
+          ...currentState,
+          currentAgent: stageAgent,
+          previousAgent: currentState.currentAgent,
+          agents: updatedAgents,
+          currentTaskId: task.id,
+        };
+        stateRef.current = nextState;
+        setState(nextState);
       }
     };
 
     // Parallel execution start handler
-    const handleParallelStart = (eventTaskId: string, stages: string[], agents: string[]) => {
+    const handleParallelStart = (eventTaskId: string, stages?: string[], agents?: string[]) => {
       if (taskId && eventTaskId !== taskId) return;
 
-      log('Parallel execution started', { stages, agents, taskId: eventTaskId });
+      const safeStages = stages ?? [];
+      const safeAgents = agents ?? [];
 
-      setState((prev: OrchestratorEventState) => {
-        const parallelAgents = agents.map((agent, index) => ({
-          name: agent,
-          status: 'parallel' as const,
-          stage: stages[index],
-        }));
+      log('Parallel execution started', { stages: safeStages, agents: safeAgents, taskId: eventTaskId });
 
-        return {
-          ...prev,
-          parallelAgents,
-          showParallelPanel: agents.length > 1,
-          currentTaskId: eventTaskId,
-        };
-      });
+      const parallelAgents = safeAgents.map((agent, index) => ({
+        name: agent,
+        status: 'parallel' as const,
+        stage: safeStages[index],
+      }));
+
+      const nextState = {
+        ...stateRef.current,
+        parallelAgents,
+        showParallelPanel: safeAgents.length > 1,
+        currentTaskId: eventTaskId,
+      };
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     // Parallel execution complete handler
@@ -260,11 +352,13 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Parallel execution completed', { taskId: eventTaskId });
 
-      setState((prev: OrchestratorEventState) => ({
-        ...prev,
+      const nextState = {
+        ...stateRef.current,
         parallelAgents: [],
         showParallelPanel: false,
-      }));
+      };
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     // Task lifecycle handlers
@@ -273,12 +367,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task started', { taskId: task.id });
 
-      setState((prev: OrchestratorEventState) => ({
-        ...prev,
+      const nextState = {
+        ...stateRef.current,
         currentTaskId: task.id,
         agents: derivedAgents,
         subtaskProgress: { completed: 0, total: 0 },
-      }));
+      };
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     const handleTaskComplete = (task: any) => {
@@ -290,6 +386,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
+        currentTaskId: undefined,
         parallelAgents: [],
         showParallelPanel: false,
         subtaskProgress: undefined,
@@ -305,6 +402,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         ...prev,
         currentAgent: undefined,
         previousAgent: undefined,
+        currentTaskId: undefined,
         parallelAgents: [],
         showParallelPanel: false,
         subtaskProgress: undefined,
@@ -350,7 +448,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       log('Usage updated', { taskId: eventTaskId, tokens: usage });
 
       // Get current agent name from state
-      const currentAgentName = state.currentAgent;
+      const currentAgentName = stateRef.current.currentAgent;
       if (!currentAgentName) return;
 
       // Update agentTokens in verboseData
@@ -365,6 +463,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           [currentAgentName]: {
             inputTokens: prevAgentTokens.inputTokens + usage.inputTokens,
             outputTokens: prevAgentTokens.outputTokens + usage.outputTokens,
+            estimatedCost: usage.estimatedCost,
           },
         };
 
@@ -387,13 +486,19 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       // Also update agent's debugInfo for immediate display
       setState((prev: OrchestratorEventState) => ({
         ...prev,
-        agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
-          ...debugInfo,
-          tokensUsed: {
-            input: (debugInfo?.tokensUsed?.input || 0) + usage.inputTokens,
-            output: (debugInfo?.tokensUsed?.output || 0) + usage.outputTokens,
-          },
-        })),
+        agents: updateAgentDebugInfo(
+          prev.agents,
+          currentAgentName,
+          (debugInfo) => ({
+            ...debugInfo,
+            tokensUsed: {
+              input: (debugInfo?.tokensUsed?.input || 0) + usage.inputTokens,
+              output: (debugInfo?.tokensUsed?.output || 0) + usage.outputTokens,
+            },
+          }),
+          derivedAgentsByName.get(currentAgentName),
+          Boolean(derivedAgentsByName.get(currentAgentName))
+        ),
       }));
     };
 
@@ -406,7 +511,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Tool use', { taskId: eventTaskId, tool });
 
-      const currentAgentName = state.currentAgent;
+      const currentAgentName = stateRef.current.currentAgent;
       const now = new Date();
 
       // Track tool call completion if there's a previous tool in progress
@@ -450,53 +555,18 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         // Update agent's debugInfo.lastToolCall
         setState((prev: OrchestratorEventState) => ({
           ...prev,
-          agents: updateAgentDebugInfo(prev.agents, currentAgentName, (debugInfo) => ({
-            ...debugInfo,
-            lastToolCall: tool,
-          })),
+          agents: updateAgentDebugInfo(
+            prev.agents,
+            currentAgentName,
+            (debugInfo) => ({
+              ...debugInfo,
+              lastToolCall: tool,
+            }),
+            derivedAgentsByName.get(currentAgentName),
+            Boolean(derivedAgentsByName.get(currentAgentName))
+          ),
         }));
       }
-    };
-
-    const handleAgentTurn = (turnData: { taskId: string; agentName: string; turnNumber: number }) => {
-      if (taskId && turnData.taskId !== taskId) return;
-
-      log('Agent turn', { agent: turnData.agentName, turn: turnData.turnNumber });
-
-      setState((prev: OrchestratorEventState) => ({
-        ...prev,
-        agents: updateAgentDebugInfo(prev.agents, turnData.agentName, (debugInfo) => ({
-          ...debugInfo,
-          turnCount: turnData.turnNumber,
-        })),
-      }));
-    };
-
-    const handleError = (errorData: { taskId: string; agentName: string; error: Error }) => {
-      if (taskId && errorData.taskId !== taskId) return;
-
-      log('Agent error', { agent: errorData.agentName, error: errorData.error.message });
-
-      // Update VerboseDebugData errorCounts
-      setVerboseData((prev: VerboseDebugData) => ({
-        ...prev,
-        agentDebug: {
-          ...prev.agentDebug,
-          errorCounts: {
-            ...prev.agentDebug.errorCounts,
-            [errorData.agentName]: (prev.agentDebug.errorCounts[errorData.agentName] || 0) + 1,
-          },
-        },
-      }));
-
-      // Also update agent's debugInfo for immediate display
-      setState((prev: OrchestratorEventState) => ({
-        ...prev,
-        agents: updateAgentDebugInfo(prev.agents, errorData.agentName, (debugInfo) => ({
-          ...debugInfo,
-          errorCount: (debugInfo?.errorCount || 0) + 1,
-        })),
-      }));
     };
 
     const handleAgentThinking = (eventTaskId: string, agentName: string, thinking: string) => {
@@ -504,20 +574,31 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Agent thinking', { agent: agentName, thinking: thinking.substring(0, 100) + (thinking.length > 100 ? '...' : '') });
 
-      setState((prev: OrchestratorEventState) => ({
-        ...prev,
-        agents: updateAgentDebugInfo(prev.agents, agentName, (debugInfo) => ({
+      const baseState = stateRef.current;
+      const nextAgents = updateAgentDebugInfo(
+        baseState.agents.length > 0 ? baseState.agents : derivedAgents,
+        agentName,
+        (debugInfo) => ({
           ...debugInfo,
           thinking: thinking,
-        })),
-      }));
+        }),
+        derivedAgentsByName.get(agentName),
+        Boolean(derivedAgentsByName.get(agentName))
+      );
+
+      const nextState = {
+        ...baseState,
+        agents: nextAgents,
+      };
+      stateRef.current = nextState;
+      setState(nextState);
     };
 
     // Agent message handler for conversation length tracking
-    const handleAgentMessage = (eventTaskId: string, message: unknown) => {
+    const handleAgentMessage = (eventTaskId: string, _message: unknown) => {
       if (taskId && eventTaskId !== taskId) return;
 
-      const currentAgentName = state.currentAgent;
+      const currentAgentName = stateRef.current.currentAgent;
       if (!currentAgentName) return;
 
       log('Agent message', { taskId: eventTaskId, agent: currentAgentName });
@@ -532,6 +613,57 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
             [currentAgentName]: (prev.agentDebug.conversationLength[currentAgentName] || 0) + 1,
           },
         },
+      }));
+    };
+
+    const handleAgentTurn = (event: { taskId: string; agentName: string; turnNumber: number }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Agent turn', event);
+
+      setState((prev: OrchestratorEventState) => ({
+        ...prev,
+        agents: updateAgentDebugInfo(
+          prev.agents,
+          event.agentName,
+          (debugInfo) => ({
+            ...debugInfo,
+            turnCount: event.turnNumber,
+          }),
+          derivedAgentsByName.get(event.agentName),
+          Boolean(derivedAgentsByName.get(event.agentName))
+        ),
+      }));
+    };
+
+    const handleError = (event: { taskId: string; agentName: string; error: Error }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Agent error', { agent: event.agentName, error: event.error.message });
+
+      setVerboseData((prev: VerboseDebugData) => ({
+        ...prev,
+        agentDebug: {
+          ...prev.agentDebug,
+          errorCounts: {
+            ...prev.agentDebug.errorCounts,
+            [event.agentName]: (prev.agentDebug.errorCounts[event.agentName] || 0) + 1,
+          },
+        },
+      }));
+
+      setState((prev: OrchestratorEventState) => ({
+        ...prev,
+        agents: updateAgentDebugInfo(
+          prev.agents,
+          event.agentName,
+          (debugInfo) => ({
+            ...debugInfo,
+            errorCount: (debugInfo?.errorCount || 0) + 1,
+          }),
+          derivedAgentsByName.get(event.agentName),
+          Boolean(derivedAgentsByName.get(event.agentName))
+        ),
       }));
     };
 
@@ -551,6 +683,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('agent:tool-use', handleToolUse);
     orchestrator.on('agent:message', handleAgentMessage);
     orchestrator.on('agent:thinking', handleAgentThinking);
+    orchestrator.on('agent:turn', handleAgentTurn);
+    orchestrator.on('agent:error', handleError);
 
     log('Event listeners registered');
 
@@ -571,10 +705,34 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('agent:tool-use', handleToolUse);
       orchestrator.off('agent:message', handleAgentMessage);
       orchestrator.off('agent:thinking', handleAgentThinking);
+      orchestrator.off('agent:turn', handleAgentTurn);
+      orchestrator.off('agent:error', handleError);
 
       log('Event listeners cleaned up');
     };
-  }, [orchestrator, taskId, workflow, log, derivedAgents, updateAgentStatus, updateAgentDebugInfo, state.currentAgent]);
+  }, [orchestrator, taskId, workflow, log, derivedAgents, derivedAgentsByName, updateAgentStatus, updateAgentDebugInfo, ensureAgentEntry]);
+
+  useEffect(() => {
+    if (derivedAgents.length === 0) {
+      return;
+    }
+
+    const currentAgents = stateRef.current.agents;
+    const currentNames = currentAgents.map(agent => agent.name).join('|');
+    const derivedNames = derivedAgents.map(agent => agent.name).join('|');
+
+    if (currentNames === derivedNames) {
+      return;
+    }
+
+    const mergedAgents = mergeAgentsWithWorkflow(currentAgents, derivedAgents);
+    const nextState = {
+      ...stateRef.current,
+      agents: mergedAgents,
+    };
+    stateRef.current = nextState;
+    setState(nextState);
+  }, [derivedAgents, mergeAgentsWithWorkflow]);
 
   // Initialize agents from workflow if not already set
   useEffect(() => {

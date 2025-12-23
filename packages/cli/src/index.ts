@@ -18,9 +18,9 @@ import {
   formatDuration,
   getEffectiveConfig,
   ApexConfig,
-} from '@apex/core';
-import { ApexOrchestrator, TaskStore } from '@apex/orchestrator';
-import { startServer } from '@apex/api';
+} from '@apexcli/core';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { startServer } from '@apexcli/api';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers.js';
 import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
 
@@ -79,7 +79,8 @@ const ctx: ApexContext = {
 // Commands
 // ============================================================================
 
-const commands: Command[] = [
+export type CliContext = ApexContext;
+export const commands: Command[] = [
   {
     name: 'help',
     aliases: ['h', '?'],
@@ -746,24 +747,32 @@ const commands: Command[] = [
     handler: async (ctx, args) => {
       // Note: In classic CLI mode, this command has limited functionality
       // as the classic mode doesn't have the same state management as the Ink UI
-      const action = args[0]?.toLowerCase();
+      const hasArgs = Array.isArray(args) && args.length > 0;
+      const rawAction = hasArgs ? (args[0] ?? '') : '';
+      const trimmedAction = typeof rawAction === 'string' ? rawAction.trim() : String(rawAction).trim();
+      const action = trimmedAction.toLowerCase();
+
+      if (hasArgs && trimmedAction.length === 0) {
+        console.log(chalk.red('💭 Usage: /thoughts [on|off|toggle|status]'));
+        return;
+      }
 
       switch (action) {
         case 'on':
-          console.log(chalk.green('✓ Thought visibility enabled (Note: Classic CLI has limited thought display)'));
+          console.log(chalk.green('💭 Thought visibility enabled'));
           break;
         case 'off':
-          console.log(chalk.green('✓ Thought visibility disabled'));
+          console.log(chalk.green('💭 Thought visibility disabled'));
           break;
         case 'status':
-          console.log(chalk.gray('Thought visibility status is managed per session in Ink UI mode'));
+          console.log(chalk.gray('💭 Thought visibility status is managed per session in Ink UI mode'));
           break;
         case 'toggle':
-        case undefined:
+        case '':
           console.log(chalk.blue('💭 Thought visibility toggled (Use --classic flag for rich UI)'));
           break;
         default:
-          console.log(chalk.red('Usage: /thoughts [on|off|toggle|status]'));
+          console.log(chalk.red('💭 Usage: /thoughts [on|off|toggle|status]'));
       }
     },
   },

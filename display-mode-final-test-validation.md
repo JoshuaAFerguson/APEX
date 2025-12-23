@@ -189,7 +189,7 @@ npm test -- --testPathPattern="AgentPanel.*display"
 npm test -- --testPathPattern="display.*integration"
 
 # Run with coverage reporting
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ## Final Recommendations

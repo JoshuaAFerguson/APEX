@@ -167,8 +167,8 @@ The agent handoff animation feature has been **comprehensively tested** with **1
 
 ## Recommendations
 
-1. **Run Tests**: Use `npm test --workspace=@apex/cli` to execute all tests
-2. **Coverage Report**: Use `npm run test:coverage --workspace=@apex/cli` for detailed coverage
+1. **Run Tests**: Use `npm test --workspace=@apexcli/cli` to execute all tests
+2. **Coverage Report**: Use `npm run test:coverage --workspace=@apexcli/cli` for detailed coverage
 3. **Continuous Integration**: Include handoff tests in CI pipeline
 4. **Performance Monitoring**: Monitor animation performance in production
 

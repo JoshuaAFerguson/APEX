@@ -22,6 +22,18 @@ const createMockOrchestrator = () => {
         events[event].forEach(handler => handler(...args));
       }
     }),
+    simulateAgentTransition: (taskId: string, fromAgent: string | null, toAgent: string) => {
+      (events['agent:transition'] || []).forEach(handler => handler(taskId, fromAgent, toAgent));
+    },
+    simulateUsageUpdate: (taskId: string, usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }) => {
+      (events['usage:updated'] || []).forEach(handler => handler(taskId, usage));
+    },
+    simulateToolUse: (taskId: string, tool: string, input: unknown) => {
+      (events['agent:tool-use'] || []).forEach(handler => handler(taskId, tool, input));
+    },
+    simulateAgentTurn: (event: { taskId: string; agentName: string; turnNumber: number }) => {
+      (events['agent:turn'] || []).forEach(handler => handler(event));
+    },
     // Helper to get registered handlers
     _getHandlers: () => events,
   };
@@ -188,24 +200,19 @@ describe('useOrchestratorEvents thinking functionality', () => {
 
     // Emit various debug events
     act(() => {
-      mockOrchestrator.emit('usage:updated', {
-        taskId,
-        agentName: 'developer',
-        tokensUsed: { input: 1000, output: 1500 },
+      mockOrchestrator.simulateAgentTransition(taskId, null, 'developer');
+      mockOrchestrator.simulateUsageUpdate(taskId, {
+        inputTokens: 1000,
+        outputTokens: 1500,
+        totalTokens: 2500,
+        estimatedCost: 0,
       });
-
-      mockOrchestrator.emit('tool:use', {
-        taskId,
-        agentName: 'developer',
-        toolName: 'Edit',
-      });
-
-      mockOrchestrator.emit('agent:turn', {
+      mockOrchestrator.simulateToolUse(taskId, 'Edit', { file: 'src/index.ts' });
+      mockOrchestrator.simulateAgentTurn({
         taskId,
         agentName: 'developer',
         turnNumber: 3,
       });
-
       mockOrchestrator.emit('agent:thinking', taskId, 'developer', 'Thinking about the implementation...');
     });
 

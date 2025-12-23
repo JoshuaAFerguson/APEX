@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { DisplayMode } from '@apex/core';
+import type { DisplayMode } from '@apexcli/core';
 
 // Mock dependencies for isolated testing
 vi.mock('ink', () => ({

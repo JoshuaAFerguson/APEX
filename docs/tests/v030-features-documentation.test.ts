@@ -411,7 +411,7 @@ describe('v0.3.0 Features Documentation Tests', () => {
 
     it('should include comprehensive TypeScript examples', () => {
       // Basic MarkdownRenderer usage
-      expect(documentationContent).toContain('import { MarkdownRenderer } from \'@apex/cli/ui/components\';');
+      expect(documentationContent).toContain('import { MarkdownRenderer } from \'@apexcli/cli/ui/components\';');
       expect(documentationContent).toContain('<MarkdownRenderer');
       expect(documentationContent).toContain('content={markdownString}');
 

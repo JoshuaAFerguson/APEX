@@ -262,5 +262,5 @@ beforeEach(() => {
 
 1. **Placement**: Add the new `describe('Session Search, Filter, and Listing')` block after the existing "Advanced Session Operations" block (~line 698)
 2. **Test Data Factory**: Create `createSearchFilterTestIndex()` helper function at the top of the file with other factories
-3. **Coverage Verification**: After implementation, run `npm test --workspace=@apex/cli` to verify all tests pass
+3. **Coverage Verification**: After implementation, run `npm test --workspace=@apexcli/cli` to verify all tests pass
 4. **No Production Code Changes**: This task is test-only; SessionStore implementation already supports all required functionality

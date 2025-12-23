@@ -282,7 +282,7 @@ Each command should test error scenarios:
 ### Integration with CI
 
 Tests should:
-- Run as part of `npm test --workspace=@apex/cli`
+- Run as part of `npm test --workspace=@apexcli/cli`
 - Use fake timers for auto-save timer tests
 - Not require actual file system access
 - Complete in under 30 seconds total

@@ -261,10 +261,10 @@ packages/cli/src/__tests__/
 
 ```bash
 # Run all completion tests
-npm test --workspace=@apex/cli -- --grep "completion"
+npm test --workspace=@apexcli/cli -- --grep "completion"
 
 # Run only agent/workflow integration tests
-npm test --workspace=@apex/cli -- src/__tests__/agent-workflow-completion.integration.test.ts
+npm test --workspace=@apexcli/cli -- src/__tests__/agent-workflow-completion.integration.test.ts
 ```
 
 ## References

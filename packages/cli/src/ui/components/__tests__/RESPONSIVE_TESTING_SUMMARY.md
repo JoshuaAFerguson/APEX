@@ -114,8 +114,8 @@ The tests target the following coverage thresholds (from vitest.config.ts):
 ## Test Execution
 Run tests with:
 ```bash
-npm test --workspace=@apex/cli
-npm run test:coverage --workspace=@apex/cli  # For coverage report
+npm test --workspace=@apexcli/cli
+npm run test:coverage --workspace=@apexcli/cli  # For coverage report
 ```
 
 ## Conclusion

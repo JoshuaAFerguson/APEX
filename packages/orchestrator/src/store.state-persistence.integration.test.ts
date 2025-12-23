@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { TaskStore } from './store';
-import type { Task, TaskUsage } from '@apex/core';
+import type { Task, TaskUsage } from '@apexcli/core';
 
 describe('TaskStore State Persistence Integration Tests', () => {
   let testDir: string;
@@ -337,6 +337,10 @@ describe('TaskStore State Persistence Integration Tests', () => {
       parentTask.subtaskIds = ['child_1', 'child_2'];
       await store1.createTask(parentTask);
 
+      const depTask = createTestTask();
+      depTask.id = 'dependency_task';
+      await store1.createTask(depTask);
+
       const child1 = createTestTask();
       child1.id = 'child_1';
       child1.parentTaskId = 'parent_task';
@@ -347,10 +351,6 @@ describe('TaskStore State Persistence Integration Tests', () => {
       child2.id = 'child_2';
       child2.parentTaskId = 'parent_task';
       await store1.createTask(child2);
-
-      const depTask = createTestTask();
-      depTask.id = 'dependency_task';
-      await store1.createTask(depTask);
 
       // Restart store
       store1.close();

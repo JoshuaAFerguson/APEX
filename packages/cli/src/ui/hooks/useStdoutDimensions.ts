@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStdout } from 'ink';
 
 /**
@@ -99,8 +99,8 @@ function getBreakpointHelpers(
  * Custom hook for tracking terminal (stdout) dimensions with responsive breakpoints
  *
  * This hook provides terminal width/height detection with resize event handling
- * and responsive breakpoint classification. It wraps ink-use-stdout-dimensions
- * to provide enhanced functionality with a 4-tier breakpoint system and boolean helpers.
+ * and responsive breakpoint classification. It reads dimensions from Ink's stdout
+ * and provides enhanced functionality with a 4-tier breakpoint system and boolean helpers.
  *
  * @param options - Configuration options for fallbacks and breakpoint thresholds
  * @returns Terminal dimensions with breakpoint classification, boolean helpers, and availability status
@@ -190,35 +190,30 @@ export function useStdoutDimensions(
     return DEFAULT_BREAKPOINTS;
   }, [customBreakpoints, narrowThreshold, wideThreshold]);
 
-  // Get stdout from ink's useStdout hook
   const { stdout } = useStdout();
+  const readDimensions = (): [number | undefined, number | undefined] => [
+    stdout?.columns ?? process.stdout?.columns,
+    stdout?.rows ?? process.stdout?.rows,
+  ];
 
-  // Track dimensions with state to handle resize events
-  const [dimensions, setDimensions] = useState<[number | undefined, number | undefined]>(() => [
-    stdout?.columns,
-    stdout?.rows
-  ]);
+  const [[width, height], setDimensions] = useState<[number | undefined, number | undefined]>(
+    readDimensions
+  );
 
-  // Listen for resize events
   useEffect(() => {
-    if (!stdout) return;
+    if (!stdout?.on) {
+      return;
+    }
 
     const handleResize = () => {
-      setDimensions([stdout.columns, stdout.rows]);
+      setDimensions(readDimensions());
     };
 
-    // Set initial dimensions
-    handleResize();
-
-    // Listen for resize
     stdout.on('resize', handleResize);
-
     return () => {
       stdout.off('resize', handleResize);
     };
   }, [stdout]);
-
-  const [width, height] = dimensions;
 
   // Determine if actual dimensions are available
   const isAvailable = width !== undefined && height !== undefined;

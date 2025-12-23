@@ -1,4 +1,4 @@
-# @apex/web-ui
+# @apexcli/web-ui
 
 Modern web dashboard for APEX (Autonomous Product Engineering eXecutor).
 
@@ -30,19 +30,19 @@ This package provides a Next.js-based web interface for managing APEX tasks, age
 npm install
 
 # Run in development mode
-npm run dev --workspace=@apex/web-ui
+npm run dev --workspace=@apexcli/web-ui
 
 # Build for production
-npm run build --workspace=@apex/web-ui
+npm run build --workspace=@apexcli/web-ui
 
 # Start production server
-npm run start --workspace=@apex/web-ui
+npm run start --workspace=@apexcli/web-ui
 
 # Lint
-npm run lint --workspace=@apex/web-ui
+npm run lint --workspace=@apexcli/web-ui
 
 # Type check
-npm run typecheck --workspace=@apex/web-ui
+npm run typecheck --workspace=@apexcli/web-ui
 ```
 
 ## Project Structure

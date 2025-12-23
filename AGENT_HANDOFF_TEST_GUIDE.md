@@ -12,7 +12,7 @@ This document provides comprehensive information about the test suite for the Ag
 npm test
 
 # Or specifically for CLI package
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 ```
 
 ### Run Tests with Coverage
@@ -21,7 +21,7 @@ npm test --workspace=@apex/cli
 npm run test:coverage
 
 # Or specifically for CLI package with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ### Run Tests in Watch Mode (for development)
@@ -30,19 +30,19 @@ npm run test:coverage --workspace=@apex/cli
 npm run test:watch
 
 # Or specifically for CLI package
-npm test:watch --workspace=@apex/cli
+npm test:watch --workspace=@apexcli/cli
 ```
 
 ### Run Specific Test Files
 ```bash
 # Run only HandoffIndicator tests
-npm test --workspace=@apex/cli -- HandoffIndicator.test.tsx
+npm test --workspace=@apexcli/cli -- HandoffIndicator.test.tsx
 
 # Run only integration tests
-npm test --workspace=@apex/cli -- AgentPanel.integration.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.integration.test.tsx
 
 # Run only edge case tests
-npm test --workspace=@apex/cli -- HandoffIndicator.edge-cases.test.tsx
+npm test --workspace=@apexcli/cli -- HandoffIndicator.edge-cases.test.tsx
 ```
 
 ## Coverage Reports Location
@@ -327,13 +327,13 @@ npm run build
 ### Step 3: Run Tests
 ```bash
 # All tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # With coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Watch mode (for development)
-npm run test:watch --workspace=@apex/cli
+npm run test:watch --workspace=@apexcli/cli
 ```
 
 ### Step 4: View Coverage Report
@@ -367,7 +367,7 @@ CI will fail if:
 
 1. **Start watch mode**:
    ```bash
-   npm run test:watch --workspace=@apex/cli
+   npm run test:watch --workspace=@apexcli/cli
    ```
 
 2. **Make your changes** to component or hook files
@@ -378,7 +378,7 @@ CI will fail if:
 
 5. **Run coverage check** before committing:
    ```bash
-   npm run test:coverage --workspace=@apex/cli
+   npm run test:coverage --workspace=@apexcli/cli
    ```
 
 6. **Verify thresholds are met** (70% minimum)

@@ -73,7 +73,7 @@ All integration tests include acceptance criteria documentation in file headers:
 
 ```bash
 # Run all CLI tests
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run specific test suites
 npm test -- packages/cli/src/services/__tests__

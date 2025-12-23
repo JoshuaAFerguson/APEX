@@ -267,13 +267,15 @@ export class TaskStore {
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
         id, description, acceptance_criteria, workflow, autonomy, status, priority,
-        current_stage, project_path, branch_name, retry_count, max_retries, resume_attempts, created_at, updated_at,
+        current_stage, project_path, branch_name, pr_url, retry_count, max_retries, resume_attempts,
+        created_at, updated_at, completed_at, paused_at, resume_after, pause_reason,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
         parent_task_id, subtask_ids, subtask_strategy,
         workspace_config, session_data, last_checkpoint
       ) VALUES (
         @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
-        @currentStage, @projectPath, @branchName, @retryCount, @maxRetries, @resumeAttempts, @createdAt, @updatedAt,
+        @currentStage, @projectPath, @branchName, @prUrl, @retryCount, @maxRetries, @resumeAttempts,
+        @createdAt, @updatedAt, @completedAt, @pausedAt, @resumeAfter, @pauseReason,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
         @parentTaskId, @subtaskIds, @subtaskStrategy,
         @workspaceConfig, @sessionData, @lastCheckpoint
@@ -291,11 +293,16 @@ export class TaskStore {
       currentStage: normalizedTask.currentStage || null,
       projectPath: normalizedTask.projectPath,
       branchName: normalizedTask.branchName || null,
+      prUrl: normalizedTask.prUrl || null,
       retryCount: normalizedTask.retryCount || 0,
       maxRetries: normalizedTask.maxRetries || 3,
       resumeAttempts: normalizedTask.resumeAttempts || 0,
       createdAt: normalizedTask.createdAt.toISOString(),
       updatedAt: normalizedTask.updatedAt.toISOString(),
+      completedAt: normalizedTask.completedAt ? normalizedTask.completedAt.toISOString() : null,
+      pausedAt: normalizedTask.pausedAt ? normalizedTask.pausedAt.toISOString() : null,
+      resumeAfter: normalizedTask.resumeAfter ? normalizedTask.resumeAfter.toISOString() : null,
+      pauseReason: normalizedTask.pauseReason ?? null,
       inputTokens: normalizedTask.usage.inputTokens,
       outputTokens: normalizedTask.usage.outputTokens,
       totalTokens: normalizedTask.usage.totalTokens,

@@ -451,7 +451,7 @@ describe('ConversationManager', () => {
       for (const task of taskPatterns) {
         const intent = manager.detectIntent(task);
         expect(intent.type).toBe('task');
-        expect(intent.confidence).toBe(0.7);
+        expect(intent.confidence).toBe(0.8);
       }
     });
 

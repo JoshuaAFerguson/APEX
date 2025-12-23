@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { saveConfig } from '@apex/core';
+import { saveConfig } from '@apexcli/core';
 
-// Mock the saveConfig function from @apex/core
-vi.mock('@apex/core', () => ({
+// Mock the saveConfig function from @apexcli/core
+vi.mock('@apexcli/core', () => ({
   saveConfig: vi.fn(),
 }));
 

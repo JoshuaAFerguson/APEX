@@ -125,7 +125,7 @@ const AuthContext = createContext<AuthContextType>({
       const apiExample = `### Basic Usage:
 
 \`\`\`typescript
-import { MarkdownRenderer } from '@apex/cli/ui/components';
+import { MarkdownRenderer } from '@apexcli/cli/ui/components';
 
 <MarkdownRenderer
   content={markdownString}

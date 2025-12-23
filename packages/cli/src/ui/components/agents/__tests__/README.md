@@ -166,16 +166,16 @@ describe('AgentPanel Integration Tests', () => {
 
 ```bash
 # Run all tests for the CLI package
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run specific test files
-npm test --workspace=@apex/cli src/ui/hooks/__tests__/useAgentHandoff.test.ts
-npm test --workspace=@apex/cli src/ui/components/agents/__tests__/AgentPanel.test.tsx
-npm test --workspace=@apex/cli src/ui/components/agents/__tests__/HandoffIndicator.test.tsx
-npm test --workspace=@apex/cli src/ui/components/agents/__tests__/AgentPanel.integration.test.tsx
+npm test --workspace=@apexcli/cli src/ui/hooks/__tests__/useAgentHandoff.test.ts
+npm test --workspace=@apexcli/cli src/ui/components/agents/__tests__/AgentPanel.test.tsx
+npm test --workspace=@apexcli/cli src/ui/components/agents/__tests__/HandoffIndicator.test.tsx
+npm test --workspace=@apexcli/cli src/ui/components/agents/__tests__/AgentPanel.integration.test.tsx
 
 # Generate coverage report
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 ### Test Statistics

@@ -1,5 +1,5 @@
 {
-  "name": "@apex/docs-tests",
+  "name": "@apexcli/docs-tests",
   "version": "0.1.0",
   "private": true,
   "type": "module",

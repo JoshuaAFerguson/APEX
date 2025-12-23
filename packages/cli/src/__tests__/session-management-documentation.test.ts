@@ -23,7 +23,13 @@ import { SessionStore, Session, SessionMessage, SessionState, SessionSummary } f
 import { SessionAutoSaver, AutoSaveOptions } from '../services/SessionAutoSaver.js';
 
 // Mock file system
-vi.mock('fs/promises');
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn(),
+  writeFile: vi.fn(),
+  readdir: vi.fn(),
+  unlink: vi.fn(),
+  readFile: vi.fn(),
+}));
 const mockFs = vi.mocked(fs);
 
 // Test utilities
@@ -304,7 +310,7 @@ describe('Session Management Documentation Features', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         '/test/session-data.json',
-        expect.stringContaining('"name":"Feature Development"')
+        expect.stringContaining('"name": "Feature Development"')
       );
 
       // Test export to HTML file
@@ -756,7 +762,7 @@ describe('Session Management Documentation Features', () => {
 
       // Fast-forward 30 seconds
       vi.advanceTimersByTime(30000);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
 
       // Should have auto-saved
       expect(autoSaver.hasUnsavedChanges()).toBe(false);
@@ -825,7 +831,7 @@ describe('Session Management Documentation Features', () => {
 
       // Trigger auto-save
       vi.advanceTimersByTime(30000);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
 
       // Verify session state was persisted
       const savedData = mockFs.writeFile.mock.calls.find(
@@ -912,7 +918,7 @@ describe('Session Management Documentation Features', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         '/test/output/session-backup.json',
-        expect.stringContaining('"name":"Command Test Session"')
+        expect.stringContaining('"name": "Command Test Session"')
       );
 
       // Test list with tag filter
@@ -1000,7 +1006,7 @@ describe('Session Management Documentation Features', () => {
 
       // 4. Auto-save verification (Feature 6: Auto-Save)
       vi.advanceTimersByTime(30000);
-      await vi.runAllTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
       expect(autoSaver.hasUnsavedChanges()).toBe(false);
 
       // 5. Create a branch (Feature 3: Session Branching)
@@ -1028,7 +1034,7 @@ describe('Session Management Documentation Features', () => {
       const htmlExport = await sessionStore.exportSession(currentSession.id, 'html');
 
       expect(markdownExport).toContain('Auth Feature Development');
-      expect(jsonExport).toContain('"name":"Auth Feature Development"');
+      expect(jsonExport).toContain('"name": "Auth Feature Development"');
       expect(htmlExport).toContain('<title>APEX Session: Auth Feature Development</title>');
 
       // 7. Search and filter sessions (Feature 5: Session Search)

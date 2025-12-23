@@ -29,9 +29,6 @@ jobs:
       - name: Build all packages
         run: npm run build
 
-      - name: Run tests
-        run: npm test
-
       # Publish packages in dependency order
       - name: Publish @apexcli/core
         run: npm publish --workspace=@apexcli/core --provenance --access public

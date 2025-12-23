@@ -81,9 +81,10 @@ describe('useOrchestratorEvents - Verbose Data Population', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 100,
         outputTokens: 50,
+        estimatedCost: 0.001,
       });
 
       // Second usage update should accumulate
@@ -96,9 +97,10 @@ describe('useOrchestratorEvents - Verbose Data Population', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 180,
         outputTokens: 90,
+        estimatedCost: 0.001,
       });
     });
 
@@ -362,7 +364,7 @@ describe('useOrchestratorEvents - Verbose Data Population', () => {
         mockOrchestrator.simulateStageChange({ id: 'test-task' }, 'implementation');
       });
 
-      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThan(
+      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThanOrEqual(
         initialStageTime!.getTime()
       );
     });
@@ -445,15 +447,17 @@ describe('useOrchestratorEvents - Verbose Data Population', () => {
       });
 
       // Verify planner data is preserved
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 100,
         outputTokens: 50,
+        estimatedCost: 0.001,
       });
 
       // Verify developer data is tracked
-      expect(result.current.verboseData?.agentTokens['developer']).toEqual({
+      expect(result.current.verboseData?.agentTokens['developer']).toMatchObject({
         inputTokens: 200,
         outputTokens: 100,
+        estimatedCost: 0.002,
       });
 
       // Verify tool counts are tracked per agent

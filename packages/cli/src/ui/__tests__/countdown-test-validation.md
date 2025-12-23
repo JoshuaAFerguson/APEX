@@ -130,8 +130,8 @@ The countdown state management feature is now fully tested and ready for product
 ### Test Execution
 Tests are designed to run with the existing project test infrastructure:
 ```bash
-npm test --workspace=@apex/cli
-npm run test:coverage --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
+npm run test:coverage --workspace=@apexcli/cli
 ```
 
 The test suite provides confidence in the countdown feature's reliability, maintainability, and user experience.

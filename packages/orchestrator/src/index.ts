@@ -62,6 +62,7 @@ export interface OrchestratorEvents {
   'agent:message': (taskId: string, message: unknown) => void;
   'agent:thinking': (taskId: string, agent: string, thinking: string) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
+  'agent:turn': (event: { taskId: string; agentName: string; turnNumber: number }) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
   'pr:failed': (taskId: string, error: string) => void;

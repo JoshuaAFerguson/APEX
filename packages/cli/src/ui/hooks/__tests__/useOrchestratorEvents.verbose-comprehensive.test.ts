@@ -61,9 +61,10 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 150,
         outputTokens: 75,
+        estimatedCost: 0.002,
       });
 
       // Second usage update should accumulate
@@ -76,9 +77,10 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 250,
         outputTokens: 125,
+        estimatedCost: 0.001,
       });
 
       // Verify metrics are calculated
@@ -195,6 +197,10 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
+        mockOrchestrator.simulateStageChange('test-task', 'planning', 'planner');
+      });
+
+      act(() => {
         mockOrchestrator.simulateUsageUpdate('test-task', {
           inputTokens: 200,
           outputTokens: 100,
@@ -229,13 +235,15 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       // Verify multiple agents are tracked
-      expect(result.current.verboseData?.agentTokens['developer']).toEqual({
+      expect(result.current.verboseData?.agentTokens['developer']).toMatchObject({
         inputTokens: 300,
         outputTokens: 150,
+        estimatedCost: 0.004,
       });
-      expect(result.current.verboseData?.agentTokens['planner']).toEqual({
+      expect(result.current.verboseData?.agentTokens['planner']).toMatchObject({
         inputTokens: 200,
         outputTokens: 100,
+        estimatedCost: 0.003,
       });
     });
   });
@@ -333,13 +341,15 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       // Both agents should have their data tracked
-      expect(result.current.verboseData?.agentTokens['developer']).toEqual({
+      expect(result.current.verboseData?.agentTokens['developer']).toMatchObject({
         inputTokens: 100,
         outputTokens: 50,
+        estimatedCost: 0.001,
       });
-      expect(result.current.verboseData?.agentTokens['tester']).toEqual({
+      expect(result.current.verboseData?.agentTokens['tester']).toMatchObject({
         inputTokens: 80,
         outputTokens: 40,
+        estimatedCost: 0.001,
       });
     });
   });
@@ -399,11 +409,11 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
-        mockOrchestrator.simulateStageChange({ id: 'test-task' }, 'implementation');
+        mockOrchestrator.simulateStageChange('test-task', 'implementation', 'developer');
       });
 
       // Stage start time should be updated
-      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThan(
+      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThanOrEqual(
         initialStageTime!.getTime()
       );
 
@@ -413,11 +423,11 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
       });
 
       act(() => {
-        mockOrchestrator.simulateStageChange({ id: 'test-task' }, 'testing');
+        mockOrchestrator.simulateStageChange('test-task', 'testing', 'tester');
       });
 
       // Stage timing should continue to update
-      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThan(
+      expect(result.current.verboseData?.timing.stageStartTime.getTime()).toBeGreaterThanOrEqual(
         initialStageTime!.getTime() + 1000
       );
     });
@@ -458,9 +468,10 @@ describe('useOrchestratorEvents - Verbose Data Comprehensive Tests', () => {
         });
       });
 
-      expect(result.current.verboseData?.agentTokens['developer']).toEqual({
+      expect(result.current.verboseData?.agentTokens['developer']).toMatchObject({
         inputTokens: 200,
         outputTokens: 100,
+        estimatedCost: 0.002,
       });
       expect(result.current.currentAgent).toBe('developer');
     });

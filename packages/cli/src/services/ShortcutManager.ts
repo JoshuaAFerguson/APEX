@@ -125,6 +125,10 @@ export class ShortcutManager {
   }
 
   private matchesKey(event: ShortcutEvent, keys: KeyCombination): boolean {
+    if (!event || typeof event.key !== 'string' || event.key.length === 0) {
+      return false;
+    }
+
     return (
       event.key.toLowerCase() === keys.key.toLowerCase() &&
       !!event.ctrl === !!keys.ctrl &&
@@ -135,16 +139,20 @@ export class ShortcutManager {
   }
 
   private executeAction(action: ShortcutAction): void {
-    switch (action.type) {
-      case 'function':
-        action.handler();
-        break;
-      case 'emit':
-        this.emit(action.event, action.payload);
-        break;
-      case 'command':
-        this.emit('command', action.command);
-        break;
+    try {
+      switch (action.type) {
+        case 'function':
+          action.handler();
+          break;
+        case 'emit':
+          this.emit(action.event, action.payload);
+          break;
+        case 'command':
+          this.emit('command', action.command);
+          break;
+      }
+    } catch {
+      // Ignore shortcut handler errors to avoid breaking the main loop.
     }
   }
 
@@ -152,7 +160,11 @@ export class ShortcutManager {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
       for (const handler of handlers) {
-        handler(payload);
+        try {
+          handler(payload);
+        } catch {
+          // Ignore handler errors to keep other listeners running.
+        }
       }
     }
   }

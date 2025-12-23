@@ -126,13 +126,13 @@ packages/cli/src/ui/hooks/__tests__/
 ### Test Execution Commands
 ```bash
 # Run all agent handoff tests
-npm test --workspace=@apex/cli -- --grep "Agent"
+npm test --workspace=@apexcli/cli -- --grep "Agent"
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Run specific test file
-npm test --workspace=@apex/cli -- AgentPanel.test.tsx
+npm test --workspace=@apexcli/cli -- AgentPanel.test.tsx
 ```
 
 ## Coverage Report Analysis

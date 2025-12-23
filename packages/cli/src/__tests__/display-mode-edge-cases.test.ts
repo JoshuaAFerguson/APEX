@@ -531,7 +531,7 @@ describe('Display Mode Edge Cases and Error Handling', () => {
       const manager = createNetworkAwareManager();
 
       // Force network failure scenario
-      Math.random = vi.fn(() => 0.5); // Always trigger network failure
+      Math.random = vi.fn(() => 0.05); // Always trigger network failure
 
       await setModeWithNetworking(manager, 'compact');
 
@@ -558,7 +558,7 @@ describe('Display Mode Edge Cases and Error Handling', () => {
       expect(manager.pendingSync).toBe('compact');
 
       manager.isOnline = true;
-      Math.random = vi.fn(() => 0); // Force successful sync
+      Math.random = vi.fn(() => 0.5); // Force successful sync
 
       const synced = await syncPendingChanges(manager);
 
@@ -694,11 +694,10 @@ describe('Display Mode Edge Cases and Error Handling', () => {
     };
 
     const healCorruption = (manager: SelfHealingDisplayManager): boolean => {
-      if (manager.healingAttempts >= manager.maxHealingAttempts) {
+      manager.healingAttempts++;
+      if (manager.healingAttempts > manager.maxHealingAttempts) {
         return false;
       }
-
-      manager.healingAttempts++;
 
       // Restore from backup
       if (manager.backupStates.length > 0) {
@@ -720,7 +719,10 @@ describe('Display Mode Edge Cases and Error Handling', () => {
     ): boolean => {
       // Backup current state
       if (!detectCorruption(manager)) {
-        manager.backupStates.push(manager.mode);
+        const lastState = manager.backupStates[manager.backupStates.length - 1];
+        if (lastState !== manager.mode) {
+          manager.backupStates.push(manager.mode);
+        }
         if (manager.backupStates.length > 5) {
           manager.backupStates.shift();
         }

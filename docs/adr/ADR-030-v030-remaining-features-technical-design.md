@@ -45,7 +45,7 @@ Evidence from code analysis:
 Evidence from code analysis:
 - `/compact` command handler implemented in `repl.tsx` (line 1399-1400)
 - `handleCompact()` function toggles between 'compact' and 'normal' modes
-- `DisplayMode` type includes 'compact' (from `@apex/core`)
+- `DisplayMode` type includes 'compact' (from `@apexcli/core`)
 - StatusBar has compact mode rendering (shows minimal: status icon, branch, cost)
 - AgentPanel has `useCompactDisplay` for single-line agent list
 - TaskProgress has compact single-line rendering

@@ -111,7 +111,7 @@
 
 **Framework**: Vitest
 **Environment**: Node.js with jsdom
-**Command**: `npm test --workspace=@apex/cli`
+**Command**: `npm test --workspace=@apexcli/cli`
 
 **Test Types**:
 1. **Unit Tests**: Individual shortcut validation

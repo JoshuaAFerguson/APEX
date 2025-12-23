@@ -9,17 +9,6 @@ vi.mock('ink', () => ({
   render: vi.fn(),
 }));
 
-// Mock React for testing
-vi.mock('react', async () => {
-  const actual = await vi.importActual('react');
-  return {
-    ...actual,
-    useState: vi.fn(),
-    useEffect: vi.fn(),
-    useCallback: vi.fn(),
-  };
-});
-
 // Mock Fuse.js for search functionality
 vi.mock('fuse.js', () => ({
   default: vi.fn().mockImplementation(() => ({

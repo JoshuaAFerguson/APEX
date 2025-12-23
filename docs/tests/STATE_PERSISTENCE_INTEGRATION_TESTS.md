@@ -117,20 +117,20 @@ npm install
 npm test -- state-persistence.integration.test.ts
 
 # Or specific packages
-npm test --workspace=@apex/orchestrator
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/orchestrator
+npm test --workspace=@apexcli/cli
 ```
 
 ### Run Individual Test Suites
 
 #### TaskStore Tests
 ```bash
-npm test --workspace=@apex/orchestrator -- store.state-persistence.integration.test.ts
+npm test --workspace=@apexcli/orchestrator -- store.state-persistence.integration.test.ts
 ```
 
 #### SessionStore Tests
 ```bash
-npm test --workspace=@apex/cli -- SessionStore.state-persistence.integration.test.ts
+npm test --workspace=@apexcli/cli -- SessionStore.state-persistence.integration.test.ts
 ```
 
 ### Watch Mode

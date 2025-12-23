@@ -130,7 +130,7 @@ The implementation leverages and validates the existing comprehensive test suite
 ## Branch and Code Organization
 
 - **Branch**: `apex/mj8tmfg7-v030-complete-remainingfeatures`
-- **Package**: `@apex/cli`
+- **Package**: `@apexcli/cli`
 - **Test Framework**: Vitest with ink-testing-library
 - **Test Location**: `packages/cli/src/ui/__tests__/`
 - **Documentation**: Comprehensive coverage docs and validation
@@ -140,7 +140,7 @@ The implementation leverages and validates the existing comprehensive test suite
 The implementation is complete and ready for:
 
 1. **Code Review**: All acceptance criteria validated with comprehensive tests
-2. **CI/CD Integration**: Tests can be run via `npm test --workspace=@apex/cli`
+2. **CI/CD Integration**: Tests can be run via `npm test --workspace=@apexcli/cli`
 3. **Performance Monitoring**: Baseline metrics established for future regression testing
 4. **Documentation Integration**: Coverage docs ready for project documentation
 

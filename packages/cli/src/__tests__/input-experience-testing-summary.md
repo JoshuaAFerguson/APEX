@@ -161,7 +161,7 @@ npm test
 npm run test:coverage
 
 # Run CLI package tests specifically
-npm test --workspace=@apex/cli
+npm test --workspace=@apexcli/cli
 
 # Run specific test files
 npx vitest packages/cli/src/__tests__/input-experience-features.test.tsx

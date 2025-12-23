@@ -11,8 +11,10 @@ import { App, type AppState } from '../ui/App';
 import { ThemeProvider } from '../ui/context/ThemeContext';
 
 // Mock ink hooks
-const mockUseInput = vi.fn();
-const mockUseApp = vi.fn(() => ({ exit: vi.fn() }));
+const { mockUseInput, mockUseApp } = vi.hoisted(() => ({
+  mockUseInput: vi.fn(),
+  mockUseApp: vi.fn(() => ({ exit: vi.fn() })),
+}));
 
 vi.mock('ink', async () => {
   const actual = await vi.importActual('ink');
@@ -94,8 +96,6 @@ describe('Thoughts Feature End-to-End', () => {
     mockOnCommand = vi.fn();
     mockOnTask = vi.fn();
     mockOnExit = vi.fn();
-
-    vi.mocked(useInput).mockImplementation(mockUseInput);
 
     initialState = {
       initialized: true,

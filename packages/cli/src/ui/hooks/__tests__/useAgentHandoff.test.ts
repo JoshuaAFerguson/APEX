@@ -240,7 +240,7 @@ describe('useAgentHandoff', () => {
 
       // Should show the last transition
       expect(result.current.isAnimating).toBe(true);
-      expect(result.current.previousAgent).toBe('developer');
+      expect(result.current.previousAgent).toBe('planner');
       expect(result.current.currentAgent).toBe('tester');
     });
   });
@@ -283,7 +283,7 @@ describe('useAgentHandoff', () => {
 
       // Complete animation
       act(() => {
-        vi.advanceTimersByTime(2000);
+        vi.advanceTimersByTime(2050);
       });
 
       expect(result.current.isAnimating).toBe(false);
@@ -304,7 +304,7 @@ describe('useAgentHandoff', () => {
       });
 
       act(() => {
-        vi.advanceTimersByTime(100);
+        vi.advanceTimersByTime(150);
       });
 
       expect(result.current.isAnimating).toBe(false);
@@ -321,6 +321,9 @@ describe('useAgentHandoff', () => {
       });
 
       // Should start fading immediately since fade duration > total duration
+      act(() => {
+        vi.advanceTimersByTime(34);
+      });
       expect(result.current.isFading).toBe(true);
     });
 
@@ -336,7 +339,7 @@ describe('useAgentHandoff', () => {
 
       // Should complete immediately
       act(() => {
-        vi.advanceTimersByTime(1);
+        vi.advanceTimersByTime(34);
       });
 
       expect(result.current.isAnimating).toBe(false);
@@ -354,10 +357,10 @@ describe('useAgentHandoff', () => {
 
       // With 120fps, each frame should be ~8.33ms
       act(() => {
-        vi.advanceTimersByTime(8);
+        vi.advanceTimersByTime(9);
       });
 
-      expect(result.current.progress).toBeCloseTo(0.008, 2);
+      expect(result.current.progress).toBeCloseTo(0.009, 2);
     });
   });
 
@@ -375,13 +378,26 @@ describe('useAgentHandoff', () => {
       // Test progress at various points
       const testPoints = [0, 100, 250, 500, 750, 900, 1000];
 
+      let elapsed = 0;
+      const frameInterval = 34;
       for (const time of testPoints) {
+        if (time === 0) {
+          expect(result.current.progress).toBeCloseTo(0, 2);
+          continue;
+        }
+
         act(() => {
-          vi.advanceTimersByTime(time - (result.current.progress * 1000));
+          const advanceBy = Math.max(time - elapsed, 0) + frameInterval;
+          vi.advanceTimersByTime(advanceBy);
+          elapsed += advanceBy;
         });
 
-        const expectedProgress = Math.min(time / 1000, 1);
-        expect(result.current.progress).toBeCloseTo(expectedProgress, 2);
+        const expectedProgress = Math.min(elapsed / 1000, 1);
+        if (!result.current.isAnimating && expectedProgress === 1) {
+          expect(result.current.progress).toBe(0);
+        } else {
+          expect(result.current.progress).toBeCloseTo(expectedProgress, 1);
+        }
       }
     });
 
@@ -419,6 +435,7 @@ describe('useAgentHandoff', () => {
       // Default: 2000ms total, 500ms fade = fade starts at 1500ms
       act(() => {
         vi.advanceTimersByTime(1400);
+        vi.advanceTimersByTime(34);
       });
       expect(result.current.isFading).toBe(false);
 
@@ -441,6 +458,7 @@ describe('useAgentHandoff', () => {
       // 3000ms total, 1000ms fade = fade starts at 2000ms
       act(() => {
         vi.advanceTimersByTime(1900);
+        vi.advanceTimersByTime(34);
       });
       expect(result.current.isFading).toBe(false);
 

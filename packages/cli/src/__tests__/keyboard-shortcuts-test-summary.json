@@ -81,7 +81,7 @@
   "testExecution": {
     "framework": "vitest",
     "environment": "jsdom",
-    "command": "npm test --workspace=@apex/cli",
+    "command": "npm test --workspace=@apexcli/cli",
     "files": [
       "src/__tests__/keyboard-shortcuts-documentation.test.ts",
       "src/__tests__/keyboard-shortcuts-coverage.integration.test.ts"

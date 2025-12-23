@@ -567,7 +567,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       app.log.info(`WebSocket client connected for task ${taskId}`);
 
       // Send current task state
-      orchestrator.getTask(taskId).then((task) => {
+      orchestrator.getTask(taskId).then((task: Task | null) => {
         if (task) {
           socket.send(
             JSON.stringify({

@@ -47,8 +47,8 @@ const PRIORITY_BY_TIER: Record<DisplayTier, SegmentPriority[]> = {
 const LABEL_ABBREVIATIONS: Record<string, string> = {
   'tokens:': 'tk:',
   'cost:': '', // Cost shows just value with $ symbol in abbreviated mode
-  'model:': 'm:',
-  'active:': 'a:',
+  'model:': 'mod:',
+  'active:': 'act:',
   'idle:': 'i:',
   'stage:': 's:',
   'session:': 'sess:',
@@ -454,7 +454,7 @@ function createSegmentConfigs(
         icon: undefined,
         iconColor: undefined,
         label: 'active:',
-        abbreviatedLabel: 'a:',
+        abbreviatedLabel: 'act:',
         labelColor: 'gray',
         value: formatDetailedTime(totalActiveTime),
         valueColor: 'green',
@@ -593,7 +593,7 @@ function createSegmentConfigs(
       icon: undefined,
       iconColor: undefined,
       label: 'model:',
-      abbreviatedLabel: 'm:',
+      abbreviatedLabel: 'mod:',
       labelColor: 'gray',
       value: props.model,
       valueColor: 'blue',
@@ -713,7 +713,7 @@ function applyAbbreviations(
 
     if (useAbbrev) {
       // Use abbreviated label if available
-      if (config.abbreviatedLabel !== undefined) {
+      if (config.abbreviatedLabel != null) {
         effectiveLabel = config.abbreviatedLabel === '' ? undefined : config.abbreviatedLabel;
       }
 

@@ -17,7 +17,7 @@ vi.mock('ink', async () => {
 
 // Mock dependencies
 vi.mock('../../services/ConversationManager.js', () => ({
-  ConversationManager: vi.fn().mockImplementation(() => ({
+  ConversationManager: vi.fn().mockImplementation(function () { return ({
     addMessage: vi.fn(),
     getSuggestions: vi.fn(() => []),
     hasPendingClarification: vi.fn(() => false),
@@ -27,22 +27,22 @@ vi.mock('../../services/ConversationManager.js', () => ({
     setAgent: vi.fn(),
     clearTask: vi.fn(),
     clearAgent: vi.fn(),
-  })),
+  }); }),
 }));
 
 vi.mock('../../services/ShortcutManager.js', () => ({
-  ShortcutManager: vi.fn().mockImplementation(() => ({
+  ShortcutManager: vi.fn().mockImplementation(function () { return ({
     on: vi.fn(),
     handleKey: vi.fn(() => false),
     pushContext: vi.fn(),
     popContext: vi.fn(),
-  })),
+  }); }),
 }));
 
 vi.mock('../../services/CompletionEngine.js', () => ({
-  CompletionEngine: vi.fn().mockImplementation(() => ({
+  CompletionEngine: vi.fn().mockImplementation(function () { return ({
     // Mock completion engine methods as needed
-  })),
+  }); }),
 }));
 
 describe('App DisplayMode Integration', () => {

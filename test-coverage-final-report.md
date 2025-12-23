@@ -159,15 +159,15 @@ The feature has comprehensive test coverage and meets all acceptance criteria. T
 
 ```bash
 # Run all handoff animation tests
-npm test --workspace=@apex/cli -- --run src/ui/**/*handoff*
+npm test --workspace=@apexcli/cli -- --run src/ui/**/*handoff*
 
 # Run with coverage
-npm run test:coverage --workspace=@apex/cli
+npm run test:coverage --workspace=@apexcli/cli
 
 # Run specific test files
-npx vitest run src/ui/components/agents/__tests__/ --workspace=@apex/cli
-npx vitest run src/ui/hooks/__tests__/useAgentHandoff* --workspace=@apex/cli
-npx vitest run src/ui/__tests__/agent-handoff* --workspace=@apex/cli
+npx vitest run src/ui/components/agents/__tests__/ --workspace=@apexcli/cli
+npx vitest run src/ui/hooks/__tests__/useAgentHandoff* --workspace=@apexcli/cli
+npx vitest run src/ui/__tests__/agent-handoff* --workspace=@apexcli/cli
 ```
 
 ## Conclusion
