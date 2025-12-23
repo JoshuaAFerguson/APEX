@@ -17,6 +17,24 @@ import * as path from 'path';
 // ============================================================================
 
 /**
+ * Represents a documentation reference extracted from markdown or comments
+ */
+export interface DocumentationReference {
+  /** Referenced symbol name */
+  symbolName: string;
+  /** Type of reference (inline-code, code-block, see-tag) */
+  referenceType: 'inline-code' | 'code-block' | 'see-tag';
+  /** File where the reference was found */
+  sourceFile: string;
+  /** Line number where the reference was found */
+  line: number;
+  /** Column where the reference starts */
+  column: number;
+  /** Full context of the reference */
+  context: string;
+}
+
+/**
  * Represents a symbol extracted from source code
  */
 export interface SymbolInfo {
@@ -118,6 +136,23 @@ const SYMBOL_PATTERNS = {
 
   // JSDoc comment block
   jsDocBlock: /\/\*\*([\s\S]*?)\*\//g,
+} as const;
+
+/**
+ * Regular expression patterns for extracting documentation references
+ */
+const DOCUMENTATION_PATTERNS = {
+  // Inline code patterns: `FunctionName()`, `ClassName`, `TypeName`
+  inlineCode: /`([A-Z][a-zA-Z0-9_$]*(?:\(\))?|[a-z][a-zA-Z0-9_$]*\(\))`/g,
+
+  // Markdown code blocks (JavaScript/TypeScript)
+  codeBlock: /```(?:javascript|typescript|js|ts)?\s*\n([\s\S]*?)\n```/g,
+
+  // @see tags in JSDoc comments
+  seeTag: /@see\s+(?:\{@link\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)(?:\})?/g,
+
+  // Symbol references within code blocks (function calls, class instantiations, etc.)
+  symbolInCode: /(?:new\s+)?([A-Z][a-zA-Z0-9_$]*)|([a-z][a-zA-Z0-9_$]*)\s*\(/g,
 } as const;
 
 // ============================================================================
@@ -254,6 +289,187 @@ export class CrossReferenceValidator {
   validateReference(index: SymbolIndex, symbolName: string): boolean {
     const symbols = this.lookupSymbol(index, symbolName);
     return symbols.length > 0;
+  }
+
+  /**
+   * Extract symbol references from documentation content
+   * Supports markdown files, JSDoc comments, and other documentation formats
+   */
+  extractDocumentationReferences(filePath: string, content: string): DocumentationReference[] {
+    const references: DocumentationReference[] = [];
+
+    // Extract references from inline code patterns
+    references.push(...this.extractInlineCodeReferences(filePath, content));
+
+    // Extract references from markdown code blocks
+    references.push(...this.extractCodeBlockReferences(filePath, content));
+
+    // Extract references from @see tags
+    references.push(...this.extractSeeTagReferences(filePath, content));
+
+    return references;
+  }
+
+  /**
+   * Extract symbol references from inline code patterns like `FunctionName()` or `ClassName`
+   */
+  extractInlineCodeReferences(filePath: string, content: string): DocumentationReference[] {
+    const references: DocumentationReference[] = [];
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNumber = i + 1;
+      let match: RegExpExecArray | null;
+
+      // Reset regex lastIndex for each line
+      DOCUMENTATION_PATTERNS.inlineCode.lastIndex = 0;
+
+      while ((match = DOCUMENTATION_PATTERNS.inlineCode.exec(line)) !== null) {
+        const symbolName = match[1];
+
+        // Clean up symbol name (remove parentheses if present)
+        const cleanSymbolName = symbolName.replace(/\(\)$/, '');
+
+        references.push({
+          symbolName: cleanSymbolName,
+          referenceType: 'inline-code',
+          sourceFile: filePath,
+          line: lineNumber,
+          column: match.index + 1,
+          context: line.trim(),
+        });
+      }
+    }
+
+    return references;
+  }
+
+  /**
+   * Extract symbol references from markdown code blocks
+   */
+  extractCodeBlockReferences(filePath: string, content: string): DocumentationReference[] {
+    const references: DocumentationReference[] = [];
+    let match: RegExpExecArray | null;
+
+    // Reset regex lastIndex
+    DOCUMENTATION_PATTERNS.codeBlock.lastIndex = 0;
+
+    while ((match = DOCUMENTATION_PATTERNS.codeBlock.exec(content)) !== null) {
+      const codeBlockContent = match[1];
+      const beforeMatch = content.substring(0, match.index);
+      const lineNumber = beforeMatch.split('\n').length;
+
+      // Extract symbols from the code block content
+      const codeBlockReferences = this.extractSymbolsFromCodeContent(
+        filePath,
+        codeBlockContent,
+        lineNumber
+      );
+
+      references.push(...codeBlockReferences);
+    }
+
+    return references;
+  }
+
+  /**
+   * Extract symbol references from @see tags in documentation
+   */
+  extractSeeTagReferences(filePath: string, content: string): DocumentationReference[] {
+    const references: DocumentationReference[] = [];
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNumber = i + 1;
+      let match: RegExpExecArray | null;
+
+      // Reset regex lastIndex for each line
+      DOCUMENTATION_PATTERNS.seeTag.lastIndex = 0;
+
+      while ((match = DOCUMENTATION_PATTERNS.seeTag.exec(line)) !== null) {
+        const symbolName = match[1];
+
+        // Handle dotted references (e.g., Module.Function) - take the last part
+        const actualSymbolName = symbolName.includes('.')
+          ? symbolName.split('.').pop()!
+          : symbolName;
+
+        references.push({
+          symbolName: actualSymbolName,
+          referenceType: 'see-tag',
+          sourceFile: filePath,
+          line: lineNumber,
+          column: match.index + 1,
+          context: line.trim(),
+        });
+      }
+    }
+
+    return references;
+  }
+
+  /**
+   * Extract symbols from code content (used by code block extraction)
+   */
+  private extractSymbolsFromCodeContent(
+    filePath: string,
+    codeContent: string,
+    startLine: number
+  ): DocumentationReference[] {
+    const references: DocumentationReference[] = [];
+    const lines = codeContent.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNumber = startLine + i;
+      let match: RegExpExecArray | null;
+
+      // Reset regex lastIndex for each line
+      DOCUMENTATION_PATTERNS.symbolInCode.lastIndex = 0;
+
+      while ((match = DOCUMENTATION_PATTERNS.symbolInCode.exec(line)) !== null) {
+        // match[1] is class names (PascalCase), match[2] is function calls
+        const symbolName = match[1] || match[2];
+
+        if (symbolName && this.isValidSymbolReference(symbolName)) {
+          references.push({
+            symbolName,
+            referenceType: 'code-block',
+            sourceFile: filePath,
+            line: lineNumber,
+            column: match.index + 1,
+            context: line.trim(),
+          });
+        }
+      }
+    }
+
+    return references;
+  }
+
+  /**
+   * Check if a symbol name is valid and should be considered a reference
+   */
+  private isValidSymbolReference(symbolName: string): boolean {
+    // Filter out common JavaScript keywords and built-in functions
+    const excludedNames = new Set([
+      'console', 'log', 'error', 'warn', 'info', 'debug',
+      'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+      'Promise', 'Array', 'Object', 'String', 'Number', 'Boolean',
+      'Date', 'RegExp', 'Math', 'JSON',
+      'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+      'function', 'class', 'interface', 'type', 'enum',
+      'const', 'let', 'var', 'return', 'throw', 'try', 'catch', 'finally',
+      'import', 'export', 'from', 'as',
+    ]);
+
+    return (
+      symbolName.length > 1 && // Must be more than 1 character
+      !excludedNames.has(symbolName) && // Not in excluded list
+      /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(symbolName) // Valid identifier
+    );
   }
 
   // ============================================================================

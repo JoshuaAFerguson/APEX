@@ -6,7 +6,12 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { CrossReferenceValidator, type SymbolInfo, type SymbolIndex } from './cross-reference-validator';
+import {
+  CrossReferenceValidator,
+  type SymbolInfo,
+  type SymbolIndex,
+  type DocumentationReference
+} from './cross-reference-validator';
 
 describe('CrossReferenceValidator', () => {
   let validator: CrossReferenceValidator;
