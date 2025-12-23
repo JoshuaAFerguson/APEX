@@ -75,7 +75,7 @@
 - ✅ Critical vulnerabilities → Individual urgent tasks (priority: urgent, score: 1.0)
 - ✅ High vulnerabilities → Individual/grouped tasks (priority: high, score: 0.9)
 - ✅ Medium vulnerabilities → Grouped tasks (priority: normal, score: 0.7)
-- ✅ Low vulnerabilities → Grouped tasks (priority: low, score: 0.4)
+- ✅ Low vulnerabilities → Grouped tasks (priority: low, score: 0.5)
 
 #### CVE Identifier Handling ✅
 - ✅ Real CVE identifiers with public disclosure rationale
