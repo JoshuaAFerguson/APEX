@@ -22,6 +22,7 @@ export type RemediationActionType =
   | 'package_replacement'
   | 'manual_review'
   | 'documentation'
+  | 'testing'
   | 'command';
 
 /**
@@ -181,3 +182,4 @@ export { RefactoringAnalyzer } from './refactoring-analyzer';
 export { DocsAnalyzer } from './docs-analyzer';
 export { TestsAnalyzer } from './tests-analyzer';
 export { VersionMismatchDetector } from './version-mismatch-detector';
+export { CrossReferenceValidator } from './cross-reference-validator';

@@ -8,7 +8,7 @@
  */
 
 import { BaseAnalyzer, TaskCandidate, RemediationSuggestion } from './index';
-import type { ProjectAnalysis, SecurityVulnerability, VulnerabilitySeverity, DeprecatedPackage } from '../idle-processor';
+import type { ProjectAnalysis, SecurityVulnerability, VulnerabilitySeverity, DeprecatedPackage, OutdatedDependency, UpdateType } from '../idle-processor';
 
 export class MaintenanceAnalyzer extends BaseAnalyzer {
   readonly type = 'maintenance' as const;
@@ -70,50 +70,16 @@ export class MaintenanceAnalyzer extends BaseAnalyzer {
       );
     }
 
-    // Priority 2: Outdated dependencies
-    if (analysis.dependencies.outdated.length > 0) {
-      const outdatedCount = analysis.dependencies.outdated.length;
-      const hasMultiple = outdatedCount > 1;
+    // Priority 2: Outdated dependencies with enhanced update type scoring
+    const outdatedPackages = analysis.dependencies.outdatedPackages ?? [];
+    const legacyOutdated = analysis.dependencies.outdated ?? [];
 
-      // Group by severity (0.x versions are more risky)
-      const criticalOutdated = analysis.dependencies.outdated.filter(
-        (dep) => dep.includes('@^0.') || dep.includes('@~0.')
-      );
-
-      if (criticalOutdated.length > 0) {
-        candidates.push(
-          this.createCandidate(
-            'critical-outdated-deps',
-            'Update Pre-1.0 Dependencies',
-            `Update ${criticalOutdated.length} pre-1.0 ${criticalOutdated.length === 1 ? 'dependency' : 'dependencies'}: ${criticalOutdated.slice(0, 3).join(', ')}${criticalOutdated.length > 3 ? '...' : ''}`,
-            {
-              priority: 'high',
-              effort: 'medium',
-              workflow: 'maintenance',
-              rationale: 'Pre-1.0 dependencies may have breaking changes and security issues',
-              score: 0.8,
-              remediationSuggestions: this.buildOutdatedDependenciesRemediation(criticalOutdated, true),
-            }
-          )
-        );
-      }
-
-      // General outdated dependencies
-      candidates.push(
-        this.createCandidate(
-          'outdated-deps',
-          'Update Outdated Dependencies',
-          `Update ${outdatedCount} outdated ${hasMultiple ? 'dependencies' : 'dependency'}`,
-          {
-            priority: 'normal',
-            effort: outdatedCount > 10 ? 'high' : 'medium',
-            workflow: 'maintenance',
-            rationale: 'Outdated dependencies may have security vulnerabilities and missing features',
-            score: 0.5,
-            remediationSuggestions: this.buildOutdatedDependenciesRemediation(analysis.dependencies.outdated, false),
-          }
-        )
-      );
+    if (outdatedPackages.length > 0) {
+      // Process rich OutdatedDependency objects with updateType scoring
+      this.processOutdatedPackagesWithScoring(outdatedPackages, candidates);
+    } else if (legacyOutdated.length > 0) {
+      // Fallback to legacy string-based processing for backward compatibility
+      this.processLegacyOutdatedDependencies(legacyOutdated, candidates);
     }
 
     // Priority 3: Deprecated packages
@@ -574,5 +540,301 @@ export class MaintenanceAnalyzer extends BaseAnalyzer {
     }
 
     return 'low';
+  }
+
+  /**
+   * Process rich OutdatedDependency objects with updateType-based scoring
+   */
+  private processOutdatedPackagesWithScoring(outdatedPackages: OutdatedDependency[], candidates: TaskCandidate[]): void {
+    // Group packages by update type for better organization
+    const byUpdateType = this.groupByUpdateType(outdatedPackages);
+
+    // Process major updates (highest priority within outdated deps)
+    if (byUpdateType.major.length > 0) {
+      for (const pkg of byUpdateType.major) {
+        candidates.push(this.createOutdatedDependencyTask(pkg, 0.8));
+      }
+    }
+
+    // Process minor updates
+    if (byUpdateType.minor.length > 0) {
+      if (byUpdateType.minor.length <= 3) {
+        // Individual tasks for small numbers of minor updates
+        for (const pkg of byUpdateType.minor) {
+          candidates.push(this.createOutdatedDependencyTask(pkg, 0.6));
+        }
+      } else {
+        // Grouped task for many minor updates
+        candidates.push(this.createGroupedOutdatedDependencyTask(byUpdateType.minor, 'minor', 0.6));
+      }
+    }
+
+    // Process patch updates (lowest priority, often grouped)
+    if (byUpdateType.patch.length > 0) {
+      if (byUpdateType.patch.length <= 2) {
+        // Individual tasks for very few patch updates
+        for (const pkg of byUpdateType.patch) {
+          candidates.push(this.createOutdatedDependencyTask(pkg, 0.4));
+        }
+      } else {
+        // Grouped task for patch updates
+        candidates.push(this.createGroupedOutdatedDependencyTask(byUpdateType.patch, 'patch', 0.4));
+      }
+    }
+  }
+
+  /**
+   * Process legacy string-based outdated dependencies (backward compatibility)
+   */
+  private processLegacyOutdatedDependencies(outdatedDeps: string[], candidates: TaskCandidate[]): void {
+    const outdatedCount = outdatedDeps.length;
+    const hasMultiple = outdatedCount > 1;
+
+    // Group by severity (0.x versions are more risky)
+    const criticalOutdated = outdatedDeps.filter(
+      (dep) => dep.includes('@^0.') || dep.includes('@~0.')
+    );
+
+    if (criticalOutdated.length > 0) {
+      candidates.push(
+        this.createCandidate(
+          'critical-outdated-deps',
+          'Update Pre-1.0 Dependencies',
+          `Update ${criticalOutdated.length} pre-1.0 ${criticalOutdated.length === 1 ? 'dependency' : 'dependencies'}: ${criticalOutdated.slice(0, 3).join(', ')}${criticalOutdated.length > 3 ? '...' : ''}`,
+          {
+            priority: 'high',
+            effort: 'medium',
+            workflow: 'maintenance',
+            rationale: 'Pre-1.0 dependencies may have breaking changes and security issues',
+            score: 0.8,
+            remediationSuggestions: this.buildOutdatedDependenciesRemediation(criticalOutdated, true),
+          }
+        )
+      );
+    }
+
+    // General outdated dependencies
+    candidates.push(
+      this.createCandidate(
+        'outdated-deps',
+        'Update Outdated Dependencies',
+        `Update ${outdatedCount} outdated ${hasMultiple ? 'dependencies' : 'dependency'}`,
+        {
+          priority: 'normal',
+          effort: outdatedCount > 10 ? 'high' : 'medium',
+          workflow: 'maintenance',
+          rationale: 'Outdated dependencies may have security vulnerabilities and missing features',
+          score: 0.5,
+          remediationSuggestions: this.buildOutdatedDependenciesRemediation(outdatedDeps, false),
+        }
+      )
+    );
+  }
+
+  /**
+   * Group outdated dependencies by update type
+   */
+  private groupByUpdateType(outdatedPackages: OutdatedDependency[]): Record<UpdateType, OutdatedDependency[]> {
+    const grouped: Record<UpdateType, OutdatedDependency[]> = {
+      major: [],
+      minor: [],
+      patch: [],
+    };
+
+    for (const pkg of outdatedPackages) {
+      grouped[pkg.updateType].push(pkg);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Create task for individual outdated dependency with updateType scoring
+   */
+  private createOutdatedDependencyTask(pkg: OutdatedDependency, score: number): TaskCandidate {
+    const updateTypeDisplay = pkg.updateType.charAt(0).toUpperCase() + pkg.updateType.slice(1);
+    const priority = this.getOutdatedPriorityByUpdateType(pkg.updateType);
+    const effort = pkg.updateType === 'major' ? 'medium' : 'low';
+
+    // Create a URL-safe candidate ID
+    const safePackageName = pkg.name.replace(/[^a-zA-Z0-9-]/g, '-');
+
+    return this.createCandidate(
+      `outdated-${pkg.updateType}-${safePackageName}`,
+      `${updateTypeDisplay} Update: ${pkg.name}`,
+      `Update ${pkg.name} from ${pkg.currentVersion} to ${pkg.latestVersion} (${pkg.updateType} update)`,
+      {
+        priority,
+        effort,
+        workflow: 'maintenance',
+        rationale: this.buildOutdatedDependencyRationale(pkg),
+        score,
+        remediationSuggestions: this.buildOutdatedDependencyRemediation(pkg),
+      }
+    );
+  }
+
+  /**
+   * Create grouped task for multiple outdated dependencies of the same update type
+   */
+  private createGroupedOutdatedDependencyTask(packages: OutdatedDependency[], updateType: UpdateType, score: number): TaskCandidate {
+    const count = packages.length;
+    const updateTypeDisplay = updateType.charAt(0).toUpperCase() + updateType.slice(1);
+    const priority = this.getOutdatedPriorityByUpdateType(updateType);
+    const effort = count > 10 ? 'high' : count > 5 ? 'medium' : 'low';
+
+    // List first few package names
+    const packageNames = packages.slice(0, 3).map(pkg => pkg.name).join(', ');
+    const hasMore = packages.length > 3;
+
+    return this.createCandidate(
+      `outdated-group-${updateType}`,
+      `${count} ${updateTypeDisplay} ${count === 1 ? 'Update' : 'Updates'}`,
+      `Update ${count} packages with ${updateType} version changes: ${packageNames}${hasMore ? '...' : ''}`,
+      {
+        priority,
+        effort,
+        workflow: 'maintenance',
+        rationale: this.buildGroupedOutdatedDependencyRationale(packages, updateType),
+        score,
+        remediationSuggestions: this.buildGroupedOutdatedDependencyRemediation(packages),
+      }
+    );
+  }
+
+  /**
+   * Get priority level based on update type
+   */
+  private getOutdatedPriorityByUpdateType(updateType: UpdateType): 'urgent' | 'high' | 'normal' | 'low' {
+    switch (updateType) {
+      case 'major':
+        return 'high';
+      case 'minor':
+        return 'normal';
+      case 'patch':
+        return 'low';
+      default:
+        return 'low';
+    }
+  }
+
+  /**
+   * Build rationale for individual outdated dependency
+   */
+  private buildOutdatedDependencyRationale(pkg: OutdatedDependency): string {
+    const updateTypeMessages = {
+      major: 'Major version updates may introduce breaking changes but often include important security fixes and new features',
+      minor: 'Minor version updates typically add new functionality while maintaining backward compatibility',
+      patch: 'Patch updates usually contain bug fixes and security patches with minimal breaking changes',
+    };
+
+    return `${updateTypeMessages[pkg.updateType]}. Keeping dependencies current reduces security risks and ensures compatibility.`;
+  }
+
+  /**
+   * Build rationale for grouped outdated dependencies
+   */
+  private buildGroupedOutdatedDependencyRationale(packages: OutdatedDependency[], updateType: UpdateType): string {
+    const count = packages.length;
+    const updateTypeMessages = {
+      major: `${count} packages have major version updates available that may include breaking changes`,
+      minor: `${count} packages have minor version updates with new features and improvements`,
+      patch: `${count} packages have patch updates available with bug fixes and security patches`,
+    };
+
+    return `${updateTypeMessages[updateType]}. Batch updating similar change levels helps maintain a consistent update strategy.`;
+  }
+
+  /**
+   * Build remediation suggestions for individual outdated dependency
+   */
+  private buildOutdatedDependencyRemediation(pkg: OutdatedDependency): RemediationSuggestion[] {
+    const suggestions: RemediationSuggestion[] = [];
+
+    // Primary update suggestion
+    suggestions.push({
+      type: 'npm_update',
+      description: `Update ${pkg.name} to latest version`,
+      command: `npm update ${pkg.name}`,
+      priority: this.getOutdatedPriorityByUpdateType(pkg.updateType) === 'high' ? 'high' : 'medium',
+      expectedOutcome: `${pkg.name} updated from ${pkg.currentVersion} to ${pkg.latestVersion}`,
+    });
+
+    // Alternative yarn command
+    suggestions.push({
+      type: 'yarn_upgrade',
+      description: `Alternative: Use Yarn to upgrade ${pkg.name}`,
+      command: `yarn upgrade ${pkg.name}`,
+      priority: 'medium',
+      expectedOutcome: `${pkg.name} updated using Yarn package manager`,
+    });
+
+    // Special handling for major updates
+    if (pkg.updateType === 'major') {
+      suggestions.push({
+        type: 'migration_guide',
+        description: `Review ${pkg.name} migration guide for breaking changes`,
+        priority: 'high',
+        expectedOutcome: 'Understanding of potential breaking changes and required code updates',
+        warning: 'Major version updates may introduce breaking changes. Test thoroughly after updating.',
+      });
+
+      suggestions.push({
+        type: 'manual_review',
+        description: `Review code that uses ${pkg.name} for compatibility issues`,
+        priority: 'medium',
+        expectedOutcome: 'Identification of code that may need updates for new version compatibility',
+      });
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * Build remediation suggestions for grouped outdated dependencies
+   */
+  private buildGroupedOutdatedDependencyRemediation(packages: OutdatedDependency[]): RemediationSuggestion[] {
+    const suggestions: RemediationSuggestion[] = [];
+    const packageNames = packages.map(pkg => pkg.name);
+    const hasMajorUpdates = packages.some(pkg => pkg.updateType === 'major');
+
+    // Bulk update command
+    suggestions.push({
+      type: 'npm_update',
+      description: `Update all ${packages.length} packages in batch`,
+      command: `npm update ${packageNames.join(' ')}`,
+      priority: hasMajorUpdates ? 'high' : 'medium',
+      expectedOutcome: `All ${packages.length} packages updated to their latest versions`,
+    });
+
+    // Check outdated first
+    suggestions.push({
+      type: 'command',
+      description: 'Review all outdated packages and their version changes',
+      command: 'npm outdated',
+      priority: 'medium',
+      expectedOutcome: 'Detailed view of current, wanted, and latest versions for all packages',
+    });
+
+    // Yarn alternative
+    suggestions.push({
+      type: 'yarn_upgrade',
+      description: 'Alternative: Use Yarn to upgrade all packages',
+      command: 'yarn upgrade',
+      priority: 'medium',
+      expectedOutcome: 'All packages updated using Yarn package manager',
+    });
+
+    if (hasMajorUpdates) {
+      suggestions.push({
+        type: 'testing',
+        description: 'Run comprehensive tests after major version updates',
+        priority: 'critical',
+        expectedOutcome: 'Verification that all functionality works with updated dependencies',
+        warning: 'Major version updates in batch may introduce multiple breaking changes simultaneously.',
+      });
+    }
+
+    return suggestions;
   }
 }

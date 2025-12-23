@@ -32,7 +32,8 @@ describe('MaintenanceAnalyzer - Test Coverage Verification', () => {
         outdated,
         security: [],
         securityIssues,
-        deprecatedPackages
+        deprecatedPackages,
+        outdatedPackages: []
       },
       codeQuality: {
         lintIssues: 0,
