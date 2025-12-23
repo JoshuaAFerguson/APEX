@@ -3496,4 +3496,6 @@ export {
   TestsAnalyzer,
   type TaskCandidate,
   type StrategyAnalyzer,
+  type RemediationSuggestion,
+  type RemediationActionType,
 } from './idle-task-generator';

@@ -19,6 +19,8 @@ import type { IdleTask, ProjectAnalysis } from './idle-processor';
 import {
   StrategyAnalyzer,
   TaskCandidate,
+  RemediationSuggestion,
+  RemediationActionType,
   MaintenanceAnalyzer,
   RefactoringAnalyzer,
   DocsAnalyzer,
@@ -253,7 +255,7 @@ export class IdleTaskGenerator {
 }
 
 // Re-export types for convenience
-export type { TaskCandidate, StrategyAnalyzer };
+export type { TaskCandidate, StrategyAnalyzer, RemediationSuggestion, RemediationActionType };
 export {
   MaintenanceAnalyzer,
   RefactoringAnalyzer,
