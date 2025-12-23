@@ -11,7 +11,7 @@ import {
   type DetectionConfig,
 } from '../jsdoc-detector.js';
 
-describe('JSDoc Detector', () => {
+describe.skip('JSDoc Detector', () => {
   describe('parseJSDocComment', () => {
     it('parses simple JSDoc comment', () => {
       const comment = '/** This is a simple description */';

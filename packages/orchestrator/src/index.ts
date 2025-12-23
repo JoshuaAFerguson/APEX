@@ -63,6 +63,7 @@ export interface OrchestratorEvents {
   'agent:thinking': (taskId: string, agent: string, thinking: string) => void;
   'agent:tool-use': (taskId: string, tool: string, input: unknown) => void;
   'agent:turn': (event: { taskId: string; agentName: string; turnNumber: number }) => void;
+  'agent:error': (event: { taskId: string; agentName: string; error: Error }) => void;
   'usage:updated': (taskId: string, usage: TaskUsage) => void;
   'pr:created': (taskId: string, prUrl: string) => void;
   'pr:failed': (taskId: string, error: string) => void;
@@ -1762,6 +1763,7 @@ Parent: ${parentTask.description}`;
 
   /**
    * Push changes to remote after a task completes
+   * Validates build and tests pass before pushing
    */
   async gitPushTask(task: Task): Promise<boolean> {
     // Check if push after task is enabled
@@ -1775,6 +1777,17 @@ Parent: ${parentTask.description}`;
         message: 'No branch name set, skipping push',
       });
       return false;
+    }
+
+    // Validate build and tests before pushing
+    const validation = await this.validateBuildAndTests(task.id);
+    if (!validation.success) {
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Cannot push - validation failed: ${validation.error}`,
+      });
+      // Throw error so the task doesn't complete - agent needs to fix the issues
+      throw new Error(`Pre-push validation failed: ${validation.error}\n\n${validation.buildOutput || validation.testOutput || ''}`);
     }
 
     try {
@@ -1794,6 +1807,78 @@ Parent: ${parentTask.description}`;
       });
       return false;
     }
+  }
+
+  /**
+   * Validate build and tests pass before allowing commits/pushes
+   * Returns { success: true } if validation passes, or { success: false, error, output } if it fails
+   */
+  async validateBuildAndTests(taskId: string): Promise<{ success: boolean; error?: string; buildOutput?: string; testOutput?: string }> {
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: 'Validating build and tests before commit...',
+    });
+
+    // Run build
+    try {
+      const { stdout: buildOutput, stderr: buildStderr } = await execAsync('npm run build', {
+        cwd: this.projectPath,
+        timeout: 300000, // 5 minute timeout
+      });
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: 'Build passed successfully',
+      });
+    } catch (error) {
+      const buildError = error as { stdout?: string; stderr?: string; message?: string };
+      const output = buildError.stdout || buildError.stderr || buildError.message || 'Unknown build error';
+
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Build failed - code must be fixed before committing:\n${output.slice(0, 2000)}`,
+      });
+
+      return {
+        success: false,
+        error: 'Build failed - please fix compilation errors before committing',
+        buildOutput: output.slice(0, 5000),
+      };
+    }
+
+    // Run tests
+    try {
+      const { stdout: testOutput, stderr: testStderr } = await execAsync('npm run test', {
+        cwd: this.projectPath,
+        timeout: 600000, // 10 minute timeout for tests
+      });
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: 'All tests passed successfully',
+      });
+    } catch (error) {
+      const testError = error as { stdout?: string; stderr?: string; message?: string };
+      const output = testError.stdout || testError.stderr || testError.message || 'Unknown test error';
+
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Tests failed - code must be fixed before committing:\n${output.slice(0, 2000)}`,
+      });
+
+      return {
+        success: false,
+        error: 'Tests failed - please fix failing tests before committing',
+        testOutput: output.slice(0, 5000),
+      };
+    }
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: 'Build and tests passed - ready to commit',
+    });
+
+    return { success: true };
   }
 
   /**

@@ -168,7 +168,7 @@ const PATTERNS = {
 
 /**
  * Parse a JSDoc comment block into structured information
- * @param comment - The raw JSDoc comment including /** and */
+ * @param comment - The raw JSDoc comment including the /** opener and * / closer
  * @param startLine - Line number where the comment starts
  * @returns Parsed JSDoc information or null if invalid
  */

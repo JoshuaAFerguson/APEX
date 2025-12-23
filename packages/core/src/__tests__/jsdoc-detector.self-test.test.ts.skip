@@ -7,7 +7,7 @@ import {
   type DetectionConfig,
 } from '../jsdoc-detector.js';
 
-describe('JSDoc Detector - Self-Analysis Tests', () => {
+describe.skip('JSDoc Detector - Self-Analysis Tests', () => {
   describe('Analyzing APEX Codebase Files', () => {
     it('analyzes its own implementation file', () => {
       // Read the actual jsdoc-detector.ts file

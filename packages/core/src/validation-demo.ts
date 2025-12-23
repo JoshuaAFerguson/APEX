@@ -86,6 +86,8 @@ const fullApexConfig: Partial<ApexConfig> = {
     pollInterval: 3000,
     autoStart: true,
     logLevel: 'debug',
+    installAsService: false,
+    serviceName: 'apex-daemon',
     idleProcessing: {
       enabled: true,
       idleThreshold: 180000, // 3 minutes

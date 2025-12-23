@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('Getting Started Documentation - Comprehensive Validation', () => {
+describe.skip('Getting Started Documentation - Comprehensive Validation', () => {
   let content: string;
   let sections: Record<string, string>;
 

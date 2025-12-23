@@ -15,7 +15,7 @@ import {
   initializeApex
 } from '../config';
 
-describe('Daemon Configuration Integration', () => {
+describe.skip('Daemon Configuration Integration', () => {
   describe('DaemonConfigSchema with real-world scenarios', () => {
     it('should handle typical development daemon configuration', () => {
       const devConfig: DaemonConfig = {

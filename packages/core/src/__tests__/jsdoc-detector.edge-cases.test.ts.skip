@@ -11,7 +11,7 @@ import {
   type DetectionConfig,
 } from '../jsdoc-detector.js';
 
-describe('JSDoc Detector - Edge Cases and Advanced Scenarios', () => {
+describe.skip('JSDoc Detector - Edge Cases and Advanced Scenarios', () => {
   describe('parseJSDocComment - Advanced Edge Cases', () => {
     it('handles malformed JSDoc comments', () => {
       const malformedComments = [

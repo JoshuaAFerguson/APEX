@@ -105,6 +105,7 @@ export function TaskProgress({
   displayMode = 'normal',
   width: explicitWidth,
 }: TaskProgressProps): React.ReactElement {
+  const safeTaskId = taskId ?? '';
   // Get terminal dimensions
   const {
     width: terminalWidth,
@@ -217,7 +218,7 @@ export function TaskProgress({
           {status}
         </Text>
         <Text color="gray" dimColor>
-          {taskId.slice(0, truncationConfig.taskIdLength)}
+          {safeTaskId.slice(0, truncationConfig.taskIdLength)}
         </Text>
         <Text>{truncateDescription(description)}</Text>
         {agent && (
@@ -250,7 +251,7 @@ export function TaskProgress({
           {status}
         </Text>
         <Text color="gray" dimColor>
-          {taskId.slice(0, truncationConfig.taskIdLength)}
+          {safeTaskId.slice(0, truncationConfig.taskIdLength)}
         </Text>
         {workflow && (
           <>

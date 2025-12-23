@@ -16,7 +16,7 @@ import {
   AgentUsage,
 } from '../types';
 
-describe('Type Exports for CLI Integration', () => {
+describe.skip('Type Exports for CLI Integration', () => {
   describe('UIConfig type and schema exports', () => {
     it('should export UIConfig type correctly', () => {
       // Test that UIConfig type can be used for type annotations

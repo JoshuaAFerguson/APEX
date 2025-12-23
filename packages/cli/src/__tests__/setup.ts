@@ -1,9 +1,13 @@
 import { vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import React from 'react';
 
 // Mock Ink rendering for testing
 vi.mock('ink', () => ({
-  Box: ({ children }: { children: React.ReactNode }) => children,
-  Text: ({ children }: { children: React.ReactNode }) => children,
+  Box: ({ children, ...rest }: { children: React.ReactNode }) =>
+    React.createElement('div', rest, children),
+  Text: ({ children, ...rest }: { children: React.ReactNode }) =>
+    React.createElement('span', rest, children),
   useInput: vi.fn(),
   useStdout: vi.fn(() => ({ stdout: { columns: 80 } })),
   render: vi.fn(),

@@ -247,7 +247,7 @@ export const ApexConfigSchema = z.object({
     })
     .optional(),
   daemon: DaemonConfigSchema.optional(),
-  documentation: DocumentationAnalysisConfigSchema.optional(),
+  documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 

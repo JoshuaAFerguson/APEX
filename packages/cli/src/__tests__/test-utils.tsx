@@ -33,6 +33,14 @@ export const mockTheme = {
 };
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const childArray = React.Children.toArray(children);
+  if (childArray.length === 1 && React.isValidElement(childArray[0])) {
+    return React.cloneElement(childArray[0], {
+      ...childArray[0].props,
+      'data-testid': 'theme-provider',
+    });
+  }
+
   return React.createElement('div', { 'data-testid': 'theme-provider' }, children);
 };
 

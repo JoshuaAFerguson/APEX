@@ -20,6 +20,11 @@ export function ThoughtDisplay({
     return <Box />;
   }
 
+  // Handle null/undefined thinking gracefully
+  if (!thinking) {
+    return <Box />;
+  }
+
   // Limit display length based on display mode
   const maxDisplayLength = displayMode === 'verbose' ? 1000 : 300;
   const shouldTruncate = thinking.length > maxDisplayLength;

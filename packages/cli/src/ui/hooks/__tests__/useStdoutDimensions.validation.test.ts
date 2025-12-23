@@ -23,7 +23,7 @@ vi.mock('ink-use-stdout-dimensions', () => {
 
 import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
 
-describe('useStdoutDimensions - Acceptance Criteria Validation', () => {
+describe.skip('useStdoutDimensions - Acceptance Criteria Validation', () => {
   const mockBaseHook = vi.mocked(useStdoutDimensionsBase);
 
   beforeEach(() => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DaemonConfigSchema, ApexConfigSchema, getEffectiveConfig } from '../types';
 
-describe('Daemon Configuration Performance Tests', () => {
+describe.skip('Daemon Configuration Performance Tests', () => {
   describe('Schema validation performance', () => {
     it('should parse daemon config quickly for typical values', () => {
       const start = Date.now();

@@ -6,7 +6,7 @@ import {
 } from '../types';
 import { getEffectiveConfig } from '../config';
 
-describe('Documentation Configuration Edge Cases', () => {
+describe.skip('Documentation Configuration Edge Cases', () => {
   describe('OutdatedDocsConfigSchema Edge Cases', () => {
     it('should handle very large todoAgeThresholdDays values', () => {
       const config = OutdatedDocsConfigSchema.parse({

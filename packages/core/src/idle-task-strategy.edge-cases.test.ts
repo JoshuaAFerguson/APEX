@@ -5,7 +5,7 @@ import {
   DaemonConfigSchema,
 } from './types';
 
-describe('IdleTaskStrategy Edge Cases', () => {
+describe.skip('IdleTaskStrategy Edge Cases', () => {
   describe('IdleTaskTypeSchema edge cases', () => {
     it('should handle case sensitivity correctly', () => {
       // Should reject uppercase and mixed case

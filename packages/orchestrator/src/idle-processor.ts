@@ -357,7 +357,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
       // Enhanced: Run npm audit for security vulnerabilities
       try {
-        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
 
         // Run npm audit and capture JSON output
         const { stdout } = await this.execAsync('npm audit --json 2>/dev/null || echo "{}"');
@@ -392,7 +392,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
                   const cleanVersion = version.replace(/[^\d.]/g, '');
                   security.push(`${name}@${version} (${pattern.cve})`);
 
-                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
                   const fallbackVuln = SecurityVulnerabilityParser.createVulnerability({
                     name,
                     cveId: pattern.cve,
@@ -1153,11 +1153,3 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 }
 
-// Export the new dependency types for use by other modules
-export type {
-  OutdatedDependency,
-  SecurityVulnerability,
-  DeprecatedPackage,
-  UpdateType,
-  VulnerabilitySeverity,
-};

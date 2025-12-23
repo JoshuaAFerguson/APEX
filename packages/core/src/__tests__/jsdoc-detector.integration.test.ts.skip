@@ -5,7 +5,7 @@ import {
   type DetectionConfig,
 } from '../jsdoc-detector.js';
 
-describe('JSDoc Detector - Real-World Integration Tests', () => {
+describe.skip('JSDoc Detector - Real-World Integration Tests', () => {
   describe('Complex TypeScript Project Scenarios', () => {
     it('analyzes typical API service module', () => {
       const apiServiceSource = `

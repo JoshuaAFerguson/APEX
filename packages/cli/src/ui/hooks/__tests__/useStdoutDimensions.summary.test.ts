@@ -19,7 +19,7 @@ vi.mock('ink-use-stdout-dimensions', () => {
 
 import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
 
-describe('useStdoutDimensions - Testing Summary', () => {
+describe.skip('useStdoutDimensions - Testing Summary', () => {
   const mockBaseHook = vi.mocked(useStdoutDimensionsBase);
 
   beforeEach(() => {

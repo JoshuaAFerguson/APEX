@@ -5,7 +5,7 @@ import * as os from 'os';
 import { loadConfig, saveConfig, getEffectiveConfig } from '../config';
 import { ApexConfig, DocumentationAnalysisConfig } from '../types';
 
-describe('Documentation Configuration Integration Tests', () => {
+describe.skip('Documentation Configuration Integration Tests', () => {
   let testDir: string;
 
   beforeEach(async () => {

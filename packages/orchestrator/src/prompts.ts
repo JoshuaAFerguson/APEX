@@ -110,7 +110,12 @@ ${availableScripts}
 ## Rules
 1. **Delegate appropriately**: Use the right subagent for each task
 2. **Follow workflow stages**: Execute stages in order, respect dependencies
-3. **Test before completing**: Always run tests before marking implementation complete
+3. **CRITICAL - Validate before completing**:
+   - Run \`npm run build\` and ensure it passes with NO errors
+   - Run \`npm run test\` and ensure ALL tests pass
+   - If build or tests fail, FIX THE ISSUES before completing
+   - Do NOT commit or push broken code under any circumstances
+   - Loop until build and tests pass - this is non-negotiable
 4. **Commit incrementally**: Make logical, atomic commits
 5. **Stay within budget**: Current limit is ${config.limits.maxTokensPerTask.toLocaleString()} tokens
 6. **Be concise**: Minimize unnecessary output to conserve tokens
@@ -273,9 +278,14 @@ ${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''
 ## Instructions
 1. Focus ONLY on your assigned stage: **${stage.name}**
 2. Do not attempt work belonging to other stages
-3. When complete, provide a clear summary of what you accomplished
-4. List any files created or modified
-5. If you identify issues for later stages, note them but don't act on them
+3. **CRITICAL: Before completing, you MUST verify**:
+   - Run \`npm run build\` - must pass with NO errors
+   - Run \`npm run test\` - ALL tests must pass
+   - If either fails, FIX THE ISSUES before marking complete
+   - Never complete a stage with broken code or failing tests
+4. When complete, provide a clear summary of what you accomplished
+5. List any files created or modified
+6. If you identify issues for later stages, note them but don't act on them
 
 ${agent.prompt}
 

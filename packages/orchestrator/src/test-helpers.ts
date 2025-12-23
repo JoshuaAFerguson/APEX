@@ -91,15 +91,16 @@ export function createAnalysisWithIssues(issueType: 'maintenance' | 'refactoring
           missingDocs: ['src/undocumented.ts'],
           undocumentedExports: [{
             file: 'src/undocumented.ts',
-            exportName: 'MyFunction',
+            name: 'MyFunction',
             type: 'function',
-            line: 42
+            line: 42,
+            isPublic: true
           }],
           outdatedDocs: [],
           missingReadmeSections: [{
-            file: 'README.md',
-            section: 'API Reference',
-            reason: 'No API documentation found'
+            section: 'api',
+            priority: 'required',
+            description: 'Document the public API surface and usage examples.'
           }],
           apiCompleteness: {
             percentage: 32.5,
@@ -245,28 +246,53 @@ export function createAnalysisWithRichDependencies(): ProjectAnalysis {
  * Assert helper for checking task properties
  */
 export function assertValidTask(task: any): asserts task is NonNullable<typeof task> {
-  expect(task).not.toBeNull();
-  expect(task).toHaveProperty('id');
-  expect(task).toHaveProperty('type');
-  expect(task).toHaveProperty('title');
-  expect(task).toHaveProperty('description');
-  expect(task).toHaveProperty('priority');
-  expect(task).toHaveProperty('estimatedEffort');
-  expect(task).toHaveProperty('suggestedWorkflow');
-  expect(task).toHaveProperty('rationale');
-  expect(task).toHaveProperty('createdAt');
-  expect(task).toHaveProperty('implemented');
+  if (!task || typeof task !== 'object') {
+    throw new Error('Expected a task object.');
+  }
 
-  expect(typeof task.id).toBe('string');
-  expect(typeof task.title).toBe('string');
-  expect(typeof task.description).toBe('string');
-  expect(['improvement', 'maintenance', 'optimization', 'documentation']).toContain(task.type);
-  expect(['low', 'normal', 'high', 'urgent']).toContain(task.priority);
-  expect(['low', 'medium', 'high']).toContain(task.estimatedEffort);
-  expect(typeof task.suggestedWorkflow).toBe('string');
-  expect(typeof task.rationale).toBe('string');
-  expect(task.createdAt).toBeInstanceOf(Date);
-  expect(task.implemented).toBe(false);
+  const requiredFields = [
+    'id',
+    'type',
+    'title',
+    'description',
+    'priority',
+    'estimatedEffort',
+    'suggestedWorkflow',
+    'rationale',
+    'createdAt',
+    'implemented',
+  ];
+
+  for (const field of requiredFields) {
+    if (!(field in task)) {
+      throw new Error(`Missing required task field: ${field}`);
+    }
+  }
+
+  if (typeof task.id !== 'string') throw new Error('Task id must be a string.');
+  if (typeof task.title !== 'string') throw new Error('Task title must be a string.');
+  if (typeof task.description !== 'string') throw new Error('Task description must be a string.');
+  if (!['improvement', 'maintenance', 'optimization', 'documentation'].includes(task.type)) {
+    throw new Error(`Unexpected task type: ${String(task.type)}`);
+  }
+  if (!['low', 'normal', 'high', 'urgent'].includes(task.priority)) {
+    throw new Error(`Unexpected task priority: ${String(task.priority)}`);
+  }
+  if (!['low', 'medium', 'high'].includes(task.estimatedEffort)) {
+    throw new Error(`Unexpected task estimated effort: ${String(task.estimatedEffort)}`);
+  }
+  if (typeof task.suggestedWorkflow !== 'string') {
+    throw new Error('Task suggestedWorkflow must be a string.');
+  }
+  if (typeof task.rationale !== 'string') {
+    throw new Error('Task rationale must be a string.');
+  }
+  if (!(task.createdAt instanceof Date)) {
+    throw new Error('Task createdAt must be a Date.');
+  }
+  if (task.implemented !== false) {
+    throw new Error('Task implemented must be false in test fixtures.');
+  }
 }
 
 /**

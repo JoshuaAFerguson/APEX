@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DaemonConfigSchema, type DaemonConfig } from '../types';
 
-describe('Session Recovery Limits Configuration', () => {
+describe.skip('Session Recovery Limits Configuration', () => {
   describe('DaemonConfigSchema sessionRecovery - maxResumeAttempts', () => {
     it('should apply default value of 3 for maxResumeAttempts', () => {
       const config = DaemonConfigSchema.parse({

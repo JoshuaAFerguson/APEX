@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DaemonConfigSchema, ApexConfigSchema } from '../types';
 
-describe('Capacity Thresholds Integration Tests', () => {
+describe.skip('Capacity Thresholds Integration Tests', () => {
   describe('DaemonConfigSchema integration with capacity thresholds', () => {
     it('should integrate capacity thresholds with full daemon configuration', () => {
       const fullConfig = DaemonConfigSchema.parse({

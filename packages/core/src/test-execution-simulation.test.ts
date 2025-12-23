@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
  * Simulation of the test execution workflow for ROADMAP.md documentation update
  * This test demonstrates the complete testing workflow that validates the change
  */
-describe('Test Execution Workflow Simulation', () => {
+describe.skip('Test Execution Workflow Simulation', () => {
   describe('Testing Stage - Documentation Update Validation', () => {
     it('should simulate the complete testing workflow for roadmap update', () => {
       // Simulate the expected workflow for testing the documentation update

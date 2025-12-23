@@ -23,6 +23,7 @@ import { MarkdownRenderer, SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { DiffViewer } from '../DiffViewer';
 import { SyntaxHighlighter, SimpleSyntaxHighlighter } from '../SyntaxHighlighter';
 import { CodeBlock } from '../CodeBlock';
+import { diffLines, diffChars } from 'diff';
 
 // Mock the useStdoutDimensions hook
 const mockUseStdoutDimensions = vi.fn();
@@ -209,13 +210,12 @@ describe('Content Components Responsive Composition Integration Tests', () => {
     vi.useFakeTimers();
 
     // Default mock for diff library
-    const diff = require('diff');
-    diff.diffLines.mockReturnValue([
+    vi.mocked(diffLines).mockReturnValue([
       { count: 1, value: 'unchanged line\n' },
       { count: 1, value: 'old line\n', removed: true },
       { count: 1, value: 'new line\n', added: true },
     ]);
-    diff.diffChars.mockReturnValue([
+    vi.mocked(diffChars).mockReturnValue([
       { value: 'text' },
     ]);
 
@@ -492,8 +492,7 @@ describe('Content Components Responsive Composition Integration Tests', () => {
         });
 
         it('DiffViewer truncates long lines with ellipsis', () => {
-          const diff = require('diff');
-          diff.diffLines.mockReturnValue([
+          vi.mocked(diffLines).mockReturnValue([
             { count: 1, value: `${longContent}\n`, added: true },
           ]);
 
@@ -774,8 +773,7 @@ ${TEST_CONTENT.code.substring(0, 100)}
       const largeOld = Array(500).fill('old line').join('\n');
       const largeNew = Array(500).fill('new line').join('\n');
 
-      const diff = require('diff');
-      diff.diffLines.mockReturnValue([
+      vi.mocked(diffLines).mockReturnValue([
         { count: 500, value: largeOld, removed: true },
         { count: 500, value: largeNew, added: true },
       ]);
@@ -800,11 +798,10 @@ describe('Acceptance Criteria Verification', () => {
   beforeEach(() => {
     vi.useFakeTimers();
 
-    const diff = require('diff');
-    diff.diffLines.mockReturnValue([
+    vi.mocked(diffLines).mockReturnValue([
       { count: 1, value: 'test line\n' },
     ]);
-    diff.diffChars.mockReturnValue([{ value: 'test' }]);
+    vi.mocked(diffChars).mockReturnValue([{ value: 'test' }]);
   });
 
   afterEach(() => {
@@ -857,9 +854,8 @@ describe('Acceptance Criteria Verification', () => {
     it('DiffViewer truncates and marks long lines', () => {
       mockUseStdoutDimensions.mockReturnValue(BREAKPOINT_CONFIGS.narrow);
 
-      const diff = require('diff');
       const longLine = 'x'.repeat(200);
-      diff.diffLines.mockReturnValue([
+      vi.mocked(diffLines).mockReturnValue([
         { count: 1, value: `${longLine}\n`, added: true },
       ]);
 
@@ -908,8 +904,7 @@ describe('Acceptance Criteria Verification', () => {
     it('diff changes remain identifiable at all widths', () => {
       mockUseStdoutDimensions.mockReturnValue(BREAKPOINT_CONFIGS.narrow);
 
-      const diff = require('diff');
-      diff.diffLines.mockReturnValue([
+      vi.mocked(diffLines).mockReturnValue([
         { count: 1, value: 'removed\n', removed: true },
         { count: 1, value: 'added\n', added: true },
       ]);

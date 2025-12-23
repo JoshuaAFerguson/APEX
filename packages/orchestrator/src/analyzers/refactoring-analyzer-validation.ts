@@ -69,7 +69,11 @@ function runValidationTests(): void {
   // Test 2: Duplicated code analysis
   console.log('\n📋 Testing duplicated code analysis...');
   const duplicateAnalysis = createBaseProjectAnalysis();
-  duplicateAnalysis.codeQuality.duplicatedCode = ['src/dup1.ts', 'src/dup2.ts', 'src/dup3.ts'];
+  duplicateAnalysis.codeQuality.duplicatedCode = [
+    { pattern: 'duplicate-1', locations: ['src/dup1.ts'], similarity: 0.95 },
+    { pattern: 'duplicate-2', locations: ['src/dup2.ts'], similarity: 0.92 },
+    { pattern: 'duplicate-3', locations: ['src/dup3.ts'], similarity: 0.90 },
+  ];
 
   const duplicateCandidates = analyzer.analyze(duplicateAnalysis);
   const duplicateTask = duplicateCandidates.find(c => c.title.includes('Duplicated Code'));
@@ -139,7 +143,11 @@ function runValidationTests(): void {
   // Test 6: Mixed scenario prioritization
   console.log('\n🎯 Testing mixed scenario prioritization...');
   const mixedAnalysis = createBaseProjectAnalysis();
-  mixedAnalysis.codeQuality.duplicatedCode = ['src/dup.ts']; // Score 0.9
+  mixedAnalysis.codeQuality.duplicatedCode = [{
+    pattern: 'duplicate-mixed',
+    locations: ['src/dup.ts'],
+    similarity: 0.9,
+  }]; // Score 0.9
   mixedAnalysis.codeQuality.lintIssues = 50; // Lower score
 
   const mixedCandidates = analyzer.analyze(mixedAnalysis);

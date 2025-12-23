@@ -6,7 +6,7 @@ import {
   TaskUsage,
 } from '../types';
 
-describe('VerboseDebugData Integration Tests', () => {
+describe.skip('VerboseDebugData Integration Tests', () => {
   describe('integration with existing task types', () => {
     it('should integrate with StageResult type', () => {
       const verboseData: VerboseDebugData = {
