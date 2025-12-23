@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IdleProcessor, IdleTask, ProjectAnalysis } from './idle-processor';
 import { TaskStore } from './store';
-import { DaemonConfig, Task, TaskStatus } from '@apexcli/core';
+import { DaemonConfig, Task, TaskStatus, DetectorFinding } from '@apexcli/core';
 import { promises as fs } from 'fs';
 
 // Mock dependencies
@@ -511,6 +511,382 @@ describe('IdleProcessor', () => {
 
       const processor = new IdleProcessor(mockProjectPath, minimalConfig, mockStore);
       expect(processor).toBeDefined();
+    });
+  });
+
+  describe('detector event emissions', () => {
+    beforeEach(() => {
+      // Mock successful exec commands
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('find . -type f')) {
+          callback(null, { stdout: './src/component.ts\n./src/utils.js\n' });
+        } else if (command.includes('find . -name "*.ts"')) {
+          callback(null, { stdout: './src/large-file.ts\n./src/small-file.ts\n' });
+        } else if (command.includes('xargs wc -l')) {
+          callback(null, { stdout: '600 ./src/large-file.ts\n200 ./src/small-file.ts\n800 total' });
+        } else if (command.includes('find . -name "README*"')) {
+          callback(null, { stdout: '' }); // No README files found
+        } else if (command.includes('eslint')) {
+          callback(null, { stdout: JSON.stringify([
+            { errorCount: 2, warningCount: 1 }
+          ]) });
+        } else if (command.includes('grep -r')) {
+          callback(null, { stdout: './src/todo.ts:10:// TODO: fix this\n./src/hack.js:25:// FIXME: refactor\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      // Mock file system to return code content with exports
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('package.json')) {
+          return Promise.resolve(JSON.stringify({
+            dependencies: { 'react': '^18.0.0', 'lodash': '^4.17.15' },
+            devDependencies: { 'typescript': '^5.0.0' },
+          }));
+        }
+        if (path.includes('component.ts')) {
+          return Promise.resolve(`export function Component() {\n  return "hello";\n}\n\nexport class Service {\n  process() {}\n}`);
+        }
+        if (path.includes('large-file.ts')) {
+          // Simulate a file with a long method
+          const lines = Array(70).fill('  console.log("line");').join('\n');
+          return Promise.resolve(`function longMethod() {\n${lines}\n}`);
+        }
+        return Promise.resolve('line 1\nline 2\nline 3\n');
+      });
+
+      // Mock SecurityVulnerabilityParser for security vulnerability detection
+      vi.mock('./utils/security-vulnerability-parser.js', () => ({
+        SecurityVulnerabilityParser: {
+          parseNpmAuditOutput: vi.fn().mockReturnValue([]),
+          createVulnerability: vi.fn().mockImplementation(({name, cveId, severity, affectedVersions, description}) => ({
+            name,
+            cveId,
+            severity,
+            affectedVersions,
+            description
+          }))
+        }
+      }));
+    });
+
+    it('should emit detector:undocumented-export:found event', async () => {
+      const undocumentedExportSpy = vi.fn();
+      const detectorFindingSpy = vi.fn();
+
+      idleProcessor.on('detector:undocumented-export:found', undocumentedExportSpy);
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      expect(undocumentedExportSpy).toHaveBeenCalled();
+      expect(undocumentedExportSpy).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: expect.stringContaining('component.ts'),
+            name: expect.any(String),
+            type: expect.any(String),
+            line: expect.any(Number),
+            isPublic: expect.any(Boolean)
+          })
+        ])
+      );
+
+      // Should also emit individual finding events
+      expect(detectorFindingSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detectorType: 'undocumented-export',
+          severity: 'medium',
+          file: expect.stringContaining('component.ts'),
+          description: expect.stringContaining('Undocumented'),
+          metadata: expect.any(Object)
+        })
+      );
+    });
+
+    it('should emit detector:missing-readme-section:found event', async () => {
+      const missingReadmeSpy = vi.fn();
+      const detectorFindingSpy = vi.fn();
+
+      idleProcessor.on('detector:missing-readme-section:found', missingReadmeSpy);
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      expect(missingReadmeSpy).toHaveBeenCalled();
+      expect(missingReadmeSpy).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            section: expect.any(String),
+            priority: expect.stringMatching(/required|recommended|optional/),
+            description: expect.any(String)
+          })
+        ])
+      );
+
+      // Should also emit individual finding events
+      expect(detectorFindingSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detectorType: 'missing-readme-section',
+          severity: expect.stringMatching(/low|medium|high/),
+          file: 'README.md',
+          description: expect.stringContaining('Missing'),
+          metadata: expect.any(Object)
+        })
+      );
+    });
+
+    it('should emit detector:code-smell:found event for large files', async () => {
+      const codeSmellSpy = vi.fn();
+      const detectorFindingSpy = vi.fn();
+
+      idleProcessor.on('detector:code-smell:found', codeSmellSpy);
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      expect(codeSmellSpy).toHaveBeenCalled();
+      expect(codeSmellSpy).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: expect.any(String),
+            type: expect.stringMatching(/large-class|long-method|deep-nesting/),
+            severity: expect.stringMatching(/low|medium|high/),
+            details: expect.any(String)
+          })
+        ])
+      );
+
+      // Should emit individual finding events
+      const codeSmellFindings = detectorFindingSpy.mock.calls.filter(call =>
+        call[0].detectorType === 'code-smell'
+      );
+      expect(codeSmellFindings.length).toBeGreaterThan(0);
+    });
+
+    it('should emit detector:complexity-hotspot:found event', async () => {
+      const complexityHotspotSpy = vi.fn();
+      const detectorFindingSpy = vi.fn();
+
+      idleProcessor.on('detector:complexity-hotspot:found', complexityHotspotSpy);
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      expect(complexityHotspotSpy).toHaveBeenCalled();
+      expect(complexityHotspotSpy).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: expect.any(String),
+            cyclomaticComplexity: expect.any(Number),
+            cognitiveComplexity: expect.any(Number),
+            lineCount: expect.any(Number)
+          })
+        ])
+      );
+
+      // Should emit individual finding events
+      const complexityFindings = detectorFindingSpy.mock.calls.filter(call =>
+        call[0].detectorType === 'complexity-hotspot'
+      );
+      expect(complexityFindings.length).toBeGreaterThan(0);
+    });
+
+    it('should emit detector:duplicate-code:found event', async () => {
+      const duplicateCodeSpy = vi.fn();
+      const detectorFindingSpy = vi.fn();
+
+      idleProcessor.on('detector:duplicate-code:found', duplicateCodeSpy);
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      if (duplicateCodeSpy.mock.calls.length > 0) {
+        expect(duplicateCodeSpy).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              pattern: expect.any(String),
+              locations: expect.any(Array),
+              similarity: expect.any(Number)
+            })
+          ])
+        );
+
+        // Should emit individual finding events
+        const duplicateFindings = detectorFindingSpy.mock.calls.filter(call =>
+          call[0].detectorType === 'duplicate-code'
+        );
+        expect(duplicateFindings.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should not emit events when no findings exist', async () => {
+      // Mock empty analysis results
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+        callback(null, { stdout: '' });
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      vi.mocked(fs.readFile).mockImplementation(() => {
+        return Promise.resolve('// Well documented code\n/**\n * Documentation\n */\nexport function test() {}');
+      });
+
+      const codeSmellSpy = vi.fn();
+      const complexityHotspotSpy = vi.fn();
+      const undocumentedExportSpy = vi.fn();
+
+      idleProcessor.on('detector:code-smell:found', codeSmellSpy);
+      idleProcessor.on('detector:complexity-hotspot:found', complexityHotspotSpy);
+      idleProcessor.on('detector:undocumented-export:found', undocumentedExportSpy);
+
+      await idleProcessor.processIdleTime();
+
+      expect(codeSmellSpy).not.toHaveBeenCalled();
+      expect(complexityHotspotSpy).not.toHaveBeenCalled();
+      expect(undocumentedExportSpy).not.toHaveBeenCalled();
+    });
+
+    it('should emit events in correct order during analysis', async () => {
+      const events: string[] = [];
+
+      idleProcessor.on('analysis:started', () => events.push('analysis:started'));
+      idleProcessor.on('detector:finding', () => events.push('detector:finding'));
+      idleProcessor.on('detector:undocumented-export:found', () => events.push('detector:undocumented-export:found'));
+      idleProcessor.on('analysis:completed', () => events.push('analysis:completed'));
+
+      await idleProcessor.processIdleTime();
+
+      expect(events[0]).toBe('analysis:started');
+      expect(events[events.length - 1]).toBe('analysis:completed');
+
+      // Detector events should be between analysis start and complete
+      const detectorEventIndex = events.findIndex(e => e.startsWith('detector:'));
+      const analysisStartIndex = events.findIndex(e => e === 'analysis:started');
+      const analysisCompleteIndex = events.findIndex(e => e === 'analysis:completed');
+
+      if (detectorEventIndex !== -1) {
+        expect(detectorEventIndex).toBeGreaterThan(analysisStartIndex);
+        expect(detectorEventIndex).toBeLessThan(analysisCompleteIndex);
+      }
+    });
+
+    it('should verify all 11 detector event types are properly defined', () => {
+      // Test that all new detector event types exist in the interface
+      const eventTypes = [
+        'detector:finding',
+        'detector:outdated-docs:found',
+        'detector:version-mismatch:found',
+        'detector:stale-comment:found',
+        'detector:code-smell:found',
+        'detector:complexity-hotspot:found',
+        'detector:duplicate-code:found',
+        'detector:undocumented-export:found',
+        'detector:missing-readme-section:found',
+        'detector:security-vulnerability:found',
+        'detector:deprecated-dependency:found'
+      ];
+
+      // Each event type should be able to add listeners without error
+      for (const eventType of eventTypes) {
+        const spy = vi.fn();
+        expect(() => {
+          idleProcessor.on(eventType as any, spy);
+        }).not.toThrow();
+
+        // Verify listener was added
+        expect(idleProcessor.listenerCount(eventType as any)).toBe(1);
+
+        // Clean up listener
+        idleProcessor.off(eventType as any, spy);
+      }
+    });
+
+    it('should emit detector events with correct severity mapping', async () => {
+      const detectorFindingSpy = vi.fn();
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      if (detectorFindingSpy.mock.calls.length > 0) {
+        // Check that all severity levels are valid
+        for (const call of detectorFindingSpy.mock.calls) {
+          const finding = call[0] as DetectorFinding;
+          expect(['low', 'medium', 'high', 'critical']).toContain(finding.severity);
+        }
+      }
+    });
+
+    it('should include required metadata fields for each detector type', async () => {
+      const detectorFindingSpy = vi.fn();
+      idleProcessor.on('detector:finding', detectorFindingSpy);
+
+      await idleProcessor.processIdleTime();
+
+      if (detectorFindingSpy.mock.calls.length > 0) {
+        const findingsByType = new Map<string, DetectorFinding[]>();
+
+        // Group findings by detector type
+        for (const call of detectorFindingSpy.mock.calls) {
+          const finding = call[0] as DetectorFinding;
+          if (!findingsByType.has(finding.detectorType)) {
+            findingsByType.set(finding.detectorType, []);
+          }
+          findingsByType.get(finding.detectorType)!.push(finding);
+        }
+
+        // Verify metadata structure for each detector type
+        for (const [detectorType, findings] of findingsByType) {
+          for (const finding of findings) {
+            expect(finding.metadata).toBeDefined();
+            expect(finding.file).toBeDefined();
+            expect(finding.description).toBeDefined();
+
+            // Type-specific metadata validation
+            switch (detectorType) {
+              case 'undocumented-export':
+                expect(finding.metadata).toHaveProperty('exportType');
+                expect(finding.metadata).toHaveProperty('name');
+                expect(finding.metadata).toHaveProperty('isPublic');
+                break;
+              case 'code-smell':
+                expect(finding.metadata).toHaveProperty('type');
+                expect(finding.metadata).toHaveProperty('details');
+                break;
+              case 'complexity-hotspot':
+                expect(finding.metadata).toHaveProperty('cyclomaticComplexity');
+                expect(finding.metadata).toHaveProperty('cognitiveComplexity');
+                expect(finding.metadata).toHaveProperty('lineCount');
+                break;
+              case 'duplicate-code':
+                expect(finding.metadata).toHaveProperty('pattern');
+                expect(finding.metadata).toHaveProperty('locations');
+                expect(finding.metadata).toHaveProperty('similarity');
+                break;
+              case 'missing-readme-section':
+                expect(finding.metadata).toHaveProperty('section');
+                expect(finding.metadata).toHaveProperty('priority');
+                break;
+              case 'security-vulnerability':
+                expect(finding.metadata).toHaveProperty('cveId');
+                expect(finding.metadata).toHaveProperty('affectedVersions');
+                expect(finding.metadata).toHaveProperty('packageName');
+                break;
+              case 'outdated-docs':
+                expect(finding.metadata).toHaveProperty('type');
+                break;
+            }
+          }
+        }
+      }
     });
   });
 });

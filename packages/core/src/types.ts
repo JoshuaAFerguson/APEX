@@ -693,6 +693,67 @@ export interface SessionLimitStatus {
 }
 
 // ============================================================================
+// Detector Finding Event Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Supported detector types for event emission
+ */
+export type DetectorType =
+  | 'outdated-docs'
+  | 'version-mismatch'
+  | 'stale-comment'
+  | 'code-smell'
+  | 'complexity-hotspot'
+  | 'duplicate-code'
+  | 'undocumented-export'
+  | 'missing-readme-section'
+  | 'security-vulnerability'
+  | 'deprecated-dependency';
+
+/**
+ * Generic detector finding event payload
+ */
+export interface DetectorFinding {
+  /** Type of detector that found the issue */
+  detectorType: DetectorType;
+  /** Severity level of the finding */
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  /** File where the issue was found */
+  file: string;
+  /** Line number (if applicable) */
+  line?: number;
+  /** Human-readable description */
+  description: string;
+  /** Additional metadata specific to the detector type */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Version mismatch finding specific structure
+ */
+export interface VersionMismatchFinding {
+  file: string;
+  line: number;
+  foundVersion: string;
+  expectedVersion: string;
+  lineContent: string;
+}
+
+/**
+ * Stale comment finding specific structure
+ */
+export interface StaleCommentFinding {
+  file: string;
+  line: number;
+  text: string;
+  type: 'TODO' | 'FIXME' | 'HACK';
+  author?: string;
+  date?: Date;
+  daysSinceAdded: number;
+}
+
+// ============================================================================
 // Enhanced Documentation Analysis Types (v0.4.0)
 // ============================================================================
 

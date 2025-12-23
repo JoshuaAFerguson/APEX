@@ -16,7 +16,11 @@ import {
   MissingReadmeSection,
   APICompleteness,
   ReadmeSection,
-  validateDeprecatedTags
+  validateDeprecatedTags,
+  DetectorType,
+  DetectorFinding,
+  VersionMismatchFinding,
+  StaleCommentFinding
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
@@ -126,10 +130,24 @@ export interface ProjectAnalysis {
 }
 
 export interface IdleProcessorEvents {
+  // Existing events
   'analysis:started': () => void;
   'analysis:completed': (analysis: ProjectAnalysis) => void;
   'tasks:generated': (tasks: IdleTask[]) => void;
   'task:suggested': (task: IdleTask) => void;
+
+  // New detector finding events
+  'detector:finding': (finding: DetectorFinding) => void;
+  'detector:outdated-docs:found': (findings: OutdatedDocumentation[]) => void;
+  'detector:version-mismatch:found': (findings: VersionMismatchFinding[]) => void;
+  'detector:stale-comment:found': (findings: StaleCommentFinding[]) => void;
+  'detector:code-smell:found': (findings: CodeSmell[]) => void;
+  'detector:complexity-hotspot:found': (findings: ComplexityHotspot[]) => void;
+  'detector:duplicate-code:found': (findings: DuplicatePattern[]) => void;
+  'detector:undocumented-export:found': (findings: UndocumentedExport[]) => void;
+  'detector:missing-readme-section:found': (findings: MissingReadmeSection[]) => void;
+  'detector:security-vulnerability:found': (findings: SecurityVulnerability[]) => void;
+  'detector:deprecated-dependency:found': (findings: DeprecatedPackage[]) => void;
 }
 
 /**
@@ -416,6 +434,25 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       // No package.json or can't read it
     }
 
+    // Emit detector events for dependency findings
+    if (securityIssues.length > 0) {
+      this.emit('detector:security-vulnerability:found', securityIssues);
+      // Also emit individual findings
+      securityIssues.forEach(finding => {
+        this.emit('detector:finding', {
+          detectorType: 'security-vulnerability',
+          severity: finding.severity === 'critical' ? 'critical' : finding.severity === 'high' ? 'high' : finding.severity === 'low' ? 'low' : 'medium',
+          file: 'package.json',
+          description: `Security vulnerability in ${finding.name}: ${finding.description}`,
+          metadata: {
+            cveId: finding.cveId,
+            affectedVersions: finding.affectedVersions,
+            packageName: finding.name
+          }
+        });
+      });
+    }
+
     return { outdated, security, securityIssues };
   }
 
@@ -494,6 +531,53 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       duplicatedCode.push(...duplicatePatterns);
     } catch {
       // Ignore errors in code quality analysis
+    }
+
+    // Emit detector events for code quality findings
+    if (codeSmells.length > 0) {
+      this.emit('detector:code-smell:found', codeSmells);
+      // Also emit individual findings
+      codeSmells.forEach(finding => {
+        this.emit('detector:finding', {
+          detectorType: 'code-smell',
+          severity: finding.severity === 'high' ? 'high' : finding.severity === 'low' ? 'low' : 'medium',
+          file: finding.file,
+          description: `${finding.type}: ${finding.details}`,
+          metadata: { type: finding.type, details: finding.details }
+        });
+      });
+    }
+
+    if (complexityHotspots.length > 0) {
+      this.emit('detector:complexity-hotspot:found', complexityHotspots);
+      // Also emit individual findings
+      complexityHotspots.forEach(finding => {
+        this.emit('detector:finding', {
+          detectorType: 'complexity-hotspot',
+          severity: finding.cyclomaticComplexity > 20 || finding.cognitiveComplexity > 25 ? 'high' : 'medium',
+          file: finding.file,
+          description: `Complex file: ${finding.lineCount} lines, cyclomatic complexity: ${finding.cyclomaticComplexity}, cognitive complexity: ${finding.cognitiveComplexity}`,
+          metadata: {
+            cyclomaticComplexity: finding.cyclomaticComplexity,
+            cognitiveComplexity: finding.cognitiveComplexity,
+            lineCount: finding.lineCount
+          }
+        });
+      });
+    }
+
+    if (duplicatedCode.length > 0) {
+      this.emit('detector:duplicate-code:found', duplicatedCode);
+      // Also emit individual findings
+      duplicatedCode.forEach(finding => {
+        this.emit('detector:finding', {
+          detectorType: 'duplicate-code',
+          severity: finding.similarity > 0.9 ? 'high' : finding.similarity > 0.7 ? 'medium' : 'low',
+          file: finding.locations[0] || 'unknown',
+          description: `Duplicate pattern found in ${finding.locations.length} locations: ${finding.pattern.substring(0, 100)}`,
+          metadata: { pattern: finding.pattern, locations: finding.locations, similarity: finding.similarity }
+        });
+      });
     }
 
     return {
@@ -702,6 +786,91 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
       // Add version mismatch detection
       const versionMismatches = await this.findVersionMismatches();
+
+      // Emit detector events for findings
+      if (undocumentedExports.length > 0) {
+        this.emit('detector:undocumented-export:found', undocumentedExports);
+        // Also emit individual findings
+        undocumentedExports.forEach(finding => {
+          this.emit('detector:finding', {
+            detectorType: 'undocumented-export',
+            severity: 'medium',
+            file: finding.file,
+            line: finding.line,
+            description: `Undocumented ${finding.type} '${finding.name}'`,
+            metadata: { exportType: finding.type, name: finding.name, isPublic: finding.isPublic }
+          });
+        });
+      }
+
+      if (outdatedDocs.length > 0) {
+        this.emit('detector:outdated-docs:found', outdatedDocs);
+        // Also emit individual findings
+        outdatedDocs.forEach(finding => {
+          this.emit('detector:finding', {
+            detectorType: 'outdated-docs',
+            severity: finding.severity === 'high' ? 'high' : finding.severity === 'low' ? 'low' : 'medium',
+            file: finding.file,
+            line: finding.line,
+            description: finding.description,
+            metadata: { type: finding.type, suggestion: finding.suggestion }
+          });
+        });
+      }
+
+      if (missingReadmeSections.length > 0) {
+        this.emit('detector:missing-readme-section:found', missingReadmeSections);
+        // Also emit individual findings
+        missingReadmeSections.forEach(finding => {
+          this.emit('detector:finding', {
+            detectorType: 'missing-readme-section',
+            severity: finding.priority === 'required' ? 'high' : finding.priority === 'recommended' ? 'medium' : 'low',
+            file: 'README.md',
+            description: `Missing ${finding.section} section: ${finding.description}`,
+            metadata: { section: finding.section, priority: finding.priority }
+          });
+        });
+      }
+
+      if (staleComments.length > 0) {
+        // Convert to StaleCommentFinding format for the specific event
+        const staleCommentFindings: StaleCommentFinding[] = staleComments
+          .filter(doc => doc.type === 'stale-reference')
+          .map(doc => ({
+            file: doc.file,
+            line: doc.line || 0,
+            text: doc.description,
+            type: 'TODO' as const, // Default type
+            daysSinceAdded: 30 // Default age
+          }));
+
+        if (staleCommentFindings.length > 0) {
+          this.emit('detector:stale-comment:found', staleCommentFindings);
+        }
+      }
+
+      if (versionMismatches.length > 0) {
+        // Convert to VersionMismatchFinding format for the specific event
+        const versionMismatchFindings: VersionMismatchFinding[] = versionMismatches
+          .filter(doc => doc.type === 'version-mismatch')
+          .map(doc => {
+            // Parse version information from description or use defaults
+            const foundVersion = doc.description.match(/Found version ([^\s]+)/)?.[1] || 'unknown';
+            const expectedVersion = doc.description.match(/expected ([^\s]+)/)?.[1] || 'unknown';
+
+            return {
+              file: doc.file,
+              line: doc.line || 0,
+              foundVersion,
+              expectedVersion,
+              lineContent: doc.suggestion || doc.description
+            };
+          });
+
+        if (versionMismatchFindings.length > 0) {
+          this.emit('detector:version-mismatch:found', versionMismatchFindings);
+        }
+      }
 
       return {
         coverage: basicCoverage.coverage,
