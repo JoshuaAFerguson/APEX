@@ -170,6 +170,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     workflow?: string;
     autonomy?: Task['autonomy'];
     priority?: Task['priority'];
+    effort?: Task['effort'];
     maxRetries?: number;
     dependsOn?: string[];
     parentTaskId?: string;
@@ -181,6 +182,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const workflow = options.workflow || 'feature';
     const autonomy = options.autonomy || this.effectiveConfig.autonomy.default;
     const priority = options.priority || 'normal';
+    const effort = options.effort || 'medium';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
 
     // Subtasks share the parent's branch, parent tasks get a new branch
@@ -204,6 +206,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       autonomy,
       status: 'pending',
       priority,
+      effort,
       projectPath: this.projectPath,
       branchName,
       retryCount: 0,
@@ -2603,6 +2606,7 @@ Parent: ${parentTask.description}`;
         acceptanceCriteria: definition.acceptanceCriteria,
         workflow: definition.workflow || parentTask.workflow,
         priority: definition.priority || parentTask.priority,
+        effort: definition.effort || parentTask.effort,
         parentTaskId,
         autonomy: parentTask.autonomy,
       });

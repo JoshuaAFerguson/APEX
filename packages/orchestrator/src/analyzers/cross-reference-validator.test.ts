@@ -2,7 +2,7 @@
  * Tests for CrossReferenceValidator
  */
 
-import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -969,6 +969,407 @@ export class TestClass {
       // Verify classes are captured
       const classes = symbols.filter(s => s.type === 'class');
       expect(classes).toHaveLength(10); // Every 100th iteration
+    });
+  });
+});
+
+describe('Documentation Reference Extraction', () => {
+  let validator: CrossReferenceValidator;
+
+  beforeEach(() => {
+    validator = new CrossReferenceValidator();
+  });
+
+  describe('extractInlineCodeReferences', () => {
+    test('should extract function references with parentheses', () => {
+      const content = `
+This documentation explains how to use \`processData()\` function.
+You can also call \`calculateSum()\` to get the result.
+The \`UserService\` class provides these methods.
+`;
+
+      const references = validator.extractInlineCodeReferences('README.md', content);
+
+      expect(references).toHaveLength(3);
+
+      expect(references[0]).toEqual({
+        symbolName: 'processData',
+        referenceType: 'inline-code',
+        sourceFile: 'README.md',
+        line: 2,
+        column: 46,
+        context: 'This documentation explains how to use `processData()` function.',
+      });
+
+      expect(references[1]).toEqual({
+        symbolName: 'calculateSum',
+        referenceType: 'inline-code',
+        sourceFile: 'README.md',
+        line: 3,
+        column: 21,
+        context: 'You can also call `calculateSum()` to get the result.',
+      });
+
+      expect(references[2]).toEqual({
+        symbolName: 'UserService',
+        referenceType: 'inline-code',
+        sourceFile: 'README.md',
+        line: 4,
+        column: 5,
+        context: 'The `UserService` class provides these methods.',
+      });
+    });
+
+    test('should extract class and type references', () => {
+      const content = `
+The \`ApiClient\` handles HTTP requests.
+Use the \`Configuration\` interface to set up options.
+The \`ResponseType\` defines the expected response format.
+`;
+
+      const references = validator.extractInlineCodeReferences('docs.md', content);
+
+      expect(references).toHaveLength(3);
+      expect(references[0].symbolName).toBe('ApiClient');
+      expect(references[1].symbolName).toBe('Configuration');
+      expect(references[2].symbolName).toBe('ResponseType');
+    });
+
+    test('should handle multiple references on same line', () => {
+      const content = 'Use `UserService` to call `createUser()` and `deleteUser()` methods.';
+
+      const references = validator.extractInlineCodeReferences('test.md', content);
+
+      expect(references).toHaveLength(3);
+      expect(references[0].symbolName).toBe('UserService');
+      expect(references[1].symbolName).toBe('createUser');
+      expect(references[2].symbolName).toBe('deleteUser');
+    });
+
+    test('should ignore non-symbol inline code', () => {
+      const content = `
+Use \`npm install\` to install dependencies.
+The \`package.json\` file contains configuration.
+Set \`NODE_ENV=production\` for production builds.
+`;
+
+      const references = validator.extractInlineCodeReferences('guide.md', content);
+
+      // Should not extract file names, environment variables, or commands
+      expect(references).toHaveLength(0);
+    });
+  });
+
+  describe('extractSeeTagReferences', () => {
+    test('should extract references from @see tags', () => {
+      const content = `
+/**
+ * Process user data
+ * @see processData
+ * @see UserService
+ * @see {@link Configuration}
+ */
+function handleUser() {}
+
+/**
+ * Another function
+ * @see utils.formatDate
+ * @see Module.HelperClass
+ */
+function format() {}
+`;
+
+      const references = validator.extractSeeTagReferences('service.ts', content);
+
+      expect(references).toHaveLength(5);
+
+      expect(references[0]).toEqual({
+        symbolName: 'processData',
+        referenceType: 'see-tag',
+        sourceFile: 'service.ts',
+        line: 4,
+        column: 5,
+        context: ' * @see processData',
+      });
+
+      expect(references[1]).toEqual({
+        symbolName: 'UserService',
+        referenceType: 'see-tag',
+        sourceFile: 'service.ts',
+        line: 5,
+        column: 5,
+        context: ' * @see UserService',
+      });
+
+      expect(references[2]).toEqual({
+        symbolName: 'Configuration',
+        referenceType: 'see-tag',
+        sourceFile: 'service.ts',
+        line: 6,
+        column: 5,
+        context: ' * @see {@link Configuration}',
+      });
+
+      // Dotted references should extract the last part
+      expect(references[3].symbolName).toBe('formatDate');
+      expect(references[4].symbolName).toBe('HelperClass');
+    });
+
+    test('should handle different @see tag formats', () => {
+      const content = `
+/**
+ * @see functionName
+ * @see {functionWithBraces}
+ * @see {@link ClassName}
+ * @see package.module.functionName
+ */
+`;
+
+      const references = validator.extractSeeTagReferences('docs.ts', content);
+
+      expect(references).toHaveLength(4);
+      expect(references[0].symbolName).toBe('functionName');
+      expect(references[1].symbolName).toBe('{functionWithBraces}'); // This might be cleaned later
+      expect(references[2].symbolName).toBe('ClassName');
+      expect(references[3].symbolName).toBe('functionName'); // Last part of dotted reference
+    });
+  });
+
+  describe('extractCodeBlockReferences', () => {
+    test('should extract symbols from JavaScript code blocks', () => {
+      const content = `
+# Example Usage
+
+\`\`\`javascript
+const client = new ApiClient();
+const result = await client.processData();
+console.log(result);
+\`\`\`
+
+## Another Example
+
+\`\`\`typescript
+class UserService extends BaseService {
+  createUser(data: UserData): Promise<User> {
+    return this.api.post('/users', data);
+  }
+}
+\`\`\`
+`;
+
+      const references = validator.extractCodeBlockReferences('example.md', content);
+
+      // Should extract class names and function calls
+      const symbolNames = references.map(ref => ref.symbolName);
+      expect(symbolNames).toContain('ApiClient');
+      expect(symbolNames).toContain('processData');
+      expect(symbolNames).toContain('UserService');
+      expect(symbolNames).toContain('BaseService');
+      expect(symbolNames).toContain('createUser');
+
+      // Check that they are marked as code-block references
+      expect(references.every(ref => ref.referenceType === 'code-block')).toBe(true);
+    });
+
+    test('should extract from code blocks without language specification', () => {
+      const content = `
+\`\`\`
+const service = new DataProcessor();
+service.validateInput(data);
+\`\`\`
+`;
+
+      const references = validator.extractCodeBlockReferences('readme.md', content);
+
+      const symbolNames = references.map(ref => ref.symbolName);
+      expect(symbolNames).toContain('DataProcessor');
+      expect(symbolNames).toContain('validateInput');
+    });
+
+    test('should handle multiple code blocks', () => {
+      const content = `
+\`\`\`javascript
+new UserManager();
+\`\`\`
+
+Some text in between.
+
+\`\`\`typescript
+class TaskRunner {
+  execute() {}
+}
+\`\`\`
+`;
+
+      const references = validator.extractCodeBlockReferences('guide.md', content);
+
+      const symbolNames = references.map(ref => ref.symbolName);
+      expect(symbolNames).toContain('UserManager');
+      expect(symbolNames).toContain('TaskRunner');
+      expect(symbolNames).toContain('execute');
+    });
+
+    test('should ignore common JavaScript built-ins', () => {
+      const content = `
+\`\`\`javascript
+console.log('Hello');
+setTimeout(() => {}, 1000);
+const date = new Date();
+const array = new Array();
+\`\`\`
+`;
+
+      const references = validator.extractCodeBlockReferences('test.md', content);
+
+      // Should not extract built-in JavaScript functions/classes
+      const symbolNames = references.map(ref => ref.symbolName);
+      expect(symbolNames).not.toContain('console');
+      expect(symbolNames).not.toContain('log');
+      expect(symbolNames).not.toContain('setTimeout');
+      expect(symbolNames).not.toContain('Date');
+      expect(symbolNames).not.toContain('Array');
+    });
+  });
+
+  describe('extractDocumentationReferences (integration)', () => {
+    test('should extract all types of references from mixed content', () => {
+      const content = `
+# API Documentation
+
+This guide explains how to use the \`UserService\` class.
+
+## Overview
+
+The \`UserService\` provides methods for user management:
+
+\`\`\`javascript
+const service = new UserService();
+const user = await service.createUser(userData);
+\`\`\`
+
+## Methods
+
+### createUser()
+
+Creates a new user account.
+
+/**
+ * Creates a user
+ * @see validateUser
+ * @see {@link UserData}
+ */
+
+You can also use \`updateUser()\` to modify existing accounts.
+
+\`\`\`typescript
+interface UserData {
+  name: string;
+  email: string;
+}
+
+class UserValidator {
+  validateUser(data: UserData): boolean {
+    return true;
+  }
+}
+\`\`\`
+`;
+
+      const references = validator.extractDocumentationReferences('api.md', content);
+
+      // Should find inline code, see tags, and code block references
+      const inlineRefs = references.filter(r => r.referenceType === 'inline-code');
+      const seeRefs = references.filter(r => r.referenceType === 'see-tag');
+      const codeRefs = references.filter(r => r.referenceType === 'code-block');
+
+      expect(inlineRefs.length).toBeGreaterThan(0);
+      expect(seeRefs.length).toBeGreaterThan(0);
+      expect(codeRefs.length).toBeGreaterThan(0);
+
+      const allSymbols = references.map(r => r.symbolName);
+      expect(allSymbols).toContain('UserService');
+      expect(allSymbols).toContain('createUser');
+      expect(allSymbols).toContain('validateUser');
+      expect(allSymbols).toContain('UserData');
+      expect(allSymbols).toContain('updateUser');
+      expect(allSymbols).toContain('UserValidator');
+    });
+  });
+
+  describe('edge cases and error handling', () => {
+    test('should handle empty content', () => {
+      const references = validator.extractDocumentationReferences('empty.md', '');
+      expect(references).toHaveLength(0);
+    });
+
+    test('should handle content with no references', () => {
+      const content = 'This is plain text with no code references.';
+      const references = validator.extractDocumentationReferences('plain.md', content);
+      expect(references).toHaveLength(0);
+    });
+
+    test('should handle malformed code blocks', () => {
+      const content = `
+\`\`\`javascript
+// Unclosed code block
+const service = new ServiceClass();
+`;
+      // Should not throw, just return what it can parse
+      const references = validator.extractDocumentationReferences('malformed.md', content);
+      expect(Array.isArray(references)).toBe(true);
+    });
+
+    test('should handle special characters in symbol names', () => {
+      const content = 'Use the \`$specialFunction\` and \`_privateMethod()\` functions.';
+      const references = validator.extractInlineCodeReferences('special.md', content);
+
+      expect(references).toHaveLength(2);
+      expect(references[0].symbolName).toBe('$specialFunction');
+      expect(references[1].symbolName).toBe('_privateMethod');
+    });
+
+    test('should provide correct line numbers and context', () => {
+      const content = `Line 1
+Line 2 with \`SymbolName\`
+Line 3
+\`\`\`javascript
+new TestClass();
+\`\`\`
+Line 7`;
+
+      const references = validator.extractDocumentationReferences('test.md', content);
+
+      const inlineRef = references.find(r => r.referenceType === 'inline-code');
+      expect(inlineRef?.line).toBe(2);
+      expect(inlineRef?.context).toBe('Line 2 with `SymbolName`');
+
+      const codeRef = references.find(r => r.symbolName === 'TestClass');
+      expect(codeRef?.referenceType).toBe('code-block');
+    });
+  });
+
+  describe('isValidSymbolReference', () => {
+    test('should filter out JavaScript keywords and built-ins', () => {
+      const testSymbols = [
+        'MyClass', // valid
+        'myFunction', // valid
+        'console', // invalid - built-in
+        'Promise', // invalid - built-in
+        'if', // invalid - keyword
+        'function', // invalid - keyword
+        'a', // invalid - too short
+        '', // invalid - empty
+        '123invalid', // invalid - starts with number
+        'valid$name', // valid - contains $
+        '_validName', // valid - starts with _
+      ];
+
+      const validator = new CrossReferenceValidator();
+      const validSymbols = testSymbols.filter(symbol =>
+        (validator as any).isValidSymbolReference(symbol)
+      );
+
+      expect(validSymbols).toEqual(['MyClass', 'myFunction', 'valid$name', '_validName']);
     });
   });
 });

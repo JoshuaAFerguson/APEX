@@ -5,6 +5,7 @@ import {
   Task,
   TaskStatus,
   TaskPriority,
+  TaskEffort,
   TaskUsage,
   TaskLog,
   TaskArtifact,
@@ -94,6 +95,7 @@ export class TaskStore {
         autonomy TEXT NOT NULL,
         status TEXT NOT NULL,
         priority TEXT DEFAULT 'normal',
+        effort TEXT DEFAULT 'medium',
         current_stage TEXT,
         project_path TEXT NOT NULL,
         branch_name TEXT,
@@ -266,14 +268,14 @@ export class TaskStore {
     const normalizedTask = 'id' in task ? task : this.buildTaskFromRequest(task);
     const stmt = this.db.prepare(`
       INSERT INTO tasks (
-        id, description, acceptance_criteria, workflow, autonomy, status, priority,
+        id, description, acceptance_criteria, workflow, autonomy, status, priority, effort,
         current_stage, project_path, branch_name, pr_url, retry_count, max_retries, resume_attempts,
         created_at, updated_at, completed_at, paused_at, resume_after, pause_reason,
         usage_input_tokens, usage_output_tokens, usage_total_tokens, usage_estimated_cost,
         parent_task_id, subtask_ids, subtask_strategy,
         workspace_config, session_data, last_checkpoint
       ) VALUES (
-        @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority,
+        @id, @description, @acceptanceCriteria, @workflow, @autonomy, @status, @priority, @effort,
         @currentStage, @projectPath, @branchName, @prUrl, @retryCount, @maxRetries, @resumeAttempts,
         @createdAt, @updatedAt, @completedAt, @pausedAt, @resumeAfter, @pauseReason,
         @inputTokens, @outputTokens, @totalTokens, @estimatedCost,
@@ -290,6 +292,7 @@ export class TaskStore {
       autonomy: normalizedTask.autonomy,
       status: normalizedTask.status,
       priority: normalizedTask.priority || 'normal',
+      effort: normalizedTask.effort || 'medium',
       currentStage: normalizedTask.currentStage || null,
       projectPath: normalizedTask.projectPath,
       branchName: normalizedTask.branchName || null,
@@ -337,6 +340,7 @@ export class TaskStore {
     const now = new Date();
     const autonomy = (request.autonomy || 'review-before-merge') as AutonomyLevel;
     const priority = request.priority || 'normal';
+    const effort = request.effort || 'medium';
 
     return {
       id: generateTaskId(),
@@ -346,6 +350,7 @@ export class TaskStore {
       autonomy,
       status: 'pending',
       priority,
+      effort,
       projectPath: request.projectPath || this.projectPath,
       retryCount: 0,
       maxRetries: 3,
@@ -390,6 +395,7 @@ export class TaskStore {
     updates: Partial<{
       status: TaskStatus;
       priority: TaskPriority;
+      effort: TaskEffort;
       currentStage: string;
       error: string;
       usage: TaskUsage;
@@ -419,6 +425,11 @@ export class TaskStore {
     if (updates.priority !== undefined) {
       setClauses.push('priority = @priority');
       params.priority = updates.priority;
+    }
+
+    if (updates.effort !== undefined) {
+      setClauses.push('effort = @effort');
+      params.effort = updates.effort;
     }
 
     if (updates.currentStage !== undefined) {
@@ -534,13 +545,20 @@ export class TaskStore {
     }
 
     if (options?.orderByPriority) {
-      // Order by priority (urgent > high > normal > low), then by creation date
+      // Order by priority (urgent > high > normal > low), then by effort (lower effort preferred), then by creation date
       sql += ` ORDER BY CASE priority
         WHEN 'urgent' THEN 1
         WHEN 'high' THEN 2
         WHEN 'normal' THEN 3
         WHEN 'low' THEN 4
         ELSE 5
+      END ASC, CASE effort
+        WHEN 'xs' THEN 1
+        WHEN 'small' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'large' THEN 4
+        WHEN 'xl' THEN 5
+        ELSE 3
       END ASC, created_at ASC`;
     } else {
       sql += ' ORDER BY created_at DESC';
@@ -915,6 +933,7 @@ export class TaskStore {
       autonomy: row.autonomy as Task['autonomy'],
       status: row.status as TaskStatus,
       priority: (row.priority || 'normal') as Task['priority'],
+      effort: (row.effort || 'medium') as Task['effort'],
       currentStage: row.current_stage || undefined,
       projectPath: row.project_path,
       branchName: row.branch_name || undefined,
@@ -1041,6 +1060,13 @@ export class TaskStore {
         WHEN 'normal' THEN 3
         WHEN 'low' THEN 4
         ELSE 5
+      END ASC, CASE t.effort
+        WHEN 'xs' THEN 1
+        WHEN 'small' THEN 2
+        WHEN 'medium' THEN 3
+        WHEN 'large' THEN 4
+        WHEN 'xl' THEN 5
+        ELSE 3
       END ASC, t.created_at ASC`;
     } else {
       sql += ' ORDER BY t.created_at ASC';
@@ -1281,6 +1307,7 @@ interface TaskRow {
   autonomy: string;
   status: string;
   priority: string | null;
+  effort: string | null;
   current_stage: string | null;
   project_path: string;
   branch_name: string | null;

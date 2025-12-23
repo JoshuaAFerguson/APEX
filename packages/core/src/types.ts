@@ -270,6 +270,8 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 
+export type TaskEffort = 'xs' | 'small' | 'medium' | 'large' | 'xl';
+
 export interface Task {
   id: string;
   description: string;
@@ -278,6 +280,7 @@ export interface Task {
   autonomy: AutonomyLevel;
   status: TaskStatus;
   priority: TaskPriority;
+  effort: TaskEffort;
   currentStage?: string;
   projectPath: string;
   branchName?: string;
@@ -330,6 +333,7 @@ export interface SubtaskDefinition {
   acceptanceCriteria?: string;
   workflow?: string;
   priority?: TaskPriority;
+  effort?: TaskEffort;
   dependsOn?: string[];  // References other subtask descriptions or IDs
 }
 
@@ -500,6 +504,7 @@ export interface CreateTaskRequest {
   workflow?: string;
   autonomy?: AutonomyLevel;
   priority?: TaskPriority;
+  effort?: TaskEffort;
   projectPath?: string; // Optional when calling via API (server knows the project path)
 }
 
