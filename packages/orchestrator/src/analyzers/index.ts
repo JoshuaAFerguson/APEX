@@ -182,4 +182,10 @@ export { RefactoringAnalyzer } from './refactoring-analyzer';
 export { DocsAnalyzer } from './docs-analyzer';
 export { TestsAnalyzer } from './tests-analyzer';
 export { VersionMismatchDetector } from './version-mismatch-detector';
-export { CrossReferenceValidator } from './cross-reference-validator';
+export {
+  CrossReferenceValidator,
+  type DocumentationReference,
+  type SymbolInfo,
+  type SymbolIndex,
+  type SymbolExtractionOptions
+} from './cross-reference-validator';

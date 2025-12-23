@@ -255,10 +255,20 @@ export class IdleTaskGenerator {
 }
 
 // Re-export types for convenience
-export type { TaskCandidate, StrategyAnalyzer, RemediationSuggestion, RemediationActionType };
+export type {
+  TaskCandidate,
+  StrategyAnalyzer,
+  RemediationSuggestion,
+  RemediationActionType,
+  DocumentationReference,
+  SymbolInfo,
+  SymbolIndex,
+  SymbolExtractionOptions
+};
 export {
   MaintenanceAnalyzer,
   RefactoringAnalyzer,
   DocsAnalyzer,
   TestsAnalyzer,
+  CrossReferenceValidator,
 } from './analyzers';
