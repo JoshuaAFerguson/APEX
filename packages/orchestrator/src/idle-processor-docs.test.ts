@@ -386,6 +386,152 @@ Good link: https://example.com/working
         ])
       );
     });
+
+    it('should validate cross-references and detect broken symbol links', async () => {
+      const { exec } = await import('child_process');
+      const mockExec = exec as any;
+
+      // Mock finding documentation files
+      mockExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+        callback(null, { stdout: './docs/api.md\n', stderr: '' });
+      });
+
+      // Mock the CrossReferenceValidator methods
+      const mockCrossRefValidator = {
+        buildIndex: vi.fn(),
+        extractDocumentationReferences: vi.fn(),
+        validateDocumentationReferences: vi.fn()
+      };
+
+      // Mock the CrossReferenceValidator module
+      vi.doMock('./analyzers/cross-reference-validator', () => ({
+        CrossReferenceValidator: vi.fn().mockImplementation(() => mockCrossRefValidator)
+      }));
+
+      // Set up the mock responses
+      mockCrossRefValidator.buildIndex.mockResolvedValue({
+        byName: new Map([
+          ['ValidFunction', [{ name: 'ValidFunction', type: 'function', file: './src/valid.ts' }]]
+        ]),
+        byFile: new Map(),
+        stats: { totalSymbols: 1, totalFiles: 1, byType: {} }
+      });
+
+      mockCrossRefValidator.extractDocumentationReferences.mockReturnValue([
+        {
+          symbolName: 'ValidFunction',
+          referenceType: 'inline-code',
+          sourceFile: './docs/api.md',
+          line: 5,
+          column: 10,
+          context: 'Use `ValidFunction()` to process data'
+        },
+        {
+          symbolName: 'MissingFunction',
+          referenceType: 'inline-code',
+          sourceFile: './docs/api.md',
+          line: 8,
+          column: 15,
+          context: 'Use `MissingFunction()` for processing'
+        }
+      ]);
+
+      mockCrossRefValidator.validateDocumentationReferences.mockReturnValue([
+        {
+          file: 'docs/api.md',
+          type: 'broken-link',
+          description: "Reference to non-existent symbol 'MissingFunction' in inline-code at line 8. Context: Use `MissingFunction()` for processing",
+          line: 8,
+          suggestion: 'Symbol not found in codebase',
+          severity: 'medium'
+        }
+      ]);
+
+      const mockReadFile = fs.readFile as any;
+      mockReadFile.mockResolvedValueOnce(`
+# API Documentation
+
+## Functions
+
+Use \`ValidFunction()\` to process data successfully.
+
+You can also use \`MissingFunction()\` for processing, but this doesn't exist.
+      `);
+
+      const processor = idleProcessor as any;
+      const outdatedDocs = await processor.findOutdatedDocumentation();
+
+      // Should detect the broken cross-reference
+      const brokenLinks = outdatedDocs.filter((d: any) => d.type === 'broken-link' && d.description.includes('MissingFunction'));
+      expect(brokenLinks).toHaveLength(1);
+
+      expect(brokenLinks[0]).toMatchObject({
+        file: 'docs/api.md',
+        type: 'broken-link',
+        description: expect.stringContaining('MissingFunction'),
+        line: 8,
+        severity: 'medium'
+      });
+
+      // Verify that the validator methods were called
+      expect(mockCrossRefValidator.buildIndex).toHaveBeenCalledWith(
+        testProjectPath,
+        expect.objectContaining({
+          extensions: ['.ts', '.tsx', '.js', '.jsx'],
+          exclude: ['node_modules/**', 'dist/**', 'build/**', '**/*.test.*', '**/*.spec.*'],
+          includePrivate: false,
+          includeMembers: true
+        })
+      );
+
+      expect(mockCrossRefValidator.extractDocumentationReferences).toHaveBeenCalled();
+      expect(mockCrossRefValidator.validateDocumentationReferences).toHaveBeenCalled();
+
+      // Clean up the mock
+      vi.doUnmock('./analyzers/cross-reference-validator');
+    });
+
+    it('should handle errors gracefully when CrossReferenceValidator fails', async () => {
+      const { exec } = await import('child_process');
+      const mockExec = exec as any;
+
+      // Mock finding documentation files
+      mockExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+        callback(null, { stdout: './docs/api.md\n', stderr: '' });
+      });
+
+      // Mock the CrossReferenceValidator to throw an error
+      const mockCrossRefValidator = {
+        buildIndex: vi.fn().mockRejectedValue(new Error('Failed to build index')),
+        extractDocumentationReferences: vi.fn(),
+        validateDocumentationReferences: vi.fn()
+      };
+
+      // Mock the CrossReferenceValidator module
+      vi.doMock('./analyzers/cross-reference-validator', () => ({
+        CrossReferenceValidator: vi.fn().mockImplementation(() => mockCrossRefValidator)
+      }));
+
+      const mockReadFile = fs.readFile as any;
+      mockReadFile.mockResolvedValueOnce(`
+# API Documentation
+
+This documentation has @deprecated functions.
+      `);
+
+      const processor = idleProcessor as any;
+      const outdatedDocs = await processor.findOutdatedDocumentation();
+
+      // Should still detect deprecated API references, but not fail due to CrossReferenceValidator error
+      const deprecatedAPIs = outdatedDocs.filter((d: any) => d.type === 'deprecated-api');
+      expect(deprecatedAPIs).toHaveLength(1);
+
+      // Should handle the error gracefully and continue processing
+      expect(mockCrossRefValidator.buildIndex).toHaveBeenCalled();
+
+      // Clean up the mock
+      vi.doUnmock('./analyzers/cross-reference-validator');
+    });
   });
 
   // ============================================================================

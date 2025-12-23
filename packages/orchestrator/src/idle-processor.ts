@@ -19,6 +19,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
+import { CrossReferenceValidator } from './analyzers/cross-reference-validator';
 
 export interface IdleTask {
   id: string;
@@ -925,6 +926,24 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       const { stdout: docFiles } = await this.execAsync('find . -name "*.md" -o -name "*.rst" | grep -v node_modules | head -20');
       const files = docFiles.split('\n').filter(line => line.trim());
 
+      // Build symbol index for cross-reference validation
+      let crossRefValidator: CrossReferenceValidator | null = null;
+      let symbolIndex = null;
+
+      try {
+        crossRefValidator = new CrossReferenceValidator();
+        symbolIndex = await crossRefValidator.buildIndex(this.projectPath, {
+          extensions: ['.ts', '.tsx', '.js', '.jsx'],
+          exclude: ['node_modules/**', 'dist/**', 'build/**', '**/*.test.*', '**/*.spec.*'],
+          includePrivate: false,
+          includeMembers: true
+        });
+      } catch {
+        // If cross-reference validation fails, continue without it
+        crossRefValidator = null;
+        symbolIndex = null;
+      }
+
       for (const file of files) {
         try {
           const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
@@ -956,6 +975,27 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
             }
 
           }
+
+          // Validate cross-references in this documentation file (if validator is available)
+          if (crossRefValidator && symbolIndex) {
+            try {
+              const documentationReferences = crossRefValidator.extractDocumentationReferences(
+                file.replace(/^\.\//, ''),
+                content
+              );
+
+              const brokenReferences = crossRefValidator.validateDocumentationReferences(
+                symbolIndex,
+                documentationReferences
+              );
+
+              // Add broken references as outdated documentation
+              outdatedDocs.push(...brokenReferences);
+            } catch {
+              // Skip cross-reference validation for this file if it fails
+            }
+          }
+
         } catch {
           // Skip files that can't be read
         }
