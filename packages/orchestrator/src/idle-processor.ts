@@ -698,11 +698,14 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       // Add stale comment detection
       const staleComments = await this.findStaleComments();
 
+      // Add version mismatch detection
+      const versionMismatches = await this.findVersionMismatches();
+
       return {
         coverage: basicCoverage.coverage,
         missingDocs: basicCoverage.missingDocs,
         undocumentedExports,
-        outdatedDocs: [...outdatedDocs, ...staleComments],
+        outdatedDocs: [...outdatedDocs, ...staleComments, ...versionMismatches],
         missingReadmeSections,
         apiCompleteness
       };
@@ -952,23 +955,6 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               });
             }
 
-            // Look for version mismatches (very basic)
-            const versionMatch = line.match(/v?(\d+\.\d+\.\d+)/);
-            if (versionMatch && line.includes('version')) {
-              // This is a simplified check - in a real implementation,
-              // you'd compare against package.json version
-              const version = versionMatch[1];
-              if (version.startsWith('0.') || version.startsWith('1.')) {
-                outdatedDocs.push({
-                  file: file.replace(/^\.\//, ''),
-                  type: 'version-mismatch',
-                  description: `References old version ${version}`,
-                  line: i + 1,
-                  suggestion: 'Update to current version',
-                  severity: 'low'
-                });
-              }
-            }
           }
         } catch {
           // Skip files that can't be read
@@ -1063,6 +1049,79 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     } catch (error) {
       // Graceful fallback when git is not available or detector fails
       return [];
+    }
+  }
+
+  /**
+   * Find version mismatches using VersionMismatchDetector
+   */
+  private async findVersionMismatches(): Promise<OutdatedDocumentation[]> {
+    try {
+      const { VersionMismatchDetector } = await import('./analyzers/version-mismatch-detector.js');
+      const detector = new VersionMismatchDetector(this.projectPath);
+
+      const mismatches = await detector.detectMismatches();
+      return this.convertVersionMismatchesToOutdatedDocs(mismatches);
+    } catch (error) {
+      // Graceful fallback when detector fails
+      return [];
+    }
+  }
+
+  /**
+   * Convert VersionMismatch[] to OutdatedDocumentation[]
+   */
+  private convertVersionMismatchesToOutdatedDocs(
+    mismatches: Array<{
+      file: string;
+      line: number;
+      foundVersion: string;
+      expectedVersion: string;
+      lineContent: string;
+    }>
+  ): OutdatedDocumentation[] {
+    return mismatches.map(mismatch => ({
+      file: mismatch.file,
+      type: 'version-mismatch' as const,
+      description: `Found version ${mismatch.foundVersion} but expected ${mismatch.expectedVersion}`,
+      line: mismatch.line,
+      suggestion: `Update version reference from ${mismatch.foundVersion} to ${mismatch.expectedVersion}`,
+      severity: this.calculateMismatchSeverity(mismatch.foundVersion, mismatch.expectedVersion)
+    }));
+  }
+
+  /**
+   * Calculate severity based on version difference
+   */
+  private calculateMismatchSeverity(foundVersion: string, expectedVersion: string): 'low' | 'medium' | 'high' {
+    try {
+      // Parse semver versions for comparison
+      const parseVersion = (version: string) => {
+        const match = version.match(/(\d+)\.(\d+)\.(\d+)/);
+        return match ? { major: parseInt(match[1]), minor: parseInt(match[2]), patch: parseInt(match[3]) } : null;
+      };
+
+      const found = parseVersion(foundVersion);
+      const expected = parseVersion(expectedVersion);
+
+      if (!found || !expected) {
+        return 'medium'; // Can't parse, assume medium severity
+      }
+
+      // Major version difference = high severity
+      if (found.major !== expected.major) {
+        return 'high';
+      }
+
+      // Minor version difference = medium severity
+      if (found.minor !== expected.minor) {
+        return 'medium';
+      }
+
+      // Only patch difference = low severity
+      return 'low';
+    } catch {
+      return 'medium'; // Default to medium on any parsing error
     }
   }
 
