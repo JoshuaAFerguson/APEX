@@ -26,6 +26,7 @@ import {
   generateTaskId,
   generateBranchName,
   calculateCost,
+  OutdatedDocumentation,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import {
@@ -40,6 +41,7 @@ import {
 } from './prompts';
 import { createHooks } from './hooks';
 import { estimateConversationTokens, createContextSummary } from './context';
+import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 
 const execAsync = promisify(exec);
 
@@ -3421,6 +3423,39 @@ Parent: ${parentTask.description}`;
       recommendation,
       message,
     };
+  }
+
+  /**
+   * Get documentation analysis including outdated documentation findings
+   */
+  async getDocumentationAnalysis(): Promise<OutdatedDocumentation[]> {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized first');
+    }
+
+    try {
+      // Create a temporary IdleProcessor to get documentation analysis
+      const idleProcessor = new IdleProcessor(this.projectPath, this.config.daemon || {}, this.store);
+
+      // Start the processor to initialize it
+      await idleProcessor.start();
+
+      // Process idle time to generate analysis
+      await idleProcessor.processIdleTime();
+
+      // Get the last analysis
+      const analysis = idleProcessor.getLastAnalysis();
+
+      if (!analysis) {
+        return [];
+      }
+
+      return analysis.documentation.outdatedDocs || [];
+    } catch (error) {
+      // Log error but don't throw - return empty array for graceful fallback
+      console.warn('Failed to get documentation analysis:', error);
+      return [];
+    }
   }
 }
 

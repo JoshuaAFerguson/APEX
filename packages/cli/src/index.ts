@@ -158,16 +158,93 @@ export const commands: Command[] = [
   {
     name: 'status',
     aliases: ['s'],
-    description: 'Show task status',
-    usage: '/status [task_id]',
+    description: 'Show task status or check outdated documentation',
+    usage: '/status [task_id] [--check-docs]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
         return;
       }
 
-      const taskId = args[0];
+      // Check for --check-docs flag
+      const checkDocs = args.includes('--check-docs');
+      const filteredArgs = args.filter(arg => arg !== '--check-docs');
+      const taskId = filteredArgs[0];
 
+      // If --check-docs flag is provided, show outdated documentation findings
+      if (checkDocs) {
+        console.log(chalk.cyan('\n📋 Outdated Documentation Findings:\n'));
+
+        try {
+          const outdatedDocs = await ctx.orchestrator.getDocumentationAnalysis();
+
+          if (outdatedDocs.length === 0) {
+            console.log(chalk.green('✓ No outdated documentation detected.\n'));
+            return;
+          }
+
+          // Group findings by severity for better display
+          const severityGroups = {
+            high: outdatedDocs.filter(doc => doc.severity === 'high'),
+            medium: outdatedDocs.filter(doc => doc.severity === 'medium'),
+            low: outdatedDocs.filter(doc => doc.severity === 'low')
+          };
+
+          // Display high severity findings first
+          if (severityGroups.high.length > 0) {
+            console.log(chalk.red.bold('🔴 High Severity Issues:'));
+            severityGroups.high.forEach(doc => {
+              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+              console.log(chalk.red(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+              console.log(chalk.gray(`    Location: ${location}`));
+              if (doc.suggestion) {
+                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+              }
+              console.log();
+            });
+          }
+
+          // Display medium severity findings
+          if (severityGroups.medium.length > 0) {
+            console.log(chalk.yellow.bold('🟡 Medium Severity Issues:'));
+            severityGroups.medium.forEach(doc => {
+              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+              console.log(chalk.yellow(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+              console.log(chalk.gray(`    Location: ${location}`));
+              if (doc.suggestion) {
+                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+              }
+              console.log();
+            });
+          }
+
+          // Display low severity findings
+          if (severityGroups.low.length > 0) {
+            console.log(chalk.blue.bold('🔵 Low Severity Issues:'));
+            severityGroups.low.forEach(doc => {
+              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+              console.log(chalk.blue(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+              console.log(chalk.gray(`    Location: ${location}`));
+              if (doc.suggestion) {
+                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+              }
+              console.log();
+            });
+          }
+
+          // Show summary
+          const total = outdatedDocs.length;
+          console.log(chalk.cyan.bold('📊 Summary:'));
+          console.log(`  Total Issues: ${total}`);
+          console.log(`  High: ${chalk.red(severityGroups.high.length)} | Medium: ${chalk.yellow(severityGroups.medium.length)} | Low: ${chalk.blue(severityGroups.low.length)}\n`);
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Failed to analyze documentation: ${error}`));
+        }
+        return;
+      }
+
+      // Regular status command logic
       if (taskId) {
         const task = await ctx.orchestrator.getTask(taskId);
         if (!task) {
@@ -1321,6 +1398,17 @@ function getLevelColor(level: string): string {
   }
 }
 
+function getDocTypeEmoji(type: string): string {
+  const emojis: Record<string, string> = {
+    'version-mismatch': '🔢',
+    'deprecated-api': '⚠️',
+    'broken-link': '🔗',
+    'outdated-example': '📝',
+    'stale-reference': '🗓️',
+  };
+  return emojis[type] || '📄';
+}
+
 async function copyDefaultAgents(projectPath: string): Promise<void> {
   const agentsDir = path.join(projectPath, '.apex', 'agents');
 
@@ -1686,7 +1774,7 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Commands:')}
   init [options]          Initialize APEX in the current project
-  status [task_id]        Show task status
+  status [task_id] [--check-docs]  Show task status or check outdated docs
   agents                  List available agents
   workflows               List available workflows
   config [get|set]        View or edit configuration
