@@ -11,6 +11,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import type { OutdatedDocumentation } from '@apexcli/core';
 
 // ============================================================================
 // Type Definitions
@@ -298,22 +299,8 @@ export class CrossReferenceValidator {
   validateDocumentationReferences(
     index: SymbolIndex,
     references: DocumentationReference[]
-  ): Array<{
-    file: string;
-    type: 'broken-link';
-    description: string;
-    line?: number;
-    suggestion?: string;
-    severity: 'low' | 'medium' | 'high';
-  }> {
-    const brokenReferences: Array<{
-      file: string;
-      type: 'broken-link';
-      description: string;
-      line?: number;
-      suggestion?: string;
-      severity: 'low' | 'medium' | 'high';
-    }> = [];
+  ): OutdatedDocumentation[] {
+    const brokenReferences: OutdatedDocumentation[] = [];
 
     for (const reference of references) {
       const isValid = this.validateReference(index, reference.symbolName);
@@ -391,7 +378,7 @@ export class CrossReferenceValidator {
     const getBigrams = (str: string): Set<string> => {
       const bigrams = new Set<string>();
       for (let i = 0; i < str.length - 1; i++) {
-        bigrams.add(str.substr(i, 2));
+        bigrams.add(str.substring(i, i + 2));
       }
       return bigrams;
     };
