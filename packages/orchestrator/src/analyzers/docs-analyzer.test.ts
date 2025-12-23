@@ -589,4 +589,434 @@ describe('DocsAnalyzer', () => {
       });
     });
   });
+
+  // ============================================================================
+  // New OutdatedDocumentation Types Tests
+  // ============================================================================
+
+  describe('version mismatch handling', () => {
+    it('should generate high priority task for critical version mismatches', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'README.md',
+          type: 'version-mismatch',
+          description: 'References v1.0 but current is v3.0',
+          severity: 'high'
+        },
+        {
+          file: 'docs/install.md',
+          type: 'version-mismatch',
+          description: 'References v1.5 but current is v3.0',
+          severity: 'high'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const versionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-critical');
+      expect(versionTask).toBeDefined();
+      expect(versionTask?.title).toBe('Fix Critical Version Mismatches');
+      expect(versionTask?.priority).toBe('high');
+      expect(versionTask?.estimatedEffort).toBe('medium');
+      expect(versionTask?.score).toBe(0.8);
+      expect(versionTask?.description).toContain('2 critical version mismatches');
+      expect(versionTask?.rationale).toContain('Version mismatches cause confusion');
+    });
+
+    it('should generate normal priority task for medium version mismatches', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'docs/api.md',
+          type: 'version-mismatch',
+          description: 'References v2.0 but current is v2.1',
+          severity: 'medium'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const versionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-medium');
+      expect(versionTask).toBeDefined();
+      expect(versionTask?.title).toBe('Fix Version Mismatches');
+      expect(versionTask?.priority).toBe('normal');
+      expect(versionTask?.estimatedEffort).toBe('low');
+      expect(versionTask?.score).toBe(0.6);
+      expect(versionTask?.description).toContain('1 version mismatch');
+    });
+
+    it('should generate low priority task for low severity version mismatches', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'CHANGELOG.md',
+          type: 'version-mismatch',
+          description: 'Minor version reference in old examples',
+          severity: 'low'
+        },
+        {
+          file: 'docs/examples.md',
+          type: 'version-mismatch',
+          description: 'Old version in code example',
+          severity: 'low'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const versionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches');
+      expect(versionTask).toBeDefined();
+      expect(versionTask?.title).toBe('Review Version References');
+      expect(versionTask?.priority).toBe('low');
+      expect(versionTask?.score).toBe(0.4);
+      expect(versionTask?.description).toContain('2 version references');
+    });
+
+    it('should prioritize high severity over medium severity version mismatches', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'README.md',
+          type: 'version-mismatch',
+          description: 'Critical version mismatch',
+          severity: 'high'
+        },
+        {
+          file: 'docs/api.md',
+          type: 'version-mismatch',
+          description: 'Medium version mismatch',
+          severity: 'medium'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should only generate critical task, not medium
+      const criticalTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-critical');
+      const mediumTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-medium');
+
+      expect(criticalTask).toBeDefined();
+      expect(mediumTask).toBeUndefined();
+    });
+  });
+
+  describe('broken link handling', () => {
+    it('should generate high priority task for critical broken links', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'src/api.ts',
+          type: 'broken-link',
+          description: 'Broken @see reference to deleted method',
+          severity: 'high',
+          line: 42
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const linkTask = candidates.find(c => c.candidateId === 'docs-fix-broken-links-critical');
+      expect(linkTask).toBeDefined();
+      expect(linkTask?.title).toBe('Fix Critical Broken Links');
+      expect(linkTask?.priority).toBe('high');
+      expect(linkTask?.estimatedEffort).toBe('medium');
+      expect(linkTask?.score).toBe(0.8);
+      expect(linkTask?.description).toContain('1 critical broken link');
+      expect(linkTask?.rationale).toContain('@see tags');
+    });
+
+    it('should generate normal priority task for medium broken links', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'README.md',
+          type: 'broken-link',
+          description: 'Broken link to documentation page',
+          severity: 'medium'
+        },
+        {
+          file: 'docs/guide.md',
+          type: 'broken-link',
+          description: 'Another broken link',
+          severity: 'medium'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const linkTask = candidates.find(c => c.candidateId === 'docs-fix-broken-links-medium');
+      expect(linkTask).toBeDefined();
+      expect(linkTask?.title).toBe('Fix Broken Documentation Links');
+      expect(linkTask?.priority).toBe('normal');
+      expect(linkTask?.estimatedEffort).toBe('low');
+      expect(linkTask?.score).toBe(0.6);
+      expect(linkTask?.description).toContain('2 broken links');
+    });
+
+    it('should generate low priority task for low severity broken links', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'docs/examples.md',
+          type: 'broken-link',
+          description: 'External link that may be temporary',
+          severity: 'low'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const linkTask = candidates.find(c => c.candidateId === 'docs-fix-broken-links');
+      expect(linkTask).toBeDefined();
+      expect(linkTask?.title).toBe('Review Documentation Links');
+      expect(linkTask?.priority).toBe('low');
+      expect(linkTask?.score).toBe(0.4);
+    });
+  });
+
+  describe('deprecated API documentation handling', () => {
+    it('should generate high priority task for critical deprecated API docs', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'src/auth.ts',
+          type: 'deprecated-api',
+          description: '@deprecated tag missing migration guidance',
+          severity: 'high',
+          line: 25,
+          suggestion: 'Add migration path to new auth API'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const deprecatedTask = candidates.find(c => c.candidateId === 'docs-fix-deprecated-api-docs-critical');
+      expect(deprecatedTask).toBeDefined();
+      expect(deprecatedTask?.title).toBe('Document Critical Deprecated APIs');
+      expect(deprecatedTask?.priority).toBe('high');
+      expect(deprecatedTask?.estimatedEffort).toBe('medium');
+      expect(deprecatedTask?.score).toBe(0.8);
+      expect(deprecatedTask?.description).toContain('1 critical @deprecated tag');
+      expect(deprecatedTask?.rationale).toContain('migration difficult');
+    });
+
+    it('should generate normal priority task for medium deprecated API docs', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'src/utils.ts',
+          type: 'deprecated-api',
+          description: '@deprecated tag needs better documentation',
+          severity: 'medium',
+          line: 15
+        },
+        {
+          file: 'src/helpers.ts',
+          type: 'deprecated-api',
+          description: 'Another incomplete @deprecated tag',
+          severity: 'medium',
+          line: 30
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const deprecatedTask = candidates.find(c => c.candidateId === 'docs-fix-deprecated-api-docs-medium');
+      expect(deprecatedTask).toBeDefined();
+      expect(deprecatedTask?.title).toBe('Improve Deprecated API Documentation');
+      expect(deprecatedTask?.priority).toBe('normal');
+      expect(deprecatedTask?.estimatedEffort).toBe('low');
+      expect(deprecatedTask?.score).toBe(0.6);
+      expect(deprecatedTask?.description).toContain('2 @deprecated tags');
+    });
+
+    it('should generate low priority task for low severity deprecated API docs', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'src/old-feature.ts',
+          type: 'deprecated-api',
+          description: '@deprecated tag could be enhanced',
+          severity: 'low'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      const deprecatedTask = candidates.find(c => c.candidateId === 'docs-fix-deprecated-api-docs');
+      expect(deprecatedTask).toBeDefined();
+      expect(deprecatedTask?.title).toBe('Review Deprecated API Tags');
+      expect(deprecatedTask?.priority).toBe('low');
+      expect(deprecatedTask?.score).toBe(0.4);
+    });
+  });
+
+  describe('mixed outdated documentation types', () => {
+    it('should handle multiple types in the same analysis', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'README.md',
+          type: 'version-mismatch',
+          description: 'Version mismatch',
+          severity: 'high'
+        },
+        {
+          file: 'docs/api.md',
+          type: 'broken-link',
+          description: 'Broken link',
+          severity: 'medium'
+        },
+        {
+          file: 'src/api.ts',
+          type: 'deprecated-api',
+          description: 'Poor @deprecated docs',
+          severity: 'high'
+        },
+        {
+          file: 'src/old.ts',
+          type: 'stale-reference',
+          description: 'Old TODO comment',
+          severity: 'medium'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should generate tasks for each type
+      const versionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-critical');
+      const linkTask = candidates.find(c => c.candidateId === 'docs-fix-broken-links-medium');
+      const deprecatedTask = candidates.find(c => c.candidateId === 'docs-fix-deprecated-api-docs-critical');
+      const staleTask = candidates.find(c => c.candidateId === 'docs-resolve-stale-comments-medium');
+
+      expect(versionTask).toBeDefined();
+      expect(linkTask).toBeDefined();
+      expect(deprecatedTask).toBeDefined();
+      expect(staleTask).toBeDefined();
+
+      // All should be independent tasks
+      expect(candidates.length).toBe(4);
+    });
+
+    it('should respect severity precedence within each type', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        // Version mismatches: high and medium severity
+        {
+          file: 'README.md',
+          type: 'version-mismatch',
+          description: 'Critical version mismatch',
+          severity: 'high'
+        },
+        {
+          file: 'docs/api.md',
+          type: 'version-mismatch',
+          description: 'Medium version mismatch',
+          severity: 'medium'
+        },
+        // Broken links: only low severity
+        {
+          file: 'docs/guide.md',
+          type: 'broken-link',
+          description: 'Minor broken link',
+          severity: 'low'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Version mismatches: should get critical task only
+      const criticalVersionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-critical');
+      const mediumVersionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-medium');
+
+      expect(criticalVersionTask).toBeDefined();
+      expect(mediumVersionTask).toBeUndefined(); // Should be skipped due to critical task
+
+      // Broken links: should get low priority task
+      const linkTask = candidates.find(c => c.candidateId === 'docs-fix-broken-links');
+      expect(linkTask).toBeDefined();
+    });
+
+    it('should work alongside existing task generation', () => {
+      // Test that new OutdatedDocumentation handling doesn't interfere with existing logic
+      baseProjectAnalysis.documentation = {
+        coverage: 15, // Will trigger critical docs task
+        missingDocs: ['src/core.ts', 'src/api.ts'], // Will trigger core modules task
+        undocumentedExports: [],
+        outdatedDocs: [
+          {
+            file: 'README.md',
+            type: 'version-mismatch',
+            description: 'Version mismatch',
+            severity: 'medium'
+          }
+        ],
+        missingReadmeSections: [],
+        apiCompleteness: {
+          percentage: 70,
+          details: {
+            totalEndpoints: 20,
+            documentedEndpoints: 14,
+            undocumentedItems: [],
+            wellDocumentedExamples: [],
+            commonIssues: []
+          }
+        }
+      };
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should have both existing and new tasks
+      const criticalDocsTask = candidates.find(c => c.candidateId === 'docs-critical-docs');
+      const coreModulesTask = candidates.find(c => c.candidateId === 'docs-core-module-docs');
+      const versionTask = candidates.find(c => c.candidateId === 'docs-fix-version-mismatches-medium');
+
+      expect(criticalDocsTask).toBeDefined();
+      expect(coreModulesTask).toBeDefined();
+      expect(versionTask).toBeDefined();
+
+      expect(candidates.length).toBe(3);
+    });
+  });
+
+  describe('empty outdated docs handling', () => {
+    it('should not generate tasks when no outdated docs exist', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage
+      baseProjectAnalysis.documentation.outdatedDocs = []; // No outdated docs
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should not have any outdated docs tasks
+      const outdatedTasks = candidates.filter(c =>
+        c.candidateId.includes('fix-version-mismatches') ||
+        c.candidateId.includes('fix-broken-links') ||
+        c.candidateId.includes('fix-deprecated-api-docs') ||
+        c.candidateId.includes('resolve-stale-comments')
+      );
+
+      expect(outdatedTasks).toHaveLength(0);
+    });
+
+    it('should not generate tasks for unknown outdated doc types', () => {
+      baseProjectAnalysis.documentation.coverage = 50; // Good coverage to isolate this test
+      baseProjectAnalysis.documentation.outdatedDocs = [
+        {
+          file: 'docs/unknown.md',
+          type: 'outdated-example' as any, // Valid type but not handled yet
+          description: 'Unknown type',
+          severity: 'high'
+        }
+      ];
+
+      const candidates = docsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should not generate any tasks for unknown types
+      const unknownTasks = candidates.filter(c =>
+        c.candidateId.includes('outdated-example')
+      );
+
+      expect(unknownTasks).toHaveLength(0);
+    });
+  });
 });
