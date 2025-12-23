@@ -223,7 +223,7 @@ describe('MaintenanceAnalyzer - Security Vulnerabilities', () => {
       expect(groupTask.title).toContain('3');
       expect(groupTask.title).toContain('Low');
       expect(groupTask.candidateId).toBe('security-group-low');
-      expect(groupTask.score).toBe(0.4);
+      expect(groupTask.score).toBe(0.5);
     });
   });
 

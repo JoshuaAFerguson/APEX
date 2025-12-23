@@ -472,7 +472,7 @@ describe('MaintenanceAnalyzer - Comprehensive Security Tests', () => {
       expect(sortedCandidates[0].score).toBe(1.0);   // Critical
       expect(sortedCandidates[1].score).toBe(0.9);   // High
       expect(sortedCandidates[2].score).toBe(0.7);   // Medium (grouped)
-      expect(sortedCandidates[3].score).toBe(0.4);   // Low (grouped)
+      expect(sortedCandidates[3].score).toBe(0.5);   // Low (grouped)
 
       // Verify priorities
       expect(sortedCandidates[0].priority).toBe('urgent');

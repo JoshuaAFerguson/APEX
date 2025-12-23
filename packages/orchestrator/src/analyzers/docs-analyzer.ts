@@ -16,7 +16,7 @@ export class DocsAnalyzer extends BaseAnalyzer {
   analyze(analysis: ProjectAnalysis): TaskCandidate[] {
     const candidates: TaskCandidate[] = [];
 
-    const { coverage, missingDocs } = analysis.documentation;
+    const { coverage, missingDocs, outdatedDocs } = analysis.documentation;
 
     // Priority 1: Critically low documentation coverage
     if (coverage < 20) {
@@ -118,6 +118,61 @@ export class DocsAnalyzer extends BaseAnalyzer {
           }
         )
       );
+    }
+
+    // Priority 5: Stale TODO/FIXME/HACK comments
+    const staleComments = outdatedDocs.filter((doc) => doc.type === 'stale-reference');
+    if (staleComments.length > 0) {
+      // Group by severity
+      const highSeverityComments = staleComments.filter((c) => c.severity === 'high');
+      const mediumSeverityComments = staleComments.filter((c) => c.severity === 'medium');
+
+      if (highSeverityComments.length > 0) {
+        candidates.push(
+          this.createCandidate(
+            'resolve-stale-comments-critical',
+            'Resolve Critical Stale Comments',
+            `Review and resolve ${highSeverityComments.length} TODO/FIXME/HACK comment${highSeverityComments.length === 1 ? '' : 's'} that have been open for over 90 days`,
+            {
+              priority: 'high',
+              effort: 'medium',
+              workflow: 'documentation',
+              rationale: 'Long-standing TODO comments may indicate technical debt or forgotten features',
+              score: 0.8,
+            }
+          )
+        );
+      } else if (mediumSeverityComments.length > 0) {
+        candidates.push(
+          this.createCandidate(
+            'resolve-stale-comments-medium',
+            'Resolve Stale Comments',
+            `Review and resolve ${mediumSeverityComments.length} TODO/FIXME/HACK comment${mediumSeverityComments.length === 1 ? '' : 's'} that have been open for over 60 days`,
+            {
+              priority: 'normal',
+              effort: 'low',
+              workflow: 'documentation',
+              rationale: 'Stale TODO comments should be reviewed and either resolved or updated',
+              score: 0.6,
+            }
+          )
+        );
+      } else if (staleComments.length > 0) {
+        candidates.push(
+          this.createCandidate(
+            'resolve-stale-comments',
+            'Review Stale Comments',
+            `Review ${staleComments.length} TODO/FIXME/HACK comment${staleComments.length === 1 ? '' : 's'} that have been open for over 30 days`,
+            {
+              priority: 'low',
+              effort: 'low',
+              workflow: 'documentation',
+              rationale: 'Regular review of TODO comments prevents them from becoming forgotten technical debt',
+              score: 0.4,
+            }
+          )
+        );
+      }
     }
 
     return candidates;

@@ -487,22 +487,9 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       const deepNestingSmells = await this.detectDeepNesting();
       codeSmells.push(...deepNestingSmells);
 
-      // Basic duplicate pattern detection (simplified implementation)
-      try {
-        const { stdout: grepOutput } = await this.execAsync('grep -r -n "TODO\\|FIXME\\|HACK" --include="*.ts" --include="*.js" . | head -10 || echo ""');
-        if (grepOutput.trim()) {
-          const todoLines = grepOutput.split('\n').filter(line => line.trim());
-          if (todoLines.length > 3) {
-            duplicatedCode.push({
-              pattern: 'TODO/FIXME comments',
-              locations: todoLines.slice(0, 5).map(line => line.split(':').slice(0, 2).join(':')),
-              similarity: 1.0
-            });
-          }
-        }
-      } catch {
-        // Ignore grep errors
-      }
+      // Duplicate code pattern detection
+      const duplicatePatterns = await this.detectDuplicateCodePatterns();
+      duplicatedCode.push(...duplicatePatterns);
     } catch {
       // Ignore errors in code quality analysis
     }
@@ -708,11 +695,14 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       const missingReadmeSections = await this.findMissingReadmeSections();
       const apiCompleteness = await this.analyzeAPICompleteness();
 
+      // Add stale comment detection
+      const staleComments = await this.findStaleComments();
+
       return {
         coverage: basicCoverage.coverage,
         missingDocs: basicCoverage.missingDocs,
         undocumentedExports,
-        outdatedDocs,
+        outdatedDocs: [...outdatedDocs, ...staleComments],
         missingReadmeSections,
         apiCompleteness
       };
@@ -1058,6 +1048,24 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   /**
    * Analyze API documentation completeness
    */
+  /**
+   * Find stale TODO/FIXME/HACK comments using git blame
+   */
+  private async findStaleComments(): Promise<OutdatedDocumentation[]> {
+    try {
+      const { StaleCommentDetector } = await import('./stale-comment-detector');
+
+      // Use configuration if available
+      const config = this.config.documentation?.outdatedDocs || {};
+      const detector = new StaleCommentDetector(this.projectPath, config);
+
+      return await detector.findStaleComments();
+    } catch (error) {
+      // Graceful fallback when git is not available or detector fails
+      return [];
+    }
+  }
+
   private async analyzeAPICompleteness(): Promise<APICompleteness> {
     try {
       const undocumentedItems: Array<{ name: string; file: string; type: 'endpoint' | 'method' | 'function' | 'class'; line?: number }> = [];
@@ -1150,6 +1158,220 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     const execPromise = promisify(exec);
 
     return execPromise(command, { cwd: this.projectPath });
+  }
+
+  /**
+   * Detects duplicate code patterns in TypeScript/JavaScript files
+   */
+  private async detectDuplicateCodePatterns(): Promise<DuplicatePattern[]> {
+    try {
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v node_modules | head -30');
+      const files = stdout.split('\n').filter(line => line.trim());
+      const duplicatePatterns: DuplicatePattern[] = [];
+
+      // Strategy 1: Detect duplicate function signatures and similar method names
+      const functionPatterns = await this.detectDuplicateFunctions(files);
+      duplicatePatterns.push(...functionPatterns);
+
+      // Strategy 2: Detect duplicate import patterns
+      const importPatterns = await this.detectDuplicateImports(files);
+      duplicatePatterns.push(...importPatterns);
+
+      // Strategy 3: Detect duplicate utility/validation logic
+      const utilityPatterns = await this.detectDuplicateUtilities(files);
+      duplicatePatterns.push(...utilityPatterns);
+
+      // Strategy 4: Detect TODOs/FIXMEs as a pattern (keeping original logic)
+      const todoPatterns = await this.detectDuplicateTodos();
+      duplicatePatterns.push(...todoPatterns);
+
+      return duplicatePatterns;
+    } catch {
+      return []; // If analysis fails, return empty array
+    }
+  }
+
+  /**
+   * Detects duplicate function patterns across files
+   */
+  private async detectDuplicateFunctions(files: string[]): Promise<DuplicatePattern[]> {
+    try {
+      const functionSignatures = new Map<string, string[]>();
+
+      for (const filePath of files.slice(0, 15)) { // Limit to avoid performance issues
+        try {
+          const relativePath = filePath.replace('./', '');
+          const fullPath = join(this.projectPath, relativePath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          // Extract function signatures using regex
+          const functionRegex = /(function\s+\w+|const\s+\w+\s*=\s*\([^)]*\)\s*=>|async\s+function\s+\w+|\w+\s*\([^)]*\)\s*\{)/g;
+          const functions = content.match(functionRegex) || [];
+
+          for (const func of functions) {
+            // Normalize function signature (remove whitespace, simplify)
+            const normalized = func.replace(/\s+/g, ' ').trim().toLowerCase();
+
+            // Skip very simple patterns
+            if (normalized.length < 15) continue;
+
+            if (!functionSignatures.has(normalized)) {
+              functionSignatures.set(normalized, []);
+            }
+            functionSignatures.get(normalized)!.push(relativePath);
+          }
+        } catch {
+          // Skip files that can't be read
+          continue;
+        }
+      }
+
+      const duplicates: DuplicatePattern[] = [];
+      for (const [signature, locations] of functionSignatures) {
+        if (locations.length > 1) {
+          // Calculate similarity based on exact match (function signatures)
+          duplicates.push({
+            pattern: `Similar function: ${signature.substring(0, 50)}${signature.length > 50 ? '...' : ''}`,
+            locations: [...new Set(locations)], // Remove duplicates
+            similarity: 0.95 // High similarity for function signature matches
+          });
+        }
+      }
+
+      return duplicates.slice(0, 3); // Limit to top 3 patterns
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Detects duplicate import patterns that might indicate shared dependencies
+   */
+  private async detectDuplicateImports(files: string[]): Promise<DuplicatePattern[]> {
+    try {
+      const importPatterns = new Map<string, string[]>();
+
+      for (const filePath of files.slice(0, 20)) {
+        try {
+          const relativePath = filePath.replace('./', '');
+          const fullPath = join(this.projectPath, relativePath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          // Extract import statements
+          const importRegex = /import\s+.*?\s+from\s+['"][^'"]+['"]/g;
+          const imports = content.match(importRegex) || [];
+
+          for (const imp of imports) {
+            // Normalize import (remove quotes, spaces)
+            const normalized = imp.replace(/['"]/g, '').replace(/\s+/g, ' ').trim();
+
+            // Focus on specific utility imports that might be duplicated
+            if (normalized.includes('lodash') || normalized.includes('moment') ||
+                normalized.includes('uuid') || normalized.includes('crypto') ||
+                normalized.includes('fs') || normalized.includes('path')) {
+
+              if (!importPatterns.has(normalized)) {
+                importPatterns.set(normalized, []);
+              }
+              importPatterns.get(normalized)!.push(relativePath);
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const duplicates: DuplicatePattern[] = [];
+      for (const [pattern, locations] of importPatterns) {
+        if (locations.length > 3) { // Only if imported in multiple files
+          duplicates.push({
+            pattern: `Common import: ${pattern}`,
+            locations: [...new Set(locations)].slice(0, 5), // Limit locations
+            similarity: 0.85 // Good similarity for shared imports
+          });
+        }
+      }
+
+      return duplicates.slice(0, 2); // Limit to top 2 patterns
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Detects duplicate utility/validation logic patterns
+   */
+  private async detectDuplicateUtilities(files: string[]): Promise<DuplicatePattern[]> {
+    try {
+      const utilityPatterns = new Map<string, string[]>();
+
+      for (const filePath of files.slice(0, 15)) {
+        try {
+          const relativePath = filePath.replace('./', '');
+          const fullPath = join(this.projectPath, relativePath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          // Look for common validation/utility patterns
+          const patterns = [
+            { regex: /email.*validation|validate.*email/gi, name: 'Email validation logic' },
+            { regex: /password.*validation|validate.*password/gi, name: 'Password validation logic' },
+            { regex: /format.*date|date.*format/gi, name: 'Date formatting logic' },
+            { regex: /sanitize.*input|input.*sanitize/gi, name: 'Input sanitization logic' },
+            { regex: /error.*handling|handle.*error/gi, name: 'Error handling logic' },
+            { regex: /logger?\.|console\.log|console\.error/gi, name: 'Logging patterns' }
+          ];
+
+          for (const { regex, name } of patterns) {
+            const matches = content.match(regex);
+            if (matches && matches.length > 2) { // Multiple instances in same file
+              if (!utilityPatterns.has(name)) {
+                utilityPatterns.set(name, []);
+              }
+              utilityPatterns.get(name)!.push(relativePath);
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const duplicates: DuplicatePattern[] = [];
+      for (const [pattern, locations] of utilityPatterns) {
+        if (locations.length > 1) {
+          duplicates.push({
+            pattern: `Duplicate ${pattern.toLowerCase()}`,
+            locations: [...new Set(locations)],
+            similarity: 0.80 // Moderate similarity for utility patterns
+          });
+        }
+      }
+
+      return duplicates.slice(0, 2); // Limit to top 2 patterns
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Detects duplicate TODO/FIXME comments (original logic)
+   */
+  private async detectDuplicateTodos(): Promise<DuplicatePattern[]> {
+    try {
+      const { stdout: grepOutput } = await this.execAsync('grep -r -n "TODO\\|FIXME\\|HACK" --include="*.ts" --include="*.js" . | head -10 || echo ""');
+      if (grepOutput.trim()) {
+        const todoLines = grepOutput.split('\n').filter(line => line.trim());
+        if (todoLines.length > 3) {
+          return [{
+            pattern: 'TODO/FIXME comments',
+            locations: todoLines.slice(0, 5).map(line => line.split(':').slice(0, 2).join(':')),
+            similarity: 1.0
+          }];
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
   }
 }
 

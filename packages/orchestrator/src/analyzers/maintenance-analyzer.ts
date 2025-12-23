@@ -48,7 +48,7 @@ export class MaintenanceAnalyzer extends BaseAnalyzer {
 
       // Low vulnerabilities - group as low priority
       if (bySeverity.low.length > 0) {
-        candidates.push(this.createSecurityGroupTask(bySeverity.low, 'low', 0.4));
+        candidates.push(this.createSecurityGroupTask(bySeverity.low, 'low', 0.5));
       }
     } else if (analysis.dependencies.security.length > 0) {
       // Fallback to legacy format when rich data unavailable
