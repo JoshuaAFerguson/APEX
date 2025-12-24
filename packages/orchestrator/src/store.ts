@@ -596,6 +596,39 @@ export class TaskStore {
     return this.listTasks();
   }
 
+  /**
+   * Get tasks that are stuck in 'in-progress' status but haven't been updated recently.
+   * These are potential orphaned tasks from crashed daemon instances.
+   *
+   * @param stalenessThresholdMs - Tasks not updated within this period are considered stale (default: 1 hour)
+   * @returns Array of stale in-progress tasks
+   */
+  async getOrphanedTasks(stalenessThresholdMs: number = 3600000): Promise<Task[]> {
+    const cutoffTime = new Date(Date.now() - stalenessThresholdMs).toISOString();
+
+    const sql = `
+      SELECT t.*
+      FROM tasks t
+      WHERE t.status = 'in-progress'
+      AND t.updated_at < ?
+      ORDER BY t.updated_at ASC
+    `;
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(cutoffTime) as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+    }
+
+    return tasks;
+  }
+
   async updateTaskStatus(
     taskId: string,
     status: TaskStatus,

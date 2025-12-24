@@ -2,7 +2,7 @@ import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
 import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
-import { loadConfig, getEffectiveConfig, ApexConfig, Task, DaemonConfig, TaskSessionData } from '@apexcli/core';
+import { loadConfig, getEffectiveConfig, ApexConfig, Task, TaskStatus, DaemonConfig, TaskSessionData } from '@apexcli/core';
 import { UsageManager } from './usage-manager';
 import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
@@ -128,6 +128,7 @@ export class DaemonRunner {
   private pollInterval: NodeJS.Timeout | null = null;
   private runningTasks: Map<string, Promise<void>> = new Map();
   private stateUpdateInterval: NodeJS.Timeout | null = null;
+  private orphanCheckInterval: NodeJS.Timeout | null = null;
 
   // Metrics
   private startedAt: Date | null = null;
@@ -241,6 +242,12 @@ export class DaemonRunner {
         this.log('info', 'Capacity monitoring started for auto-resume');
       }
 
+      // Detect and handle orphaned tasks from previous daemon instances
+      await this.detectAndHandleOrphanedTasks();
+
+      // Setup periodic orphan detection if enabled
+      this.setupPeriodicOrphanDetection();
+
       // Write initial state file
       await this.writeStateFile();
 
@@ -293,6 +300,11 @@ export class DaemonRunner {
     if (this.stateUpdateInterval) {
       clearInterval(this.stateUpdateInterval);
       this.stateUpdateInterval = null;
+    }
+
+    if (this.orphanCheckInterval) {
+      clearInterval(this.orphanCheckInterval);
+      this.orphanCheckInterval = null;
     }
 
     // Write final state file with running: false
@@ -982,5 +994,158 @@ export class DaemonRunner {
     if (this.store) {
       this.store.close();
     }
+  }
+
+  /**
+   * Detect and handle orphaned tasks on daemon startup.
+   * Orphaned tasks are those stuck in 'in-progress' status from previous daemon instances.
+   */
+  private async detectAndHandleOrphanedTasks(): Promise<void> {
+    if (!this.store || !this.orchestrator || !this.config) {
+      return;
+    }
+
+    const orphanConfig = this.config.daemon?.orphanDetection;
+    if (orphanConfig?.enabled === false) {
+      this.log('debug', 'Orphan detection disabled in config');
+      return;
+    }
+
+    const stalenessThreshold = orphanConfig?.stalenessThreshold ?? 3600000; // 1 hour
+    const recoveryPolicy = orphanConfig?.recoveryPolicy ?? 'pending';
+
+    try {
+      const orphanedTasks = await this.store.getOrphanedTasks(stalenessThreshold);
+
+      // Filter out tasks that are actively running in this daemon instance
+      const trulyOrphaned = orphanedTasks.filter(task =>
+        !this.runningTasks.has(task.id)
+      );
+
+      if (trulyOrphaned.length === 0) {
+        this.log('debug', 'No orphaned tasks detected');
+        return;
+      }
+
+      this.log('warn', `Detected ${trulyOrphaned.length} orphaned task(s)`);
+
+      // Emit detection event
+      this.orchestrator.emit('orphan:detected', {
+        tasks: trulyOrphaned,
+        detectedAt: new Date(),
+        reason: 'startup_check',
+        stalenessThreshold,
+      });
+
+      // Handle each orphaned task based on policy
+      for (const task of trulyOrphaned) {
+        await this.recoverOrphanedTask(task, recoveryPolicy);
+      }
+    } catch (error) {
+      this.log('error', `Orphan detection failed: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Recover a single orphaned task based on the configured policy.
+   */
+  private async recoverOrphanedTask(
+    task: Task,
+    policy: 'pending' | 'fail' | 'retry'
+  ): Promise<void> {
+    if (!this.store || !this.orchestrator) {
+      return;
+    }
+
+    const previousStatus = task.status;
+    let newStatus: TaskStatus;
+    let action: 'marked_failed' | 'reset_pending' | 'retry';
+    let message: string;
+
+    try {
+      switch (policy) {
+        case 'fail':
+          newStatus = 'failed';
+          action = 'marked_failed';
+          message = `Task marked as failed: orphaned in '${previousStatus}' status since ${task.updatedAt.toISOString()}`;
+          await this.store.updateTaskStatus(task.id, 'failed', undefined, message);
+          break;
+
+        case 'pending':
+          newStatus = 'pending';
+          action = 'reset_pending';
+          message = `Task reset to pending: was orphaned in '${previousStatus}' status`;
+          await this.store.updateTaskStatus(task.id, 'pending');
+          break;
+
+        case 'retry':
+          newStatus = 'pending';
+          action = 'retry';
+          message = `Task queued for retry: was orphaned in '${previousStatus}' status`;
+          await this.store.updateTask(task.id, {
+            status: 'pending',
+            retryCount: (task.retryCount || 0) + 1,
+            updatedAt: new Date(),
+          });
+          break;
+      }
+
+      // Add log entry to task
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Orphan recovery: ${message}`,
+        metadata: {
+          policy,
+          previousStatus,
+          newStatus,
+          staleSeconds: Math.floor((Date.now() - task.updatedAt.getTime()) / 1000),
+        },
+      });
+
+      // Emit recovery event
+      this.orchestrator.emit('orphan:recovered', {
+        taskId: task.id,
+        previousStatus,
+        newStatus,
+        action,
+        message,
+        timestamp: new Date(),
+      });
+
+      this.log('info', `Recovered orphaned task ${task.id}: ${action}`);
+    } catch (error) {
+      this.log('error', `Failed to recover orphaned task ${task.id}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Setup periodic orphan detection if enabled in config.
+   */
+  private setupPeriodicOrphanDetection(): void {
+    if (!this.config) {
+      return;
+    }
+
+    const orphanConfig = this.config.daemon?.orphanDetection;
+
+    if (!orphanConfig?.periodicCheck) {
+      return;
+    }
+
+    const interval = orphanConfig.periodicCheckInterval ?? 300000; // 5 minutes
+
+    this.orphanCheckInterval = setInterval(async () => {
+      if (!this.isRunning || this.isShuttingDown) {
+        return;
+      }
+
+      try {
+        await this.detectAndHandleOrphanedTasks();
+      } catch (error) {
+        this.log('error', `Periodic orphan check failed: ${(error as Error).message}`);
+      }
+    }, interval);
+
+    this.log('info', `Periodic orphan detection enabled (interval: ${interval}ms)`);
   }
 }

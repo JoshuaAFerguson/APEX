@@ -14,7 +14,7 @@
  * @see ADR-004: IdleTaskGenerator with Weighted Strategy Selection
  */
 
-import { StrategyWeights, IdleTaskType, generateTaskId, IdleTask, generateIdleTaskId } from '@apexcli/core';
+import { StrategyWeights, IdleTaskType, generateTaskId, IdleTask, generateIdleTaskId, TaskEffort } from '@apexcli/core';
 import type { ProjectAnalysis } from './idle-processor';
 import {
   StrategyAnalyzer,
@@ -243,12 +243,30 @@ export class IdleTaskGenerator {
       title: candidate.title,
       description: candidate.description,
       priority: 'low', // Always override with 'low' priority for idle tasks
-      estimatedEffort: candidate.estimatedEffort,
+      estimatedEffort: this.mapEffortLevel(candidate.estimatedEffort),
       suggestedWorkflow: candidate.suggestedWorkflow,
       rationale: candidate.rationale,
       createdAt: new Date(),
       implemented: false,
     };
+  }
+
+  /**
+   * Map TaskCandidate effort level to TaskEffort type.
+   * TaskCandidate uses 'low' | 'medium' | 'high'
+   * TaskEffort uses 'xs' | 'small' | 'medium' | 'large' | 'xl'
+   */
+  private mapEffortLevel(effort: 'low' | 'medium' | 'high'): TaskEffort {
+    switch (effort) {
+      case 'low':
+        return 'small';
+      case 'medium':
+        return 'medium';
+      case 'high':
+        return 'large';
+      default:
+        return 'medium';
+    }
   }
 
 

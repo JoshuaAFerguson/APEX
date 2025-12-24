@@ -47,6 +47,7 @@ import {
 import { createHooks } from './hooks';
 import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
+import { ThoughtCaptureManager } from './thought-capture';
 
 const execAsync = promisify(exec);
 
@@ -91,6 +92,10 @@ export interface OrchestratorEvents {
 
   // Task session resumed event (emitted when a task session is resumed from a checkpoint)
   'task:session-resumed': (event: TaskSessionResumedEvent) => void;
+
+  // Orphan detection events
+  'orphan:detected': (event: OrphanDetectedEvent) => void;
+  'orphan:recovered': (event: OrphanRecoveredEvent) => void;
 }
 
 /**
@@ -122,6 +127,28 @@ export interface TaskSessionResumedEvent {
   timestamp: Date;             // When the resume occurred
 }
 
+/**
+ * Event payload when orphaned tasks are detected
+ */
+export interface OrphanDetectedEvent {
+  tasks: Task[];
+  detectedAt: Date;
+  reason: 'startup_check' | 'periodic_check';
+  stalenessThreshold: number;
+}
+
+/**
+ * Event payload when an orphaned task is recovered
+ */
+export interface OrphanRecoveredEvent {
+  taskId: string;
+  previousStatus: TaskStatus;
+  newStatus: TaskStatus;
+  action: 'marked_failed' | 'reset_pending' | 'retry';
+  message: string;
+  timestamp: Date;
+}
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -133,6 +160,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private effectiveConfig!: ReturnType<typeof getEffectiveConfig>;
   private agents: Record<string, AgentDefinition> = {};
   private store!: TaskStore;
+  private thoughtCaptureManager!: ThoughtCaptureManager;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -164,6 +192,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize thought capture manager
+    this.thoughtCaptureManager = new ThoughtCaptureManager(this.projectPath, this.store);
+    await this.thoughtCaptureManager.initialize();
 
     this.initialized = true;
   }
@@ -1711,6 +1743,105 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
+  }
+
+  // ============================================================================
+  // Thought Capture Operations
+  // ============================================================================
+
+  /**
+   * Capture a new thought or idea
+   */
+  async captureThought(
+    content: string,
+    options: {
+      tags?: string[];
+      priority?: import('@apexcli/core').ThoughtCapture['priority'];
+      taskId?: string;
+    } = {}
+  ): Promise<import('@apexcli/core').ThoughtCapture> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.captureThought(content, options);
+  }
+
+  /**
+   * Get a thought by ID
+   */
+  async getThought(thoughtId: string): Promise<import('@apexcli/core').ThoughtCapture | null> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.getThought(thoughtId);
+  }
+
+  /**
+   * Get all thoughts
+   */
+  async getAllThoughts(): Promise<import('@apexcli/core').ThoughtCapture[]> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.getAllThoughts();
+  }
+
+  /**
+   * Search thoughts based on criteria
+   */
+  async searchThoughts(criteria: {
+    query: string;
+    tags?: string[];
+    priority?: import('@apexcli/core').ThoughtCapture['priority'];
+    status?: import('@apexcli/core').ThoughtCapture['status'];
+    fromDate?: Date;
+    toDate?: Date;
+  }): Promise<import('@apexcli/core').ThoughtCapture[]> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.searchThoughts(criteria);
+  }
+
+  /**
+   * Convert a thought into a task for implementation
+   */
+  async promoteThought(
+    thoughtId: string,
+    options: {
+      workflow?: string;
+      priority?: CreateTaskRequest['priority'];
+      acceptanceCriteria?: string;
+    } = {}
+  ): Promise<string> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.implementThought(thoughtId, options);
+  }
+
+  /**
+   * Update a thought's status or properties
+   */
+  async updateThought(
+    thoughtId: string,
+    updates: Partial<Pick<import('@apexcli/core').ThoughtCapture, 'status' | 'priority' | 'tags' | 'taskId'>>
+  ): Promise<import('@apexcli/core').ThoughtCapture | null> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.updateThought(thoughtId, updates);
+  }
+
+  /**
+   * Get thought statistics
+   */
+  async getThoughtStats(): Promise<{
+    total: number;
+    byStatus: Record<import('@apexcli/core').ThoughtCapture['status'], number>;
+    byPriority: Record<import('@apexcli/core').ThoughtCapture['priority'], number>;
+    byTag: Record<string, number>;
+    implementationRate: number;
+    avgTimeToImplementation: number;
+  }> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.getThoughtStats();
+  }
+
+  /**
+   * Export thoughts to markdown
+   */
+  async exportThoughtsToMarkdown(outputPath?: string): Promise<string> {
+    await this.ensureInitialized();
+    return this.thoughtCaptureManager.exportToMarkdown(outputPath);
   }
 
   // ============================================================================

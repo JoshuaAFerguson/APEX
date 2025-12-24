@@ -1027,21 +1027,254 @@ export const commands: Command[] = [
     },
   },
   {
-    name: 'capture',
-    aliases: ['cap'],
-    description: 'Capture quick thoughts and ideas',
-    usage: '/capture <thought> [--priority high|medium|low] [--tag tag1,tag2]',
+    name: 'think',
+    aliases: ['t'],
+    description: 'Thought capture system - capture, list, search, and promote thoughts',
+    usage: '/think <thought> | /think --list | /think --search <query> | /think --promote <id>',
     handler: async (ctx, args) => {
-      if (args.length === 0) {
-        console.log(chalk.red('Usage: /capture <thought> [options]'));
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
         return;
       }
 
-      const thought = args.join(' ').replace(/--\w+\s+\w+/g, '').trim();
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /think <thought> [options] | /think --list | /think --search <query> | /think --promote <id>'));
+        console.log(chalk.gray('\nOptions for capturing thoughts:'));
+        console.log(chalk.gray('  --priority high|medium|low   Set thought priority (default: medium)'));
+        console.log(chalk.gray('  --tag tag1,tag2              Add tags to the thought'));
+        console.log(chalk.gray('\nManagement commands:'));
+        console.log(chalk.gray('  --list                       List all captured thoughts'));
+        console.log(chalk.gray('  --search <query>             Search thoughts by content or tags'));
+        console.log(chalk.gray('  --promote <id>               Convert thought to task'));
+        console.log(chalk.gray('  --stats                      Show thought statistics'));
+        console.log(chalk.gray('  --export [file]              Export thoughts to markdown'));
+        return;
+      }
 
-      console.log(chalk.blue('💭 Capturing thought...'));
-      console.log(chalk.green(`✅ Thought captured: "${thought}"`));
-      console.log(chalk.gray('Full thought capture implementation pending'));
+      const action = args[0];
+
+      try {
+        // List thoughts
+        if (action === '--list') {
+          const thoughts = await ctx.orchestrator.getAllThoughts();
+
+          if (thoughts.length === 0) {
+            console.log(chalk.gray('\n💭 No thoughts captured yet.\n'));
+            console.log(chalk.gray('  Use: /think "your idea here" to capture thoughts'));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n💭 Captured Thoughts (${thoughts.length})\n`));
+
+          for (const thought of thoughts.slice(0, 20)) { // Limit to 20 most recent
+            const statusEmoji = getThoughtStatusEmoji(thought.status);
+            const priorityColor = getThoughtPriorityColor(thought.priority);
+            const shortId = thought.id.substring(0, 12);
+            const timeAgo = getTimeAgo(thought.createdAt);
+
+            console.log(`${statusEmoji} ${chalk.cyan(shortId)} ${priorityColor(thought.priority.toUpperCase())}`);
+            console.log(`  ${chalk.bold(thought.content)}`);
+
+            if (thought.tags && thought.tags.length > 0) {
+              const tags = thought.tags.map(tag => chalk.gray(`#${tag}`)).join(' ');
+              console.log(`  ${tags}`);
+            }
+
+            console.log(`  ${chalk.gray(timeAgo)}`);
+            console.log();
+          }
+
+          if (thoughts.length > 20) {
+            console.log(chalk.gray(`  ... and ${thoughts.length - 20} more. Use --search to find specific thoughts.`));
+          }
+
+          return;
+        }
+
+        // Search thoughts
+        if (action === '--search') {
+          if (args.length < 2) {
+            console.log(chalk.red('Usage: /think --search <query>'));
+            return;
+          }
+
+          const query = args.slice(1).join(' ');
+          const results = await ctx.orchestrator.searchThoughts({ query });
+
+          if (results.length === 0) {
+            console.log(chalk.gray(`\n🔍 No thoughts found matching: "${query}"\n`));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n🔍 Search Results for "${query}" (${results.length})\n`));
+
+          for (const thought of results) {
+            const statusEmoji = getThoughtStatusEmoji(thought.status);
+            const priorityColor = getThoughtPriorityColor(thought.priority);
+            const shortId = thought.id.substring(0, 12);
+
+            console.log(`${statusEmoji} ${chalk.cyan(shortId)} ${priorityColor(thought.priority.toUpperCase())}`);
+            console.log(`  ${chalk.bold(thought.content)}`);
+
+            if (thought.tags && thought.tags.length > 0) {
+              const tags = thought.tags.map(tag => chalk.gray(`#${tag}`)).join(' ');
+              console.log(`  ${tags}`);
+            }
+            console.log();
+          }
+
+          return;
+        }
+
+        // Promote thought to task
+        if (action === '--promote') {
+          if (args.length < 2) {
+            console.log(chalk.red('Usage: /think --promote <thought_id>'));
+            return;
+          }
+
+          const thoughtId = args[1];
+
+          // Find thought that starts with this ID
+          const thoughts = await ctx.orchestrator.getAllThoughts();
+          const thought = thoughts.find(t => t.id.startsWith(thoughtId));
+
+          if (!thought) {
+            console.log(chalk.red(`Thought not found: ${thoughtId}`));
+            console.log(chalk.gray('Use /think --list to see available thoughts'));
+            return;
+          }
+
+          if (thought.status === 'implemented') {
+            console.log(chalk.yellow(`Thought ${thoughtId} has already been implemented`));
+            if (thought.taskId) {
+              console.log(chalk.gray(`  Task ID: ${thought.taskId}`));
+            }
+            return;
+          }
+
+          console.log(chalk.blue(`\n🚀 Promoting thought to task...`));
+          console.log(chalk.gray(`   Thought: ${thought.content}`));
+
+          const taskId = await ctx.orchestrator.promoteThought(thought.id);
+
+          console.log(chalk.green('✅ Thought promoted successfully!'));
+          console.log(chalk.cyan(`   New task ID: ${taskId}`));
+          console.log(chalk.gray(`   Use /status ${taskId} to track progress`));
+
+          return;
+        }
+
+        // Show statistics
+        if (action === '--stats') {
+          const stats = await ctx.orchestrator.getThoughtStats();
+
+          console.log(chalk.cyan('\n📊 Thought Statistics\n'));
+          console.log(`  Total thoughts: ${stats.total}`);
+
+          if (stats.total > 0) {
+            console.log(`  Implementation rate: ${(stats.implementationRate * 100).toFixed(1)}%\n`);
+
+            console.log(chalk.bold('By Status:'));
+            Object.entries(stats.byStatus).forEach(([status, count]) => {
+              if (count > 0) {
+                const emoji = getThoughtStatusEmoji(status as any);
+                console.log(`  ${emoji} ${status}: ${count}`);
+              }
+            });
+
+            console.log(chalk.bold('\nBy Priority:'));
+            Object.entries(stats.byPriority).forEach(([priority, count]) => {
+              if (count > 0) {
+                const color = getThoughtPriorityColor(priority as any);
+                console.log(`  ${color(`${priority}: ${count}`)}`);
+              }
+            });
+
+            if (Object.keys(stats.byTag).length > 0) {
+              console.log(chalk.bold('\nTop Tags:'));
+              const topTags = Object.entries(stats.byTag)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+
+              topTags.forEach(([tag, count]) => {
+                console.log(`  ${chalk.gray('#')}${tag}: ${count}`);
+              });
+            }
+          }
+
+          console.log();
+          return;
+        }
+
+        // Export thoughts
+        if (action === '--export') {
+          const outputFile = args[1] ? args[1] : undefined;
+
+          console.log(chalk.blue('\n📄 Exporting thoughts to markdown...'));
+
+          const markdown = await ctx.orchestrator.exportThoughtsToMarkdown(outputFile);
+
+          if (outputFile) {
+            console.log(chalk.green(`✅ Thoughts exported to: ${outputFile}`));
+          } else {
+            console.log(chalk.green('✅ Thoughts exported:'));
+            console.log(chalk.gray('\n' + markdown));
+          }
+
+          return;
+        }
+
+        // Capture new thought
+        if (!action.startsWith('--')) {
+          // Parse options
+          let priority: 'low' | 'medium' | 'high' = 'medium';
+          let tags: string[] = [];
+          let content = args.join(' ');
+
+          // Extract priority
+          const priorityMatch = content.match(/--priority\s+(high|medium|low)/);
+          if (priorityMatch) {
+            priority = priorityMatch[1] as 'high' | 'medium' | 'low';
+            content = content.replace(/--priority\s+(high|medium|low)/, '').trim();
+          }
+
+          // Extract tags
+          const tagMatch = content.match(/--tag\s+([^\s]+)/);
+          if (tagMatch) {
+            tags = tagMatch[1].split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+            content = content.replace(/--tag\s+[^\s]+/, '').trim();
+          }
+
+          if (!content) {
+            console.log(chalk.red('Please provide thought content'));
+            return;
+          }
+
+          console.log(chalk.blue('💭 Capturing thought...'));
+
+          const thought = await ctx.orchestrator.captureThought(content, { priority, tags });
+
+          console.log(chalk.green('✅ Thought captured successfully!'));
+          console.log(chalk.cyan(`   ID: ${thought.id.substring(0, 12)}`));
+          console.log(chalk.gray(`   Priority: ${priority}`));
+
+          if (tags.length > 0) {
+            console.log(chalk.gray(`   Tags: ${tags.map(tag => `#${tag}`).join(' ')}`));
+          }
+
+          console.log(chalk.gray(`   Use /think --promote ${thought.id.substring(0, 12)} to convert to task`));
+
+          return;
+        }
+
+        // Unknown action
+        console.log(chalk.red(`Unknown action: ${action}`));
+        console.log(chalk.gray('Use /think for usage help'));
+
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
     },
   },
   {
@@ -1065,14 +1298,14 @@ export const commands: Command[] = [
 
             // Ensure daemon and idleProcessing objects exist
             if (!config.daemon) {
-              config.daemon = {};
+              (config as any).daemon = {};
             }
-            if (!config.daemon.idleProcessing) {
-              config.daemon.idleProcessing = {};
+            if (!config.daemon!.idleProcessing) {
+              (config.daemon as any).idleProcessing = {};
             }
 
             // Enable idle processing
-            config.daemon.idleProcessing.enabled = true;
+            config.daemon!.idleProcessing!.enabled = true;
 
             // Save the updated config
             await saveConfig(ctx.cwd, config);
@@ -1094,14 +1327,14 @@ export const commands: Command[] = [
 
             // Ensure daemon and idleProcessing objects exist
             if (!config.daemon) {
-              config.daemon = {};
+              (config as any).daemon = {};
             }
-            if (!config.daemon.idleProcessing) {
-              config.daemon.idleProcessing = {};
+            if (!config.daemon!.idleProcessing) {
+              (config.daemon as any).idleProcessing = {};
             }
 
             // Disable idle processing
-            config.daemon.idleProcessing.enabled = false;
+            config.daemon!.idleProcessing!.enabled = false;
 
             // Save the updated config
             await saveConfig(ctx.cwd, config);
@@ -2034,6 +2267,52 @@ async function executeNonInteractiveCommand(cmdName: string, args: string[]): Pr
 }
 
 // ============================================================================
+// Thought Helper Functions
+// ============================================================================
+
+function getThoughtStatusEmoji(status: string): string {
+  const emojis: Record<string, string> = {
+    captured: '💭',
+    planned: '📋',
+    implemented: '✅',
+    discarded: '🗑️',
+  };
+  return emojis[status] || '❓';
+}
+
+function getThoughtPriorityColor(priority: string): (text: string) => string {
+  switch (priority) {
+    case 'high':
+      return chalk.red.bold;
+    case 'medium':
+      return chalk.yellow;
+    case 'low':
+      return chalk.green;
+    default:
+      return chalk.gray;
+  }
+}
+
+function getTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) {
+    return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  } else if (diffHours > 0) {
+    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  } else if (diffMins > 0) {
+    return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+  } else {
+    return 'just now';
+  }
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -2065,6 +2344,7 @@ ${chalk.bold('Commands:')}
   install-service         Install APEX daemon as system service
   uninstall-service       Remove APEX daemon system service
   pr <task_id>            Create a pull request
+  think <thought>         Capture, manage, and promote thoughts and ideas
 
 ${chalk.bold('Init Options:')}
   --yes, -y               Skip prompts, use defaults

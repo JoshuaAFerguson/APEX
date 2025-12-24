@@ -210,6 +210,14 @@ export const DaemonConfigSchema = z.object({
     maxIdleTasks: z.number().optional().default(3),
     strategyWeights: StrategyWeightsSchema.optional(),
   }).optional(),
+  // Orphan detection - detect and recover stuck in-progress tasks
+  orphanDetection: z.object({
+    enabled: z.boolean().optional().default(true),
+    stalenessThreshold: z.number().optional().default(3600000), // 1 hour
+    recoveryPolicy: z.enum(['pending', 'fail', 'retry']).optional().default('pending'),
+    periodicCheck: z.boolean().optional().default(false),
+    periodicCheckInterval: z.number().optional().default(300000), // 5 minutes
+  }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 

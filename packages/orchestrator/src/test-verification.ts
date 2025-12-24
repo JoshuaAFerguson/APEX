@@ -50,9 +50,18 @@ async function main() {
         coverage: 50,
         missingDocs: ['src/api.ts'],
         undocumentedExports: [],
-        outdatedDocumentation: [],
+        outdatedDocs: [],
         missingReadmeSections: [],
-        apiCompleteness: { coverage: 0.7, missingDocs: [] }
+        apiCompleteness: {
+          percentage: 70,
+          details: {
+            totalEndpoints: 10,
+            documentedEndpoints: 7,
+            undocumentedItems: [],
+            wellDocumentedExamples: [],
+            commonIssues: []
+          }
+        }
       },
       performance: { slowTests: [], bottlenecks: [] },
       testAnalysis: {
