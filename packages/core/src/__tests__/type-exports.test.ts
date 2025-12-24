@@ -14,6 +14,13 @@ import {
   DisplayMode,
   VerboseDebugData,
   AgentUsage,
+  // Worktree types
+  WorktreeConfig,
+  WorktreeConfigSchema,
+  WorktreeInfo,
+  WorktreeStatus,
+  WorktreeStatusSchema,
+  GitConfigSchema,
 } from '../types';
 
 describe.skip('Type Exports for CLI Integration', () => {
@@ -304,6 +311,23 @@ describe.skip('Type Exports for CLI Integration', () => {
         },
       };
 
+      // Worktree types
+      const worktreeStatus: WorktreeStatus = 'active';
+      const worktreeConfig: WorktreeConfig = {
+        baseDir: '/test/worktrees',
+        cleanupOnComplete: true,
+        maxWorktrees: 5,
+        pruneStaleAfterDays: 7,
+        preserveOnFailure: false,
+      };
+      const worktreeInfo: WorktreeInfo = {
+        path: '/test/worktree-path',
+        branch: 'test-branch',
+        head: '1234567890abcdef1234567890abcdef12345678',
+        status: worktreeStatus,
+        isMain: false,
+      };
+
       // All types should be properly typed
       expect(agentDef.name).toBe('test-agent');
       expect(workflowDef.name).toBe('test-workflow');
@@ -313,6 +337,9 @@ describe.skip('Type Exports for CLI Integration', () => {
       expect(display).toBe('verbose');
       expect(usage.inputTokens).toBe(1000);
       expect(debugData.agentTokens['test-agent'].inputTokens).toBe(1000);
+      expect(worktreeStatus).toBe('active');
+      expect(worktreeConfig.maxWorktrees).toBe(5);
+      expect(worktreeInfo.path).toBe('/test/worktree-path');
     });
   });
 
@@ -492,6 +519,117 @@ describe.skip('Type Exports for CLI Integration', () => {
       expect(config.ui.previewConfidence).toBe(0.7);
       expect(config.ui.autoExecuteHighConfidence).toBe(false);
       expect(config.ui.previewTimeout).toBe(5000);
+    });
+  });
+
+  describe('WorktreeManager type exports', () => {
+    it('should export WorktreeConfig type and schema correctly', () => {
+      const worktreeConfig: WorktreeConfig = {
+        baseDir: '/apex/worktrees',
+        cleanupOnComplete: true,
+        maxWorktrees: 8,
+        pruneStaleAfterDays: 14,
+        preserveOnFailure: false,
+      };
+
+      expect(worktreeConfig.baseDir).toBe('/apex/worktrees');
+      expect(worktreeConfig.cleanupOnComplete).toBe(true);
+      expect(worktreeConfig.maxWorktrees).toBe(8);
+      expect(worktreeConfig.pruneStaleAfterDays).toBe(14);
+      expect(worktreeConfig.preserveOnFailure).toBe(false);
+
+      // Test schema validation
+      const result = WorktreeConfigSchema.parse(worktreeConfig);
+      expect(result).toEqual(worktreeConfig);
+    });
+
+    it('should export WorktreeStatus type and schema correctly', () => {
+      const statuses: WorktreeStatus[] = ['active', 'stale', 'locked', 'prunable'];
+
+      for (const status of statuses) {
+        expect(WorktreeStatusSchema.parse(status)).toBe(status);
+      }
+
+      // Test invalid status
+      expect(() => WorktreeStatusSchema.parse('invalid')).toThrow();
+    });
+
+    it('should export WorktreeInfo type correctly', () => {
+      const worktreeInfo: WorktreeInfo = {
+        path: '/worktrees/task-123',
+        branch: 'apex/feature-branch',
+        head: 'abc123def456ghi789jkl012mno345pqr678stu9',
+        status: 'active',
+        taskId: 'task-123',
+        isMain: false,
+        createdAt: new Date('2023-10-15T10:00:00Z'),
+        lastUsedAt: new Date('2023-10-15T15:30:00Z'),
+      };
+
+      expect(worktreeInfo.path).toBe('/worktrees/task-123');
+      expect(worktreeInfo.branch).toBe('apex/feature-branch');
+      expect(worktreeInfo.status).toBe('active');
+      expect(worktreeInfo.taskId).toBe('task-123');
+      expect(worktreeInfo.isMain).toBe(false);
+      expect(worktreeInfo.createdAt).toBeInstanceOf(Date);
+      expect(worktreeInfo.lastUsedAt).toBeInstanceOf(Date);
+    });
+
+    it('should support GitConfig with worktree configuration', () => {
+      const gitConfig = GitConfigSchema.parse({
+        branchPrefix: 'feature/',
+        autoWorktree: true,
+        worktree: {
+          baseDir: '/shared/worktrees',
+          maxWorktrees: 10,
+          cleanupOnComplete: false,
+          pruneStaleAfterDays: 30,
+          preserveOnFailure: true,
+        },
+      });
+
+      expect(gitConfig.autoWorktree).toBe(true);
+      expect(gitConfig.worktree?.baseDir).toBe('/shared/worktrees');
+      expect(gitConfig.worktree?.maxWorktrees).toBe(10);
+      expect(gitConfig.worktree?.cleanupOnComplete).toBe(false);
+      expect(gitConfig.worktree?.pruneStaleAfterDays).toBe(30);
+      expect(gitConfig.worktree?.preserveOnFailure).toBe(true);
+    });
+
+    it('should support CLI scenarios with worktree types', () => {
+      // CLI creating worktree configuration
+      const userWorktreeConfig = {
+        maxWorktrees: 5,
+        cleanupOnComplete: true,
+        pruneStaleAfterDays: 7,
+      };
+
+      const typedConfig: Partial<WorktreeConfig> = userWorktreeConfig;
+      expect(typedConfig.maxWorktrees).toBe(5);
+      expect(typedConfig.cleanupOnComplete).toBe(true);
+
+      // CLI managing worktree info
+      const activeWorktrees: WorktreeInfo[] = [
+        {
+          path: '/worktrees/task-1',
+          branch: 'apex/task-1',
+          head: 'hash1',
+          status: 'active',
+          isMain: false,
+          taskId: 'task-1',
+        },
+        {
+          path: '/worktrees/task-2',
+          branch: 'apex/task-2',
+          head: 'hash2',
+          status: 'stale',
+          isMain: false,
+          taskId: 'task-2',
+        },
+      ];
+
+      const activeCount = activeWorktrees.filter(w => w.status === 'active').length;
+      expect(activeCount).toBe(1);
     });
   });
 });
