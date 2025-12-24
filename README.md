@@ -1,4 +1,21 @@
-# APEX - Autonomous Product Engineering eXecutor
+# APEX
+
+Autonomous Product Engineering eXecutor - AI-powered development team automation.
+
+## Installation
+
+### NPM
+
+```bash
+npm install -g @apexcli/cli
+```
+
+### Homebrew (macOS)
+
+```bash
+brew tap joshuaaferguson/apex
+brew install apex
+```
 
 <p align="center">
   <img src="docs/logo.svg" alt="APEX Logo" width="200"/>
