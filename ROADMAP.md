@@ -110,7 +110,7 @@ This document outlines the planned development roadmap for APEX. Our goal is to 
 
 ---
 
-## v0.3.0 - Claude Code-like Interactive Experience (In Progress)
+## v0.3.0 - Claude Code-like Interactive Experience (Complete)
 
 *Transform APEX into a world-class AI coding assistant CLI*
 
@@ -227,7 +227,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
-| Integration tests | ⚪ | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
+| Integration tests | 🟢 | 1 day | `cli/src/__tests__/v030-features.integration.test.tsx` |
 | Documentation updates | 🟢 Complete | 1 day | `docs/` |
 
 **Estimated Remaining**: 2 days (testing + documentation)
@@ -249,10 +249,17 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 *24/7 autonomous operation with intelligent scheduling - inspired by [sleepless-agent](https://github.com/context-machine-lab/sleepless-agent)*
 
+### Cross-Platform Support (Priority)
+
+- ⚪ **Windows Compatibility** - Native PowerShell support, path handling, and OS-specific integrations
+- ⚪ **Linux Compatibility** - Full support for Debian/Ubuntu, Fedora, and Arch distributions
+- ⚪ **macOS Compatibility** - Native integration with macOS specific tools (launchd, etc.)
+- ⚪ **Platform Parity** - Ensure feature parity across all supported operating systems
+
 ### Daemon Mode
 
 - ⚪ **Background service** - Run APEX as persistent daemon (`apex daemon start/stop/status`)
-- ⚪ **Service installation** - `apex install-service` for systemd (Linux) and launchd (macOS)
+- ⚪ **Service installation** - `apex install-service` for systemd (Linux), launchd (macOS), and Windows Service
 - ⚪ **Auto-start on boot** - Optional system service registration
 - ⚪ **Task queue processing** - Automatically process queued tasks
 - ⚪ **Health monitoring** - Self-healing daemon with watchdog
@@ -523,6 +530,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 *Visual interface for monitoring and management with chat platform integrations*
 
 ### Dashboard Core (`@apexcli/web-ui`)
+
 - 🟢 React + Next.js dashboard foundation
 - 🟢 Real-time task monitoring via WebSocket
 - 🟢 Live log streaming
@@ -596,6 +604,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 *Deep integration with development environments*
 
 ### VS Code Extension (`@apexcli/vscode`)
+
 - ⚪ APEX sidebar panel
 - ⚪ Task creation from editor context
 - ⚪ Inline task status indicators
@@ -951,6 +960,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 ### Observability (inspired by [claude-code-otel](https://github.com/ColeMurray/claude-code-otel))
 
 **OpenTelemetry Integration**
+
 - ⚪ `@apexcli/telemetry` package - OTEL export for metrics, traces, and logs
 - ⚪ OTLP exporter - gRPC (4317) and HTTP (4318) endpoints
 - ⚪ Prometheus metrics endpoint - `/metrics` in @apexcli/api
