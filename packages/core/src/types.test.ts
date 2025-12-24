@@ -13,6 +13,11 @@ import {
   DaemonConfigSchema,
   OutdatedDocsConfigSchema,
   DocumentationAnalysisConfigSchema,
+  TestingAntiPattern,
+  TestAnalysis,
+  BranchCoverage,
+  UntestedExport,
+  MissingIntegrationTest,
 } from './types';
 
 describe.skip('AgentModelSchema', () => {
@@ -1571,5 +1576,871 @@ describe('ApexConfigSchema - Documentation Integration', () => {
         },
       });
     }).toThrow();
+  });
+});
+
+// ============================================================================
+// TestingAntiPattern Type Tests
+// ============================================================================
+
+describe('TestingAntiPattern Type', () => {
+  describe('type field validation', () => {
+    it('should accept all existing anti-pattern types', () => {
+      const existingTypes = [
+        'brittle-test',
+        'test-pollution',
+        'mystery-guest',
+        'eager-test',
+        'assertion-roulette',
+        'slow-test',
+        'flaky-test',
+        'test-code-duplication'
+      ] as const;
+
+      for (const type of existingTypes) {
+        const antiPattern: TestingAntiPattern = {
+          file: '/path/to/test.spec.ts',
+          line: 10,
+          type: type,
+          description: `Example of ${type} anti-pattern`,
+          severity: 'medium'
+        };
+
+        expect(antiPattern.type).toBe(type);
+        expect(typeof antiPattern.file).toBe('string');
+        expect(typeof antiPattern.line).toBe('number');
+        expect(typeof antiPattern.description).toBe('string');
+        expect(['low', 'medium', 'high']).toContain(antiPattern.severity);
+      }
+    });
+
+    it('should accept all new anti-pattern types', () => {
+      const newTypes = [
+        'no-assertion',
+        'commented-out',
+        'console-only',
+        'empty-test',
+        'hardcoded-timeout'
+      ] as const;
+
+      for (const type of newTypes) {
+        const antiPattern: TestingAntiPattern = {
+          file: '/src/components/Button.test.tsx',
+          line: 25,
+          type: type,
+          description: `Found ${type} anti-pattern in test`,
+          severity: 'high'
+        };
+
+        expect(antiPattern.type).toBe(type);
+        expect(antiPattern.file).toContain('.test.');
+        expect(antiPattern.line).toBeGreaterThan(0);
+        expect(antiPattern.description).toContain(type);
+        expect(['low', 'medium', 'high']).toContain(antiPattern.severity);
+      }
+    });
+
+    it('should accept all anti-pattern types in the complete union', () => {
+      const allTypes = [
+        'brittle-test',
+        'test-pollution',
+        'mystery-guest',
+        'eager-test',
+        'assertion-roulette',
+        'slow-test',
+        'flaky-test',
+        'test-code-duplication',
+        'no-assertion',
+        'commented-out',
+        'console-only',
+        'empty-test',
+        'hardcoded-timeout'
+      ] as const;
+
+      expect(allTypes).toHaveLength(13);
+
+      for (const type of allTypes) {
+        const antiPattern: TestingAntiPattern = {
+          file: '/tests/integration.spec.js',
+          line: Math.floor(Math.random() * 100) + 1,
+          type: type,
+          description: `Anti-pattern: ${type}`,
+          severity: 'medium'
+        };
+
+        expect(antiPattern.type).toBe(type);
+      }
+    });
+  });
+
+  describe('severity field validation', () => {
+    it('should accept all valid severity levels', () => {
+      const severities = ['low', 'medium', 'high'] as const;
+
+      for (const severity of severities) {
+        const antiPattern: TestingAntiPattern = {
+          file: '/test/unit/validator.test.ts',
+          line: 42,
+          type: 'no-assertion',
+          description: 'Test case without any assertions',
+          severity: severity
+        };
+
+        expect(antiPattern.severity).toBe(severity);
+      }
+    });
+
+    it('should handle severity with different anti-pattern combinations', () => {
+      const combinations = [
+        { type: 'no-assertion', severity: 'high' },
+        { type: 'commented-out', severity: 'medium' },
+        { type: 'console-only', severity: 'low' },
+        { type: 'empty-test', severity: 'high' },
+        { type: 'hardcoded-timeout', severity: 'medium' },
+        { type: 'brittle-test', severity: 'high' },
+        { type: 'flaky-test', severity: 'high' },
+        { type: 'slow-test', severity: 'low' }
+      ] as const;
+
+      for (const { type, severity } of combinations) {
+        const antiPattern: TestingAntiPattern = {
+          file: '/src/__tests__/example.test.js',
+          line: 15,
+          type: type,
+          description: `${type} with ${severity} severity`,
+          severity: severity
+        };
+
+        expect(antiPattern.type).toBe(type);
+        expect(antiPattern.severity).toBe(severity);
+      }
+    });
+  });
+
+  describe('required fields validation', () => {
+    it('should have all required fields defined', () => {
+      const antiPattern: TestingAntiPattern = {
+        file: '/spec/helpers/test-helper.spec.rb',
+        line: 100,
+        type: 'empty-test',
+        description: 'Test case with no implementation',
+        severity: 'high'
+      };
+
+      // Required fields
+      expect(typeof antiPattern.file).toBe('string');
+      expect(antiPattern.file.length).toBeGreaterThan(0);
+      expect(typeof antiPattern.line).toBe('number');
+      expect(antiPattern.line).toBeGreaterThan(0);
+      expect(typeof antiPattern.type).toBe('string');
+      expect(typeof antiPattern.description).toBe('string');
+      expect(antiPattern.description.length).toBeGreaterThan(0);
+      expect(typeof antiPattern.severity).toBe('string');
+    });
+
+    it('should accept optional suggestion field', () => {
+      const antiPatternWithSuggestion: TestingAntiPattern = {
+        file: '/test/api/auth.test.py',
+        line: 75,
+        type: 'hardcoded-timeout',
+        description: 'Using setTimeout with fixed duration',
+        severity: 'medium',
+        suggestion: 'Use configurable timeout or mock time-based operations'
+      };
+
+      expect(antiPatternWithSuggestion.suggestion).toBeDefined();
+      expect(typeof antiPatternWithSuggestion.suggestion).toBe('string');
+      expect(antiPatternWithSuggestion.suggestion?.length).toBeGreaterThan(0);
+
+      const antiPatternWithoutSuggestion: TestingAntiPattern = {
+        file: '/test/utils/helpers.test.ts',
+        line: 33,
+        type: 'console-only',
+        description: 'Test validation relies only on console output',
+        severity: 'low'
+      };
+
+      expect(antiPatternWithoutSuggestion.suggestion).toBeUndefined();
+    });
+  });
+
+  describe('realistic anti-pattern scenarios', () => {
+    it('should represent no-assertion anti-patterns correctly', () => {
+      const noAssertionPattern: TestingAntiPattern = {
+        file: '/src/components/Modal.test.tsx',
+        line: 45,
+        type: 'no-assertion',
+        description: 'Test function calls component methods but contains no assertions to verify behavior',
+        severity: 'high',
+        suggestion: 'Add expect() statements to verify the component state or behavior'
+      };
+
+      expect(noAssertionPattern.type).toBe('no-assertion');
+      expect(noAssertionPattern.severity).toBe('high');
+      expect(noAssertionPattern.description).toContain('no assertions');
+      expect(noAssertionPattern.suggestion).toContain('expect()');
+    });
+
+    it('should represent commented-out anti-patterns correctly', () => {
+      const commentedOutPattern: TestingAntiPattern = {
+        file: '/tests/legacy/old-feature.test.js',
+        line: 120,
+        type: 'commented-out',
+        description: 'Multiple test cases are commented out without explanation',
+        severity: 'medium',
+        suggestion: 'Either fix and re-enable tests or remove them entirely if no longer needed'
+      };
+
+      expect(commentedOutPattern.type).toBe('commented-out');
+      expect(commentedOutPattern.description).toContain('commented out');
+      expect(commentedOutPattern.suggestion).toContain('fix and re-enable');
+    });
+
+    it('should represent console-only anti-patterns correctly', () => {
+      const consoleOnlyPattern: TestingAntiPattern = {
+        file: '/test/integration/workflow.spec.ts',
+        line: 88,
+        type: 'console-only',
+        description: 'Test relies solely on console.log output for verification instead of proper assertions',
+        severity: 'low',
+        suggestion: 'Replace console output verification with proper expect() assertions'
+      };
+
+      expect(consoleOnlyPattern.type).toBe('console-only');
+      expect(consoleOnlyPattern.description).toContain('console');
+      expect(consoleOnlyPattern.suggestion).toContain('proper expect()');
+    });
+
+    it('should represent empty-test anti-patterns correctly', () => {
+      const emptyTestPattern: TestingAntiPattern = {
+        file: '/spec/models/user_spec.rb',
+        line: 200,
+        type: 'empty-test',
+        description: 'Test case is defined but has no implementation or assertions',
+        severity: 'high',
+        suggestion: 'Implement the test logic or remove the empty test case'
+      };
+
+      expect(emptyTestPattern.type).toBe('empty-test');
+      expect(emptyTestPattern.severity).toBe('high');
+      expect(emptyTestPattern.description).toContain('no implementation');
+      expect(emptyTestPattern.suggestion).toContain('Implement the test logic');
+    });
+
+    it('should represent hardcoded-timeout anti-patterns correctly', () => {
+      const hardcodedTimeoutPattern: TestingAntiPattern = {
+        file: '/cypress/integration/login.spec.js',
+        line: 65,
+        type: 'hardcoded-timeout',
+        description: 'Test uses hardcoded setTimeout(5000) which may cause flaky behavior',
+        severity: 'medium',
+        suggestion: 'Use dynamic waiting conditions or configurable timeout values'
+      };
+
+      expect(hardcodedTimeoutPattern.type).toBe('hardcoded-timeout');
+      expect(hardcodedTimeoutPattern.description).toContain('hardcoded');
+      expect(hardcodedTimeoutPattern.description).toContain('timeout');
+      expect(hardcodedTimeoutPattern.suggestion).toContain('dynamic waiting');
+    });
+  });
+
+  describe('edge cases and boundary conditions', () => {
+    it('should handle minimum valid line numbers', () => {
+      const antiPattern: TestingAntiPattern = {
+        file: '/test.js',
+        line: 1,
+        type: 'empty-test',
+        description: 'Anti-pattern on first line',
+        severity: 'low'
+      };
+
+      expect(antiPattern.line).toBe(1);
+    });
+
+    it('should handle large line numbers', () => {
+      const antiPattern: TestingAntiPattern = {
+        file: '/large-test-file.spec.ts',
+        line: 99999,
+        type: 'slow-test',
+        description: 'Anti-pattern in very large test file',
+        severity: 'medium'
+      };
+
+      expect(antiPattern.line).toBe(99999);
+    });
+
+    it('should handle various file path formats', () => {
+      const filePaths = [
+        '/absolute/path/to/test.spec.ts',
+        'relative/path/test.js',
+        './local/test.test.jsx',
+        '../parent/test.spec.vue',
+        'C:\\Windows\\path\\test.spec.cs',
+        '/deeply/nested/path/to/some/test/file.test.py'
+      ];
+
+      for (const filePath of filePaths) {
+        const antiPattern: TestingAntiPattern = {
+          file: filePath,
+          line: 10,
+          type: 'no-assertion',
+          description: 'Test case in various path formats',
+          severity: 'medium'
+        };
+
+        expect(antiPattern.file).toBe(filePath);
+      }
+    });
+
+    it('should handle empty and minimal descriptions', () => {
+      const antiPattern: TestingAntiPattern = {
+        file: '/test.js',
+        line: 5,
+        type: 'commented-out',
+        description: 'Minimal',
+        severity: 'low'
+      };
+
+      expect(antiPattern.description).toBe('Minimal');
+      expect(antiPattern.description.length).toBeGreaterThan(0);
+    });
+
+    it('should handle very long descriptions', () => {
+      const longDescription = 'This is a very long description that explains in great detail what the anti-pattern is, why it is problematic, how it affects test reliability, maintainability, and readability, and provides comprehensive context about the specific implementation issues that were discovered during the analysis of the test code.';
+
+      const antiPattern: TestingAntiPattern = {
+        file: '/comprehensive-test.spec.ts',
+        line: 150,
+        type: 'assertion-roulette',
+        description: longDescription,
+        severity: 'high',
+        suggestion: 'Break down into smaller, more focused test cases with clear, specific assertions'
+      };
+
+      expect(antiPattern.description).toBe(longDescription);
+      expect(antiPattern.description.length).toBeGreaterThan(100);
+    });
+  });
+
+  describe('type safety and interface compliance', () => {
+    it('should ensure TestingAntiPattern implements complete interface contract', () => {
+      // Test that all properties are accessible and typed correctly
+      const createTestingAntiPattern = (
+        file: string,
+        line: number,
+        type: TestingAntiPattern['type'],
+        description: string,
+        severity: TestingAntiPattern['severity'],
+        suggestion?: string
+      ): TestingAntiPattern => ({
+        file,
+        line,
+        type,
+        description,
+        severity,
+        suggestion
+      });
+
+      const pattern = createTestingAntiPattern(
+        '/test/example.test.ts',
+        42,
+        'no-assertion',
+        'Example anti-pattern',
+        'high',
+        'Add assertions'
+      );
+
+      expect(pattern).toBeDefined();
+      expect(typeof pattern.file).toBe('string');
+      expect(typeof pattern.line).toBe('number');
+      expect(typeof pattern.type).toBe('string');
+      expect(typeof pattern.description).toBe('string');
+      expect(typeof pattern.severity).toBe('string');
+      expect(typeof pattern.suggestion).toBe('string');
+    });
+
+    it('should work correctly in arrays and collections', () => {
+      const antiPatterns: TestingAntiPattern[] = [
+        {
+          file: '/test/file1.test.js',
+          line: 10,
+          type: 'no-assertion',
+          description: 'First anti-pattern',
+          severity: 'high'
+        },
+        {
+          file: '/test/file2.test.ts',
+          line: 20,
+          type: 'commented-out',
+          description: 'Second anti-pattern',
+          severity: 'medium'
+        },
+        {
+          file: '/test/file3.spec.js',
+          line: 30,
+          type: 'empty-test',
+          description: 'Third anti-pattern',
+          severity: 'high',
+          suggestion: 'Implement test logic'
+        }
+      ];
+
+      expect(antiPatterns).toHaveLength(3);
+      expect(antiPatterns[0].type).toBe('no-assertion');
+      expect(antiPatterns[1].type).toBe('commented-out');
+      expect(antiPatterns[2].type).toBe('empty-test');
+      expect(antiPatterns[2].suggestion).toBe('Implement test logic');
+    });
+
+    it('should work with filtering and mapping operations', () => {
+      const antiPatterns: TestingAntiPattern[] = [
+        { file: '/test1.js', line: 1, type: 'no-assertion', description: 'High severity issue', severity: 'high' },
+        { file: '/test2.js', line: 2, type: 'console-only', description: 'Low severity issue', severity: 'low' },
+        { file: '/test3.js', line: 3, type: 'hardcoded-timeout', description: 'Medium severity issue', severity: 'medium' },
+        { file: '/test4.js', line: 4, type: 'empty-test', description: 'Another high severity issue', severity: 'high' }
+      ];
+
+      // Filter high severity anti-patterns
+      const highSeverityPatterns = antiPatterns.filter(pattern => pattern.severity === 'high');
+      expect(highSeverityPatterns).toHaveLength(2);
+      expect(highSeverityPatterns.every(pattern => pattern.severity === 'high')).toBe(true);
+
+      // Map to file names
+      const fileNames = antiPatterns.map(pattern => pattern.file);
+      expect(fileNames).toEqual(['/test1.js', '/test2.js', '/test3.js', '/test4.js']);
+
+      // Filter new anti-pattern types
+      const newAntiPatterns = antiPatterns.filter(pattern =>
+        ['no-assertion', 'commented-out', 'console-only', 'empty-test', 'hardcoded-timeout'].includes(pattern.type)
+      );
+      expect(newAntiPatterns).toHaveLength(4);
+    });
+  });
+});
+
+// ============================================================================
+// TestAnalysis Integration Tests
+// ============================================================================
+
+describe('TestAnalysis Interface', () => {
+  const createSampleBranchCoverage = (): BranchCoverage => ({
+    percentage: 75.5,
+    uncoveredBranches: [
+      {
+        file: '/src/utils/validation.ts',
+        line: 25,
+        type: 'if',
+        description: 'Edge case validation for null values not covered'
+      },
+      {
+        file: '/src/components/Form.tsx',
+        line: 85,
+        type: 'ternary',
+        description: 'Conditional rendering for error state not tested'
+      }
+    ]
+  });
+
+  const createSampleUntestedExports = (): UntestedExport[] => [
+    {
+      file: '/src/lib/auth.ts',
+      exportName: 'generateToken',
+      exportType: 'function',
+      line: 15,
+      isPublic: true
+    },
+    {
+      file: '/src/types/user.ts',
+      exportName: 'UserRole',
+      exportType: 'enum',
+      line: 8,
+      isPublic: true
+    }
+  ];
+
+  const createSampleMissingIntegrationTests = (): MissingIntegrationTest[] => [
+    {
+      criticalPath: 'User authentication flow',
+      description: 'End-to-end test for login, token refresh, and logout sequence',
+      priority: 'high',
+      relatedFiles: ['/src/auth/login.ts', '/src/auth/token.ts', '/src/auth/logout.ts']
+    },
+    {
+      criticalPath: 'Payment processing workflow',
+      description: 'Integration test covering payment validation, processing, and confirmation',
+      priority: 'critical',
+      relatedFiles: ['/src/payment/validation.ts', '/src/payment/processor.ts']
+    }
+  ];
+
+  const createSampleAntiPatterns = (): TestingAntiPattern[] => [
+    {
+      file: '/test/auth.test.ts',
+      line: 45,
+      type: 'no-assertion',
+      description: 'Test calls authentication function but contains no assertions',
+      severity: 'high',
+      suggestion: 'Add expect() statements to verify authentication result'
+    },
+    {
+      file: '/test/legacy.test.js',
+      line: 120,
+      type: 'commented-out',
+      description: 'Multiple test cases commented out without explanation',
+      severity: 'medium'
+    },
+    {
+      file: '/test/e2e/checkout.test.ts',
+      line: 75,
+      type: 'hardcoded-timeout',
+      description: 'Uses hardcoded 5 second timeout which may cause flaky behavior',
+      severity: 'medium',
+      suggestion: 'Replace with dynamic waiting conditions'
+    }
+  ];
+
+  describe('complete TestAnalysis structure', () => {
+    it('should create valid TestAnalysis with all required fields', () => {
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: createSampleBranchCoverage(),
+        untestedExports: createSampleUntestedExports(),
+        missingIntegrationTests: createSampleMissingIntegrationTests(),
+        antiPatterns: createSampleAntiPatterns()
+      };
+
+      expect(testAnalysis).toBeDefined();
+      expect(typeof testAnalysis.branchCoverage).toBe('object');
+      expect(Array.isArray(testAnalysis.untestedExports)).toBe(true);
+      expect(Array.isArray(testAnalysis.missingIntegrationTests)).toBe(true);
+      expect(Array.isArray(testAnalysis.antiPatterns)).toBe(true);
+    });
+
+    it('should handle TestAnalysis with empty arrays', () => {
+      const emptyTestAnalysis: TestAnalysis = {
+        branchCoverage: {
+          percentage: 100,
+          uncoveredBranches: []
+        },
+        untestedExports: [],
+        missingIntegrationTests: [],
+        antiPatterns: []
+      };
+
+      expect(emptyTestAnalysis.branchCoverage.percentage).toBe(100);
+      expect(emptyTestAnalysis.untestedExports).toHaveLength(0);
+      expect(emptyTestAnalysis.missingIntegrationTests).toHaveLength(0);
+      expect(emptyTestAnalysis.antiPatterns).toHaveLength(0);
+    });
+  });
+
+  describe('TestAnalysis integration scenarios', () => {
+    it('should properly integrate all new anti-pattern types', () => {
+      const newAntiPatterns: TestingAntiPattern[] = [
+        {
+          file: '/test/validation.test.ts',
+          line: 30,
+          type: 'no-assertion',
+          description: 'Test executes validation but makes no assertions',
+          severity: 'high'
+        },
+        {
+          file: '/test/deprecated.test.js',
+          line: 55,
+          type: 'commented-out',
+          description: 'Old test cases commented out during refactoring',
+          severity: 'medium'
+        },
+        {
+          file: '/test/debug.test.ts',
+          line: 88,
+          type: 'console-only',
+          description: 'Test relies on console.log for verification',
+          severity: 'low'
+        },
+        {
+          file: '/test/placeholder.test.ts',
+          line: 12,
+          type: 'empty-test',
+          description: 'Test case defined but not implemented',
+          severity: 'high'
+        },
+        {
+          file: '/test/integration/slow.test.ts',
+          line: 150,
+          type: 'hardcoded-timeout',
+          description: 'Uses setTimeout(10000) for async operations',
+          severity: 'medium'
+        }
+      ];
+
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: createSampleBranchCoverage(),
+        untestedExports: createSampleUntestedExports(),
+        missingIntegrationTests: createSampleMissingIntegrationTests(),
+        antiPatterns: newAntiPatterns
+      };
+
+      const newAntiPatternTypes = ['no-assertion', 'commented-out', 'console-only', 'empty-test', 'hardcoded-timeout'];
+      const foundTypes = testAnalysis.antiPatterns.map(ap => ap.type);
+
+      for (const type of newAntiPatternTypes) {
+        expect(foundTypes).toContain(type);
+      }
+
+      expect(testAnalysis.antiPatterns).toHaveLength(5);
+    });
+
+    it('should handle TestAnalysis with diverse branch coverage scenarios', () => {
+      const complexBranchCoverage: BranchCoverage = {
+        percentage: 67.8,
+        uncoveredBranches: [
+          {
+            file: '/src/components/Modal.tsx',
+            line: 45,
+            type: 'if',
+            description: 'Error handling branch for invalid props'
+          },
+          {
+            file: '/src/utils/formatter.ts',
+            line: 120,
+            type: 'switch',
+            description: 'Switch case for unknown format type'
+          },
+          {
+            file: '/src/hooks/useAuth.ts',
+            line: 78,
+            type: 'catch',
+            description: 'Exception handling for network errors'
+          },
+          {
+            file: '/src/lib/validation.ts',
+            line: 200,
+            type: 'logical',
+            description: 'Logical OR branch for fallback value'
+          }
+        ]
+      };
+
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: complexBranchCoverage,
+        untestedExports: [],
+        missingIntegrationTests: [],
+        antiPatterns: []
+      };
+
+      expect(testAnalysis.branchCoverage.percentage).toBe(67.8);
+      expect(testAnalysis.branchCoverage.uncoveredBranches).toHaveLength(4);
+
+      const branchTypes = testAnalysis.branchCoverage.uncoveredBranches.map(b => b.type);
+      expect(branchTypes).toContain('if');
+      expect(branchTypes).toContain('switch');
+      expect(branchTypes).toContain('catch');
+      expect(branchTypes).toContain('logical');
+    });
+
+    it('should handle TestAnalysis with comprehensive untested exports', () => {
+      const diverseUntestedExports: UntestedExport[] = [
+        {
+          file: '/src/utils/helpers.ts',
+          exportName: 'formatCurrency',
+          exportType: 'function',
+          line: 25,
+          isPublic: true
+        },
+        {
+          file: '/src/components/Button.tsx',
+          exportName: 'ButtonProps',
+          exportType: 'interface',
+          line: 8,
+          isPublic: true
+        },
+        {
+          file: '/src/types/api.ts',
+          exportName: 'ApiResponse',
+          exportType: 'type',
+          line: 15,
+          isPublic: true
+        },
+        {
+          file: '/src/constants/theme.ts',
+          exportName: 'COLORS',
+          exportType: 'const',
+          line: 5,
+          isPublic: true
+        },
+        {
+          file: '/src/enums/status.ts',
+          exportName: 'TaskStatus',
+          exportType: 'enum',
+          line: 3,
+          isPublic: true
+        },
+        {
+          file: '/src/classes/Logger.ts',
+          exportName: 'Logger',
+          exportType: 'class',
+          line: 12,
+          isPublic: true
+        }
+      ];
+
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: createSampleBranchCoverage(),
+        untestedExports: diverseUntestedExports,
+        missingIntegrationTests: [],
+        antiPatterns: []
+      };
+
+      expect(testAnalysis.untestedExports).toHaveLength(6);
+
+      const exportTypes = testAnalysis.untestedExports.map(ue => ue.exportType);
+      expect(exportTypes).toContain('function');
+      expect(exportTypes).toContain('interface');
+      expect(exportTypes).toContain('type');
+      expect(exportTypes).toContain('const');
+      expect(exportTypes).toContain('enum');
+      expect(exportTypes).toContain('class');
+
+      expect(testAnalysis.untestedExports.every(ue => ue.isPublic)).toBe(true);
+    });
+
+    it('should handle TestAnalysis with critical integration test gaps', () => {
+      const criticalMissingTests: MissingIntegrationTest[] = [
+        {
+          criticalPath: 'User registration and email verification',
+          description: 'End-to-end test covering registration, email sending, and account activation',
+          priority: 'critical',
+          relatedFiles: [
+            '/src/auth/register.ts',
+            '/src/services/email.ts',
+            '/src/auth/verify.ts'
+          ]
+        },
+        {
+          criticalPath: 'E-commerce checkout process',
+          description: 'Integration test for cart management, payment processing, and order confirmation',
+          priority: 'high',
+          relatedFiles: [
+            '/src/cart/manager.ts',
+            '/src/payment/gateway.ts',
+            '/src/orders/processor.ts',
+            '/src/notifications/email.ts'
+          ]
+        },
+        {
+          criticalPath: 'File upload and processing pipeline',
+          description: 'Test covering file validation, upload, processing, and storage',
+          priority: 'medium',
+          relatedFiles: [
+            '/src/upload/validator.ts',
+            '/src/upload/processor.ts',
+            '/src/storage/manager.ts'
+          ]
+        }
+      ];
+
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: createSampleBranchCoverage(),
+        untestedExports: [],
+        missingIntegrationTests: criticalMissingTests,
+        antiPatterns: []
+      };
+
+      expect(testAnalysis.missingIntegrationTests).toHaveLength(3);
+
+      const priorities = testAnalysis.missingIntegrationTests.map(mit => mit.priority);
+      expect(priorities).toContain('critical');
+      expect(priorities).toContain('high');
+      expect(priorities).toContain('medium');
+
+      // Verify all critical tests have related files
+      testAnalysis.missingIntegrationTests.forEach(test => {
+        expect(test.relatedFiles).toBeDefined();
+        expect(Array.isArray(test.relatedFiles)).toBe(true);
+        if (test.relatedFiles) {
+          expect(test.relatedFiles.length).toBeGreaterThan(0);
+        }
+      });
+    });
+  });
+
+  describe('TestAnalysis utility and analysis methods', () => {
+    it('should support filtering and analysis of anti-patterns', () => {
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: createSampleBranchCoverage(),
+        untestedExports: [],
+        missingIntegrationTests: [],
+        antiPatterns: [
+          { file: '/test1.js', line: 1, type: 'no-assertion', description: 'No assertions', severity: 'high' },
+          { file: '/test2.js', line: 2, type: 'commented-out', description: 'Commented test', severity: 'medium' },
+          { file: '/test3.js', line: 3, type: 'empty-test', description: 'Empty test', severity: 'high' },
+          { file: '/test4.js', line: 4, type: 'console-only', description: 'Console only', severity: 'low' },
+          { file: '/test5.js', line: 5, type: 'hardcoded-timeout', description: 'Hard timeout', severity: 'medium' }
+        ]
+      };
+
+      // Test filtering by severity
+      const highSeverityIssues = testAnalysis.antiPatterns.filter(ap => ap.severity === 'high');
+      expect(highSeverityIssues).toHaveLength(2);
+
+      // Test filtering by new anti-pattern types
+      const newAntiPatternTypes = ['no-assertion', 'commented-out', 'console-only', 'empty-test', 'hardcoded-timeout'];
+      const newTypeIssues = testAnalysis.antiPatterns.filter(ap => newAntiPatternTypes.includes(ap.type));
+      expect(newTypeIssues).toHaveLength(5);
+
+      // Test grouping by file
+      const fileGroups = testAnalysis.antiPatterns.reduce((groups, ap) => {
+        const key = ap.file;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(ap);
+        return groups;
+      }, {} as Record<string, TestingAntiPattern[]>);
+
+      expect(Object.keys(fileGroups)).toHaveLength(5);
+    });
+
+    it('should support comprehensive test analysis metrics', () => {
+      const testAnalysis: TestAnalysis = {
+        branchCoverage: {
+          percentage: 82.5,
+          uncoveredBranches: [
+            { file: '/src/a.ts', line: 10, type: 'if', description: 'Test 1' },
+            { file: '/src/b.ts', line: 20, type: 'switch', description: 'Test 2' }
+          ]
+        },
+        untestedExports: [
+          { file: '/src/lib1.ts', exportName: 'func1', exportType: 'function', isPublic: true },
+          { file: '/src/lib2.ts', exportName: 'func2', exportType: 'function', isPublic: true },
+          { file: '/src/lib3.ts', exportName: 'Type1', exportType: 'type', isPublic: true }
+        ],
+        missingIntegrationTests: [
+          { criticalPath: 'Path 1', description: 'Test 1', priority: 'high' },
+          { criticalPath: 'Path 2', description: 'Test 2', priority: 'critical' }
+        ],
+        antiPatterns: [
+          { file: '/test1.js', line: 1, type: 'no-assertion', description: 'Issue 1', severity: 'high' },
+          { file: '/test2.js', line: 2, type: 'empty-test', description: 'Issue 2', severity: 'high' },
+          { file: '/test3.js', line: 3, type: 'console-only', description: 'Issue 3', severity: 'low' }
+        ]
+      };
+
+      // Calculate various metrics
+      const totalIssues = testAnalysis.antiPatterns.length +
+                         testAnalysis.untestedExports.length +
+                         testAnalysis.missingIntegrationTests.length;
+      expect(totalIssues).toBe(8);
+
+      const highPriorityIssues = [
+        ...testAnalysis.antiPatterns.filter(ap => ap.severity === 'high'),
+        ...testAnalysis.missingIntegrationTests.filter(mit => mit.priority === 'critical' || mit.priority === 'high')
+      ];
+      expect(highPriorityIssues).toHaveLength(4);
+
+      const coverageScore = testAnalysis.branchCoverage.percentage;
+      expect(coverageScore).toBe(82.5);
+
+      const uncoveredBranchCount = testAnalysis.branchCoverage.uncoveredBranches.length;
+      expect(uncoveredBranchCount).toBe(2);
+    });
   });
 });
