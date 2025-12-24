@@ -998,8 +998,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       // Analyze branch coverage with enhanced analysis
       const branchCoverage = await this.analyzeTestBranchCoverage();
 
-      // Find untested exports
-      const untestedExports = await this.findUntestedExports();
+      // Find untested exports with enhanced analysis
+      const untestedExports = await this.analyzeUntestedExports();
 
       // Identify missing integration tests
       const missingIntegrationTests = await this.findMissingIntegrationTests();
@@ -1485,6 +1485,270 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
         uncoveredBranches: [],
       };
     }
+  }
+
+  /**
+   * Analyzes untested public exports with enhanced detection and improved test matching
+   */
+  private async analyzeUntestedExports(): Promise<ProjectAnalysis['testAnalysis']['untestedExports']> {
+    try {
+      const untestedExports: ProjectAnalysis['testAnalysis']['untestedExports'] = [];
+
+      // Find source files with exports (enhanced pattern)
+      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v spec | grep -v node_modules | grep -v dist | head -50');
+      const files = sourceFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files.slice(0, 25)) {
+        try {
+          const content = await this.readFileContent(file);
+          const exports = this.extractPublicExports(content, file);
+
+          for (const exportInfo of exports) {
+            const testExists = await this.checkIfExportHasAdvancedTest(file, exportInfo.name);
+            if (!testExists) {
+              untestedExports.push({
+                file: file.replace(/^\.\//, ''),
+                exportName: exportInfo.name,
+                exportType: exportInfo.type,
+                line: exportInfo.line,
+                isPublic: exportInfo.isPublic,
+              });
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      return untestedExports.slice(0, 30); // Slightly increased limit for better coverage
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Enhanced export extraction that handles various TypeScript/JavaScript patterns
+   */
+  private extractPublicExports(content: string, filePath: string): Array<{
+    name: string;
+    type: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace';
+    line: number;
+    isPublic: boolean;
+  }> {
+    const exports: Array<{
+      name: string;
+      type: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace';
+      line: number;
+      isPublic: boolean;
+    }> = [];
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip comments and empty lines
+      if (!line || line.startsWith('//') || line.startsWith('*') || line.startsWith('/*')) {
+        continue;
+      }
+
+      // Enhanced patterns for various export styles
+      const patterns = [
+        // Standard exports: export function/class/etc
+        /^export\s+(function|class|interface|type|const|let|var|enum|namespace)\s+([a-zA-Z_$][\w$]*)/,
+        // Export declarations with async: export async function
+        /^export\s+async\s+function\s+([a-zA-Z_$][\w$]*)/,
+        // Export declarations with abstract: export abstract class
+        /^export\s+abstract\s+class\s+([a-zA-Z_$][\w$]*)/,
+        // Arrow function exports: export const name = () =>
+        /^export\s+const\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>/,
+        // Simple arrow function exports: export const name = async () =>
+        /^export\s+const\s+([a-zA-Z_$][\w$]*)\s*=\s*async\s*\([^)]*\)\s*=>/,
+        // Function assignment: export const name = function
+        /^export\s+const\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s+)?function/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = line.match(pattern);
+        if (match) {
+          let exportType: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace' = 'function';
+          let exportName: string;
+
+          if (match[1] && match[2]) {
+            // Standard pattern with type and name
+            exportType = this.normalizeExportType(match[1]);
+            exportName = match[2];
+          } else if (match[1]) {
+            // Special patterns (async function, arrow functions, etc.)
+            exportName = match[1];
+            if (line.includes('=>') || line.includes('function')) {
+              exportType = 'function';
+            } else if (line.includes('const')) {
+              exportType = 'const';
+            }
+          } else {
+            continue;
+          }
+
+          // Determine if export is public
+          const isPublic = this.isExportPublic(exportName, filePath);
+
+          exports.push({
+            name: exportName,
+            type: exportType,
+            line: i + 1,
+            isPublic,
+          });
+          break; // Break after first match to avoid duplicates
+        }
+      }
+
+      // Handle class method exports (methods inside exported classes)
+      if (line.startsWith('export class')) {
+        const className = line.match(/export\s+class\s+([a-zA-Z_$][\w$]*)/)?.[1];
+        if (className) {
+          // Look for public methods in the class
+          for (let j = i + 1; j < Math.min(i + 50, lines.length); j++) {
+            const methodLine = lines[j].trim();
+            if (methodLine === '}' || methodLine.startsWith('export')) break;
+
+            const methodMatch = methodLine.match(/^(?:public\s+)?(?:async\s+)?(?:static\s+)?([a-zA-Z_$][\w$]*)\s*\(/);
+            if (methodMatch && !methodMatch[1].startsWith('constructor')) {
+              const methodName = methodMatch[1];
+              const isPublic = this.isExportPublic(`${className}.${methodName}`, filePath);
+
+              exports.push({
+                name: `${className}.${methodName}`,
+                type: 'function',
+                line: j + 1,
+                isPublic,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return exports;
+  }
+
+  /**
+   * Normalize export types to match the expected interface
+   */
+  private normalizeExportType(type: string): 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace' {
+    switch (type.toLowerCase()) {
+      case 'let':
+      case 'var':
+        return 'variable';
+      case 'const':
+        return 'const';
+      case 'function':
+        return 'function';
+      case 'class':
+        return 'class';
+      case 'interface':
+        return 'interface';
+      case 'type':
+        return 'type';
+      case 'enum':
+        return 'enum';
+      case 'namespace':
+        return 'namespace';
+      default:
+        return 'function'; // Default fallback
+    }
+  }
+
+  /**
+   * Determine if an export should be considered public
+   */
+  private isExportPublic(exportName: string, filePath: string): boolean {
+    // Check file path patterns that indicate internal/private modules
+    if (filePath.includes('internal') ||
+        filePath.includes('private') ||
+        filePath.includes('__tests__') ||
+        filePath.includes('.d.ts')) {
+      return false;
+    }
+
+    // Check export name patterns that indicate private exports
+    if (exportName.startsWith('_') ||
+        exportName.startsWith('__') ||
+        exportName.toLowerCase().includes('internal') ||
+        exportName.toLowerCase().includes('private')) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Enhanced test detection with multiple strategies for better accuracy
+   */
+  private async checkIfExportHasAdvancedTest(sourceFile: string, exportName: string): Promise<boolean> {
+    try {
+      // Multiple test file naming patterns
+      const testPatterns = [
+        sourceFile.replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/\.(ts|js)$/, '.spec.$1'),
+        sourceFile.replace(/src\//, 'test/').replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/src\//, '__tests__/').replace(/\.(ts|js)$/, '.test.$1'),
+        `test/${sourceFile.replace(/^.*\//, '').replace(/\.(ts|js)$/, '')}.test.ts`,
+        `__tests__/${sourceFile.replace(/^.*\//, '').replace(/\.(ts|js)$/, '')}.test.ts`,
+      ];
+
+      // Remove method part if checking a class method (e.g., "ClassName.methodName" -> "ClassName")
+      const baseExportName = exportName.includes('.') ? exportName.split('.')[0] : exportName;
+      const methodName = exportName.includes('.') ? exportName.split('.')[1] : null;
+
+      for (const testFile of testPatterns) {
+        try {
+          const testContent = await this.readFileContent(testFile);
+          if (testContent) {
+            // Enhanced test detection patterns
+            const hasTestPatterns = [
+              // Direct name mentions in various contexts
+              new RegExp(`\\b${this.escapeRegex(baseExportName)}\\b`, 'i'),
+              new RegExp(`\\b${this.escapeRegex(exportName)}\\b`, 'i'),
+              // Import/require patterns
+              new RegExp(`import.*\\b${this.escapeRegex(baseExportName)}\\b`, 'i'),
+              new RegExp(`require.*\\b${this.escapeRegex(baseExportName)}\\b`, 'i'),
+              // Test describe/it blocks
+              new RegExp(`describe\\s*\\(\\s*['"\`].*${this.escapeRegex(baseExportName)}.*['"\`]`, 'i'),
+              new RegExp(`it\\s*\\(\\s*['"\`].*${this.escapeRegex(baseExportName)}.*['"\`]`, 'i'),
+              new RegExp(`test\\s*\\(\\s*['"\`].*${this.escapeRegex(baseExportName)}.*['"\`]`, 'i'),
+            ];
+
+            // If checking a method, also look for method-specific patterns
+            if (methodName) {
+              hasTestPatterns.push(
+                new RegExp(`\\b${this.escapeRegex(methodName)}\\b`, 'i'),
+                new RegExp(`${this.escapeRegex(baseExportName)}\\.${this.escapeRegex(methodName)}`, 'i'),
+              );
+            }
+
+            // Check if any pattern matches
+            for (const pattern of hasTestPatterns) {
+              if (pattern.test(testContent)) {
+                return true;
+              }
+            }
+          }
+        } catch {
+          // Test file doesn't exist or can't be read, continue with next pattern
+        }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Utility to escape regex special characters
+   */
+  private escapeRegex(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private async findUntestedExports(): Promise<ProjectAnalysis['testAnalysis']['untestedExports']> {

@@ -462,6 +462,62 @@ describe('TestAnalysis Data Structures', () => {
       expect(untestedExports.length).toBeGreaterThanOrEqual(0);
     });
 
+    it('should analyze untested exports with enhanced detection', async () => {
+      const mockFileContent = `
+        export function regularFunction() {}
+        export async function asyncFunction() {}
+        export class MyClass {
+          public method() {}
+          private _privateMethod() {}
+        }
+        export const arrowFunc = () => {};
+        export const asyncArrow = async () => {};
+        export interface PublicInterface {}
+        export type PublicType = string;
+        export enum Status { ACTIVE, INACTIVE }
+        export namespace Utils { }
+        export let variableExport = 'test';
+        export const constantExport = 'const';
+      `;
+
+      const mockReadFile = vi.mocked(fs.readFile);
+      mockReadFile.mockResolvedValue(mockFileContent);
+
+      mockExecAsync.mockResolvedValue({
+        stdout: 'src/enhanced-test.ts\nsrc/another.ts',
+        stderr: ''
+      });
+
+      const untestedExports = await (idleProcessor as any).analyzeUntestedExports();
+
+      expect(Array.isArray(untestedExports)).toBe(true);
+      expect(untestedExports.length).toBeGreaterThan(0);
+
+      // Check that various export types are detected
+      const exportTypes = untestedExports.map((exp: UntestedExport) => exp.exportType);
+      expect(exportTypes).toContain('function');
+      expect(exportTypes).toContain('class');
+      expect(exportTypes).toContain('interface');
+      expect(exportTypes).toContain('type');
+      expect(exportTypes).toContain('enum');
+      expect(exportTypes).toContain('const');
+
+      // Verify public/private detection
+      const publicExports = untestedExports.filter((exp: UntestedExport) => exp.isPublic);
+      const privateExports = untestedExports.filter((exp: UntestedExport) => !exp.isPublic);
+
+      expect(publicExports.length).toBeGreaterThan(0);
+      // Should have detected the private method as non-public
+      expect(privateExports.some((exp: UntestedExport) =>
+        exp.exportName.includes('_privateMethod')
+      )).toBe(true);
+
+      // Verify line numbers are tracked
+      expect(untestedExports.every((exp: UntestedExport) =>
+        typeof exp.line === 'number' && exp.line > 0
+      )).toBe(true);
+    });
+
     it('should identify missing integration tests', async () => {
       // Mock files that would need integration tests
       mockExecAsync
