@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+  <rect width="100%" height="100%" fill="#1a1a1a" rx="10" ry="10"/>
+  <style>
+    .ascii { font-family: 'Courier New', monospace; font-weight: bold; font-size: 14px; white-space: pre; }
+    .cyan { fill: #00ffff; }
+    .gray { fill: #888888; }
+  </style>
+  <text x="50%" y="40" text-anchor="middle" class="ascii cyan">
+    <tspan x="300" dy="0">   █████╗ ██████╗ ███████╗██╗  ██╗</tspan>
+    <tspan x="300" dy="16">  ██╔══██╗██╔══██╗██╔════╝╚██╗██╔╝</tspan>
+    <tspan x="300" dy="16">  ███████║██████╔╝█████╗   ╚███╔╝ </tspan>
+    <tspan x="300" dy="16">  ██╔══██║██╔═══╝ ██╔══╝   ██╔██╗ </tspan>
+    <tspan x="300" dy="16">  ██║  ██║██║     ███████╗██╔╝ ██╗</tspan>
+    <tspan x="300" dy="16">  ╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝</tspan>
+  </text>
+  <text x="50%" y="160" text-anchor="middle" class="ascii gray" font-size="12px">
+    Autonomous Product Engineering eXecutor
+  </text>
+</svg>
