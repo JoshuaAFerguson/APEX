@@ -70,6 +70,12 @@ function createTestAnalysis(): ProjectAnalysis {
       slowTests: [],
       bottlenecks: [],
     },
+    testAnalysis: {
+      branchCoverage: { percentage: 75, uncoveredBranches: [] },
+      untestedExports: [],
+      missingIntegrationTests: [],
+      antiPatterns: []
+    },
   };
 }
 

@@ -23,9 +23,16 @@ function createBaseProjectAnalysis(): ProjectAnalysis {
       lines: 5000,
       languages: { 'ts': 40, 'js': 10 }
     },
+    testCoverage: {
+      percentage: 80,
+      uncoveredFiles: []
+    },
     dependencies: {
       outdated: [],
-      security: []
+      security: [],
+      outdatedPackages: [],
+      securityIssues: [],
+      deprecatedPackages: []
     },
     codeQuality: {
       lintIssues: 0,
@@ -53,6 +60,12 @@ function createBaseProjectAnalysis(): ProjectAnalysis {
     performance: {
       slowTests: [],
       bottlenecks: []
+    },
+    testAnalysis: {
+      branchCoverage: { percentage: 80, uncoveredBranches: [] },
+      untestedExports: [],
+      missingIntegrationTests: [],
+      antiPatterns: []
     }
   };
 }

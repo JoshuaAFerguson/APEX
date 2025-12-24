@@ -17,7 +17,10 @@ import {
   AutonomyLevel,
   TaskSessionData,
   WorkspaceConfig,
+  IdleTask,
+  IdleTaskType,
   generateTaskId,
+  generateIdleTaskId,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -1305,6 +1308,227 @@ export class TaskStore {
     };
   }
 
+  // ============================================================================
+  // Idle Task Operations (v0.4.0)
+  // ============================================================================
+
+  /**
+   * Create a new idle task
+   */
+  async createIdleTask(idleTask: Omit<IdleTask, 'createdAt'> & { createdAt?: Date }): Promise<IdleTask> {
+    const now = new Date();
+    const task = {
+      ...idleTask,
+      createdAt: idleTask.createdAt || now,
+    };
+
+    const stmt = this.db.prepare(`
+      INSERT INTO idle_tasks (
+        id, type, title, description, priority, estimated_effort,
+        suggested_workflow, rationale, created_at, implemented, implemented_task_id
+      ) VALUES (
+        @id, @type, @title, @description, @priority, @estimatedEffort,
+        @suggestedWorkflow, @rationale, @createdAt, @implemented, @implementedTaskId
+      )
+    `);
+
+    stmt.run({
+      id: task.id,
+      type: task.type,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      estimatedEffort: task.estimatedEffort,
+      suggestedWorkflow: task.suggestedWorkflow,
+      rationale: task.rationale,
+      createdAt: task.createdAt.toISOString(),
+      implemented: task.implemented ? 1 : 0,
+      implementedTaskId: task.implementedTaskId || null,
+    });
+
+    return task;
+  }
+
+  /**
+   * Get an idle task by ID
+   */
+  async getIdleTask(id: string): Promise<IdleTask | null> {
+    const stmt = this.db.prepare('SELECT * FROM idle_tasks WHERE id = ?');
+    const row = stmt.get(id) as IdleTaskRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToIdleTask(row);
+  }
+
+  /**
+   * List idle tasks with optional filtering
+   */
+  async listIdleTasks(options?: {
+    implemented?: boolean;
+    type?: IdleTaskType;
+    priority?: TaskPriority;
+    limit?: number;
+  }): Promise<IdleTask[]> {
+    let sql = 'SELECT * FROM idle_tasks WHERE 1=1';
+    const params: unknown[] = [];
+
+    if (options?.implemented !== undefined) {
+      sql += ' AND implemented = ?';
+      params.push(options.implemented ? 1 : 0);
+    }
+
+    if (options?.type) {
+      sql += ' AND type = ?';
+      params.push(options.type);
+    }
+
+    if (options?.priority) {
+      sql += ' AND priority = ?';
+      params.push(options.priority);
+    }
+
+    // Order by priority, then by creation date
+    sql += ` ORDER BY CASE priority
+      WHEN 'urgent' THEN 1
+      WHEN 'high' THEN 2
+      WHEN 'normal' THEN 3
+      WHEN 'low' THEN 4
+      ELSE 5
+    END ASC, created_at DESC`;
+
+    if (options?.limit) {
+      sql += ' LIMIT ?';
+      params.push(options.limit);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as IdleTaskRow[];
+
+    return rows.map(row => this.rowToIdleTask(row));
+  }
+
+  /**
+   * Update an idle task
+   */
+  async updateIdleTask(
+    id: string,
+    updates: Partial<Omit<IdleTask, 'id' | 'createdAt'>>
+  ): Promise<void> {
+    const setClauses: string[] = [];
+    const params: Record<string, unknown> = { id };
+
+    if (updates.type !== undefined) {
+      setClauses.push('type = @type');
+      params.type = updates.type;
+    }
+
+    if (updates.title !== undefined) {
+      setClauses.push('title = @title');
+      params.title = updates.title;
+    }
+
+    if (updates.description !== undefined) {
+      setClauses.push('description = @description');
+      params.description = updates.description;
+    }
+
+    if (updates.priority !== undefined) {
+      setClauses.push('priority = @priority');
+      params.priority = updates.priority;
+    }
+
+    if (updates.estimatedEffort !== undefined) {
+      setClauses.push('estimated_effort = @estimatedEffort');
+      params.estimatedEffort = updates.estimatedEffort;
+    }
+
+    if (updates.suggestedWorkflow !== undefined) {
+      setClauses.push('suggested_workflow = @suggestedWorkflow');
+      params.suggestedWorkflow = updates.suggestedWorkflow;
+    }
+
+    if (updates.rationale !== undefined) {
+      setClauses.push('rationale = @rationale');
+      params.rationale = updates.rationale;
+    }
+
+    if (updates.implemented !== undefined) {
+      setClauses.push('implemented = @implemented');
+      params.implemented = updates.implemented ? 1 : 0;
+    }
+
+    if ('implementedTaskId' in updates) {
+      setClauses.push('implemented_task_id = @implementedTaskId');
+      params.implementedTaskId = updates.implementedTaskId || null;
+    }
+
+    if (setClauses.length === 0) return;
+
+    const sql = `UPDATE idle_tasks SET ${setClauses.join(', ')} WHERE id = @id`;
+    this.db.prepare(sql).run(params);
+  }
+
+  /**
+   * Delete an idle task
+   */
+  async deleteIdleTask(id: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM idle_tasks WHERE id = ?');
+    stmt.run(id);
+  }
+
+  /**
+   * Promote an idle task to a regular task
+   */
+  async promoteIdleTask(idleTaskId: string, taskRequest: Omit<CreateTaskRequest, 'description'>): Promise<Task> {
+    // Get the idle task
+    const idleTask = await this.getIdleTask(idleTaskId);
+    if (!idleTask) {
+      throw new Error(`Idle task with ID ${idleTaskId} not found`);
+    }
+
+    if (idleTask.implemented) {
+      throw new Error(`Idle task ${idleTaskId} has already been implemented`);
+    }
+
+    // Create a regular task from the idle task
+    const task = await this.createTask({
+      ...taskRequest,
+      description: idleTask.description,
+      acceptanceCriteria: `Implement: ${idleTask.title}\n\nRationale: ${idleTask.rationale}`,
+      workflow: idleTask.suggestedWorkflow,
+      priority: idleTask.priority,
+      effort: idleTask.estimatedEffort,
+    });
+
+    // Mark the idle task as implemented
+    await this.updateIdleTask(idleTaskId, {
+      implemented: true,
+      implementedTaskId: task.id,
+    });
+
+    return task;
+  }
+
+  /**
+   * Convert database row to IdleTask object
+   */
+  private rowToIdleTask(row: IdleTaskRow): IdleTask {
+    return {
+      id: row.id,
+      type: row.type as IdleTaskType,
+      title: row.title,
+      description: row.description,
+      priority: row.priority as TaskPriority,
+      estimatedEffort: row.estimated_effort as TaskEffort,
+      suggestedWorkflow: row.suggested_workflow,
+      rationale: row.rationale,
+      createdAt: new Date(row.created_at),
+      implemented: Boolean(row.implemented),
+      implementedTaskId: row.implemented_task_id || undefined,
+    };
+  }
+
   /**
    * Close the database connection
    */
@@ -1390,4 +1614,18 @@ interface CheckpointRow {
   conversation_state: string | null;
   metadata: string | null;
   created_at: string;
+}
+
+interface IdleTaskRow {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  priority: string;
+  estimated_effort: string;
+  suggested_workflow: string;
+  rationale: string;
+  created_at: string;
+  implemented: number;
+  implemented_task_id: string | null;
 }

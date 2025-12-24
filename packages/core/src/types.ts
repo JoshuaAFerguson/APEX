@@ -268,9 +268,11 @@ export const TaskStatusSchema = z.enum([
 ]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
-export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+export const TaskPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+export type TaskPriority = z.infer<typeof TaskPrioritySchema>;
 
-export type TaskEffort = 'xs' | 'small' | 'medium' | 'large' | 'xl';
+export const TaskEffortSchema = z.enum(['xs', 'small', 'medium', 'large', 'xl']);
+export type TaskEffort = z.infer<typeof TaskEffortSchema>;
 
 export interface Task {
   id: string;
@@ -1015,3 +1017,22 @@ export interface TestAnalysis {
   /** Testing anti-patterns found in the codebase */
   antiPatterns: TestingAntiPattern[];
 }
+
+// ============================================================================
+// Idle Task Types (v0.4.0)
+// ============================================================================
+
+export const IdleTaskSchema = z.object({
+  id: z.string(),
+  type: IdleTaskTypeSchema,
+  title: z.string(),
+  description: z.string(),
+  priority: TaskPrioritySchema,
+  estimatedEffort: TaskEffortSchema,
+  suggestedWorkflow: z.string(),
+  rationale: z.string(),
+  createdAt: z.date(),
+  implemented: z.boolean().default(false),
+  implementedTaskId: z.string().optional(),
+});
+export type IdleTask = z.infer<typeof IdleTaskSchema>;

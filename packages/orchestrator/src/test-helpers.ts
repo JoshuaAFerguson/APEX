@@ -36,6 +36,12 @@ export function createMinimalAnalysis(): ProjectAnalysis {
       }
     },
     performance: { slowTests: [], bottlenecks: [] },
+    testAnalysis: {
+      branchCoverage: { percentage: 80, uncoveredBranches: [] },
+      untestedExports: [],
+      missingIntegrationTests: [],
+      antiPatterns: []
+    },
   };
 }
 
@@ -162,6 +168,12 @@ export function createHealthyAnalysis(): ProjectAnalysis {
       }
     },
     performance: { slowTests: [], bottlenecks: [] },
+    testAnalysis: {
+      branchCoverage: { percentage: 95, uncoveredBranches: [] },
+      untestedExports: [],
+      missingIntegrationTests: [],
+      antiPatterns: []
+    },
   };
 }
 
@@ -239,6 +251,12 @@ export function createAnalysisWithRichDependencies(): ProjectAnalysis {
       }
     },
     performance: { slowTests: [], bottlenecks: [] },
+    testAnalysis: {
+      branchCoverage: { percentage: 75, uncoveredBranches: [] },
+      untestedExports: [],
+      missingIntegrationTests: [],
+      antiPatterns: []
+    },
   };
 }
 

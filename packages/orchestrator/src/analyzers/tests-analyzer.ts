@@ -853,7 +853,7 @@ export class TestsAnalyzer extends BaseAnalyzer {
     suggestions.push({
       type: 'testing',
       description: `Create integration test for ${test.criticalPath}`,
-      priority: test.priority === 'critical' ? 'urgent' : 'high',
+      priority: test.priority === 'critical' ? 'critical' : 'high',
       expectedOutcome: test.description,
       command: this.generateIntegrationTestTemplate(test, pathType),
     });
@@ -933,7 +933,7 @@ export class TestsAnalyzer extends BaseAnalyzer {
       {
         type: 'testing',
         description: `Create ${count} integration tests for critical paths`,
-        priority: criticalCount > 0 ? 'urgent' : 'high',
+        priority: criticalCount > 0 ? 'critical' : 'high',
         expectedOutcome: `All ${count} critical paths will have integration test coverage`,
       },
       {
@@ -1229,7 +1229,7 @@ export class TestsAnalyzer extends BaseAnalyzer {
       {
         type: 'testing',
         description: 'Add tests for critical code paths and core functionality',
-        priority: 'urgent',
+        priority: 'critical',
         expectedOutcome: `Test coverage increased from ${currentPercentage.toFixed(1)}% to at least 50%`,
       },
       {

@@ -3,7 +3,19 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { TaskStore } from './store';
-import type { Task, TaskLog, TaskArtifact, GateStatus, TaskCheckpoint, AgentMessage } from '@apexcli/core';
+import type {
+  Task,
+  TaskLog,
+  TaskArtifact,
+  GateStatus,
+  TaskCheckpoint,
+  AgentMessage,
+  IdleTask,
+  IdleTaskType,
+  TaskPriority,
+  TaskEffort,
+} from '@apexcli/core';
+import { generateIdleTaskId } from '@apexcli/core';
 
 describe('TaskStore', () => {
   let testDir: string;
@@ -1485,6 +1497,274 @@ describe('TaskStore', () => {
       expect(task.logs).toHaveLength(1);
       expect(task.logs[0].message).toBe('Task was paused');
       expect(task.blockedBy).toEqual([]); // dependency is completed, so no blockers
+    });
+  });
+
+  describe('Idle Task CRUD', () => {
+    const createTestIdleTask = (): Omit<IdleTask, 'createdAt'> => ({
+      id: generateIdleTaskId(),
+      type: 'maintenance' as IdleTaskType,
+      title: 'Test idle task',
+      description: 'This is a test idle task for cleanup',
+      priority: 'normal' as TaskPriority,
+      estimatedEffort: 'medium' as TaskEffort,
+      suggestedWorkflow: 'maintenance',
+      rationale: 'Needed for code maintenance',
+      implemented: false,
+    });
+
+    it('should create and retrieve an idle task', async () => {
+      const idleTask = createTestIdleTask();
+      const created = await store.createIdleTask(idleTask);
+
+      expect(created.id).toBe(idleTask.id);
+      expect(created.type).toBe(idleTask.type);
+      expect(created.title).toBe(idleTask.title);
+      expect(created.description).toBe(idleTask.description);
+      expect(created.priority).toBe(idleTask.priority);
+      expect(created.estimatedEffort).toBe(idleTask.estimatedEffort);
+      expect(created.suggestedWorkflow).toBe(idleTask.suggestedWorkflow);
+      expect(created.rationale).toBe(idleTask.rationale);
+      expect(created.implemented).toBe(false);
+      expect(created.createdAt).toBeInstanceOf(Date);
+
+      // Retrieve the idle task
+      const retrieved = await store.getIdleTask(idleTask.id);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved!.id).toBe(idleTask.id);
+      expect(retrieved!.title).toBe(idleTask.title);
+    });
+
+    it('should return null when retrieving non-existent idle task', async () => {
+      const retrieved = await store.getIdleTask('non-existent-id');
+      expect(retrieved).toBeNull();
+    });
+
+    it('should list idle tasks with filtering', async () => {
+      const task1 = createTestIdleTask();
+      task1.type = 'maintenance';
+      task1.priority = 'high';
+      await store.createIdleTask(task1);
+
+      const task2 = createTestIdleTask();
+      task2.id = generateIdleTaskId();
+      task2.type = 'refactoring';
+      task2.priority = 'low';
+      await store.createIdleTask(task2);
+
+      const task3 = createTestIdleTask();
+      task3.id = generateIdleTaskId();
+      task3.type = 'maintenance';
+      task3.priority = 'normal';
+      task3.implemented = true;
+      await store.createIdleTask(task3);
+
+      // Test listing all tasks
+      const allTasks = await store.listIdleTasks();
+      expect(allTasks).toHaveLength(3);
+
+      // Test filtering by type
+      const maintenanceTasks = await store.listIdleTasks({ type: 'maintenance' });
+      expect(maintenanceTasks).toHaveLength(2);
+      expect(maintenanceTasks.every(t => t.type === 'maintenance')).toBe(true);
+
+      // Test filtering by implemented status
+      const notImplemented = await store.listIdleTasks({ implemented: false });
+      expect(notImplemented).toHaveLength(2);
+      expect(notImplemented.every(t => !t.implemented)).toBe(true);
+
+      const implemented = await store.listIdleTasks({ implemented: true });
+      expect(implemented).toHaveLength(1);
+      expect(implemented[0].implemented).toBe(true);
+
+      // Test filtering by priority
+      const highPriority = await store.listIdleTasks({ priority: 'high' });
+      expect(highPriority).toHaveLength(1);
+      expect(highPriority[0].priority).toBe('high');
+
+      // Test limit
+      const limited = await store.listIdleTasks({ limit: 1 });
+      expect(limited).toHaveLength(1);
+      // Should be ordered by priority (high first)
+      expect(limited[0].priority).toBe('high');
+    });
+
+    it('should update idle task fields', async () => {
+      const idleTask = createTestIdleTask();
+      await store.createIdleTask(idleTask);
+
+      // Update various fields
+      await store.updateIdleTask(idleTask.id, {
+        title: 'Updated title',
+        description: 'Updated description',
+        priority: 'urgent',
+        estimatedEffort: 'large',
+        implemented: true,
+        implementedTaskId: 'task-123',
+      });
+
+      const updated = await store.getIdleTask(idleTask.id);
+      expect(updated).not.toBeNull();
+      expect(updated!.title).toBe('Updated title');
+      expect(updated!.description).toBe('Updated description');
+      expect(updated!.priority).toBe('urgent');
+      expect(updated!.estimatedEffort).toBe('large');
+      expect(updated!.implemented).toBe(true);
+      expect(updated!.implementedTaskId).toBe('task-123');
+
+      // Original fields should remain unchanged
+      expect(updated!.type).toBe(idleTask.type);
+      expect(updated!.suggestedWorkflow).toBe(idleTask.suggestedWorkflow);
+      expect(updated!.rationale).toBe(idleTask.rationale);
+    });
+
+    it('should handle partial updates', async () => {
+      const idleTask = createTestIdleTask();
+      await store.createIdleTask(idleTask);
+
+      // Update only priority
+      await store.updateIdleTask(idleTask.id, {
+        priority: 'urgent',
+      });
+
+      const updated = await store.getIdleTask(idleTask.id);
+      expect(updated!.priority).toBe('urgent');
+      // Other fields should remain unchanged
+      expect(updated!.title).toBe(idleTask.title);
+      expect(updated!.type).toBe(idleTask.type);
+      expect(updated!.implemented).toBe(idleTask.implemented);
+    });
+
+    it('should delete idle task', async () => {
+      const idleTask = createTestIdleTask();
+      await store.createIdleTask(idleTask);
+
+      // Verify it exists
+      const beforeDelete = await store.getIdleTask(idleTask.id);
+      expect(beforeDelete).not.toBeNull();
+
+      // Delete it
+      await store.deleteIdleTask(idleTask.id);
+
+      // Verify it's gone
+      const afterDelete = await store.getIdleTask(idleTask.id);
+      expect(afterDelete).toBeNull();
+    });
+
+    it('should promote idle task to regular task', async () => {
+      const idleTask = createTestIdleTask();
+      idleTask.title = 'Clean up legacy code';
+      idleTask.description = 'Remove deprecated functions from utils module';
+      idleTask.rationale = 'Reduces technical debt and improves maintainability';
+      idleTask.suggestedWorkflow = 'maintenance';
+      idleTask.priority = 'high';
+      idleTask.estimatedEffort = 'small';
+
+      await store.createIdleTask(idleTask);
+
+      // Promote to regular task
+      const task = await store.promoteIdleTask(idleTask.id, {
+        workflow: 'maintenance',
+        autonomy: 'review-before-merge',
+        projectPath: testDir,
+      });
+
+      expect(task).toBeDefined();
+      expect(task.description).toBe(idleTask.description);
+      expect(task.workflow).toBe('maintenance');
+      expect(task.priority).toBe(idleTask.priority);
+      expect(task.effort).toBe(idleTask.estimatedEffort);
+      expect(task.acceptanceCriteria).toContain(idleTask.title);
+      expect(task.acceptanceCriteria).toContain(idleTask.rationale);
+      expect(task.status).toBe('pending');
+
+      // Verify idle task is marked as implemented
+      const updatedIdleTask = await store.getIdleTask(idleTask.id);
+      expect(updatedIdleTask!.implemented).toBe(true);
+      expect(updatedIdleTask!.implementedTaskId).toBe(task.id);
+
+      // Verify regular task exists
+      const regularTask = await store.getTask(task.id);
+      expect(regularTask).not.toBeNull();
+      expect(regularTask!.id).toBe(task.id);
+    });
+
+    it('should throw error when promoting non-existent idle task', async () => {
+      await expect(
+        store.promoteIdleTask('non-existent-id', {
+          workflow: 'feature',
+          autonomy: 'full',
+          projectPath: testDir,
+        })
+      ).rejects.toThrow('Idle task with ID non-existent-id not found');
+    });
+
+    it('should throw error when promoting already implemented idle task', async () => {
+      const idleTask = createTestIdleTask();
+      await store.createIdleTask(idleTask);
+
+      // Mark as implemented
+      await store.updateIdleTask(idleTask.id, {
+        implemented: true,
+        implementedTaskId: 'some-task-id',
+      });
+
+      await expect(
+        store.promoteIdleTask(idleTask.id, {
+          workflow: 'feature',
+          autonomy: 'full',
+          projectPath: testDir,
+        })
+      ).rejects.toThrow(`Idle task ${idleTask.id} has already been implemented`);
+    });
+
+    it('should sort idle tasks by priority', async () => {
+      const tasks = [
+        { ...createTestIdleTask(), priority: 'low' as TaskPriority },
+        { ...createTestIdleTask(), priority: 'urgent' as TaskPriority },
+        { ...createTestIdleTask(), priority: 'normal' as TaskPriority },
+        { ...createTestIdleTask(), priority: 'high' as TaskPriority },
+      ];
+
+      // Assign unique IDs
+      tasks.forEach((task, index) => {
+        task.id = `idle_${Date.now()}_${index}`;
+      });
+
+      // Create tasks in random order
+      for (const task of tasks) {
+        await store.createIdleTask(task);
+      }
+
+      const sortedTasks = await store.listIdleTasks();
+      expect(sortedTasks).toHaveLength(4);
+
+      // Should be sorted: urgent, high, normal, low
+      expect(sortedTasks[0].priority).toBe('urgent');
+      expect(sortedTasks[1].priority).toBe('high');
+      expect(sortedTasks[2].priority).toBe('normal');
+      expect(sortedTasks[3].priority).toBe('low');
+    });
+
+    it('should handle edge cases in update operations', async () => {
+      const idleTask = createTestIdleTask();
+      await store.createIdleTask(idleTask);
+
+      // Try updating with no changes
+      await store.updateIdleTask(idleTask.id, {});
+
+      const unchanged = await store.getIdleTask(idleTask.id);
+      expect(unchanged!.title).toBe(idleTask.title);
+
+      // Update with null/undefined implementedTaskId
+      await store.updateIdleTask(idleTask.id, {
+        implemented: false,
+        implementedTaskId: undefined,
+      });
+
+      const updated = await store.getIdleTask(idleTask.id);
+      expect(updated!.implemented).toBe(false);
+      expect(updated!.implementedTaskId).toBeUndefined();
     });
   });
 });
