@@ -20,7 +20,8 @@ import {
   DetectorType,
   DetectorFinding,
   VersionMismatchFinding,
-  StaleCommentFinding
+  StaleCommentFinding,
+  TestingAntiPattern
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
@@ -1877,6 +1878,227 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       console.error('Error analyzing missing integration tests:', error);
       return [];
     }
+  }
+
+  /**
+   * Analyzes test files to detect anti-patterns such as tests without assertions,
+   * commented-out tests, tests with only console.log, empty test blocks, and
+   * tests with hardcoded timeouts.
+   *
+   * @returns Promise<TestingAntiPattern[]> Array of detected anti-patterns
+   */
+  public async analyzeTestAntiPatterns(): Promise<TestingAntiPattern[]> {
+    try {
+      const antiPatterns: TestingAntiPattern[] = [];
+
+      // Find test files
+      const { stdout: testFiles } = await this.execAsync('find . -name "*.test.*" -o -name "*.spec.*" | head -50');
+      const files = testFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files.slice(0, 20)) {
+        try {
+          const content = await this.readFileContent(file);
+          const lines = content.split('\n');
+
+          // Track test blocks for context
+          let inTestBlock = false;
+          let testBlockStart = -1;
+          let testBlockName = '';
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            // Detect test block start
+            const testMatch = trimmedLine.match(/(?:it|test|describe)\s*\(\s*['"`]([^'"`]+)['"`]/);
+            if (testMatch) {
+              inTestBlock = true;
+              testBlockStart = i;
+              testBlockName = testMatch[1];
+            }
+
+            // Detect test block end
+            if (inTestBlock && trimmedLine === '});') {
+              // Analyze the test block for anti-patterns
+              const testBlockLines = lines.slice(testBlockStart, i + 1);
+              const testBlockContent = testBlockLines.join('\n');
+
+              // 1. Tests without assertions
+              if (!this.hasAssertions(testBlockContent)) {
+                antiPatterns.push({
+                  file: file.replace(/^\.\//, ''),
+                  line: testBlockStart + 1,
+                  type: 'no-assertion',
+                  description: `Test "${testBlockName}" has no assertions - it doesn't verify any expected behavior`,
+                  severity: 'high',
+                  suggestion: 'Add expect(), assert(), or should assertions to verify the expected behavior'
+                });
+              }
+
+              // 3. Tests with only console.log
+              if (this.hasOnlyConsoleLog(testBlockContent)) {
+                antiPatterns.push({
+                  file: file.replace(/^\.\//, ''),
+                  line: testBlockStart + 1,
+                  type: 'console-only',
+                  description: `Test "${testBlockName}" only contains console.log statements without proper assertions`,
+                  severity: 'medium',
+                  suggestion: 'Replace console.log with proper assertions to verify expected behavior'
+                });
+              }
+
+              // 4. Empty test blocks
+              if (this.isEmptyTest(testBlockContent)) {
+                antiPatterns.push({
+                  file: file.replace(/^\.\//, ''),
+                  line: testBlockStart + 1,
+                  type: 'empty-test',
+                  description: `Test "${testBlockName}" is empty or contains only comments`,
+                  severity: 'medium',
+                  suggestion: 'Implement the test or remove it if no longer needed'
+                });
+              }
+
+              // 5. Tests with hardcoded timeouts
+              if (this.hasHardcodedTimeouts(testBlockContent)) {
+                antiPatterns.push({
+                  file: file.replace(/^\.\//, ''),
+                  line: testBlockStart + 1,
+                  type: 'hardcoded-timeout',
+                  description: `Test "${testBlockName}" contains hardcoded timeouts that may cause flaky tests`,
+                  severity: 'high',
+                  suggestion: 'Use proper test utilities like waitFor, fake timers, or eliminate time dependencies'
+                });
+              }
+
+              inTestBlock = false;
+            }
+
+            // 2. Commented-out tests (check individual lines)
+            if (this.isCommentedOutTest(trimmedLine)) {
+              antiPatterns.push({
+                file: file.replace(/^\.\//, ''),
+                line: i + 1,
+                type: 'commented-out',
+                description: 'Commented-out test found - may indicate incomplete or disabled functionality',
+                severity: 'low',
+                suggestion: 'Either implement the test properly or remove the commented code'
+              });
+            }
+          }
+        } catch (error) {
+          // Skip files that can't be read
+          console.warn(`Could not read test file ${file}:`, error);
+        }
+      }
+
+      return antiPatterns.slice(0, 50); // Limit results for performance
+    } catch (error) {
+      console.error('Error analyzing test anti-patterns:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Checks if test content has any assertions
+   */
+  private hasAssertions(testContent: string): boolean {
+    const assertionPatterns = [
+      /expect\s*\(/,
+      /assert\s*\(/,
+      /should\./,
+      /\.to\./,
+      /\.toBe\(/,
+      /\.toEqual\(/,
+      /\.toHaveProperty\(/,
+      /\.toContain\(/,
+      /\.toMatch\(/,
+      /\.toThrow\(/,
+      /\.toBeTruthy\(/,
+      /\.toBeFalsy\(/
+    ];
+
+    return assertionPatterns.some(pattern => pattern.test(testContent));
+  }
+
+  /**
+   * Checks if test only contains console.log statements (no real assertions)
+   */
+  private hasOnlyConsoleLog(testContent: string): boolean {
+    // Remove test definition and closing brace
+    const contentWithoutWrapper = testContent
+      .replace(/(?:it|test|describe)\s*\(\s*['"`][^'"`]+['"`]\s*,\s*(?:async\s+)?\(\)\s*=>\s*\{/, '')
+      .replace(/\}\s*\)\s*;?\s*$/, '');
+
+    // Check if meaningful content only contains console.log
+    const meaningfulLines = contentWithoutWrapper
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('//') && !line.startsWith('/*') && !line.startsWith('*'));
+
+    const hasConsoleLog = meaningfulLines.some(line => /console\.log\s*\(/.test(line));
+    const hasOtherContent = meaningfulLines.some(line =>
+      !line.includes('console.log') &&
+      line !== '{' &&
+      line !== '}' &&
+      !/^\s*$/.test(line)
+    );
+
+    return hasConsoleLog && !hasOtherContent && !this.hasAssertions(testContent);
+  }
+
+  /**
+   * Checks if test block is effectively empty
+   */
+  private isEmptyTest(testContent: string): boolean {
+    // Remove test definition and closing brace
+    const contentWithoutWrapper = testContent
+      .replace(/(?:it|test|describe)\s*\(\s*['"`][^'"`]+['"`]\s*,\s*(?:async\s+)?\(\)\s*=>\s*\{/, '')
+      .replace(/\}\s*\)\s*;?\s*$/, '');
+
+    // Check if there's any meaningful content
+    const meaningfulLines = contentWithoutWrapper
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line =>
+        line &&
+        !line.startsWith('//') &&
+        !line.startsWith('/*') &&
+        !line.startsWith('*') &&
+        line !== '{' &&
+        line !== '}'
+      );
+
+    return meaningfulLines.length === 0;
+  }
+
+  /**
+   * Checks if test contains hardcoded timeouts
+   */
+  private hasHardcodedTimeouts(testContent: string): boolean {
+    const timeoutPatterns = [
+      /setTimeout\s*\(/,
+      /setInterval\s*\(/,
+      /sleep\s*\(/,
+      /delay\s*\(/,
+      /wait\s*\(\s*\d+/,
+      /\.timeout\s*\(\s*\d+/,
+      /new\s+Promise.*setTimeout/
+    ];
+
+    return timeoutPatterns.some(pattern => pattern.test(testContent));
+  }
+
+  /**
+   * Checks if a line contains a commented-out test
+   */
+  private isCommentedOutTest(line: string): boolean {
+    // Look for commented lines that contain test patterns
+    if (line.startsWith('//')) {
+      const uncommented = line.replace(/^\/\/\s*/, '');
+      return /(?:it|test|describe)\s*\(\s*['"`]/.test(uncommented);
+    }
+    return false;
   }
 
   /**

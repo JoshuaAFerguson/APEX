@@ -1522,4 +1522,143 @@ export function untested() {
       expect(Array.isArray(branchCoverage.uncoveredBranches)).toBe(true);
     });
   });
+
+  describe('analyzeTestAntiPatterns', () => {
+    it('should return an array of TestingAntiPattern objects', async () => {
+      // Mock child_process exec to return test files
+      const mockExec = vi.fn((cmd: string, callback: Function) => {
+        if (cmd.includes('find')) {
+          callback(null, { stdout: './test1.test.ts\n./test2.spec.js\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      // Mock file content with various anti-patterns
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('test1.test.ts')) {
+          return Promise.resolve(`
+            describe('Sample test', () => {
+              it('test without assertions', () => {
+                const value = 42;
+              });
+
+              // it('commented out test', () => {
+              //   expect(true).toBe(true);
+              // });
+
+              it('test with only console.log', () => {
+                console.log('testing something');
+              });
+
+              it('empty test', () => {
+              });
+
+              it('test with hardcoded timeout', () => {
+                setTimeout(() => {
+                  expect(true).toBe(true);
+                }, 1000);
+              });
+            });
+          `);
+        }
+        return Promise.resolve('');
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const antiPatterns = await idleProcessor.analyzeTestAntiPatterns();
+
+      expect(Array.isArray(antiPatterns)).toBe(true);
+      expect(antiPatterns.length).toBeGreaterThan(0);
+
+      // Check that all required anti-patterns are detected
+      const patternTypes = antiPatterns.map(p => p.type);
+      expect(patternTypes).toContain('no-assertion');
+      expect(patternTypes).toContain('commented-out');
+      expect(patternTypes).toContain('console-only');
+      expect(patternTypes).toContain('empty-test');
+      expect(patternTypes).toContain('hardcoded-timeout');
+    });
+
+    it('should handle empty test files gracefully', async () => {
+      const mockExec = vi.fn((cmd: string, callback: Function) => {
+        if (cmd.includes('find')) {
+          callback(null, { stdout: './empty.test.ts\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue('');
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const antiPatterns = await idleProcessor.analyzeTestAntiPatterns();
+
+      expect(Array.isArray(antiPatterns)).toBe(true);
+      expect(antiPatterns).toEqual([]);
+    });
+
+    it('should limit results for performance', async () => {
+      const mockExec = vi.fn((cmd: string, callback: Function) => {
+        if (cmd.includes('find')) {
+          const manyFiles = Array.from({ length: 100 }, (_, i) => `./test${i}.test.ts`).join('\n');
+          callback(null, { stdout: manyFiles });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(`
+        describe('test', () => {
+          it('test without assertions', () => {
+            const value = 42;
+          });
+        });
+      `);
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const antiPatterns = await idleProcessor.analyzeTestAntiPatterns();
+
+      expect(antiPatterns.length).toBeLessThanOrEqual(50);
+    });
+
+    it('should handle file read errors gracefully', async () => {
+      const mockExec = vi.fn((cmd: string, callback: Function) => {
+        if (cmd.includes('find')) {
+          callback(null, { stdout: './error.test.ts\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const antiPatterns = await idleProcessor.analyzeTestAntiPatterns();
+
+      expect(Array.isArray(antiPatterns)).toBe(true);
+    });
+
+    it('should handle exec errors gracefully', async () => {
+      const mockExec = vi.fn((cmd: string, callback: Function) => {
+        callback(new Error('Command failed'));
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const antiPatterns = await idleProcessor.analyzeTestAntiPatterns();
+
+      expect(Array.isArray(antiPatterns)).toBe(true);
+      expect(antiPatterns).toEqual([]);
+    });
+  });
 });
