@@ -1550,8 +1550,48 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   /**
    * Update task status
+   * SAFEGUARD: Prevents marking a parent task as 'completed' if it has incomplete subtasks
    */
   async updateTaskStatus(taskId: string, status: TaskStatus, error?: string): Promise<void> {
+    // SAFEGUARD: Check for incomplete subtasks before allowing completion
+    if (status === 'completed') {
+      const task = await this.store.getTask(taskId);
+      if (task && task.subtaskIds && task.subtaskIds.length > 0) {
+        // Check all subtask statuses
+        let incompleteCount = 0;
+        let failedCount = 0;
+        for (const subtaskId of task.subtaskIds) {
+          const subtask = await this.store.getTask(subtaskId);
+          if (subtask) {
+            if (subtask.status === 'failed') {
+              failedCount++;
+            } else if (subtask.status !== 'completed' && subtask.status !== 'cancelled') {
+              incompleteCount++;
+            }
+          }
+        }
+
+        // If any subtasks are incomplete, don't allow completion
+        if (incompleteCount > 0) {
+          await this.store.addLog(taskId, {
+            level: 'warn',
+            message: `BLOCKED: Cannot mark task as completed - ${incompleteCount} subtasks are still incomplete`,
+          });
+          return; // Don't update status
+        }
+
+        // If any subtasks failed, mark parent as failed instead
+        if (failedCount > 0) {
+          await this.store.addLog(taskId, {
+            level: 'warn',
+            message: `BLOCKED: Cannot mark task as completed - ${failedCount} subtasks failed`,
+          });
+          status = 'failed' as TaskStatus;
+          error = error || `${failedCount} subtask(s) failed`;
+        }
+      }
+    }
+
     await this.store.updateTask(taskId, {
       status,
       error,
@@ -3436,7 +3476,14 @@ Parent: ${parentTask.description}`;
 
     try {
       // Create a temporary IdleProcessor to get documentation analysis
-      const idleProcessor = new IdleProcessor(this.projectPath, this.config.daemon || {}, this.store);
+      const daemonConfig = this.config.daemon || {
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info' as const,
+        installAsService: false,
+        serviceName: 'apex-daemon',
+      };
+      const idleProcessor = new IdleProcessor(this.projectPath, daemonConfig, this.store);
 
       // Start the processor to initialize it
       await idleProcessor.start();
@@ -3469,7 +3516,14 @@ Parent: ${parentTask.description}`;
 
     try {
       // Create a temporary IdleProcessor to get README section analysis
-      const idleProcessor = new IdleProcessor(this.projectPath, this.config.daemon || {}, this.store);
+      const daemonConfig = this.config.daemon || {
+        pollInterval: 5000,
+        autoStart: false,
+        logLevel: 'info' as const,
+        installAsService: false,
+        serviceName: 'apex-daemon',
+      };
+      const idleProcessor = new IdleProcessor(this.projectPath, daemonConfig, this.store);
 
       // Start the processor to initialize it
       await idleProcessor.start();

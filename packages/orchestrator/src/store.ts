@@ -69,6 +69,7 @@ export class TaskStore {
       { column: 'workspace_config', definition: 'TEXT' },
       { column: 'session_data', definition: 'TEXT' },
       { column: 'last_checkpoint', definition: 'TEXT' },
+      { column: 'effort', definition: "TEXT DEFAULT 'medium'" },
     ];
 
     for (const { column, definition } of migrations) {

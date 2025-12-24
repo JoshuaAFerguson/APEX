@@ -24,14 +24,14 @@ export class StaleCommentDetector {
   private readonly projectPath: string;
   private readonly config: OutdatedDocsConfig;
 
-  constructor(projectPath: string, config: OutdatedDocsConfig = {}) {
+  constructor(projectPath: string, config: Partial<OutdatedDocsConfig> = {}) {
     this.projectPath = projectPath;
+    // Apply defaults for any missing config values
     this.config = {
-      todoAgeThresholdDays: 30,
-      versionCheckPatterns: [],
-      deprecationRequiresMigration: true,
-      crossReferenceEnabled: true,
-      ...config
+      todoAgeThresholdDays: config.todoAgeThresholdDays ?? 30,
+      versionCheckPatterns: config.versionCheckPatterns ?? [],
+      deprecationRequiresMigration: config.deprecationRequiresMigration ?? true,
+      crossReferenceEnabled: config.crossReferenceEnabled ?? true,
     };
   }
 

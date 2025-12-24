@@ -43,6 +43,7 @@ function validateTestImplementation() {
       autonomy: 'full',
       status: 'in-progress',
       priority: 'normal',
+      effort: 'medium',
       projectPath: '/test',
       branchName: 'test-branch',
       retryCount: 0,

@@ -14,7 +14,7 @@
  * @see ADR-004: IdleTaskGenerator with Weighted Strategy Selection
  */
 
-import { StrategyWeights, IdleTaskType, generateTaskId } from '@apex/core';
+import { StrategyWeights, IdleTaskType, generateTaskId } from '@apexcli/core';
 import type { IdleTask, ProjectAnalysis } from './idle-processor';
 import {
   StrategyAnalyzer,
@@ -25,6 +25,10 @@ import {
   RefactoringAnalyzer,
   DocsAnalyzer,
   TestsAnalyzer,
+  type DocumentationReference,
+  type SymbolInfo,
+  type SymbolIndex,
+  type SymbolExtractionOptions,
 } from './analyzers';
 
 /**
