@@ -14,8 +14,8 @@
  * @see ADR-004: IdleTaskGenerator with Weighted Strategy Selection
  */
 
-import { StrategyWeights, IdleTaskType, generateTaskId } from '@apexcli/core';
-import type { IdleTask, ProjectAnalysis } from './idle-processor';
+import { StrategyWeights, IdleTaskType, generateTaskId, IdleTask, generateIdleTaskId } from '@apexcli/core';
+import type { ProjectAnalysis } from './idle-processor';
 import {
   StrategyAnalyzer,
   TaskCandidate,
@@ -238,8 +238,8 @@ export class IdleTaskGenerator {
    */
   private candidateToIdleTask(type: IdleTaskType, candidate: TaskCandidate): IdleTask {
     return {
-      id: `idle-${generateTaskId()}-${type}`,
-      type: this.mapTypeToIdleTaskType(type),
+      id: generateIdleTaskId(),
+      type: type,
       title: candidate.title,
       description: candidate.description,
       priority: 'low', // Always override with 'low' priority for idle tasks
@@ -251,26 +251,6 @@ export class IdleTaskGenerator {
     };
   }
 
-  /**
-   * Map IdleTaskType to the IdleTask.type field.
-   * Note: IdleTask.type uses slightly different values than IdleTaskType.
-   */
-  private mapTypeToIdleTaskType(
-    type: IdleTaskType
-  ): 'improvement' | 'maintenance' | 'optimization' | 'documentation' {
-    switch (type) {
-      case 'maintenance':
-        return 'maintenance';
-      case 'refactoring':
-        return 'optimization'; // refactoring maps to optimization
-      case 'docs':
-        return 'documentation';
-      case 'tests':
-        return 'improvement'; // tests maps to improvement
-      default:
-        return 'improvement';
-    }
-  }
 
   /**
    * Enhance project analysis with advanced analyzer capabilities.

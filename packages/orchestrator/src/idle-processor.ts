@@ -21,24 +21,16 @@ import {
   DetectorFinding,
   VersionMismatchFinding,
   StaleCommentFinding,
-  TestingAntiPattern
+  TestingAntiPattern,
+  IdleTask,
+  IdleTaskType,
+  TaskEffort,
+  generateIdleTaskId
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { IdleTaskGenerator } from './idle-task-generator';
 import { CrossReferenceValidator } from './analyzers/cross-reference-validator';
 
-export interface IdleTask {
-  id: string;
-  type: 'improvement' | 'maintenance' | 'optimization' | 'documentation';
-  title: string;
-  description: string;
-  priority: TaskPriority;
-  estimatedEffort: 'low' | 'medium' | 'high';
-  suggestedWorkflow: string;
-  rationale: string;
-  createdAt: Date;
-  implemented: boolean;
-}
 
 /**
  * Type of update required for an outdated dependency
@@ -217,7 +209,6 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   private store: TaskStore;
   private isProcessing = false;
   private lastAnalysis?: ProjectAnalysis;
-  private generatedTasks: Map<string, IdleTask> = new Map();
   private taskGenerator: IdleTaskGenerator;
 
   constructor(projectPath: string, config: DaemonConfig, store: TaskStore) {
@@ -283,7 +274,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       this.emit('tasks:generated', tasks);
 
       for (const task of tasks) {
-        this.generatedTasks.set(task.id, task);
+        await this.store.createIdleTask(task);
         this.emit('task:suggested', task);
       }
     } finally {
@@ -301,15 +292,15 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   /**
    * Get generated improvement tasks
    */
-  getGeneratedTasks(): IdleTask[] {
-    return Array.from(this.generatedTasks.values());
+  async getGeneratedTasks(): Promise<IdleTask[]> {
+    return await this.store.listIdleTasks();
   }
 
   /**
    * Convert an idle task to a real task
    */
   async implementIdleTask(idleTaskId: string): Promise<string> {
-    const idleTask = this.generatedTasks.get(idleTaskId);
+    const idleTask = await this.store.getIdleTask(idleTaskId);
     if (!idleTask) {
       throw new Error(`Idle task ${idleTaskId} not found`);
     }
@@ -328,9 +319,11 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
     const task = await this.store.createTask(taskRequest);
 
-    // Mark idle task as implemented
-    idleTask.implemented = true;
-    this.generatedTasks.set(idleTaskId, idleTask);
+    // Mark idle task as implemented and set the implemented task ID
+    await this.store.updateIdleTask(idleTaskId, {
+      implemented: true,
+      implementedTaskId: task.id,
+    });
 
     return task.id;
   }
@@ -338,8 +331,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   /**
    * Dismiss an idle task suggestion
    */
-  dismissIdleTask(idleTaskId: string): void {
-    this.generatedTasks.delete(idleTaskId);
+  async dismissIdleTask(idleTaskId: string): Promise<void> {
+    await this.store.deleteIdleTask(idleTaskId);
   }
 
   // ============================================================================
@@ -2656,7 +2649,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     }
 
     const maxTasks = this.config.idleProcessing?.maxIdleTasks || 3;
-    const currentTaskCount = this.generatedTasks.size;
+    const currentTasks = await this.store.listIdleTasks({ implemented: false });
+    const currentTaskCount = currentTasks.length;
 
     if (currentTaskCount >= maxTasks) {
       return; // Already have enough suggestions
@@ -2668,7 +2662,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     const tasks = await this.generateTasksFromAnalysis(this.lastAnalysis);
 
     for (const task of tasks.slice(0, maxTasks - currentTaskCount)) {
-      this.generatedTasks.set(task.id, task);
+      await this.store.createIdleTask(task);
       this.emit('task:suggested', task);
     }
   }
