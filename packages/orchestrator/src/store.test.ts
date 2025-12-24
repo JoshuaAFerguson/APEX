@@ -1651,6 +1651,14 @@ describe('TaskStore', () => {
       expect(afterDelete).toBeNull();
     });
 
+    it('should throw error when deleting non-existent idle task', async () => {
+      const nonExistentId = 'non-existent-idle-task-id';
+
+      await expect(store.deleteIdleTask(nonExistentId)).rejects.toThrow(
+        `Idle task with ID ${nonExistentId} not found`
+      );
+    });
+
     it('should promote idle task to regular task', async () => {
       const idleTask = createTestIdleTask();
       idleTask.title = 'Clean up legacy code';

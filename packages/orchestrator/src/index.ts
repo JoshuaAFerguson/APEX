@@ -3578,6 +3578,17 @@ Parent: ${parentTask.description}`;
       projectPath: this.projectPath,
     });
   }
+
+  /**
+   * Delete an idle task
+   */
+  async deleteIdleTask(idleTaskId: string): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized first');
+    }
+
+    return this.store.deleteIdleTask(idleTaskId);
+  }
 }
 
 export { TaskStore } from './store';

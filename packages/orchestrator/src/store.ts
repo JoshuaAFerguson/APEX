@@ -1473,6 +1473,12 @@ export class TaskStore {
    * Delete an idle task
    */
   async deleteIdleTask(id: string): Promise<void> {
+    // Check if the idle task exists
+    const idleTask = await this.getIdleTask(id);
+    if (!idleTask) {
+      throw new Error(`Idle task with ID ${id} not found`);
+    }
+
     const stmt = this.db.prepare('DELETE FROM idle_tasks WHERE id = ?');
     stmt.run(id);
   }

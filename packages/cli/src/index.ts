@@ -1129,8 +1129,17 @@ export const commands: Command[] = [
             console.log(chalk.red('Usage: /idle dismiss <id>'));
             return;
           }
-          console.log(chalk.blue(`🗑️ Dismissing suggestion ${dismissId}...`));
-          console.log(chalk.green('✅ Suggestion dismissed'));
+          try {
+            console.log(chalk.blue(`🗑️ Dismissing suggestion ${dismissId}...`));
+            await ctx.orchestrator.deleteIdleTask(dismissId);
+            console.log(chalk.green('✅ Suggestion dismissed successfully'));
+          } catch (error) {
+            if ((error as Error).message.includes('not found')) {
+              console.log(chalk.red(`❌ Idle task with ID ${dismissId} not found`));
+            } else {
+              console.log(chalk.red(`❌ Failed to dismiss idle task: ${(error as Error).message}`));
+            }
+          }
           break;
         case 'analyze':
           console.log(chalk.blue('🔍 Analyzing project for improvements...'));
