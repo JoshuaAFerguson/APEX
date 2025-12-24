@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Ferguson"
+  given-names: "Joshua A."
+title: "APEX: Autonomous Product Engineering eXecutor"
+version: 0.3.0
+date-released: 2024-01-01
+url: "https://github.com/JoshuaAFerguson/apex"
+keywords:
+  - "ai"
+  - "agents"
+  - "automation"
+  - "development"
+  - "devops"
+license: "MIT"
