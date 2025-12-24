@@ -1001,8 +1001,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       // Find untested exports with enhanced analysis
       const untestedExports = await this.analyzeUntestedExports();
 
-      // Identify missing integration tests
-      const missingIntegrationTests = await this.findMissingIntegrationTests();
+      // Identify missing integration tests using comprehensive analysis
+      const missingIntegrationTests = await this.analyzeMissingIntegrationTests();
 
       // Detect testing anti-patterns
       const antiPatterns = await this.detectTestingAntiPatterns();
@@ -1848,6 +1848,314 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Comprehensive analysis of missing integration tests for critical paths
+   * Identifies API endpoints, database operations, external service calls,
+   * and complex component interactions that lack proper integration testing
+   */
+  public async analyzeMissingIntegrationTests(): Promise<ProjectAnalysis['testAnalysis']['missingIntegrationTests']> {
+    try {
+      const missingTests: ProjectAnalysis['testAnalysis']['missingIntegrationTests'] = [];
+
+      // 1. Identify critical paths (API endpoints, database operations, external service calls)
+      const criticalPaths = await this.identifyCriticalPaths();
+
+      // 2. Check for corresponding integration test files
+      const testCoverageMap = await this.checkIntegrationTestCoverage(criticalPaths);
+
+      // 3. Detect complex component interactions without integration coverage
+      const uncoveredInteractions = await this.detectUncoveredComponentInteractions();
+
+      // 4. Populate testAnalysis.missingIntegrationTests with results
+      missingTests.push(...this.buildMissingTestReports(criticalPaths, testCoverageMap));
+      missingTests.push(...uncoveredInteractions);
+
+      return missingTests.slice(0, 15); // Limit results for performance
+    } catch (error) {
+      console.error('Error analyzing missing integration tests:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Identifies critical paths in the codebase including API endpoints,
+   * database operations, and external service calls
+   */
+  private async identifyCriticalPaths(): Promise<Array<{
+    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+    file: string;
+    description: string;
+    keywords: string[];
+  }>> {
+    const criticalPaths: Array<{
+      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+      file: string;
+      description: string;
+      keywords: string[];
+    }> = [];
+
+    try {
+      // Find API endpoints (REST routes, GraphQL resolvers, etc.)
+      const { stdout: apiFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "app\\." || echo ""'
+      );
+      const apiFileList = apiFiles.split('\n').filter(line => line.trim());
+
+      for (const file of apiFileList.slice(0, 10)) {
+        try {
+          const content = await this.readFileContent(file);
+
+          // Check for Express routes
+          if (content.match(/app\.(get|post|put|patch|delete|use)\(/)) {
+            criticalPaths.push({
+              type: 'api_endpoint',
+              file: file.replace(/^\.\//, ''),
+              description: 'REST API endpoint definitions',
+              keywords: ['express', 'router', 'endpoint', 'route']
+            });
+          }
+
+          // Check for GraphQL resolvers
+          if (content.includes('resolvers') || content.includes('GraphQL') || content.match(/\w+Resolver/)) {
+            criticalPaths.push({
+              type: 'api_endpoint',
+              file: file.replace(/^\.\//, ''),
+              description: 'GraphQL resolver functions',
+              keywords: ['graphql', 'resolver', 'mutation', 'query']
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Find database operations
+      const { stdout: dbFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "\\(query\\|execute\\|findOne\\|save\\|update\\|delete\\|insert\\|select\\)" | head -15'
+      );
+      const dbFileList = dbFiles.split('\n').filter(line => line.trim());
+
+      for (const file of dbFileList) {
+        try {
+          const content = await this.readFileContent(file);
+
+          // Check for ORM operations
+          if (content.match(/(findOne|findMany|create|update|delete|save|query|execute)/)) {
+            criticalPaths.push({
+              type: 'database_operation',
+              file: file.replace(/^\.\//, ''),
+              description: 'Database query and transaction operations',
+              keywords: ['database', 'query', 'transaction', 'orm']
+            });
+          }
+
+          // Check for raw SQL
+          if (content.match(/(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)/i)) {
+            criticalPaths.push({
+              type: 'database_operation',
+              file: file.replace(/^\.\//, ''),
+              description: 'Raw SQL operations',
+              keywords: ['sql', 'database', 'raw query']
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Find external service calls
+      const { stdout: serviceFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "\\(fetch\\|axios\\|http\\|request\\|api\\)" | head -10'
+      );
+      const serviceFileList = serviceFiles.split('\n').filter(line => line.trim());
+
+      for (const file of serviceFileList) {
+        try {
+          const content = await this.readFileContent(file);
+
+          // Check for HTTP client calls
+          if (content.match(/(fetch\(|axios\.|http\.|request\()/)) {
+            criticalPaths.push({
+              type: 'external_service',
+              file: file.replace(/^\.\//, ''),
+              description: 'External API and service calls',
+              keywords: ['http', 'api', 'external', 'service']
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+    } catch (error) {
+      console.error('Error identifying critical paths:', error);
+    }
+
+    return criticalPaths;
+  }
+
+  /**
+   * Checks for corresponding integration test files for critical paths
+   */
+  private async checkIntegrationTestCoverage(criticalPaths: Array<{
+    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+    file: string;
+    description: string;
+    keywords: string[];
+  }>): Promise<Map<string, boolean>> {
+    const coverageMap = new Map<string, boolean>();
+
+    try {
+      // Find integration test files
+      const { stdout: integrationTests } = await this.execAsync(
+        'find . -name "*.test.*" -o -name "*.spec.*" | xargs grep -l "\\(integration\\|e2e\\|end.to.end\\|api\\|request\\|supertest\\)" || echo ""'
+      );
+      const integrationTestFiles = integrationTests.split('\n').filter(line => line.trim());
+
+      for (const path of criticalPaths) {
+        const fileName = path.file.split('/').pop()?.replace(/\.(ts|js)$/, '') || '';
+        let hasIntegrationTest = false;
+
+        // Check if there's a corresponding integration test file
+        for (const testFile of integrationTestFiles) {
+          if (testFile.includes(fileName) ||
+              testFile.includes(path.type) ||
+              path.keywords.some(keyword => testFile.includes(keyword))) {
+            hasIntegrationTest = true;
+            break;
+          }
+        }
+
+        // Also check for test content that covers this critical path
+        if (!hasIntegrationTest) {
+          for (const testFile of integrationTestFiles) {
+            try {
+              const testContent = await this.readFileContent(testFile);
+              if (path.keywords.some(keyword => testContent.toLowerCase().includes(keyword.toLowerCase())) ||
+                  testContent.includes(fileName)) {
+                hasIntegrationTest = true;
+                break;
+              }
+            } catch {
+              // Skip files that can't be read
+            }
+          }
+        }
+
+        coverageMap.set(path.file, hasIntegrationTest);
+      }
+
+    } catch (error) {
+      console.error('Error checking integration test coverage:', error);
+    }
+
+    return coverageMap;
+  }
+
+  /**
+   * Detects complex component interactions without integration coverage
+   */
+  private async detectUncoveredComponentInteractions(): Promise<ProjectAnalysis['testAnalysis']['missingIntegrationTests']> {
+    const uncoveredInteractions: ProjectAnalysis['testAnalysis']['missingIntegrationTests'] = [];
+
+    try {
+      // Find files with complex imports and dependencies
+      const { stdout: componentFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | head -20'
+      );
+      const files = componentFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files) {
+        try {
+          const content = await this.readFileContent(file);
+          const lines = content.split('\n');
+
+          // Count imports and dependencies
+          const imports = lines.filter(line => line.trim().startsWith('import')).length;
+          const classDefinitions = (content.match(/class\s+\w+/g) || []).length;
+          const functionDefinitions = (content.match(/(function\s+\w+|const\s+\w+\s*=.*=>)/g) || []).length;
+
+          // If file has complex interactions (many imports, classes, functions)
+          if (imports > 5 || (classDefinitions > 2 && functionDefinitions > 5)) {
+            // Check if this complex interaction is covered by integration tests
+            const { stdout: testCoverage } = await this.execAsync(
+              `find . -name "*.test.*" -o -name "*.spec.*" | xargs grep -l "${file.split('/').pop()?.replace(/\.(ts|js)$/, '') || ''}" || echo ""`
+            );
+
+            if (!testCoverage.trim()) {
+              uncoveredInteractions.push({
+                criticalPath: `Complex component interaction in ${file.replace(/^\.\//, '')}`,
+                description: `File with ${imports} imports and ${classDefinitions + functionDefinitions} definitions lacks integration test coverage`,
+                priority: imports > 10 ? 'high' : 'medium',
+                relatedFiles: [file.replace(/^\.\//, '')]
+              });
+            }
+          }
+
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+    } catch (error) {
+      console.error('Error detecting uncovered component interactions:', error);
+    }
+
+    return uncoveredInteractions.slice(0, 5); // Limit results
+  }
+
+  /**
+   * Builds missing test reports from critical paths and coverage analysis
+   */
+  private buildMissingTestReports(
+    criticalPaths: Array<{
+      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+      file: string;
+      description: string;
+      keywords: string[];
+    }>,
+    coverageMap: Map<string, boolean>
+  ): ProjectAnalysis['testAnalysis']['missingIntegrationTests'] {
+    const missingTests: ProjectAnalysis['testAnalysis']['missingIntegrationTests'] = [];
+
+    for (const path of criticalPaths) {
+      const hasCoverage = coverageMap.get(path.file) || false;
+
+      if (!hasCoverage) {
+        let priority: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+        let description = '';
+
+        switch (path.type) {
+          case 'api_endpoint':
+            priority = 'high';
+            description = `Missing integration tests for API endpoints in ${path.file}. Should test request/response flow, status codes, and error handling.`;
+            break;
+          case 'database_operation':
+            priority = 'high';
+            description = `Missing integration tests for database operations in ${path.file}. Should test data persistence, transaction integrity, and rollback scenarios.`;
+            break;
+          case 'external_service':
+            priority = 'critical';
+            description = `Missing integration tests for external service calls in ${path.file}. Should test service integration, error handling, and fallback mechanisms.`;
+            break;
+          case 'component_interaction':
+            priority = 'medium';
+            description = `Missing integration tests for component interactions in ${path.file}. Should test inter-component communication and data flow.`;
+            break;
+        }
+
+        missingTests.push({
+          criticalPath: `${path.type.replace('_', ' ')} integration in ${path.file}`,
+          description,
+          priority,
+          relatedFiles: [path.file]
+        });
+      }
+    }
+
+    return missingTests;
   }
 
   private async detectTestingAntiPatterns(): Promise<ProjectAnalysis['testAnalysis']['antiPatterns']> {

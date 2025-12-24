@@ -527,10 +527,524 @@ describe('TestAnalysis Data Structures', () => {
       const mockReadFile = vi.mocked(fs.readFile);
       mockReadFile.mockResolvedValue('app.get("/api", handler);');
 
-      const missingTests = await (idleProcessor as any).findMissingIntegrationTests();
+      const missingTests = await (idleProcessor as any).analyzeMissingIntegrationTests();
 
       expect(Array.isArray(missingTests)).toBe(true);
       expect(missingTests.length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should analyze missing integration tests comprehensively', async () => {
+      // Setup mock for identifyCriticalPaths
+      const mockApiContent = `
+        app.get('/api/users', getUsersHandler);
+        app.post('/api/users', createUserHandler);
+        app.put('/api/users/:id', updateUserHandler);
+      `;
+
+      const mockDbContent = `
+        await User.findOne({ id });
+        await User.update({ name: 'test' });
+        await database.query('SELECT * FROM users');
+      `;
+
+      const mockServiceContent = `
+        const response = await fetch('/external-api');
+        const data = await axios.get('https://api.external.com');
+      `;
+
+      const mockComplexComponent = `
+        import { UserService } from './user-service';
+        import { DatabaseConnection } from './database';
+        import { EmailService } from './email';
+        import { Logger } from './logger';
+        import { Cache } from './cache';
+        import { ValidationService } from './validation';
+        import { AuthService } from './auth';
+
+        export class UserController {
+          constructor() {}
+          async createUser() {}
+          async updateUser() {}
+          async deleteUser() {}
+          async validateUser() {}
+          async sendNotification() {}
+          async cacheUserData() {}
+        }
+      `;
+
+      const mockReadFile = vi.mocked(fs.readFile);
+
+      // Mock exec commands for different file types
+      mockExecAsync
+        // For API endpoints
+        .mockResolvedValueOnce({ stdout: 'src/api/routes.ts', stderr: '' })
+        // For database operations
+        .mockResolvedValueOnce({ stdout: 'src/db/user-repository.ts', stderr: '' })
+        // For external services
+        .mockResolvedValueOnce({ stdout: 'src/services/external-api.ts', stderr: '' })
+        // For integration test coverage check
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }) // No integration tests found
+        // For complex component interactions
+        .mockResolvedValueOnce({ stdout: 'src/controllers/user-controller.ts\nsrc/services/notification-service.ts', stderr: '' })
+        // For test coverage check for complex components
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }); // No tests found for complex components
+
+      // Mock file content reads
+      mockReadFile
+        .mockResolvedValueOnce(mockApiContent) // API routes file
+        .mockResolvedValueOnce(mockDbContent) // Database operations file
+        .mockResolvedValueOnce(mockServiceContent) // External service file
+        .mockResolvedValueOnce(mockComplexComponent) // Complex component file
+        .mockResolvedValueOnce('// Another complex component with minimal dependencies'); // Second complex file
+
+      const missingTests = await (idleProcessor as any).analyzeMissingIntegrationTests();
+
+      expect(Array.isArray(missingTests)).toBe(true);
+      expect(missingTests.length).toBeGreaterThan(0);
+
+      // Should identify missing tests for API endpoints
+      const apiEndpointTests = missingTests.filter((test: MissingIntegrationTest) =>
+        test.criticalPath.includes('api endpoint') || test.criticalPath.includes('api_endpoint')
+      );
+      expect(apiEndpointTests.length).toBeGreaterThan(0);
+
+      // Should identify missing tests for database operations
+      const dbTests = missingTests.filter((test: MissingIntegrationTest) =>
+        test.criticalPath.includes('database') || test.criticalPath.includes('database_operation')
+      );
+      expect(dbTests.length).toBeGreaterThan(0);
+
+      // Should identify missing tests for external services
+      const serviceTests = missingTests.filter((test: MissingIntegrationTest) =>
+        test.criticalPath.includes('external') || test.criticalPath.includes('external_service')
+      );
+      expect(serviceTests.length).toBeGreaterThan(0);
+
+      // Check that priorities are assigned correctly
+      const criticalTests = missingTests.filter((test: MissingIntegrationTest) => test.priority === 'critical');
+      const highTests = missingTests.filter((test: MissingIntegrationTest) => test.priority === 'high');
+      expect(criticalTests.length + highTests.length).toBeGreaterThan(0);
+
+      // Verify descriptions are meaningful
+      missingTests.forEach((test: MissingIntegrationTest) => {
+        expect(test.description).toBeTruthy();
+        expect(test.description.length).toBeGreaterThan(10);
+        expect(test.criticalPath).toBeTruthy();
+      });
+
+      // Check that results are limited to 15 as per implementation
+      expect(missingTests.length).toBeLessThanOrEqual(15);
+    });
+
+    it('should identify critical paths correctly', async () => {
+      const mockApiFile = `
+        const express = require('express');
+        const app = express();
+
+        app.get('/api/users', async (req, res) => {
+          // Handler logic
+        });
+
+        app.post('/api/auth/login', async (req, res) => {
+          // Login logic
+        });
+      `;
+
+      const mockGraphQLFile = `
+        const resolvers = {
+          Query: {
+            getUser: async (parent, args) => {
+              return await UserService.findById(args.id);
+            }
+          },
+          Mutation: {
+            createUser: async (parent, args) => {
+              return await UserService.create(args.input);
+            }
+          }
+        };
+      `;
+
+      const mockDbFile = `
+        import { Repository } from 'typeorm';
+
+        export class UserRepository {
+          async findOne(id: string) {
+            return await this.repository.findOne({ where: { id } });
+          }
+
+          async save(user: User) {
+            return await this.repository.save(user);
+          }
+
+          async executeRawQuery() {
+            return await this.repository.query('SELECT COUNT(*) FROM users');
+          }
+        }
+      `;
+
+      const mockExternalServiceFile = `
+        import axios from 'axios';
+
+        export class PaymentService {
+          async processPayment(amount: number) {
+            const response = await fetch('https://api.stripe.com/charges', {
+              method: 'POST',
+              // ...options
+            });
+            return response.json();
+          }
+
+          async sendNotification() {
+            return await axios.post('https://api.sendgrid.com/mail/send', {
+              // email data
+            });
+          }
+        }
+      `;
+
+      const mockReadFile = vi.mocked(fs.readFile);
+
+      // Mock the exec commands for finding files
+      mockExecAsync
+        .mockResolvedValueOnce({ stdout: 'src/routes/api.ts', stderr: '' }) // API files
+        .mockResolvedValueOnce({ stdout: 'src/graphql/resolvers.ts', stderr: '' }) // More API files
+        .mockResolvedValueOnce({ stdout: 'src/repositories/user.ts', stderr: '' }) // DB files
+        .mockResolvedValueOnce({ stdout: 'src/services/payment.ts', stderr: '' }); // External service files
+
+      // Mock file content reads
+      mockReadFile
+        .mockResolvedValueOnce(mockApiFile)
+        .mockResolvedValueOnce(mockGraphQLFile)
+        .mockResolvedValueOnce(mockDbFile)
+        .mockResolvedValueOnce(mockExternalServiceFile);
+
+      const criticalPaths = await (idleProcessor as any).identifyCriticalPaths();
+
+      expect(Array.isArray(criticalPaths)).toBe(true);
+      expect(criticalPaths.length).toBeGreaterThan(0);
+
+      // Check for API endpoint identification
+      const apiEndpoints = criticalPaths.filter(path => path.type === 'api_endpoint');
+      expect(apiEndpoints.length).toBeGreaterThan(0);
+
+      const expressRoute = apiEndpoints.find(path => path.keywords.includes('express'));
+      expect(expressRoute).toBeDefined();
+      expect(expressRoute?.file).toContain('routes/api.ts');
+
+      const graphqlResolver = apiEndpoints.find(path => path.keywords.includes('graphql'));
+      expect(graphqlResolver).toBeDefined();
+      expect(graphqlResolver?.file).toContain('graphql/resolvers.ts');
+
+      // Check for database operation identification
+      const dbOperations = criticalPaths.filter(path => path.type === 'database_operation');
+      expect(dbOperations.length).toBeGreaterThan(0);
+
+      const ormOperation = dbOperations.find(path => path.keywords.includes('orm'));
+      expect(ormOperation).toBeDefined();
+
+      const rawSqlOperation = dbOperations.find(path => path.keywords.includes('sql'));
+      expect(rawSqlOperation).toBeDefined();
+
+      // Check for external service identification
+      const externalServices = criticalPaths.filter(path => path.type === 'external_service');
+      expect(externalServices.length).toBeGreaterThan(0);
+
+      const httpService = externalServices.find(path => path.keywords.includes('http'));
+      expect(httpService).toBeDefined();
+      expect(httpService?.file).toContain('services/payment.ts');
+    });
+
+    it('should check integration test coverage correctly', async () => {
+      const criticalPaths = [
+        {
+          type: 'api_endpoint' as const,
+          file: 'src/api/users.ts',
+          description: 'User API endpoints',
+          keywords: ['express', 'api', 'endpoint']
+        },
+        {
+          type: 'database_operation' as const,
+          file: 'src/db/user-repository.ts',
+          description: 'User database operations',
+          keywords: ['database', 'orm', 'query']
+        },
+        {
+          type: 'external_service' as const,
+          file: 'src/services/payment.ts',
+          description: 'Payment service integration',
+          keywords: ['http', 'api', 'external']
+        }
+      ];
+
+      // Mock integration test files
+      const integrationTestContent = `
+        describe('User API Integration Tests', () => {
+          it('should create user via API', async () => {
+            const response = await request(app)
+              .post('/api/users')
+              .send({ name: 'Test User' });
+            expect(response.status).toBe(201);
+          });
+        });
+      `;
+
+      const mockReadFile = vi.mocked(fs.readFile);
+
+      // Mock finding integration test files - only find test for users API
+      mockExecAsync.mockResolvedValueOnce({
+        stdout: 'src/__tests__/integration/users.integration.test.ts',
+        stderr: ''
+      });
+
+      // Mock reading the integration test file
+      mockReadFile.mockResolvedValueOnce(integrationTestContent);
+
+      const coverageMap = await (idleProcessor as any).checkIntegrationTestCoverage(criticalPaths);
+
+      expect(coverageMap).toBeInstanceOf(Map);
+      expect(coverageMap.size).toBe(3);
+
+      // Should find coverage for users API (file name match and keyword match)
+      expect(coverageMap.get('src/api/users.ts')).toBe(true);
+
+      // Should not find coverage for database operations and payment service
+      expect(coverageMap.get('src/db/user-repository.ts')).toBe(false);
+      expect(coverageMap.get('src/services/payment.ts')).toBe(false);
+    });
+
+    it('should detect uncovered component interactions', async () => {
+      const complexComponentContent = `
+        import { UserService } from './user-service';
+        import { DatabaseConnection } from './database';
+        import { EmailService } from './email';
+        import { Logger } from './logger';
+        import { Cache } from './cache';
+        import { ValidationService } from './validation';
+        import { AuthService } from './auth';
+        import { PaymentService } from './payment';
+        import { NotificationService } from './notification';
+        import { AnalyticsService } from './analytics';
+
+        export class UserController {
+          constructor(
+            private userService: UserService,
+            private db: DatabaseConnection,
+            private email: EmailService,
+            private cache: Cache
+          ) {}
+
+          async createUser(userData: any) {
+            const validatedData = this.validationService.validate(userData);
+            const user = await this.userService.create(validatedData);
+            await this.email.sendWelcomeEmail(user.email);
+            this.cache.set(\`user:\${user.id}\`, user);
+            this.analytics.track('user_created', { userId: user.id });
+            return user;
+          }
+
+          async updateUser(id: string, data: any) {
+            // Complex update logic
+          }
+
+          async deleteUser(id: string) {
+            // Complex deletion logic
+          }
+
+          async processPayment(userId: string, amount: number) {
+            // Complex payment processing
+          }
+        }
+
+        export class OrderProcessor {
+          async processOrder() {}
+          async validateOrder() {}
+          async sendConfirmation() {}
+        }
+
+        export function complexUtility() {}
+        export function anotherComplexFunction() {}
+      `;
+
+      const simpleComponentContent = `
+        import { Logger } from './logger';
+
+        export class SimpleService {
+          log(message: string) {
+            Logger.info(message);
+          }
+        }
+      `;
+
+      const mockReadFile = vi.mocked(fs.readFile);
+
+      // Mock finding component files
+      mockExecAsync
+        .mockResolvedValueOnce({
+          stdout: 'src/controllers/user-controller.ts\nsrc/services/simple-service.ts',
+          stderr: ''
+        })
+        // Mock test coverage check - no tests found
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      // Mock file content reads
+      mockReadFile
+        .mockResolvedValueOnce(complexComponentContent)
+        .mockResolvedValueOnce(simpleComponentContent);
+
+      const uncoveredInteractions = await (idleProcessor as any).detectUncoveredComponentInteractions();
+
+      expect(Array.isArray(uncoveredInteractions)).toBe(true);
+      expect(uncoveredInteractions.length).toBeGreaterThan(0);
+
+      // Should identify the complex component
+      const complexInteraction = uncoveredInteractions.find((interaction: MissingIntegrationTest) =>
+        interaction.criticalPath.includes('user-controller.ts')
+      );
+      expect(complexInteraction).toBeDefined();
+      expect(complexInteraction?.priority).toBe('high'); // > 10 imports
+      expect(complexInteraction?.description).toContain('imports');
+      expect(complexInteraction?.description).toContain('definitions');
+
+      // Should not identify the simple component (only 1 import, 1 class, 1 function)
+      const simpleInteraction = uncoveredInteractions.find((interaction: MissingIntegrationTest) =>
+        interaction.criticalPath.includes('simple-service.ts')
+      );
+      expect(simpleInteraction).toBeUndefined();
+
+      // Results should be limited to 5
+      expect(uncoveredInteractions.length).toBeLessThanOrEqual(5);
+    });
+
+    it('should build missing test reports with correct priorities and descriptions', async () => {
+      const criticalPaths = [
+        {
+          type: 'api_endpoint' as const,
+          file: 'src/api/auth.ts',
+          description: 'Authentication endpoints',
+          keywords: ['express', 'auth', 'login']
+        },
+        {
+          type: 'database_operation' as const,
+          file: 'src/repositories/user.ts',
+          description: 'User data operations',
+          keywords: ['database', 'user', 'query']
+        },
+        {
+          type: 'external_service' as const,
+          file: 'src/services/stripe.ts',
+          description: 'Payment processing service',
+          keywords: ['stripe', 'payment', 'external']
+        },
+        {
+          type: 'component_interaction' as const,
+          file: 'src/controllers/order.ts',
+          description: 'Order processing logic',
+          keywords: ['order', 'workflow', 'business']
+        }
+      ];
+
+      const coverageMap = new Map<string, boolean>();
+      // All paths have no coverage
+      criticalPaths.forEach(path => {
+        coverageMap.set(path.file, false);
+      });
+
+      const missingTestReports = (idleProcessor as any).buildMissingTestReports(criticalPaths, coverageMap);
+
+      expect(Array.isArray(missingTestReports)).toBe(true);
+      expect(missingTestReports.length).toBe(4);
+
+      // Check API endpoint report
+      const apiReport = missingTestReports.find((report: MissingIntegrationTest) =>
+        report.criticalPath.includes('api endpoint') && report.relatedFiles?.[0] === 'src/api/auth.ts'
+      );
+      expect(apiReport).toBeDefined();
+      expect(apiReport?.priority).toBe('high');
+      expect(apiReport?.description).toContain('API endpoints');
+      expect(apiReport?.description).toContain('request/response flow');
+      expect(apiReport?.description).toContain('status codes');
+
+      // Check database operation report
+      const dbReport = missingTestReports.find((report: MissingIntegrationTest) =>
+        report.criticalPath.includes('database operation') && report.relatedFiles?.[0] === 'src/repositories/user.ts'
+      );
+      expect(dbReport).toBeDefined();
+      expect(dbReport?.priority).toBe('high');
+      expect(dbReport?.description).toContain('database operations');
+      expect(dbReport?.description).toContain('data persistence');
+      expect(dbReport?.description).toContain('transaction integrity');
+
+      // Check external service report
+      const serviceReport = missingTestReports.find((report: MissingIntegrationTest) =>
+        report.criticalPath.includes('external service') && report.relatedFiles?.[0] === 'src/services/stripe.ts'
+      );
+      expect(serviceReport).toBeDefined();
+      expect(serviceReport?.priority).toBe('critical');
+      expect(serviceReport?.description).toContain('external service calls');
+      expect(serviceReport?.description).toContain('service integration');
+      expect(serviceReport?.description).toContain('fallback mechanisms');
+
+      // Check component interaction report
+      const componentReport = missingTestReports.find((report: MissingIntegrationTest) =>
+        report.criticalPath.includes('component interaction') && report.relatedFiles?.[0] === 'src/controllers/order.ts'
+      );
+      expect(componentReport).toBeDefined();
+      expect(componentReport?.priority).toBe('medium');
+      expect(componentReport?.description).toContain('component interactions');
+      expect(componentReport?.description).toContain('inter-component communication');
+      expect(componentReport?.description).toContain('data flow');
+
+      // Verify all reports have required fields
+      missingTestReports.forEach((report: MissingIntegrationTest) => {
+        expect(report.criticalPath).toBeTruthy();
+        expect(report.description).toBeTruthy();
+        expect(['low', 'medium', 'high', 'critical']).toContain(report.priority);
+        expect(Array.isArray(report.relatedFiles)).toBe(true);
+        expect(report.relatedFiles?.length).toBeGreaterThan(0);
+      });
+    });
+
+    it('should handle error cases gracefully in analyzeMissingIntegrationTests', async () => {
+      // Mock exec to throw an error
+      mockExecAsync.mockRejectedValue(new Error('Command execution failed'));
+
+      const missingTests = await (idleProcessor as any).analyzeMissingIntegrationTests();
+
+      expect(Array.isArray(missingTests)).toBe(true);
+      expect(missingTests).toEqual([]);
+    });
+
+    it('should limit results correctly', async () => {
+      // Create a scenario with many missing tests
+      const manyPaths = Array.from({ length: 20 }, (_, i) => ({
+        type: 'api_endpoint' as const,
+        file: `src/api/endpoint${i}.ts`,
+        description: `API endpoint ${i}`,
+        keywords: ['api', 'endpoint']
+      }));
+
+      // Mock all necessary calls
+      mockExecAsync
+        .mockResolvedValueOnce({ stdout: manyPaths.map(p => p.file).join('\n'), stderr: '' }) // API files
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }) // DB files (empty)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }) // Service files (empty)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }) // Integration test files (empty - no coverage)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }) // Component files (empty)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' }); // Test coverage for components (empty)
+
+      // Mock file reads for all the API files
+      const mockReadFile = vi.mocked(fs.readFile);
+      for (let i = 0; i < 20; i++) {
+        mockReadFile.mockResolvedValueOnce('app.get("/api", handler);');
+      }
+
+      const missingTests = await (idleProcessor as any).analyzeMissingIntegrationTests();
+
+      expect(Array.isArray(missingTests)).toBe(true);
+      // Should be limited to 15 as per implementation
+      expect(missingTests.length).toBeLessThanOrEqual(15);
     });
 
     it('should detect testing anti-patterns', async () => {
