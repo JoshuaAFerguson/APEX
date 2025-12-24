@@ -889,4 +889,637 @@ describe('IdleProcessor', () => {
       }
     });
   });
+
+  describe('analyzeTestBranchCoverage', () => {
+    beforeEach(() => {
+      // Mock file system for branch coverage analysis
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('component.ts')) {
+          return Promise.resolve(`
+export function processData(data: any) {
+  if (!data) {
+    throw new Error('Data required');
+  }
+
+  if (data.type === 'user') {
+    return processUser(data);
+  } else if (data.type === 'admin') {
+    return processAdmin(data);
+  }
+
+  const result = data.valid ? data.value : null;
+
+  try {
+    return formatResult(result);
+  } catch (error) {
+    console.error('Format failed:', error);
+    return null;
+  }
+}
+
+function validateInput(input: string | null) {
+  if (input == null || input === undefined) {
+    return false;
+  }
+
+  if (input.length === 0) {
+    return false;
+  }
+
+  return input.length > 3 && input.includes('@');
+}
+`);
+        }
+        if (path.includes('component.test.ts')) {
+          return Promise.resolve(`
+import { processData } from './component';
+
+describe('processData', () => {
+  it('should process user data', () => {
+    const result = processData({ type: 'user', value: 'test' });
+    expect(result).toBeDefined();
+  });
+
+  it('should throw error when data is null', () => {
+    expect(() => processData(null)).toThrow('Data required');
+  });
+
+  it('should handle valid data', () => {
+    const result = processData({ valid: true, value: 'test' });
+    expect(result).toBeDefined();
+  });
+});
+`);
+        }
+        if (path.includes('uncovered.ts')) {
+          return Promise.resolve(`
+export function uncoveredFunction(data: any) {
+  if (data.admin && data.permissions) {
+    return 'admin';
+  }
+
+  switch (data.role) {
+    case 'user':
+      return 'user';
+    case 'guest':
+      return 'guest';
+    default:
+      return 'unknown';
+  }
+}
+
+async function asyncFunction() {
+  const result = await fetch('/api/data');
+  return result.json();
+}
+`);
+        }
+        return Promise.resolve('// empty file\n');
+      });
+
+      // Mock exec commands for file discovery
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('find . -name "*.ts"') && command.includes('grep -v test')) {
+          callback(null, { stdout: './src/component.ts\n./src/uncovered.ts\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+    });
+
+    it('should identify files with tests and analyze branch coverage', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      expect(branchCoverage).toBeDefined();
+      expect(branchCoverage.percentage).toBeGreaterThanOrEqual(0);
+      expect(branchCoverage.percentage).toBeLessThanOrEqual(100);
+      expect(branchCoverage.uncoveredBranches).toBeInstanceOf(Array);
+    });
+
+    it('should detect uncovered if/else branches', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const uncoveredIf = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.type === 'if' && branch.file.includes('component.ts')
+      );
+      expect(uncoveredIf).toBeDefined();
+    });
+
+    it('should detect uncovered switch statements', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const uncoveredSwitch = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.type === 'switch' && branch.file.includes('uncovered.ts')
+      );
+      expect(uncoveredSwitch).toBeDefined();
+    });
+
+    it('should detect uncovered ternary operators', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const uncoveredTernary = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.type === 'ternary'
+      );
+      expect(uncoveredTernary).toBeDefined();
+    });
+
+    it('should detect uncovered catch blocks', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const uncoveredCatch = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.type === 'catch'
+      );
+      expect(uncoveredCatch).toBeDefined();
+    });
+
+    it('should detect null/undefined edge cases', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const nullCheck = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.description.includes('Null/undefined check')
+      );
+      expect(nullCheck).toBeDefined();
+    });
+
+    it('should detect boundary conditions', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const boundaryCheck = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.description.includes('Boundary condition')
+      );
+      expect(boundaryCheck).toBeDefined();
+    });
+
+    it('should detect async operations without error handling', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      const asyncError = branchCoverage.uncoveredBranches.find(
+        (branch: any) => branch.description.includes('Async operation without error handling')
+      );
+      expect(asyncError).toBeDefined();
+    });
+
+    it('should fallback to basic analysis on error', async () => {
+      // Mock error in advanced analysis
+      const originalMethod = (idleProcessor as any).getFilesWithTests;
+      (idleProcessor as any).getFilesWithTests = vi.fn().mockRejectedValue(new Error('Analysis failed'));
+
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      expect(branchCoverage).toBeDefined();
+      expect(branchCoverage.percentage).toBeGreaterThanOrEqual(0);
+
+      // Restore original method
+      (idleProcessor as any).getFilesWithTests = originalMethod;
+    });
+
+    it('should limit results for performance', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      expect(branchCoverage.uncoveredBranches.length).toBeLessThanOrEqual(50);
+    });
+
+    it('should handle files without corresponding test files', async () => {
+      // Mock file system to return files without tests
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('no-test.ts')) {
+          return Promise.resolve(`
+export function untested() {
+  if (Math.random() > 0.5) {
+    return 'random';
+  }
+  return 'not random';
+}
+`);
+        }
+        if (path.includes('no-test.test.ts')) {
+          return Promise.reject(new Error('File not found'));
+        }
+        return Promise.resolve('// empty file\n');
+      });
+
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+      expect(branchCoverage).toBeDefined();
+    });
+
+    it('should calculate coverage percentage correctly', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeTestBranchCoverage();
+
+      expect(typeof branchCoverage.percentage).toBe('number');
+      expect(branchCoverage.percentage).toBeGreaterThanOrEqual(0);
+      expect(branchCoverage.percentage).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe('helper methods for branch coverage analysis', () => {
+    beforeEach(() => {
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('test.ts')) {
+          return Promise.resolve('export function test() { return true; }');
+        }
+        if (path.includes('test.test.ts')) {
+          return Promise.resolve('import { test } from "./test"; describe("test", () => {});');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
+    });
+
+    it('should handle complex nested logical expressions', () => {
+      const complexLine = 'if (user && user.isActive && (user.role === "admin" || user.permissions.includes("write"))) {';
+      const analysis = (idleProcessor as any).analyzeBranchesInLine(complexLine, 'test.ts', 20);
+
+      expect(analysis.totalBranches).toBeGreaterThan(0);
+      expect(analysis.branches.some((b: any) => b.type === 'if')).toBe(true);
+      expect(analysis.branches.some((b: any) => b.type === 'logical')).toBe(true);
+    });
+
+    it('should ignore commented-out code', () => {
+      const commentedLine = '// if (condition) { return true; }';
+      const analysis = (idleProcessor as any).analyzeBranchesInLine(commentedLine, 'test.ts', 25);
+
+      expect(analysis.totalBranches).toBe(0);
+      expect(analysis.branches).toHaveLength(0);
+    });
+
+    it('should handle malformed or edge case patterns', () => {
+      const edgeCases = [
+        'if(noSpacing){', // no spaces
+        'if ( multipleSpaces ) {', // multiple spaces
+        'if(/*comment*/condition) {', // inline comments
+        'const x = y ? z : a ? b : c;', // nested ternary
+      ];
+
+      for (const testCase of edgeCases) {
+        const analysis = (idleProcessor as any).analyzeBranchesInLine(testCase, 'test.ts', 30);
+        expect(analysis.totalBranches).toBeGreaterThanOrEqual(0);
+        expect(Array.isArray(analysis.branches)).toBe(true);
+      }
+    });
+
+    it('should handle error in file reading during getFilesWithTests', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+        callback(new Error('Command failed'), null);
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const filesWithTests = await (idleProcessor as any).getFilesWithTests();
+      expect(Array.isArray(filesWithTests)).toBe(true);
+      expect(filesWithTests).toHaveLength(0);
+    });
+
+    it('should handle test files with minimal content', async () => {
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('minimal.test.ts')) {
+          return Promise.resolve('// minimal test file\n');
+        }
+        return Promise.reject(new Error('File not found'));
+      });
+
+      const hasTest = await (idleProcessor as any).hasCorrespondingTestFile('minimal.ts');
+      expect(hasTest).toBe(false); // Should be false due to minimal content check
+    });
+
+    it('should check branch test coverage with empty test files', async () => {
+      const branches = [
+        { line: 1, type: 'if' as const, description: 'test if' },
+        { line: 2, type: 'catch' as const, description: 'test catch' }
+      ];
+
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('.test.ts')) {
+          return Promise.resolve(''); // empty test file
+        }
+        return Promise.reject(new Error('File not found'));
+      });
+
+      const coverage = await (idleProcessor as any).checkBranchTestCoverage('test.ts', branches);
+
+      expect(Array.isArray(coverage)).toBe(true);
+      expect(coverage).toHaveLength(branches.length);
+      // Should default to covered=true when can't determine coverage
+      expect(coverage.every(c => c.covered === true)).toBe(true);
+    });
+
+    it('should detect various async patterns without error handling', async () => {
+      const sourceCode = `
+        async function test() {
+          const result = await fetch('/api');
+          const data = result.then(r => r.json());
+          promise.catch(() => {});
+          return data;
+        }
+      `;
+
+      const edgeCases = await (idleProcessor as any).detectUncoveredEdgeCases('async.ts', sourceCode);
+
+      const asyncErrors = edgeCases.filter((ec: any) =>
+        ec.description.includes('Async operation without error handling')
+      );
+      expect(asyncErrors.length).toBeGreaterThan(0);
+    });
+
+    it('should handle performance edge case with many branches', async () => {
+      // Create a source file with many branches to test performance limits
+      const largeBranchFile = Array(100).fill(0).map((_, i) =>
+        `if (condition${i}) { return ${i}; }`
+      ).join('\n');
+
+      vi.mocked(fs.readFile).mockImplementation((path: any) => {
+        if (path.includes('large-branches.ts')) {
+          return Promise.resolve(largeBranchFile);
+        }
+        return Promise.reject(new Error('File not found'));
+      });
+
+      const edgeCases = await (idleProcessor as any).detectUncoveredEdgeCases('large-branches.ts', largeBranchFile);
+
+      // Should limit results for performance
+      expect(edgeCases.length).toBeLessThanOrEqual(10);
+    });
+
+    it('should validate branch test patterns with comprehensive test scenarios', () => {
+      const comprehensiveTestContent = `
+        describe('comprehensive tests', () => {
+          it('when condition is true, should return valid result', () => {
+            expect(func(true)).toBe('valid');
+          });
+
+          it('should handle false condition', () => {
+            expect(func(false)).toBe('invalid');
+          });
+
+          it('should handle error cases and throw exceptions', () => {
+            expect(() => func(null)).toThrow();
+          });
+
+          it('should fail gracefully on reject', () => {
+            return expect(asyncFunc()).rejects.toThrow();
+          });
+
+          it('should test all switch case options and types', () => {
+            expect(func('admin')).toBe('admin-result');
+            expect(func('user')).toBe('user-result');
+          });
+
+          it('should handle both conditions with and/or logic', () => {
+            expect(func(true, true)).toBe('both');
+            expect(func(true, false)).toBe('either');
+          });
+        });
+      `;
+
+      const branches = [
+        { line: 1, type: 'if' as const, description: 'if condition' },
+        { line: 2, type: 'catch' as const, description: 'error handling' },
+        { line: 3, type: 'switch' as const, description: 'switch statement' },
+        { line: 4, type: 'ternary' as const, description: 'ternary operator' },
+        { line: 5, type: 'logical' as const, description: 'logical operator' }
+      ];
+
+      for (const branch of branches) {
+        const hasPattern = (idleProcessor as any).hasConditionalTestPatterns(comprehensiveTestContent, branch);
+        expect(hasPattern).toBe(true);
+      }
+    });
+
+    it('should identify files with corresponding test files', async () => {
+      const filesWithTests = await (idleProcessor as any).getFilesWithTests();
+      expect(Array.isArray(filesWithTests)).toBe(true);
+    });
+
+    it('should check if source file has corresponding test file', async () => {
+      const hasTest = await (idleProcessor as any).hasCorrespondingTestFile('test.ts');
+      expect(hasTest).toBe(true);
+
+      const noTest = await (idleProcessor as any).hasCorrespondingTestFile('no-test.ts');
+      expect(noTest).toBe(false);
+    });
+
+    it('should analyze branches in a line of code', () => {
+      const analysis = (idleProcessor as any).analyzeBranchesInLine('if (condition) { return true; }', 'test.ts', 10);
+
+      expect(analysis.totalBranches).toBe(1);
+      expect(analysis.branches[0].type).toBe('if');
+      expect(analysis.branches[0].line).toBe(10);
+      expect(analysis.branches[0].description).toContain('If condition');
+    });
+
+    it('should analyze multiple branch types in a line', () => {
+      const analysis = (idleProcessor as any).analyzeBranchesInLine('condition ? value1 : value2 && otherCondition', 'test.ts', 15);
+
+      expect(analysis.totalBranches).toBe(2); // ternary and logical
+      expect(analysis.branches.some((b: any) => b.type === 'ternary')).toBe(true);
+      expect(analysis.branches.some((b: any) => b.type === 'logical')).toBe(true);
+    });
+
+    it('should detect different types of conditional test patterns', () => {
+      const testContent = `
+        describe('test', () => {
+          it('should handle true condition', () => {
+            expect(func(true)).toBe('valid');
+          });
+
+          it('should throw error on invalid input', () => {
+            expect(() => func(null)).toThrow();
+          });
+
+          it('should handle switch case for admin', () => {
+            expect(func('admin')).toBe('admin-result');
+          });
+        });
+      `;
+
+      const ifBranch = { line: 1, type: 'if' as const, description: 'test if' };
+      const catchBranch = { line: 2, type: 'catch' as const, description: 'test catch' };
+      const switchBranch = { line: 3, type: 'switch' as const, description: 'test switch' };
+
+      expect((idleProcessor as any).hasConditionalTestPatterns(testContent, ifBranch)).toBe(true);
+      expect((idleProcessor as any).hasConditionalTestPatterns(testContent, catchBranch)).toBe(true);
+      expect((idleProcessor as any).hasConditionalTestPatterns(testContent, switchBranch)).toBe(true);
+    });
+
+    it('should detect edge cases in source code', async () => {
+      const sourceCode = `
+        function validate(input) {
+          if (input == null) return false;
+          if (input.length === 0) return false;
+
+          try {
+            const result = process(input);
+          } // no catch block
+
+          await fetchData(); // no error handling
+
+          if (typeof input === 'string') {
+            return true;
+          }
+        }
+      `;
+
+      const edgeCases = await (idleProcessor as any).detectUncoveredEdgeCases('test.ts', sourceCode);
+
+      expect(edgeCases.length).toBeGreaterThan(0);
+      expect(edgeCases.some((ec: any) => ec.description.includes('Null/undefined check'))).toBe(true);
+      expect(edgeCases.some((ec: any) => ec.description.includes('Boundary condition'))).toBe(true);
+      expect(edgeCases.some((ec: any) => ec.description.includes('Type check'))).toBe(true);
+    });
+
+    it('should get test files for source file', async () => {
+      const testFiles = await (idleProcessor as any).getTestFilesForSource('test.ts');
+      expect(Array.isArray(testFiles)).toBe(true);
+    });
+  });
+
+  describe('fallback analyzeBranchCoverage', () => {
+    beforeEach(() => {
+      // Mock exec commands for fallback branch coverage analysis
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('find . -name "*.ts"') && command.includes('xargs grep -n "if"')) {
+          callback(null, { stdout: './src/component.ts:10:if (condition) {\n./src/utils.ts:20:if (data && data.valid) {\n' });
+        } else if (command.includes('find . -name "*.test.*"')) {
+          callback(null, { stdout: './src/component.test.ts\n./src/utils.test.ts\n' });
+        } else if (command.includes('find . -name "*.ts"') && command.includes('grep -v test')) {
+          callback(null, { stdout: './src/component.ts\n./src/utils.ts\n./src/service.ts\n' });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+    });
+
+    it('should provide fallback branch coverage analysis', async () => {
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      expect(branchCoverage).toBeDefined();
+      expect(branchCoverage.percentage).toBeGreaterThanOrEqual(0);
+      expect(branchCoverage.percentage).toBeLessThanOrEqual(100);
+      expect(branchCoverage.uncoveredBranches).toBeInstanceOf(Array);
+    });
+
+    it('should identify different branch types in fallback analysis', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('xargs grep -n "if"')) {
+          callback(null, { stdout:
+            './src/test.ts:1:if (condition) return true;\n' +
+            './src/test.ts:2:const x = y ? a : b;\n' +
+            './src/test.ts:3:if (a && b || c) result;\n' +
+            './src/test.ts:4:switch (type) {\n' +
+            './src/test.ts:5:} catch (error) {\n'
+          });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      expect(branchCoverage.uncoveredBranches.length).toBeGreaterThan(0);
+
+      const branchTypes = branchCoverage.uncoveredBranches.map((b: any) => b.type);
+      expect(branchTypes.some(t => ['if', 'ternary', 'logical', 'switch', 'catch'].includes(t))).toBe(true);
+    });
+
+    it('should calculate coverage based on test file ratio', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('find . -name "*.test.*"')) {
+          callback(null, { stdout: './test1.test.ts\n./test2.test.ts\n' }); // 2 test files
+        } else if (command.includes('find . -name "*.ts"') && command.includes('grep -v test')) {
+          callback(null, { stdout: './src1.ts\n./src2.ts\n./src3.ts\n./src4.ts\n' }); // 4 source files
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      // Should calculate 2/4 * 100 = 50% coverage
+      expect(branchCoverage.percentage).toBe(50);
+    });
+
+    it('should handle errors gracefully in fallback analysis', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+        callback(new Error('Command failed'), null);
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      expect(branchCoverage.percentage).toBe(0);
+      expect(branchCoverage.uncoveredBranches).toHaveLength(0);
+    });
+
+    it('should limit results in fallback analysis', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('xargs grep -n "if"')) {
+          // Generate many results to test limiting
+          const manyResults = Array(50).fill(0).map((_, i) =>
+            `./src/file${i}.ts:${i + 1}:if (condition${i}) {`
+          ).join('\n');
+          callback(null, { stdout: manyResults });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      // Should limit to 10 results as specified in the implementation
+      expect(branchCoverage.uncoveredBranches.length).toBeLessThanOrEqual(10);
+    });
+
+    it('should handle edge cases in line parsing', async () => {
+      const mockExec = vi.fn().mockImplementation((command: string, options: any) => {
+        const callback = arguments[2] || arguments[1];
+
+        if (command.includes('xargs grep -n "if"')) {
+          callback(null, { stdout:
+            'malformed:line:without:proper:format\n' +
+            './valid/file.ts:abc:if (condition) {\n' + // invalid line number
+            './empty/file.ts:5:\n' + // empty content
+            './valid/file.ts:10:if (good.condition) {\n'
+          });
+        } else {
+          callback(null, { stdout: '' });
+        }
+      });
+
+      const childProcess = require('child_process');
+      childProcess.exec = mockExec;
+
+      const branchCoverage = await (idleProcessor as any).analyzeBranchCoverage();
+
+      expect(branchCoverage).toBeDefined();
+      expect(Array.isArray(branchCoverage.uncoveredBranches)).toBe(true);
+    });
+  });
 });

@@ -995,8 +995,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
   private async analyzeTestAnalysis(): Promise<ProjectAnalysis['testAnalysis']> {
     try {
-      // Analyze branch coverage
-      const branchCoverage = await this.analyzeBranchCoverage();
+      // Analyze branch coverage with enhanced analysis
+      const branchCoverage = await this.analyzeTestBranchCoverage();
 
       // Find untested exports
       const untestedExports = await this.findUntestedExports();
@@ -1025,6 +1025,417 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
         antiPatterns: [],
       };
     }
+  }
+
+  /**
+   * Advanced branch coverage analysis that identifies files with tests but uncovered branches,
+   * detects edge cases not covered (null/undefined checks, error handlers, boundary conditions)
+   */
+  private async analyzeTestBranchCoverage(): Promise<ProjectAnalysis['testAnalysis']['branchCoverage']> {
+    try {
+      const uncoveredBranches: Array<{
+        file: string;
+        line: number;
+        type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+        description: string;
+      }> = [];
+
+      // Get source files that have corresponding test files
+      const sourceFiles = await this.getFilesWithTests();
+
+      let totalBranches = 0;
+      let uncoveredBranchCount = 0;
+
+      for (const sourceFile of sourceFiles) {
+        try {
+          const content = await this.readFileContent(sourceFile);
+          const lines = content.split('\n');
+
+          // Analyze each line for branch conditions
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            if (!trimmedLine || trimmedLine.startsWith('//') || trimmedLine.startsWith('/*')) {
+              continue; // Skip empty lines and comments
+            }
+
+            const branchAnalysis = this.analyzeBranchesInLine(trimmedLine, sourceFile, i + 1);
+            totalBranches += branchAnalysis.totalBranches;
+
+            // Check if these branches have corresponding test coverage
+            const hasTestCoverage = await this.checkBranchTestCoverage(sourceFile, branchAnalysis.branches);
+
+            for (const branch of branchAnalysis.branches) {
+              if (!hasTestCoverage.some(covered => covered.line === branch.line && covered.type === branch.type)) {
+                uncoveredBranches.push({
+                  file: sourceFile,
+                  line: branch.line,
+                  type: branch.type,
+                  description: branch.description
+                });
+                uncoveredBranchCount++;
+              }
+            }
+          }
+
+          // Add specific edge case detection
+          const edgeCases = await this.detectUncoveredEdgeCases(sourceFile, content);
+          uncoveredBranches.push(...edgeCases);
+          uncoveredBranchCount += edgeCases.length;
+          totalBranches += edgeCases.length;
+
+        } catch {
+          // Skip files that can't be analyzed
+          continue;
+        }
+      }
+
+      // Calculate coverage percentage
+      const coveredBranches = totalBranches - uncoveredBranchCount;
+      const percentage = totalBranches > 0 ? Math.round((coveredBranches / totalBranches) * 100) : 100;
+
+      return {
+        percentage: Math.max(0, Math.min(100, percentage)),
+        uncoveredBranches: uncoveredBranches.slice(0, 50) // Limit results for performance
+      };
+
+    } catch (error) {
+      // Fallback to simple analysis if advanced analysis fails
+      return await this.analyzeBranchCoverage();
+    }
+  }
+
+  /**
+   * Get source files that have corresponding test files
+   */
+  private async getFilesWithTests(): Promise<string[]> {
+    try {
+      // Find all source files
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v spec | grep -v node_modules | head -30');
+      const sourceFiles = stdout.split('\n').filter(line => line.trim()).map(f => f.replace(/^\.\//, ''));
+
+      const filesWithTests: string[] = [];
+
+      for (const sourceFile of sourceFiles) {
+        // Check if corresponding test file exists
+        const hasTest = await this.checkIfExportHasTest(sourceFile, ''); // Using existing method
+        if (hasTest || await this.hasCorrespondingTestFile(sourceFile)) {
+          filesWithTests.push(sourceFile);
+        }
+      }
+
+      return filesWithTests.slice(0, 20); // Limit for performance
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Check if a source file has a corresponding test file
+   */
+  private async hasCorrespondingTestFile(sourceFile: string): Promise<boolean> {
+    try {
+      const testPatterns = [
+        sourceFile.replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/\.(ts|js)$/, '.spec.$1'),
+        sourceFile.replace(/src\//, 'test/').replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/src\//, '__tests__/').replace(/\.(ts|js)$/, '.test.$1')
+      ];
+
+      for (const testPattern of testPatterns) {
+        try {
+          const testContent = await this.readFileContent(testPattern);
+          if (testContent.length > 10) { // Basic check that test file exists and has content
+            return true;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Analyze branches in a single line of code
+   */
+  private analyzeBranchesInLine(line: string, file: string, lineNumber: number): {
+    totalBranches: number;
+    branches: Array<{
+      line: number;
+      type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+      description: string;
+    }>;
+  } {
+    const branches: Array<{
+      line: number;
+      type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+      description: string;
+    }> = [];
+
+    // Check for if statements
+    if (/\bif\s*\(/.test(line)) {
+      branches.push({
+        line: lineNumber,
+        type: 'if',
+        description: `If condition: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    // Check for else statements
+    if (/\belse\b/.test(line) && !line.includes('else if')) {
+      branches.push({
+        line: lineNumber,
+        type: 'else',
+        description: `Else branch: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    // Check for switch statements
+    if (/\bswitch\s*\(/.test(line)) {
+      branches.push({
+        line: lineNumber,
+        type: 'switch',
+        description: `Switch statement: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    // Check for catch blocks
+    if (/\bcatch\s*\(/.test(line)) {
+      branches.push({
+        line: lineNumber,
+        type: 'catch',
+        description: `Error handler: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    // Check for ternary operators
+    if (/\?.*:/.test(line) && !line.includes('//')) {
+      branches.push({
+        line: lineNumber,
+        type: 'ternary',
+        description: `Ternary operator: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    // Check for logical operators (&&, ||)
+    if (/&&|\|\|/.test(line) && !line.includes('//')) {
+      branches.push({
+        line: lineNumber,
+        type: 'logical',
+        description: `Logical operator: ${line.trim().substring(0, 60)}`
+      });
+    }
+
+    return {
+      totalBranches: branches.length,
+      branches
+    };
+  }
+
+  /**
+   * Check if branches have test coverage by analyzing test files
+   */
+  private async checkBranchTestCoverage(sourceFile: string, branches: Array<{
+    line: number;
+    type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+    description: string;
+  }>): Promise<Array<{ line: number; type: string; covered: boolean }>> {
+    try {
+      const testFiles = await this.getTestFilesForSource(sourceFile);
+      const coverage: Array<{ line: number; type: string; covered: boolean }> = [];
+
+      for (const branch of branches) {
+        let isCovered = false;
+
+        // Simple heuristic: if test files contain references to the conditions or expected behaviors
+        for (const testFile of testFiles) {
+          const testContent = await this.readFileContent(testFile);
+
+          // Look for test patterns that might cover these branches
+          const hasConditionalTests = this.hasConditionalTestPatterns(testContent, branch);
+          if (hasConditionalTests) {
+            isCovered = true;
+            break;
+          }
+        }
+
+        coverage.push({
+          line: branch.line,
+          type: branch.type,
+          covered: isCovered
+        });
+      }
+
+      return coverage;
+    } catch {
+      // If we can't determine coverage, assume it's covered to avoid false positives
+      return branches.map(branch => ({
+        line: branch.line,
+        type: branch.type,
+        covered: true
+      }));
+    }
+  }
+
+  /**
+   * Get test files that might test the given source file
+   */
+  private async getTestFilesForSource(sourceFile: string): Promise<string[]> {
+    try {
+      const testPatterns = [
+        sourceFile.replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/\.(ts|js)$/, '.spec.$1'),
+        sourceFile.replace(/src\//, 'test/').replace(/\.(ts|js)$/, '.test.$1'),
+        sourceFile.replace(/src\//, '__tests__/').replace(/\.(ts|js)$/, '.test.$1')
+      ];
+
+      const existingTestFiles: string[] = [];
+
+      for (const testPattern of testPatterns) {
+        try {
+          const content = await this.readFileContent(testPattern);
+          if (content.length > 10) {
+            existingTestFiles.push(testPattern);
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      return existingTestFiles;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Check if test content has patterns that suggest branch coverage
+   */
+  private hasConditionalTestPatterns(testContent: string, branch: {
+    line: number;
+    type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+    description: string
+  }): boolean {
+    const testLower = testContent.toLowerCase();
+
+    // Look for test patterns that suggest branch testing
+    switch (branch.type) {
+      case 'if':
+      case 'else':
+        return testLower.includes('when') || testLower.includes('should') ||
+               testLower.includes('true') || testLower.includes('false') ||
+               testLower.includes('condition') || testLower.includes('valid') ||
+               testLower.includes('invalid');
+
+      case 'switch':
+        return testLower.includes('case') || testLower.includes('switch') ||
+               testLower.includes('option') || testLower.includes('type');
+
+      case 'catch':
+        return testLower.includes('error') || testLower.includes('throw') ||
+               testLower.includes('exception') || testLower.includes('fail') ||
+               testLower.includes('reject');
+
+      case 'ternary':
+        return testLower.includes('true') || testLower.includes('false') ||
+               testLower.includes('condition');
+
+      case 'logical':
+        return testLower.includes('and') || testLower.includes('or') ||
+               testLower.includes('both') || testLower.includes('either');
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Detect specific edge cases that are commonly not covered by tests
+   */
+  private async detectUncoveredEdgeCases(sourceFile: string, content: string): Promise<Array<{
+    file: string;
+    line: number;
+    type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+    description: string;
+  }>> {
+    const edgeCases: Array<{
+      file: string;
+      line: number;
+      type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+      description: string;
+    }> = [];
+
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine || trimmedLine.startsWith('//')) continue;
+
+      // Null/undefined checks
+      if (/!\w+|== null|!== null|== undefined|!== undefined|typeof \w+ === ['"]undefined['"]/.test(trimmedLine)) {
+        edgeCases.push({
+          file: sourceFile,
+          line: i + 1,
+          type: 'if',
+          description: `Null/undefined check: ${trimmedLine.substring(0, 60)}`
+        });
+      }
+
+      // Error boundary conditions
+      if (/length === 0|\.length < |\.length >|isEmpty|empty/.test(trimmedLine)) {
+        edgeCases.push({
+          file: sourceFile,
+          line: i + 1,
+          type: 'if',
+          description: `Boundary condition: ${trimmedLine.substring(0, 60)}`
+        });
+      }
+
+      // Try-catch without proper error handling
+      if (/try\s*\{/.test(trimmedLine)) {
+        const nextLines = lines.slice(i, Math.min(i + 10, lines.length));
+        const hasCatch = nextLines.some(l => l.includes('catch'));
+        if (!hasCatch) {
+          edgeCases.push({
+            file: sourceFile,
+            line: i + 1,
+            type: 'catch',
+            description: `Try block without catch: ${trimmedLine.substring(0, 60)}`
+          });
+        }
+      }
+
+      // Async operations without error handling
+      if (/(await |\.then\(|\.catch\()/.test(trimmedLine) &&
+          !trimmedLine.includes('catch') &&
+          !lines.slice(Math.max(0, i-2), i+3).some(l => l.includes('catch'))) {
+        edgeCases.push({
+          file: sourceFile,
+          line: i + 1,
+          type: 'catch',
+          description: `Async operation without error handling: ${trimmedLine.substring(0, 60)}`
+        });
+      }
+
+      // Type checking without all cases covered
+      if (/typeof \w+ === ['"]/.test(trimmedLine)) {
+        edgeCases.push({
+          file: sourceFile,
+          line: i + 1,
+          type: 'if',
+          description: `Type check: ${trimmedLine.substring(0, 60)}`
+        });
+      }
+    }
+
+    return edgeCases.slice(0, 10); // Limit results
   }
 
   private async analyzeBranchCoverage(): Promise<ProjectAnalysis['testAnalysis']['branchCoverage']> {
