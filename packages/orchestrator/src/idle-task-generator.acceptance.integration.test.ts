@@ -88,7 +88,7 @@ describe('IdleTaskGenerator Acceptance Criteria Integration Tests', () => {
         expect(task.description).toBeTruthy();
         expect(task.rationale).toBeTruthy();
         expect(['low', 'medium', 'high']).toContain(task.estimatedEffort);
-        expect(['low', 'normal', 'high', 'urgent']).toContain(task.priority);
+        expect(task.priority).toBe('low'); // All idle tasks have low priority by default
         expect(task.implemented).toBe(false);
         expect(task.createdAt).toBeInstanceOf(Date);
       }
@@ -134,7 +134,7 @@ describe('IdleTaskGenerator Acceptance Criteria Integration Tests', () => {
       // Should still produce a task from the maintenance analyzer
       expect(task).not.toBeNull();
       expect(task?.type).toBe('maintenance');
-      expect(task?.priority).toBe('urgent');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.title).toContain('Critical');
     });
 
@@ -196,7 +196,7 @@ describe('IdleTaskGenerator Acceptance Criteria Integration Tests', () => {
       expect(task?.title).toBe('Eliminate Duplicated Code');
       expect(task?.description).toContain('96% average similarity');
       expect(task?.description).toContain('3 locations');
-      expect(task?.priority).toBe('high');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.rationale).toContain('High-similarity patterns');
 
       // Should be actionable
@@ -237,7 +237,7 @@ describe('IdleTaskGenerator Acceptance Criteria Integration Tests', () => {
 
       expect(task).not.toBeNull();
       expect(task?.type).toBe('maintenance');
-      expect(task?.priority).toBe('urgent');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.title).toContain('Critical');
       expect(task?.description).toContain('CVE-2023-12345');
       expect(task?.description).toContain('Remote code execution');
@@ -287,11 +287,11 @@ describe('IdleTaskGenerator Acceptance Criteria Integration Tests', () => {
         expect(task.title).toContain('business-logic-processor.ts');
         expect(task.description).toContain('Cyclomatic Complexity: 52');
         expect(task.description).toContain('Cognitive Complexity: 68');
-        expect(task.priority).toBe('urgent'); // Critical complexity
+        expect(task.priority).toBe('low'); // All idle tasks have low priority
       } else {
         // Feature envy task
         expect(task.title).toContain('Feature Envy');
-        expect(task.priority).toBe('urgent'); // High severity
+        expect(task.priority).toBe('low'); // All idle tasks have low priority
         expect(task.rationale).toContain('Move methods closer to the data they use');
       }
     });

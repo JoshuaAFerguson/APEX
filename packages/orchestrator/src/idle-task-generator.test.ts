@@ -1042,6 +1042,106 @@ describe('Edge Cases and Error Handling', () => {
   });
 });
 
+describe('Acceptance Criteria - Default Priority Low', () => {
+  let generator: IdleTaskGenerator;
+  let mockAnalysis: ProjectAnalysis;
+
+  beforeEach(() => {
+    generator = new IdleTaskGenerator();
+    mockAnalysis = {
+      codebaseSize: { files: 50, lines: 5000, languages: { ts: 40, js: 10 } },
+      testCoverage: { percentage: 45, uncoveredFiles: ['src/utils.ts', 'src/service.ts'] },
+      dependencies: {
+        outdated: ['old-lib@^0.1.0', 'legacy@^0.5.0'],
+        security: ['vuln-package@1.0.0'],
+      },
+      codeQuality: {
+        lintIssues: 25,
+        duplicatedCode: [{ pattern: 'duplicate code', locations: ['src/file1.ts', 'src/file2.ts'], similarity: 0.85 }],
+        complexityHotspots: [{
+          file: 'src/complex.ts',
+          cyclomaticComplexity: 15,
+          cognitiveComplexity: 20,
+          lineCount: 300
+        }],
+        codeSmells: []
+      },
+      documentation: { coverage: 35, missingDocs: ['src/core.ts', 'src/api/index.ts'] },
+      performance: { slowTests: ['test/slow.test.ts'], bottlenecks: [] },
+    };
+  });
+
+  it('should ensure IdleTaskGenerator.generateTask() returns tasks with priority="low" by default', () => {
+    // This test directly validates the acceptance criteria:
+    // "IdleTaskGenerator.generateTask() returns tasks with priority='low'"
+
+    // Generate multiple tasks to test all paths
+    const tasks = [];
+    for (let i = 0; i < 10; i++) {
+      const task = generator.generateTask(mockAnalysis);
+      if (task) {
+        tasks.push(task);
+      }
+      generator.reset(); // Reset to allow regeneration
+    }
+
+    // Verify all generated tasks have low priority
+    expect(tasks.length).toBeGreaterThan(0);
+    tasks.forEach((task, index) => {
+      expect(task.priority).toBe('low',
+        `Task ${index + 1} (${task.type}: ${task.title}) should have priority 'low' but has '${task.priority}'`
+      );
+    });
+  });
+
+  it('should maintain low priority regardless of underlying analyzer recommendations', () => {
+    // Test that even when analyzers suggest different priorities,
+    // the final task always has low priority
+
+    // Create analysis that would trigger high-priority recommendations
+    const highPriorityAnalysis: ProjectAnalysis = {
+      codebaseSize: { files: 50, lines: 5000, languages: { ts: 40, js: 10 } },
+      testCoverage: { percentage: 5, uncoveredFiles: ['critical-path.ts', 'payment-system.ts'] }, // Very low coverage
+      dependencies: {
+        outdated: [],
+        security: ['critical-vuln@1.0.0'], // Security vulnerability
+      },
+      codeQuality: {
+        lintIssues: 500, // Very high lint issues
+        duplicatedCode: [
+          { pattern: 'major duplication', locations: ['core1.ts', 'core2.ts', 'core3.ts'], similarity: 0.95 }
+        ],
+        complexityHotspots: [{
+          file: 'critical-component.ts',
+          cyclomaticComplexity: 50, // Very high complexity
+          cognitiveComplexity: 60,
+          lineCount: 1000
+        }],
+        codeSmells: []
+      },
+      documentation: { coverage: 0, missingDocs: ['README.md', 'API.md', 'INSTALL.md'] }, // No documentation
+      performance: { slowTests: ['integration.test.ts'], bottlenecks: ['database-query.ts'] },
+    };
+
+    // Generate tasks for each strategy type
+    const strategyTypes: IdleTaskType[] = ['maintenance', 'refactoring', 'docs', 'tests'];
+
+    for (const strategyType of strategyTypes) {
+      const weights = { maintenance: 0, refactoring: 0, docs: 0, tests: 0 };
+      weights[strategyType] = 1.0;
+
+      const strategyGenerator = new IdleTaskGenerator(weights);
+      const task = strategyGenerator.generateTask(highPriorityAnalysis);
+
+      if (task) {
+        expect(task.priority).toBe('low',
+          `${strategyType} strategy task should have priority 'low' despite high-severity analysis`
+        );
+      }
+    }
+  });
+});
+
 describe('Type Mapping', () => {
   let generator: IdleTaskGenerator;
 
@@ -1082,5 +1182,118 @@ describe('Type Mapping', () => {
       expect(task).not.toBeNull();
       expect(task?.type).toBe(expectedType);
     }
+  });
+});
+
+describe('Default Priority Requirement', () => {
+  let generator: IdleTaskGenerator;
+
+  beforeEach(() => {
+    generator = new IdleTaskGenerator();
+  });
+
+  it('should always generate tasks with priority "low" regardless of task type', () => {
+    const mockAnalysis: ProjectAnalysis = {
+      codebaseSize: { files: 10, lines: 1000, languages: { ts: 10 } },
+      testCoverage: { percentage: 20, uncoveredFiles: ['test.ts'] },
+      dependencies: { outdated: ['dep@^1.0.0'], security: ['vuln@1.0.0'] },
+      codeQuality: {
+        lintIssues: 50,
+        duplicatedCode: [{ pattern: 'duplicate pattern', locations: ['dup.ts'], similarity: 0.9 }],
+        complexityHotspots: [{ file: 'complex.ts', cyclomaticComplexity: 25, cognitiveComplexity: 30, lineCount: 500 }],
+        codeSmells: []
+      },
+      documentation: { coverage: 30, missingDocs: ['missing.ts'] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    // Test each task type to ensure they all generate tasks with 'low' priority
+    const taskTypes: IdleTaskType[] = ['maintenance', 'refactoring', 'docs', 'tests'];
+
+    for (const taskType of taskTypes) {
+      const weights = { maintenance: 0, refactoring: 0, docs: 0, tests: 0 };
+      weights[taskType] = 1.0;
+
+      const typeSpecificGenerator = new IdleTaskGenerator(weights);
+      const task = typeSpecificGenerator.generateTask(mockAnalysis);
+
+      // Verify the task was generated and has low priority
+      expect(task, `${taskType} task should be generated`).not.toBeNull();
+      expect(task?.priority, `${taskType} task should have low priority`).toBe('low');
+    }
+  });
+
+  it('should generate tasks with low priority even when using default weights', () => {
+    const mockAnalysis: ProjectAnalysis = {
+      codebaseSize: { files: 50, lines: 5000, languages: { ts: 40, js: 10 } },
+      testCoverage: { percentage: 45, uncoveredFiles: ['src/utils.ts'] },
+      dependencies: { outdated: ['old-lib@^0.1.0'], security: [] },
+      codeQuality: {
+        lintIssues: 25,
+        duplicatedCode: [],
+        complexityHotspots: [{ file: 'src/complex.ts', cyclomaticComplexity: 20, cognitiveComplexity: 24, lineCount: 380 }],
+        codeSmells: []
+      },
+      documentation: { coverage: 35, missingDocs: ['src/core.ts'] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    // Test with default constructor (no weights specified)
+    const defaultGenerator = new IdleTaskGenerator();
+
+    // Generate multiple tasks to test different types
+    for (let i = 0; i < 10; i++) {
+      const task = defaultGenerator.generateTask(mockAnalysis);
+      if (task) {
+        expect(task.priority).toBe('low');
+        // Reset to avoid deduplication
+        defaultGenerator.reset();
+      }
+    }
+  });
+
+  it('should override high priority candidates with low priority in final task', () => {
+    // Create a custom analyzer that returns high priority candidates
+    const highPriorityAnalyzer: StrategyAnalyzer = {
+      type: 'maintenance',
+      analyze: () => [{
+        candidateId: 'high-priority-candidate',
+        title: 'High Priority Security Fix',
+        description: 'This should be urgent but will be overridden to low',
+        priority: 'urgent', // This should be overridden
+        estimatedEffort: 'high',
+        suggestedWorkflow: 'maintenance',
+        rationale: 'Security vulnerability detected',
+        score: 1.0,
+      }],
+      prioritize: (candidates) => candidates[0] || null,
+    };
+
+    const analyzers = new Map<IdleTaskType, StrategyAnalyzer>([
+      ['maintenance', highPriorityAnalyzer],
+      ['refactoring', new RefactoringAnalyzer()],
+      ['docs', new DocsAnalyzer()],
+      ['tests', new TestsAnalyzer()],
+    ]);
+
+    const generatorWithHighPriorityCandidates = new IdleTaskGenerator(
+      { maintenance: 1.0, refactoring: 0, docs: 0, tests: 0 },
+      analyzers
+    );
+
+    const mockAnalysis: ProjectAnalysis = {
+      codebaseSize: { files: 10, lines: 1000, languages: {} },
+      testCoverage: { percentage: 80, uncoveredFiles: [] },
+      dependencies: { outdated: [], security: [] },
+      codeQuality: { lintIssues: 0, duplicatedCode: [], complexityHotspots: [], codeSmells: [] },
+      documentation: { coverage: 90, missingDocs: [] },
+      performance: { slowTests: [], bottlenecks: [] },
+    };
+
+    const task = generatorWithHighPriorityCandidates.generateTask(mockAnalysis);
+
+    expect(task).not.toBeNull();
+    expect(task?.priority).toBe('low'); // Should be overridden to 'low' despite candidate being 'urgent'
+    expect(task?.title).toBe('High Priority Security Fix'); // Other properties should be preserved
   });
 });

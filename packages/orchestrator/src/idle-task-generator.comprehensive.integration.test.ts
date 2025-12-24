@@ -117,7 +117,7 @@ describe('Comprehensive IdleTaskGenerator Integration', () => {
 
       expect(task).not.toBeNull();
       expect(task?.type).toBe('maintenance');
-      expect(task?.priority).toBe('urgent');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.title).toContain('Critical');
       expect(task?.description).toContain('CVE-2023-12345');
     });
@@ -151,7 +151,7 @@ describe('Comprehensive IdleTaskGenerator Integration', () => {
       expect(task?.type).toBe('optimization');
       expect(task?.title).toBe('Eliminate Duplicated Code');
       expect(task?.description).toContain('97% average similarity');
-      expect(task?.priority).toBe('high');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.rationale).toContain('High-similarity patterns');
       expect(task?.rationale).toContain('Extract identical methods');
     });
@@ -191,7 +191,7 @@ describe('Comprehensive IdleTaskGenerator Integration', () => {
       expect(task).not.toBeNull();
       expect(task?.type).toBe('optimization');
       expect(task?.title).toContain('Fix Feature Envy');
-      expect(task?.priority).toBe('urgent'); // High severity feature-envy should be urgent
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority // High severity feature-envy should be urgent
       expect(task?.rationale).toContain('Move methods closer to the data they use');
     });
 
@@ -223,7 +223,7 @@ describe('Comprehensive IdleTaskGenerator Integration', () => {
       expect(task?.type).toBe('optimization');
       expect(task?.title).toContain('Refactor');
       expect(task?.title).toContain('algorithm-processor.ts');
-      expect(task?.priority).toBe('urgent'); // Critical complexity should be urgent
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority // Critical complexity should be urgent
       expect(task?.description).toContain('Cyclomatic Complexity: 48 (critical');
       expect(task?.description).toContain('Cognitive Complexity: 62 (critical');
     });

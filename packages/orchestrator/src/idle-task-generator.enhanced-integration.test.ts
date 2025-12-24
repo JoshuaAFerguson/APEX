@@ -103,7 +103,7 @@ describe('IdleTaskGenerator Enhanced Integration Tests', () => {
 
       expect(task).not.toBeNull();
       expect(task?.type).toBe('maintenance');
-      expect(task?.priority).toBe('urgent');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.title).toContain('Critical');
       expect(task?.title).toContain('Security');
       expect(task?.description).toContain('CVE-2023-12345');
@@ -136,7 +136,7 @@ describe('IdleTaskGenerator Enhanced Integration Tests', () => {
       expect(task?.type).toBe('optimization');
       expect(task?.title).toBe('Eliminate Duplicated Code');
       expect(task?.description).toContain('95% average similarity');
-      expect(task?.priority).toBe('high');
+      expect(task?.priority).toBe('low'); // All idle tasks have low priority
       expect(task?.rationale).toContain('High-similarity patterns');
     });
 
