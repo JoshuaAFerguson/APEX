@@ -993,7 +993,7 @@ export interface TestingAntiPattern {
   /** Line number where the anti-pattern occurs */
   line: number;
   /** Type of anti-pattern detected */
-  type: 'brittle-test' | 'test-pollution' | 'mystery-guest' | 'eager-test' | 'assertion-roulette' | 'slow-test' | 'flaky-test' | 'test-code-duplication';
+  type: 'brittle-test' | 'test-pollution' | 'mystery-guest' | 'eager-test' | 'assertion-roulette' | 'slow-test' | 'flaky-test' | 'test-code-duplication' | 'no-assertion' | 'commented-out' | 'console-only' | 'empty-test' | 'hardcoded-timeout';
   /** Detailed description of the anti-pattern */
   description: string;
   /** Severity of the anti-pattern */

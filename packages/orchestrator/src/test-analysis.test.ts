@@ -279,7 +279,8 @@ describe('TestAnalysis Data Structures', () => {
     it('should support all anti-pattern types', () => {
       const antiPatternTypes: TestingAntiPattern['type'][] = [
         'brittle-test', 'test-pollution', 'mystery-guest', 'eager-test',
-        'assertion-roulette', 'slow-test', 'flaky-test', 'test-code-duplication'
+        'assertion-roulette', 'slow-test', 'flaky-test', 'test-code-duplication',
+        'no-assertion', 'commented-out', 'console-only', 'empty-test', 'hardcoded-timeout'
       ];
 
       antiPatternTypes.forEach(type => {
