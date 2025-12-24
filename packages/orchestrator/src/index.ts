@@ -3801,3 +3801,4 @@ export {
   type RemediationSuggestion,
   type RemediationActionType,
 } from './idle-task-generator';
+export { WorktreeManager, WorktreeError, type WorktreeManagerOptions } from './worktree-manager';
