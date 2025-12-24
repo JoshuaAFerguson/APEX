@@ -687,6 +687,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Check runs integration
 - ⚪ Actions workflow integration
 - ⚪ Project board updates
+- ⚪ Nightly Builds support (NPM @nightly, Homebrew --HEAD)
 
 ### GitLab Integration
 
