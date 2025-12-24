@@ -1047,8 +1047,8 @@ export const commands: Command[] = [
   {
     name: 'idle',
     aliases: ['suggestions'],
-    description: 'View and manage improvement suggestions',
-    usage: '/idle [status|list|implement <id>|accept <id>|dismiss <id>|analyze]',
+    description: 'View and manage improvement suggestions and idle processing',
+    usage: '/idle [enable|disable|status|list|implement <id>|accept <id>|dismiss <id>|analyze]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -1058,10 +1058,85 @@ export const commands: Command[] = [
       const action = args[0]?.toLowerCase();
 
       switch (action) {
+        case 'enable':
+          try {
+            // Load current config
+            const config = await loadConfig(ctx.cwd);
+
+            // Ensure daemon and idleProcessing objects exist
+            if (!config.daemon) {
+              config.daemon = {};
+            }
+            if (!config.daemon.idleProcessing) {
+              config.daemon.idleProcessing = {};
+            }
+
+            // Enable idle processing
+            config.daemon.idleProcessing.enabled = true;
+
+            // Save the updated config
+            await saveConfig(ctx.cwd, config);
+
+            console.log(chalk.green('✅ Idle processing enabled'));
+            console.log(chalk.cyan('   APEX will now generate improvement suggestions during idle time'));
+
+            // Show current status
+            console.log(chalk.gray(`   Current status: ${chalk.green('ENABLED')}`));
+
+          } catch (error) {
+            console.log(chalk.red(`❌ Failed to enable idle processing: ${(error as Error).message}`));
+          }
+          break;
+        case 'disable':
+          try {
+            // Load current config
+            const config = await loadConfig(ctx.cwd);
+
+            // Ensure daemon and idleProcessing objects exist
+            if (!config.daemon) {
+              config.daemon = {};
+            }
+            if (!config.daemon.idleProcessing) {
+              config.daemon.idleProcessing = {};
+            }
+
+            // Disable idle processing
+            config.daemon.idleProcessing.enabled = false;
+
+            // Save the updated config
+            await saveConfig(ctx.cwd, config);
+
+            console.log(chalk.green('✅ Idle processing disabled'));
+            console.log(chalk.cyan('   APEX will no longer generate improvement suggestions during idle time'));
+
+            // Show current status
+            console.log(chalk.gray(`   Current status: ${chalk.red('DISABLED')}`));
+
+          } catch (error) {
+            console.log(chalk.red(`❌ Failed to disable idle processing: ${(error as Error).message}`));
+          }
+          break;
         case 'status':
         case 'list':
         case undefined:
           try {
+            // First, show idle processing status
+            const config = await loadConfig(ctx.cwd);
+            const idleEnabled = config.daemon?.idleProcessing?.enabled ?? false;
+
+            console.log(chalk.blue('\n⚙️ Idle Processing Status:\n'));
+            console.log(`   Status: ${idleEnabled ? chalk.green('ENABLED') : chalk.red('DISABLED')}`);
+
+            if (idleEnabled) {
+              const idleThreshold = config.daemon?.idleProcessing?.idleThreshold ?? 300000;
+              const generationInterval = config.daemon?.idleProcessing?.taskGenerationInterval ?? 3600000;
+              const maxIdleTasks = config.daemon?.idleProcessing?.maxIdleTasks ?? 3;
+
+              console.log(chalk.gray(`   Idle threshold: ${idleThreshold / 1000} seconds`));
+              console.log(chalk.gray(`   Generation interval: ${generationInterval / 60000} minutes`));
+              console.log(chalk.gray(`   Max idle tasks: ${maxIdleTasks}`));
+            }
+
             const idleTasks = await ctx.orchestrator.listIdleTasks({
               implemented: false,
               limit: 10
@@ -1146,7 +1221,15 @@ export const commands: Command[] = [
           console.log(chalk.green('✅ Project analysis not yet implemented'));
           break;
         default:
-          console.log(chalk.red('Usage: /idle [status|list|implement <id>|accept <id>|dismiss <id>|analyze]'));
+          console.log(chalk.red('Usage: /idle [enable|disable|status|list|implement <id>|accept <id>|dismiss <id>|analyze]'));
+          console.log(chalk.gray('\nCommands:'));
+          console.log(chalk.gray('  enable    - Enable idle processing and suggestion generation'));
+          console.log(chalk.gray('  disable   - Disable idle processing and suggestion generation'));
+          console.log(chalk.gray('  status    - Show idle processing status and list pending tasks'));
+          console.log(chalk.gray('  list      - List pending idle tasks'));
+          console.log(chalk.gray('  accept    - Promote idle task to real task'));
+          console.log(chalk.gray('  dismiss   - Remove idle task'));
+          console.log(chalk.gray('  analyze   - Analyze project for improvements'));
       }
     },
   },
