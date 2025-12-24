@@ -1048,15 +1048,48 @@ export const commands: Command[] = [
     name: 'idle',
     aliases: ['suggestions'],
     description: 'View and manage improvement suggestions',
-    usage: '/idle [list|implement <id>|dismiss <id>|analyze]',
+    usage: '/idle [status|list|implement <id>|dismiss <id>|analyze]',
     handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
       const action = args[0]?.toLowerCase();
 
       switch (action) {
+        case 'status':
         case 'list':
         case undefined:
-          console.log(chalk.blue('💡 Improvement Suggestions:'));
-          console.log(chalk.gray('Idle processing suggestions not yet implemented'));
+          try {
+            const idleTasks = await ctx.orchestrator.listIdleTasks({
+              implemented: false,
+              limit: 10
+            });
+
+            if (idleTasks.length === 0) {
+              console.log(chalk.green('\n✅ No pending idle tasks found.\n'));
+              console.log(chalk.gray('  All improvement suggestions have been addressed or no suggestions have been generated yet.\n'));
+              return;
+            }
+
+            console.log(chalk.blue(`\n💡 Pending Idle Tasks (${idleTasks.length}):\n`));
+
+            for (const task of idleTasks) {
+              const typeEmoji = getIdleTaskTypeEmoji(task.type);
+              const priorityColor = getPriorityColor(task.priority);
+              const effortEmoji = getEffortEmoji(task.estimatedEffort);
+
+              console.log(`  ${chalk.cyan(task.id.substring(0, 12))} ${typeEmoji} ${task.type.toUpperCase()}`);
+              console.log(`    ${chalk.bold(task.title)}`);
+              console.log(`    ${priorityColor(`Priority: ${task.priority}`)} | ${chalk.gray(`Effort: ${effortEmoji} ${task.estimatedEffort}`)}`);
+              console.log(`    ${chalk.gray(task.rationale)}`);
+              console.log();
+            }
+
+          } catch (error) {
+            console.log(chalk.red(`❌ Failed to list idle tasks: ${(error as Error).message}`));
+          }
           break;
         case 'implement':
           const implementId = args[1];
@@ -1081,7 +1114,7 @@ export const commands: Command[] = [
           console.log(chalk.green('✅ Project analysis not yet implemented'));
           break;
         default:
-          console.log(chalk.red('Usage: /idle [list|implement <id>|dismiss <id>|analyze]'));
+          console.log(chalk.red('Usage: /idle [status|list|implement <id>|dismiss <id>|analyze]'));
       }
     },
   },
@@ -1502,6 +1535,42 @@ function getReadmeSectionEmoji(section: string): string {
     'deployment': '🚀',
   };
   return emojis[section] || '📄';
+}
+
+function getIdleTaskTypeEmoji(type: string): string {
+  const emojis: Record<string, string> = {
+    'maintenance': '🔧',
+    'refactoring': '🔄',
+    'docs': '📚',
+    'tests': '🧪',
+  };
+  return emojis[type] || '📋';
+}
+
+function getPriorityColor(priority: string): (text: string) => string {
+  switch (priority) {
+    case 'urgent':
+      return chalk.red.bold;
+    case 'high':
+      return chalk.red;
+    case 'normal':
+      return chalk.yellow;
+    case 'low':
+      return chalk.green;
+    default:
+      return chalk.gray;
+  }
+}
+
+function getEffortEmoji(effort: string): string {
+  const emojis: Record<string, string> = {
+    'xs': '🔵',
+    'small': '🟢',
+    'medium': '🟡',
+    'large': '🔴',
+    'xl': '⭐',
+  };
+  return emojis[effort] || '⚫';
 }
 
 async function copyDefaultAgents(projectPath: string): Promise<void> {

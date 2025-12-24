@@ -28,6 +28,9 @@ import {
   calculateCost,
   OutdatedDocumentation,
   MissingReadmeSection,
+  IdleTask,
+  IdleTaskType,
+  TaskPriority,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import {
@@ -3544,6 +3547,22 @@ Parent: ${parentTask.description}`;
       console.warn('Failed to get missing README sections analysis:', error);
       return [];
     }
+  }
+
+  /**
+   * List idle tasks with optional filtering
+   */
+  async listIdleTasks(options?: {
+    implemented?: boolean;
+    type?: IdleTaskType;
+    priority?: TaskPriority;
+    limit?: number;
+  }): Promise<IdleTask[]> {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized first');
+    }
+
+    return this.store.listIdleTasks(options);
   }
 }
 
