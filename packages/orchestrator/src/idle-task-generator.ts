@@ -242,7 +242,7 @@ export class IdleTaskGenerator {
       type: this.mapTypeToIdleTaskType(type),
       title: candidate.title,
       description: candidate.description,
-      priority: candidate.priority,
+      priority: 'low', // Always override with 'low' priority for idle tasks
       estimatedEffort: candidate.estimatedEffort,
       suggestedWorkflow: candidate.suggestedWorkflow,
       rationale: candidate.rationale,

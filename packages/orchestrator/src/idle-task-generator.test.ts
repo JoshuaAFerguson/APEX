@@ -294,6 +294,20 @@ describe('IdleTaskGenerator', () => {
         expect(task2.title).not.toBe(task1?.title);
       }
     });
+
+    it('should always generate tasks with low priority regardless of candidate priority', () => {
+      generator = new IdleTaskGenerator({
+        maintenance: 1.0,
+        refactoring: 0,
+        docs: 0,
+        tests: 0,
+      });
+
+      const task = generator.generateTask(mockAnalysis);
+
+      expect(task).not.toBeNull();
+      expect(task?.priority).toBe('low');
+    });
   });
 
   describe('reset', () => {
