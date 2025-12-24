@@ -1048,7 +1048,7 @@ export const commands: Command[] = [
     name: 'idle',
     aliases: ['suggestions'],
     description: 'View and manage improvement suggestions',
-    usage: '/idle [status|list|implement <id>|dismiss <id>|analyze]',
+    usage: '/idle [status|list|implement <id>|accept <id>|dismiss <id>|analyze]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -1100,6 +1100,29 @@ export const commands: Command[] = [
           console.log(chalk.blue(`🚀 Implementing suggestion ${implementId}...`));
           console.log(chalk.green('✅ Suggestion implementation not yet implemented'));
           break;
+        case 'accept':
+          const acceptId = args[1];
+          if (!acceptId) {
+            console.log(chalk.red('Usage: /idle accept <id>'));
+            return;
+          }
+          try {
+            console.log(chalk.blue(`🎯 Promoting idle task ${acceptId} to real task...`));
+            const newTask = await ctx.orchestrator.promoteIdleTask(acceptId);
+            console.log(chalk.green(`✅ Idle task promoted successfully!`));
+            console.log(chalk.cyan(`   New task ID: ${newTask.id}`));
+            console.log(chalk.gray(`   Branch: ${newTask.branchName || 'N/A'}`));
+            console.log(chalk.gray(`   Workflow: ${newTask.workflow}`));
+          } catch (error) {
+            if ((error as Error).message.includes('not found')) {
+              console.log(chalk.red(`❌ Idle task with ID ${acceptId} not found`));
+            } else if ((error as Error).message.includes('already been implemented')) {
+              console.log(chalk.red(`❌ Idle task ${acceptId} has already been implemented`));
+            } else {
+              console.log(chalk.red(`❌ Failed to promote idle task: ${(error as Error).message}`));
+            }
+          }
+          break;
         case 'dismiss':
           const dismissId = args[1];
           if (!dismissId) {
@@ -1114,7 +1137,7 @@ export const commands: Command[] = [
           console.log(chalk.green('✅ Project analysis not yet implemented'));
           break;
         default:
-          console.log(chalk.red('Usage: /idle [status|list|implement <id>|dismiss <id>|analyze]'));
+          console.log(chalk.red('Usage: /idle [status|list|implement <id>|accept <id>|dismiss <id>|analyze]'));
       }
     },
   },

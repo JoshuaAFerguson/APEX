@@ -31,6 +31,7 @@ import {
   IdleTask,
   IdleTaskType,
   TaskPriority,
+  CreateTaskRequest,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import {
@@ -3563,6 +3564,19 @@ Parent: ${parentTask.description}`;
     }
 
     return this.store.listIdleTasks(options);
+  }
+
+  /**
+   * Promote an idle task to a regular task
+   */
+  async promoteIdleTask(idleTaskId: string): Promise<Task> {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized first');
+    }
+
+    return this.store.promoteIdleTask(idleTaskId, {
+      projectPath: this.projectPath,
+    });
   }
 }
 
