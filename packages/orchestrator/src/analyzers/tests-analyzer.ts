@@ -754,12 +754,58 @@ export class TestsAnalyzer extends BaseAnalyzer {
   private buildIntegrationTestRemediation(test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): RemediationSuggestion[] {
     const suggestions: RemediationSuggestion[] = [];
 
+    // Primary test creation suggestion with specific templates based on critical path type
+    const pathType = this.detectCriticalPathType(test.criticalPath);
     suggestions.push({
       type: 'testing',
       description: `Create integration test for ${test.criticalPath}`,
       priority: test.priority === 'critical' ? 'urgent' : 'high',
       expectedOutcome: test.description,
+      command: this.generateIntegrationTestTemplate(test, pathType),
     });
+
+    // Type-specific setup suggestions
+    if (pathType === 'authentication') {
+      suggestions.push({
+        type: 'testing',
+        description: 'Set up authentication test environment with test users and JWT tokens',
+        priority: 'high',
+        expectedOutcome: 'Test environment configured with authentication providers and test credentials',
+        command: this.generateAuthTestSetup(),
+      });
+
+      suggestions.push({
+        type: 'manual_review',
+        description: 'Review security boundaries and authentication flows for comprehensive test coverage',
+        priority: 'high',
+        expectedOutcome: 'All authentication scenarios (login, logout, token refresh, unauthorized access) are tested',
+        warning: 'Security-critical paths must have comprehensive integration test coverage',
+      });
+    } else if (pathType === 'payment') {
+      suggestions.push({
+        type: 'testing',
+        description: 'Set up payment test environment with mock payment providers (Stripe Test Mode)',
+        priority: 'high',
+        expectedOutcome: 'Payment integration tests using sandbox/test payment providers',
+        command: this.generatePaymentTestSetup(),
+      });
+
+      suggestions.push({
+        type: 'manual_review',
+        description: 'Test payment scenarios: successful charges, failed payments, refunds, and webhooks',
+        priority: 'critical',
+        expectedOutcome: 'All payment flows thoroughly tested with proper error handling',
+        warning: 'Payment integration failures can result in financial losses - test thoroughly',
+      });
+    } else if (pathType === 'data_processing') {
+      suggestions.push({
+        type: 'testing',
+        description: 'Set up test data fixtures and transformation pipelines',
+        priority: 'medium',
+        expectedOutcome: 'Test data sets and validation for data processing workflows',
+        command: this.generateDataTestSetup(),
+      });
+    }
 
     if (test.relatedFiles && test.relatedFiles.length > 0) {
       suggestions.push({
@@ -770,11 +816,13 @@ export class TestsAnalyzer extends BaseAnalyzer {
       });
     }
 
+    // General integration test infrastructure
     suggestions.push({
       type: 'testing',
-      description: 'Set up test environment and data for integration testing',
+      description: 'Configure integration test infrastructure with proper database seeding and cleanup',
       priority: 'medium',
-      expectedOutcome: 'Proper test fixtures and environment setup for reliable integration tests',
+      expectedOutcome: 'Isolated test environment with reliable setup/teardown procedures',
+      command: this.generateIntegrationTestInfrastructure(),
     });
 
     return suggestions;
@@ -1176,5 +1224,1319 @@ describe('${exportItem.exportName}', () => {
     };
 
     return `${severityMessages[pattern.severity]}. ${pattern.description}`;
+  }
+
+  /**
+   * Detect the type of critical path for specialized remediation
+   */
+  private detectCriticalPathType(criticalPath: string): 'authentication' | 'payment' | 'data_processing' | 'api_endpoint' | 'database' | 'external_service' | 'general' {
+    const lowerPath = criticalPath.toLowerCase();
+
+    if (lowerPath.includes('auth') || lowerPath.includes('login') || lowerPath.includes('token')) {
+      return 'authentication';
+    } else if (lowerPath.includes('payment') || lowerPath.includes('billing') || lowerPath.includes('stripe') || lowerPath.includes('transaction')) {
+      return 'payment';
+    } else if (lowerPath.includes('data processing') || lowerPath.includes('import') || lowerPath.includes('export') || lowerPath.includes('transform')) {
+      return 'data_processing';
+    } else if (lowerPath.includes('api endpoint') || lowerPath.includes('endpoint')) {
+      return 'api_endpoint';
+    } else if (lowerPath.includes('database') || lowerPath.includes('query')) {
+      return 'database';
+    } else if (lowerPath.includes('external service') || lowerPath.includes('service')) {
+      return 'external_service';
+    }
+
+    return 'general';
+  }
+
+  /**
+   * Generate integration test template based on path type
+   */
+  private generateIntegrationTestTemplate(test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0], pathType: string): string {
+    const testName = test.criticalPath.replace(/[^a-zA-Z0-9]/g, '');
+    const testFileName = `integration/${testName.toLowerCase()}.integration.test.ts`;
+
+    switch (pathType) {
+      case 'authentication':
+        return this.generateAuthIntegrationTemplate(testFileName, test);
+      case 'payment':
+        return this.generatePaymentIntegrationTemplate(testFileName, test);
+      case 'data_processing':
+        return this.generateDataProcessingIntegrationTemplate(testFileName, test);
+      case 'api_endpoint':
+        return this.generateAPIIntegrationTemplate(testFileName, test);
+      case 'database':
+        return this.generateDatabaseIntegrationTemplate(testFileName, test);
+      default:
+        return this.generateGeneralIntegrationTemplate(testFileName, test);
+    }
+  }
+
+  /**
+   * Generate authentication integration test template
+   */
+  private generateAuthIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import { app } from '../src/app'; // Adjust path as needed
+
+describe('${test.criticalPath} - Authentication Integration', () => {
+  let testUser: any;
+  let authToken: string;
+
+  beforeEach(async () => {
+    // Set up test user and authentication
+    testUser = await createTestUser();
+    authToken = await generateTestToken(testUser.id);
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    await cleanupTestUser(testUser.id);
+  });
+
+  describe('Authentication Flow', () => {
+    it('should authenticate valid user credentials', async () => {
+      const response = await request(app)
+        .post('/auth/login')
+        .send({
+          email: testUser.email,
+          password: 'test-password'
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('token');
+      expect(response.body).toHaveProperty('user');
+    });
+
+    it('should reject invalid credentials', async () => {
+      const response = await request(app)
+        .post('/auth/login')
+        .send({
+          email: testUser.email,
+          password: 'wrong-password'
+        });
+
+      expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should protect authenticated routes', async () => {
+      const response = await request(app)
+        .get('/api/protected')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should reject requests without valid tokens', async () => {
+      const response = await request(app)
+        .get('/api/protected')
+        .set('Authorization', 'Bearer invalid-token');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should handle token refresh correctly', async () => {
+      // Test token refresh flow
+      const response = await request(app)
+        .post('/auth/refresh')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('token');
+    });
+  });
+
+  describe('Session Management', () => {
+    it('should handle logout and session cleanup', async () => {
+      const logoutResponse = await request(app)
+        .post('/auth/logout')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(logoutResponse.status).toBe(200);
+
+      // Verify token is no longer valid
+      const protectedResponse = await request(app)
+        .get('/api/protected')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(protectedResponse.status).toBe(401);
+    });
+  });
+});
+
+// Helper functions
+async function createTestUser() {
+  // Implement test user creation
+  return {
+    id: 'test-user-id',
+    email: 'test@example.com',
+    name: 'Test User'
+  };
+}
+
+async function generateTestToken(userId: string) {
+  // Implement test token generation
+  return 'test-jwt-token';
+}
+
+async function cleanupTestUser(userId: string) {
+  // Implement test data cleanup
+}`;
+  }
+
+  /**
+   * Generate payment integration test template
+   */
+  private generatePaymentIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import { app } from '../src/app'; // Adjust path as needed
+import Stripe from 'stripe';
+
+// Use Stripe test mode
+const stripe = new Stripe(process.env.STRIPE_TEST_SECRET_KEY!, {
+  apiVersion: '2023-10-16'
+});
+
+describe('${test.criticalPath} - Payment Integration', () => {
+  let testCustomer: Stripe.Customer;
+  let testPaymentMethod: Stripe.PaymentMethod;
+  let authToken: string;
+
+  beforeEach(async () => {
+    // Set up test customer and payment method
+    testCustomer = await stripe.customers.create({
+      email: 'test@example.com',
+      name: 'Test Customer'
+    });
+
+    testPaymentMethod = await stripe.paymentMethods.create({
+      type: 'card',
+      card: {
+        number: '4242424242424242', // Stripe test card
+        exp_month: 12,
+        exp_year: 2025,
+        cvc: '123'
+      }
+    });
+
+    await stripe.paymentMethods.attach(testPaymentMethod.id, {
+      customer: testCustomer.id
+    });
+
+    authToken = await generateTestToken();
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    if (testCustomer) {
+      await stripe.customers.del(testCustomer.id);
+    }
+  });
+
+  describe('Payment Processing', () => {
+    it('should process successful payment', async () => {
+      const response = await request(app)
+        .post('/api/payments')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send({
+          amount: 1000, // $10.00 in cents
+          currency: 'usd',
+          paymentMethodId: testPaymentMethod.id,
+          customerId: testCustomer.id
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('paymentIntentId');
+      expect(response.body.status).toBe('succeeded');
+    });
+
+    it('should handle payment failures gracefully', async () => {
+      // Use a card that will be declined
+      const declinedCard = await stripe.paymentMethods.create({
+        type: 'card',
+        card: {
+          number: '4000000000000002', // Stripe test card that always declines
+          exp_month: 12,
+          exp_year: 2025,
+          cvc: '123'
+        }
+      });
+
+      const response = await request(app)
+        .post('/api/payments')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send({
+          amount: 1000,
+          currency: 'usd',
+          paymentMethodId: declinedCard.id,
+          customerId: testCustomer.id
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should process refunds correctly', async () => {
+      // First, create a successful payment
+      const paymentResponse = await request(app)
+        .post('/api/payments')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send({
+          amount: 1000,
+          currency: 'usd',
+          paymentMethodId: testPaymentMethod.id,
+          customerId: testCustomer.id
+        });
+
+      const paymentIntentId = paymentResponse.body.paymentIntentId;
+
+      // Then refund it
+      const refundResponse = await request(app)
+        .post('/api/refunds')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send({
+          paymentIntentId,
+          amount: 1000
+        });
+
+      expect(refundResponse.status).toBe(200);
+      expect(refundResponse.body).toHaveProperty('refundId');
+    });
+  });
+
+  describe('Webhook Processing', () => {
+    it('should handle payment success webhooks', async () => {
+      const webhookPayload = {
+        type: 'payment_intent.succeeded',
+        data: {
+          object: {
+            id: 'pi_test_123',
+            amount: 1000,
+            status: 'succeeded'
+          }
+        }
+      };
+
+      const response = await request(app)
+        .post('/api/webhooks/stripe')
+        .send(webhookPayload);
+
+      expect(response.status).toBe(200);
+    });
+  });
+});
+
+async function generateTestToken() {
+  // Implement test token generation for authenticated requests
+  return 'test-auth-token';
+}`;
+  }
+
+  /**
+   * Generate data processing integration test template
+   */
+  private generateDataProcessingIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+describe('${test.criticalPath} - Data Processing Integration', () => {
+  const testDataDir = path.join(__dirname, '../test-data');
+  const outputDir = path.join(__dirname, '../test-output');
+
+  beforeEach(async () => {
+    // Set up test directories and sample data
+    await fs.mkdir(testDataDir, { recursive: true });
+    await fs.mkdir(outputDir, { recursive: true });
+    await createSampleTestData();
+  });
+
+  afterEach(async () => {
+    // Clean up test files
+    await cleanupTestData();
+  });
+
+  describe('Data Import', () => {
+    it('should import CSV data correctly', async () => {
+      const csvFilePath = path.join(testDataDir, 'sample.csv');
+
+      const result = await importCsvData(csvFilePath);
+
+      expect(result.success).toBe(true);
+      expect(result.recordsProcessed).toBeGreaterThan(0);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should handle malformed CSV data gracefully', async () => {
+      const malformedCsvPath = path.join(testDataDir, 'malformed.csv');
+      await fs.writeFile(malformedCsvPath, 'invalid,csv,data\\nwith"bad"formatting');
+
+      const result = await importCsvData(malformedCsvPath);
+
+      expect(result.success).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Data Transformation', () => {
+    it('should transform data according to business rules', async () => {
+      const inputData = [
+        { name: 'John', age: '25', email: 'john@example.com' },
+        { name: 'Jane', age: '30', email: 'jane@example.com' }
+      ];
+
+      const transformedData = await transformUserData(inputData);
+
+      expect(transformedData).toHaveLength(2);
+      expect(transformedData[0]).toHaveProperty('id');
+      expect(transformedData[0].age).toBe(25); // Should be converted to number
+      expect(transformedData[0].createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should validate data during transformation', async () => {
+      const invalidData = [
+        { name: '', age: 'invalid', email: 'not-an-email' }
+      ];
+
+      await expect(transformUserData(invalidData))
+        .rejects.toThrow('Validation failed');
+    });
+  });
+
+  describe('Data Export', () => {
+    it('should export data to PDF correctly', async () => {
+      const sampleData = [
+        { id: 1, name: 'John', email: 'john@example.com' },
+        { id: 2, name: 'Jane', email: 'jane@example.com' }
+      ];
+
+      const pdfPath = path.join(outputDir, 'export.pdf');
+      await exportToPdf(sampleData, pdfPath);
+
+      const pdfExists = await fs.access(pdfPath).then(() => true).catch(() => false);
+      expect(pdfExists).toBe(true);
+
+      const stats = await fs.stat(pdfPath);
+      expect(stats.size).toBeGreaterThan(0);
+    });
+  });
+});
+
+async function createSampleTestData() {
+  const csvData = \`name,age,email
+John Doe,25,john@example.com
+Jane Smith,30,jane@example.com
+Bob Johnson,35,bob@example.com\`;
+
+  await fs.writeFile(path.join(testDataDir, 'sample.csv'), csvData);
+}
+
+async function cleanupTestData() {
+  // Implementation depends on your cleanup strategy
+}
+
+// Mock implementations - replace with actual imports
+async function importCsvData(filePath: string) {
+  // Implement CSV import logic
+  return { success: true, recordsProcessed: 3, errors: [] };
+}
+
+async function transformUserData(data: any[]) {
+  // Implement data transformation logic
+  return data.map(item => ({
+    ...item,
+    id: Math.random().toString(),
+    age: parseInt(item.age),
+    createdAt: new Date()
+  }));
+}
+
+async function exportToPdf(data: any[], outputPath: string) {
+  // Implement PDF export logic
+  await fs.writeFile(outputPath, 'mock pdf content');
+}`;
+  }
+
+  /**
+   * Generate API integration test template
+   */
+  private generateAPIIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import { app } from '../src/app'; // Adjust path as needed
+
+describe('${test.criticalPath} - API Integration', () => {
+  let authToken: string;
+  let testData: any[];
+
+  beforeEach(async () => {
+    // Set up test authentication and data
+    authToken = await generateTestToken();
+    testData = await seedTestData();
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    await cleanupTestData();
+  });
+
+  describe('API Endpoints', () => {
+    it('should return list of resources', async () => {
+      const response = await request(app)
+        .get('/api/resources')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBeGreaterThan(0);
+    });
+
+    it('should create new resource', async () => {
+      const newResource = {
+        name: 'Test Resource',
+        description: 'This is a test resource'
+      };
+
+      const response = await request(app)
+        .post('/api/resources')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send(newResource);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toHaveProperty('id');
+      expect(response.body.name).toBe(newResource.name);
+    });
+
+    it('should validate required fields', async () => {
+      const invalidResource = {
+        description: 'Missing name field'
+      };
+
+      const response = await request(app)
+        .post('/api/resources')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send(invalidResource);
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('errors');
+    });
+
+    it('should update existing resource', async () => {
+      const resourceId = testData[0].id;
+      const updateData = {
+        name: 'Updated Resource Name'
+      };
+
+      const response = await request(app)
+        .put(\`/api/resources/\${resourceId}\`)
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .send(updateData);
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe(updateData.name);
+    });
+
+    it('should delete resource', async () => {
+      const resourceId = testData[0].id;
+
+      const deleteResponse = await request(app)
+        .delete(\`/api/resources/\${resourceId}\`)
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(deleteResponse.status).toBe(204);
+
+      // Verify resource is deleted
+      const getResponse = await request(app)
+        .get(\`/api/resources/\${resourceId}\`)
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(getResponse.status).toBe(404);
+    });
+
+    it('should handle pagination correctly', async () => {
+      const response = await request(app)
+        .get('/api/resources?page=1&limit=5')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body).toHaveProperty('pagination');
+      expect(response.body.pagination).toHaveProperty('currentPage');
+      expect(response.body.pagination).toHaveProperty('totalPages');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should return 401 for unauthorized requests', async () => {
+      const response = await request(app)
+        .get('/api/resources');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 404 for non-existent resources', async () => {
+      const response = await request(app)
+        .get('/api/resources/non-existent-id')
+        .set('Authorization', \`Bearer \${authToken}\`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should handle malformed JSON gracefully', async () => {
+      const response = await request(app)
+        .post('/api/resources')
+        .set('Authorization', \`Bearer \${authToken}\`)
+        .set('Content-Type', 'application/json')
+        .send('{ invalid json }');
+
+      expect(response.status).toBe(400);
+    });
+  });
+});
+
+async function generateTestToken() {
+  // Implement test token generation
+  return 'test-jwt-token';
+}
+
+async function seedTestData() {
+  // Implement test data seeding
+  return [
+    { id: '1', name: 'Test Resource 1', description: 'First test resource' },
+    { id: '2', name: 'Test Resource 2', description: 'Second test resource' }
+  ];
+}
+
+async function cleanupTestData() {
+  // Implement test data cleanup
+}`;
+  }
+
+  /**
+   * Generate database integration test template
+   */
+  private generateDatabaseIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { getConnection, getRepository } from 'typeorm'; // Adjust based on your ORM
+
+describe('${test.criticalPath} - Database Integration', () => {
+  beforeEach(async () => {
+    // Set up test database and seed data
+    await seedTestDatabase();
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    await cleanupTestDatabase();
+  });
+
+  describe('Database Operations', () => {
+    it('should perform CRUD operations correctly', async () => {
+      // Create
+      const newRecord = await createTestRecord({
+        name: 'Test Record',
+        value: 'test-value'
+      });
+
+      expect(newRecord).toHaveProperty('id');
+      expect(newRecord.name).toBe('Test Record');
+
+      // Read
+      const fetchedRecord = await findTestRecord(newRecord.id);
+      expect(fetchedRecord).toBeDefined();
+      expect(fetchedRecord.name).toBe('Test Record');
+
+      // Update
+      const updatedRecord = await updateTestRecord(newRecord.id, {
+        name: 'Updated Record'
+      });
+      expect(updatedRecord.name).toBe('Updated Record');
+
+      // Delete
+      await deleteTestRecord(newRecord.id);
+      const deletedRecord = await findTestRecord(newRecord.id);
+      expect(deletedRecord).toBeNull();
+    });
+
+    it('should handle transactions correctly', async () => {
+      const connection = getConnection();
+      const queryRunner = connection.createQueryRunner();
+
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Perform multiple database operations
+        const record1 = await createTestRecordInTransaction(queryRunner, {
+          name: 'Record 1'
+        });
+        const record2 = await createTestRecordInTransaction(queryRunner, {
+          name: 'Record 2'
+        });
+
+        await queryRunner.commitTransaction();
+
+        // Verify both records were created
+        const record1Check = await findTestRecord(record1.id);
+        const record2Check = await findTestRecord(record2.id);
+        expect(record1Check).toBeDefined();
+        expect(record2Check).toBeDefined();
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    });
+
+    it('should roll back transactions on failure', async () => {
+      const connection = getConnection();
+      const queryRunner = connection.createQueryRunner();
+
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Create a record
+        const record = await createTestRecordInTransaction(queryRunner, {
+          name: 'Will be rolled back'
+        });
+
+        // Simulate an error
+        throw new Error('Simulated transaction failure');
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+
+        // Verify record was not created due to rollback
+        const recordCheck = await findTestRecord('temp-id');
+        expect(recordCheck).toBeNull();
+      } finally {
+        await queryRunner.release();
+      }
+    });
+
+    it('should enforce database constraints', async () => {
+      // Test unique constraint
+      await createTestRecord({ name: 'Unique Name', email: 'unique@example.com' });
+
+      await expect(
+        createTestRecord({ name: 'Another Name', email: 'unique@example.com' })
+      ).rejects.toThrow(); // Should violate unique constraint
+
+      // Test foreign key constraint
+      await expect(
+        createTestRecordWithInvalidForeignKey()
+      ).rejects.toThrow();
+    });
+
+    it('should handle concurrent access correctly', async () => {
+      // Create a record
+      const record = await createTestRecord({ name: 'Concurrent Test', version: 1 });
+
+      // Simulate concurrent updates
+      const update1Promise = updateTestRecordWithOptimisticLocking(record.id, {
+        name: 'Update 1',
+        version: 1
+      });
+
+      const update2Promise = updateTestRecordWithOptimisticLocking(record.id, {
+        name: 'Update 2',
+        version: 1
+      });
+
+      // One should succeed, one should fail due to version conflict
+      const results = await Promise.allSettled([update1Promise, update2Promise]);
+
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const failureCount = results.filter(r => r.status === 'rejected').length;
+
+      expect(successCount).toBe(1);
+      expect(failureCount).toBe(1);
+    });
+  });
+});
+
+// Helper functions - implement based on your ORM and database setup
+async function seedTestDatabase() {
+  // Implement database seeding
+}
+
+async function cleanupTestDatabase() {
+  // Implement database cleanup
+}
+
+async function createTestRecord(data: any) {
+  // Implement record creation
+  return { id: 'test-id', ...data };
+}
+
+async function findTestRecord(id: string) {
+  // Implement record finding
+  return null;
+}
+
+async function updateTestRecord(id: string, data: any) {
+  // Implement record updating
+  return { id, ...data };
+}
+
+async function deleteTestRecord(id: string) {
+  // Implement record deletion
+}
+
+async function createTestRecordInTransaction(queryRunner: any, data: any) {
+  // Implement transactional record creation
+  return { id: 'transaction-id', ...data };
+}
+
+async function createTestRecordWithInvalidForeignKey() {
+  // Implement invalid foreign key test
+  throw new Error('Foreign key constraint violation');
+}
+
+async function updateTestRecordWithOptimisticLocking(id: string, data: any) {
+  // Implement optimistic locking update
+  return { id, ...data };
+}`;
+  }
+
+  /**
+   * Generate general integration test template
+   */
+  private generateGeneralIntegrationTemplate(testFileName: string, test: ProjectAnalysis['testAnalysis']['missingIntegrationTests'][0]): string {
+    return `# Create integration test: ${testFileName}
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+describe('${test.criticalPath} - Integration', () => {
+  beforeEach(async () => {
+    // Set up test environment
+    await setupTestEnvironment();
+  });
+
+  afterEach(async () => {
+    // Clean up test environment
+    await cleanupTestEnvironment();
+  });
+
+  describe('Component Integration', () => {
+    it('should integrate components correctly', async () => {
+      // Implement integration test logic
+      const result = await runIntegrationTest();
+
+      expect(result.success).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should handle error scenarios', async () => {
+      // Test error handling in integration
+      await expect(runFailingIntegrationTest())
+        .rejects.toThrow();
+    });
+  });
+});
+
+async function setupTestEnvironment() {
+  // Implement test setup
+}
+
+async function cleanupTestEnvironment() {
+  // Implement test cleanup
+}
+
+async function runIntegrationTest() {
+  // Implement integration test logic
+  return { success: true, errors: [] };
+}
+
+async function runFailingIntegrationTest() {
+  // Implement failing test scenario
+  throw new Error('Integration test failure');
+}`;
+  }
+
+  /**
+   * Generate authentication test setup instructions
+   */
+  private generateAuthTestSetup(): string {
+    return `# Authentication Test Environment Setup
+
+## 1. Install Test Dependencies
+npm install --save-dev @types/supertest supertest jsonwebtoken
+
+## 2. Configure Test Environment Variables
+Create \`.env.test\` file:
+\`\`\`
+NODE_ENV=test
+JWT_SECRET=test-jwt-secret-key
+JWT_EXPIRES_IN=1h
+DATABASE_URL=postgresql://test:test@localhost:5432/test_db
+\`\`\`
+
+## 3. Set up Test Database
+\`\`\`bash
+# Create test database
+createdb test_db
+
+# Run migrations for test database
+NODE_ENV=test npm run migrate
+\`\`\`
+
+## 4. Configure Test JWT Helper
+Create \`test/helpers/auth.ts\`:
+\`\`\`typescript
+import jwt from 'jsonwebtoken';
+
+export function generateTestToken(userId: string, permissions: string[] = []) {
+  return jwt.sign(
+    { userId, permissions },
+    process.env.JWT_SECRET!,
+    { expiresIn: '1h' }
+  );
+}
+
+export function createTestUser(overrides = {}) {
+  return {
+    id: 'test-user-id',
+    email: 'test@example.com',
+    name: 'Test User',
+    permissions: ['read', 'write'],
+    ...overrides
+  };
+}
+\`\`\`
+
+## 5. Add to vitest.config.ts
+\`\`\`typescript
+export default defineConfig({
+  test: {
+    env: {
+      NODE_ENV: 'test'
+    },
+    setupFiles: ['./test/setup.ts']
+  }
+});
+\`\`\``;
+  }
+
+  /**
+   * Generate payment test setup instructions
+   */
+  private generatePaymentTestSetup(): string {
+    return `# Payment Test Environment Setup
+
+## 1. Install Stripe Test Dependencies
+npm install --save-dev stripe
+
+## 2. Configure Stripe Test Environment
+Create \`.env.test\` file:
+\`\`\`
+NODE_ENV=test
+STRIPE_TEST_SECRET_KEY=sk_test_your_test_key_here
+STRIPE_TEST_PUBLISHABLE_KEY=pk_test_your_publishable_key_here
+STRIPE_WEBHOOK_SECRET=whsec_test_webhook_secret
+\`\`\`
+
+## 3. Set up Stripe Test Helpers
+Create \`test/helpers/stripe.ts\`:
+\`\`\`typescript
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_TEST_SECRET_KEY!, {
+  apiVersion: '2023-10-16'
+});
+
+export const TEST_CARDS = {
+  VALID: '4242424242424242',
+  DECLINED: '4000000000000002',
+  INSUFFICIENT_FUNDS: '4000000000009995',
+  EXPIRED: '4000000000000069',
+  PROCESSING_ERROR: '4000000000000119'
+};
+
+export async function createTestCustomer(email = 'test@example.com') {
+  return stripe.customers.create({
+    email,
+    name: 'Test Customer',
+    description: 'Test customer for integration tests'
+  });
+}
+
+export async function createTestPaymentMethod(cardNumber = TEST_CARDS.VALID) {
+  return stripe.paymentMethods.create({
+    type: 'card',
+    card: {
+      number: cardNumber,
+      exp_month: 12,
+      exp_year: 2025,
+      cvc: '123'
+    }
+  });
+}
+
+export function createWebhookEvent(type: string, data: any) {
+  return {
+    id: 'evt_test_' + Math.random().toString(36),
+    object: 'event',
+    type,
+    data: { object: data },
+    created: Math.floor(Date.now() / 1000)
+  };
+}
+\`\`\`
+
+## 4. Add Webhook Testing
+Create \`test/helpers/webhook.ts\`:
+\`\`\`typescript
+import { Request, Response } from 'express';
+
+export function createMockWebhookRequest(payload: any, signature: string): Partial<Request> {
+  return {
+    body: payload,
+    headers: {
+      'stripe-signature': signature
+    },
+    rawBody: JSON.stringify(payload)
+  };
+}
+
+export function createMockResponse(): Partial<Response> {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.send = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  return res;
+}
+\`\`\`
+
+## 5. Safety Guidelines
+- ALWAYS use test mode keys (sk_test_... / pk_test_...)
+- Never use real payment methods in tests
+- Use Stripe's test card numbers only
+- Clean up test data after each test run
+- Monitor Stripe test dashboard for test activity`;
+  }
+
+  /**
+   * Generate data processing test setup instructions
+   */
+  private generateDataTestSetup(): string {
+    return `# Data Processing Test Environment Setup
+
+## 1. Install Test Data Dependencies
+npm install --save-dev csv-parser csv-writer puppeteer jspdf
+
+## 2. Create Test Data Directory Structure
+\`\`\`
+test/
+├── fixtures/
+│   ├── sample.csv
+│   ├── large-dataset.csv
+│   ├── malformed.csv
+│   └── empty.csv
+├── output/
+└── helpers/
+    ├── data-generators.ts
+    └── file-helpers.ts
+\`\`\`
+
+## 3. Set up Test Data Generators
+Create \`test/helpers/data-generators.ts\`:
+\`\`\`typescript
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
+
+export async function generateCSV(filename: string, rows: number = 100) {
+  const headers = 'id,name,email,age,department\\n';
+  const data = Array.from({ length: rows }, (_, i) =>
+    \`\${i + 1},User \${i + 1},user\${i + 1}@example.com,\${20 + (i % 40)},Department \${i % 5}\`
+  ).join('\\n');
+
+  const filePath = join(__dirname, '../fixtures', filename);
+  await writeFile(filePath, headers + data);
+  return filePath;
+}
+
+export async function generateMalformedCSV(filename: string) {
+  const malformedData = \`id,name,email,age
+1,"John Doe",john@example.com,25
+2,Jane "Smith,jane@example.com,30
+3,Bob,bob@example,invalid_age
+4,,,\`;
+
+  const filePath = join(__dirname, '../fixtures', filename);
+  await writeFile(filePath, malformedData);
+  return filePath;
+}
+
+export function generateLargeDataset(size: number = 10000) {
+  return Array.from({ length: size }, (_, i) => ({
+    id: i + 1,
+    name: \`User \${i + 1}\`,
+    email: \`user\${i + 1}@example.com\`,
+    createdAt: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000),
+    isActive: Math.random() > 0.3
+  }));
+}
+\`\`\`
+
+## 4. Set up File Operation Helpers
+Create \`test/helpers/file-helpers.ts\`:
+\`\`\`typescript
+import { unlink, access, mkdir, rmdir } from 'fs/promises';
+import { join } from 'path';
+
+export async function cleanupTestFiles(directory: string) {
+  try {
+    const files = await readdir(directory);
+    await Promise.all(
+      files.map(file => unlink(join(directory, file)))
+    );
+  } catch (error) {
+    // Directory doesn't exist or is empty
+  }
+}
+
+export async function ensureTestDirectories() {
+  const dirs = ['fixtures', 'output', 'temp'];
+  for (const dir of dirs) {
+    const dirPath = join(__dirname, '..', dir);
+    try {
+      await access(dirPath);
+    } catch {
+      await mkdir(dirPath, { recursive: true });
+    }
+  }
+}
+
+export async function verifyFileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+\`\`\`
+
+## 5. Performance Testing Utilities
+Create \`test/helpers/performance.ts\`:
+\`\`\`typescript
+export class PerformanceTracker {
+  private startTime: number;
+  private endTime: number;
+
+  start() {
+    this.startTime = performance.now();
+  }
+
+  stop() {
+    this.endTime = performance.now();
+    return this.endTime - this.startTime;
+  }
+
+  getExecutionTime(): number {
+    return this.endTime - this.startTime;
+  }
+}
+
+export function expectExecutionTime(
+  actualTime: number,
+  maxExpectedTime: number,
+  operation: string
+) {
+  if (actualTime > maxExpectedTime) {
+    throw new Error(
+      \`\${operation} took \${actualTime}ms, expected < \${maxExpectedTime}ms\`
+    );
+  }
+}
+\`\`\`
+
+## 6. Test Configuration
+Add to vitest.config.ts:
+\`\`\`typescript
+export default defineConfig({
+  test: {
+    globalSetup: './test/setup.ts',
+    testTimeout: 30000, // Longer timeout for data processing
+    hookTimeout: 10000
+  }
+});
+\`\`\``;
+  }
+
+  /**
+   * Generate integration test infrastructure setup
+   */
+  private generateIntegrationTestInfrastructure(): string {
+    return `# Integration Test Infrastructure Setup
+
+## 1. Test Database Configuration
+Create \`test/helpers/database.ts\`:
+\`\`\`typescript
+import { DataSource } from 'typeorm'; // Adjust based on your ORM
+
+let testConnection: DataSource;
+
+export async function setupTestDatabase() {
+  testConnection = new DataSource({
+    type: 'postgresql', // Adjust based on your database
+    host: process.env.TEST_DB_HOST || 'localhost',
+    port: parseInt(process.env.TEST_DB_PORT || '5432'),
+    username: process.env.TEST_DB_USER || 'test',
+    password: process.env.TEST_DB_PASSWORD || 'test',
+    database: process.env.TEST_DB_NAME || 'test_db',
+    synchronize: true,
+    dropSchema: true,
+    entities: [/* your entities */],
+    logging: false
+  });
+
+  await testConnection.initialize();
+  return testConnection;
+}
+
+export async function teardownTestDatabase() {
+  if (testConnection?.isInitialized) {
+    await testConnection.destroy();
+  }
+}
+
+export async function seedDatabase() {
+  // Implement database seeding
+}
+
+export async function cleanDatabase() {
+  // Clean all tables while preserving schema
+  const entities = testConnection.entityMetadatas;
+
+  for (const entity of entities) {
+    const repository = testConnection.getRepository(entity.name);
+    await repository.delete({});
+  }
+}
+\`\`\`
+
+## 2. Test Server Setup
+Create \`test/helpers/server.ts\`:
+\`\`\`typescript
+import { Express } from 'express';
+import { createApp } from '../../src/app'; // Adjust path
+
+let testApp: Express;
+let server: any;
+
+export async function startTestServer(): Promise<Express> {
+  testApp = await createApp();
+
+  return new Promise((resolve) => {
+    server = testApp.listen(0, () => {
+      resolve(testApp);
+    });
+  });
+}
+
+export async function stopTestServer() {
+  if (server) {
+    return new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
+}
+
+export function getTestApp(): Express {
+  return testApp;
+}
+\`\`\`
+
+## 3. Global Test Setup
+Create \`test/setup.ts\`:
+\`\`\`typescript
+import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { setupTestDatabase, teardownTestDatabase, cleanDatabase } from './helpers/database';
+import { startTestServer, stopTestServer } from './helpers/server';
+
+beforeAll(async () => {
+  // Set up test environment
+  await setupTestDatabase();
+  await startTestServer();
+});
+
+afterAll(async () => {
+  // Clean up test environment
+  await stopTestServer();
+  await teardownTestDatabase();
+});
+
+beforeEach(async () => {
+  // Clean database before each test
+  await cleanDatabase();
+});
+
+afterEach(async () => {
+  // Any cleanup needed after each test
+});
+\`\`\`
+
+## 4. Environment Configuration
+Create \`.env.test\`:
+\`\`\`
+NODE_ENV=test
+LOG_LEVEL=error
+TEST_DB_HOST=localhost
+TEST_DB_PORT=5432
+TEST_DB_USER=test
+TEST_DB_PASSWORD=test
+TEST_DB_NAME=test_db
+JWT_SECRET=test-jwt-secret
+STRIPE_SECRET_KEY=sk_test_...
+REDIS_URL=redis://localhost:6379/1
+\`\`\`
+
+## 5. Docker Test Environment (Optional)
+Create \`docker-compose.test.yml\`:
+\`\`\`yaml
+version: '3.8'
+services:
+  test-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  test-redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    tmpfs:
+      - /data
+\`\`\`
+
+## 6. Test Commands
+Add to package.json:
+\`\`\`json
+{
+  "scripts": {
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:watch": "vitest --config vitest.integration.config.ts",
+    "test:integration:ui": "vitest --ui --config vitest.integration.config.ts",
+    "test:db:setup": "docker-compose -f docker-compose.test.yml up -d",
+    "test:db:teardown": "docker-compose -f docker-compose.test.yml down -v"
+  }
+}
+\`\`\``;
   }
 }

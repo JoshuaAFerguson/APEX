@@ -2110,20 +2110,91 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    * database operations, and external service calls
    */
   private async identifyCriticalPaths(): Promise<Array<{
-    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction' | 'authentication' | 'payment' | 'data_processing';
     file: string;
     description: string;
     keywords: string[];
+    criticality: 'critical' | 'high' | 'medium' | 'low';
   }>> {
     const criticalPaths: Array<{
-      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction' | 'authentication' | 'payment' | 'data_processing';
       file: string;
       description: string;
       keywords: string[];
+      criticality: 'critical' | 'high' | 'medium' | 'low';
     }> = [];
 
     try {
-      // Find API endpoints (REST routes, GraphQL resolvers, etc.)
+      // Find authentication-related files (highest priority)
+      const { stdout: authFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "\\(auth\\|login\\|password\\|jwt\\|token\\|session\\|authenticate\\|authorize\\)" | head -10'
+      );
+      const authFileList = authFiles.split('\n').filter(line => line.trim());
+
+      for (const file of authFileList) {
+        try {
+          const content = await this.readFileContent(file);
+          if (content.match(/(login|authenticate|authorize|jwt|token|session|password|auth)/i)) {
+            criticalPaths.push({
+              type: 'authentication',
+              file: file.replace(/^\.\//, ''),
+              description: 'Authentication and authorization logic',
+              keywords: ['auth', 'login', 'password', 'jwt', 'token', 'session'],
+              criticality: 'critical'
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Find payment-related files (critical priority)
+      const { stdout: paymentFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "\\(payment\\|billing\\|stripe\\|paypal\\|transaction\\|charge\\|invoice\\|refund\\)" | head -10'
+      );
+      const paymentFileList = paymentFiles.split('\n').filter(line => line.trim());
+
+      for (const file of paymentFileList) {
+        try {
+          const content = await this.readFileContent(file);
+          if (content.match(/(payment|billing|stripe|paypal|transaction|charge|invoice|refund)/i)) {
+            criticalPaths.push({
+              type: 'payment',
+              file: file.replace(/^\.\//, ''),
+              description: 'Payment processing and billing logic',
+              keywords: ['payment', 'billing', 'stripe', 'paypal', 'transaction'],
+              criticality: 'critical'
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Find data processing files (high priority)
+      const { stdout: dataFiles } = await this.execAsync(
+        'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "\\(process.*data\\|import.*csv\\|export.*pdf\\|transform\\|aggregate\\|compute\\)" | head -10'
+      );
+      const dataFileList = dataFiles.split('\n').filter(line => line.trim());
+
+      for (const file of dataFileList) {
+        try {
+          const content = await this.readFileContent(file);
+          if (content.match(/(processData|importCsv|exportPdf|transform|aggregate|compute)/i)) {
+            criticalPaths.push({
+              type: 'data_processing',
+              file: file.replace(/^\.\//, ''),
+              description: 'Data processing and transformation logic',
+              keywords: ['data', 'process', 'transform', 'import', 'export'],
+              criticality: 'high'
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Find API endpoints (high priority)
       const { stdout: apiFiles } = await this.execAsync(
         'find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -l "app\\." || echo ""'
       );
@@ -2132,6 +2203,17 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       for (const file of apiFileList.slice(0, 10)) {
         try {
           const content = await this.readFileContent(file);
+          const fileName = file.toLowerCase();
+
+          // Determine criticality based on file content and name
+          let criticality: 'critical' | 'high' | 'medium' | 'low' = 'high';
+          if (fileName.includes('auth') || content.match(/(auth|login|password|jwt|token)/i)) {
+            criticality = 'critical';
+          } else if (fileName.includes('payment') || content.match(/(payment|billing|charge)/i)) {
+            criticality = 'critical';
+          } else if (fileName.includes('user') || fileName.includes('admin') || content.match(/(user|admin|profile)/i)) {
+            criticality = 'high';
+          }
 
           // Check for Express routes
           if (content.match(/app\.(get|post|put|patch|delete|use)\(/)) {
@@ -2139,7 +2221,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               type: 'api_endpoint',
               file: file.replace(/^\.\//, ''),
               description: 'REST API endpoint definitions',
-              keywords: ['express', 'router', 'endpoint', 'route']
+              keywords: ['express', 'router', 'endpoint', 'route'],
+              criticality
             });
           }
 
@@ -2149,7 +2232,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               type: 'api_endpoint',
               file: file.replace(/^\.\//, ''),
               description: 'GraphQL resolver functions',
-              keywords: ['graphql', 'resolver', 'mutation', 'query']
+              keywords: ['graphql', 'resolver', 'mutation', 'query'],
+              criticality
             });
           }
         } catch {
@@ -2166,6 +2250,19 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       for (const file of dbFileList) {
         try {
           const content = await this.readFileContent(file);
+          const fileName = file.toLowerCase();
+
+          // Determine criticality for database operations
+          let criticality: 'critical' | 'high' | 'medium' | 'low' = 'high';
+          if (fileName.includes('user') || content.match(/(user|account|profile)/i)) {
+            criticality = 'critical';
+          } else if (fileName.includes('payment') || content.match(/(payment|transaction|billing)/i)) {
+            criticality = 'critical';
+          } else if (fileName.includes('auth') || content.match(/(auth|login|session)/i)) {
+            criticality = 'critical';
+          } else if (content.match(/(migration|schema|seed)/i)) {
+            criticality = 'high';
+          }
 
           // Check for ORM operations
           if (content.match(/(findOne|findMany|create|update|delete|save|query|execute)/)) {
@@ -2173,7 +2270,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               type: 'database_operation',
               file: file.replace(/^\.\//, ''),
               description: 'Database query and transaction operations',
-              keywords: ['database', 'query', 'transaction', 'orm']
+              keywords: ['database', 'query', 'transaction', 'orm'],
+              criticality
             });
           }
 
@@ -2183,7 +2281,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               type: 'database_operation',
               file: file.replace(/^\.\//, ''),
               description: 'Raw SQL operations',
-              keywords: ['sql', 'database', 'raw query']
+              keywords: ['sql', 'database', 'raw query'],
+              criticality
             });
           }
         } catch {
@@ -2200,6 +2299,19 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       for (const file of serviceFileList) {
         try {
           const content = await this.readFileContent(file);
+          const fileName = file.toLowerCase();
+
+          // Determine criticality for external services
+          let criticality: 'critical' | 'high' | 'medium' | 'low' = 'high';
+          if (fileName.includes('payment') || content.match(/(stripe|paypal|payment|billing)/i)) {
+            criticality = 'critical';
+          } else if (fileName.includes('auth') || content.match(/(oauth|auth|login)/i)) {
+            criticality = 'critical';
+          } else if (content.match(/(email|sms|notification)/i)) {
+            criticality = 'high';
+          } else if (content.match(/(analytics|logging|monitoring)/i)) {
+            criticality = 'medium';
+          }
 
           // Check for HTTP client calls
           if (content.match(/(fetch\(|axios\.|http\.|request\()/)) {
@@ -2207,7 +2319,8 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
               type: 'external_service',
               file: file.replace(/^\.\//, ''),
               description: 'External API and service calls',
-              keywords: ['http', 'api', 'external', 'service']
+              keywords: ['http', 'api', 'external', 'service'],
+              criticality
             });
           }
         } catch {
@@ -2226,10 +2339,11 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    * Checks for corresponding integration test files for critical paths
    */
   private async checkIntegrationTestCoverage(criticalPaths: Array<{
-    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+    type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction' | 'authentication' | 'payment' | 'data_processing';
     file: string;
     description: string;
     keywords: string[];
+    criticality: 'critical' | 'high' | 'medium' | 'low';
   }>): Promise<Map<string, boolean>> {
     const coverageMap = new Map<string, boolean>();
 
@@ -2337,10 +2451,11 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    */
   private buildMissingTestReports(
     criticalPaths: Array<{
-      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction';
+      type: 'api_endpoint' | 'database_operation' | 'external_service' | 'component_interaction' | 'authentication' | 'payment' | 'data_processing';
       file: string;
       description: string;
       keywords: string[];
+      criticality: 'critical' | 'high' | 'medium' | 'low';
     }>,
     coverageMap: Map<string, boolean>
   ): ProjectAnalysis['testAnalysis']['missingIntegrationTests'] {
@@ -2350,36 +2465,53 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       const hasCoverage = coverageMap.get(path.file) || false;
 
       if (!hasCoverage) {
-        let priority: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+        // Use the criticality level from the path analysis, with type-specific adjustments
+        let priority: 'low' | 'medium' | 'high' | 'critical' = path.criticality;
         let description = '';
 
         switch (path.type) {
+          case 'authentication':
+            priority = 'critical'; // Always critical for auth
+            description = `Missing integration tests for authentication logic in ${path.file}. Should test login flows, token validation, session management, and security boundaries.`;
+            break;
+          case 'payment':
+            priority = 'critical'; // Always critical for payments
+            description = `Missing integration tests for payment processing in ${path.file}. Should test transaction flows, payment validation, error handling, and refund scenarios.`;
+            break;
+          case 'data_processing':
+            // Use detected criticality level
+            description = `Missing integration tests for data processing in ${path.file}. Should test data transformation, validation, import/export flows, and error handling.`;
+            break;
           case 'api_endpoint':
-            priority = 'high';
-            description = `Missing integration tests for API endpoints in ${path.file}. Should test request/response flow, status codes, and error handling.`;
+            // Use detected criticality level (critical for auth/payment, high for others)
+            description = `Missing integration tests for API endpoints in ${path.file}. Should test request/response flow, status codes, authentication, and error handling.`;
             break;
           case 'database_operation':
-            priority = 'high';
-            description = `Missing integration tests for database operations in ${path.file}. Should test data persistence, transaction integrity, and rollback scenarios.`;
+            // Use detected criticality level (critical for user/payment/auth data)
+            description = `Missing integration tests for database operations in ${path.file}. Should test data persistence, transaction integrity, rollback scenarios, and constraint validation.`;
             break;
           case 'external_service':
-            priority = 'critical';
-            description = `Missing integration tests for external service calls in ${path.file}. Should test service integration, error handling, and fallback mechanisms.`;
+            // Use detected criticality level (critical for payment/auth services)
+            description = `Missing integration tests for external service calls in ${path.file}. Should test service integration, error handling, fallback mechanisms, and timeout scenarios.`;
             break;
           case 'component_interaction':
-            priority = 'medium';
-            description = `Missing integration tests for component interactions in ${path.file}. Should test inter-component communication and data flow.`;
+            priority = priority || 'medium'; // Default to medium if not set
+            description = `Missing integration tests for component interactions in ${path.file}. Should test inter-component communication, data flow, and service dependencies.`;
             break;
         }
 
         missingTests.push({
-          criticalPath: `${path.type.replace('_', ' ')} integration in ${path.file}`,
+          criticalPath: `${path.type.replace(/_/g, ' ')} integration in ${path.file}`,
           description,
           priority,
           relatedFiles: [path.file]
         });
       }
     }
+
+    // Sort by priority: critical > high > medium > low
+    const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+    missingTests.sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
 
     return missingTests;
   }
