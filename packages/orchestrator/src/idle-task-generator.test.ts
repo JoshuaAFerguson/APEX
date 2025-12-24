@@ -8,12 +8,12 @@ import {
   TaskCandidate,
   StrategyAnalyzer,
 } from './idle-task-generator';
-import { IdleTaskType, StrategyWeights } from '@apex/core';
+import { IdleTaskType, StrategyWeights } from '@apexcli/core';
 import type { ProjectAnalysis } from './idle-processor';
 
 // Mock generateTaskId to produce predictable IDs
-vi.mock('@apex/core', async () => {
-  const actual = await vi.importActual('@apex/core');
+vi.mock('@apexcli/core', async () => {
+  const actual = await vi.importActual('@apexcli/core');
   let counter = 0;
   return {
     ...actual,

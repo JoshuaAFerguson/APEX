@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IdleTaskGenerator } from './idle-task-generator';
 import type { ProjectAnalysis, IdleTask } from './idle-processor';
-import { StrategyWeights, IdleTaskType } from '@apex/core';
+import { StrategyWeights, IdleTaskType } from '@apexcli/core';
 
 // Mock generateTaskId to produce predictable IDs
-vi.mock('@apex/core', async () => {
-  const actual = await vi.importActual('@apex/core');
+vi.mock('@apexcli/core', async () => {
+  const actual = await vi.importActual('@apexcli/core');
   let counter = 0;
   return {
     ...actual,
