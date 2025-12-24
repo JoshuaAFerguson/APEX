@@ -190,24 +190,74 @@ export class TestsAnalyzer extends BaseAnalyzer {
   private createAntiPatternTaskCandidates(antiPatterns: ProjectAnalysis['testAnalysis']['antiPatterns']): TaskCandidate[] {
     const candidates: TaskCandidate[] = [];
 
-    // Group by severity
-    const bySeverity = this.groupAntiPatternsBySeverity(antiPatterns);
+    // Group by type for more targeted task generation
+    const byType = this.groupAntiPatternsByType(antiPatterns);
 
-    // High severity anti-patterns get individual tasks
-    if (bySeverity.high.length > 0) {
-      for (const pattern of bySeverity.high) {
-        candidates.push(this.createAntiPatternTask(pattern, 'high', 0.8));
+    // Prioritize assertion-less tests highest (critical anti-pattern)
+    if (byType['no-assertion'] && byType['no-assertion'].length > 0) {
+      for (const pattern of byType['no-assertion']) {
+        candidates.push(this.createAntiPatternTask(pattern, 'urgent', 0.95));
       }
     }
 
-    // Medium severity anti-patterns
-    if (bySeverity.medium.length > 0) {
-      candidates.push(this.createGroupedAntiPatternTask(bySeverity.medium, 'normal', 0.6));
+    // Handle other high-priority anti-patterns individually
+    const highPriorityTypes = ['flaky-test', 'empty-test', 'brittle-test'] as const;
+    for (const type of highPriorityTypes) {
+      if (byType[type] && byType[type].length > 0) {
+        for (const pattern of byType[type]) {
+          const priority = pattern.severity === 'high' ? 'urgent' : 'high';
+          const score = pattern.severity === 'high' ? 0.9 : 0.8;
+          candidates.push(this.createAntiPatternTask(pattern, priority, score));
+        }
+      }
     }
 
-    // Low severity anti-patterns
-    if (bySeverity.low.length > 0) {
-      candidates.push(this.createGroupedAntiPatternTask(bySeverity.low, 'low', 0.4));
+    // Group medium-priority anti-patterns by type
+    const mediumPriorityTypes = ['slow-test', 'test-code-duplication', 'assertion-roulette', 'mystery-guest'] as const;
+    for (const type of mediumPriorityTypes) {
+      if (byType[type] && byType[type].length > 0) {
+        if (byType[type].length === 1) {
+          // Individual task for single occurrence
+          candidates.push(this.createAntiPatternTask(byType[type][0], 'normal', 0.6));
+        } else {
+          // Grouped task for multiple occurrences
+          candidates.push(this.createGroupedAntiPatternTaskByType(byType[type], type, 'normal', 0.6));
+        }
+      }
+    }
+
+    // Group low-priority anti-patterns
+    const lowPriorityTypes = ['commented-out', 'console-only', 'hardcoded-timeout', 'test-pollution', 'eager-test'] as const;
+    const lowPriorityPatterns = lowPriorityTypes.flatMap(type => byType[type] || []);
+    if (lowPriorityPatterns.length > 0) {
+      candidates.push(this.createGroupedAntiPatternTask(lowPriorityPatterns, 'low', 0.4));
+    }
+
+    // Also maintain backwards compatibility with severity-based grouping for any remaining patterns
+    const remainingPatterns = antiPatterns.filter(pattern =>
+      !['no-assertion', 'flaky-test', 'empty-test', 'brittle-test', 'slow-test', 'test-code-duplication',
+        'assertion-roulette', 'mystery-guest', 'commented-out', 'console-only', 'hardcoded-timeout',
+        'test-pollution', 'eager-test'].includes(pattern.type)
+    );
+
+    if (remainingPatterns.length > 0) {
+      const bySeverity = this.groupAntiPatternsBySeverity(remainingPatterns);
+
+      // High severity anti-patterns get individual tasks
+      if (bySeverity.high.length > 0) {
+        for (const pattern of bySeverity.high) {
+          candidates.push(this.createAntiPatternTask(pattern, 'high', 0.8));
+        }
+      }
+
+      // Medium and low severity anti-patterns
+      if (bySeverity.medium.length > 0) {
+        candidates.push(this.createGroupedAntiPatternTask(bySeverity.medium, 'normal', 0.6));
+      }
+
+      if (bySeverity.low.length > 0) {
+        candidates.push(this.createGroupedAntiPatternTask(bySeverity.low, 'low', 0.4));
+      }
     }
 
     return candidates;
@@ -323,6 +373,22 @@ export class TestsAnalyzer extends BaseAnalyzer {
 
     for (const pattern of antiPatterns) {
       grouped[pattern.severity].push(pattern);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Group anti-patterns by type for more targeted task generation
+   */
+  private groupAntiPatternsByType(antiPatterns: ProjectAnalysis['testAnalysis']['antiPatterns']): Record<string, typeof antiPatterns> {
+    const grouped: Record<string, typeof antiPatterns> = {};
+
+    for (const pattern of antiPatterns) {
+      if (!grouped[pattern.type]) {
+        grouped[pattern.type] = [];
+      }
+      grouped[pattern.type].push(pattern);
     }
 
     return grouped;
@@ -551,6 +617,34 @@ export class TestsAnalyzer extends BaseAnalyzer {
         rationale: `${count} testing anti-patterns are making tests harder to maintain and less reliable`,
         score,
         remediationSuggestions: this.buildGroupedAntiPatternsRemediation(patterns),
+      }
+    );
+  }
+
+  /**
+   * Create grouped anti-patterns task by specific type
+   */
+  private createGroupedAntiPatternTaskByType(
+    patterns: ProjectAnalysis['testAnalysis']['antiPatterns'],
+    type: string,
+    priority: 'urgent' | 'high' | 'normal' | 'low',
+    score: number
+  ): TaskCandidate {
+    const count = patterns.length;
+    const filesList = patterns.slice(0, 3).map(p => this.getShortFileName(p.file)).join(', ');
+    const hasMore = patterns.length > 3;
+
+    return this.createCandidate(
+      `anti-patterns-${this.makeFilenameSafe(type)}-group`,
+      `Fix ${count} ${this.formatAntiPatternType(type)} Anti-Patterns`,
+      `Fix ${count} ${this.formatAntiPatternType(type)} anti-patterns in: ${filesList}${hasMore ? '...' : ''}`,
+      {
+        priority,
+        effort: count > 10 ? 'high' : count > 5 ? 'medium' : 'low',
+        workflow: 'testing',
+        rationale: `${count} ${this.formatAntiPatternType(type)} anti-patterns are affecting test quality and reliability`,
+        score,
+        remediationSuggestions: this.buildTypeSpecificAntiPatternRemediation(patterns, type),
       }
     );
   }
@@ -872,14 +966,67 @@ export class TestsAnalyzer extends BaseAnalyzer {
 
     // Type-specific suggestions
     switch (pattern.type) {
+      case 'no-assertion':
+        suggestions.push({
+          type: 'testing',
+          description: `Add assertions to test at ${this.getShortFileName(pattern.file)}:${pattern.line}`,
+          priority: 'critical',
+          expectedOutcome: 'Test validates expected behavior and outcomes',
+          warning: 'Tests without assertions provide no value and can hide bugs',
+          command: `# Add meaningful assertions like:\nexpect(result).toBe(expectedValue);\nexpect(mockFunction).toHaveBeenCalledWith(args);`
+        });
+        break;
+
+      case 'empty-test':
+        suggestions.push({
+          type: 'testing',
+          description: `Implement test logic at ${this.getShortFileName(pattern.file)}:${pattern.line}`,
+          priority: 'high',
+          expectedOutcome: 'Test has meaningful implementation',
+          command: `# Replace empty test with:\nit('should do something specific', () => {\n  // Arrange: set up test data\n  // Act: execute the code under test\n  // Assert: verify the results\n});`
+        });
+        break;
+
+      case 'commented-out':
+        suggestions.push({
+          type: 'manual_review',
+          description: `Review and either fix or remove commented test at ${this.getShortFileName(pattern.file)}:${pattern.line}`,
+          priority: 'medium',
+          expectedOutcome: 'Commented test is either properly implemented or removed',
+          command: `# Either uncomment and fix:\n// it('should work', () => { /* fix implementation */ });\n# Or remove if no longer needed`
+        });
+        break;
+
+      case 'console-only':
+        suggestions.push({
+          type: 'testing',
+          description: `Replace console statements with proper assertions at ${this.getShortFileName(pattern.file)}:${pattern.line}`,
+          priority: 'medium',
+          expectedOutcome: 'Test uses assertions instead of console output',
+          command: `# Replace:\nconsole.log(result);\n# With:\nexpect(result).toEqual(expectedValue);`
+        });
+        break;
+
+      case 'hardcoded-timeout':
+        suggestions.push({
+          type: 'testing',
+          description: `Replace hardcoded timeout with proper async handling at ${this.getShortFileName(pattern.file)}:${pattern.line}`,
+          priority: 'medium',
+          expectedOutcome: 'Test uses proper async patterns instead of arbitrary waits',
+          command: `# Replace setTimeout with:\nawait waitFor(() => expect(element).toBeVisible());\n# Or use proper async/await patterns`
+        });
+        break;
+
       case 'slow-test':
         suggestions.push({
           type: 'testing',
           description: 'Optimize test performance by reducing setup time or mocking dependencies',
           priority: 'medium',
           expectedOutcome: 'Test execution time reduced to acceptable levels',
+          command: `# Consider:\n- Mock expensive operations\n- Reduce test data size\n- Use test doubles for external dependencies`
         });
         break;
+
       case 'flaky-test':
         suggestions.push({
           type: 'testing',
@@ -887,14 +1034,76 @@ export class TestsAnalyzer extends BaseAnalyzer {
           priority: 'high',
           expectedOutcome: 'Test runs consistently across multiple executions',
           warning: 'Flaky tests undermine confidence in the test suite',
+          command: `# Common fixes:\n- Remove race conditions\n- Mock time-dependent code\n- Ensure proper test isolation\n- Fix async handling`
         });
         break;
+
+      case 'brittle-test':
+        suggestions.push({
+          type: 'testing',
+          description: 'Make test more robust and less dependent on implementation details',
+          priority: 'medium',
+          expectedOutcome: 'Test focuses on behavior rather than implementation',
+          command: `# Improve by:\n- Testing behavior, not implementation\n- Using semantic queries\n- Reducing coupling to internal structure`
+        });
+        break;
+
       case 'test-code-duplication':
         suggestions.push({
           type: 'manual_review',
           description: 'Extract common test logic into reusable helper functions',
           priority: 'medium',
           expectedOutcome: 'Reduced test code duplication and improved maintainability',
+          command: `# Extract common patterns:\nconst setupTestData = () => ({ /* common setup */ });\nconst assertResult = (result) => { /* common assertions */ };`
+        });
+        break;
+
+      case 'assertion-roulette':
+        suggestions.push({
+          type: 'testing',
+          description: 'Break down multiple assertions into focused, well-named test cases',
+          priority: 'medium',
+          expectedOutcome: 'Each test has a single, clear purpose with descriptive error messages',
+          command: `# Split into focused tests:\nit('should validate user input', () => { /* single assertion */ });\nit('should save to database', () => { /* single assertion */ });`
+        });
+        break;
+
+      case 'mystery-guest':
+        suggestions.push({
+          type: 'testing',
+          description: 'Make test dependencies explicit and visible within the test',
+          priority: 'medium',
+          expectedOutcome: 'Test is self-contained and easy to understand',
+          command: `# Make dependencies explicit:\n// Instead of relying on global state\nconst testData = createTestData();\n// Or mock external dependencies clearly`
+        });
+        break;
+
+      case 'test-pollution':
+        suggestions.push({
+          type: 'testing',
+          description: 'Ensure proper test isolation and cleanup',
+          priority: 'high',
+          expectedOutcome: 'Tests run independently without side effects',
+          command: `# Add proper cleanup:\nafterEach(() => {\n  cleanup();\n  jest.clearAllMocks();\n});`
+        });
+        break;
+
+      case 'eager-test':
+        suggestions.push({
+          type: 'testing',
+          description: 'Split test into focused unit tests for individual behaviors',
+          priority: 'medium',
+          expectedOutcome: 'Each test validates a single, specific behavior',
+          command: `# Split large test:\nit('should validate input', () => { /* test validation only */ });\nit('should process data', () => { /* test processing only */ });`
+        });
+        break;
+
+      default:
+        suggestions.push({
+          type: 'testing',
+          description: `Address ${pattern.type} anti-pattern`,
+          priority: 'medium',
+          expectedOutcome: 'Test quality improved according to best practices',
         });
         break;
     }
@@ -929,6 +1138,87 @@ export class TestsAnalyzer extends BaseAnalyzer {
         expectedOutcome: 'Team has clear guidelines for writing quality tests',
       },
     ];
+  }
+
+  /**
+   * Build type-specific remediation suggestions for grouped anti-patterns
+   */
+  private buildTypeSpecificAntiPatternRemediation(patterns: ProjectAnalysis['testAnalysis']['antiPatterns'], type: string): RemediationSuggestion[] {
+    const count = patterns.length;
+    const suggestions: RemediationSuggestion[] = [];
+
+    // Type-specific grouped recommendations
+    switch (type) {
+      case 'no-assertion':
+        suggestions.push({
+          type: 'testing',
+          description: `Add meaningful assertions to ${count} tests lacking assertions`,
+          priority: 'critical',
+          expectedOutcome: 'All tests validate expected behavior and catch regressions',
+          warning: 'Tests without assertions provide no value and can hide bugs',
+          command: `# Review each test and add assertions like:\nexpect(result).toBe(expectedValue);\nexpect(mockFunction).toHaveBeenCalledWith(args);`
+        });
+        break;
+
+      case 'slow-test':
+        suggestions.push({
+          type: 'testing',
+          description: `Optimize performance of ${count} slow tests`,
+          priority: 'medium',
+          expectedOutcome: 'Test suite runs faster, improving developer productivity',
+          command: `# Common optimizations:\n- Mock expensive operations\n- Reduce test data size\n- Parallelize independent tests\n- Use test doubles for external dependencies`
+        });
+        break;
+
+      case 'test-code-duplication':
+        suggestions.push({
+          type: 'manual_review',
+          description: `Extract common patterns from ${count} duplicated test implementations`,
+          priority: 'medium',
+          expectedOutcome: 'Reduced test code duplication and improved maintainability',
+          command: `# Create shared test utilities:\nconst testHelpers = {\n  setupTestData: () => ({ /* common setup */ }),\n  assertResult: (result) => { /* common assertions */ }\n};`
+        });
+        break;
+
+      case 'assertion-roulette':
+        suggestions.push({
+          type: 'testing',
+          description: `Split ${count} tests with multiple assertions into focused test cases`,
+          priority: 'medium',
+          expectedOutcome: 'Each test has a single, clear purpose with descriptive error messages',
+          command: `# Split into focused tests:\nit('should validate user input', () => { /* single assertion */ });\nit('should save to database', () => { /* single assertion */ });`
+        });
+        break;
+
+      case 'mystery-guest':
+        suggestions.push({
+          type: 'testing',
+          description: `Make dependencies explicit in ${count} tests with hidden dependencies`,
+          priority: 'medium',
+          expectedOutcome: 'Tests are self-contained and easy to understand',
+          command: `# Make dependencies visible:\n// Instead of relying on global state\nconst testData = createTestData();\n// Mock external dependencies clearly`
+        });
+        break;
+
+      default:
+        suggestions.push({
+          type: 'testing',
+          description: `Address ${count} ${this.formatAntiPatternType(type)} anti-patterns`,
+          priority: 'medium',
+          expectedOutcome: 'Test quality improved according to best practices',
+        });
+        break;
+    }
+
+    // Add general guidance for the specific type
+    suggestions.push({
+      type: 'manual_review',
+      description: `Review and apply ${this.formatAntiPatternType(type)} best practices`,
+      priority: 'low',
+      expectedOutcome: 'Team understands and consistently applies best practices',
+    });
+
+    return suggestions;
   }
 
   /**
