@@ -88,6 +88,64 @@ export const ProjectConfigSchema = z.object({
 });
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
+// ============================================================================
+// Git Worktree Configuration
+// ============================================================================
+
+/**
+ * Status of a git worktree
+ */
+export const WorktreeStatusSchema = z.enum([
+  'active',     // Worktree is active and in use by a task
+  'stale',      // Worktree exists but may need cleanup (no active task)
+  'locked',     // Worktree is locked (in use by another process)
+  'prunable',   // Worktree can be safely removed
+]);
+export type WorktreeStatus = z.infer<typeof WorktreeStatusSchema>;
+
+/**
+ * Information about an existing git worktree
+ */
+export interface WorktreeInfo {
+  /** Absolute path to the worktree directory */
+  path: string;
+  /** Branch name checked out in this worktree */
+  branch: string;
+  /** Current HEAD commit SHA */
+  head: string;
+  /** Current status of the worktree */
+  status: WorktreeStatus;
+  /** Associated task ID if created by APEX */
+  taskId?: string;
+  /** Whether this is the main worktree */
+  isMain: boolean;
+  /** When the worktree was created */
+  createdAt?: Date;
+  /** When the worktree was last accessed */
+  lastUsedAt?: Date;
+}
+
+/**
+ * Configuration for git worktree management
+ */
+export const WorktreeConfigSchema = z.object({
+  /** Base directory for worktrees (default: sibling to project root, e.g., ../.apex-worktrees) */
+  baseDir: z.string().optional(),
+  /** Automatically cleanup worktree after task completion (default: true) */
+  cleanupOnComplete: z.boolean().optional().default(true),
+  /** Maximum number of concurrent worktrees allowed (default: 5) */
+  maxWorktrees: z.number().min(1).optional().default(5),
+  /** Number of days after which stale worktrees are auto-pruned (default: 7) */
+  pruneStaleAfterDays: z.number().min(1).optional().default(7),
+  /** Whether to preserve worktree on task failure for debugging (default: false) */
+  preserveOnFailure: z.boolean().optional().default(false),
+});
+export type WorktreeConfig = z.infer<typeof WorktreeConfigSchema>;
+
+// ============================================================================
+// Git Configuration
+// ============================================================================
+
 export const GitConfigSchema = z.object({
   branchPrefix: z.string().optional().default('apex/'),
   commitFormat: z.enum(['conventional', 'simple']).optional().default('conventional'),
@@ -100,6 +158,9 @@ export const GitConfigSchema = z.object({
   prDraft: z.boolean().optional().default(false),              // Create PR as draft
   prLabels: z.array(z.string()).optional(),                    // Labels to add to PR
   prReviewers: z.array(z.string()).optional(),                 // Reviewers to request
+  // Worktree isolation settings (v0.4.0)
+  autoWorktree: z.boolean().optional().default(false),         // Enable automatic worktree creation for tasks
+  worktree: WorktreeConfigSchema.optional(),                   // Worktree configuration options
 });
 export type GitConfig = z.infer<typeof GitConfigSchema>;
 
