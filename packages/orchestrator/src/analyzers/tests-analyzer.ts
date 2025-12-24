@@ -654,12 +654,15 @@ export class TestsAnalyzer extends BaseAnalyzer {
   private buildUntestedExportRemediation(exportItem: ProjectAnalysis['testAnalysis']['untestedExports'][0]): RemediationSuggestion[] {
     const suggestions: RemediationSuggestion[] = [];
     const shortFile = this.getShortFileName(exportItem.file);
+    const testFile = this.generateTestFilePath(exportItem.file);
 
+    // Primary suggestion with specific test file location and basic template
     suggestions.push({
       type: 'testing',
-      description: `Create ${exportItem.exportType} tests for ${exportItem.exportName}`,
+      description: `Create ${exportItem.exportType} tests in ${testFile} for ${exportItem.exportName}`,
       priority: exportItem.isPublic ? 'high' : 'medium',
-      expectedOutcome: `${exportItem.exportType} ${exportItem.exportName} will have comprehensive test coverage`,
+      expectedOutcome: `${exportItem.exportType} ${exportItem.exportName} will have comprehensive test coverage in ${testFile}`,
+      command: this.generateTestTemplate(exportItem, testFile),
     });
 
     if (exportItem.exportType === 'class') {
@@ -668,6 +671,25 @@ export class TestsAnalyzer extends BaseAnalyzer {
         description: `Test all public methods and properties of class ${exportItem.exportName}`,
         priority: 'medium',
         expectedOutcome: 'All class methods and properties have unit test coverage',
+      });
+
+      // Class-specific test template suggestion
+      suggestions.push({
+        type: 'testing',
+        description: `Use class testing template for comprehensive coverage`,
+        priority: 'medium',
+        expectedOutcome: 'Structured tests covering constructor, methods, and edge cases',
+        command: this.generateClassTestTemplate(exportItem.exportName, testFile),
+      });
+    }
+
+    if (exportItem.exportType === 'function') {
+      suggestions.push({
+        type: 'testing',
+        description: `Use function testing template with input/output scenarios`,
+        priority: 'medium',
+        expectedOutcome: 'Comprehensive function tests covering various input scenarios',
+        command: this.generateFunctionTestTemplate(exportItem.exportName, testFile),
       });
     }
 
@@ -690,28 +712,40 @@ export class TestsAnalyzer extends BaseAnalyzer {
   private buildGroupedUntestedExportsRemediation(exports: ProjectAnalysis['testAnalysis']['untestedExports']): RemediationSuggestion[] {
     const count = exports.length;
     const publicCount = exports.filter(e => e.isPublic).length;
+    const fileGroups = this.groupExportsByFile(exports);
 
-    return [
-      {
+    const suggestions: RemediationSuggestion[] = [];
+
+    // Group suggestions with specific file locations
+    for (const [file, fileExports] of Object.entries(fileGroups)) {
+      const testFile = this.generateTestFilePath(file);
+      suggestions.push({
         type: 'testing',
-        description: `Create tests for ${count} untested exports`,
-        priority: publicCount > 0 ? 'high' : 'medium',
-        expectedOutcome: `All ${count} exports will have appropriate test coverage`,
-      },
-      {
-        type: 'manual_review',
-        description: 'Prioritize testing public APIs and critical functions',
-        priority: 'high',
-        expectedOutcome: 'Public APIs and critical functionality have comprehensive test coverage',
-      },
-      {
-        type: 'command',
-        description: 'Generate export coverage report',
-        command: 'npm run test -- --coverage --include-untested',
-        priority: 'medium',
-        expectedOutcome: 'Detailed report of which exports lack test coverage',
-      },
-    ];
+        description: `Create tests in ${testFile} for ${fileExports.length} exports: ${fileExports.map(e => e.exportName).slice(0, 3).join(', ')}${fileExports.length > 3 ? '...' : ''}`,
+        priority: fileExports.some(e => e.isPublic) ? 'high' : 'medium',
+        expectedOutcome: `All ${fileExports.length} exports in ${file} will have test coverage`,
+        command: this.generateGroupedTestTemplate(fileExports, testFile),
+      });
+    }
+
+    // General guidance
+    suggestions.push({
+      type: 'manual_review',
+      description: 'Prioritize testing public APIs and critical functions first',
+      priority: 'high',
+      expectedOutcome: 'Public APIs and critical functionality have comprehensive test coverage',
+    });
+
+    // Coverage report generation
+    suggestions.push({
+      type: 'command',
+      description: 'Generate export coverage report to track progress',
+      command: 'npm run test -- --coverage --include-untested',
+      priority: 'medium',
+      expectedOutcome: 'Detailed report showing which exports still lack test coverage',
+    });
+
+    return suggestions;
   }
 
   /**
@@ -916,6 +950,189 @@ export class TestsAnalyzer extends BaseAnalyzer {
 
   private isAPIFile(file: string): boolean {
     return file.includes('api') || file.includes('controller') || file.includes('endpoint') || file.includes('route');
+  }
+
+  /**
+   * Generate test file path from source file path
+   */
+  private generateTestFilePath(sourceFile: string): string {
+    // Remove leading './' if present
+    const cleanPath = sourceFile.replace(/^\.\//, '');
+
+    // Handle different test file naming conventions
+    if (cleanPath.includes('/src/')) {
+      // Standard src structure: src/components/Button.ts -> src/components/Button.test.ts
+      return cleanPath.replace(/\.([jt]sx?)$/, '.test.$1');
+    } else if (cleanPath.startsWith('src/')) {
+      // Root src: src/utils.ts -> src/utils.test.ts
+      return cleanPath.replace(/\.([jt]sx?)$/, '.test.$1');
+    } else {
+      // Default: components/Button.ts -> components/Button.test.ts
+      return cleanPath.replace(/\.([jt]sx?)$/, '.test.$1');
+    }
+  }
+
+  /**
+   * Group exports by their source file
+   */
+  private groupExportsByFile(exports: ProjectAnalysis['testAnalysis']['untestedExports']): Record<string, typeof exports> {
+    const grouped: Record<string, typeof exports> = {};
+
+    for (const exportItem of exports) {
+      if (!grouped[exportItem.file]) {
+        grouped[exportItem.file] = [];
+      }
+      grouped[exportItem.file].push(exportItem);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Generate test template for a single export
+   */
+  private generateTestTemplate(exportItem: ProjectAnalysis['testAnalysis']['untestedExports'][0], testFile: string): string {
+    const importPath = this.getRelativeImportPath(testFile, exportItem.file);
+
+    return `# Create test file: ${testFile}
+import { describe, it, expect } from 'vitest';
+import { ${exportItem.exportName} } from '${importPath}';
+
+describe('${exportItem.exportName}', () => {
+  it('should be defined', () => {
+    expect(${exportItem.exportName}).toBeDefined();
+  });
+
+  // Add more specific tests based on the ${exportItem.exportType} functionality
+});`;
+  }
+
+  /**
+   * Generate class-specific test template
+   */
+  private generateClassTestTemplate(className: string, testFile: string): string {
+    return `# Class test template for ${className}:
+describe('${className}', () => {
+  let instance: ${className};
+
+  beforeEach(() => {
+    instance = new ${className}(/* constructor args */);
+  });
+
+  describe('constructor', () => {
+    it('should create instance with valid parameters', () => {
+      expect(instance).toBeInstanceOf(${className});
+    });
+
+    it('should throw error with invalid parameters', () => {
+      expect(() => new ${className}(/* invalid args */)).toThrow();
+    });
+  });
+
+  describe('methods', () => {
+    // Test each public method
+    it('should handle normal cases', () => {
+      // Test normal operation
+    });
+
+    it('should handle edge cases', () => {
+      // Test boundary conditions
+    });
+
+    it('should handle error cases', () => {
+      // Test error scenarios
+    });
+  });
+});`;
+  }
+
+  /**
+   * Generate function-specific test template
+   */
+  private generateFunctionTestTemplate(functionName: string, testFile: string): string {
+    return `# Function test template for ${functionName}:
+describe('${functionName}', () => {
+  it('should return expected result with valid input', () => {
+    const result = ${functionName}(/* valid input */);
+    expect(result).toEqual(/* expected output */);
+  });
+
+  it('should handle edge cases', () => {
+    // Test with boundary values
+    expect(${functionName}(null)).toBe(/* expected */);
+    expect(${functionName}(undefined)).toBe(/* expected */);
+    expect(${functionName}('')).toBe(/* expected */);
+  });
+
+  it('should throw error with invalid input', () => {
+    expect(() => ${functionName}(/* invalid input */)).toThrow();
+  });
+
+  it('should handle async operations correctly', () => {
+    // If function is async
+    return expect(${functionName}(/* input */)).resolves.toBe(/* expected */);
+  });
+});`;
+  }
+
+  /**
+   * Generate grouped test template for multiple exports from the same file
+   */
+  private generateGroupedTestTemplate(exports: ProjectAnalysis['testAnalysis']['untestedExports'], testFile: string): string {
+    const sourceFile = exports[0]?.file || '';
+    const importPath = this.getRelativeImportPath(testFile, sourceFile);
+    const importNames = exports.map(e => e.exportName).join(', ');
+
+    return `# Create test file: ${testFile}
+import { describe, it, expect } from 'vitest';
+import { ${importNames} } from '${importPath}';
+
+${exports.map(exportItem => `
+describe('${exportItem.exportName}', () => {
+  it('should be defined', () => {
+    expect(${exportItem.exportName}).toBeDefined();
+  });
+
+  // TODO: Add specific tests for ${exportItem.exportType} ${exportItem.exportName}
+  // ${exportItem.isPublic ? 'NOTE: This is a public API - ensure comprehensive coverage' : ''}
+});`).join('\n')}`;
+  }
+
+  /**
+   * Generate relative import path between test file and source file
+   */
+  private getRelativeImportPath(testFile: string, sourceFile: string): string {
+    // Simple relative path calculation - could be enhanced
+    const testDir = testFile.split('/').slice(0, -1);
+    const sourceDir = sourceFile.split('/').slice(0, -1);
+    const sourceFileName = sourceFile.split('/').pop()?.replace(/\.[jt]sx?$/, '') || '';
+
+    // If in same directory
+    if (testDir.join('/') === sourceDir.join('/')) {
+      return `./${sourceFileName}`;
+    }
+
+    // Calculate relative path (simplified)
+    const commonLength = Math.min(testDir.length, sourceDir.length);
+    let commonIndex = 0;
+    while (commonIndex < commonLength && testDir[commonIndex] === sourceDir[commonIndex]) {
+      commonIndex++;
+    }
+
+    const upLevels = testDir.length - commonIndex;
+    const downPath = sourceDir.slice(commonIndex);
+
+    let relativePath = '';
+    if (upLevels > 0) {
+      relativePath = '../'.repeat(upLevels);
+    }
+    relativePath += downPath.join('/');
+    if (relativePath && !relativePath.endsWith('/')) {
+      relativePath += '/';
+    }
+    relativePath += sourceFileName;
+
+    return relativePath || `./${sourceFileName}`;
   }
 
   private formatAntiPatternType(type: string): string {

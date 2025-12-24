@@ -374,12 +374,30 @@ describe('TestsAnalyzer', () => {
         const exportTask = candidates.find(c => c.candidateId.includes('untested-export'));
         const suggestions = exportTask?.remediationSuggestions || [];
 
+        // Should have primary testing suggestion with test file location
+        const primaryTestSuggestion = suggestions.find(s =>
+          s.type === 'testing' &&
+          s.description.includes('Create class tests in')
+        );
+        expect(primaryTestSuggestion).toBeDefined();
+        expect(primaryTestSuggestion?.description).toContain('src/api/service.test.ts');
+        expect(primaryTestSuggestion?.command).toContain('# Create test file:');
+        expect(primaryTestSuggestion?.command).toContain('import { UserService }');
+
         // Should have class-specific suggestions
         const classTestSuggestion = suggestions.find(s =>
           s.type === 'manual_review' &&
           s.description.includes('Test all public methods')
         );
         expect(classTestSuggestion).toBeDefined();
+
+        // Should have class template suggestion
+        const classTemplateSuggestion = suggestions.find(s =>
+          s.type === 'testing' &&
+          s.description.includes('Use class testing template')
+        );
+        expect(classTemplateSuggestion).toBeDefined();
+        expect(classTemplateSuggestion?.command).toContain('describe(\'UserService\'');
 
         // Should have public API integration test suggestion
         const integrationSuggestion = suggestions.find(s =>
@@ -388,6 +406,84 @@ describe('TestsAnalyzer', () => {
         );
         expect(integrationSuggestion).toBeDefined();
         expect(integrationSuggestion?.warning).toContain('Public APIs require both unit and integration tests');
+      });
+
+      it('should include function-specific remediation suggestions', () => {
+        baseProjectAnalysis.testAnalysis.untestedExports = [
+          {
+            file: 'src/utils/helper.ts',
+            exportName: 'formatDate',
+            exportType: 'function',
+            isPublic: false
+          }
+        ];
+
+        const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+
+        const exportTask = candidates.find(c => c.candidateId.includes('untested-export'));
+        const suggestions = exportTask?.remediationSuggestions || [];
+
+        // Should have primary testing suggestion with test file location
+        const primaryTestSuggestion = suggestions.find(s =>
+          s.type === 'testing' &&
+          s.description.includes('Create function tests in')
+        );
+        expect(primaryTestSuggestion).toBeDefined();
+        expect(primaryTestSuggestion?.description).toContain('src/utils/helper.test.ts');
+        expect(primaryTestSuggestion?.command).toContain('import { formatDate }');
+
+        // Should have function template suggestion
+        const functionTemplateSuggestion = suggestions.find(s =>
+          s.type === 'testing' &&
+          s.description.includes('Use function testing template')
+        );
+        expect(functionTemplateSuggestion).toBeDefined();
+        expect(functionTemplateSuggestion?.command).toContain('should return expected result with valid input');
+        expect(functionTemplateSuggestion?.command).toContain('should handle edge cases');
+      });
+
+      it('should include grouped exports remediation suggestions with test file locations', () => {
+        const groupedExports = [
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'add',
+            exportType: 'function' as const,
+            isPublic: true
+          },
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'subtract',
+            exportType: 'function' as const,
+            isPublic: false
+          },
+          {
+            file: 'src/utils/string.ts',
+            exportName: 'capitalize',
+            exportType: 'function' as const,
+            isPublic: true
+          }
+        ];
+
+        baseProjectAnalysis.testAnalysis.untestedExports = groupedExports;
+
+        const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+
+        const groupedTask = candidates.find(c => c.candidateId === 'tests-untested-exports-group-high');
+        const suggestions = groupedTask?.remediationSuggestions || [];
+
+        // Should have file-specific suggestions
+        const mathFileSuggestion = suggestions.find(s =>
+          s.description.includes('src/utils/math.test.ts')
+        );
+        expect(mathFileSuggestion).toBeDefined();
+        expect(mathFileSuggestion?.description).toContain('add, subtract');
+        expect(mathFileSuggestion?.command).toContain('import { add, subtract }');
+
+        const stringFileSuggestion = suggestions.find(s =>
+          s.description.includes('src/utils/string.test.ts')
+        );
+        expect(stringFileSuggestion).toBeDefined();
+        expect(stringFileSuggestion?.description).toContain('capitalize');
       });
     });
   });
@@ -908,6 +1004,459 @@ describe('TestsAnalyzer', () => {
       const task = candidates[0];
 
       expect(task.title).toBe('Fix Test Code Duplication: test.ts:10');
+    });
+  });
+
+  // ============================================================================
+  // Utility Methods Tests (Additional Coverage)
+  // ============================================================================
+
+  describe('utility methods detailed tests', () => {
+    describe('generateTestFilePath', () => {
+      it('should generate test file path for src structure', () => {
+        const analyzer = testsAnalyzer as any; // Access private method
+
+        expect(analyzer.generateTestFilePath('src/components/Button.ts'))
+          .toBe('src/components/Button.test.ts');
+        expect(analyzer.generateTestFilePath('src/utils/helper.js'))
+          .toBe('src/utils/helper.test.js');
+        expect(analyzer.generateTestFilePath('./src/services/api.tsx'))
+          .toBe('src/services/api.test.tsx');
+      });
+
+      it('should handle root src files', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.generateTestFilePath('src/index.ts'))
+          .toBe('src/index.test.ts');
+        expect(analyzer.generateTestFilePath('src/app.jsx'))
+          .toBe('src/app.test.jsx');
+      });
+
+      it('should handle non-src files', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.generateTestFilePath('components/Header.ts'))
+          .toBe('components/Header.test.ts');
+        expect(analyzer.generateTestFilePath('utils/math.js'))
+          .toBe('utils/math.test.js');
+      });
+    });
+
+    describe('getRelativeImportPath', () => {
+      it('should calculate import path for same directory', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.getRelativeImportPath('src/Button.test.ts', 'src/Button.ts'))
+          .toBe('./Button');
+        expect(analyzer.getRelativeImportPath('utils/helper.test.js', 'utils/helper.js'))
+          .toBe('./helper');
+      });
+
+      it('should calculate import path for different directories', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.getRelativeImportPath('src/components/Button.test.ts', 'src/utils/helper.ts'))
+          .toContain('utils/helper');
+        expect(analyzer.getRelativeImportPath('tests/unit/api.test.ts', 'src/services/api.ts'))
+          .toContain('src/services/api');
+      });
+
+      it('should handle complex nested paths', () => {
+        const analyzer = testsAnalyzer as any;
+
+        const result = analyzer.getRelativeImportPath(
+          'src/components/forms/inputs/TextInput.test.ts',
+          'src/utils/validation.ts'
+        );
+        expect(result).toMatch(/validation$/);
+      });
+    });
+
+    describe('generateTestTemplate', () => {
+      it('should generate basic test template with correct import', () => {
+        const analyzer = testsAnalyzer as any;
+        const exportItem = {
+          file: 'src/utils/helper.ts',
+          exportName: 'formatNumber',
+          exportType: 'function',
+          isPublic: true
+        };
+
+        const template = analyzer.generateTestTemplate(exportItem, 'src/utils/helper.test.ts');
+
+        expect(template).toContain('import { formatNumber }');
+        expect(template).toContain('describe(\'formatNumber\'');
+        expect(template).toContain('should be defined');
+        expect(template).toContain('# Create test file: src/utils/helper.test.ts');
+      });
+
+      it('should handle different export types in template', () => {
+        const analyzer = testsAnalyzer as any;
+        const classExport = {
+          file: 'src/models/User.ts',
+          exportName: 'UserModel',
+          exportType: 'class',
+          isPublic: false
+        };
+
+        const template = analyzer.generateTestTemplate(classExport, 'src/models/User.test.ts');
+        expect(template).toContain('import { UserModel }');
+        expect(template).toContain('describe(\'UserModel\'');
+        expect(template).toContain('based on the class functionality');
+      });
+    });
+
+    describe('generateClassTestTemplate', () => {
+      it('should generate comprehensive class test template', () => {
+        const analyzer = testsAnalyzer as any;
+
+        const template = analyzer.generateClassTestTemplate('UserService', 'src/services/User.test.ts');
+
+        expect(template).toContain('Class test template for UserService');
+        expect(template).toContain('let instance: UserService');
+        expect(template).toContain('beforeEach(() => {');
+        expect(template).toContain('instance = new UserService');
+        expect(template).toContain('describe(\'constructor\'');
+        expect(template).toContain('describe(\'methods\'');
+        expect(template).toContain('should create instance with valid parameters');
+        expect(template).toContain('should throw error with invalid parameters');
+        expect(template).toContain('should handle normal cases');
+        expect(template).toContain('should handle edge cases');
+        expect(template).toContain('should handle error cases');
+      });
+    });
+
+    describe('generateFunctionTestTemplate', () => {
+      it('should generate comprehensive function test template', () => {
+        const analyzer = testsAnalyzer as any;
+
+        const template = analyzer.generateFunctionTestTemplate('calculateTotal', 'src/utils/math.test.ts');
+
+        expect(template).toContain('Function test template for calculateTotal');
+        expect(template).toContain('should return expected result with valid input');
+        expect(template).toContain('should handle edge cases');
+        expect(template).toContain('expect(calculateTotal(null))');
+        expect(template).toContain('expect(calculateTotal(undefined))');
+        expect(template).toContain('expect(calculateTotal(\'\'))');
+        expect(template).toContain('should throw error with invalid input');
+        expect(template).toContain('should handle async operations correctly');
+        expect(template).toContain('return expect(calculateTotal');
+        expect(template).toContain('.resolves.toBe');
+      });
+    });
+
+    describe('generateGroupedTestTemplate', () => {
+      it('should generate template for multiple exports from same file', () => {
+        const analyzer = testsAnalyzer as any;
+        const exports = [
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'add',
+            exportType: 'function',
+            isPublic: true
+          },
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'subtract',
+            exportType: 'function',
+            isPublic: false
+          }
+        ];
+
+        const template = analyzer.generateGroupedTestTemplate(exports, 'src/utils/math.test.ts');
+
+        expect(template).toContain('# Create test file: src/utils/math.test.ts');
+        expect(template).toContain('import { add, subtract }');
+        expect(template).toContain('describe(\'add\'');
+        expect(template).toContain('describe(\'subtract\'');
+        expect(template).toContain('NOTE: This is a public API - ensure comprehensive coverage');
+      });
+
+      it('should handle empty exports array', () => {
+        const analyzer = testsAnalyzer as any;
+
+        const template = analyzer.generateGroupedTestTemplate([], 'test.ts');
+        expect(template).toContain('# Create test file: test.ts');
+        expect(template).toContain('import {  }');
+      });
+    });
+
+    describe('groupExportsByFile', () => {
+      it('should group exports by their source file', () => {
+        const analyzer = testsAnalyzer as any;
+        const exports = [
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'add',
+            exportType: 'function',
+            isPublic: true
+          },
+          {
+            file: 'src/utils/math.ts',
+            exportName: 'subtract',
+            exportType: 'function',
+            isPublic: false
+          },
+          {
+            file: 'src/utils/string.ts',
+            exportName: 'capitalize',
+            exportType: 'function',
+            isPublic: true
+          }
+        ];
+
+        const grouped = analyzer.groupExportsByFile(exports);
+
+        expect(Object.keys(grouped)).toHaveLength(2);
+        expect(grouped['src/utils/math.ts']).toHaveLength(2);
+        expect(grouped['src/utils/string.ts']).toHaveLength(1);
+        expect(grouped['src/utils/math.ts'][0].exportName).toBe('add');
+        expect(grouped['src/utils/math.ts'][1].exportName).toBe('subtract');
+        expect(grouped['src/utils/string.ts'][0].exportName).toBe('capitalize');
+      });
+
+      it('should handle empty exports array', () => {
+        const analyzer = testsAnalyzer as any;
+
+        const grouped = analyzer.groupExportsByFile([]);
+        expect(Object.keys(grouped)).toHaveLength(0);
+      });
+    });
+
+    describe('formatAntiPatternType', () => {
+      it('should format anti-pattern types correctly', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.formatAntiPatternType('test-code-duplication')).toBe('Test Code Duplication');
+        expect(analyzer.formatAntiPatternType('flaky-test')).toBe('Flaky Test');
+        expect(analyzer.formatAntiPatternType('slow-test')).toBe('Slow Test');
+        expect(analyzer.formatAntiPatternType('brittle-test')).toBe('Brittle Test');
+        expect(analyzer.formatAntiPatternType('mystery-guest')).toBe('Mystery Guest');
+        expect(analyzer.formatAntiPatternType('assertion-roulette')).toBe('Assertion Roulette');
+      });
+
+      it('should handle single words', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.formatAntiPatternType('pollution')).toBe('Pollution');
+        expect(analyzer.formatAntiPatternType('eager')).toBe('Eager');
+      });
+    });
+
+    describe('getAntiPatternEffort', () => {
+      it('should classify high effort patterns', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.getAntiPatternEffort('test-pollution')).toBe('high');
+        expect(analyzer.getAntiPatternEffort('eager-test')).toBe('high');
+        expect(analyzer.getAntiPatternEffort('flaky-test')).toBe('high');
+      });
+
+      it('should classify medium effort patterns', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.getAntiPatternEffort('brittle-test')).toBe('medium');
+        expect(analyzer.getAntiPatternEffort('slow-test')).toBe('medium');
+        expect(analyzer.getAntiPatternEffort('test-code-duplication')).toBe('medium');
+      });
+
+      it('should classify low effort patterns as default', () => {
+        const analyzer = testsAnalyzer as any;
+
+        expect(analyzer.getAntiPatternEffort('mystery-guest')).toBe('low');
+        expect(analyzer.getAntiPatternEffort('assertion-roulette')).toBe('low');
+        expect(analyzer.getAntiPatternEffort('unknown-pattern')).toBe('low');
+      });
+    });
+  });
+
+  // ============================================================================
+  // Edge Cases and Error Handling Tests
+  // ============================================================================
+
+  describe('edge cases and error handling', () => {
+    it('should handle undefined testAnalysis properties gracefully', () => {
+      const incompleteAnalysis = {
+        ...baseProjectAnalysis,
+        testAnalysis: {
+          branchCoverage: undefined as any,
+          untestedExports: undefined as any,
+          missingIntegrationTests: undefined as any,
+          antiPatterns: undefined as any
+        }
+      };
+
+      expect(() => {
+        testsAnalyzer.analyze(incompleteAnalysis);
+      }).not.toThrow();
+    });
+
+    it('should handle empty arrays gracefully', () => {
+      baseProjectAnalysis.testAnalysis.branchCoverage = {
+        percentage: 100,
+        uncoveredBranches: []
+      };
+      baseProjectAnalysis.testAnalysis.untestedExports = [];
+      baseProjectAnalysis.testAnalysis.missingIntegrationTests = [];
+      baseProjectAnalysis.testAnalysis.antiPatterns = [];
+      baseProjectAnalysis.performance.slowTests = [];
+
+      const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('should handle very large datasets', () => {
+      // Simulate large number of untested exports
+      const manyExports = Array.from({ length: 100 }, (_, i) => ({
+        file: `src/file${i}.ts`,
+        exportName: `function${i}`,
+        exportType: 'function' as const,
+        isPublic: i % 2 === 0 // Half public, half private
+      }));
+
+      baseProjectAnalysis.testAnalysis.untestedExports = manyExports;
+
+      const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(candidates.some(c => c.candidateId.includes('group'))).toBe(true);
+    });
+
+    it('should handle malformed file paths', () => {
+      baseProjectAnalysis.testAnalysis.branchCoverage = {
+        percentage: 50,
+        uncoveredBranches: [
+          {
+            file: '',
+            line: 10,
+            type: 'if',
+            description: 'Empty file path'
+          },
+          {
+            file: '///multiple///slashes///',
+            line: 20,
+            type: 'else',
+            description: 'Multiple slashes'
+          }
+        ]
+      };
+
+      expect(() => {
+        const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+        expect(candidates.length).toBeGreaterThan(0);
+      }).not.toThrow();
+    });
+
+    it('should handle extreme branch coverage percentages', () => {
+      baseProjectAnalysis.testAnalysis.branchCoverage = {
+        percentage: 0, // Absolute minimum
+        uncoveredBranches: []
+      };
+
+      let candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+      const zeroPercentTask = candidates.find(c => c.candidateId === 'tests-overall-branch-coverage');
+      expect(zeroPercentTask).toBeDefined();
+      expect(zeroPercentTask?.description).toContain('0.0%');
+
+      baseProjectAnalysis.testAnalysis.branchCoverage.percentage = 100;
+      candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+      const maxPercentTasks = candidates.filter(c => c.candidateId.includes('branch-coverage'));
+      expect(maxPercentTasks).toHaveLength(0);
+    });
+
+    it('should handle mixed priority anti-patterns', () => {
+      baseProjectAnalysis.testAnalysis.antiPatterns = [
+        {
+          file: 'test1.ts',
+          line: 10,
+          type: 'flaky-test',
+          description: 'High severity',
+          severity: 'high'
+        },
+        {
+          file: 'test2.ts',
+          line: 20,
+          type: 'slow-test',
+          description: 'Medium severity',
+          severity: 'medium'
+        },
+        {
+          file: 'test3.ts',
+          line: 30,
+          type: 'test-code-duplication',
+          description: 'Low severity',
+          severity: 'low'
+        }
+      ];
+
+      const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+
+      // Should have individual high severity task
+      const highTask = candidates.find(c => c.candidateId.includes('flaky-test'));
+      expect(highTask).toBeDefined();
+      expect(highTask?.priority).toBe('high');
+
+      // Should have grouped medium severity task
+      const mediumGroupTask = candidates.find(c => c.candidateId === 'tests-anti-patterns-group-normal');
+      expect(mediumGroupTask).toBeDefined();
+
+      // Should have grouped low severity task
+      const lowGroupTask = candidates.find(c => c.candidateId === 'tests-anti-patterns-group-low');
+      expect(lowGroupTask).toBeDefined();
+    });
+
+    it('should handle exports with missing properties', () => {
+      baseProjectAnalysis.testAnalysis.untestedExports = [
+        {
+          file: 'src/incomplete.ts',
+          exportName: 'incompleteExport',
+          exportType: 'function',
+          // Missing line property
+          isPublic: true
+        } as any,
+        {
+          file: 'src/another.ts',
+          exportName: '',  // Empty name
+          exportType: 'const',
+          line: 15,
+          isPublic: false
+        }
+      ];
+
+      expect(() => {
+        const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+        expect(candidates.length).toBeGreaterThan(0);
+      }).not.toThrow();
+    });
+
+    it('should handle numerical edge cases in scoring', () => {
+      baseProjectAnalysis.testCoverage = { percentage: 0, uncoveredFiles: [] };
+      baseProjectAnalysis.testAnalysis.branchCoverage = { percentage: 0, uncoveredBranches: [] };
+
+      const candidates = testsAnalyzer.analyze(baseProjectAnalysis);
+      candidates.forEach(candidate => {
+        expect(candidate.score).toBeGreaterThanOrEqual(0);
+        expect(candidate.score).toBeLessThanOrEqual(1);
+        expect(Number.isFinite(candidate.score)).toBe(true);
+      });
+    });
+
+    it('should handle template generation edge cases', () => {
+      const analyzer = testsAnalyzer as any;
+
+      // Test with undefined/null values
+      const exportItemWithMissingData = {
+        file: 'src/test.ts',
+        exportName: 'testFunction',
+        exportType: 'function',
+        isPublic: true
+      };
+
+      expect(() => {
+        analyzer.generateTestTemplate(exportItemWithMissingData, 'src/test.test.ts');
+        analyzer.generateClassTestTemplate('TestClass', 'src/TestClass.test.ts');
+        analyzer.generateFunctionTestTemplate('testFunction', 'src/test.test.ts');
+      }).not.toThrow();
     });
   });
 });
