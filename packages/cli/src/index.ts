@@ -898,7 +898,7 @@ export const commands: Command[] = [
 
   {
     name: 'thoughts',
-    aliases: ['t'],
+    aliases: [],
     description: 'Toggle thought visibility',
     usage: '/thoughts [on|off|toggle|status]',
     handler: async (ctx, args) => {
