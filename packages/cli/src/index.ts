@@ -171,72 +171,147 @@ export const commands: Command[] = [
       const filteredArgs = args.filter(arg => arg !== '--check-docs');
       const taskId = filteredArgs[0];
 
-      // If --check-docs flag is provided, show outdated documentation findings
+      // If --check-docs flag is provided, show documentation analysis findings
       if (checkDocs) {
-        console.log(chalk.cyan('\n📋 Outdated Documentation Findings:\n'));
+        console.log(chalk.cyan('\n📋 Documentation Analysis:\n'));
 
         try {
-          const outdatedDocs = await ctx.orchestrator.getDocumentationAnalysis();
+          // Get both outdated docs and missing README sections
+          const [outdatedDocs, missingReadmeSections] = await Promise.all([
+            ctx.orchestrator.getDocumentationAnalysis(),
+            ctx.orchestrator.getMissingReadmeSections()
+          ]);
 
-          if (outdatedDocs.length === 0) {
-            console.log(chalk.green('✓ No outdated documentation detected.\n'));
-            return;
+          let hasAnyIssues = false;
+
+          // Display missing README sections
+          if (missingReadmeSections.length > 0) {
+            hasAnyIssues = true;
+            console.log(chalk.magenta.bold('📝 Missing README Sections:\n'));
+
+            // Group by priority
+            const priorityGroups = {
+              required: missingReadmeSections.filter(section => section.priority === 'required'),
+              recommended: missingReadmeSections.filter(section => section.priority === 'recommended'),
+              optional: missingReadmeSections.filter(section => section.priority === 'optional')
+            };
+
+            // Display required sections first (highest priority)
+            if (priorityGroups.required.length > 0) {
+              console.log(chalk.red.bold('🔴 Required Sections:'));
+              priorityGroups.required.forEach(section => {
+                console.log(chalk.red(`  • ${getReadmeSectionEmoji(section.section)} ${section.section}`));
+                console.log(chalk.gray(`    Description: ${section.description}`));
+                console.log();
+              });
+            }
+
+            // Display recommended sections
+            if (priorityGroups.recommended.length > 0) {
+              console.log(chalk.yellow.bold('🟡 Recommended Sections:'));
+              priorityGroups.recommended.forEach(section => {
+                console.log(chalk.yellow(`  • ${getReadmeSectionEmoji(section.section)} ${section.section}`));
+                console.log(chalk.gray(`    Description: ${section.description}`));
+                console.log();
+              });
+            }
+
+            // Display optional sections
+            if (priorityGroups.optional.length > 0) {
+              console.log(chalk.blue.bold('🔵 Optional Sections:'));
+              priorityGroups.optional.forEach(section => {
+                console.log(chalk.blue(`  • ${getReadmeSectionEmoji(section.section)} ${section.section}`));
+                console.log(chalk.gray(`    Description: ${section.description}`));
+                console.log();
+              });
+            }
           }
 
-          // Group findings by severity for better display
-          const severityGroups = {
-            high: outdatedDocs.filter(doc => doc.severity === 'high'),
-            medium: outdatedDocs.filter(doc => doc.severity === 'medium'),
-            low: outdatedDocs.filter(doc => doc.severity === 'low')
-          };
+          // Display outdated documentation issues
+          if (outdatedDocs.length > 0) {
+            hasAnyIssues = true;
+            if (missingReadmeSections.length > 0) {
+              console.log(chalk.cyan('─'.repeat(60)));
+            }
+            console.log(chalk.cyan.bold('📋 Outdated Documentation Issues:\n'));
 
-          // Display high severity findings first
-          if (severityGroups.high.length > 0) {
-            console.log(chalk.red.bold('🔴 High Severity Issues:'));
-            severityGroups.high.forEach(doc => {
-              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
-              console.log(chalk.red(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
-              console.log(chalk.gray(`    Location: ${location}`));
-              if (doc.suggestion) {
-                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
-              }
-              console.log();
-            });
+            // Group findings by severity for better display
+            const severityGroups = {
+              high: outdatedDocs.filter(doc => doc.severity === 'high'),
+              medium: outdatedDocs.filter(doc => doc.severity === 'medium'),
+              low: outdatedDocs.filter(doc => doc.severity === 'low')
+            };
+
+            // Display high severity findings first
+            if (severityGroups.high.length > 0) {
+              console.log(chalk.red.bold('🔴 High Severity Issues:'));
+              severityGroups.high.forEach(doc => {
+                const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+                console.log(chalk.red(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+                console.log(chalk.gray(`    Location: ${location}`));
+                if (doc.suggestion) {
+                  console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+                }
+                console.log();
+              });
+            }
+
+            // Display medium severity findings
+            if (severityGroups.medium.length > 0) {
+              console.log(chalk.yellow.bold('🟡 Medium Severity Issues:'));
+              severityGroups.medium.forEach(doc => {
+                const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+                console.log(chalk.yellow(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+                console.log(chalk.gray(`    Location: ${location}`));
+                if (doc.suggestion) {
+                  console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+                }
+                console.log();
+              });
+            }
+
+            // Display low severity findings
+            if (severityGroups.low.length > 0) {
+              console.log(chalk.blue.bold('🔵 Low Severity Issues:'));
+              severityGroups.low.forEach(doc => {
+                const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
+                console.log(chalk.blue(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
+                console.log(chalk.gray(`    Location: ${location}`));
+                if (doc.suggestion) {
+                  console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
+                }
+                console.log();
+              });
+            }
+
+            // Show outdated docs summary
+            const total = outdatedDocs.length;
+            console.log(chalk.cyan.bold('📊 Outdated Documentation Summary:'));
+            console.log(`  Total Issues: ${total}`);
+            console.log(`  High: ${chalk.red(severityGroups.high.length)} | Medium: ${chalk.yellow(severityGroups.medium.length)} | Low: ${chalk.blue(severityGroups.low.length)}`);
           }
 
-          // Display medium severity findings
-          if (severityGroups.medium.length > 0) {
-            console.log(chalk.yellow.bold('🟡 Medium Severity Issues:'));
-            severityGroups.medium.forEach(doc => {
-              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
-              console.log(chalk.yellow(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
-              console.log(chalk.gray(`    Location: ${location}`));
-              if (doc.suggestion) {
-                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
-              }
-              console.log();
-            });
-          }
+          // Show overall summary
+          if (hasAnyIssues) {
+            console.log(chalk.cyan('─'.repeat(60)));
+            console.log(chalk.cyan.bold('📈 Overall Documentation Status:'));
 
-          // Display low severity findings
-          if (severityGroups.low.length > 0) {
-            console.log(chalk.blue.bold('🔵 Low Severity Issues:'));
-            severityGroups.low.forEach(doc => {
-              const location = doc.line ? `${doc.file}:${doc.line}` : doc.file;
-              console.log(chalk.blue(`  • ${getDocTypeEmoji(doc.type)} ${doc.description}`));
-              console.log(chalk.gray(`    Location: ${location}`));
-              if (doc.suggestion) {
-                console.log(chalk.gray(`    Suggestion: ${doc.suggestion}`));
-              }
-              console.log();
-            });
-          }
+            const readmeSummary = missingReadmeSections.length > 0
+              ? `Missing README sections: ${missingReadmeSections.length} (${missingReadmeSections.filter(s => s.priority === 'required').length} required)`
+              : 'README sections: Complete';
 
-          // Show summary
-          const total = outdatedDocs.length;
-          console.log(chalk.cyan.bold('📊 Summary:'));
-          console.log(`  Total Issues: ${total}`);
-          console.log(`  High: ${chalk.red(severityGroups.high.length)} | Medium: ${chalk.yellow(severityGroups.medium.length)} | Low: ${chalk.blue(severityGroups.low.length)}\n`);
+            const outdatedSummary = outdatedDocs.length > 0
+              ? `Outdated documentation: ${outdatedDocs.length} issues`
+              : 'Documentation: Up to date';
+
+            console.log(`  ${readmeSummary}`);
+            console.log(`  ${outdatedSummary}`);
+            console.log();
+          } else {
+            console.log(chalk.green('✅ No documentation issues detected!\n'));
+            console.log(chalk.gray('  • README sections: Complete'));
+            console.log(chalk.gray('  • Documentation: Up to date\n'));
+          }
 
         } catch (error) {
           console.log(chalk.red(`❌ Failed to analyze documentation: ${error}`));
@@ -1407,6 +1482,26 @@ function getDocTypeEmoji(type: string): string {
     'stale-reference': '🗓️',
   };
   return emojis[type] || '📄';
+}
+
+function getReadmeSectionEmoji(section: string): string {
+  const emojis: Record<string, string> = {
+    'title': '📝',
+    'description': '📋',
+    'installation': '⚙️',
+    'usage': '💡',
+    'api': '📚',
+    'examples': '💡',
+    'contributing': '🤝',
+    'license': '⚖️',
+    'changelog': '📅',
+    'troubleshooting': '🔧',
+    'faq': '❓',
+    'dependencies': '📦',
+    'testing': '🧪',
+    'deployment': '🚀',
+  };
+  return emojis[section] || '📄';
 }
 
 async function copyDefaultAgents(projectPath: string): Promise<void> {

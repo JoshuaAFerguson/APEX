@@ -27,6 +27,7 @@ import {
   generateBranchName,
   calculateCost,
   OutdatedDocumentation,
+  MissingReadmeSection,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import {
@@ -3454,6 +3455,39 @@ Parent: ${parentTask.description}`;
     } catch (error) {
       // Log error but don't throw - return empty array for graceful fallback
       console.warn('Failed to get documentation analysis:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get missing README sections analysis
+   */
+  async getMissingReadmeSections(): Promise<MissingReadmeSection[]> {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized first');
+    }
+
+    try {
+      // Create a temporary IdleProcessor to get README section analysis
+      const idleProcessor = new IdleProcessor(this.projectPath, this.config.daemon || {}, this.store);
+
+      // Start the processor to initialize it
+      await idleProcessor.start();
+
+      // Process idle time to generate analysis
+      await idleProcessor.processIdleTime();
+
+      // Get the last analysis
+      const analysis = idleProcessor.getLastAnalysis();
+
+      if (!analysis) {
+        return [];
+      }
+
+      return analysis.documentation.missingReadmeSections || [];
+    } catch (error) {
+      // Log error but don't throw - return empty array for graceful fallback
+      console.warn('Failed to get missing README sections analysis:', error);
       return [];
     }
   }

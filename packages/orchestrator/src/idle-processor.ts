@@ -168,8 +168,9 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     this.config = config;
     this.store = store;
 
-    // Initialize the IdleTaskGenerator with strategy weights from config
-    this.taskGenerator = new IdleTaskGenerator(
+    // Initialize the IdleTaskGenerator with enhanced capabilities and strategy weights from config
+    this.taskGenerator = IdleTaskGenerator.createEnhanced(
+      projectPath,
       config.idleProcessing?.strategyWeights
     );
   }
@@ -1205,23 +1206,79 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     const missingReadmeSections: MissingReadmeSection[] = [];
 
     try {
+      // Get configuration for README sections analysis
+      const readmeConfig = this.config.documentation?.readmeSections;
+
+      // Check if README section analysis is enabled
+      if (readmeConfig?.enabled === false) {
+        return [];
+      }
+
       // Find README files
       const { stdout: readmeFiles } = await this.execAsync('find . -name "README*" -o -name "readme*" | head -5');
       const files = readmeFiles.split('\n').filter(line => line.trim());
 
-      if (files.length === 0) {
-        // No README files found - return all required sections as missing
-        const requiredSections: Array<{ section: ReadmeSection; priority: 'required' | 'recommended' | 'optional'; description: string }> = [
-          { section: 'title', priority: 'required', description: 'Project title and brief description' },
-          { section: 'description', priority: 'required', description: 'Detailed project description' },
-          { section: 'installation', priority: 'required', description: 'Installation instructions' },
-          { section: 'usage', priority: 'required', description: 'Usage examples and instructions' }
-        ];
+      // Get configured sections or use defaults
+      const requiredSections = readmeConfig?.required || ['title', 'description', 'installation', 'usage'];
+      const recommendedSections = readmeConfig?.recommended || ['api', 'contributing', 'license'];
+      const optionalSections = readmeConfig?.optional || ['testing', 'troubleshooting', 'faq', 'changelog'];
+      const customSections = readmeConfig?.customSections || {};
 
-        return requiredSections.map(item => ({
-          section: item.section,
-          priority: item.priority,
-          description: item.description
+      // Build section definitions with priorities and default indicators
+      const sectionDefinitions = new Map<string, {
+        priority: 'required' | 'recommended' | 'optional';
+        indicators: string[];
+        description: string;
+      }>();
+
+      // Add required sections
+      requiredSections.forEach(section => {
+        if (!sectionDefinitions.has(section)) {
+          sectionDefinitions.set(section, {
+            priority: 'required',
+            indicators: this.getDefaultIndicators(section),
+            description: this.getDefaultDescription(section)
+          });
+        }
+      });
+
+      // Add recommended sections
+      recommendedSections.forEach(section => {
+        if (!sectionDefinitions.has(section)) {
+          sectionDefinitions.set(section, {
+            priority: 'recommended',
+            indicators: this.getDefaultIndicators(section),
+            description: this.getDefaultDescription(section)
+          });
+        }
+      });
+
+      // Add optional sections
+      optionalSections.forEach(section => {
+        if (!sectionDefinitions.has(section)) {
+          sectionDefinitions.set(section, {
+            priority: 'optional',
+            indicators: this.getDefaultIndicators(section),
+            description: this.getDefaultDescription(section)
+          });
+        }
+      });
+
+      // Add custom sections (override any existing ones)
+      Object.entries(customSections).forEach(([section, config]) => {
+        sectionDefinitions.set(section, {
+          priority: config.priority,
+          indicators: config.indicators,
+          description: config.description
+        });
+      });
+
+      if (files.length === 0) {
+        // No README files found - return all sections as missing
+        return Array.from(sectionDefinitions.entries()).map(([section, def]) => ({
+          section: section as ReadmeSection,
+          priority: def.priority,
+          description: def.description
         }));
       }
 
@@ -1231,24 +1288,22 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
           const content = await fs.readFile(join(this.projectPath, file), 'utf-8');
           const lowerContent = content.toLowerCase();
 
-          // Define standard sections with their indicators
-          const sectionChecks: Array<{ section: ReadmeSection; indicators: string[]; priority: 'required' | 'recommended' | 'optional'; description: string }> = [
-            { section: 'installation', indicators: ['install', 'setup', 'getting started'], priority: 'required', description: 'Installation and setup instructions' },
-            { section: 'usage', indicators: ['usage', 'how to use', 'example', 'getting started'], priority: 'required', description: 'Usage examples and basic instructions' },
-            { section: 'api', indicators: ['api', 'reference', 'methods', 'functions'], priority: 'recommended', description: 'API documentation and reference' },
-            { section: 'contributing', indicators: ['contribut', 'develop'], priority: 'recommended', description: 'Contributing guidelines' },
-            { section: 'license', indicators: ['license', 'copyright'], priority: 'recommended', description: 'License information' },
-            { section: 'testing', indicators: ['test', 'testing'], priority: 'optional', description: 'Testing instructions and guidelines' }
-          ];
+          // Check each configured section
+          for (const [section, definition] of sectionDefinitions) {
+            const hasSection = definition.indicators.some(indicator =>
+              lowerContent.includes(indicator.toLowerCase())
+            );
 
-          for (const check of sectionChecks) {
-            const hasSection = check.indicators.some(indicator => lowerContent.includes(indicator));
             if (!hasSection) {
-              missingReadmeSections.push({
-                section: check.section,
-                priority: check.priority,
-                description: check.description
-              });
+              // Avoid duplicates by checking if this section is already marked as missing
+              const alreadyAdded = missingReadmeSections.some(missing => missing.section === section);
+              if (!alreadyAdded) {
+                missingReadmeSections.push({
+                  section: section as ReadmeSection,
+                  priority: definition.priority,
+                  description: definition.description
+                });
+              }
             }
           }
         } catch {
@@ -1260,6 +1315,54 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     }
 
     return missingReadmeSections;
+  }
+
+  /**
+   * Get default indicators for a standard section
+   */
+  private getDefaultIndicators(section: string): string[] {
+    const defaultIndicators: Record<string, string[]> = {
+      'title': ['#', 'title'],
+      'description': ['description', 'about', 'overview'],
+      'installation': ['install', 'setup', 'getting started'],
+      'usage': ['usage', 'how to use', 'example', 'getting started'],
+      'api': ['api', 'reference', 'methods', 'functions', 'documentation'],
+      'contributing': ['contribut', 'develop', 'contribution'],
+      'license': ['license', 'copyright', 'legal'],
+      'testing': ['test', 'testing', 'spec'],
+      'troubleshooting': ['troubleshoot', 'problem', 'issue', 'debug'],
+      'faq': ['faq', 'question', 'frequently asked'],
+      'changelog': ['changelog', 'changes', 'history', 'release'],
+      'dependencies': ['depend', 'requirement'],
+      'examples': ['example', 'demo', 'sample'],
+      'deployment': ['deploy', 'build', 'production']
+    };
+
+    return defaultIndicators[section] || [section];
+  }
+
+  /**
+   * Get default description for a standard section
+   */
+  private getDefaultDescription(section: string): string {
+    const defaultDescriptions: Record<string, string> = {
+      'title': 'Project title and brief description',
+      'description': 'Detailed project description and overview',
+      'installation': 'Installation and setup instructions',
+      'usage': 'Usage examples and basic instructions',
+      'api': 'API documentation and reference',
+      'contributing': 'Contributing guidelines for developers',
+      'license': 'License information and copyright',
+      'testing': 'Testing instructions and guidelines',
+      'troubleshooting': 'Common issues and solutions',
+      'faq': 'Frequently asked questions',
+      'changelog': 'Version history and changes',
+      'dependencies': 'Project dependencies and requirements',
+      'examples': 'Usage examples and code samples',
+      'deployment': 'Deployment and build instructions'
+    };
+
+    return defaultDescriptions[section] || `${section.charAt(0).toUpperCase() + section.slice(1)} section`;
   }
 
   /**

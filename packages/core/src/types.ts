@@ -792,6 +792,28 @@ export const DocumentationAnalysisConfigSchema = z.object({
     checkReturnTypes: z.boolean().optional().default(true),
     checkParameterTypes: z.boolean().optional().default(true),
   }).optional(),
+  /** Configuration for README section analysis */
+  readmeSections: z.object({
+    /** Enable README section analysis */
+    enabled: z.boolean().optional().default(true),
+    /** Required sections that must be present */
+    required: z.array(z.string()).optional().default(['title', 'description', 'installation', 'usage']),
+    /** Recommended sections that should be present */
+    recommended: z.array(z.string()).optional().default(['api', 'contributing', 'license']),
+    /** Optional sections that are nice to have */
+    optional: z.array(z.string()).optional().default(['testing', 'troubleshooting', 'faq', 'changelog']),
+    /** Custom section definitions with their detection patterns */
+    customSections: z.record(z.object({
+      /** Display name for the section */
+      displayName: z.string(),
+      /** Priority level for this section */
+      priority: z.enum(['required', 'recommended', 'optional']),
+      /** Keywords or patterns to detect this section */
+      indicators: z.array(z.string()),
+      /** Description of what this section should contain */
+      description: z.string(),
+    })).optional().default({}),
+  }).optional(),
 });
 export type DocumentationAnalysisConfig = z.infer<typeof DocumentationAnalysisConfigSchema>;
 
