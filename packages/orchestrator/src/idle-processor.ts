@@ -378,7 +378,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
       // Enhanced: Run npm audit for security vulnerabilities
       try {
-        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
+        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
 
         // Run npm audit and capture JSON output
         const { stdout } = await this.execAsync('npm audit --json 2>/dev/null || echo "{}"');
@@ -413,7 +413,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
                   const cleanVersion = version.replace(/[^\d.]/g, '');
                   security.push(`${name}@${version} (${pattern.cve})`);
 
-                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
+                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
                   const fallbackVuln = SecurityVulnerabilityParser.createVulnerability({
                     name,
                     cveId: pattern.cve,
@@ -1391,7 +1391,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    */
   private async findVersionMismatches(): Promise<OutdatedDocumentation[]> {
     try {
-      const { VersionMismatchDetector } = await import('./analyzers/version-mismatch-detector.js');
+      const { VersionMismatchDetector } = await import('./analyzers/version-mismatch-detector');
       const detector = new VersionMismatchDetector(this.projectPath);
 
       const mismatches = await detector.detectMismatches();
