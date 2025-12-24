@@ -1006,7 +1006,11 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       const missingIntegrationTests = await this.analyzeMissingIntegrationTests();
 
       // Detect testing anti-patterns
-      const antiPatterns = await this.detectTestingAntiPatterns();
+      const existingAntiPatterns = await this.detectTestingAntiPatterns();
+      const additionalAntiPatterns = await this.analyzeTestAntiPatterns();
+
+      // Merge results from both anti-pattern detection methods
+      const antiPatterns = [...existingAntiPatterns, ...additionalAntiPatterns];
 
       return {
         branchCoverage,
