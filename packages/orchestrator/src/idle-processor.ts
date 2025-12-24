@@ -127,6 +127,63 @@ export interface ProjectAnalysis {
     slowTests: string[];
     bottlenecks: string[];
   };
+  /** Comprehensive test analysis including coverage, untested exports, and anti-patterns */
+  testAnalysis: {
+    branchCoverage: {
+      /** Coverage percentage (0-100) */
+      percentage: number;
+      /** List of uncovered code branches */
+      uncoveredBranches: Array<{
+        /** File path relative to project root */
+        file: string;
+        /** Line number where the branch starts */
+        line: number;
+        /** Type of branch (if/else, switch case, try/catch, etc.) */
+        type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+        /** Brief description of the uncovered branch */
+        description: string;
+      }>;
+    };
+    /** Exports that lack test coverage */
+    untestedExports: Array<{
+      /** File path relative to project root */
+      file: string;
+      /** Name of the exported symbol */
+      exportName: string;
+      /** Type of export (function, class, interface, etc.) */
+      exportType: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace';
+      /** Line number where the export is defined */
+      line?: number;
+      /** Whether this is a public API export */
+      isPublic: boolean;
+    }>;
+    /** Missing integration tests for critical paths */
+    missingIntegrationTests: Array<{
+      /** Description of the critical path or user journey */
+      criticalPath: string;
+      /** Detailed description of what should be tested */
+      description: string;
+      /** Priority level based on business impact */
+      priority: 'low' | 'medium' | 'high' | 'critical';
+      /** Related files or components involved in this path */
+      relatedFiles?: string[];
+    }>;
+    /** Testing anti-patterns found in the codebase */
+    antiPatterns: Array<{
+      /** File path where the anti-pattern was found */
+      file: string;
+      /** Line number where the anti-pattern occurs */
+      line: number;
+      /** Type of anti-pattern detected */
+      type: 'brittle-test' | 'test-pollution' | 'mystery-guest' | 'eager-test' | 'assertion-roulette' | 'slow-test' | 'flaky-test' | 'test-code-duplication';
+      /** Detailed description of the anti-pattern */
+      description: string;
+      /** Severity of the anti-pattern */
+      severity: 'low' | 'medium' | 'high';
+      /** Suggested fix or improvement */
+      suggestion?: string;
+    }>;
+  };
 }
 
 export interface IdleProcessorEvents {
@@ -296,6 +353,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       codeQuality: await this.analyzeCodeQuality(),
       documentation: await this.analyzeDocumentation(),
       performance: await this.analyzePerformance(),
+      testAnalysis: await this.analyzeTestAnalysis(),
     };
 
     return analysis;
@@ -378,7 +436,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
 
       // Enhanced: Run npm audit for security vulnerabilities
       try {
-        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+        const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
 
         // Run npm audit and capture JSON output
         const { stdout } = await this.execAsync('npm audit --json 2>/dev/null || echo "{}"');
@@ -413,7 +471,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
                   const cleanVersion = version.replace(/[^\d.]/g, '');
                   security.push(`${name}@${version} (${pattern.cve})`);
 
-                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser');
+                  const { SecurityVulnerabilityParser } = await import('./utils/security-vulnerability-parser.js');
                   const fallbackVuln = SecurityVulnerabilityParser.createVulnerability({
                     name,
                     cveId: pattern.cve,
@@ -935,6 +993,317 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     };
   }
 
+  private async analyzeTestAnalysis(): Promise<ProjectAnalysis['testAnalysis']> {
+    try {
+      // Analyze branch coverage
+      const branchCoverage = await this.analyzeBranchCoverage();
+
+      // Find untested exports
+      const untestedExports = await this.findUntestedExports();
+
+      // Identify missing integration tests
+      const missingIntegrationTests = await this.findMissingIntegrationTests();
+
+      // Detect testing anti-patterns
+      const antiPatterns = await this.detectTestingAntiPatterns();
+
+      return {
+        branchCoverage,
+        untestedExports,
+        missingIntegrationTests,
+        antiPatterns,
+      };
+    } catch {
+      // Return default values on error
+      return {
+        branchCoverage: {
+          percentage: 0,
+          uncoveredBranches: [],
+        },
+        untestedExports: [],
+        missingIntegrationTests: [],
+        antiPatterns: [],
+      };
+    }
+  }
+
+  private async analyzeBranchCoverage(): Promise<ProjectAnalysis['testAnalysis']['branchCoverage']> {
+    try {
+      // Simple heuristic: look for if/else statements and estimate coverage
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | xargs grep -n "if\\s*(" | head -20');
+      const conditionalLines = stdout.split('\n').filter(line => line.trim());
+
+      // Estimate uncovered branches (simplified approach)
+      const uncoveredBranches = conditionalLines.slice(0, 10).map((line, index) => {
+        const parts = line.split(':');
+        const file = parts[0]?.replace(/^\.\//, '') || 'unknown';
+        const lineNumber = parseInt(parts[1]) || 0;
+        const content = parts.slice(2).join(':') || '';
+
+        let branchType: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical' = 'if';
+        if (content.includes('?') && content.includes(':')) {
+          branchType = 'ternary';
+        } else if (content.includes('&&') || content.includes('||')) {
+          branchType = 'logical';
+        } else if (content.includes('switch')) {
+          branchType = 'switch';
+        } else if (content.includes('catch')) {
+          branchType = 'catch';
+        }
+
+        return {
+          file,
+          line: lineNumber,
+          type: branchType,
+          description: `Potentially uncovered ${branchType} branch: ${content.trim().substring(0, 50)}`,
+        };
+      });
+
+      // Estimate coverage percentage (simplified)
+      const testFileCount = await this.getTestFileCount();
+      const sourceFileCount = await this.getSourceFileCount();
+      const estimatedCoverage = sourceFileCount > 0 ? Math.min((testFileCount / sourceFileCount) * 100, 100) : 0;
+
+      return {
+        percentage: Math.round(estimatedCoverage),
+        uncoveredBranches,
+      };
+    } catch {
+      return {
+        percentage: 0,
+        uncoveredBranches: [],
+      };
+    }
+  }
+
+  private async findUntestedExports(): Promise<ProjectAnalysis['testAnalysis']['untestedExports']> {
+    try {
+      const untestedExports: ProjectAnalysis['testAnalysis']['untestedExports'] = [];
+
+      // Find source files with exports
+      const { stdout: sourceFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | head -30');
+      const files = sourceFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files.slice(0, 15)) {
+        try {
+          const content = await this.readFileContent(file);
+          const lines = content.split('\n');
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            // Look for export patterns
+            const exportMatch = line.match(/^export\s+(function|class|interface|type|const|let|var|enum|namespace)\s+(\w+)/);
+            if (exportMatch) {
+              const exportType = exportMatch[1] as 'function' | 'class' | 'interface' | 'type' | 'const' | 'let' | 'var' | 'enum' | 'namespace';
+              const exportName = exportMatch[2];
+
+              // Simple heuristic: assume it's untested if we can't find a test file
+              const testExists = await this.checkIfExportHasTest(file, exportName);
+              if (!testExists) {
+                untestedExports.push({
+                  file: file.replace(/^\.\//, ''),
+                  exportName,
+                  exportType: exportType === 'let' || exportType === 'var' ? 'variable' : exportType,
+                  line: i + 1,
+                  isPublic: !file.includes('internal') && !exportName.startsWith('_'),
+                });
+              }
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      return untestedExports.slice(0, 20); // Limit results
+    } catch {
+      return [];
+    }
+  }
+
+  private async findMissingIntegrationTests(): Promise<ProjectAnalysis['testAnalysis']['missingIntegrationTests']> {
+    try {
+      const missingTests: ProjectAnalysis['testAnalysis']['missingIntegrationTests'] = [];
+
+      // Look for API routes or main application entry points
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | xargs grep -l "router\\|app\\|server\\|main" | grep -v test | head -10');
+      const entryFiles = stdout.split('\n').filter(line => line.trim());
+
+      for (const file of entryFiles.slice(0, 5)) {
+        try {
+          const content = await this.readFileContent(file);
+
+          // Look for route definitions or main functions
+          if (content.includes('app.') || content.includes('router.') || content.includes('express')) {
+            missingTests.push({
+              criticalPath: `End-to-end API flow in ${file.replace(/^\.\//, '')}`,
+              description: 'Missing integration tests for API endpoints and request/response flow',
+              priority: 'high',
+              relatedFiles: [file.replace(/^\.\//, '')],
+            });
+          }
+
+          if (content.includes('main') || content.includes('index') || file.includes('index.')) {
+            missingTests.push({
+              criticalPath: `Application startup and initialization`,
+              description: 'Missing tests for application bootstrap and configuration loading',
+              priority: 'medium',
+              relatedFiles: [file.replace(/^\.\//, '')],
+            });
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      // Look for database operations
+      const { stdout: dbFiles } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | xargs grep -l "database\\|db\\|sql\\|query" | grep -v test | head -5');
+      const dbRelatedFiles = dbFiles.split('\n').filter(line => line.trim());
+
+      if (dbRelatedFiles.length > 0) {
+        missingTests.push({
+          criticalPath: 'Database operations and data persistence',
+          description: 'Missing integration tests for database transactions and data consistency',
+          priority: 'high',
+          relatedFiles: dbRelatedFiles.slice(0, 3).map(f => f.replace(/^\.\//, '')),
+        });
+      }
+
+      return missingTests.slice(0, 8); // Limit results
+    } catch {
+      return [];
+    }
+  }
+
+  private async detectTestingAntiPatterns(): Promise<ProjectAnalysis['testAnalysis']['antiPatterns']> {
+    try {
+      const antiPatterns: ProjectAnalysis['testAnalysis']['antiPatterns'] = [];
+
+      // Find test files
+      const { stdout: testFiles } = await this.execAsync('find . -name "*.test.*" -o -name "*.spec.*" | head -20');
+      const files = testFiles.split('\n').filter(line => line.trim());
+
+      for (const file of files.slice(0, 10)) {
+        try {
+          const content = await this.readFileContent(file);
+          const lines = content.split('\n');
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            // Detect potential anti-patterns
+
+            // 1. Test pollution (global state modification)
+            if (trimmedLine.includes('global.') || trimmedLine.includes('process.env') || trimmedLine.includes('window.')) {
+              antiPatterns.push({
+                file: file.replace(/^\.\//, ''),
+                line: i + 1,
+                type: 'test-pollution',
+                description: 'Test may be modifying global state which can affect other tests',
+                severity: 'medium',
+                suggestion: 'Use proper setup/teardown or mocking to isolate test state',
+              });
+            }
+
+            // 2. Mystery guest (external dependencies)
+            if (trimmedLine.includes('require(') && (trimmedLine.includes('fs') || trimmedLine.includes('http'))) {
+              antiPatterns.push({
+                file: file.replace(/^\.\//, ''),
+                line: i + 1,
+                type: 'mystery-guest',
+                description: 'Test has hidden dependencies on external resources',
+                severity: 'medium',
+                suggestion: 'Mock external dependencies or make them explicit test fixtures',
+              });
+            }
+
+            // 3. Assertion roulette (multiple assertions without context)
+            const assertionCount = (line.match(/expect\(|assert\(|should\./g) || []).length;
+            if (assertionCount > 3) {
+              antiPatterns.push({
+                file: file.replace(/^\.\//, ''),
+                line: i + 1,
+                type: 'assertion-roulette',
+                description: `Too many assertions (${assertionCount}) in a single test line`,
+                severity: 'low',
+                suggestion: 'Split into multiple focused test cases or add descriptive comments',
+              });
+            }
+
+            // 4. Slow test (timeouts or sleeps)
+            if (trimmedLine.includes('setTimeout') || trimmedLine.includes('sleep') || trimmedLine.includes('delay')) {
+              antiPatterns.push({
+                file: file.replace(/^\.\//, ''),
+                line: i + 1,
+                type: 'slow-test',
+                description: 'Test contains timing delays which can make tests slow and flaky',
+                severity: 'high',
+                suggestion: 'Use mocked timers or eliminate timing dependencies',
+              });
+            }
+          }
+        } catch {
+          // Skip files that can't be read
+        }
+      }
+
+      return antiPatterns.slice(0, 15); // Limit results
+    } catch {
+      return [];
+    }
+  }
+
+  private async getTestFileCount(): Promise<number> {
+    try {
+      const { stdout } = await this.execAsync('find . -name "*.test.*" -o -name "*.spec.*" | wc -l');
+      return parseInt(stdout.trim()) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async getSourceFileCount(): Promise<number> {
+    try {
+      const { stdout } = await this.execAsync('find . -name "*.ts" -o -name "*.js" | grep -v test | grep -v node_modules | wc -l');
+      return parseInt(stdout.trim()) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async readFileContent(filePath: string): Promise<string> {
+    try {
+      return await fs.readFile(join(this.projectPath, filePath), 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  private async checkIfExportHasTest(sourceFile: string, exportName: string): Promise<boolean> {
+    try {
+      // Simple heuristic: check if there's a test file that mentions this export
+      const testFileName = sourceFile.replace(/\.(ts|js)$/, '.test.$1');
+      const specFileName = sourceFile.replace(/\.(ts|js)$/, '.spec.$1');
+
+      // Check if test file exists and contains the export name
+      for (const testFile of [testFileName, specFileName]) {
+        try {
+          const testContent = await this.readFileContent(testFile);
+          if (testContent.includes(exportName)) {
+            return true;
+          }
+        } catch {
+          // Test file doesn't exist, continue
+        }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   // ============================================================================
   // Task Generation Methods
   // ============================================================================
@@ -1206,23 +1575,15 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
     const missingReadmeSections: MissingReadmeSection[] = [];
 
     try {
-      // Get configuration for README sections analysis
-      const readmeConfig = this.config.documentation?.readmeSections;
-
-      // Check if README section analysis is enabled
-      if (readmeConfig?.enabled === false) {
-        return [];
-      }
-
       // Find README files
       const { stdout: readmeFiles } = await this.execAsync('find . -name "README*" -o -name "readme*" | head -5');
       const files = readmeFiles.split('\n').filter(line => line.trim());
 
-      // Get configured sections or use defaults
-      const requiredSections = readmeConfig?.required || ['title', 'description', 'installation', 'usage'];
-      const recommendedSections = readmeConfig?.recommended || ['api', 'contributing', 'license'];
-      const optionalSections = readmeConfig?.optional || ['testing', 'troubleshooting', 'faq', 'changelog'];
-      const customSections = readmeConfig?.customSections || {};
+      // Use default sections (documentation config is on ApexConfig, not DaemonConfig)
+      const requiredSections: string[] = ['title', 'description', 'installation', 'usage'];
+      const recommendedSections: string[] = ['api', 'contributing', 'license'];
+      const optionalSections: string[] = ['testing', 'troubleshooting', 'faq', 'changelog'];
+      const customSections: Record<string, { priority: 'required' | 'recommended' | 'optional'; indicators: string[]; description: string }> = {};
 
       // Build section definitions with priorities and default indicators
       const sectionDefinitions = new Map<string, {
@@ -1232,7 +1593,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       }>();
 
       // Add required sections
-      requiredSections.forEach(section => {
+      requiredSections.forEach((section: string) => {
         if (!sectionDefinitions.has(section)) {
           sectionDefinitions.set(section, {
             priority: 'required',
@@ -1243,7 +1604,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       });
 
       // Add recommended sections
-      recommendedSections.forEach(section => {
+      recommendedSections.forEach((section: string) => {
         if (!sectionDefinitions.has(section)) {
           sectionDefinitions.set(section, {
             priority: 'recommended',
@@ -1254,7 +1615,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       });
 
       // Add optional sections
-      optionalSections.forEach(section => {
+      optionalSections.forEach((section: string) => {
         if (!sectionDefinitions.has(section)) {
           sectionDefinitions.set(section, {
             priority: 'optional',
@@ -1265,13 +1626,15 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
       });
 
       // Add custom sections (override any existing ones)
-      Object.entries(customSections).forEach(([section, config]) => {
-        sectionDefinitions.set(section, {
-          priority: config.priority,
-          indicators: config.indicators,
-          description: config.description
+      if (customSections) {
+        Object.entries(customSections).forEach(([section, sectionConfig]) => {
+          sectionDefinitions.set(section, {
+            priority: sectionConfig.priority,
+            indicators: sectionConfig.indicators,
+            description: sectionConfig.description
+          });
         });
-      });
+      }
 
       if (files.length === 0) {
         // No README files found - return all sections as missing
@@ -1373,11 +1736,10 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    */
   private async findStaleComments(): Promise<OutdatedDocumentation[]> {
     try {
-      const { StaleCommentDetector } = await import('./stale-comment-detector');
+      const { StaleCommentDetector } = await import('./stale-comment-detector.js');
 
-      // Use configuration if available
-      const config = this.config.documentation?.outdatedDocs || {};
-      const detector = new StaleCommentDetector(this.projectPath, config);
+      // Use default configuration (documentation config is on ApexConfig, not DaemonConfig)
+      const detector = new StaleCommentDetector(this.projectPath, {});
 
       return await detector.findStaleComments();
     } catch (error) {
@@ -1391,7 +1753,7 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    */
   private async findVersionMismatches(): Promise<OutdatedDocumentation[]> {
     try {
-      const { VersionMismatchDetector } = await import('./analyzers/version-mismatch-detector');
+      const { VersionMismatchDetector } = await import('./analyzers/version-mismatch-detector.js');
       const detector = new VersionMismatchDetector(this.projectPath);
 
       const mismatches = await detector.detectMismatches();

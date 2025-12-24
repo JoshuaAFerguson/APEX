@@ -930,3 +930,88 @@ export interface EnhancedDocumentationAnalysis {
   /** API documentation completeness analysis */
   apiCompleteness: APICompleteness;
 }
+
+// ============================================================================
+// Test Analysis Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Represents branch coverage statistics for a specific area of code
+ */
+export interface BranchCoverage {
+  /** Coverage percentage (0-100) */
+  percentage: number;
+  /** List of uncovered code branches */
+  uncoveredBranches: Array<{
+    /** File path relative to project root */
+    file: string;
+    /** Line number where the branch starts */
+    line: number;
+    /** Type of branch (if/else, switch case, try/catch, etc.) */
+    type: 'if' | 'else' | 'switch' | 'catch' | 'ternary' | 'logical';
+    /** Brief description of the uncovered branch */
+    description: string;
+  }>;
+}
+
+/**
+ * Represents an export that lacks test coverage
+ */
+export interface UntestedExport {
+  /** File path relative to project root */
+  file: string;
+  /** Name of the exported symbol */
+  exportName: string;
+  /** Type of export (function, class, interface, etc.) */
+  exportType: 'function' | 'class' | 'interface' | 'type' | 'variable' | 'const' | 'enum' | 'namespace';
+  /** Line number where the export is defined */
+  line?: number;
+  /** Whether this is a public API export */
+  isPublic: boolean;
+}
+
+/**
+ * Represents a missing integration test for a critical code path
+ */
+export interface MissingIntegrationTest {
+  /** Description of the critical path or user journey */
+  criticalPath: string;
+  /** Detailed description of what should be tested */
+  description: string;
+  /** Priority level based on business impact */
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  /** Related files or components involved in this path */
+  relatedFiles?: string[];
+}
+
+/**
+ * Represents a testing anti-pattern found in the codebase
+ */
+export interface TestingAntiPattern {
+  /** File path where the anti-pattern was found */
+  file: string;
+  /** Line number where the anti-pattern occurs */
+  line: number;
+  /** Type of anti-pattern detected */
+  type: 'brittle-test' | 'test-pollution' | 'mystery-guest' | 'eager-test' | 'assertion-roulette' | 'slow-test' | 'flaky-test' | 'test-code-duplication';
+  /** Detailed description of the anti-pattern */
+  description: string;
+  /** Severity of the anti-pattern */
+  severity: 'low' | 'medium' | 'high';
+  /** Suggested fix or improvement */
+  suggestion?: string;
+}
+
+/**
+ * Comprehensive test analysis data structure
+ */
+export interface TestAnalysis {
+  /** Branch coverage statistics */
+  branchCoverage: BranchCoverage;
+  /** Exports that lack test coverage */
+  untestedExports: UntestedExport[];
+  /** Missing integration tests for critical paths */
+  missingIntegrationTests: MissingIntegrationTest[];
+  /** Testing anti-patterns found in the codebase */
+  antiPatterns: TestingAntiPattern[];
+}

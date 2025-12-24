@@ -18,7 +18,9 @@ const verifyTypes = () => {
   const config: DaemonConfig = {
     pollInterval: 1000,
     autoStart: false,
-    logLevel: 'info'
+    logLevel: 'info',
+    installAsService: false,
+    serviceName: 'apex-daemon'
   };
 
   const store = {} as TaskStore;
@@ -47,7 +49,8 @@ const verifyTypes = () => {
     file: 'test.md',
     type: 'broken-link',
     description: 'test',
-    line: 1
+    line: 1,
+    severity: 'medium'
   };
 
   return {

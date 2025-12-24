@@ -32,6 +32,8 @@ describe('Documentation Integration Smoke Test', () => {
       pollInterval: 5000,
       autoStart: false,
       logLevel: 'info',
+      installAsService: false,
+      serviceName: 'apex-daemon',
       idleProcessing: {
         enabled: true,
         idleThreshold: 300000,
