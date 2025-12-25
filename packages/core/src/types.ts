@@ -576,6 +576,40 @@ export interface ContainerStats {
 }
 
 /**
+ * Options for streaming container logs
+ */
+export interface ContainerLogStreamOptions {
+  /** Follow logs (stream live logs as they are produced) */
+  follow?: boolean;
+  /** Show timestamps in log output */
+  timestamps?: boolean;
+  /** Only show logs since this timestamp (ISO string or unix timestamp) */
+  since?: string | number | Date;
+  /** Only show logs until this timestamp (ISO string or unix timestamp) */
+  until?: string | number | Date;
+  /** Filter log output to stdout, stderr, or both */
+  stdout?: boolean;
+  /** Filter log output to stderr */
+  stderr?: boolean;
+  /** Maximum number of lines to retrieve from the end of the logs */
+  tail?: number | 'all';
+}
+
+/**
+ * A single log entry from a container
+ */
+export interface ContainerLogEntry {
+  /** Log message content */
+  message: string;
+  /** Timestamp when the log was generated */
+  timestamp?: Date;
+  /** Stream source (stdout or stderr) */
+  stream: 'stdout' | 'stderr';
+  /** Raw log line as received from the container runtime */
+  raw?: string;
+}
+
+/**
  * Workspace isolation strategy enumeration
  */
 export const WorkspaceStrategySchema = z.enum(['worktree', 'container', 'directory', 'none']);

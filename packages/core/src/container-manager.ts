@@ -1,7 +1,8 @@
-import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits } from './types';
+import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits, ContainerLogStreamOptions, ContainerLogEntry } from './types';
 import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
-import { exec } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
+import { EventEmitter } from 'events';
 
 const execAsync = promisify(exec);
 
@@ -428,6 +429,27 @@ export class ContainerManager {
   }
 
   /**
+   * Stream logs from a container
+   * @param containerId Container ID or name
+   * @param options Log streaming options
+   * @param runtimeType Optional runtime type (auto-detected if not provided)
+   * @returns EventEmitter that emits 'data' events with ContainerLogEntry objects
+   */
+  async streamLogs(
+    containerId: string,
+    options: ContainerLogStreamOptions = {},
+    runtimeType?: ContainerRuntimeType
+  ): Promise<ContainerLogStream> {
+    const runtime = runtimeType || await this.runtime.getBestRuntime();
+
+    if (runtime === 'none') {
+      throw new Error('No container runtime available');
+    }
+
+    return new ContainerLogStream(containerId, options, runtime);
+  }
+
+  /**
    * Generate a container name following APEX naming conventions
    * @param taskId Task ID to include in the name
    * @param config Optional naming configuration override
@@ -789,6 +811,342 @@ export class ContainerManager {
       return `'${arg.replace(/'/g, "'\"'\"'")}'`;
     }
     return arg;
+  }
+}
+
+/**
+ * Container log stream implementation
+ * EventEmitter that streams logs from a container with async iterator support
+ */
+export class ContainerLogStream extends EventEmitter {
+  private process?: ChildProcess;
+  private containerId: string;
+  private options: ContainerLogStreamOptions;
+  private runtime: ContainerRuntimeType;
+  private isStreaming: boolean = false;
+  private ended: boolean = false;
+
+  constructor(containerId: string, options: ContainerLogStreamOptions, runtime: ContainerRuntimeType) {
+    super();
+    this.containerId = containerId;
+    this.options = options;
+    this.runtime = runtime;
+    this.startStreaming();
+  }
+
+  /**
+   * Start streaming logs from the container
+   */
+  private startStreaming(): void {
+    if (this.isStreaming || this.ended) {
+      return;
+    }
+
+    try {
+      const command = this.buildLogsCommand();
+      const args = command.split(' ').slice(1); // Remove the runtime command
+
+      this.process = spawn(this.runtime, args, {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      this.isStreaming = true;
+
+      // Handle stdout and stderr
+      if (this.process.stdout) {
+        this.process.stdout.on('data', (chunk: Buffer) => {
+          this.processLogData(chunk, 'stdout');
+        });
+      }
+
+      if (this.process.stderr) {
+        this.process.stderr.on('data', (chunk: Buffer) => {
+          this.processLogData(chunk, 'stderr');
+        });
+      }
+
+      // Handle process events
+      this.process.on('error', (error) => {
+        this.emit('error', error);
+        this.end();
+      });
+
+      this.process.on('exit', (code) => {
+        this.emit('exit', code);
+        this.end();
+      });
+
+      this.process.on('close', () => {
+        this.end();
+      });
+
+    } catch (error) {
+      this.emit('error', error);
+      this.end();
+    }
+  }
+
+  /**
+   * Process log data from stdout/stderr and emit parsed log entries
+   */
+  private processLogData(chunk: Buffer, stream: 'stdout' | 'stderr'): void {
+    if (this.ended) {
+      return;
+    }
+
+    const data = chunk.toString('utf8');
+    const lines = data.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      // Skip empty lines
+      if (!line.trim()) {
+        continue;
+      }
+
+      // Check stream filtering options
+      if (this.options.stdout === false && stream === 'stdout') {
+        continue;
+      }
+      if (this.options.stderr === false && stream === 'stderr') {
+        continue;
+      }
+      if (this.options.stdout === true && stream === 'stderr') {
+        continue;
+      }
+
+      const logEntry = this.parseLogLine(line, stream);
+      if (logEntry) {
+        this.emit('data', logEntry);
+      }
+    }
+  }
+
+  /**
+   * Parse a log line into a ContainerLogEntry
+   */
+  private parseLogLine(line: string, defaultStream: 'stdout' | 'stderr'): ContainerLogEntry | null {
+    try {
+      // Check if line has timestamp prefix (when timestamps option is enabled)
+      let message = line;
+      let timestamp: Date | undefined;
+      let stream = defaultStream;
+
+      // Docker/Podman timestamp format: 2024-01-01T12:00:00.000000000Z message
+      if (this.options.timestamps) {
+        const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(.*)$/);
+        if (timestampMatch) {
+          timestamp = new Date(timestampMatch[1]);
+          message = timestampMatch[2];
+        }
+      }
+
+      // Check for stream prefixes in some Docker outputs
+      const streamMatch = message.match(/^(stdout|stderr):\s*(.*)$/);
+      if (streamMatch) {
+        stream = streamMatch[1] as 'stdout' | 'stderr';
+        message = streamMatch[2];
+      }
+
+      return {
+        message: message.trim(),
+        timestamp,
+        stream,
+        raw: line,
+      };
+    } catch (error) {
+      // If parsing fails, return a basic log entry
+      return {
+        message: line.trim(),
+        stream: defaultStream,
+        raw: line,
+      };
+    }
+  }
+
+  /**
+   * Build the logs command based on options
+   */
+  private buildLogsCommand(): string {
+    const parts = [this.runtime, 'logs'];
+
+    // Add follow flag
+    if (this.options.follow) {
+      parts.push('--follow');
+    }
+
+    // Add timestamps flag
+    if (this.options.timestamps) {
+      parts.push('--timestamps');
+    }
+
+    // Add since option
+    if (this.options.since) {
+      const since = this.formatTimestamp(this.options.since);
+      if (since) {
+        parts.push('--since', since);
+      }
+    }
+
+    // Add until option
+    if (this.options.until) {
+      const until = this.formatTimestamp(this.options.until);
+      if (until) {
+        parts.push('--until', until);
+      }
+    }
+
+    // Add tail option
+    if (this.options.tail !== undefined) {
+      if (this.options.tail === 'all') {
+        parts.push('--tail', 'all');
+      } else if (typeof this.options.tail === 'number' && this.options.tail > 0) {
+        parts.push('--tail', this.options.tail.toString());
+      }
+    }
+
+    // Add container ID
+    parts.push(this.containerId);
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Format timestamp for docker/podman logs command
+   */
+  private formatTimestamp(timestamp: string | number | Date): string | null {
+    try {
+      if (timestamp instanceof Date) {
+        return timestamp.toISOString();
+      }
+
+      if (typeof timestamp === 'number') {
+        return new Date(timestamp).toISOString();
+      }
+
+      if (typeof timestamp === 'string') {
+        // Try to parse as ISO string first
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+
+        // If it's a unix timestamp string
+        const unixTime = parseInt(timestamp, 10);
+        if (!isNaN(unixTime)) {
+          return new Date(unixTime * 1000).toISOString();
+        }
+
+        // Return as-is for relative timestamps like "1h", "30m", etc.
+        return timestamp;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Stop streaming and clean up resources
+   */
+  end(): void {
+    if (this.ended) {
+      return;
+    }
+
+    this.ended = true;
+    this.isStreaming = false;
+
+    if (this.process) {
+      this.process.removeAllListeners();
+
+      if (!this.process.killed) {
+        this.process.kill('SIGTERM');
+
+        // Force kill after timeout
+        setTimeout(() => {
+          if (this.process && !this.process.killed) {
+            this.process.kill('SIGKILL');
+          }
+        }, 5000);
+      }
+
+      this.process = undefined;
+    }
+
+    this.emit('end');
+    this.removeAllListeners();
+  }
+
+  /**
+   * Check if the stream is currently active
+   */
+  get isActive(): boolean {
+    return this.isStreaming && !this.ended;
+  }
+
+  /**
+   * Async iterator implementation for convenient log consumption
+   */
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<ContainerLogEntry> {
+    const entries: ContainerLogEntry[] = [];
+    let resolve: ((value: IteratorResult<ContainerLogEntry>) => void) | null = null;
+    let streamEnded = false;
+
+    // Set up event handlers
+    const onData = (entry: ContainerLogEntry) => {
+      if (resolve) {
+        resolve({ value: entry, done: false });
+        resolve = null;
+      } else {
+        entries.push(entry);
+      }
+    };
+
+    const onEnd = () => {
+      streamEnded = true;
+      if (resolve) {
+        resolve({ value: undefined, done: true });
+        resolve = null;
+      }
+    };
+
+    const onError = (error: Error) => {
+      streamEnded = true;
+      if (resolve) {
+        resolve({ value: undefined, done: true });
+        resolve = null;
+      }
+      throw error;
+    };
+
+    this.on('data', onData);
+    this.on('end', onEnd);
+    this.on('error', onError);
+
+    try {
+      while (!streamEnded) {
+        if (entries.length > 0) {
+          yield entries.shift()!;
+        } else {
+          await new Promise<void>(r => {
+            resolve = (result) => {
+              if (result.done) {
+                r();
+              } else if (result.value) {
+                entries.push(result.value);
+                r();
+              }
+            };
+          });
+        }
+      }
+    } finally {
+      this.off('data', onData);
+      this.off('end', onEnd);
+      this.off('error', onError);
+      this.end();
+    }
   }
 }
 

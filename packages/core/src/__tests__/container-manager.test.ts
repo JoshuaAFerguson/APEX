@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { exec } from 'child_process';
 import {
   ContainerManager,
+  ContainerLogStream,
   containerManager,
   createTaskContainer,
   generateTaskContainerName,
