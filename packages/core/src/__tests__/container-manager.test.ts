@@ -9,7 +9,7 @@ import {
   type CreateContainerOptions,
 } from '../container-manager';
 import { ContainerRuntime } from '../container-runtime';
-import { ContainerConfig, ContainerStatus } from '../types';
+import { ContainerConfig, ContainerStats, ContainerStatus } from '../types';
 
 // Mock child_process.exec
 vi.mock('child_process', () => ({
@@ -416,6 +416,129 @@ describe('ContainerManager', () => {
   // Container Information Tests
   // ============================================================================
 
+  // ============================================================================
+  // Container Inspection Tests
+  // ============================================================================
+
+  describe('inspect', () => {
+    it('should return container info using inspect method', async () => {
+      const containerId = 'abc123';
+      const inspectOutput = 'abc123456|/apex-task-123|node:20-alpine|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>';
+
+      mockExec.mockImplementationOnce(mockExecCallback(inspectOutput));
+
+      const info = await manager.inspect(containerId);
+
+      expect(info).not.toBeNull();
+      expect(info!.id).toBe('abc123456');
+      expect(info!.name).toBe('apex-task-123');
+      expect(info!.status).toBe('running');
+    });
+
+    it('should return null for non-existent container in inspect', async () => {
+      const containerId = 'nonexistent';
+
+      mockExec.mockImplementationOnce(mockExecCallback('', '', new Error('No such container')));
+
+      const info = await manager.inspect(containerId);
+
+      expect(info).toBeNull();
+    });
+  });
+
+  describe('getStats', () => {
+    it('should parse container stats correctly', async () => {
+      const containerId = 'abc123';
+      const statsOutput = 'CONTAINER|CPU %|MEM USAGE / LIMIT|MEM %|NET I/O|BLOCK I/O|PIDS\nabc123|25.50%|512MiB / 1GiB|50.00%|1.2kB / 800B|1.5MB / 900kB|42';
+
+      mockExec.mockImplementationOnce(mockExecCallback(statsOutput));
+
+      const stats = await manager.getStats(containerId);
+
+      expect(stats).not.toBeNull();
+      expect(stats!.cpuPercent).toBe(25.5);
+      expect(stats!.memoryUsage).toBe(512 * 1024 * 1024); // 512 MiB in bytes
+      expect(stats!.memoryLimit).toBe(1024 * 1024 * 1024); // 1 GiB in bytes
+      expect(stats!.memoryPercent).toBe(50.0);
+      expect(stats!.networkRxBytes).toBe(1200); // 1.2kB in bytes
+      expect(stats!.networkTxBytes).toBe(800); // 800B
+      expect(stats!.blockReadBytes).toBe(1500000); // 1.5MB in bytes
+      expect(stats!.blockWriteBytes).toBe(900000); // 900kB in bytes
+      expect(stats!.pids).toBe(42);
+    });
+
+    it('should handle stats command failure', async () => {
+      const containerId = 'abc123';
+
+      mockExec.mockImplementationOnce(mockExecCallback('', '', new Error('Container not running')));
+
+      const stats = await manager.getStats(containerId);
+
+      expect(stats).toBeNull();
+    });
+
+    it('should handle malformed stats output', async () => {
+      const containerId = 'abc123';
+      const malformedOutput = 'incomplete-stats-data';
+
+      mockExec.mockImplementationOnce(mockExecCallback(malformedOutput));
+
+      const stats = await manager.getStats(containerId);
+
+      expect(stats).toBeNull();
+    });
+
+    it('should parse different memory units correctly', async () => {
+      const testCases = [
+        { input: '512B / 1KiB', expectedUsage: 512, expectedLimit: 1024 },
+        { input: '1.5MiB / 2GiB', expectedUsage: 1.5 * 1024 * 1024, expectedLimit: 2 * 1024 * 1024 * 1024 },
+        { input: '2.5GB / 4TB', expectedUsage: 2.5 * 1000000000, expectedLimit: 4 * 1000000000000 },
+      ];
+
+      for (const testCase of testCases) {
+        const statsOutput = `abc123|0%|${testCase.input}|0%|0B / 0B|0B / 0B|1`;
+
+        mockExec.mockImplementationOnce(mockExecCallback(statsOutput));
+
+        const stats = await manager.getStats('abc123');
+        expect(stats!.memoryUsage).toBe(testCase.expectedUsage);
+        expect(stats!.memoryLimit).toBe(testCase.expectedLimit);
+
+        vi.clearAllMocks();
+      }
+    });
+
+    it('should handle stats with podman runtime', async () => {
+      vi.mocked(mockRuntime.getBestRuntime).mockResolvedValue('podman');
+
+      const containerId = 'abc123';
+      const statsOutput = 'abc123|15.25%|256MiB / 512MiB|50.00%|2kB / 1kB|500kB / 200kB|24';
+
+      mockExec.mockImplementationOnce(mockExecCallback(statsOutput));
+
+      const stats = await manager.getStats(containerId);
+
+      expect(stats).not.toBeNull();
+      expect(stats!.cpuPercent).toBe(15.25);
+      expect(stats!.pids).toBe(24);
+
+      // Verify command used podman
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('podman stats'),
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it('should return null when no runtime available for stats', async () => {
+      vi.mocked(mockRuntime.getBestRuntime).mockResolvedValue('none');
+
+      const stats = await manager.getStats('abc123');
+
+      expect(stats).toBeNull();
+    });
+  });
+
   describe('getContainerInfo', () => {
     it('should parse container information correctly', async () => {
       const containerId = 'abc123';
@@ -553,6 +676,33 @@ describe('ContainerManager', () => {
 
       expect(result.success).toBe(true);
       expect(result.command).toContain('podman start');
+    });
+
+    it('should inspect container with podman', async () => {
+      const containerId = 'abc123';
+      const inspectOutput = 'abc123|apex-task-test|node:20|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>';
+
+      mockExec.mockImplementationOnce(mockExecCallback(inspectOutput));
+
+      const result = await manager.inspect(containerId);
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('abc123');
+      expect(result!.name).toBe('apex-task-test');
+    });
+
+    it('should get stats with podman', async () => {
+      const containerId = 'abc123';
+      const statsOutput = 'abc123|30.25%|128MiB / 256MiB|50.00%|500B / 300B|1MB / 500kB|20';
+
+      mockExec.mockImplementationOnce(mockExecCallback(statsOutput));
+
+      const stats = await manager.getStats(containerId);
+
+      expect(stats).not.toBeNull();
+      expect(stats!.cpuPercent).toBe(30.25);
+      expect(stats!.memoryUsage).toBe(128 * 1024 * 1024);
+      expect(stats!.pids).toBe(20);
     });
   });
 

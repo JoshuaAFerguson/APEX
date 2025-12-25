@@ -1,4 +1,4 @@
-import { ContainerConfig, ContainerInfo, ContainerStatus, ResourceLimits } from './types';
+import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits } from './types';
 import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -277,6 +277,68 @@ export class ContainerManager {
         success: false,
         error: `Container removal failed: ${errorMessage}`,
       };
+    }
+  }
+
+  /**
+   * Inspect a container and return detailed information
+   * @param containerId Container ID or name
+   * @param runtimeType Optional runtime type (auto-detected if not provided)
+   * @returns Container information or null if not found
+   */
+  async inspect(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerInfo | null> {
+    return this.getContainerInfo(containerId, runtimeType);
+  }
+
+  /**
+   * Get runtime statistics for a container
+   * @param containerId Container ID or name
+   * @param runtimeType Optional runtime type (auto-detected if not provided)
+   * @returns Container statistics or null if not found
+   */
+  async getStats(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerStats | null> {
+    try {
+      const runtime = runtimeType || await this.runtime.getBestRuntime();
+
+      if (runtime === 'none') {
+        return null;
+      }
+
+      // Use docker/podman stats --no-stream to get a one-time snapshot of stats
+      const command = `${runtime} stats --no-stream --format "table {{.Container}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}|{{.PIDs}}" ${containerId}`;
+
+      const { stdout } = await execAsync(command, { timeout: 10000 });
+      const lines = stdout.trim().split('\n');
+
+      // Skip header line if present (starts with "CONTAINER")
+      const dataLine = lines.find(line => !line.toLowerCase().startsWith('container'));
+
+      if (!dataLine) {
+        return null;
+      }
+
+      const parts = dataLine.split('|');
+      if (parts.length < 7) {
+        return null;
+      }
+
+      // Parse stats - format: container|cpu%|mem usage/limit|mem%|net rx/tx|block rx/tx|pids
+      const stats: ContainerStats = {
+        cpuPercent: this.parsePercentage(parts[1]),
+        memoryUsage: this.parseMemoryValue(parts[2], true), // usage part of "used / limit"
+        memoryLimit: this.parseMemoryValue(parts[2], false), // limit part of "used / limit"
+        memoryPercent: this.parsePercentage(parts[3]),
+        networkRxBytes: this.parseNetworkIO(parts[4], true), // rx part of "rx / tx"
+        networkTxBytes: this.parseNetworkIO(parts[4], false), // tx part of "rx / tx"
+        blockReadBytes: this.parseBlockIO(parts[5], true), // read part of "read / write"
+        blockWriteBytes: this.parseBlockIO(parts[5], false), // write part of "read / write"
+        pids: this.parsePids(parts[6]),
+      };
+
+      return stats;
+    } catch (error) {
+      // Container not found or error getting stats
+      return null;
     }
   }
 
@@ -588,6 +650,130 @@ export class ContainerManager {
       return isNaN(date.getTime()) ? undefined : date;
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Parse percentage value from container stats
+   * @param percentageString Percentage string (e.g., "25.5%")
+   * @returns Parsed percentage as number
+   */
+  private parsePercentage(percentageString: string): number {
+    const cleaned = percentageString.replace('%', '').trim();
+    const value = parseFloat(cleaned);
+    return isNaN(value) ? 0 : value;
+  }
+
+  /**
+   * Parse memory value from container stats
+   * @param memoryString Memory string (e.g., "512MiB / 1GiB")
+   * @param getUsage If true, return usage; if false, return limit
+   * @returns Memory value in bytes
+   */
+  private parseMemoryValue(memoryString: string, getUsage: boolean): number {
+    try {
+      const parts = memoryString.split('/');
+      const target = getUsage ? parts[0] : parts[1];
+
+      if (!target) return 0;
+
+      const cleaned = target.trim();
+      const match = cleaned.match(/^([\d.]+)\s*([KMGTPE]?i?B?)$/i);
+
+      if (!match) return 0;
+
+      const value = parseFloat(match[1]);
+      const unit = match[2].toUpperCase();
+
+      const multipliers: Record<string, number> = {
+        'B': 1,
+        'KB': 1000, 'KIB': 1024,
+        'MB': 1000000, 'MIB': 1024 * 1024,
+        'GB': 1000000000, 'GIB': 1024 * 1024 * 1024,
+        'TB': 1000000000000, 'TIB': 1024 * 1024 * 1024 * 1024,
+        'PB': 1000000000000000, 'PIB': 1024 * 1024 * 1024 * 1024 * 1024,
+      };
+
+      return Math.floor(value * (multipliers[unit] || 1));
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Parse network I/O values from container stats
+   * @param networkString Network I/O string (e.g., "1.2kB / 800B")
+   * @param getRx If true, return RX bytes; if false, return TX bytes
+   * @returns Network bytes
+   */
+  private parseNetworkIO(networkString: string, getRx: boolean): number {
+    try {
+      const parts = networkString.split('/');
+      const target = getRx ? parts[0] : parts[1];
+
+      if (!target) return 0;
+
+      return this.parseByteValue(target.trim());
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Parse block I/O values from container stats
+   * @param blockString Block I/O string (e.g., "1.2MB / 800kB")
+   * @param getRead If true, return read bytes; if false, return write bytes
+   * @returns Block I/O bytes
+   */
+  private parseBlockIO(blockString: string, getRead: boolean): number {
+    try {
+      const parts = blockString.split('/');
+      const target = getRead ? parts[0] : parts[1];
+
+      if (!target) return 0;
+
+      return this.parseByteValue(target.trim());
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Parse PIDs count from container stats
+   * @param pidsString PIDs string (e.g., "42")
+   * @returns Number of PIDs
+   */
+  private parsePids(pidsString: string): number {
+    const value = parseInt(pidsString.trim(), 10);
+    return isNaN(value) ? 0 : value;
+  }
+
+  /**
+   * Parse byte value with unit suffix
+   * @param byteString Byte string (e.g., "1.2kB", "800B")
+   * @returns Byte value as number
+   */
+  private parseByteValue(byteString: string): number {
+    try {
+      const match = byteString.match(/^([\d.]+)\s*([KMGTPE]?B?)$/i);
+
+      if (!match) return 0;
+
+      const value = parseFloat(match[1]);
+      const unit = match[2].toUpperCase();
+
+      const multipliers: Record<string, number> = {
+        'B': 1,
+        'KB': 1000,
+        'MB': 1000000,
+        'GB': 1000000000,
+        'TB': 1000000000000,
+        'PB': 1000000000000000,
+      };
+
+      return Math.floor(value * (multipliers[unit] || 1));
+    } catch {
+      return 0;
     }
   }
 
