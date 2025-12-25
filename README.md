@@ -28,6 +28,7 @@ brew install apex
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#git-worktree-support">Worktrees</a> •
   <a href="#documentation">Documentation</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#contributing">Contributing</a>
@@ -42,6 +43,7 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 - **🤖 Specialized Agents** - Purpose-built agents for planning, architecture, implementation, testing, code review, and DevOps
 - **🔄 Configurable Workflows** - Define custom development workflows with stages, dependencies, and approval gates
 - **🎛️ Autonomy Levels** - From fully autonomous to human-in-the-loop approval at each stage
+- **🌳 Git Worktree Support** - Parallel task execution with automatic branch isolation and cleanup
 - **📊 Real-time Monitoring** - Web UI and WebSocket API for live task tracking
 - **💰 Cost Controls** - Built-in token budgets and usage tracking
 - **🔌 Extensible** - Add custom agents, skills, and workflows
@@ -153,6 +155,107 @@ APEX includes pre-built workflows for common development patterns:
 
 Create custom workflows in `.apex/workflows/` to match your team's process.
 
+## Git Worktree Support
+
+APEX includes advanced git worktree management for parallel task execution and isolation. Worktrees allow multiple tasks to work simultaneously without interfering with each other.
+
+### Overview
+
+Git worktrees create isolated working directories that share the same repository history but have independent working trees and staged areas. This enables:
+
+- **Parallel Task Execution**: Run multiple tasks simultaneously without conflicts
+- **Branch Isolation**: Each task operates on its own branch in a separate directory
+- **Resource Efficiency**: Share git history while maintaining separate workspaces
+- **Automatic Cleanup**: Intelligent cleanup of stale worktrees
+
+### Enabling Worktree Management
+
+Add worktree configuration to your `.apex/config.yaml`:
+
+```yaml
+# .apex/config.yaml
+version: "1.0"
+git:
+  autoWorktree: true  # Enable automatic worktree creation for tasks
+  worktree:
+    cleanupOnComplete: true       # Auto-cleanup after task completion
+    maxWorktrees: 5              # Maximum concurrent worktrees
+    pruneStaleAfterDays: 7       # Days before stale worktree cleanup
+    preserveOnFailure: false     # Keep worktree on task failure for debugging
+    cleanupDelayMs: 5000         # Delay before cleanup (allows file handles to close)
+    baseDir: "../.apex-worktrees"  # Custom base directory (optional)
+```
+
+### The /checkout Command
+
+Use the `/checkout` command to manage task worktrees:
+
+#### Switch to Task Worktree
+```bash
+/checkout <task_id>  # Switch to the worktree for a specific task
+```
+
+#### List All Worktrees
+```bash
+/checkout --list     # Show all task worktrees with their status
+```
+
+#### Cleanup Worktrees
+```bash
+/checkout --cleanup                 # Remove all orphaned/stale worktrees
+/checkout --cleanup <task_id>       # Remove worktree for specific task
+```
+
+### Benefits of Parallel Execution
+
+With worktrees enabled:
+
+1. **No Branch Conflicts**: Each task works on its own branch in isolation
+2. **Concurrent Development**: Multiple agents can implement features simultaneously
+3. **Safe Experimentation**: Failed tasks don't affect other work
+4. **Easy Context Switching**: Quickly switch between tasks without losing state
+5. **Automatic Management**: APEX handles worktree creation, cleanup, and maintenance
+
+### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `cleanupOnComplete` | `true` | Automatically delete worktree when task completes successfully |
+| `maxWorktrees` | `5` | Maximum number of concurrent worktrees allowed |
+| `pruneStaleAfterDays` | `7` | Days after which unused worktrees are considered stale |
+| `preserveOnFailure` | `false` | Keep worktree when task fails (useful for debugging) |
+| `cleanupDelayMs` | `0` | Delay before cleanup to ensure file handles are released |
+| `baseDir` | `../.apex-worktrees` | Directory where worktrees are created |
+
+### Worktree Lifecycle
+
+1. **Creation**: When a task starts with `autoWorktree: true`, APEX creates a new worktree
+2. **Branch Creation**: A new branch is created for the task (e.g., `apex/task-abc123`)
+3. **Task Execution**: All agent work happens in the isolated worktree
+4. **Cleanup**: After completion, the worktree is automatically removed (if `cleanupOnComplete: true`)
+5. **Merge**: Changes are merged back to the main branch
+
+### Example Workflow
+
+```bash
+# Enable worktrees in your project
+apex config set git.autoWorktree true
+
+# Start multiple tasks - they'll run in parallel worktrees
+apex run "Add user authentication"
+apex run "Implement API rate limiting"
+apex run "Fix database connection pooling"
+
+# Check active worktrees
+/checkout --list
+
+# Switch to a specific task's worktree for manual inspection
+/checkout abc123
+
+# Clean up stale worktrees
+/checkout --cleanup
+```
+
 ## Configuration
 
 ```yaml
@@ -162,6 +265,14 @@ project:
   name: "my-project"
   language: "typescript"
   framework: "nextjs"
+
+git:
+  autoWorktree: true
+  branchPrefix: "apex/"
+  worktree:
+    cleanupOnComplete: true
+    maxWorktrees: 5
+    preserveOnFailure: false
 
 autonomy:
   default: "review-before-merge"
