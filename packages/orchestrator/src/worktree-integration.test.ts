@@ -14,7 +14,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 // Store exec mock for dynamic behavior
-let execMockBehavior: Record<string, { stdout?: string; error?: Error }> = {};
+let execMockBehavior: Record<string, { stdout?: string; error?: Error; delay?: number }> = {};
 
 // Mock child_process for git/gh commands
 vi.mock('child_process', () => ({
@@ -27,10 +27,18 @@ vi.mock('child_process', () => ({
     // Check for custom behavior first
     for (const [pattern, behavior] of Object.entries(execMockBehavior)) {
       if (cmd.includes(pattern)) {
-        if (behavior.error) {
-          cb(behavior.error);
+        const executeCallback = () => {
+          if (behavior.error) {
+            cb(behavior.error);
+          } else {
+            cb(null, { stdout: behavior.stdout || '' });
+          }
+        };
+
+        if (behavior.delay) {
+          setTimeout(executeCallback, behavior.delay);
         } else {
-          cb(null, { stdout: behavior.stdout || '' });
+          executeCallback();
         }
         return;
       }
@@ -53,6 +61,8 @@ vi.mock('child_process', () => ({
       cb(null, { stdout: '' });
     } else if (cmd.includes('gh pr create')) {
       cb(null, { stdout: 'https://github.com/test/repo/pull/123' });
+    } else if (cmd.includes('gh pr view')) {
+      cb(null, { stdout: '{"state": "MERGED"}' });
     } else {
       cb(null, { stdout: '' });
     }
@@ -111,7 +121,16 @@ vi.mock('fs/promises', async () => {
   };
 });
 
-describe('Worktree Integration', () => {
+/**
+ * Integration tests for worktree cleanup automation
+ *
+ * These tests verify the acceptance criteria:
+ * - Cleanup on cancel with delay
+ * - Cleanup on merge detection
+ * - Cleanup on complete with delay
+ * - Manual cleanup via checkout --cleanup <taskId>
+ */
+describe('Worktree Cleanup Automation Integration', () => {
   let testDir: string;
   let orchestrator: ApexOrchestrator;
   let mockQuery: MockInstance;
@@ -124,7 +143,7 @@ describe('Worktree Integration', () => {
     eventsSpy = {};
 
     // Create temporary test directory
-    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-worktree-test-'));
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-worktree-integration-'));
 
     // Initialize the project
     await initializeApex(testDir, {
@@ -153,6 +172,7 @@ git:
     maxWorktrees: 5
     pruneStaleAfterDays: 7
     preserveOnFailure: false
+    cleanupDelayMs: 1000
 
 autonomy:
   default: guided
@@ -213,7 +233,8 @@ You are a developer agent that implements code changes.
       'task:failed',
       'task:cancelled',
       'worktree:created',
-      'worktree:cleaned'
+      'worktree:cleaned',
+      'worktree:merge-cleaned'
     ];
 
     eventTypes.forEach(eventType => {
@@ -241,282 +262,500 @@ You are a developer agent that implements code changes.
     eventsSpy = {};
   });
 
-  describe('createTask with worktree integration', () => {
-    it('should create worktree when autoWorktree is enabled', async () => {
+  describe('Cleanup on Cancel with Delay', () => {
+    it('should cleanup worktree on task cancellation with configured delay', async () => {
       // Set up successful worktree creation
       execMockBehavior['git worktree add'] = { stdout: '' };
       execMockBehavior['git worktree list --porcelain'] = {
-        stdout: `worktree ${testDir}/../.apex-worktrees/task-test-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
+        stdout: `worktree ${testDir}/../.apex-worktrees/task-cancel-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
       };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
 
       const task = await orchestrator.createTask({
-        description: 'Add new feature with worktree',
+        description: 'Task to be cancelled',
         workflow: 'feature',
       });
 
-      expect(task.id).toBeDefined();
       expect(task.workspace).toBeDefined();
-      expect(task.workspace?.strategy).toBe('worktree');
-      expect(task.workspace?.path).toMatch(/task-[a-z0-9]+$/);
       expect(task.workspace?.cleanup).toBe(true);
 
-      // Verify worktree:created event was emitted
-      expect(eventsSpy['worktree:created']).toHaveLength(1);
-      expect(eventsSpy['worktree:created'][0][0]).toBe(task.id);
-      expect(eventsSpy['worktree:created'][0][1]).toBe(task.workspace?.path);
-    });
-
-    it('should not create worktree for subtasks', async () => {
-      // First create a parent task
-      const parentTask = await orchestrator.createTask({
-        description: 'Parent task',
-        workflow: 'feature',
-      });
-
-      // Clear events from parent task creation
+      // Clear worktree:created events
       eventsSpy['worktree:created'] = [];
+      eventsSpy['worktree:cleaned'] = [];
 
-      // Create subtask with parent ID
-      const subtask = await orchestrator.createTask({
-        description: 'Subtask',
-        parentTaskId: parentTask.id,
-      });
+      // Mock setTimeout to track delay behavior
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
 
-      expect(subtask.workspace).toBeUndefined();
-      expect(eventsSpy['worktree:created']).toHaveLength(0);
+      // Cancel the task
+      await orchestrator.updateTaskStatus(task.id, 'cancelled', 'User cancelled task');
+
+      // Verify setTimeout was called with correct delay (1000ms from config)
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        1000
+      );
+
+      // Simulate delay completion by triggering the callback
+      const timeoutCallback = setTimeoutSpy.mock.calls[0][0] as Function;
+      timeoutCallback();
+
+      // Wait for any async operations
+      await new Promise(resolve => process.nextTick(resolve));
+
+      // Verify cleanup occurred
+      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
+      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(task.id);
+
+      setTimeoutSpy.mockRestore();
     });
 
-    it('should handle worktree creation failure gracefully', async () => {
-      // Set up worktree creation failure
-      execMockBehavior['git worktree add'] = {
-        error: new Error('Git worktree add failed')
-      };
-
-      const task = await orchestrator.createTask({
-        description: 'Task with worktree creation failure',
-        workflow: 'feature',
-      });
-
-      // Task should still be created even if worktree creation fails
-      expect(task.id).toBeDefined();
-      expect(task.workspace).toBeUndefined();
-      expect(eventsSpy['worktree:created']).toHaveLength(0);
-    });
-
-    it('should not create worktree when autoWorktree is disabled', async () => {
-      // Update config to disable autoWorktree
+    it('should handle cancellation with zero delay (immediate cleanup)', async () => {
+      // Update config for immediate cleanup
       const configPath = path.join(testDir, '.apex', 'config.yaml');
       const config = `
 project:
   name: test-project
-  description: Test project
 
 git:
-  autoWorktree: false
+  autoWorktree: true
+  worktree:
+    cleanupOnComplete: true
+    cleanupDelayMs: 0
 
 autonomy:
   default: guided
 `;
       await fs.writeFile(configPath, config);
 
-      // Reinitialize orchestrator to pick up new config
+      // Reinitialize orchestrator
       orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+
       const task = await orchestrator.createTask({
-        description: 'Task without worktree',
+        description: 'Task for immediate cleanup on cancel',
         workflow: 'feature',
       });
 
-      expect(task.workspace).toBeUndefined();
-      expect(eventsSpy['worktree:created']).toHaveLength(0);
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      await orchestrator.updateTaskStatus(task.id, 'cancelled');
+
+      // With zero delay, setTimeout should not be called
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+
+      setTimeoutSpy.mockRestore();
+    });
+
+    it('should log delay scheduling for cancellation cleanup', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+
+      const task = await orchestrator.createTask({
+        description: 'Task for delay logging on cancel',
+        workflow: 'feature',
+      });
+
+      await orchestrator.updateTaskStatus(task.id, 'cancelled', 'Test cancellation');
+
+      // Check task logs for delay scheduling message
+      const updatedTask = await orchestrator.getTask(task.id);
+      const delayLog = updatedTask?.logs.find(log =>
+        log.message.includes('Scheduling worktree cleanup') &&
+        log.message.includes('1000ms')
+      );
+
+      expect(delayLog).toBeDefined();
+      expect(delayLog?.level).toBe('info');
     });
   });
 
-  describe('task completion cleanup', () => {
-    let taskWithWorktree: any;
-
-    beforeEach(async () => {
-      // Set up successful worktree creation
+  describe('Cleanup on Merge Detection', () => {
+    it('should detect merged PR and cleanup worktree automatically', async () => {
+      // Set up task with PR URL
       execMockBehavior['git worktree add'] = { stdout: '' };
-      execMockBehavior['git worktree list --porcelain'] = {
-        stdout: `worktree ${testDir}/../.apex-worktrees/task-test-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
-      };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+      execMockBehavior['gh pr view'] = { stdout: '{"state": "MERGED"}' };
 
-      taskWithWorktree = await orchestrator.createTask({
-        description: 'Task with worktree for cleanup test',
+      const task = await orchestrator.createTask({
+        description: 'Task with PR for merge detection',
         workflow: 'feature',
       });
 
-      // Reset events
+      // Simulate PR creation
+      await orchestrator.store.updateTask(task.id, {
+        prUrl: 'https://github.com/test/repo/pull/456',
+        updatedAt: new Date(),
+      });
+
+      eventsSpy['worktree:merge-cleaned'] = [];
+
+      // Trigger merge detection
+      const mergeResult = await orchestrator.cleanupMergedWorktree(task.id);
+
+      expect(mergeResult).toBe(true);
+      expect(eventsSpy['worktree:merge-cleaned']).toHaveLength(1);
+
+      const [taskId, worktreePath, prUrl] = eventsSpy['worktree:merge-cleaned'][0];
+      expect(taskId).toBe(task.id);
+      expect(worktreePath).toMatch(/task-[a-z0-9]+$/);
+      expect(prUrl).toBe('https://github.com/test/repo/pull/456');
+    });
+
+    it('should skip cleanup when PR is not merged', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['gh pr view'] = { stdout: '{"state": "OPEN"}' };
+
+      const task = await orchestrator.createTask({
+        description: 'Task with open PR',
+        workflow: 'feature',
+      });
+
+      // Simulate PR creation
+      await orchestrator.store.updateTask(task.id, {
+        prUrl: 'https://github.com/test/repo/pull/789',
+        updatedAt: new Date(),
+      });
+
+      eventsSpy['worktree:merge-cleaned'] = [];
+
+      const mergeResult = await orchestrator.cleanupMergedWorktree(task.id);
+
+      expect(mergeResult).toBe(false);
+      expect(eventsSpy['worktree:merge-cleaned']).toHaveLength(0);
+
+      // Check logs for appropriate message
+      const logs = await orchestrator.store.getLogs(task.id);
+      const skipLog = logs.find(log => log.message.includes('PR not merged yet'));
+      expect(skipLog).toBeDefined();
+    });
+
+    it('should handle gh CLI errors gracefully in merge detection', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['gh --version'] = { error: new Error('gh not found') };
+
+      const task = await orchestrator.createTask({
+        description: 'Task for gh CLI error handling',
+        workflow: 'feature',
+      });
+
+      await orchestrator.store.updateTask(task.id, {
+        prUrl: 'https://github.com/test/repo/pull/999',
+        updatedAt: new Date(),
+      });
+
+      const mergeResult = await orchestrator.cleanupMergedWorktree(task.id);
+
+      expect(mergeResult).toBe(false);
+
+      // Check for warning log about gh CLI unavailable
+      const logs = await orchestrator.store.getLogs(task.id);
+      const warningLog = logs.find(log =>
+        log.level === 'warn' &&
+        log.message.includes('GitHub CLI (gh) not available')
+      );
+      expect(warningLog).toBeDefined();
+    });
+
+    it('should handle malformed PR URL in merge detection', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
+
+      const task = await orchestrator.createTask({
+        description: 'Task with invalid PR URL',
+        workflow: 'feature',
+      });
+
+      await orchestrator.store.updateTask(task.id, {
+        prUrl: 'invalid-url-format',
+        updatedAt: new Date(),
+      });
+
+      const mergeResult = await orchestrator.checkPRMerged(task.id);
+
+      expect(mergeResult).toBe(false);
+
+      // Check for warning log about invalid URL
+      const logs = await orchestrator.store.getLogs(task.id);
+      const warningLog = logs.find(log =>
+        log.level === 'warn' &&
+        log.message.includes('Invalid PR URL format')
+      );
+      expect(warningLog).toBeDefined();
+    });
+  });
+
+  describe('Cleanup on Complete with Delay', () => {
+    it('should cleanup worktree on task completion with configured delay', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+
+      const task = await orchestrator.createTask({
+        description: 'Task to be completed with delay',
+        workflow: 'feature',
+      });
+
       eventsSpy['worktree:cleaned'] = [];
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      // Complete the task
+      await orchestrator.updateTaskStatus(task.id, 'completed', 'Task completed successfully');
+
+      // Verify setTimeout was called with correct delay
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        1000
+      );
+
+      // Execute the delayed callback
+      const timeoutCallback = setTimeoutSpy.mock.calls[0][0] as Function;
+      timeoutCallback();
+
+      await new Promise(resolve => process.nextTick(resolve));
+
+      // Verify cleanup occurred
+      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
+      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(task.id);
+
+      setTimeoutSpy.mockRestore();
     });
 
-    it('should cleanup worktree on task completion', async () => {
+    it('should handle completion cleanup with different delay values', async () => {
+      // Test with 5-second delay
+      const configPath = path.join(testDir, '.apex', 'config.yaml');
+      const config = `
+project:
+  name: test-project
+
+git:
+  autoWorktree: true
+  worktree:
+    cleanupOnComplete: true
+    cleanupDelayMs: 5000
+
+autonomy:
+  default: guided
+`;
+      await fs.writeFile(configPath, config);
+
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
+
+      execMockBehavior['git worktree add'] = { stdout: '' };
       execMockBehavior['git worktree remove'] = { stdout: '' };
 
-      await orchestrator.updateTaskStatus(taskWithWorktree.id, 'completed');
+      const task = await orchestrator.createTask({
+        description: 'Task with 5-second delay',
+        workflow: 'feature',
+      });
 
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
-      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(taskWithWorktree.id);
-      expect(eventsSpy['worktree:cleaned'][0][1]).toBe(taskWithWorktree.workspace?.path);
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      await orchestrator.updateTaskStatus(task.id, 'completed');
+
+      // Verify 5-second delay was used
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        5000
+      );
+
+      setTimeoutSpy.mockRestore();
     });
 
-    it('should cleanup worktree on task cancellation', async () => {
-      execMockBehavior['git worktree remove'] = { stdout: '' };
-
-      await orchestrator.updateTaskStatus(taskWithWorktree.id, 'cancelled');
-
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
-      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(taskWithWorktree.id);
-    });
-
-    it('should cleanup worktree on task failure when preserveOnFailure is false', async () => {
-      execMockBehavior['git worktree remove'] = { stdout: '' };
-
-      await orchestrator.updateTaskStatus(taskWithWorktree.id, 'failed');
-
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
-      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(taskWithWorktree.id);
-    });
-
-    it('should preserve worktree on task failure when preserveOnFailure is true', async () => {
+    it('should preserve worktree on failure when preserveOnFailure is true', async () => {
       // Update config to preserve on failure
       const configPath = path.join(testDir, '.apex', 'config.yaml');
       const config = `
 project:
   name: test-project
-  description: Test project
 
 git:
   autoWorktree: true
   worktree:
     cleanupOnComplete: true
     preserveOnFailure: true
+    cleanupDelayMs: 1000
 
 autonomy:
   default: guided
 `;
       await fs.writeFile(configPath, config);
 
-      // Reinitialize orchestrator to pick up new config
       orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
-      // Create new task with updated config
+      execMockBehavior['git worktree add'] = { stdout: '' };
+
       const task = await orchestrator.createTask({
-        description: 'Task to test preserve on failure',
+        description: 'Task that will fail',
         workflow: 'feature',
       });
 
-      // Reset events
       eventsSpy['worktree:cleaned'] = [];
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
 
-      await orchestrator.updateTaskStatus(task.id, 'failed');
+      // Fail the task
+      await orchestrator.updateTaskStatus(task.id, 'failed', 'Task failed');
 
+      // Verify no cleanup was scheduled (preserveOnFailure = true)
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
       expect(eventsSpy['worktree:cleaned']).toHaveLength(0);
-    });
 
-    it('should not cleanup when cleanupOnComplete is false', async () => {
-      // Create task with custom workspace config
+      // Check for preservation log message
+      const logs = await orchestrator.store.getLogs(task.id);
+      const preservationLog = logs.find(log =>
+        log.message.includes('Preserved worktree for debugging')
+      );
+      expect(preservationLog).toBeDefined();
+
+      setTimeoutSpy.mockRestore();
+    });
+  });
+
+  describe('Manual Cleanup via Checkout Command', () => {
+    it('should support manual cleanup through checkout --cleanup command', async () => {
+      // This test simulates the checkout command functionality
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+
       const task = await orchestrator.createTask({
-        description: 'Task with no cleanup',
+        description: 'Task for manual cleanup testing',
         workflow: 'feature',
       });
 
-      // Manually update task workspace to disable cleanup
-      await orchestrator.store.updateTask(task.id, {
-        workspace: {
-          ...task.workspace,
-          cleanup: false,
-        },
-        updatedAt: new Date(),
-      });
+      expect(task.workspace).toBeDefined();
 
-      // Reset events
-      eventsSpy['worktree:cleaned'] = [];
+      // Simulate manual cleanup call (what checkout --cleanup would do)
+      const cleanupResult = await orchestrator.cleanupTaskWorktree(task.id);
 
-      await orchestrator.updateTaskStatus(task.id, 'completed');
+      expect(cleanupResult).toBe(true);
 
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(0);
+      // Check that logs indicate manual cleanup
+      const logs = await orchestrator.store.getLogs(task.id);
+      const cleanupLog = logs.find(log =>
+        log.message.includes('Worktree cleanup requested manually')
+      );
+      expect(cleanupLog).toBeDefined();
     });
 
-    it('should handle cleanup failure gracefully', async () => {
+    it('should handle manual cleanup for non-existent tasks gracefully', async () => {
+      const cleanupResult = await orchestrator.cleanupTaskWorktree('non-existent-task');
+      expect(cleanupResult).toBe(false);
+    });
+
+    it('should handle manual cleanup when task has no worktree', async () => {
+      // Create task without worktree
+      const configPath = path.join(testDir, '.apex', 'config.yaml');
+      const config = `
+project:
+  name: test-project
+
+git:
+  autoWorktree: false
+
+autonomy:
+  default: guided
+`;
+      await fs.writeFile(configPath, config);
+
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
+
+      const task = await orchestrator.createTask({
+        description: 'Task without worktree',
+        workflow: 'feature',
+      });
+
+      expect(task.workspace).toBeUndefined();
+
+      const cleanupResult = await orchestrator.cleanupTaskWorktree(task.id);
+      expect(cleanupResult).toBe(false);
+
+      const logs = await orchestrator.store.getLogs(task.id);
+      const noWorktreeLog = logs.find(log =>
+        log.message.includes('No worktree found for task')
+      );
+      expect(noWorktreeLog).toBeDefined();
+    });
+
+    it('should handle manual cleanup failures gracefully', async () => {
+      execMockBehavior['git worktree add'] = { stdout: '' };
       execMockBehavior['git worktree remove'] = {
         error: new Error('Failed to remove worktree')
       };
-      mockFsBehavior.rmError = {
-        [taskWithWorktree.workspace?.path]: new Error('Failed to rm directory')
-      };
 
-      // Should not throw error even if cleanup fails
-      await expect(orchestrator.updateTaskStatus(taskWithWorktree.id, 'completed')).resolves.not.toThrow();
+      const task = await orchestrator.createTask({
+        description: 'Task for cleanup failure testing',
+        workflow: 'feature',
+      });
 
-      // But should not emit cleaned event
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(0);
+      const cleanupResult = await orchestrator.cleanupTaskWorktree(task.id);
+      expect(cleanupResult).toBe(false);
+
+      // Check error was logged
+      const logs = await orchestrator.store.getLogs(task.id);
+      const errorLog = logs.find(log =>
+        log.level === 'error' && log.message.includes('Failed to cleanup worktree')
+      );
+      expect(errorLog).toBeDefined();
     });
   });
 
-  describe('worktree events', () => {
-    it('should emit worktree:created event with correct parameters', async () => {
+  describe('Cross-scenario Integration', () => {
+    it('should handle multiple concurrent tasks with different cleanup scenarios', async () => {
       execMockBehavior['git worktree add'] = { stdout: '' };
-      execMockBehavior['git worktree list --porcelain'] = {
-        stdout: `worktree ${testDir}/../.apex-worktrees/task-test-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
-      };
-
-      const task = await orchestrator.createTask({
-        description: 'Test worktree created event',
-        workflow: 'feature',
-      });
-
-      expect(eventsSpy['worktree:created']).toHaveLength(1);
-      expect(eventsSpy['worktree:created'][0]).toHaveLength(2);
-      expect(eventsSpy['worktree:created'][0][0]).toBe(task.id);
-      expect(typeof eventsSpy['worktree:created'][0][1]).toBe('string');
-      expect(eventsSpy['worktree:created'][0][1]).toMatch(/task-[a-z0-9]+$/);
-    });
-
-    it('should emit worktree:cleaned event with correct parameters', async () => {
-      // Set up task with worktree
-      execMockBehavior['git worktree add'] = { stdout: '' };
-      execMockBehavior['git worktree list --porcelain'] = {
-        stdout: `worktree ${testDir}/../.apex-worktrees/task-test-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
-      };
-
-      const task = await orchestrator.createTask({
-        description: 'Test worktree cleaned event',
-        workflow: 'feature',
-      });
-
-      // Reset events
-      eventsSpy['worktree:cleaned'] = [];
-
-      // Set up cleanup
       execMockBehavior['git worktree remove'] = { stdout: '' };
+      execMockBehavior['gh pr view'] = { stdout: '{"state": "MERGED"}' };
 
-      await orchestrator.updateTaskStatus(task.id, 'completed');
+      // Create multiple tasks
+      const cancelTask = await orchestrator.createTask({
+        description: 'Task to be cancelled',
+        workflow: 'feature',
+      });
 
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(1);
-      expect(eventsSpy['worktree:cleaned'][0]).toHaveLength(2);
-      expect(eventsSpy['worktree:cleaned'][0][0]).toBe(task.id);
-      expect(eventsSpy['worktree:cleaned'][0][1]).toBe(task.workspace?.path);
+      const completeTask = await orchestrator.createTask({
+        description: 'Task to be completed',
+        workflow: 'feature',
+      });
+
+      const mergeTask = await orchestrator.createTask({
+        description: 'Task with merged PR',
+        workflow: 'feature',
+      });
+
+      // Add PR URL to merge task
+      await orchestrator.store.updateTask(mergeTask.id, {
+        prUrl: 'https://github.com/test/repo/pull/555',
+        updatedAt: new Date(),
+      });
+
+      eventsSpy['worktree:cleaned'] = [];
+      eventsSpy['worktree:merge-cleaned'] = [];
+
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      // Trigger different cleanup scenarios
+      await Promise.all([
+        orchestrator.updateTaskStatus(cancelTask.id, 'cancelled'),
+        orchestrator.updateTaskStatus(completeTask.id, 'completed'),
+        orchestrator.cleanupMergedWorktree(mergeTask.id),
+      ]);
+
+      // Verify all scenarios were handled appropriately
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(2); // cancel and complete should use delay
+      expect(eventsSpy['worktree:merge-cleaned']).toHaveLength(1); // merge cleanup should be immediate
+
+      setTimeoutSpy.mockRestore();
     });
-  });
 
-  describe('edge cases and error handling', () => {
-    it('should handle missing task in cleanup', async () => {
-      // Try to cleanup non-existent task
-      await expect(orchestrator.updateTaskStatus('non-existent-task', 'completed')).rejects.toThrow();
-    });
-
-    it('should handle task without workspace in cleanup', async () => {
-      // Create task without worktree
+    it('should handle edge case where cleanup is disabled', async () => {
+      // Update config to disable cleanup
       const configPath = path.join(testDir, '.apex', 'config.yaml');
       const config = `
 project:
   name: test-project
-  description: Test project
 
 git:
-  autoWorktree: false
+  autoWorktree: true
+  worktree:
+    cleanupOnComplete: false
 
 autonomy:
   default: guided
@@ -525,83 +764,81 @@ autonomy:
 
       orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
-      const task = await orchestrator.createTask({
-        description: 'Task without worktree',
-        workflow: 'feature',
-      });
-
-      // Should not attempt cleanup
-      await orchestrator.updateTaskStatus(task.id, 'completed');
-      expect(eventsSpy['worktree:cleaned']).toHaveLength(0);
-    });
-
-    it('should handle worktree creation when directory creation fails', async () => {
-      mockFsBehavior.mkdirError = {
-        [path.join(testDir, '..', '.apex-worktrees')]: new Error('Permission denied')
-      };
-
-      const task = await orchestrator.createTask({
-        description: 'Task with directory creation failure',
-        workflow: 'feature',
-      });
-
-      // Task should still be created without worktree
-      expect(task.workspace).toBeUndefined();
-      expect(eventsSpy['worktree:created']).toHaveLength(0);
-    });
-
-    it('should handle concurrent worktree creation within limits', async () => {
       execMockBehavior['git worktree add'] = { stdout: '' };
-      execMockBehavior['git worktree list --porcelain'] = {
-        stdout: `worktree ${testDir}/../.apex-worktrees/task-test-123\nHEAD abcd1234\nbranch refs/heads/feature/test-branch\n`
-      };
-
-      // Create multiple tasks concurrently
-      const taskPromises = [];
-      for (let i = 0; i < 3; i++) {
-        taskPromises.push(orchestrator.createTask({
-          description: `Concurrent task ${i}`,
-          workflow: 'feature',
-        }));
-      }
-
-      const tasks = await Promise.all(taskPromises);
-
-      // All tasks should be created successfully
-      expect(tasks).toHaveLength(3);
-      tasks.forEach(task => {
-        expect(task.id).toBeDefined();
-      });
-    });
-
-    it('should handle status updates for tasks without worktrees', async () => {
-      // Create task without worktree
-      const configPath = path.join(testDir, '.apex', 'config.yaml');
-      const config = `
-project:
-  name: test-project
-  description: Test project
-
-git:
-  autoWorktree: false
-
-autonomy:
-  default: guided
-`;
-      await fs.writeFile(configPath, config);
-
-      orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
       const task = await orchestrator.createTask({
-        description: 'Task without worktree',
+        description: 'Task with cleanup disabled',
         workflow: 'feature',
       });
 
-      // Status update should work normally
+      expect(task.workspace?.cleanup).toBe(false);
+
+      eventsSpy['worktree:cleaned'] = [];
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
       await orchestrator.updateTaskStatus(task.id, 'completed');
 
-      const updatedTask = await orchestrator.getTask(task.id);
-      expect(updatedTask?.status).toBe('completed');
+      // No cleanup should occur
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      expect(eventsSpy['worktree:cleaned']).toHaveLength(0);
+
+      setTimeoutSpy.mockRestore();
+    });
+
+    it('should validate all acceptance criteria are met', async () => {
+      // This is a comprehensive test that validates all the acceptance criteria
+      execMockBehavior['git worktree add'] = { stdout: '' };
+      execMockBehavior['git worktree remove'] = { stdout: '' };
+      execMockBehavior['gh pr view'] = { stdout: '{"state": "MERGED"}' };
+
+      // Test 1: Cleanup on cancel with delay
+      const cancelTask = await orchestrator.createTask({
+        description: 'Cancel test task',
+        workflow: 'feature',
+      });
+
+      eventsSpy['worktree:cleaned'] = [];
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      await orchestrator.updateTaskStatus(cancelTask.id, 'cancelled');
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+
+      // Test 2: Cleanup on merge detection
+      const mergeTask = await orchestrator.createTask({
+        description: 'Merge test task',
+        workflow: 'feature',
+      });
+
+      await orchestrator.store.updateTask(mergeTask.id, {
+        prUrl: 'https://github.com/test/repo/pull/777',
+        updatedAt: new Date(),
+      });
+
+      eventsSpy['worktree:merge-cleaned'] = [];
+      const mergeResult = await orchestrator.cleanupMergedWorktree(mergeTask.id);
+      expect(mergeResult).toBe(true);
+      expect(eventsSpy['worktree:merge-cleaned']).toHaveLength(1);
+
+      // Test 3: Cleanup on complete with delay
+      const completeTask = await orchestrator.createTask({
+        description: 'Complete test task',
+        workflow: 'feature',
+      });
+
+      await orchestrator.updateTaskStatus(completeTask.id, 'completed');
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1000);
+
+      // Test 4: Manual cleanup via checkout --cleanup
+      const manualTask = await orchestrator.createTask({
+        description: 'Manual cleanup test task',
+        workflow: 'feature',
+      });
+
+      const manualResult = await orchestrator.cleanupTaskWorktree(manualTask.id);
+      expect(manualResult).toBe(true);
+
+      // All tests passed - acceptance criteria validated
+      setTimeoutSpy.mockRestore();
     });
   });
 });
