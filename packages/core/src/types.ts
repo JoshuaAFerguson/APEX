@@ -627,7 +627,8 @@ export type ApexEventType =
   | 'gate:approved'
   | 'gate:rejected'
   | 'usage:updated'
-  | 'log:entry';
+  | 'log:entry'
+  | 'worktree:merge-cleaned';
 
 export interface ApexEvent {
   type: ApexEventType;

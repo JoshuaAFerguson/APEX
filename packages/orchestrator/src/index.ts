@@ -103,6 +103,7 @@ export interface OrchestratorEvents {
   // Worktree events (v0.4.0)
   'worktree:created': (taskId: string, worktreePath: string) => void;
   'worktree:cleaned': (taskId: string, worktreePath: string) => void;
+  'worktree:merge-cleaned': (taskId: string, worktreePath: string, prUrl: string) => void;
 }
 
 /**
