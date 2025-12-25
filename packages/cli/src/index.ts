@@ -1493,6 +1493,125 @@ export const commands: Command[] = [
       }
     },
   },
+  {
+    name: 'checkout',
+    aliases: ['co'],
+    description: 'Switch to task worktree or manage worktrees',
+    usage: '/checkout <task_id> | /checkout --list | /checkout --cleanup',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /checkout <task_id> | /checkout --list | /checkout --cleanup'));
+        console.log(chalk.gray('\nOptions:'));
+        console.log(chalk.gray('  <task_id>    Switch to the worktree for the specified task'));
+        console.log(chalk.gray('  --list       List all task worktrees'));
+        console.log(chalk.gray('  --cleanup    Remove orphaned/stale worktrees'));
+        return;
+      }
+
+      const action = args[0];
+
+      try {
+        // List all task worktrees
+        if (action === '--list') {
+          const worktrees = await ctx.orchestrator.listTaskWorktrees();
+
+          if (worktrees.length === 0) {
+            console.log(chalk.gray('\n📁 No task worktrees found.\n'));
+            console.log(chalk.gray('  Task worktrees are created automatically when worktree management is enabled.'));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n📁 Task Worktrees (${worktrees.length})\n`));
+
+          for (const worktree of worktrees) {
+            const statusEmoji = getWorktreeStatusEmoji(worktree.status);
+            const taskIdShort = worktree.taskId?.substring(0, 12) || 'unknown';
+            const branchName = worktree.branch;
+            const timeAgo = worktree.lastUsedAt ? getTimeAgo(worktree.lastUsedAt) : 'unknown';
+
+            console.log(`${statusEmoji} ${chalk.cyan(taskIdShort)} ${chalk.bold(branchName)}`);
+            console.log(`  Path: ${chalk.gray(worktree.path)}`);
+            console.log(`  Last used: ${chalk.gray(timeAgo)}`);
+            console.log();
+          }
+
+          console.log(chalk.gray('Use /checkout <task_id> to switch to a worktree'));
+          return;
+        }
+
+        // Clean up orphaned worktrees
+        if (action === '--cleanup') {
+          console.log(chalk.blue('\n🧹 Cleaning up orphaned worktrees...\n'));
+
+          const cleaned = await ctx.orchestrator.cleanupOrphanedWorktrees();
+
+          if (cleaned.length === 0) {
+            console.log(chalk.green('✅ No orphaned worktrees found to clean up.\n'));
+          } else {
+            console.log(chalk.green(`✅ Cleaned up ${cleaned.length} orphaned worktree(s):\n`));
+            cleaned.forEach(taskId => {
+              console.log(`  ${chalk.gray('•')} ${chalk.cyan(taskId.substring(0, 12))}`);
+            });
+            console.log();
+          }
+          return;
+        }
+
+        // Switch to task worktree
+        const taskId = action;
+
+        // Find the full task ID from partial ID
+        const tasks = await ctx.orchestrator.listTasks({ limit: 100 });
+        const task = tasks.find(t => t.id.startsWith(taskId));
+
+        if (!task) {
+          console.log(chalk.red(`❌ Task not found: ${taskId}`));
+          console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+          return;
+        }
+
+        // Check if task has a worktree
+        const worktree = await ctx.orchestrator.getTaskWorktree(task.id);
+
+        if (!worktree) {
+          console.log(chalk.yellow(`⚠️  No worktree found for task ${task.id.substring(0, 12)}`));
+          console.log(chalk.gray('This task may have been created before worktree management was enabled,'));
+          console.log(chalk.gray('or worktree management may not be enabled for this project.'));
+          return;
+        }
+
+        // Switch to the worktree
+        const worktreePath = await ctx.orchestrator.switchToTaskWorktree(task.id);
+
+        console.log(chalk.green(`✅ Switched to worktree for task ${task.id.substring(0, 12)}`));
+        console.log(chalk.cyan(`   Path: ${worktreePath}`));
+        console.log(chalk.gray(`   Branch: ${worktree.branch}`));
+        console.log(chalk.gray(`   Task: ${task.description}`));
+        console.log();
+        console.log(chalk.yellow('💡 To continue working on this task, change to the worktree directory:'));
+        console.log(chalk.bold(`   cd "${worktreePath}"`));
+        console.log();
+
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+
+        // Provide helpful suggestions based on the error
+        if ((error as Error).message.includes('not enabled')) {
+          console.log(chalk.gray('\n💡 To enable worktree management, add this to your .apex/config.yaml:'));
+          console.log(chalk.gray('```yaml'));
+          console.log(chalk.gray('git:'));
+          console.log(chalk.gray('  autoWorktree: true'));
+          console.log(chalk.gray('```'));
+        }
+      }
+    },
+  },
+
   // Service management commands
   {
     name: 'install-service',
@@ -2312,6 +2431,16 @@ function getTimeAgo(date: Date): string {
   }
 }
 
+function getWorktreeStatusEmoji(status: string): string {
+  const emojis: Record<string, string> = {
+    active: '✅',
+    stale: '⚠️',
+    prunable: '🗑️',
+    broken: '❌',
+  };
+  return emojis[status] || '❓';
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -2339,6 +2468,7 @@ ${chalk.bold('Commands:')}
   logs <task_id>          Show task logs
   cancel <task_id>        Cancel a running task
   retry <task_id>         Retry a failed task
+  checkout <task_id>      Switch to task worktree or manage worktrees
   serve [--port]          Start the API server
   daemon <cmd>            Manage background daemon (start|stop|status)
   install-service         Install APEX daemon as system service

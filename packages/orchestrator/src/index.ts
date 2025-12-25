@@ -33,6 +33,7 @@ import {
   IdleTaskType,
   TaskPriority,
   CreateTaskRequest,
+  WorktreeInfo,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -1687,6 +1688,54 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     if ((status === 'completed' || status === 'failed' || status === 'cancelled') && this.worktreeManager) {
       await this.cleanupWorktree(taskId, status);
     }
+  }
+
+  /**
+   * Get worktree information for a specific task
+   * @param taskId The task identifier
+   * @returns WorktreeInfo if found, null otherwise
+   */
+  async getTaskWorktree(taskId: string): Promise<WorktreeInfo | null> {
+    if (!this.worktreeManager) {
+      return null;
+    }
+    return this.worktreeManager.getWorktree(taskId);
+  }
+
+  /**
+   * List all task worktrees
+   * @returns Array of WorktreeInfo objects
+   */
+  async listTaskWorktrees(): Promise<WorktreeInfo[]> {
+    if (!this.worktreeManager) {
+      return [];
+    }
+    const allWorktrees = await this.worktreeManager.listWorktrees();
+    // Filter to only include task worktrees (those with taskId)
+    return allWorktrees.filter(w => w.taskId && !w.isMain);
+  }
+
+  /**
+   * Switch to a worktree for a specific task
+   * @param taskId The task identifier
+   * @returns The absolute path to the worktree directory
+   */
+  async switchToTaskWorktree(taskId: string): Promise<string> {
+    if (!this.worktreeManager) {
+      throw new Error('Worktree management is not enabled for this project');
+    }
+    return this.worktreeManager.switchToWorktree(taskId);
+  }
+
+  /**
+   * Clean up orphaned worktrees
+   * @returns Array of taskIds for worktrees that were cleaned up
+   */
+  async cleanupOrphanedWorktrees(): Promise<string[]> {
+    if (!this.worktreeManager) {
+      return [];
+    }
+    return this.worktreeManager.cleanupOrphanedWorktrees();
   }
 
   /**
