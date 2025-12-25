@@ -438,23 +438,163 @@ export interface TaskArtifact {
 // v0.4.0 - New Types for Enhanced Features
 // ============================================================================
 
+// ============================================================================
+// Container Configuration Types (v0.4.0)
+// ============================================================================
+
 /**
- * Workspace isolation configuration for tasks
+ * Resource limits for container execution
+ * Defines CPU and memory constraints for containerized workspaces
  */
-export interface WorkspaceConfig {
-  /** Isolation strategy */
-  strategy: 'worktree' | 'container' | 'directory' | 'none';
-  /** Path to workspace (for worktree/directory strategies) */
-  path?: string;
-  /** Container configuration (for container strategy) */
-  container?: {
-    image: string;
-    volumes?: Record<string, string>;
-    environment?: Record<string, string>;
-  };
-  /** Whether to cleanup workspace after task completion */
-  cleanup: boolean;
+export const ResourceLimitsSchema = z.object({
+  /** CPU limit in cores (e.g., 0.5 for half a core, 2 for 2 cores) */
+  cpu: z.number().min(0.1).max(64).optional(),
+  /** Memory limit with unit suffix (e.g., "256m", "1g", "2048m") */
+  memory: z.string().regex(/^\d+[kmgKMG]?$/).optional(),
+  /** Memory reservation (soft limit) with unit suffix */
+  memoryReservation: z.string().regex(/^\d+[kmgKMG]?$/).optional(),
+  /** Maximum memory swap with unit suffix */
+  memorySwap: z.string().regex(/^\d+[kmgKMG]?$/).optional(),
+  /** CPU shares for relative weighting (1024 = 1 share) */
+  cpuShares: z.number().min(2).max(262144).optional(),
+  /** Number of PIDs allowed in the container */
+  pidsLimit: z.number().min(1).optional(),
+});
+export type ResourceLimits = z.infer<typeof ResourceLimitsSchema>;
+
+/**
+ * Network mode for container networking configuration
+ */
+export const ContainerNetworkModeSchema = z.enum([
+  'bridge',   // Default Docker bridge network
+  'host',     // Use host networking (shares host network namespace)
+  'none',     // No networking
+  'container', // Share networking with another container
+]);
+export type ContainerNetworkMode = z.infer<typeof ContainerNetworkModeSchema>;
+
+/**
+ * Container configuration schema for workspace isolation
+ * Defines all settings for running tasks in containerized environments
+ */
+export const ContainerConfigSchema = z.object({
+  /** Docker/OCI image to use (e.g., "node:20-alpine", "python:3.11-slim") */
+  image: z.string().min(1),
+  /** Volume mounts mapping host paths to container paths */
+  volumes: z.record(z.string(), z.string()).optional(),
+  /** Environment variables to set in the container */
+  environment: z.record(z.string(), z.string()).optional(),
+  /** Resource limits for the container */
+  resourceLimits: ResourceLimitsSchema.optional(),
+  /** Network mode for container networking */
+  networkMode: ContainerNetworkModeSchema.optional().default('bridge'),
+  /** Working directory inside the container */
+  workingDir: z.string().optional(),
+  /** User to run as inside the container (e.g., "1000:1000", "node") */
+  user: z.string().optional(),
+  /** Additional container labels for identification */
+  labels: z.record(z.string(), z.string()).optional(),
+  /** Entrypoint override for the container */
+  entrypoint: z.array(z.string()).optional(),
+  /** Command to run in the container */
+  command: z.array(z.string()).optional(),
+  /** Whether to remove the container after it stops */
+  autoRemove: z.boolean().optional().default(true),
+  /** Whether to run in privileged mode (use with caution) */
+  privileged: z.boolean().optional().default(false),
+  /** Security options for the container */
+  securityOpts: z.array(z.string()).optional(),
+  /** Capabilities to add to the container */
+  capAdd: z.array(z.string()).optional(),
+  /** Capabilities to drop from the container */
+  capDrop: z.array(z.string()).optional(),
+});
+export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;
+
+/**
+ * Status of a running container
+ */
+export const ContainerStatusSchema = z.enum([
+  'created',    // Container created but not started
+  'running',    // Container is running
+  'paused',     // Container is paused
+  'restarting', // Container is restarting
+  'removing',   // Container is being removed
+  'exited',     // Container has exited
+  'dead',       // Container is dead (failed to stop cleanly)
+]);
+export type ContainerStatus = z.infer<typeof ContainerStatusSchema>;
+
+/**
+ * Runtime information about a container
+ */
+export interface ContainerInfo {
+  /** Container ID (full or short form) */
+  id: string;
+  /** Container name */
+  name: string;
+  /** Image used to create the container */
+  image: string;
+  /** Current status of the container */
+  status: ContainerStatus;
+  /** When the container was created */
+  createdAt: Date;
+  /** When the container started (if running) */
+  startedAt?: Date;
+  /** When the container finished (if exited) */
+  finishedAt?: Date;
+  /** Exit code (if exited) */
+  exitCode?: number;
+  /** Associated task ID */
+  taskId?: string;
+  /** Resource usage statistics */
+  stats?: ContainerStats;
 }
+
+/**
+ * Runtime statistics for a container
+ */
+export interface ContainerStats {
+  /** CPU usage percentage */
+  cpuPercent: number;
+  /** Memory usage in bytes */
+  memoryUsage: number;
+  /** Memory limit in bytes */
+  memoryLimit: number;
+  /** Memory usage percentage */
+  memoryPercent: number;
+  /** Network I/O bytes received */
+  networkRxBytes: number;
+  /** Network I/O bytes transmitted */
+  networkTxBytes: number;
+  /** Block I/O bytes read */
+  blockReadBytes: number;
+  /** Block I/O bytes written */
+  blockWriteBytes: number;
+  /** Number of PIDs in the container */
+  pids: number;
+}
+
+/**
+ * Workspace isolation strategy enumeration
+ */
+export const WorkspaceStrategySchema = z.enum(['worktree', 'container', 'directory', 'none']);
+export type WorkspaceStrategy = z.infer<typeof WorkspaceStrategySchema>;
+
+/**
+ * Workspace isolation configuration schema for tasks
+ */
+export const WorkspaceConfigSchema = z.object({
+  /** Isolation strategy */
+  strategy: WorkspaceStrategySchema,
+  /** Path to workspace (for worktree/directory strategies) */
+  path: z.string().optional(),
+  /** Container configuration (for container strategy) */
+  container: ContainerConfigSchema.optional(),
+  /** Whether to cleanup workspace after task completion */
+  cleanup: z.boolean(),
+});
+export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 
 /**
  * Session recovery and context data for tasks
