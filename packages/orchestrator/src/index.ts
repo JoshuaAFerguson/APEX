@@ -2431,6 +2431,108 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Check if a pull request for a task has been merged
+   * @param taskId The task identifier
+   * @returns Promise<boolean> - true if PR is merged, false otherwise
+   */
+  async checkPRMerged(taskId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    if (!task.prUrl) {
+      // No PR URL means no PR was created, so it can't be merged
+      return false;
+    }
+
+    // Check if gh CLI is available
+    const ghAvailable = await this.isGitHubCliAvailable();
+    if (!ghAvailable) {
+      // If gh CLI is not available, we can't check the status
+      // Return false rather than throwing to handle gracefully
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: 'GitHub CLI (gh) not available - cannot check PR merge status',
+      });
+      return false;
+    }
+
+    try {
+      // Extract PR number from URL
+      // PR URLs are typically: https://github.com/owner/repo/pull/123
+      const prUrlMatch = task.prUrl.match(/\/pull\/(\d+)/);
+      if (!prUrlMatch) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Invalid PR URL format: ${task.prUrl}`,
+        });
+        return false;
+      }
+
+      const prNumber = prUrlMatch[1];
+
+      // Use gh pr view to check if the PR is merged
+      // The --json flag allows us to get structured data
+      const { stdout } = await execAsync(
+        `gh pr view ${prNumber} --json state`,
+        { cwd: this.projectPath }
+      );
+
+      const prData = JSON.parse(stdout);
+
+      // Check if the state is 'MERGED'
+      const isMerged = prData.state === 'MERGED';
+
+      if (isMerged) {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Pull request #${prNumber} has been merged`,
+        });
+      }
+
+      return isMerged;
+    } catch (error) {
+      const errorMessage = (error as Error).message;
+
+      // Handle specific error cases gracefully
+      if (errorMessage.includes('authentication')) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'GitHub CLI authentication required - cannot check PR merge status',
+        });
+        return false;
+      }
+
+      if (errorMessage.includes('not found') || errorMessage.includes('404')) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Pull request not found or access denied: ${task.prUrl}`,
+        });
+        return false;
+      }
+
+      if (errorMessage.includes('network') || errorMessage.includes('timeout')) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'Network error while checking PR merge status',
+        });
+        return false;
+      }
+
+      // For any other error, log it but return false to handle gracefully
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Error checking PR merge status: ${errorMessage}`,
+      });
+
+      return false;
+    }
+  }
+
+  /**
    * Generate PR title from task
    */
   private generatePRTitle(task: Task): string {
