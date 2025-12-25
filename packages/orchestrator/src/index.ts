@@ -1739,6 +1739,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Clean up worktree for a specific task
+   * @param taskId The ID of the task to cleanup
+   * @returns boolean indicating if the worktree was successfully cleaned up
+   */
+  async cleanupTaskWorktree(taskId: string): Promise<boolean> {
+    if (!this.worktreeManager) {
+      throw new Error('Worktree management is not enabled');
+    }
+
+    if (!taskId) {
+      throw new Error('Task ID is required');
+    }
+
+    return this.worktreeManager.deleteWorktree(taskId);
+  }
+
+  /**
    * Clean up worktree for a task based on its final status and configuration
    */
   private async cleanupWorktree(taskId: string, status: TaskStatus): Promise<void> {

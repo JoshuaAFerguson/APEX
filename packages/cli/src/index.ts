@@ -1497,7 +1497,7 @@ export const commands: Command[] = [
     name: 'checkout',
     aliases: ['co'],
     description: 'Switch to task worktree or manage worktrees',
-    usage: '/checkout <task_id> | /checkout --list | /checkout --cleanup',
+    usage: '/checkout <task_id> | /checkout --list | /checkout --cleanup [<task_id>]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -1505,11 +1505,12 @@ export const commands: Command[] = [
       }
 
       if (args.length === 0) {
-        console.log(chalk.red('Usage: /checkout <task_id> | /checkout --list | /checkout --cleanup'));
+        console.log(chalk.red('Usage: /checkout <task_id> | /checkout --list | /checkout --cleanup [<task_id>]'));
         console.log(chalk.gray('\nOptions:'));
-        console.log(chalk.gray('  <task_id>    Switch to the worktree for the specified task'));
-        console.log(chalk.gray('  --list       List all task worktrees'));
-        console.log(chalk.gray('  --cleanup    Remove orphaned/stale worktrees'));
+        console.log(chalk.gray('  <task_id>           Switch to the worktree for the specified task'));
+        console.log(chalk.gray('  --list              List all task worktrees'));
+        console.log(chalk.gray('  --cleanup           Remove orphaned/stale worktrees'));
+        console.log(chalk.gray('  --cleanup <task_id> Remove worktree for specific task'));
         return;
       }
 
@@ -1544,20 +1545,52 @@ export const commands: Command[] = [
           return;
         }
 
-        // Clean up orphaned worktrees
+        // Clean up orphaned worktrees or specific task worktree
         if (action === '--cleanup') {
-          console.log(chalk.blue('\n🧹 Cleaning up orphaned worktrees...\n'));
+          // Check if a specific taskId was provided as the second argument
+          const targetTaskId = args[1];
 
-          const cleaned = await ctx.orchestrator.cleanupOrphanedWorktrees();
+          if (targetTaskId) {
+            // Clean up specific task worktree
+            console.log(chalk.blue(`\n🧹 Cleaning up worktree for task ${targetTaskId}...\n`));
 
-          if (cleaned.length === 0) {
-            console.log(chalk.green('✅ No orphaned worktrees found to clean up.\n'));
+            try {
+              // Find the full task ID from partial ID
+              const tasks = await ctx.orchestrator.listTasks({ limit: 100 });
+              const task = tasks.find(t => t.id.startsWith(targetTaskId));
+
+              if (!task) {
+                console.log(chalk.red(`❌ Task not found: ${targetTaskId}`));
+                console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+                return;
+              }
+
+              const success = await ctx.orchestrator.cleanupTaskWorktree(task.id);
+
+              if (success) {
+                console.log(chalk.green(`✅ Worktree for task ${task.id.substring(0, 12)} cleaned up successfully.`));
+                console.log(chalk.gray(`   Task: ${task.description}`));
+              } else {
+                console.log(chalk.yellow(`⚠️  No worktree found for task ${task.id.substring(0, 12)} or cleanup failed.`));
+              }
+            } catch (error) {
+              console.log(chalk.red(`❌ Failed to cleanup worktree: ${(error as Error).message}`));
+            }
           } else {
-            console.log(chalk.green(`✅ Cleaned up ${cleaned.length} orphaned worktree(s):\n`));
-            cleaned.forEach(taskId => {
-              console.log(`  ${chalk.gray('•')} ${chalk.cyan(taskId.substring(0, 12))}`);
-            });
-            console.log();
+            // Clean up all orphaned worktrees
+            console.log(chalk.blue('\n🧹 Cleaning up orphaned worktrees...\n'));
+
+            const cleaned = await ctx.orchestrator.cleanupOrphanedWorktrees();
+
+            if (cleaned.length === 0) {
+              console.log(chalk.green('✅ No orphaned worktrees found to clean up.\n'));
+            } else {
+              console.log(chalk.green(`✅ Cleaned up ${cleaned.length} orphaned worktree(s):\n`));
+              cleaned.forEach(taskId => {
+                console.log(`  ${chalk.gray('•')} ${chalk.cyan(taskId.substring(0, 12))}`);
+              });
+              console.log();
+            }
           }
           return;
         }
@@ -2469,6 +2502,7 @@ ${chalk.bold('Commands:')}
   cancel <task_id>        Cancel a running task
   retry <task_id>         Retry a failed task
   checkout <task_id>      Switch to task worktree or manage worktrees
+                          Also supports: checkout --list, checkout --cleanup [<task_id>]
   serve [--port]          Start the API server
   daemon <cmd>            Manage background daemon (start|stop|status)
   install-service         Install APEX daemon as system service

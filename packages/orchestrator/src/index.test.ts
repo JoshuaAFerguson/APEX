@@ -2618,5 +2618,84 @@ You are a developer agent that implements code changes.
         expect(sessionStatus.message).toContain('Context window');
       });
     });
+
+    describe('cleanupTaskWorktree', () => {
+      it('should throw error when worktree management is not enabled', async () => {
+        // Initialize orchestrator without worktree management
+        const nonWorktreeOrchestrator = new ApexOrchestrator({
+          projectPath: '/test/project',
+          apiUrl: 'http://localhost:3000',
+          config: {
+            ...defaultConfig,
+            git: { autoWorktree: false },
+          },
+        });
+        await nonWorktreeOrchestrator.initialize();
+
+        await expect(
+          nonWorktreeOrchestrator.cleanupTaskWorktree('test-task-id')
+        ).rejects.toThrow('Worktree management is not enabled');
+      });
+
+      it('should throw error when taskId is empty', async () => {
+        // Mock worktreeManager to be enabled
+        const mockWorktreeManager = {
+          deleteWorktree: vi.fn(),
+        };
+        (orchestrator as any).worktreeManager = mockWorktreeManager;
+
+        await expect(
+          orchestrator.cleanupTaskWorktree('')
+        ).rejects.toThrow('Task ID is required');
+
+        expect(mockWorktreeManager.deleteWorktree).not.toHaveBeenCalled();
+      });
+
+      it('should delegate to WorktreeManager.deleteWorktree and return result', async () => {
+        // Mock worktreeManager to be enabled
+        const mockWorktreeManager = {
+          deleteWorktree: vi.fn().mockResolvedValue(true),
+        };
+        (orchestrator as any).worktreeManager = mockWorktreeManager;
+
+        const taskId = 'test-task-123';
+        const result = await orchestrator.cleanupTaskWorktree(taskId);
+
+        expect(result).toBe(true);
+        expect(mockWorktreeManager.deleteWorktree).toHaveBeenCalledWith(taskId);
+        expect(mockWorktreeManager.deleteWorktree).toHaveBeenCalledTimes(1);
+      });
+
+      it('should return false when worktree does not exist', async () => {
+        // Mock worktreeManager to return false
+        const mockWorktreeManager = {
+          deleteWorktree: vi.fn().mockResolvedValue(false),
+        };
+        (orchestrator as any).worktreeManager = mockWorktreeManager;
+
+        const taskId = 'nonexistent-task';
+        const result = await orchestrator.cleanupTaskWorktree(taskId);
+
+        expect(result).toBe(false);
+        expect(mockWorktreeManager.deleteWorktree).toHaveBeenCalledWith(taskId);
+      });
+
+      it('should propagate errors from WorktreeManager', async () => {
+        // Mock worktreeManager to throw error
+        const mockError = new Error('Failed to delete worktree');
+        const mockWorktreeManager = {
+          deleteWorktree: vi.fn().mockRejectedValue(mockError),
+        };
+        (orchestrator as any).worktreeManager = mockWorktreeManager;
+
+        const taskId = 'error-task';
+
+        await expect(
+          orchestrator.cleanupTaskWorktree(taskId)
+        ).rejects.toThrow('Failed to delete worktree');
+
+        expect(mockWorktreeManager.deleteWorktree).toHaveBeenCalledWith(taskId);
+      });
+    });
   });
 });

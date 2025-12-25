@@ -37,6 +37,7 @@ describe('Checkout Command', () => {
       switchToTaskWorktree: vi.fn(),
       listTaskWorktrees: vi.fn(),
       cleanupOrphanedWorktrees: vi.fn(),
+      cleanupTaskWorktree: vi.fn(),
     };
 
     mockContext = {
@@ -93,7 +94,7 @@ describe('Checkout Command', () => {
       expect(checkoutCommand?.name).toBe('checkout');
       expect(checkoutCommand?.aliases).toEqual(['co']);
       expect(checkoutCommand?.description).toBe('Switch to task worktree or manage worktrees');
-      expect(checkoutCommand?.usage).toBe('/checkout <task_id> | /checkout --list | /checkout --cleanup');
+      expect(checkoutCommand?.usage).toBe('/checkout <task_id> | /checkout --list | /checkout --cleanup [<task_id>]');
     });
 
     it('should be accessible via alias "co"', async () => {
@@ -357,6 +358,160 @@ describe('Checkout Command', () => {
     });
   });
 
+  describe('Cleanup specific task worktree', () => {
+    it('should clean up worktree for specific task successfully', async () => {
+      const mockTask: Partial<Task> = {
+        id: 'task-cleanup-123456789012',
+        description: 'Task to cleanup',
+        status: 'completed',
+        workflow: 'feature',
+        branchName: 'apex/task-cleanup',
+        createdAt: new Date(),
+        usage: { totalTokens: 0, estimatedCost: 0 },
+        logs: [],
+      };
+
+      mockOrchestrator.listTasks.mockResolvedValue([mockTask]);
+      mockOrchestrator.cleanupTaskWorktree.mockResolvedValue(true);
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'task-cleanup']);
+
+      expect(mockOrchestrator.listTasks).toHaveBeenCalledWith({ limit: 100 });
+      expect(mockOrchestrator.cleanupTaskWorktree).toHaveBeenCalledWith('task-cleanup-123456789012');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Cleaning up worktree for task task-cleanup')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Worktree for task task-cleanup cleaned up successfully')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Task: Task to cleanup')
+      );
+    });
+
+    it('should handle task not found for specific cleanup', async () => {
+      mockOrchestrator.listTasks.mockResolvedValue([]);
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'nonexistent']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Task not found: nonexistent')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Use /status to see available tasks')
+      );
+      expect(mockOrchestrator.cleanupTaskWorktree).not.toHaveBeenCalled();
+    });
+
+    it('should handle cleanup failure for specific task', async () => {
+      const mockTask: Partial<Task> = {
+        id: 'task-cleanup-fail-123456789012',
+        description: 'Task cleanup fail',
+        status: 'failed',
+        workflow: 'feature',
+        branchName: 'apex/task-cleanup-fail',
+        createdAt: new Date(),
+        usage: { totalTokens: 0, estimatedCost: 0 },
+        logs: [],
+      };
+
+      mockOrchestrator.listTasks.mockResolvedValue([mockTask]);
+      mockOrchestrator.cleanupTaskWorktree.mockResolvedValue(false);
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'task-cleanup-fail']);
+
+      expect(mockOrchestrator.cleanupTaskWorktree).toHaveBeenCalledWith('task-cleanup-fail-123456789012');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('No worktree found for task task-cleanup-fa or cleanup failed')
+      );
+    });
+
+    it('should handle cleanup error for specific task', async () => {
+      const mockTask: Partial<Task> = {
+        id: 'task-cleanup-error-123456789012',
+        description: 'Task cleanup error',
+        status: 'in-progress',
+        workflow: 'feature',
+        branchName: 'apex/task-cleanup-error',
+        createdAt: new Date(),
+        usage: { totalTokens: 0, estimatedCost: 0 },
+        logs: [],
+      };
+
+      mockOrchestrator.listTasks.mockResolvedValue([mockTask]);
+      mockOrchestrator.cleanupTaskWorktree.mockRejectedValue(new Error('Cleanup failed'));
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'task-cleanup-error']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to cleanup worktree: Cleanup failed')
+      );
+    });
+
+    it('should handle partial task ID matching for cleanup', async () => {
+      const mockTask: Partial<Task> = {
+        id: 'task-partial-cleanup-123456789012',
+        description: 'Partial ID cleanup test',
+        status: 'completed',
+        workflow: 'feature',
+        branchName: 'apex/task-partial-cleanup',
+        createdAt: new Date(),
+        usage: { totalTokens: 0, estimatedCost: 0 },
+        logs: [],
+      };
+
+      mockOrchestrator.listTasks.mockResolvedValue([mockTask]);
+      mockOrchestrator.cleanupTaskWorktree.mockResolvedValue(true);
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'task-partial']);
+
+      expect(mockOrchestrator.cleanupTaskWorktree).toHaveBeenCalledWith('task-partial-cleanup-123456789012');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Worktree for task task-partial- cleaned up successfully')
+      );
+    });
+
+    it('should handle worktree not enabled error for specific cleanup', async () => {
+      const mockTask: Partial<Task> = {
+        id: 'task-not-enabled-123456789012',
+        description: 'Worktree not enabled test',
+        status: 'completed',
+        workflow: 'feature',
+        branchName: 'apex/task-not-enabled',
+        createdAt: new Date(),
+        usage: { totalTokens: 0, estimatedCost: 0 },
+        logs: [],
+      };
+
+      mockOrchestrator.listTasks.mockResolvedValue([mockTask]);
+      mockOrchestrator.cleanupTaskWorktree.mockRejectedValue(new Error('Worktree management is not enabled'));
+
+      const { commands } = await import('../index.js');
+      const checkoutCommand = commands.find(cmd => cmd.name === 'checkout');
+
+      await checkoutCommand?.handler(mockContext, ['--cleanup', 'task-not-enabled']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to cleanup worktree: Worktree management is not enabled')
+      );
+    });
+  });
+
   describe('Error handling', () => {
     it('should handle uninitialized context', async () => {
       const uninitializedContext = { ...mockContext, initialized: false, orchestrator: null };
@@ -391,16 +546,19 @@ describe('Checkout Command', () => {
       await checkoutCommand?.handler(mockContext, []);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('Usage: /checkout <task_id> | /checkout --list | /checkout --cleanup')
+        expect.stringContaining('Usage: /checkout <task_id> | /checkout --list | /checkout --cleanup [<task_id>]')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('<task_id>    Switch to the worktree for the specified task')
+        expect.stringContaining('<task_id>           Switch to the worktree for the specified task')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('--list       List all task worktrees')
+        expect.stringContaining('--list              List all task worktrees')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('--cleanup    Remove orphaned/stale worktrees')
+        expect.stringContaining('--cleanup           Remove orphaned/stale worktrees')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('--cleanup <task_id> Remove worktree for specific task')
       );
     });
 
