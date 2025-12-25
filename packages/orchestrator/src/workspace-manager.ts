@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join, basename, resolve } from 'path';
 import { EventEmitter } from 'eventemitter3';
-import { WorkspaceConfig, Task } from '@apexcli/core';
+import { WorkspaceConfig, Task, containerRuntime, ContainerRuntimeType } from '@apexcli/core';
 
 const execAsync = promisify(exec);
 
@@ -34,6 +34,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private defaultStrategy: WorkspaceConfig['strategy'];
   private workspacesDir: string;
   private activeWorkspaces: Map<string, WorkspaceInfo> = new Map();
+  private containerRuntimeType: ContainerRuntimeType | null = null;
 
   constructor(options: WorkspaceManagerOptions) {
     super();
@@ -48,6 +49,9 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   async initialize(): Promise<void> {
     await fs.mkdir(this.workspacesDir, { recursive: true });
     await this.loadActiveWorkspaces();
+
+    // Detect available container runtime for container workspaces
+    this.containerRuntimeType = await containerRuntime.getBestRuntime();
   }
 
   /**
@@ -169,6 +173,20 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
+   * Get the detected container runtime type
+   */
+  getContainerRuntime(): ContainerRuntimeType | null {
+    return this.containerRuntimeType;
+  }
+
+  /**
+   * Check if container workspaces are supported
+   */
+  supportsContainerWorkspaces(): boolean {
+    return this.containerRuntimeType !== null && this.containerRuntimeType !== 'none';
+  }
+
+  /**
    * Get workspace statistics
    */
   async getWorkspaceStats(): Promise<{
@@ -257,6 +275,10 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       throw new Error('Container configuration required for container strategy');
     }
 
+    if (!this.containerRuntimeType || this.containerRuntimeType === 'none') {
+      throw new Error('No container runtime available (Docker or Podman required)');
+    }
+
     const containerName = `apex-task-${task.id}`;
     const workspacePath = join(this.workspacesDir, `container-${task.id}`);
 
@@ -264,7 +286,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     await fs.mkdir(workspacePath, { recursive: true });
 
     try {
-      // Build docker run command
+      // Build container run command using detected runtime
       const volumes = config.container.volumes || {};
       const environment = config.container.environment || {};
 
@@ -277,27 +299,28 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
         .join(' ');
 
       // Create container but don't start it yet
-      const command = `docker create --name "${containerName}" ${volumeArgs} ${envArgs} "${config.container.image}"`;
+      const command = `${this.containerRuntimeType} create --name "${containerName}" ${volumeArgs} ${envArgs} "${config.container.image}"`;
       await execAsync(command);
 
       return workspacePath;
     } catch (error) {
-      throw new Error(`Failed to create container workspace: ${error}`);
+      throw new Error(`Failed to create container workspace with ${this.containerRuntimeType}: ${error}`);
     }
   }
 
   private async cleanupContainer(workspace: WorkspaceInfo): Promise<void> {
     const containerName = `apex-task-${workspace.taskId}`;
+    const runtime = this.containerRuntimeType || 'docker'; // Fallback to docker for cleanup
 
     try {
-      // Stop and remove container
-      await execAsync(`docker stop "${containerName}" 2>/dev/null || true`);
-      await execAsync(`docker rm "${containerName}" 2>/dev/null || true`);
+      // Stop and remove container using detected runtime
+      await execAsync(`${runtime} stop "${containerName}" 2>/dev/null || true`);
+      await execAsync(`${runtime} rm "${containerName}" 2>/dev/null || true`);
 
       // Remove local workspace directory
       await fs.rm(workspace.workspacePath, { recursive: true, force: true });
     } catch (error) {
-      console.warn(`Failed to cleanup container workspace:`, error);
+      console.warn(`Failed to cleanup container workspace with ${runtime}:`, error);
     }
   }
 
