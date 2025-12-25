@@ -46,6 +46,7 @@ export class WorktreeManager {
       maxWorktrees: 5,
       pruneStaleAfterDays: 7,
       preserveOnFailure: false,
+      cleanupDelayMs: 0,
       ...options.config,
     };
 

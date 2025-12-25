@@ -139,6 +139,8 @@ export const WorktreeConfigSchema = z.object({
   pruneStaleAfterDays: z.number().min(1).optional().default(7),
   /** Whether to preserve worktree on task failure for debugging (default: false) */
   preserveOnFailure: z.boolean().optional().default(false),
+  /** Delay in milliseconds before cleaning up worktree (default: 0) */
+  cleanupDelayMs: z.number().min(0).optional().default(0),
 });
 export type WorktreeConfig = z.infer<typeof WorktreeConfigSchema>;
 

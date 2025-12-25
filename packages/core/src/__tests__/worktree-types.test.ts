@@ -40,6 +40,7 @@ describe('WorktreeConfigSchema', () => {
     expect(config.maxWorktrees).toBe(5);
     expect(config.pruneStaleAfterDays).toBe(7);
     expect(config.preserveOnFailure).toBe(false);
+    expect(config.cleanupDelayMs).toBe(0);
   });
 
   it('should parse config with custom values', () => {
@@ -49,6 +50,7 @@ describe('WorktreeConfigSchema', () => {
       maxWorktrees: 10,
       pruneStaleAfterDays: 14,
       preserveOnFailure: true,
+      cleanupDelayMs: 5000,
     });
 
     expect(config.baseDir).toBe('/custom/worktrees/path');
@@ -56,6 +58,7 @@ describe('WorktreeConfigSchema', () => {
     expect(config.maxWorktrees).toBe(10);
     expect(config.pruneStaleAfterDays).toBe(14);
     expect(config.preserveOnFailure).toBe(true);
+    expect(config.cleanupDelayMs).toBe(5000);
   });
 
   it('should apply defaults for missing optional fields', () => {
@@ -68,6 +71,7 @@ describe('WorktreeConfigSchema', () => {
     expect(config.maxWorktrees).toBe(8);
     expect(config.pruneStaleAfterDays).toBe(7); // default
     expect(config.preserveOnFailure).toBe(false); // default
+    expect(config.cleanupDelayMs).toBe(0); // default
   });
 
   it('should validate maxWorktrees minimum value', () => {
@@ -92,6 +96,17 @@ describe('WorktreeConfigSchema', () => {
     expect(() => WorktreeConfigSchema.parse({ pruneStaleAfterDays: -5 })).toThrow();
   });
 
+  it('should validate cleanupDelayMs minimum value', () => {
+    // Valid values (>= 0)
+    expect(() => WorktreeConfigSchema.parse({ cleanupDelayMs: 0 })).not.toThrow();
+    expect(() => WorktreeConfigSchema.parse({ cleanupDelayMs: 1000 })).not.toThrow();
+    expect(() => WorktreeConfigSchema.parse({ cleanupDelayMs: 30000 })).not.toThrow();
+
+    // Invalid values (< 0)
+    expect(() => WorktreeConfigSchema.parse({ cleanupDelayMs: -1 })).toThrow();
+    expect(() => WorktreeConfigSchema.parse({ cleanupDelayMs: -1000 })).toThrow();
+  });
+
   it('should reject invalid field types', () => {
     const invalidConfigs = [
       { baseDir: 123 },
@@ -99,6 +114,7 @@ describe('WorktreeConfigSchema', () => {
       { maxWorktrees: '5' },
       { pruneStaleAfterDays: 'week' },
       { preserveOnFailure: 1 },
+      { cleanupDelayMs: '1000' },
     ];
 
     for (const invalidConfig of invalidConfigs) {
@@ -114,10 +130,12 @@ describe('WorktreeConfigSchema', () => {
       maxWorktrees: 3,
       pruneStaleAfterDays: 3,
       preserveOnFailure: false,
+      cleanupDelayMs: 5000, // 5 second delay for small team
     });
 
     expect(smallTeamConfig.maxWorktrees).toBe(3);
     expect(smallTeamConfig.pruneStaleAfterDays).toBe(3);
+    expect(smallTeamConfig.cleanupDelayMs).toBe(5000);
 
     // Large team configuration
     const largeTeamConfig = WorktreeConfigSchema.parse({
@@ -126,11 +144,13 @@ describe('WorktreeConfigSchema', () => {
       maxWorktrees: 20,
       pruneStaleAfterDays: 30,
       preserveOnFailure: true,
+      cleanupDelayMs: 0, // No delay for large team
     });
 
     expect(largeTeamConfig.maxWorktrees).toBe(20);
     expect(largeTeamConfig.pruneStaleAfterDays).toBe(30);
     expect(largeTeamConfig.preserveOnFailure).toBe(true);
+    expect(largeTeamConfig.cleanupDelayMs).toBe(0);
   });
 });
 
@@ -302,6 +322,7 @@ describe('GitConfigSchema worktree integration', () => {
     expect(gitConfig.worktree?.maxWorktrees).toBe(5);
     expect(gitConfig.worktree?.pruneStaleAfterDays).toBe(7);
     expect(gitConfig.worktree?.preserveOnFailure).toBe(false);
+    expect(gitConfig.worktree?.cleanupDelayMs).toBe(0);
   });
 
   it('should handle complete GitConfig with existing and new fields', () => {
@@ -323,6 +344,7 @@ describe('GitConfigSchema worktree integration', () => {
         cleanupOnComplete: true,
         pruneStaleAfterDays: 5,
         preserveOnFailure: false,
+        cleanupDelayMs: 2000,
       },
     });
 
@@ -338,6 +360,7 @@ describe('GitConfigSchema worktree integration', () => {
     expect(gitConfig.worktree?.baseDir).toBe('/shared/apex-worktrees');
     expect(gitConfig.worktree?.maxWorktrees).toBe(10);
     expect(gitConfig.worktree?.cleanupOnComplete).toBe(true);
+    expect(gitConfig.worktree?.cleanupDelayMs).toBe(2000);
   });
 
   it('should reject invalid worktree configuration in GitConfig', () => {
@@ -361,6 +384,15 @@ describe('GitConfigSchema worktree integration', () => {
 
     expect(() => {
       GitConfigSchema.parse({
+        autoWorktree: true,
+        worktree: {
+          cleanupDelayMs: -500, // Invalid: should be >= 0
+        },
+      });
+    }).toThrow();
+
+    expect(() => {
+      GitConfigSchema.parse({
         autoWorktree: 'yes', // Invalid: should be boolean
       });
     }).toThrow();
@@ -375,6 +407,7 @@ describe('WorktreeConfig type safety and validation', () => {
       maxWorktrees: 5,
       pruneStaleAfterDays: 7,
       preserveOnFailure: false,
+      cleanupDelayMs: 1000,
     };
 
     expect(typeof config.baseDir).toBe('string');
@@ -382,6 +415,7 @@ describe('WorktreeConfig type safety and validation', () => {
     expect(typeof config.maxWorktrees).toBe('number');
     expect(typeof config.pruneStaleAfterDays).toBe('number');
     expect(typeof config.preserveOnFailure).toBe('boolean');
+    expect(typeof config.cleanupDelayMs).toBe('number');
   });
 
   it('should enforce type safety for WorktreeStatus enum', () => {

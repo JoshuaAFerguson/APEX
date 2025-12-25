@@ -1769,14 +1769,46 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       if (shouldCleanup) {
-        const deleted = await this.worktreeManager!.deleteWorktree(taskId);
-        if (deleted) {
-          this.emit('worktree:cleaned', taskId, worktreePath);
+        const delayMs = this.effectiveConfig.git.worktree?.cleanupDelayMs ?? 0;
 
+        if (delayMs > 0) {
           await this.store.addLog(taskId, {
             level: 'info',
-            message: `Cleaned up worktree: ${worktreePath}`,
+            message: `Scheduling worktree cleanup in ${delayMs}ms: ${worktreePath}`,
           });
+
+          // Use setTimeout to delay the cleanup
+          setTimeout(async () => {
+            try {
+              const deleted = await this.worktreeManager!.deleteWorktree(taskId);
+              if (deleted) {
+                this.emit('worktree:cleaned', taskId, worktreePath);
+
+                await this.store.addLog(taskId, {
+                  level: 'info',
+                  message: `Cleaned up worktree after delay: ${worktreePath}`,
+                });
+              }
+            } catch (error) {
+              console.warn(`Failed to cleanup worktree for task ${taskId} after delay:`, error);
+
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Failed to cleanup worktree after delay: ${error instanceof Error ? error.message : error}`,
+              });
+            }
+          }, delayMs);
+        } else {
+          // Immediate cleanup
+          const deleted = await this.worktreeManager!.deleteWorktree(taskId);
+          if (deleted) {
+            this.emit('worktree:cleaned', taskId, worktreePath);
+
+            await this.store.addLog(taskId, {
+              level: 'info',
+              message: `Cleaned up worktree: ${worktreePath}`,
+            });
+          }
         }
       } else {
         await this.store.addLog(taskId, {
