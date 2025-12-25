@@ -1757,6 +1757,87 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Clean up worktree for a merged task after verifying PR merge status
+   * @param taskId The ID of the task to cleanup
+   * @returns Promise<boolean> indicating if the worktree was successfully cleaned up
+   */
+  async cleanupMergedWorktree(taskId: string): Promise<boolean> {
+    if (!this.worktreeManager) {
+      throw new Error('Worktree management is not enabled');
+    }
+
+    if (!taskId) {
+      throw new Error('Task ID is required');
+    }
+
+    await this.ensureInitialized();
+
+    // Get task information
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: 'Cannot cleanup worktree: task not found',
+      });
+      return false;
+    }
+
+    // Verify PR is merged before cleanup
+    const isMerged = await this.checkPRMerged(taskId);
+    if (!isMerged) {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: 'PR not merged yet, skipping worktree cleanup',
+      });
+      return false;
+    }
+
+    // Get worktree info for the event
+    const worktreeInfo = await this.worktreeManager.getWorktree(taskId);
+    if (!worktreeInfo) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: 'No worktree found for task, cleanup not needed',
+      });
+      return false;
+    }
+
+    const worktreePath = worktreeInfo.path;
+    const prUrl = task.prUrl || 'unknown';
+
+    // Delete the worktree
+    try {
+      const deleted = await this.worktreeManager.deleteWorktree(taskId);
+
+      if (deleted) {
+        // Emit the merge-cleaned event
+        this.emit('worktree:merge-cleaned', taskId, worktreePath, prUrl);
+
+        // Log the cleanup action
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Cleaned up worktree after merge detected: ${worktreePath}`,
+        });
+
+        return true;
+      } else {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'Failed to delete worktree (worktree may not exist)',
+        });
+        return false;
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error cleaning up worktree after merge: ${errorMessage}`,
+      });
+      return false;
+    }
+  }
+
+  /**
    * Clean up worktree for a task based on its final status and configuration
    */
   private async cleanupWorktree(taskId: string, status: TaskStatus): Promise<void> {
