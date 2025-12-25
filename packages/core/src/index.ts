@@ -12,3 +12,6 @@ export * from './jsdoc-detector';
 
 // Container Runtime Detection
 export * from './container-runtime';
+
+// Container Management
+export * from './container-manager';
