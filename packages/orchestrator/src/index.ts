@@ -12,6 +12,7 @@ import {
   TaskUsage,
   TaskCheckpoint,
   TaskSessionData,
+  WorkspaceConfig,
   StageResult,
   ApexEvent,
   ApexEventType,
@@ -34,6 +35,7 @@ import {
   CreateTaskRequest,
 } from '@apexcli/core';
 import { TaskStore } from './store';
+import { WorktreeManager } from './worktree-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -96,6 +98,10 @@ export interface OrchestratorEvents {
   // Orphan detection events
   'orphan:detected': (event: OrphanDetectedEvent) => void;
   'orphan:recovered': (event: OrphanRecoveredEvent) => void;
+
+  // Worktree events (v0.4.0)
+  'worktree:created': (taskId: string, worktreePath: string) => void;
+  'worktree:cleaned': (taskId: string, worktreePath: string) => void;
 }
 
 /**
@@ -161,6 +167,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private agents: Record<string, AgentDefinition> = {};
   private store!: TaskStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
+  private worktreeManager?: WorktreeManager;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -196,6 +203,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize thought capture manager
     this.thoughtCaptureManager = new ThoughtCaptureManager(this.projectPath, this.store);
     await this.thoughtCaptureManager.initialize();
+
+    // Initialize worktree manager if autoWorktree is enabled
+    if (this.effectiveConfig.git.autoWorktree) {
+      this.worktreeManager = new WorktreeManager({
+        projectPath: this.projectPath,
+        config: this.effectiveConfig.git.worktree,
+      });
+    }
 
     this.initialized = true;
   }
@@ -270,6 +285,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     await this.store.createTask(task);
     this.emit('task:created', task);
+
+    // Create worktree if autoWorktree is enabled and this is not a subtask
+    if (this.worktreeManager && !options.parentTaskId && branchName) {
+      try {
+        const worktreePath = await this.worktreeManager.createWorktree(taskId, branchName);
+
+        // Update task with workspace configuration
+        const updatedTask = {
+          ...task,
+          workspace: {
+            strategy: 'worktree' as const,
+            path: worktreePath,
+            cleanup: this.effectiveConfig.git.worktree?.cleanupOnComplete ?? true,
+          },
+        };
+
+        await this.store.updateTask(taskId, {
+          workspace: updatedTask.workspace,
+          updatedAt: new Date(),
+        });
+
+        this.emit('worktree:created', taskId, worktreePath);
+
+        // Update the task object to return
+        task.workspace = updatedTask.workspace;
+      } catch (error) {
+        console.warn(`Failed to create worktree for task ${taskId}:`, error);
+        // Don't fail task creation if worktree creation fails
+      }
+    }
 
     // If this is a subtask, emit subtask:created and update parent
     if (options.parentTaskId) {
@@ -1637,6 +1682,67 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         resumeAttempts: 0  // Reset resume attempts counter on successful completion
       } : {}),
     });
+
+    // Handle worktree cleanup for completed, failed, or cancelled tasks
+    if ((status === 'completed' || status === 'failed' || status === 'cancelled') && this.worktreeManager) {
+      await this.cleanupWorktree(taskId, status);
+    }
+  }
+
+  /**
+   * Clean up worktree for a task based on its final status and configuration
+   */
+  private async cleanupWorktree(taskId: string, status: TaskStatus): Promise<void> {
+    try {
+      const task = await this.store.getTask(taskId);
+      if (!task || !task.workspace || task.workspace.strategy !== 'worktree') {
+        return;
+      }
+
+      const worktreePath = task.workspace.path;
+      if (!worktreePath) {
+        return;
+      }
+
+      // Determine if we should cleanup based on status and configuration
+      let shouldCleanup = false;
+
+      if (status === 'completed') {
+        // Always cleanup on successful completion if configured to do so
+        shouldCleanup = task.workspace.cleanup;
+      } else if (status === 'cancelled') {
+        // Always cleanup cancelled tasks
+        shouldCleanup = true;
+      } else if (status === 'failed') {
+        // For failed tasks, only cleanup if not configured to preserve on failure
+        const preserveOnFailure = this.effectiveConfig.git.worktree?.preserveOnFailure ?? false;
+        shouldCleanup = task.workspace.cleanup && !preserveOnFailure;
+      }
+
+      if (shouldCleanup) {
+        const deleted = await this.worktreeManager!.deleteWorktree(taskId);
+        if (deleted) {
+          this.emit('worktree:cleaned', taskId, worktreePath);
+
+          await this.store.addLog(taskId, {
+            level: 'info',
+            message: `Cleaned up worktree: ${worktreePath}`,
+          });
+        }
+      } else {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Preserved worktree for debugging: ${worktreePath}`,
+        });
+      }
+    } catch (error) {
+      console.warn(`Failed to cleanup worktree for task ${taskId}:`, error);
+
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Failed to cleanup worktree: ${error instanceof Error ? error.message : error}`,
+      });
+    }
   }
 
   /**
