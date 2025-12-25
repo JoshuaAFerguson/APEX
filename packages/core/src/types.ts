@@ -802,7 +802,13 @@ export type ApexEventType =
   | 'gate:rejected'
   | 'usage:updated'
   | 'log:entry'
-  | 'worktree:merge-cleaned';
+  | 'worktree:merge-cleaned'
+  | 'container:created'
+  | 'container:started'
+  | 'container:stopped'
+  | 'container:died'
+  | 'container:removed'
+  | 'container:health';
 
 export interface ApexEvent {
   type: ApexEventType;
@@ -810,6 +816,153 @@ export interface ApexEvent {
   timestamp: Date;
   data: Record<string, unknown>;
 }
+
+// ============================================================================
+// Container Lifecycle Event Data Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Base interface for all container event data
+ * Contains common fields shared across all container lifecycle events
+ */
+export interface ContainerEventDataBase {
+  /** Container ID (full or short form) */
+  containerId: string;
+  /** Container name */
+  containerName: string;
+  /** Docker/OCI image used */
+  image: string;
+  /** Associated task ID */
+  taskId?: string;
+  /** Timestamp when the event occurred */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'container:created' event
+ * Emitted when a new container is created (but not yet started)
+ */
+export interface ContainerCreatedEventData extends ContainerEventDataBase {
+  /** Container configuration used for creation */
+  config?: ContainerConfig;
+  /** Labels applied to the container */
+  labels?: Record<string, string>;
+}
+
+/**
+ * Event data for 'container:started' event
+ * Emitted when a container begins running
+ */
+export interface ContainerStartedEventData extends ContainerEventDataBase {
+  /** Process ID of the container's main process (if available) */
+  pid?: number;
+  /** Port mappings (host:container) */
+  ports?: Record<string, string>;
+  /** Network mode the container is running in */
+  networkMode?: ContainerNetworkMode;
+}
+
+/**
+ * Event data for 'container:stopped' event
+ * Emitted when a container is gracefully stopped
+ */
+export interface ContainerStoppedEventData extends ContainerEventDataBase {
+  /** Exit code from the container's main process */
+  exitCode: number;
+  /** Duration the container was running (in milliseconds) */
+  runDuration?: number;
+  /** Whether the stop was requested (graceful) or unexpected */
+  graceful: boolean;
+}
+
+/**
+ * Event data for 'container:died' event
+ * Emitted when a container terminates unexpectedly or crashes
+ */
+export interface ContainerDiedEventData extends ContainerEventDataBase {
+  /** Exit code from the container's main process */
+  exitCode: number;
+  /** Signal that caused the container to die (if applicable) */
+  signal?: string;
+  /** OOM (Out of Memory) killed indicator */
+  oomKilled: boolean;
+  /** Error message if available */
+  error?: string;
+  /** Duration the container was running before death (in milliseconds) */
+  runDuration?: number;
+}
+
+/**
+ * Event data for 'container:removed' event
+ * Emitted when a container is removed from the system
+ */
+export interface ContainerRemovedEventData extends ContainerEventDataBase {
+  /** Whether the removal was forced */
+  forced: boolean;
+  /** Final exit code of the container before removal */
+  exitCode?: number;
+  /** Whether volumes were also removed */
+  volumesRemoved?: boolean;
+}
+
+/**
+ * Health check status values
+ */
+export type ContainerHealthStatus = 'starting' | 'healthy' | 'unhealthy' | 'none';
+
+/**
+ * Event data for 'container:health' event
+ * Emitted when a container's health status changes
+ */
+export interface ContainerHealthEventData extends ContainerEventDataBase {
+  /** Current health status */
+  status: ContainerHealthStatus;
+  /** Previous health status (if transitioning) */
+  previousStatus?: ContainerHealthStatus;
+  /** Number of consecutive health check failures */
+  failingStreak?: number;
+  /** Output from the last health check */
+  lastCheckOutput?: string;
+  /** Exit code from the last health check */
+  lastCheckExitCode?: number;
+  /** Time of the last health check */
+  lastCheckTime?: Date;
+}
+
+/**
+ * Union type for all container event data types
+ * Use this for type-safe event handling
+ */
+export type ContainerEventData =
+  | ContainerCreatedEventData
+  | ContainerStartedEventData
+  | ContainerStoppedEventData
+  | ContainerDiedEventData
+  | ContainerRemovedEventData
+  | ContainerHealthEventData;
+
+/**
+ * Type-safe container event interface
+ * Provides strong typing for container lifecycle events
+ */
+export interface ContainerEvent<T extends ContainerEventData = ContainerEventData> {
+  type: Extract<ApexEventType, `container:${string}`>;
+  taskId: string;
+  timestamp: Date;
+  data: T;
+}
+
+/**
+ * Helper type to get the event data type for a specific container event type
+ */
+export type ContainerEventDataFor<T extends ApexEventType> =
+  T extends 'container:created' ? ContainerCreatedEventData :
+  T extends 'container:started' ? ContainerStartedEventData :
+  T extends 'container:stopped' ? ContainerStoppedEventData :
+  T extends 'container:died' ? ContainerDiedEventData :
+  T extends 'container:removed' ? ContainerRemovedEventData :
+  T extends 'container:health' ? ContainerHealthEventData :
+  never;
 
 // ============================================================================
 // Enhanced Complexity Metrics Types (v0.4.0)
