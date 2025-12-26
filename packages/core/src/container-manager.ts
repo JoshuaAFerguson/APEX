@@ -43,6 +43,44 @@ export interface CreateContainerOptions {
 }
 
 /**
+ * Options for executing commands in containers
+ */
+export interface ExecCommandOptions {
+  /** Working directory inside the container to execute the command */
+  workingDir?: string;
+  /** User to run the command as (e.g., "1000:1000", "root", "node") */
+  user?: string;
+  /** Timeout in milliseconds for command execution (default: 30000ms) */
+  timeout?: number;
+  /** Environment variables to set for the command execution */
+  environment?: Record<string, string>;
+  /** Whether to allocate a TTY for the command (default: false) */
+  tty?: boolean;
+  /** Whether to keep the container's stdin open (default: false) */
+  interactive?: boolean;
+  /** Whether to run the command as privileged (default: false) */
+  privileged?: boolean;
+}
+
+/**
+ * Result of executing a command in a container
+ */
+export interface ExecCommandResult {
+  /** Whether the command execution was successful */
+  success: boolean;
+  /** Standard output from the command */
+  stdout: string;
+  /** Standard error from the command */
+  stderr: string;
+  /** Exit code from the command (0 for success) */
+  exitCode: number;
+  /** Error message if execution failed */
+  error?: string;
+  /** Full command that was executed */
+  command?: string;
+}
+
+/**
  * Container naming convention settings
  */
 export interface ContainerNamingConfig {
@@ -778,6 +816,93 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
   }
 
   /**
+   * Execute a command inside a running container
+   * @param containerId Container ID or name
+   * @param command Command string or array of command parts to execute
+   * @param options Execution options (working directory, user, timeout, etc.)
+   * @param runtimeType Optional runtime type (auto-detected if not provided)
+   * @returns Result of command execution with stdout, stderr, exit code
+   */
+  async execCommand(
+    containerId: string,
+    command: string | string[],
+    options: ExecCommandOptions = {},
+    runtimeType?: ContainerRuntimeType
+  ): Promise<ExecCommandResult> {
+    try {
+      const runtime = runtimeType || await this.runtime.getBestRuntime();
+
+      if (runtime === 'none') {
+        return {
+          success: false,
+          stdout: '',
+          stderr: '',
+          exitCode: 1,
+          error: 'No container runtime available',
+        };
+      }
+
+      const execCommand = this.buildExecCommand(runtime, containerId, command, options);
+      const timeout = options.timeout || 30000; // Default 30 seconds
+
+      try {
+        const { stdout, stderr } = await execAsync(execCommand, { timeout });
+
+        return {
+          success: true,
+          stdout: stdout || '',
+          stderr: stderr || '',
+          exitCode: 0,
+          command: execCommand,
+        };
+      } catch (error: any) {
+        // Check if this is a timeout error
+        if (error.code === 'ETIMEDOUT') {
+          return {
+            success: false,
+            stdout: '',
+            stderr: '',
+            exitCode: 124, // Standard timeout exit code
+            error: `Command timed out after ${timeout}ms`,
+            command: execCommand,
+          };
+        }
+
+        // Check if this is a command execution error with exit code
+        if (error.code && typeof error.code === 'number') {
+          return {
+            success: false,
+            stdout: error.stdout || '',
+            stderr: error.stderr || '',
+            exitCode: error.code,
+            command: execCommand,
+          };
+        }
+
+        // Generic error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          stdout: error.stdout || '',
+          stderr: error.stderr || errorMessage,
+          exitCode: 1,
+          error: `Command execution failed: ${errorMessage}`,
+          command: execCommand,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        error: `Failed to execute command: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
    * Generate a container name following APEX naming conventions
    * @param taskId Task ID to include in the name
    * @param config Optional naming configuration override
@@ -1101,6 +1226,125 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
     } catch (error) {
       console.warn('Error handling container died event:', error);
     }
+  }
+
+  /**
+   * Build the exec command for running commands in containers
+   * @param runtimeType Container runtime type
+   * @param containerId Container ID or name
+   * @param command Command to execute (string or array)
+   * @param options Execution options
+   * @returns Complete exec command string
+   */
+  private buildExecCommand(
+    runtimeType: ContainerRuntimeType,
+    containerId: string,
+    command: string | string[],
+    options: ExecCommandOptions
+  ): string {
+    const parts = [runtimeType, 'exec'];
+
+    // Add options flags
+    if (options.tty) {
+      parts.push('--tty');
+    }
+
+    if (options.interactive) {
+      parts.push('--interactive');
+    }
+
+    if (options.privileged) {
+      parts.push('--privileged');
+    }
+
+    // Add working directory
+    if (options.workingDir) {
+      parts.push('--workdir', options.workingDir);
+    }
+
+    // Add user
+    if (options.user) {
+      parts.push('--user', options.user);
+    }
+
+    // Add environment variables
+    if (options.environment) {
+      for (const [key, value] of Object.entries(options.environment)) {
+        parts.push('--env', `${key}=${value}`);
+      }
+    }
+
+    // Add container ID
+    parts.push(containerId);
+
+    // Add command (handle both string and array formats)
+    if (Array.isArray(command)) {
+      parts.push(...command);
+    } else {
+      // For string commands, we need to handle shell parsing
+      // Split by spaces but respect quotes
+      const commandParts = this.parseCommandString(command);
+      parts.push(...commandParts);
+    }
+
+    return parts.map(part => this.escapeShellArg(part)).join(' ');
+  }
+
+  /**
+   * Parse a command string into individual arguments
+   * Handles quoted strings and escapes
+   * @param command Command string to parse
+   * @returns Array of command arguments
+   */
+  private parseCommandString(command: string): string[] {
+    const args: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+    let escaped = false;
+
+    for (let i = 0; i < command.length; i++) {
+      const char = command[i];
+
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inQuotes && (char === '"' || char === "'")) {
+        inQuotes = true;
+        quoteChar = char;
+        continue;
+      }
+
+      if (inQuotes && char === quoteChar) {
+        inQuotes = false;
+        quoteChar = '';
+        continue;
+      }
+
+      if (!inQuotes && /\s/.test(char)) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+        continue;
+      }
+
+      current += char;
+    }
+
+    if (current) {
+      args.push(current);
+    }
+
+    return args;
   }
 
   /**

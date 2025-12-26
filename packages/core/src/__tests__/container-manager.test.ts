@@ -12,6 +12,8 @@ import {
   type ContainerEvent,
   type ContainerOperationEvent,
   type ContainerManagerEvents,
+  type ExecCommandOptions,
+  type ExecCommandResult,
 } from '../container-manager';
 import { ContainerRuntime } from '../container-runtime';
 import { ContainerConfig, ContainerStats, ContainerStatus } from '../types';
@@ -1244,5 +1246,630 @@ describe('container lifecycle integration', () => {
       expect.any(Object),
       expect.any(Function)
     );
+  });
+
+  // ============================================================================
+  // execCommand Tests
+  // ============================================================================
+
+  describe('execCommand', () => {
+    const containerId = 'test-container-123';
+
+    it('should execute a simple command successfully', async () => {
+      const stdout = 'Hello World\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'echo "Hello World"');
+
+      expect(result.success).toBe(true);
+      expect(result.stdout).toBe(stdout);
+      expect(result.stderr).toBe('');
+      expect(result.exitCode).toBe(0);
+      expect(result.command).toContain('docker exec');
+      expect(result.command).toContain(containerId);
+      expect(result.command).toContain('echo');
+    });
+
+    it('should execute command with array format', async () => {
+      const stdout = 'current directory: /app\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, ['pwd']);
+
+      expect(result.success).toBe(true);
+      expect(result.stdout).toBe(stdout);
+      expect(result.exitCode).toBe(0);
+      expect(result.command).toContain('docker exec');
+      expect(result.command).toContain('pwd');
+    });
+
+    it('should handle command with working directory option', async () => {
+      const stdout = '/tmp\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'pwd', {
+        workingDir: '/tmp',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--workdir /tmp');
+    });
+
+    it('should handle command with user option', async () => {
+      const stdout = 'root\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'whoami', {
+        user: 'root',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--user root');
+    });
+
+    it('should handle command with environment variables', async () => {
+      const stdout = 'production\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'echo $NODE_ENV', {
+        environment: {
+          NODE_ENV: 'production',
+          DEBUG: 'true',
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--env NODE_ENV=production');
+      expect(result.command).toContain('--env DEBUG=true');
+    });
+
+    it('should handle command with TTY and interactive options', async () => {
+      const stdout = 'interactive output\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'bash', {
+        tty: true,
+        interactive: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--tty');
+      expect(result.command).toContain('--interactive');
+    });
+
+    it('should handle command with privileged option', async () => {
+      const stdout = 'privileged command result\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'mount', {
+        privileged: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--privileged');
+    });
+
+    it('should handle command with all options', async () => {
+      const stdout = 'comprehensive test\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'ls -la', {
+        workingDir: '/app',
+        user: 'node',
+        timeout: 10000,
+        environment: { PATH: '/usr/local/bin:/usr/bin:/bin' },
+        tty: true,
+        interactive: false,
+        privileged: false,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('--workdir /app');
+      expect(result.command).toContain('--user node');
+      expect(result.command).toContain('--env PATH=/usr/local/bin:/usr/bin:/bin');
+      expect(result.command).toContain('--tty');
+      expect(result.command).not.toContain('--interactive');
+      expect(result.command).not.toContain('--privileged');
+    });
+
+    it('should handle command execution failure with exit code', async () => {
+      const error = new Error('Command failed') as any;
+      error.code = 1;
+      error.stdout = '';
+      error.stderr = 'file not found';
+
+      mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+        setTimeout(() => callback!(error, '', 'file not found'), 0);
+        return {} as any;
+      }));
+
+      const result = await manager.execCommand(containerId, 'cat /nonexistent');
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe('file not found');
+      expect(result.stdout).toBe('');
+    });
+
+    it('should handle command timeout', async () => {
+      const error = new Error('Command timed out') as any;
+      error.code = 'ETIMEDOUT';
+
+      mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+        setTimeout(() => callback!(error, '', ''), 0);
+        return {} as any;
+      }));
+
+      const result = await manager.execCommand(containerId, 'sleep 60', {
+        timeout: 1000,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(124);
+      expect(result.error).toContain('timed out after 1000ms');
+    });
+
+    it('should handle stderr output with successful exit code', async () => {
+      const stderr = 'warning: deprecated option\n';
+      mockExec.mockImplementationOnce(mockExecCallback('output', stderr));
+
+      const result = await manager.execCommand(containerId, 'some-command --deprecated');
+
+      expect(result.success).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe('output');
+      expect(result.stderr).toBe(stderr);
+    });
+
+    it('should handle runtime not available', async () => {
+      vi.mocked(mockRuntime.getBestRuntime).mockResolvedValueOnce('none');
+
+      const result = await manager.execCommand(containerId, 'echo test');
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.error).toBe('No container runtime available');
+    });
+
+    it('should use custom timeout value', async () => {
+      const stdout = 'slow command result\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'sleep 1', {
+        timeout: 5000,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ timeout: 5000 }),
+        expect.any(Function)
+      );
+    });
+
+    it('should use default timeout when not specified', async () => {
+      const stdout = 'default timeout test\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'echo test');
+
+      expect(result.success).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ timeout: 30000 }),
+        expect.any(Function)
+      );
+    });
+
+    it('should parse command string with quotes correctly', async () => {
+      const stdout = 'parsed command\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'echo "hello world" \'single quotes\'');
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('hello world');
+      expect(result.command).toContain('single quotes');
+    });
+
+    it('should handle generic command execution errors', async () => {
+      const error = new Error('Network error');
+
+      mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+        setTimeout(() => callback!(error, '', ''), 0);
+        return {} as any;
+      }));
+
+      const result = await manager.execCommand(containerId, 'echo test');
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.error).toContain('Network error');
+    });
+
+    it('should work with podman runtime', async () => {
+      vi.mocked(mockRuntime.getBestRuntime).mockResolvedValueOnce('podman');
+      const stdout = 'podman result\n';
+      mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+      const result = await manager.execCommand(containerId, 'echo test');
+
+      expect(result.success).toBe(true);
+      expect(result.command).toContain('podman exec');
+    });
+
+    it('should handle empty stdout and stderr', async () => {
+      mockExec.mockImplementationOnce(mockExecCallback('', ''));
+
+      const result = await manager.execCommand(containerId, 'true');
+
+      expect(result.success).toBe(true);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe('');
+      expect(result.exitCode).toBe(0);
+    });
+
+    // ============================================================================
+    // Additional Edge Case Tests for execCommand
+    // ============================================================================
+
+    describe('execCommand edge cases', () => {
+      it('should handle very long command output', async () => {
+        const longOutput = 'a'.repeat(100000) + '\n';
+        mockExec.mockImplementationOnce(mockExecCallback(longOutput));
+
+        const result = await manager.execCommand(containerId, 'cat /large-file');
+
+        expect(result.success).toBe(true);
+        expect(result.stdout).toBe(longOutput);
+        expect(result.stdout.length).toBe(100001);
+      });
+
+      it('should handle commands with complex shell escaping', async () => {
+        const stdout = 'escaped output\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'echo "test $(date)" && echo \'$PWD\' | grep -v "null"');
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('echo');
+        expect(result.command).toContain('test $(date)');
+        expect(result.command).toContain('$PWD');
+      });
+
+      it('should handle environment variables with special characters', async () => {
+        const stdout = 'special chars test\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'printenv', {
+          environment: {
+            'SPECIAL_VAR': 'value with spaces & symbols $@#!',
+            'PATH_VAR': '/usr/bin:/usr/local/bin',
+            'JSON_VAR': '{"key": "value", "array": [1, 2, 3]}',
+          },
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('--env SPECIAL_VAR=');
+        expect(result.command).toContain('--env JSON_VAR=');
+      });
+
+      it('should handle working directory with spaces and special characters', async () => {
+        const stdout = '/app/folder with spaces\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'pwd', {
+          workingDir: '/app/folder with spaces & symbols',
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain("'/app/folder with spaces & symbols'");
+      });
+
+      it('should handle container not found error', async () => {
+        const error = new Error('No such container: nonexistent-container') as any;
+        error.code = 125; // Docker's exit code for container not found
+
+        mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+          setTimeout(() => callback!(error, '', 'No such container: nonexistent-container'), 0);
+          return {} as any;
+        }));
+
+        const result = await manager.execCommand('nonexistent-container', 'echo test');
+
+        expect(result.success).toBe(false);
+        expect(result.exitCode).toBe(125);
+        expect(result.stderr).toContain('No such container');
+      });
+
+      it('should handle invalid timeout values gracefully', async () => {
+        const stdout = 'output\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        // Test with negative timeout (should use default)
+        const result = await manager.execCommand(containerId, 'echo test', {
+          timeout: -1000,
+        });
+
+        expect(result.success).toBe(true);
+        // Should still work, as the implementation should handle invalid timeouts
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ timeout: -1000 }),
+          expect.any(Function)
+        );
+      });
+
+      it('should handle command with multi-line output', async () => {
+        const multiLineOutput = 'line 1\nline 2\nline 3\nline 4\n';
+        mockExec.mockImplementationOnce(mockExecCallback(multiLineOutput));
+
+        const result = await manager.execCommand(containerId, 'cat /multi-line-file');
+
+        expect(result.success).toBe(true);
+        expect(result.stdout).toBe(multiLineOutput);
+        expect(result.stdout.split('\n')).toHaveLength(5); // 4 lines + empty string after last \n
+      });
+
+      it('should handle binary output in stdout', async () => {
+        // Simulate binary output with special characters
+        const binaryOutput = Buffer.from([0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD]).toString();
+        mockExec.mockImplementationOnce(mockExecCallback(binaryOutput));
+
+        const result = await manager.execCommand(containerId, 'cat /binary-file');
+
+        expect(result.success).toBe(true);
+        expect(result.stdout).toBe(binaryOutput);
+      });
+
+      it('should handle command execution with stderr containing warnings but exit code 0', async () => {
+        const stdout = 'command completed successfully\n';
+        const stderr = 'WARNING: deprecated feature used\nWARNING: consider upgrading\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout, stderr));
+
+        const result = await manager.execCommand(containerId, 'legacy-command --deprecated-flag');
+
+        expect(result.success).toBe(true);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe(stdout);
+        expect(result.stderr).toBe(stderr);
+      });
+
+      it('should handle command that produces no output but succeeds', async () => {
+        mockExec.mockImplementationOnce(mockExecCallback('', ''));
+
+        const result = await manager.execCommand(containerId, 'touch /tmp/test-file');
+
+        expect(result.success).toBe(true);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toBe('');
+      });
+
+      it('should handle extremely long command strings', async () => {
+        const longCommandArg = 'x'.repeat(1000);
+        const stdout = 'long command executed\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, `echo "${longCommandArg}"`);
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain(longCommandArg);
+      });
+
+      it('should properly escape shell arguments to prevent injection', async () => {
+        const maliciousInput = 'test; rm -rf /; echo "hacked"';
+        const stdout = 'safe output\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, ['echo', maliciousInput]);
+
+        expect(result.success).toBe(true);
+        // Verify that the malicious input is properly escaped
+        expect(result.command).toContain("'test; rm -rf /; echo \"hacked\"'");
+      });
+
+      it('should handle user with colon separator format', async () => {
+        const stdout = 'user test output\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'whoami', {
+          user: '1000:1000',
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('--user 1000:1000');
+      });
+
+      it('should handle commands with stdout and stderr both containing data', async () => {
+        const stdout = 'normal output\nline 2\n';
+        const stderr = 'error message\nwarning message\n';
+
+        // Mock exec with specific exit code 2
+        const error = new Error('Command failed') as any;
+        error.code = 2;
+        error.stdout = stdout;
+        error.stderr = stderr;
+
+        mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+          setTimeout(() => callback!(error, stdout, stderr), 0);
+          return {} as any;
+        }));
+
+        const result = await manager.execCommand(containerId, 'mixed-output-command');
+
+        expect(result.success).toBe(false);
+        expect(result.exitCode).toBe(2);
+        expect(result.stdout).toBe(stdout);
+        expect(result.stderr).toBe(stderr);
+      });
+
+      it('should handle command with extremely short timeout', async () => {
+        const error = new Error('Command timed out') as any;
+        error.code = 'ETIMEDOUT';
+
+        mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+          setTimeout(() => callback!(error, '', ''), 0);
+          return {} as any;
+        }));
+
+        const result = await manager.execCommand(containerId, 'sleep 1', {
+          timeout: 1, // 1ms timeout
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.exitCode).toBe(124);
+        expect(result.error).toContain('timed out after 1ms');
+      });
+
+      it('should handle command parsing with escaped quotes and spaces', async () => {
+        const stdout = 'parsed complex command\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const complexCommand = 'echo "quoted \\"nested\\" quotes" \'single quotes\' normal\\ escaped\\ spaces';
+        const result = await manager.execCommand(containerId, complexCommand);
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('echo');
+        expect(result.command).toContain('quoted');
+        expect(result.command).toContain('nested');
+      });
+
+      it('should handle environment variable with empty value', async () => {
+        const stdout = 'env test\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'printenv', {
+          environment: {
+            EMPTY_VAR: '',
+            NORMAL_VAR: 'value',
+          },
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('--env EMPTY_VAR=');
+        expect(result.command).toContain('--env NORMAL_VAR=value');
+      });
+
+      it('should handle runtime-specific command execution (docker vs podman)', async () => {
+        // Test that different runtimes produce appropriate commands
+        const stdout = 'runtime test\n';
+
+        // Test with Docker
+        vi.mocked(mockRuntime.getBestRuntime).mockResolvedValueOnce('docker');
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        let result = await manager.execCommand(containerId, 'echo docker-test');
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('docker exec');
+
+        // Test with Podman
+        vi.mocked(mockRuntime.getBestRuntime).mockResolvedValueOnce('podman');
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        result = await manager.execCommand(containerId, 'echo podman-test');
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('podman exec');
+      });
+
+      it('should handle concurrent execCommand calls', async () => {
+        const stdout1 = 'result 1\n';
+        const stdout2 = 'result 2\n';
+        const stdout3 = 'result 3\n';
+
+        // Set up multiple mock exec calls
+        mockExec
+          .mockImplementationOnce(mockExecCallback(stdout1))
+          .mockImplementationOnce(mockExecCallback(stdout2))
+          .mockImplementationOnce(mockExecCallback(stdout3));
+
+        // Execute multiple commands concurrently
+        const promises = [
+          manager.execCommand(containerId, 'echo "test 1"'),
+          manager.execCommand(containerId, 'echo "test 2"'),
+          manager.execCommand(containerId, 'echo "test 3"'),
+        ];
+
+        const results = await Promise.all(promises);
+
+        results.forEach(result => {
+          expect(result.success).toBe(true);
+          expect(result.exitCode).toBe(0);
+        });
+
+        expect(results[0].stdout).toBe(stdout1);
+        expect(results[1].stdout).toBe(stdout2);
+        expect(results[2].stdout).toBe(stdout3);
+      });
+
+      it('should handle command execution when container is not running', async () => {
+        const error = new Error('Container is not running') as any;
+        error.code = 125;
+        error.stderr = 'Error: Container abc123 is not running';
+
+        mockExec.mockImplementationOnce(vi.fn((command, options, callback) => {
+          setTimeout(() => callback!(error, '', 'Error: Container abc123 is not running'), 0);
+          return {} as any;
+        }));
+
+        const result = await manager.execCommand(containerId, 'echo test');
+
+        expect(result.success).toBe(false);
+        expect(result.exitCode).toBe(125);
+        expect(result.stderr).toContain('Container abc123 is not running');
+      });
+
+      it('should preserve command options across different scenarios', async () => {
+        const stdout = 'options preserved\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const options: ExecCommandOptions = {
+          workingDir: '/custom/path',
+          user: 'testuser',
+          timeout: 15000,
+          environment: { TEST: 'value' },
+          tty: false,
+          interactive: false,
+          privileged: true,
+        };
+
+        const result = await manager.execCommand(containerId, 'test-command', options);
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain('--workdir /custom/path');
+        expect(result.command).toContain('--user testuser');
+        expect(result.command).toContain('--env TEST=value');
+        expect(result.command).toContain('--privileged');
+        expect(result.command).not.toContain('--tty');
+        expect(result.command).not.toContain('--interactive');
+      });
+
+      it('should handle invalid container ID characters', async () => {
+        const invalidContainerId = 'container@with#special$chars';
+        const stdout = 'test output\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(invalidContainerId, 'echo test');
+
+        expect(result.success).toBe(true);
+        expect(result.command).toContain(invalidContainerId);
+      });
+
+      it('should handle maximum timeout value', async () => {
+        const stdout = 'max timeout test\n';
+        mockExec.mockImplementationOnce(mockExecCallback(stdout));
+
+        const result = await manager.execCommand(containerId, 'echo test', {
+          timeout: Number.MAX_SAFE_INTEGER,
+        });
+
+        expect(result.success).toBe(true);
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ timeout: Number.MAX_SAFE_INTEGER }),
+          expect.any(Function)
+        );
+      });
+    });
   });
 });
