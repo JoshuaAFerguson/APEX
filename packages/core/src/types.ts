@@ -319,6 +319,7 @@ export const ApexConfigSchema = z.object({
     .optional(),
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
+  workspace: WorkspaceDefaultsSchema.optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -626,6 +627,40 @@ export interface ContainerLogEntry {
  */
 export const WorkspaceStrategySchema = z.enum(['worktree', 'container', 'directory', 'none']);
 export type WorkspaceStrategy = z.infer<typeof WorkspaceStrategySchema>;
+
+/**
+ * Default container configuration schema for workspace settings
+ * Provides project-wide defaults that can be overridden per-task
+ */
+export const ContainerDefaultsSchema = z.object({
+  /** Default Docker/OCI image to use for container workspaces */
+  image: z.string().optional(),
+  /** Default resource limits for containers */
+  resourceLimits: ResourceLimitsSchema.optional(),
+  /** Default network mode for container networking */
+  networkMode: ContainerNetworkModeSchema.optional(),
+  /** Default environment variables to set in containers */
+  environment: z.record(z.string(), z.string()).optional(),
+  /** Whether to automatically remove containers after they stop (default: true) */
+  autoRemove: z.boolean().optional().default(true),
+  /** Default timeout for dependency installation in milliseconds */
+  installTimeout: z.number().positive().optional(),
+});
+export type ContainerDefaults = z.infer<typeof ContainerDefaultsSchema>;
+
+/**
+ * Workspace defaults configuration schema for project-level settings
+ * Defines default workspace isolation behavior and container settings
+ */
+export const WorkspaceDefaultsSchema = z.object({
+  /** Default isolation strategy for tasks (default: 'none') */
+  defaultStrategy: WorkspaceStrategySchema.optional().default('none'),
+  /** Whether to cleanup workspace after task completion (default: true) */
+  cleanupOnComplete: z.boolean().optional().default(true),
+  /** Default container configuration for container-based workspaces */
+  container: ContainerDefaultsSchema.optional(),
+});
+export type WorkspaceDefaults = z.infer<typeof WorkspaceDefaultsSchema>;
 
 /**
  * Workspace isolation configuration schema for tasks
