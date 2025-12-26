@@ -2901,6 +2901,14 @@ Parent: ${parentTask.description}`;
       this.runningTasks.delete(taskId);
     }
 
+    // Always cleanup workspace after marking task as cancelled
+    try {
+      await this.workspaceManager.cleanupWorkspace(taskId);
+    } catch (error) {
+      console.warn(`Failed to cleanup workspace for cancelled task ${taskId}:`, error);
+      // Don't fail cancelTask due to cleanup error, but log the issue
+    }
+
     return true;
   }
 

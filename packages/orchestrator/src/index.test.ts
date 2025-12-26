@@ -1012,6 +1012,59 @@ You are a developer agent that implements code changes.
       expect(cancelled).toBe(false);
     });
 
+    it('should call workspaceManager.cleanupWorkspace when task is cancelled', async () => {
+      // Mock the cleanupWorkspace method
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      const task = await orchestrator.createTask({
+        description: 'Cancel and cleanup me',
+      });
+
+      const cancelled = await orchestrator.cancelTask(task.id);
+      expect(cancelled).toBe(true);
+
+      // Verify that cleanup was called with the task ID
+      expect(mockCleanupWorkspace).toHaveBeenCalledOnce();
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('cancelled');
+    });
+
+    it('should still succeed when workspace cleanup fails during cancellation', async () => {
+      // Mock console.warn to verify warning is logged
+      const mockConsoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Mock cleanupWorkspace to fail
+      const cleanupError = new Error('Cleanup failed');
+      const mockCleanupWorkspace = vi.fn().mockRejectedValue(cleanupError);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      const task = await orchestrator.createTask({
+        description: 'Cancel me with failing cleanup',
+      });
+
+      const cancelled = await orchestrator.cancelTask(task.id);
+      expect(cancelled).toBe(true); // Should still return true despite cleanup failure
+
+      // Verify that cleanup was attempted
+      expect(mockCleanupWorkspace).toHaveBeenCalledOnce();
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      // Verify warning was logged
+      expect(mockConsoleWarn).toHaveBeenCalledOnce();
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        `Failed to cleanup workspace for cancelled task ${task.id}:`,
+        cleanupError
+      );
+
+      const updatedTask = await orchestrator.getTask(task.id);
+      expect(updatedTask?.status).toBe('cancelled');
+
+      mockConsoleWarn.mockRestore();
+    });
+
     it('should queue task with priority', async () => {
       const task = await orchestrator.createTask({
         description: 'Queue me',
