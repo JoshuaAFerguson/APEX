@@ -675,7 +675,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
@@ -4260,6 +4260,12 @@ Parent: ${parentTask.description}`;
         oomKilled: event.oomKilled,
       };
       this.emit('container:died', containerEvent);
+
+      // Handle container failure during task execution
+      this.handleContainerFailure(containerEvent).catch((error) => {
+        // Log container failure handling error but don't re-throw
+        console.error(`Failed to handle container failure for container ${event.containerId}:`, error);
+      });
     });
 
     containerManager.on('container:removed', (event) => {
@@ -4300,6 +4306,63 @@ Parent: ${parentTask.description}`;
     this.workspaceManager.on('dependency-install-completed', (event) => {
       this.emit('dependency:install-completed', event);
     });
+  }
+
+  /**
+   * Handle container failure during task execution
+   * Pauses tasks when their associated container dies unexpectedly
+   */
+  private async handleContainerFailure(event: ContainerDiedEventData): Promise<void> {
+    // Only handle container failures for tasks that have an associated task ID
+    if (!event.taskId) {
+      return;
+    }
+
+    // Check if the task is currently running
+    if (!this.runningTasks.has(event.taskId)) {
+      return;
+    }
+
+    try {
+      // Get the current task to verify it's in-progress
+      const task = await this.store.getTask(event.taskId);
+      if (!task || task.status !== 'in-progress') {
+        return;
+      }
+
+      // Determine failure reason based on exit code and OOM status
+      const isOomKilled = event.oomKilled || false;
+      const exitCode = event.exitCode;
+
+      // Create detailed failure message
+      let failureReason = `Container died with exit code ${exitCode}`;
+      if (event.signal) {
+        failureReason += ` (signal: ${event.signal})`;
+      }
+      if (isOomKilled) {
+        failureReason += ` - Out of Memory (OOM) killed`;
+      }
+
+      // Log the container failure
+      await this.store.addLog(event.taskId, {
+        level: 'error',
+        message: `${failureReason}. Container ID: ${event.containerId}`,
+      });
+
+      // Pause the task due to container failure
+      await this.pauseTask(event.taskId, 'container_failure');
+
+      // Log the task pause
+      await this.store.addLog(event.taskId, {
+        level: 'warn',
+        message: `Task paused due to container failure. ${failureReason}. Task can be resumed with a new container.`,
+      });
+
+      console.log(`Task ${event.taskId} paused due to container failure: ${failureReason}`);
+    } catch (error) {
+      console.error(`Error handling container failure for task ${event.taskId}:`, error);
+      // Don't re-throw - we don't want container failures to crash the orchestrator
+    }
   }
 
   /**

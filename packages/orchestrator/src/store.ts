@@ -1140,7 +1140,7 @@ export class TaskStore {
       SELECT t.*
       FROM tasks t
       WHERE t.status = 'paused'
-      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity')
+      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity', 'container_failure')
       AND (t.resume_after IS NULL OR t.resume_after <= ?)
       ORDER BY CASE t.priority
         WHEN 'urgent' THEN 1
@@ -1193,7 +1193,7 @@ export class TaskStore {
       SELECT t.*
       FROM tasks t
       WHERE t.status = 'paused'
-      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity')
+      AND t.pause_reason IN ('usage_limit', 'budget', 'capacity', 'container_failure')
       AND (t.resume_after IS NULL OR t.resume_after <= ?)
       AND t.subtask_ids IS NOT NULL
       AND t.subtask_ids != '[]'

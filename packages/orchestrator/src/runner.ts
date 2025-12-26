@@ -678,7 +678,7 @@ export class DaemonRunner {
           const subtask = await this.store.getTask(subtaskId);
 
           if (subtask?.status === 'paused' &&
-              ['usage_limit', 'budget', 'capacity'].includes(subtask.pauseReason || '')) {
+              ['usage_limit', 'budget', 'capacity', 'container_failure'].includes(subtask.pauseReason || '')) {
 
             // Check if subtask can be resumed (resumeAfter date check)
             if (subtask.resumeAfter && subtask.resumeAfter > new Date()) {
