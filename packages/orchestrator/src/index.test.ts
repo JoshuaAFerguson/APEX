@@ -2698,4 +2698,451 @@ You are a developer agent that implements code changes.
       });
     });
   });
+
+  describe('container execution context', () => {
+    it('should integrate container workspace information into executeWorkflowStage', async () => {
+      // Create a task with container workspace
+      const task = await orchestrator.createTask({
+        description: 'Test task with container workspace',
+      });
+
+      // Mock workspace manager to return container workspace information
+      const mockWorkspaceInfo = {
+        taskId: task.id,
+        config: { strategy: 'container' as const },
+        workspacePath: '/test/container/workspace',
+        status: 'active' as const,
+        createdAt: new Date(),
+        lastAccessed: new Date(),
+        containerId: 'test-container-123',
+      };
+
+      const mockGetWorkspace = vi.fn().mockReturnValue(mockWorkspaceInfo);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue('test-container-123');
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      // Mock the query function to capture the options passed to it
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      // Mock workflow and stage
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [
+          {
+            name: 'test-stage',
+            agent: 'developer',
+            dependencies: [],
+          },
+        ],
+      };
+
+      const stage: WorkflowStage = {
+        name: 'test-stage',
+        agent: 'developer',
+        dependencies: [],
+      };
+
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      // Execute stage
+      await (orchestrator as any).executeWorkflowStage(
+        task,
+        stage,
+        agent,
+        workflow,
+        new Map()
+      );
+
+      // Verify workspace manager was called with correct task ID
+      expect(mockGetWorkspace).toHaveBeenCalledWith(task.id);
+      expect(mockGetContainerIdForTask).toHaveBeenCalledWith(task.id);
+
+      // Verify query was called with container execution context
+      expect(capturedOptions).toBeDefined();
+      expect(capturedOptions.options.cwd).toBe('/test/container/workspace');
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBe('test-container-123');
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBe('/test/container/workspace');
+    });
+
+    it('should use default projectPath when no container workspace is active', async () => {
+      // Create a task without container workspace
+      const task = await orchestrator.createTask({
+        description: 'Test task without container workspace',
+      });
+
+      // Mock workspace manager to return null (no workspace)
+      const mockGetWorkspace = vi.fn().mockReturnValue(null);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue(undefined);
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      // Mock the query function to capture the options passed to it
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      // Mock workflow and stage
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [
+          {
+            name: 'test-stage',
+            agent: 'developer',
+            dependencies: [],
+          },
+        ],
+      };
+
+      const stage: WorkflowStage = {
+        name: 'test-stage',
+        agent: 'developer',
+        dependencies: [],
+      };
+
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      // Execute stage
+      await (orchestrator as any).executeWorkflowStage(
+        task,
+        stage,
+        agent,
+        workflow,
+        new Map()
+      );
+
+      // Verify workspace manager was called
+      expect(mockGetWorkspace).toHaveBeenCalledWith(task.id);
+      expect(mockGetContainerIdForTask).toHaveBeenCalledWith(task.id);
+
+      // Verify query was called with default project path (not container context)
+      expect(capturedOptions).toBeDefined();
+      expect(capturedOptions.options.cwd).toBe((orchestrator as any).projectPath);
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBeUndefined();
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBeUndefined();
+    });
+
+    it('should handle partial container workspace information (containerId but no workspace)', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test task with partial container info',
+      });
+
+      // Mock workspace manager to return null workspace but valid container ID
+      const mockGetWorkspace = vi.fn().mockReturnValue(null);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue('orphaned-container-123');
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      await (orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map());
+
+      // Should use default project path when workspace info is null
+      expect(capturedOptions.options.cwd).toBe((orchestrator as any).projectPath);
+      // But should still pass container ID if available
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBe('orphaned-container-123');
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBeUndefined();
+    });
+
+    it('should handle workspace info without containerId', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test task with workspace but no container',
+      });
+
+      // Mock workspace manager to return workspace info without container ID
+      const mockWorkspaceInfo = {
+        taskId: task.id,
+        config: { strategy: 'isolated' as const },
+        workspacePath: '/test/isolated/workspace',
+        status: 'active' as const,
+        createdAt: new Date(),
+        lastAccessed: new Date(),
+        // No containerId property
+      };
+
+      const mockGetWorkspace = vi.fn().mockReturnValue(mockWorkspaceInfo);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue(undefined);
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      await (orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map());
+
+      // Should use workspace path from WorkspaceManager
+      expect(capturedOptions.options.cwd).toBe('/test/isolated/workspace');
+      // Should not set container environment variables
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBeUndefined();
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBe('/test/isolated/workspace');
+    });
+
+    it('should preserve existing environment variables while adding container context', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test environment variable preservation',
+      });
+
+      const mockWorkspaceInfo = {
+        taskId: task.id,
+        config: { strategy: 'container' as const },
+        workspacePath: '/test/container/workspace',
+        status: 'active' as const,
+        createdAt: new Date(),
+        lastAccessed: new Date(),
+        containerId: 'test-container-456',
+      };
+
+      const mockGetWorkspace = vi.fn().mockReturnValue(mockWorkspaceInfo);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue('test-container-456');
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      // Set custom environment variable
+      const originalEnv = process.env.CUSTOM_TEST_VAR;
+      process.env.CUSTOM_TEST_VAR = 'test-value';
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      await (orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map());
+
+      // Verify container environment variables are set
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBe('test-container-456');
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBe('/test/container/workspace');
+
+      // Verify existing environment variables are preserved
+      expect(capturedOptions.options.env.CUSTOM_TEST_VAR).toBe('test-value');
+      expect(capturedOptions.options.env.APEX_TASK_ID).toBe(task.id);
+      expect(capturedOptions.options.env.APEX_PROJECT).toBe((orchestrator as any).projectPath);
+
+      // Cleanup
+      if (originalEnv === undefined) {
+        delete process.env.CUSTOM_TEST_VAR;
+      } else {
+        process.env.CUSTOM_TEST_VAR = originalEnv;
+      }
+    });
+
+    it('should handle empty string values from workspace manager methods', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test empty string handling',
+      });
+
+      const mockWorkspaceInfo = {
+        taskId: task.id,
+        config: { strategy: 'container' as const },
+        workspacePath: '', // Empty workspace path
+        status: 'active' as const,
+        createdAt: new Date(),
+        lastAccessed: new Date(),
+        containerId: '',
+      };
+
+      const mockGetWorkspace = vi.fn().mockReturnValue(mockWorkspaceInfo);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue(''); // Empty string
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      await (orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map());
+
+      // Should fallback to project path when workspace path is empty
+      expect(capturedOptions.options.cwd).toBe((orchestrator as any).projectPath);
+      // Should not set environment variables for empty string values
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBeUndefined();
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBeUndefined();
+    });
+
+    it('should handle workspace manager method exceptions gracefully', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test workspace manager exceptions',
+      });
+
+      // Mock workspace manager methods to throw errors
+      const mockGetWorkspace = vi.fn().mockImplementation(() => {
+        throw new Error('Workspace lookup failed');
+      });
+      const mockGetContainerIdForTask = vi.fn().mockImplementation(() => {
+        throw new Error('Container lookup failed');
+      });
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      // Should handle errors gracefully and not throw, fallback to default behavior
+      await expect((orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map())).resolves.not.toThrow();
+
+      // Should fallback to project path when workspace manager throws
+      expect(capturedOptions.options.cwd).toBe((orchestrator as any).projectPath);
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBeUndefined();
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBeUndefined();
+    });
+
+    it('should handle very long workspace paths and container IDs', async () => {
+      const task = await orchestrator.createTask({
+        description: 'Test long values handling',
+      });
+
+      const longWorkspacePath = '/very/long/workspace/path/' + 'a'.repeat(200);
+      const longContainerId = 'container-' + 'x'.repeat(200);
+
+      const mockWorkspaceInfo = {
+        taskId: task.id,
+        config: { strategy: 'container' as const },
+        workspacePath: longWorkspacePath,
+        status: 'active' as const,
+        createdAt: new Date(),
+        lastAccessed: new Date(),
+        containerId: longContainerId,
+      };
+
+      const mockGetWorkspace = vi.fn().mockReturnValue(mockWorkspaceInfo);
+      const mockGetContainerIdForTask = vi.fn().mockReturnValue(longContainerId);
+
+      (orchestrator as any).workspaceManager.getWorkspace = mockGetWorkspace;
+      (orchestrator as any).workspaceManager.getContainerIdForTask = mockGetContainerIdForTask;
+
+      let capturedOptions: any;
+      (query as any).mockImplementation(async function* (opts: any) {
+        capturedOptions = opts;
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Test response' }] } };
+      });
+
+      const workflow: WorkflowDefinition = {
+        name: 'test-workflow',
+        description: 'Test workflow',
+        stages: [{ name: 'test-stage', agent: 'developer', dependencies: [] }],
+      };
+
+      const stage: WorkflowStage = { name: 'test-stage', agent: 'developer', dependencies: [] };
+      const agent: AgentDefinition = {
+        name: 'developer',
+        role: 'Test Developer',
+        model: 'haiku',
+        instructions: 'Test instructions',
+      };
+
+      await (orchestrator as any).executeWorkflowStage(task, stage, agent, workflow, new Map());
+
+      // Should handle long values correctly
+      expect(capturedOptions.options.cwd).toBe(longWorkspacePath);
+      expect(capturedOptions.options.env.APEX_CONTAINER_ID).toBe(longContainerId);
+      expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBe(longWorkspacePath);
+    });
+  });
 });

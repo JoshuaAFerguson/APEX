@@ -1380,6 +1380,40 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Session limit reached: ${sessionLimitStatus.message}. Task paused at checkpoint ${checkpointId}.`);
     }
 
+    // Check if task has container workspace for execution context
+    let workspaceInfo: any = null;
+    let containerId: string | undefined = undefined;
+
+    try {
+      workspaceInfo = this.workspaceManager.getWorkspace(task.id);
+    } catch (error) {
+      // Log warning but continue with default behavior
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Failed to get workspace info: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+    }
+
+    try {
+      containerId = this.workspaceManager.getContainerIdForTask(task.id);
+    } catch (error) {
+      // Log warning but continue with default behavior
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Failed to get container ID: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+    }
+
+    // Determine working directory based on workspace configuration
+    // Also validate that workspace path is not empty
+    const workingDirectory = (workspaceInfo && workspaceInfo.workspacePath && workspaceInfo.workspacePath.trim() !== '')
+      ? workspaceInfo.workspacePath
+      : this.projectPath;
+
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
     try {
@@ -1390,7 +1424,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         permissionMode: 'acceptEdits',
         maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
-        cwd: this.projectPath,
+        cwd: workingDirectory,
         env: {
           ...process.env,
           APEX_API: this.apiUrl,
@@ -1399,6 +1433,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           APEX_BRANCH: task.branchName || '',
           APEX_STAGE: stage.name,
           APEX_AGENT: agent.name,
+          // Container execution context environment variables
+          // Only set if containerId exists and is not empty
+          ...(containerId && containerId.trim() !== '' && { APEX_CONTAINER_ID: containerId }),
+          // Only set if workspaceInfo exists and has non-empty workspacePath
+          ...(workspaceInfo && workspaceInfo.workspacePath && workspaceInfo.workspacePath.trim() !== '' && { APEX_WORKSPACE_PATH: workspaceInfo.workspacePath }),
         },
         hooks,
       },
