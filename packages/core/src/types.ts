@@ -674,6 +674,8 @@ export const WorkspaceConfigSchema = z.object({
   container: ContainerConfigSchema.optional(),
   /** Whether to cleanup workspace after task completion */
   cleanup: z.boolean(),
+  /** Whether to preserve workspace on task failure */
+  preserveOnFailure: z.boolean().optional().default(false),
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 

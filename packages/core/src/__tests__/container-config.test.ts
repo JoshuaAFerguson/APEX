@@ -1268,6 +1268,92 @@ describe('WorkspaceConfigSchema', () => {
     });
   });
 
+  describe('preserveOnFailure field validation', () => {
+    it('should accept boolean values', () => {
+      const resultTrue = WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: true
+      });
+      expect(resultTrue.preserveOnFailure).toBe(true);
+
+      const resultFalse = WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: false
+      });
+      expect(resultFalse.preserveOnFailure).toBe(false);
+    });
+
+    it('should be optional and default to false', () => {
+      const result = WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true
+      });
+      expect(result.preserveOnFailure).toBe(false);
+    });
+
+    it('should reject non-boolean values', () => {
+      expect(() => WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: 'true'
+      })).toThrow();
+
+      expect(() => WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: 1
+      })).toThrow();
+
+      expect(() => WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: 'false'
+      })).toThrow();
+
+      expect(() => WorkspaceConfigSchema.parse({
+        strategy: 'none',
+        cleanup: true,
+        preserveOnFailure: null
+      })).toThrow();
+    });
+
+    it('should work with all workspace strategies', () => {
+      const strategies: Array<'worktree' | 'container' | 'directory' | 'none'> = ['worktree', 'container', 'directory', 'none'];
+
+      for (const strategy of strategies) {
+        const config = strategy === 'container'
+          ? {
+              strategy,
+              cleanup: true,
+              preserveOnFailure: true,
+              container: { image: 'node:20' }
+            }
+          : {
+              strategy,
+              cleanup: true,
+              preserveOnFailure: true
+            };
+
+        const result = WorkspaceConfigSchema.parse(config);
+        expect(result.preserveOnFailure).toBe(true);
+      }
+    });
+
+    it('should preserve explicit false value when provided', () => {
+      const result = WorkspaceConfigSchema.parse({
+        strategy: 'worktree',
+        path: '/tmp/workspace',
+        cleanup: true,
+        preserveOnFailure: false
+      });
+
+      expect(result.preserveOnFailure).toBe(false);
+      expect(result.preserveOnFailure).not.toBe(undefined);
+    });
+  });
+
   describe('workspace strategy scenarios', () => {
     it('should handle worktree strategy with path', () => {
       const config = WorkspaceConfigSchema.parse({
@@ -1280,6 +1366,7 @@ describe('WorkspaceConfigSchema', () => {
       expect(config.path).toBe('/tmp/worktrees/task-123');
       expect(config.container).toBeUndefined();
       expect(config.cleanup).toBe(true);
+      expect(config.preserveOnFailure).toBe(false); // Default value
     });
 
     it('should handle container strategy with full config', () => {
@@ -1312,6 +1399,7 @@ describe('WorkspaceConfigSchema', () => {
       expect(config.container?.resourceLimits?.cpu).toBe(4);
       expect(config.container?.environment?.NODE_ENV).toBe('development');
       expect(config.cleanup).toBe(true);
+      expect(config.preserveOnFailure).toBe(false); // Default value
     });
 
     it('should handle directory strategy', () => {
@@ -1325,6 +1413,7 @@ describe('WorkspaceConfigSchema', () => {
       expect(config.path).toBe('/tmp/isolated/task-456');
       expect(config.container).toBeUndefined();
       expect(config.cleanup).toBe(true);
+      expect(config.preserveOnFailure).toBe(false); // Default value
     });
 
     it('should handle no isolation strategy', () => {
@@ -1337,6 +1426,64 @@ describe('WorkspaceConfigSchema', () => {
       expect(config.path).toBeUndefined();
       expect(config.container).toBeUndefined();
       expect(config.cleanup).toBe(false);
+      expect(config.preserveOnFailure).toBe(false); // Default value
+    });
+
+    it('should handle workspace with preserveOnFailure enabled', () => {
+      const config = WorkspaceConfigSchema.parse({
+        strategy: 'worktree',
+        path: '/tmp/debug-workspace',
+        cleanup: true,
+        preserveOnFailure: true,
+      });
+
+      expect(config.strategy).toBe('worktree');
+      expect(config.path).toBe('/tmp/debug-workspace');
+      expect(config.cleanup).toBe(true);
+      expect(config.preserveOnFailure).toBe(true);
+    });
+
+    it('should handle container strategy with preserveOnFailure', () => {
+      const config = WorkspaceConfigSchema.parse({
+        strategy: 'container',
+        container: {
+          image: 'alpine:3.18',
+          environment: { DEBUG: 'true' },
+        },
+        cleanup: false,
+        preserveOnFailure: true,
+      });
+
+      expect(config.strategy).toBe('container');
+      expect(config.cleanup).toBe(false);
+      expect(config.preserveOnFailure).toBe(true);
+      expect(config.container?.image).toBe('alpine:3.18');
+    });
+
+    it('should handle preserveOnFailure with cleanup disabled', () => {
+      // Test logical consistency: when cleanup is false and preserveOnFailure is true
+      const config = WorkspaceConfigSchema.parse({
+        strategy: 'directory',
+        path: '/tmp/persistent-workspace',
+        cleanup: false,
+        preserveOnFailure: true,
+      });
+
+      expect(config.cleanup).toBe(false);
+      expect(config.preserveOnFailure).toBe(true);
+    });
+
+    it('should handle preserveOnFailure with cleanup enabled', () => {
+      // Test logical scenario: preserve on failure but cleanup on success
+      const config = WorkspaceConfigSchema.parse({
+        strategy: 'worktree',
+        path: '/tmp/conditional-cleanup',
+        cleanup: true,
+        preserveOnFailure: true,
+      });
+
+      expect(config.cleanup).toBe(true);
+      expect(config.preserveOnFailure).toBe(true);
     });
   });
 
@@ -1515,10 +1662,12 @@ describe('Type Safety', () => {
         privileged: false,
       },
       cleanup: true,
+      preserveOnFailure: true,
     };
 
     expect(config.strategy).toBe('container');
     expect(typeof config.cleanup).toBe('boolean');
+    expect(typeof config.preserveOnFailure).toBe('boolean');
     expect(config.container?.image).toBe('node:20');
   });
 
@@ -1527,10 +1676,12 @@ describe('Type Safety', () => {
       strategy: 'worktree',
       path: '/tmp/workspace',
       cleanup: true,
+      preserveOnFailure: false,
     };
 
     expect(config.strategy).toBe('worktree');
     expect(config.path).toBe('/tmp/workspace');
     expect(config.container).toBeUndefined();
+    expect(typeof config.preserveOnFailure).toBe('boolean');
   });
 });
