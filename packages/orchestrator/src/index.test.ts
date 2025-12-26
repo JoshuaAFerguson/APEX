@@ -3145,4 +3145,249 @@ You are a developer agent that implements code changes.
       expect(capturedOptions.options.env.APEX_WORKSPACE_PATH).toBe(longWorkspacePath);
     });
   });
+
+  describe('automatic workspace cleanup', () => {
+    it('should call workspaceManager.cleanupWorkspace when task completes and cleanupOnComplete is enabled', async () => {
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test automatic cleanup task',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was called
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+      expect(mockCleanupWorkspace).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call workspaceManager.cleanupWorkspace when cleanupOnComplete is disabled', async () => {
+      // Mock the effectiveConfig to disable cleanup
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Mock effectiveConfig with cleanup disabled
+      const originalEffectiveConfig = (orchestrator as any).effectiveConfig;
+      (orchestrator as any).effectiveConfig = {
+        ...originalEffectiveConfig,
+        workspace: {
+          ...originalEffectiveConfig.workspace,
+          cleanupOnComplete: false,
+        },
+      };
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test cleanup disabled task',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for potential async cleanup
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was NOT called
+      expect(mockCleanupWorkspace).not.toHaveBeenCalled();
+
+      // Restore original config
+      (orchestrator as any).effectiveConfig = originalEffectiveConfig;
+    });
+
+    it('should handle cleanup errors gracefully and log warnings', async () => {
+      const cleanupError = new Error('Cleanup failed');
+      const mockCleanupWorkspace = vi.fn().mockRejectedValue(cleanupError);
+      const mockAddLog = vi.fn().mockResolvedValue(undefined);
+
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+      (orchestrator as any).store.addLog = mockAddLog;
+
+      // Spy on console.warn to verify error logging
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test cleanup error handling task',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was attempted
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      // Verify error was logged to console
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        `Failed to cleanup workspace for completed task ${task.id}:`,
+        cleanupError
+      );
+
+      // Verify error was logged to task logs
+      expect(mockAddLog).toHaveBeenCalledWith(task.id, {
+        level: 'warn',
+        message: 'Workspace cleanup failed: Cleanup failed',
+        timestamp: expect.any(Date),
+        component: 'workspace-cleanup'
+      });
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should respect individual task workspace cleanup configuration', async () => {
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Create a task (cleanup logic happens in workspaceManager, this test ensures the event fires)
+      const task = await orchestrator.createTask({
+        description: 'Test task workspace config',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was called (workspaceManager.cleanupWorkspace handles individual config)
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+    });
+
+    it('should handle cleanup errors with non-Error objects gracefully', async () => {
+      const cleanupError = 'String error message';
+      const mockCleanupWorkspace = vi.fn().mockRejectedValue(cleanupError);
+      const mockAddLog = vi.fn().mockResolvedValue(undefined);
+
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+      (orchestrator as any).store.addLog = mockAddLog;
+
+      // Spy on console.warn to verify error logging
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test non-Error cleanup failure',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was attempted
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      // Verify error was logged to console
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        `Failed to cleanup workspace for completed task ${task.id}:`,
+        cleanupError
+      );
+
+      // Verify error was logged to task logs with fallback message
+      expect(mockAddLog).toHaveBeenCalledWith(task.id, {
+        level: 'warn',
+        message: 'Workspace cleanup failed: Unknown error',
+        timestamp: expect.any(Date),
+        component: 'workspace-cleanup'
+      });
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle multiple simultaneous task completions', async () => {
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Create multiple tasks
+      const tasks = await Promise.all([
+        orchestrator.createTask({ description: 'Test task 1' }),
+        orchestrator.createTask({ description: 'Test task 2' }),
+        orchestrator.createTask({ description: 'Test task 3' }),
+      ]);
+
+      // Emit all task:completed events simultaneously
+      tasks.forEach(task => {
+        orchestrator.emit('task:completed', task);
+      });
+
+      // Wait for all async cleanups to process
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Verify cleanup was called for each task
+      expect(mockCleanupWorkspace).toHaveBeenCalledTimes(3);
+      tasks.forEach(task => {
+        expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+      });
+    });
+
+    it('should handle workspace.cleanupOnComplete being undefined (defaults to true)', async () => {
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Mock effectiveConfig with workspace.cleanupOnComplete being undefined
+      const originalEffectiveConfig = (orchestrator as any).effectiveConfig;
+      (orchestrator as any).effectiveConfig = {
+        ...originalEffectiveConfig,
+        workspace: {
+          ...originalEffectiveConfig.workspace,
+          cleanupOnComplete: undefined,
+        },
+      };
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test cleanup with undefined config',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was called (undefined should default to true)
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      // Restore original config
+      (orchestrator as any).effectiveConfig = originalEffectiveConfig;
+    });
+
+    it('should handle workspace config being completely undefined', async () => {
+      const mockCleanupWorkspace = vi.fn().mockResolvedValue(undefined);
+      (orchestrator as any).workspaceManager.cleanupWorkspace = mockCleanupWorkspace;
+
+      // Mock effectiveConfig with workspace being undefined
+      const originalEffectiveConfig = (orchestrator as any).effectiveConfig;
+      (orchestrator as any).effectiveConfig = {
+        ...originalEffectiveConfig,
+        workspace: undefined,
+      };
+
+      // Mock a completed task
+      const task = await orchestrator.createTask({
+        description: 'Test cleanup with undefined workspace config',
+      });
+
+      // Emit task:completed event
+      orchestrator.emit('task:completed', task);
+
+      // Wait for the async cleanup to process
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Verify cleanup was called (undefined workspace should still allow cleanup)
+      expect(mockCleanupWorkspace).toHaveBeenCalledWith(task.id);
+
+      // Restore original config
+      (orchestrator as any).effectiveConfig = originalEffectiveConfig;
+    });
+  });
 });

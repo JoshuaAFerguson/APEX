@@ -269,6 +269,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Forward dependency install events from workspace manager
     this.setupDependencyEventForwarding();
 
+    // Setup automatic workspace cleanup on task completion
+    this.setupAutomaticWorkspaceCleanup();
+
     this.initialized = true;
   }
 
@@ -4305,6 +4308,31 @@ Parent: ${parentTask.description}`;
 
     this.workspaceManager.on('dependency-install-completed', (event) => {
       this.emit('dependency:install-completed', event);
+    });
+  }
+
+  /**
+   * Set up automatic workspace cleanup when tasks are completed
+   * Listens to 'task:completed' events and calls workspaceManager.cleanupWorkspace
+   * Respects the workspace.cleanup configuration flag
+   */
+  private setupAutomaticWorkspaceCleanup(): void {
+    this.on('task:completed', async (task: Task) => {
+      // Only cleanup if the task has a workspace and global cleanup is enabled
+      if (this.effectiveConfig.workspace?.cleanupOnComplete !== false) {
+        try {
+          await this.workspaceManager.cleanupWorkspace(task.id);
+        } catch (error) {
+          // Log cleanup error but don't fail the task completion
+          console.warn(`Failed to cleanup workspace for completed task ${task.id}:`, error);
+          await this.store.addLog(task.id, {
+            level: 'warn',
+            message: `Workspace cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            timestamp: new Date(),
+            component: 'workspace-cleanup'
+          });
+        }
+      }
     });
   }
 
