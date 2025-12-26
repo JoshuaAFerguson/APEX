@@ -3,7 +3,14 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join, basename, resolve } from 'path';
 import { EventEmitter } from 'eventemitter3';
-import { WorkspaceConfig, Task, containerRuntime, ContainerRuntimeType } from '@apexcli/core';
+import {
+  WorkspaceConfig,
+  Task,
+  containerRuntime,
+  ContainerRuntimeType,
+  ContainerManager,
+  ContainerHealthMonitor
+} from '@apexcli/core';
 
 const execAsync = promisify(exec);
 
@@ -35,12 +42,21 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private workspacesDir: string;
   private activeWorkspaces: Map<string, WorkspaceInfo> = new Map();
   private containerRuntimeType: ContainerRuntimeType | null = null;
+  private containerManager: ContainerManager;
+  private healthMonitor: ContainerHealthMonitor;
 
   constructor(options: WorkspaceManagerOptions) {
     super();
     this.projectPath = options.projectPath;
     this.defaultStrategy = options.defaultStrategy;
     this.workspacesDir = join(this.projectPath, '.apex', 'workspaces');
+
+    // Initialize container management
+    this.containerManager = new ContainerManager();
+    this.healthMonitor = new ContainerHealthMonitor(this.containerManager, {
+      containerPrefix: 'apex-task',
+      autoStart: false, // We'll start it when we need it
+    });
   }
 
   /**
@@ -52,6 +68,15 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
 
     // Detect available container runtime for container workspaces
     this.containerRuntimeType = await containerRuntime.getBestRuntime();
+
+    // Start container health monitoring if containers are supported
+    if (this.containerRuntimeType !== 'none') {
+      try {
+        await this.healthMonitor.startMonitoring();
+      } catch (error) {
+        console.warn('Failed to start container health monitoring:', error);
+      }
+    }
   }
 
   /**
@@ -187,6 +212,35 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
+   * Get the container health monitor instance
+   */
+  getHealthMonitor(): ContainerHealthMonitor {
+    return this.healthMonitor;
+  }
+
+  /**
+   * Get the container manager instance
+   */
+  getContainerManager(): ContainerManager {
+    return this.containerManager;
+  }
+
+  /**
+   * Get container health status for a specific task
+   */
+  async getContainerHealth(taskId: string): Promise<any> {
+    const containerName = `apex-task-${taskId}`;
+    const containers = await this.containerManager.listApexContainers(this.containerRuntimeType!);
+    const container = containers.find(c => c.name === containerName);
+
+    if (container) {
+      return this.healthMonitor.getContainerHealth(container.id);
+    }
+
+    return null;
+  }
+
+  /**
    * Get workspace statistics
    */
   async getWorkspaceStats(): Promise<{
@@ -195,6 +249,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     totalDiskUsage: number;
     workspacesByStrategy: Record<string, number>;
     oldestWorkspace?: WorkspaceInfo;
+    containerHealthStats?: any;
   }> {
     let activeCount = 0;
     let cleanupPendingCount = 0;
@@ -228,12 +283,21 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       }
     }
 
+    // Include container health statistics
+    let containerHealthStats;
+    try {
+      containerHealthStats = this.healthMonitor.getStats();
+    } catch (error) {
+      console.warn('Failed to get container health stats:', error);
+    }
+
     return {
       activeCount,
       cleanupPendingCount,
       totalDiskUsage,
       workspacesByStrategy,
       oldestWorkspace,
+      containerHealthStats,
     };
   }
 
@@ -279,48 +343,62 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       throw new Error('No container runtime available (Docker or Podman required)');
     }
 
-    const containerName = `apex-task-${task.id}`;
     const workspacePath = join(this.workspacesDir, `container-${task.id}`);
 
     // Create local workspace directory for container volumes
     await fs.mkdir(workspacePath, { recursive: true });
 
     try {
-      // Build container run command using detected runtime
-      const volumes = config.container.volumes || {};
-      const environment = config.container.environment || {};
+      // Ensure the project root is mounted in the container
+      const containerConfig = {
+        ...config.container,
+        volumes: {
+          [this.projectPath]: '/workspace',
+          ...config.container.volumes,
+        },
+        workingDir: config.container.workingDir || '/workspace',
+        labels: {
+          'apex.task-id': task.id,
+          'apex.workspace-type': 'container',
+          ...config.container.labels,
+        },
+      };
 
-      const volumeArgs = Object.entries(volumes)
-        .map(([host, container]) => `-v "${resolve(host)}:${container}"`)
-        .join(' ');
+      // Create and start container using ContainerManager
+      const result = await this.containerManager.createContainer({
+        config: containerConfig,
+        taskId: task.id,
+        autoStart: true,
+      });
 
-      const envArgs = Object.entries(environment)
-        .map(([key, value]) => `-e "${key}=${value}"`)
-        .join(' ');
-
-      // Create container but don't start it yet
-      const command = `${this.containerRuntimeType} create --name "${containerName}" ${volumeArgs} ${envArgs} "${config.container.image}"`;
-      await execAsync(command);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create container');
+      }
 
       return workspacePath;
     } catch (error) {
-      throw new Error(`Failed to create container workspace with ${this.containerRuntimeType}: ${error}`);
+      throw new Error(`Failed to create container workspace: ${error}`);
     }
   }
 
   private async cleanupContainer(workspace: WorkspaceInfo): Promise<void> {
     const containerName = `apex-task-${workspace.taskId}`;
-    const runtime = this.containerRuntimeType || 'docker'; // Fallback to docker for cleanup
 
     try {
-      // Stop and remove container using detected runtime
-      await execAsync(`${runtime} stop "${containerName}" 2>/dev/null || true`);
-      await execAsync(`${runtime} rm "${containerName}" 2>/dev/null || true`);
+      // Get container info to find the container ID
+      const containers = await this.containerManager.listApexContainers(this.containerRuntimeType!);
+      const container = containers.find(c => c.name === containerName);
+
+      if (container) {
+        // Stop and remove container using ContainerManager
+        await this.containerManager.stopContainer(container.id, this.containerRuntimeType!);
+        await this.containerManager.removeContainer(container.id, this.containerRuntimeType!, true);
+      }
 
       // Remove local workspace directory
       await fs.rm(workspace.workspacePath, { recursive: true, force: true });
     } catch (error) {
-      console.warn(`Failed to cleanup container workspace with ${runtime}:`, error);
+      console.warn(`Failed to cleanup container workspace:`, error);
     }
   }
 
