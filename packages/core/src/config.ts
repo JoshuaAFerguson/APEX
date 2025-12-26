@@ -9,6 +9,7 @@ import {
   WorkflowDefinition,
   WorkflowDefinitionSchema,
 } from './types';
+import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 
 const APEX_DIR = '.apex';
 const CONFIG_FILE = 'config.yaml';
@@ -16,6 +17,33 @@ const AGENTS_DIR = 'agents';
 const WORKFLOWS_DIR = 'workflows';
 const SKILLS_DIR = 'skills';
 const SCRIPTS_DIR = 'scripts';
+
+/**
+ * Container workspace validation error types
+ */
+export interface ContainerValidationError {
+  type: 'missing_runtime' | 'missing_image' | 'runtime_not_functional';
+  message: string;
+  suggestion?: string;
+}
+
+/**
+ * Container workspace validation warning types
+ */
+export interface ContainerValidationWarning {
+  type: 'no_image_specified';
+  message: string;
+  suggestion?: string;
+}
+
+/**
+ * Container workspace validation result
+ */
+export interface ContainerValidationResult {
+  valid: boolean;
+  errors: ContainerValidationError[];
+  warnings: ContainerValidationWarning[];
+}
 
 /**
  * Check if APEX is initialized in the given directory
@@ -31,6 +59,60 @@ export async function isApexInitialized(projectPath: string): Promise<boolean> {
 }
 
 /**
+ * Validate container workspace configuration
+ */
+export async function validateContainerWorkspaceConfig(config: ApexConfig): Promise<ContainerValidationResult> {
+  const result: ContainerValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+  };
+
+  // Only validate if workspace configuration exists
+  if (!config.workspace) {
+    return result;
+  }
+
+  const workspace = config.workspace;
+  const isContainerStrategy = workspace.defaultStrategy === 'container';
+
+  // Check if container strategy is used but no runtime is available
+  if (isContainerStrategy) {
+    try {
+      const availableRuntimes = await containerRuntime.detectRuntimes();
+      const functionalRuntimes = availableRuntimes.filter(r => r.available);
+
+      if (functionalRuntimes.length === 0) {
+        result.valid = false;
+        result.errors.push({
+          type: 'missing_runtime',
+          message: 'Container workspace strategy is selected but no container runtime (Docker/Podman) is available.',
+          suggestion: 'Please install Docker or Podman, or change the workspace strategy to "worktree", "directory", or "none".',
+        });
+      }
+    } catch (error) {
+      result.valid = false;
+      result.errors.push({
+        type: 'runtime_not_functional',
+        message: `Failed to detect container runtime: ${error instanceof Error ? error.message : String(error)}`,
+        suggestion: 'Please check your container runtime installation and ensure it is functional.',
+      });
+    }
+
+    // Check if container strategy is used but no image is specified in defaults
+    if (!workspace.container?.image) {
+      result.warnings.push({
+        type: 'no_image_specified',
+        message: 'Container workspace strategy is selected but no default container image is specified.',
+        suggestion: 'Consider setting workspace.container.image to a default image like "node:20-alpine" or "ubuntu:latest" for better task execution reliability.',
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
  * Load the APEX configuration from a project
  */
 export async function loadConfig(projectPath: string): Promise<ApexConfig> {
@@ -39,7 +121,44 @@ export async function loadConfig(projectPath: string): Promise<ApexConfig> {
   try {
     const content = await fs.readFile(configPath, 'utf-8');
     const rawConfig = yaml.parse(content);
-    return ApexConfigSchema.parse(rawConfig);
+    const config = ApexConfigSchema.parse(rawConfig);
+
+    // Validate container workspace configuration
+    const containerValidation = await validateContainerWorkspaceConfig(config);
+
+    // Throw error if validation fails with critical issues
+    if (!containerValidation.valid) {
+      const errorMessages = containerValidation.errors.map(error => {
+        let message = error.message;
+        if (error.suggestion) {
+          message += `\n  Suggestion: ${error.suggestion}`;
+        }
+        return message;
+      });
+
+      throw new Error(`Container workspace configuration validation failed:\n${errorMessages.join('\n')}`);
+    }
+
+    // Log warnings if any (though we can't use console.warn in a library, we'll add them to the error if needed)
+    if (containerValidation.warnings.length > 0) {
+      const warningMessages = containerValidation.warnings.map(warning => {
+        let message = warning.message;
+        if (warning.suggestion) {
+          message += `\n  Suggestion: ${warning.suggestion}`;
+        }
+        return message;
+      });
+
+      // For now, we'll include warnings in a special property on the config
+      // In a future update, this could be handled by a logging system
+      Object.defineProperty(config, '_containerWarnings', {
+        value: warningMessages,
+        enumerable: false,
+        writable: false,
+      });
+    }
+
+    return config;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new Error(`APEX not initialized in ${projectPath}. Run 'apex init' first.`);

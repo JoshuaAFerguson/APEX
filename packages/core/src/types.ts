@@ -480,7 +480,10 @@ export type ContainerNetworkMode = z.infer<typeof ContainerNetworkModeSchema>;
  */
 export const ContainerConfigSchema = z.object({
   /** Docker/OCI image to use (e.g., "node:20-alpine", "python:3.11-slim") */
-  image: z.string().min(1),
+  image: z.string()
+    .min(1, 'Container image cannot be empty')
+    .regex(/^[a-z0-9][a-z0-9\-._]*([\/][a-z0-9][a-z0-9\-._]*)*(:[\w][\w.-]*)?$/i,
+           'Invalid container image format. Use format: [registry/]name[:tag]'),
   /** Path to Dockerfile for building custom images (relative to build context) */
   dockerfile: z.string().min(1).optional(),
   /** Build context path for Docker image builds (defaults to current directory) */
@@ -634,7 +637,11 @@ export type WorkspaceStrategy = z.infer<typeof WorkspaceStrategySchema>;
  */
 export const ContainerDefaultsSchema = z.object({
   /** Default Docker/OCI image to use for container workspaces */
-  image: z.string().optional(),
+  image: z.string()
+    .min(1, 'Container image cannot be empty')
+    .regex(/^[a-z0-9][a-z0-9\-._]*([\/][a-z0-9][a-z0-9\-._]*)*(:[\w][\w.-]*)?$/i,
+           'Invalid container image format. Use format: [registry/]name[:tag]')
+    .optional(),
   /** Default resource limits for containers */
   resourceLimits: ResourceLimitsSchema.optional(),
   /** Default network mode for container networking */
