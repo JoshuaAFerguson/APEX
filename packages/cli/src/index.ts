@@ -1645,6 +1645,136 @@ export const commands: Command[] = [
     },
   },
 
+  {
+    name: 'shell',
+    aliases: [],
+    description: 'Attach interactive shell to running task container',
+    usage: '/shell <task_id> [command]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      const taskId = args[0];
+      if (!taskId) {
+        console.log(chalk.red('Usage: /shell <task_id> [command]'));
+        console.log(chalk.gray('\nExamples:'));
+        console.log(chalk.gray('  /shell abc123               # Attach interactive shell'));
+        console.log(chalk.gray('  /shell abc123 "ls -la"      # Run specific command'));
+        console.log(chalk.gray('  /shell abc123 bash          # Start bash shell'));
+        console.log(chalk.gray('\nNote: Task must be using container isolation'));
+        return;
+      }
+
+      try {
+        // Find the full task ID from partial ID
+        const tasks = await ctx.orchestrator.listTasks({ limit: 100 });
+        const task = tasks.find(t => t.id.startsWith(taskId));
+
+        if (!task) {
+          console.log(chalk.red(`❌ Task not found: ${taskId}`));
+          console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+          return;
+        }
+
+        // Get workspace manager and container manager
+        const workspaceManager = ctx.orchestrator.getWorkspaceManager();
+        const containerManager = workspaceManager.getContainerManager();
+
+        // Check if task is using container isolation
+        // Look for a container with the naming pattern: apex-task-{taskId}
+        const containerName = `apex-task-${task.id}`;
+        const containers = await containerManager.listApexContainers();
+        const taskContainer = containers.find(c => c.name === containerName);
+
+        if (!taskContainer) {
+          console.log(chalk.red(`❌ Task ${task.id.substring(0, 12)} is not using container isolation`));
+          console.log(chalk.gray('This command only works with tasks running in containers.'));
+          console.log(chalk.gray('To enable container isolation, update your .apex/config.yaml:'));
+          console.log(chalk.gray('```yaml'));
+          console.log(chalk.gray('workspace:'));
+          console.log(chalk.gray('  defaultStrategy: container'));
+          console.log(chalk.gray('```'));
+          return;
+        }
+
+        // Check if container is running
+        if (taskContainer.status !== 'running') {
+          console.log(chalk.red(`❌ Container for task ${task.id.substring(0, 12)} is not running`));
+          console.log(chalk.gray(`Container status: ${taskContainer.status}`));
+          return;
+        }
+
+        console.log(chalk.blue(`🐚 Attaching to container for task ${task.id.substring(0, 12)}...`));
+        console.log(chalk.gray(`   Container: ${taskContainer.name}`));
+        console.log(chalk.gray(`   Task: ${task.description}`));
+        console.log();
+
+        // Determine command to run
+        const userCommand = args.slice(1).join(' ');
+        let execArgs: string[];
+
+        if (userCommand) {
+          // If user provided a command, determine if it needs shell interpretation
+          if (userCommand.includes(' ') && !userCommand.startsWith('/')) {
+            // Complex command that likely needs shell interpretation
+            execArgs = ['/bin/sh', '-c', userCommand];
+          } else {
+            // Simple command, run directly
+            execArgs = userCommand.split(' ');
+          }
+        } else {
+          // Default to bash shell
+          execArgs = ['/bin/bash'];
+        }
+
+        // Use spawn for interactive shell
+        const { spawn } = await import('child_process');
+
+        // Get container runtime (docker or podman)
+        const runtime = workspaceManager.getContainerRuntime();
+        if (!runtime || runtime === 'none') {
+          console.log(chalk.red('❌ No container runtime (docker/podman) available'));
+          return;
+        }
+
+        console.log(chalk.gray(`💡 Starting ${userCommand || 'interactive shell'} in container. Use 'exit' to return to APEX.`));
+        console.log();
+
+        // Start interactive shell with TTY
+        const shellProcess = spawn(runtime, [
+          'exec',
+          '--interactive',
+          '--tty',
+          taskContainer.id,
+          ...execArgs
+        ], {
+          stdio: 'inherit',
+          env: process.env
+        });
+
+        // Handle shell exit
+        shellProcess.on('close', (code) => {
+          console.log();
+          if (code === 0) {
+            console.log(chalk.green('✅ Shell session ended'));
+          } else {
+            console.log(chalk.yellow(`⚠️  Shell session ended with code ${code}`));
+          }
+        });
+
+        shellProcess.on('error', (error) => {
+          console.log();
+          console.log(chalk.red(`❌ Shell session failed: ${error.message}`));
+        });
+
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
+
   // Service management commands
   {
     name: 'install-service',
@@ -2503,6 +2633,7 @@ ${chalk.bold('Commands:')}
   retry <task_id>         Retry a failed task
   checkout <task_id>      Switch to task worktree or manage worktrees
                           Also supports: checkout --list, checkout --cleanup [<task_id>]
+  shell <task_id>         Attach interactive shell to running task container
   serve [--port]          Start the API server
   daemon <cmd>            Manage background daemon (start|stop|status)
   install-service         Install APEX daemon as system service

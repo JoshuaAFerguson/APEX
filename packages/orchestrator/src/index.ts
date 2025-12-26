@@ -4262,6 +4262,14 @@ Parent: ${parentTask.description}`;
       this.emit('dependency:install-completed', event);
     });
   }
+
+  /**
+   * Get the workspace manager instance
+   * Provides access to container operations and workspace management
+   */
+  getWorkspaceManager(): WorkspaceManager {
+    return this.workspaceManager;
+  }
 }
 
 export { TaskStore } from './store';
