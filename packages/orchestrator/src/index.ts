@@ -258,7 +258,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize workspace manager
     this.workspaceManager = new WorkspaceManager({
       projectPath: this.projectPath,
-      defaultStrategy: this.effectiveConfig.workspace?.strategy || 'none',
+      defaultStrategy: this.effectiveConfig.workspace?.defaultStrategy || 'none',
+      containerDefaults: this.effectiveConfig.workspace?.container,
     });
     await this.workspaceManager.initialize();
 

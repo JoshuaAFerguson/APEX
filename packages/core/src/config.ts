@@ -339,5 +339,17 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       outdatedDocs: config.documentation?.outdatedDocs,
       jsdocAnalysis: config.documentation?.jsdocAnalysis,
     },
+    workspace: {
+      defaultStrategy: config.workspace?.defaultStrategy || 'none',
+      cleanupOnComplete: config.workspace?.cleanupOnComplete ?? true,
+      container: {
+        image: config.workspace?.container?.image,
+        resourceLimits: config.workspace?.container?.resourceLimits,
+        networkMode: config.workspace?.container?.networkMode || 'bridge',
+        environment: config.workspace?.container?.environment,
+        autoRemove: config.workspace?.container?.autoRemove ?? true,
+        installTimeout: config.workspace?.container?.installTimeout,
+      },
+    },
   };
 }

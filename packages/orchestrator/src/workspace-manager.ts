@@ -12,7 +12,8 @@ import {
   ContainerHealthMonitor,
   DependencyDetector,
   PackageManagerType,
-  ContainerConfig
+  ContainerConfig,
+  ContainerDefaults
 } from '@apexcli/core';
 
 const execAsync = promisify(exec);
@@ -20,6 +21,7 @@ const execAsync = promisify(exec);
 export interface WorkspaceManagerOptions {
   projectPath: string;
   defaultStrategy: WorkspaceConfig['strategy'];
+  containerDefaults?: ContainerDefaults;
 }
 
 export interface WorkspaceInfo {
@@ -69,6 +71,7 @@ export interface WorkspaceManagerEvents {
 export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private projectPath: string;
   private defaultStrategy: WorkspaceConfig['strategy'];
+  private containerDefaults?: ContainerDefaults;
   private workspacesDir: string;
   private activeWorkspaces: Map<string, WorkspaceInfo> = new Map();
   private containerRuntimeType: ContainerRuntimeType | null = null;
@@ -80,6 +83,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     super();
     this.projectPath = options.projectPath;
     this.defaultStrategy = options.defaultStrategy;
+    this.containerDefaults = options.containerDefaults;
     this.workspacesDir = join(this.projectPath, '.apex', 'workspaces');
 
     // Initialize container management
@@ -393,16 +397,30 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       const dockerfilePath = join(this.projectPath, '.apex', 'Dockerfile');
       const hasProjectDockerfile = await this.fileExists(dockerfilePath);
 
-      // Build container configuration
-      const containerConfig = {
+      // Merge global container defaults with task-specific config
+      const mergedContainerConfig: ContainerConfig = {
+        // Start with global defaults (lowest priority)
+        ...this.containerDefaults,
+        // Task-specific overrides (highest priority)
         ...config.container,
+        // Deep merge for nested objects
+        resourceLimits: {
+          ...this.containerDefaults?.resourceLimits,
+          ...config.container?.resourceLimits,
+        },
+        environment: {
+          ...this.containerDefaults?.environment,
+          ...config.container?.environment,
+        },
         // Use project Dockerfile if it exists
         ...(hasProjectDockerfile && {
           dockerfile: '.apex/Dockerfile',
           buildContext: this.projectPath,
         }),
-        // Ensure default image fallback
-        image: config.container.image || 'node:20-alpine',
+        // Required fields with fallback hierarchy
+        image: config.container.image || this.containerDefaults?.image || 'node:20-alpine',
+        networkMode: config.container.networkMode || this.containerDefaults?.networkMode || 'bridge',
+        autoRemove: config.container.autoRemove ?? this.containerDefaults?.autoRemove ?? true,
         volumes: {
           [this.projectPath]: '/workspace',
           ...config.container.volumes,
@@ -417,7 +435,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
 
       // Create and start container using ContainerManager
       const result = await this.containerManager.createContainer({
-        config: containerConfig,
+        config: mergedContainerConfig,
         taskId: task.id,
         autoStart: true,
       });
@@ -432,7 +450,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
           task,
           result.containerId,
           workspacePath,
-          containerConfig
+          mergedContainerConfig
         );
       }
 
