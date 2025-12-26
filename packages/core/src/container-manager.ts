@@ -1,9 +1,12 @@
 import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits, ContainerLogStreamOptions, ContainerLogEntry, ContainerDiedEventData } from './types';
 import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
+import { ImageBuilder, ImageBuildConfig, ImageBuildResult } from './image-builder';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
 import { EventEmitter as TypedEventEmitter } from 'eventemitter3';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 const execAsync = promisify(exec);
 
@@ -137,6 +140,7 @@ export interface ContainerManagerEvents {
 export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> {
   private runtime: ContainerRuntime;
   private defaultNamingConfig: ContainerNamingConfig;
+  private imageBuilder?: ImageBuilder;
 
   // Docker events monitoring properties
   private eventsMonitorProcess?: ChildProcess;
@@ -159,6 +163,64 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
       separator: '-',
       ...namingConfig,
     };
+  }
+
+  /**
+   * Build an image if dockerfile is specified and image is missing or stale
+   * @param config Container configuration
+   * @param projectRoot Project root directory for resolving relative paths
+   * @returns Image tag to use for container creation
+   */
+  private async buildImageIfNeeded(config: ContainerConfig, projectRoot?: string): Promise<string> {
+    // If no dockerfile specified, return the original image
+    if (!config.dockerfile) {
+      return config.image;
+    }
+
+    // Initialize ImageBuilder if needed
+    if (!this.imageBuilder) {
+      const resolvedProjectRoot = projectRoot || process.cwd();
+      this.imageBuilder = new ImageBuilder(resolvedProjectRoot);
+      await this.imageBuilder.initialize();
+    }
+
+    // Check if Dockerfile exists
+    const dockerfilePath = path.resolve(
+      projectRoot || process.cwd(),
+      config.buildContext || '.',
+      config.dockerfile
+    );
+
+    try {
+      await fs.access(dockerfilePath);
+    } catch (error) {
+      // Dockerfile doesn't exist, fall back to config.image
+      return config.image;
+    }
+
+    // Build image configuration
+    const buildConfig: ImageBuildConfig = {
+      dockerfilePath: config.dockerfile,
+      buildContext: config.buildContext,
+      imageTag: config.imageTag,
+    };
+
+    try {
+      const buildResult: ImageBuildResult = await this.imageBuilder.buildImage(buildConfig);
+
+      if (buildResult.success && buildResult.imageInfo) {
+        // Return the built image tag
+        return buildResult.imageInfo.tag;
+      } else {
+        // Build failed, fall back to config.image
+        console.warn(`Image build failed: ${buildResult.error}. Falling back to ${config.image}`);
+        return config.image;
+      }
+    } catch (error) {
+      // Build error, fall back to config.image
+      console.warn(`Image build error: ${error}. Falling back to ${config.image}`);
+      return config.image;
+    }
   }
 
   /**
@@ -188,8 +250,17 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
         return result;
       }
 
+      // Build image if dockerfile is specified
+      const imageToUse = await this.buildImageIfNeeded(options.config);
+
+      // Create modified config with the resolved image
+      const configWithResolvedImage = {
+        ...options.config,
+        image: imageToUse,
+      };
+
       const containerName = options.nameOverride || this.generateContainerName(options.taskId);
-      const command = this.buildCreateCommand(runtimeType, options.config, containerName);
+      const command = this.buildCreateCommand(runtimeType, configWithResolvedImage, containerName);
 
       const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
 
@@ -836,6 +907,200 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
     // Emit general lifecycle event
     this.emit('container:lifecycle', event, operation);
+  }
+
+  /**
+   * Start the Docker events monitoring process
+   * @param runtime Container runtime type
+   */
+  private async startDockerEventsProcess(runtime: ContainerRuntimeType): Promise<void> {
+    const command = this.buildEventsCommand(runtime);
+    const args = command.split(' ').slice(1); // Remove the runtime command
+
+    this.eventsMonitorProcess = spawn(runtime, args, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    // Process stdout for events data
+    if (this.eventsMonitorProcess.stdout) {
+      this.eventsMonitorProcess.stdout.on('data', (chunk: Buffer) => {
+        this.processEventsData(chunk.toString('utf8'));
+      });
+    }
+
+    // Log errors from stderr
+    if (this.eventsMonitorProcess.stderr) {
+      this.eventsMonitorProcess.stderr.on('data', (chunk: Buffer) => {
+        console.warn(`Docker events monitoring stderr: ${chunk.toString('utf8').trim()}`);
+      });
+    }
+
+    // Handle process events
+    this.eventsMonitorProcess.on('error', (error) => {
+      console.error('Docker events monitoring process error:', error);
+      this.isMonitoring = false;
+    });
+
+    this.eventsMonitorProcess.on('exit', (code, signal) => {
+      console.log(`Docker events monitoring process exited with code ${code}, signal ${signal}`);
+      this.isMonitoring = false;
+      this.eventsMonitorProcess = undefined;
+    });
+
+    // Give the process a moment to start
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (!this.eventsMonitorProcess || this.eventsMonitorProcess.killed) {
+      throw new Error('Failed to start Docker events monitoring process');
+    }
+  }
+
+  /**
+   * Build the Docker events command with filters
+   * @param runtime Container runtime type
+   * @returns Complete command string
+   */
+  private buildEventsCommand(runtime: ContainerRuntimeType): string {
+    const parts = [runtime, 'events', '--format', '{{json .}}'];
+
+    // Add event type filters
+    if (this.monitorOptions.eventTypes && this.monitorOptions.eventTypes.length > 0) {
+      for (const eventType of this.monitorOptions.eventTypes) {
+        parts.push('--filter', `event=${eventType}`);
+      }
+    }
+
+    // Add container name prefix filter
+    if (this.monitorOptions.namePrefix) {
+      parts.push('--filter', `container=${this.monitorOptions.namePrefix}-*`);
+    }
+
+    // Add label filters
+    if (this.monitorOptions.labelFilters) {
+      for (const [key, value] of Object.entries(this.monitorOptions.labelFilters)) {
+        parts.push('--filter', `label=${key}=${value}`);
+      }
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Process raw events data from Docker events stream
+   * @param data Raw text data from events stream
+   */
+  private processEventsData(data: string): void {
+    const lines = data.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      try {
+        const eventData = this.parseDockerEvent(line);
+        if (eventData) {
+          this.handleDockerEvent(eventData);
+        }
+      } catch (error) {
+        console.warn('Error parsing Docker event:', error, 'Raw line:', line);
+      }
+    }
+  }
+
+  /**
+   * Parse a single Docker event JSON line
+   * @param line JSON line from Docker events
+   * @returns Parsed event data or null if invalid
+   */
+  private parseDockerEvent(line: string): DockerEventData | null {
+    try {
+      const rawEvent = JSON.parse(line);
+
+      // Extract relevant data from Docker event format
+      const eventData: DockerEventData = {
+        status: rawEvent.status || rawEvent.Action,
+        id: rawEvent.id || rawEvent.ID,
+        name: rawEvent.Actor?.Attributes?.name,
+        image: rawEvent.Actor?.Attributes?.image || rawEvent.from,
+        time: rawEvent.time || rawEvent.timeNano ? Math.floor(rawEvent.timeNano / 1000000) : Date.now(),
+        exitCode: rawEvent.Actor?.Attributes?.exitCode ? parseInt(rawEvent.Actor.Attributes.exitCode, 10) : undefined,
+        attributes: rawEvent.Actor?.Attributes || {}
+      };
+
+      // Filter for APEX containers if name prefix is specified
+      if (this.monitorOptions.namePrefix && eventData.name) {
+        if (!eventData.name.startsWith(this.monitorOptions.namePrefix)) {
+          return null; // Skip non-APEX containers
+        }
+      }
+
+      return eventData;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Handle a processed Docker event
+   * @param eventData Parsed event data
+   */
+  private async handleDockerEvent(eventData: DockerEventData): Promise<void> {
+    if (eventData.status === 'die') {
+      await this.handleContainerDiedEvent(eventData);
+    }
+    // We can extend this to handle other event types in the future
+  }
+
+  /**
+   * Handle container died event and emit appropriate APEX event
+   * @param eventData Docker event data for container death
+   */
+  private async handleContainerDiedEvent(eventData: DockerEventData): Promise<void> {
+    try {
+      // Get container info to extract task ID and additional details
+      const containerInfo = await this.getContainerInfo(eventData.id);
+
+      // Extract task ID from container name if possible
+      let taskId: string | undefined;
+      if (eventData.name || containerInfo?.name) {
+        const containerName = eventData.name || containerInfo?.name || '';
+        // Try to extract task ID from APEX container naming convention
+        // Expected format: apex-{taskId} or apex-{taskId}-{timestamp}
+        const match = containerName.match(/^apex-([^-]+)/);
+        if (match) {
+          taskId = match[1];
+        }
+      }
+
+      // Determine if this was an OOM kill (exit code 137 is typical for SIGKILL/OOM)
+      const oomKilled = eventData.exitCode === 137 ||
+                       eventData.attributes?.oomkilled === 'true' ||
+                       eventData.attributes?.reason === 'oom';
+
+      // Extract signal information
+      let signal: string | undefined;
+      if (eventData.attributes?.signal) {
+        signal = eventData.attributes.signal;
+      } else if (eventData.exitCode === 137) {
+        signal = 'SIGKILL'; // Most likely signal for exit code 137
+      }
+
+      const containerEvent: ContainerEvent & { exitCode: number; signal?: string; oomKilled?: boolean } = {
+        containerId: eventData.id,
+        taskId,
+        containerInfo,
+        timestamp: new Date(eventData.time),
+        exitCode: eventData.exitCode || 1,
+        signal,
+        oomKilled
+      };
+
+      // Emit container:died event
+      this.emit('container:died', containerEvent);
+
+      // Emit general lifecycle event
+      this.emit('container:lifecycle', containerEvent, 'died');
+
+    } catch (error) {
+      console.warn('Error handling container died event:', error);
+    }
   }
 
   /**
