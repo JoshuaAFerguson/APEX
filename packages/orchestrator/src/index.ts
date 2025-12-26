@@ -37,6 +37,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { WorktreeManager } from './worktree-manager';
+import { WorkspaceManager } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -104,6 +105,14 @@ export interface OrchestratorEvents {
   'worktree:created': (taskId: string, worktreePath: string) => void;
   'worktree:cleaned': (taskId: string, worktreePath: string) => void;
   'worktree:merge-cleaned': (taskId: string, worktreePath: string, prUrl: string) => void;
+
+  // Container events (v0.4.0)
+  'container:created': (event: ContainerEventData) => void;
+  'container:started': (event: ContainerEventData) => void;
+  'container:stopped': (event: ContainerEventData) => void;
+  'container:died': (event: ContainerDiedEventData) => void;
+  'container:removed': (event: ContainerEventData) => void;
+  'container:lifecycle': (event: ContainerEventData, operation: ContainerLifecycleOperation) => void;
 }
 
 /**
@@ -157,6 +166,33 @@ export interface OrphanRecoveredEvent {
   timestamp: Date;
 }
 
+/**
+ * Event payload for container lifecycle events
+ */
+export interface ContainerEventData {
+  containerId: string;
+  taskId?: string; // Associated task ID when available
+  containerInfo?: any; // Container information from the runtime
+  timestamp: Date;
+  success?: boolean; // For operation events
+  error?: string; // Error message if operation failed
+  command?: string; // Command that was executed
+}
+
+/**
+ * Event payload for container died events
+ */
+export interface ContainerDiedEventData extends ContainerEventData {
+  exitCode: number;
+  signal?: string;
+  oomKilled?: boolean;
+}
+
+/**
+ * Container lifecycle operation types
+ */
+export type ContainerLifecycleOperation = 'created' | 'started' | 'stopped' | 'removed' | 'died';
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -170,6 +206,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private store!: TaskStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
   private worktreeManager?: WorktreeManager;
+  private workspaceManager!: WorkspaceManager;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -213,6 +250,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         config: this.effectiveConfig.git.worktree,
       });
     }
+
+    // Initialize workspace manager
+    this.workspaceManager = new WorkspaceManager({
+      projectPath: this.projectPath,
+      defaultStrategy: this.effectiveConfig.workspace?.strategy || 'none',
+    });
+    await this.workspaceManager.initialize();
+
+    // Forward container events from workspace manager
+    this.setupContainerEventForwarding();
 
     this.initialized = true;
   }
@@ -4108,6 +4155,92 @@ Parent: ${parentTask.description}`;
 
     return this.store.deleteIdleTask(idleTaskId);
   }
+
+  /**
+   * Set up event forwarding from WorkspaceManager container events to orchestrator events
+   */
+  private setupContainerEventForwarding(): void {
+    const containerManager = this.workspaceManager.getContainerManager();
+
+    // Forward container lifecycle events with task ID association
+    containerManager.on('container:created', (event) => {
+      const containerEvent: ContainerEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        success: event.success,
+        error: event.error,
+        command: event.command,
+      };
+      this.emit('container:created', containerEvent);
+    });
+
+    containerManager.on('container:started', (event) => {
+      const containerEvent: ContainerEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        success: event.success,
+        error: event.error,
+        command: event.command,
+      };
+      this.emit('container:started', containerEvent);
+    });
+
+    containerManager.on('container:stopped', (event) => {
+      const containerEvent: ContainerEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        success: event.success,
+        error: event.error,
+        command: event.command,
+      };
+      this.emit('container:stopped', containerEvent);
+    });
+
+    containerManager.on('container:died', (event) => {
+      const containerEvent: ContainerDiedEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        exitCode: event.exitCode,
+        signal: event.signal,
+        oomKilled: event.oomKilled,
+      };
+      this.emit('container:died', containerEvent);
+    });
+
+    containerManager.on('container:removed', (event) => {
+      const containerEvent: ContainerEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        success: event.success,
+        error: event.error,
+        command: event.command,
+      };
+      this.emit('container:removed', containerEvent);
+    });
+
+    containerManager.on('container:lifecycle', (event, operation) => {
+      const containerEvent: ContainerEventData = {
+        containerId: event.containerId,
+        taskId: event.taskId,
+        containerInfo: event.containerInfo,
+        timestamp: event.timestamp,
+        success: event.success,
+        error: event.error,
+        command: event.command,
+      };
+      this.emit('container:lifecycle', containerEvent, operation);
+    });
+  }
 }
 
 export { TaskStore } from './store';
@@ -4190,3 +4323,4 @@ export {
   type RemediationActionType,
 } from './idle-task-generator';
 export { WorktreeManager, WorktreeError, type WorktreeManagerOptions } from './worktree-manager';
+export { WorkspaceManager, type WorkspaceManagerOptions, type WorkspaceInfo, type WorkspaceManagerEvents } from './workspace-manager';

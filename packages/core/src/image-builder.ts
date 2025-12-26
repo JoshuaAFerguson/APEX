@@ -52,6 +52,40 @@ export interface ImageInfo {
 }
 
 /**
+ * Cached image metadata stored persistently in .apex/image-cache.json
+ */
+export interface ImageCacheMetadata {
+  /** Full image tag */
+  imageTag: string;
+  /** Content hash of the Dockerfile used to build this image */
+  dockerfileHash: string;
+  /** Path to the Dockerfile */
+  dockerfilePath: string;
+  /** Image ID/hash from Docker/Podman */
+  imageId: string;
+  /** Size of the image in bytes */
+  imageSize?: number;
+  /** Build duration in milliseconds */
+  buildDuration: number;
+  /** Unix timestamp when image was built */
+  buildTimestamp: number;
+  /** Build context directory used */
+  buildContext: string;
+  /** Last time this cache entry was accessed (for LRU cleanup) */
+  lastAccessed: number;
+}
+
+/**
+ * Image cache data structure for .apex/image-cache.json
+ */
+export interface ImageCache {
+  /** Cache format version for migration compatibility */
+  version: string;
+  /** Cached image metadata, keyed by image tag */
+  images: Record<string, ImageCacheMetadata>;
+}
+
+/**
  * Result of building an image
  */
 export interface ImageBuildResult {
@@ -77,6 +111,7 @@ export interface ImageBuildResult {
 export class ImageBuilder {
   private runtime: ContainerRuntimeType = 'none';
   private projectRoot: string;
+  private cacheFilePath: string;
 
   /**
    * Create a new ImageBuilder instance
@@ -84,6 +119,7 @@ export class ImageBuilder {
    */
   constructor(projectRoot: string) {
     this.projectRoot = path.resolve(projectRoot);
+    this.cacheFilePath = path.join(this.projectRoot, '.apex', 'image-cache.json');
   }
 
   /**
@@ -121,18 +157,36 @@ export class ImageBuilder {
       // Generate image tag
       const imageTag = config.imageTag || await this.generateProjectTag(dockerfilePath);
 
-      // Check if rebuild is needed
+      // Check if rebuild is needed using persistent cache
       const dockerfileHash = await this.calculateDockerfileHash(dockerfilePath);
+      const cachedMetadata = await this.getCachedImageMetadata(imageTag);
       const existing = await this.getImageInfo(imageTag);
 
-      if (!config.forceRebuild && existing.exists && existing.dockerfileHash === dockerfileHash) {
-        return {
-          success: true,
-          imageInfo: existing,
-          buildOutput: 'Using existing image (no changes detected)',
-          buildDuration: Date.now() - startTime,
-          rebuilt: false,
-        };
+      // Check cache hit conditions:
+      // 1. Not forcing rebuild
+      // 2. Cached metadata exists with matching dockerfile hash
+      // 3. Image still exists locally
+      if (!config.forceRebuild &&
+          cachedMetadata &&
+          cachedMetadata.dockerfileHash === dockerfileHash &&
+          existing.exists) {
+
+        // Verify that the cached image ID matches what's actually available
+        if (cachedMetadata.imageId === existing.id) {
+          // Perfect cache hit - image exists and matches cached metadata
+          existing.dockerfileHash = dockerfileHash;
+
+          return {
+            success: true,
+            imageInfo: existing,
+            buildOutput: 'Using cached image (no Dockerfile changes detected)',
+            buildDuration: Date.now() - startTime,
+            rebuilt: false,
+          };
+        } else {
+          // Image exists but ID doesn't match - remove stale cache entry
+          await this.removeCachedImageMetadata(imageTag);
+        }
       }
 
       // Build the image
@@ -154,11 +208,27 @@ export class ImageBuilder {
       const imageInfo = await this.getImageInfo(imageTag);
       imageInfo.dockerfileHash = dockerfileHash;
 
+      // Store metadata in persistent cache
+      const buildDurationMs = Date.now() - startTime;
+      const cacheMetadata: ImageCacheMetadata = {
+        imageTag,
+        dockerfileHash,
+        dockerfilePath,
+        imageId: imageInfo.id,
+        imageSize: imageInfo.size,
+        buildDuration: buildDurationMs,
+        buildTimestamp: Date.now(),
+        buildContext,
+        lastAccessed: Date.now(),
+      };
+
+      await this.storeCachedImageMetadata(cacheMetadata);
+
       return {
         success: true,
         imageInfo,
         buildOutput,
-        buildDuration: Date.now() - startTime,
+        buildDuration: buildDurationMs,
         rebuilt: true,
       };
 
@@ -279,6 +349,10 @@ export class ImageBuilder {
       await execAsync(`${this.runtime} rmi ${imageTag}`, {
         timeout: 30000,
       });
+
+      // Remove from cache when image is successfully deleted
+      await this.removeCachedImageMetadata(imageTag);
+
       return true;
     } catch {
       return false;
@@ -365,6 +439,125 @@ export class ImageBuilder {
       }
     }
 
+    return removedCount;
+  }
+
+  /**
+   * Load the image cache from .apex/image-cache.json
+   * @returns Promise resolving to the cache data
+   */
+  async loadImageCache(): Promise<ImageCache> {
+    try {
+      const cacheContent = await fs.readFile(this.cacheFilePath, 'utf-8');
+      const cache = JSON.parse(cacheContent) as ImageCache;
+
+      // Validate cache version compatibility
+      if (cache.version !== '1.0') {
+        console.warn(`Image cache version ${cache.version} may be incompatible. Expected 1.0.`);
+      }
+
+      return cache;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // Cache file doesn't exist, return empty cache
+        return {
+          version: '1.0',
+          images: {},
+        };
+      }
+      throw new Error(`Failed to load image cache: ${error}`);
+    }
+  }
+
+  /**
+   * Save the image cache to .apex/image-cache.json
+   * @param cache Cache data to save
+   */
+  async saveImageCache(cache: ImageCache): Promise<void> {
+    try {
+      // Ensure .apex directory exists
+      const apexDir = path.dirname(this.cacheFilePath);
+      await fs.mkdir(apexDir, { recursive: true });
+
+      // Save cache with pretty printing for readability
+      const cacheContent = JSON.stringify(cache, null, 2);
+      await fs.writeFile(this.cacheFilePath, cacheContent, 'utf-8');
+    } catch (error) {
+      throw new Error(`Failed to save image cache: ${error}`);
+    }
+  }
+
+  /**
+   * Get cached metadata for an image tag
+   * @param imageTag Image tag to look up
+   * @returns Cached metadata or null if not found
+   */
+  async getCachedImageMetadata(imageTag: string): Promise<ImageCacheMetadata | null> {
+    const cache = await this.loadImageCache();
+    const metadata = cache.images[imageTag];
+
+    if (metadata) {
+      // Update last accessed timestamp
+      metadata.lastAccessed = Date.now();
+      await this.saveImageCache(cache);
+      return metadata;
+    }
+
+    return null;
+  }
+
+  /**
+   * Store image metadata in the cache
+   * @param metadata Image metadata to cache
+   */
+  async storeCachedImageMetadata(metadata: ImageCacheMetadata): Promise<void> {
+    const cache = await this.loadImageCache();
+
+    // Set last accessed timestamp
+    metadata.lastAccessed = Date.now();
+
+    // Store in cache
+    cache.images[metadata.imageTag] = metadata;
+
+    await this.saveImageCache(cache);
+  }
+
+  /**
+   * Remove cached metadata for an image tag
+   * @param imageTag Image tag to remove from cache
+   */
+  async removeCachedImageMetadata(imageTag: string): Promise<void> {
+    const cache = await this.loadImageCache();
+
+    if (cache.images[imageTag]) {
+      delete cache.images[imageTag];
+      await this.saveImageCache(cache);
+    }
+  }
+
+  /**
+   * Clean up old cache entries (LRU cleanup)
+   * @param maxEntries Maximum number of cache entries to keep (default: 50)
+   */
+  async cleanupImageCache(maxEntries: number = 50): Promise<number> {
+    const cache = await this.loadImageCache();
+    const entries = Object.entries(cache.images);
+
+    if (entries.length <= maxEntries) {
+      return 0;
+    }
+
+    // Sort by last accessed time (oldest first)
+    entries.sort(([, a], [, b]) => a.lastAccessed - b.lastAccessed);
+
+    // Keep the most recent entries
+    const toKeep = entries.slice(-maxEntries);
+    const removedCount = entries.length - maxEntries;
+
+    // Rebuild cache with only the entries to keep
+    cache.images = Object.fromEntries(toKeep);
+
+    await this.saveImageCache(cache);
     return removedCount;
   }
 

@@ -73,8 +73,14 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     if (this.containerRuntimeType !== 'none') {
       try {
         await this.healthMonitor.startMonitoring();
+
+        // Start container events monitoring to capture lifecycle events
+        await this.containerManager.startEventsMonitoring({
+          namePrefix: 'apex',
+          eventTypes: ['die', 'start', 'stop', 'create', 'destroy']
+        });
       } catch (error) {
-        console.warn('Failed to start container health monitoring:', error);
+        console.warn('Failed to start container monitoring:', error);
       }
     }
   }
@@ -478,6 +484,27 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     const filepath = join(this.workspacesDir, filename);
 
     await fs.writeFile(filepath, JSON.stringify(workspace, null, 2), 'utf-8');
+  }
+
+  /**
+   * Cleanup workspace manager resources
+   */
+  async cleanup(): Promise<void> {
+    // Stop container events monitoring
+    if (this.containerManager.isEventsMonitoringActive()) {
+      try {
+        await this.containerManager.stopEventsMonitoring();
+      } catch (error) {
+        console.warn('Failed to stop container events monitoring:', error);
+      }
+    }
+
+    // Stop health monitoring
+    try {
+      await this.healthMonitor.stopMonitoring();
+    } catch (error) {
+      console.warn('Failed to stop container health monitoring:', error);
+    }
   }
 
   /**
