@@ -37,7 +37,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { WorktreeManager } from './worktree-manager';
-import { WorkspaceManager } from './workspace-manager';
+import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -113,6 +113,10 @@ export interface OrchestratorEvents {
   'container:died': (event: ContainerDiedEventData) => void;
   'container:removed': (event: ContainerEventData) => void;
   'container:lifecycle': (event: ContainerEventData, operation: ContainerLifecycleOperation) => void;
+
+  // Dependency installation events
+  'dependency:install-started': (event: DependencyInstallEventData) => void;
+  'dependency:install-completed': (event: DependencyInstallCompletedEventData) => void;
 }
 
 /**
@@ -260,6 +264,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
+
+    // Forward dependency install events from workspace manager
+    this.setupDependencyEventForwarding();
 
     this.initialized = true;
   }
@@ -4239,6 +4246,19 @@ Parent: ${parentTask.description}`;
         command: event.command,
       };
       this.emit('container:lifecycle', containerEvent, operation);
+    });
+  }
+
+  /**
+   * Set up event forwarding from WorkspaceManager dependency events to orchestrator events
+   */
+  private setupDependencyEventForwarding(): void {
+    this.workspaceManager.on('dependency-install-started', (event) => {
+      this.emit('dependency:install-started', event);
+    });
+
+    this.workspaceManager.on('dependency-install-completed', (event) => {
+      this.emit('dependency:install-completed', event);
     });
   }
 }

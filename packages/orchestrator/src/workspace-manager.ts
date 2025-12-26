@@ -9,7 +9,10 @@ import {
   containerRuntime,
   ContainerRuntimeType,
   ContainerManager,
-  ContainerHealthMonitor
+  ContainerHealthMonitor,
+  DependencyDetector,
+  PackageManagerType,
+  ContainerConfig
 } from '@apexcli/core';
 
 const execAsync = promisify(exec);
@@ -29,11 +32,38 @@ export interface WorkspaceInfo {
 }
 
 /**
+ * Event data for dependency installation start
+ */
+export interface DependencyInstallEventData {
+  taskId: string;
+  containerId: string;
+  workspacePath: string;
+  installCommand: string;
+  packageManager: PackageManagerType;
+  language: 'javascript' | 'python' | 'rust';
+  timestamp: Date;
+}
+
+/**
+ * Event data for dependency installation completion
+ */
+export interface DependencyInstallCompletedEventData extends DependencyInstallEventData {
+  success: boolean;
+  duration: number;  // milliseconds
+  stdout?: string;
+  stderr?: string;
+  exitCode: number;
+  error?: string;
+}
+
+/**
  * Manages isolated workspaces for task execution using various strategies
  */
 export interface WorkspaceManagerEvents {
   'workspace-created': (taskId: string, workspacePath: string) => void;
   'workspace-cleaned': (taskId: string) => void;
+  'dependency-install-started': (data: DependencyInstallEventData) => void;
+  'dependency-install-completed': (data: DependencyInstallCompletedEventData) => void;
 }
 
 export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
@@ -44,6 +74,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private containerRuntimeType: ContainerRuntimeType | null = null;
   private containerManager: ContainerManager;
   private healthMonitor: ContainerHealthMonitor;
+  private dependencyDetector: DependencyDetector;
 
   constructor(options: WorkspaceManagerOptions) {
     super();
@@ -57,6 +88,9 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       containerPrefix: 'apex-task',
       autoStart: false, // We'll start it when we need it
     });
+
+    // Initialize dependency detector
+    this.dependencyDetector = new DependencyDetector();
   }
 
   /**
@@ -392,6 +426,16 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
         throw new Error(result.error || 'Failed to create container');
       }
 
+      // Install dependencies after container starts
+      if (result.containerId) {
+        await this.installDependencies(
+          task,
+          result.containerId,
+          workspacePath,
+          containerConfig
+        );
+      }
+
       return workspacePath;
     } catch (error) {
       throw new Error(`Failed to create container workspace: ${error}`);
@@ -447,6 +491,125 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       await fs.rm(workspace.workspacePath, { recursive: true, force: true });
     } catch (error) {
       console.warn(`Failed to cleanup directory workspace:`, error);
+    }
+  }
+
+  // ============================================================================
+  // Dependency Installation
+  // ============================================================================
+
+  /**
+   * Install dependencies inside a container after it starts
+   * @param task - The task associated with this workspace
+   * @param containerId - The container ID where dependencies should be installed
+   * @param workspacePath - Local workspace path
+   * @param containerConfig - Container configuration including install settings
+   */
+  private async installDependencies(
+    task: Task,
+    containerId: string,
+    workspacePath: string,
+    containerConfig: ContainerConfig
+  ): Promise<void> {
+    // Check if auto-install is disabled
+    if (containerConfig.autoDependencyInstall === false) {
+      return;
+    }
+
+    // Determine install command
+    let installCommand: string | null = null;
+    let packageManagerType: PackageManagerType = 'unknown';
+    let language: 'javascript' | 'python' | 'rust' | undefined;
+
+    if (containerConfig.customInstallCommand) {
+      // Use custom command if provided
+      installCommand = containerConfig.customInstallCommand;
+      packageManagerType = 'unknown';
+    } else {
+      // Auto-detect using DependencyDetector
+      const detection = await this.dependencyDetector.detectPackageManagers(this.projectPath);
+
+      if (detection.primaryManager?.installCommand) {
+        installCommand = detection.primaryManager.installCommand;
+        packageManagerType = detection.primaryManager.type;
+        language = detection.primaryManager.language;
+      }
+    }
+
+    // No dependencies detected or disabled
+    if (!installCommand) {
+      return;
+    }
+
+    const startTime = Date.now();
+    const workingDir = containerConfig.workingDir || '/workspace';
+    const timeout = containerConfig.installTimeout || 300000; // Default 5 minutes
+
+    // Emit started event
+    const startedData: DependencyInstallEventData = {
+      taskId: task.id,
+      containerId,
+      workspacePath,
+      installCommand,
+      packageManager: packageManagerType,
+      language: language || 'javascript',
+      timestamp: new Date(),
+    };
+    this.emit('dependency-install-started', startedData);
+
+    try {
+      // Execute install command inside container
+      const result = await this.containerManager.execCommand(
+        containerId,
+        installCommand,
+        {
+          workingDir,
+          timeout,
+        },
+        this.containerRuntimeType!
+      );
+
+      const duration = Date.now() - startTime;
+
+      // Log output
+      if (result.stdout) {
+        console.log(`[${task.id}] Dependency install stdout:\n${result.stdout}`);
+      }
+      if (result.stderr) {
+        console.warn(`[${task.id}] Dependency install stderr:\n${result.stderr}`);
+      }
+
+      // Emit completed event
+      const completedData: DependencyInstallCompletedEventData = {
+        ...startedData,
+        success: result.success,
+        duration,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        error: result.error,
+      };
+      this.emit('dependency-install-completed', completedData);
+
+      if (!result.success) {
+        console.warn(`[${task.id}] Dependency installation failed with exit code ${result.exitCode}`);
+      }
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      console.error(`[${task.id}] Dependency installation error: ${errorMessage}`);
+
+      // Emit failed completion event
+      const completedData: DependencyInstallCompletedEventData = {
+        ...startedData,
+        success: false,
+        duration,
+        exitCode: 1,
+        error: errorMessage,
+      };
+      this.emit('dependency-install-completed', completedData);
     }
   }
 
