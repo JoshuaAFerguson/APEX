@@ -4312,9 +4312,9 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Set up automatic workspace cleanup when tasks are completed
-   * Listens to 'task:completed' events and calls workspaceManager.cleanupWorkspace
-   * Respects the workspace.cleanup configuration flag
+   * Set up automatic workspace cleanup when tasks are completed or failed
+   * Listens to 'task:completed' and 'task:failed' events and calls workspaceManager.cleanupWorkspace
+   * Respects the workspace.cleanup configuration flag and preserveOnFailure setting
    */
   private setupAutomaticWorkspaceCleanup(): void {
     this.on('task:completed', async (task: Task) => {
@@ -4334,6 +4334,57 @@ Parent: ${parentTask.description}`;
         }
       }
     });
+
+    // Handle task:failed event
+    this.on('task:failed', async (task: Task, error: Error) => {
+      // Check if workspace should be preserved on failure for debugging
+      const preserveOnFailure = this.shouldPreserveOnFailure(task);
+
+      if (preserveOnFailure) {
+        // Log that workspace is being preserved for debugging
+        console.log(`Preserving workspace for failed task ${task.id} for debugging`);
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Workspace preserved for debugging (preserveOnFailure=true). Strategy: ${task.workspace?.strategy || 'unknown'}, Path: ${task.workspace?.path || 'unknown'}`,
+          timestamp: new Date(),
+          component: 'workspace-cleanup'
+        });
+      } else {
+        // Clean up workspace since preserveOnFailure is false
+        if (this.effectiveConfig.workspace?.cleanupOnComplete !== false) {
+          try {
+            await this.workspaceManager.cleanupWorkspace(task.id);
+          } catch (cleanupError) {
+            console.warn(`Failed to cleanup workspace for failed task ${task.id}:`, cleanupError);
+            await this.store.addLog(task.id, {
+              level: 'warn',
+              message: `Workspace cleanup failed after task failure: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
+              timestamp: new Date(),
+              component: 'workspace-cleanup'
+            });
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Determine if workspace should be preserved on task failure for debugging
+   * Checks task-level config first, then strategy-specific config
+   */
+  private shouldPreserveOnFailure(task: Task): boolean {
+    // First, check task-level workspace configuration (highest priority)
+    if (task.workspace?.preserveOnFailure !== undefined) {
+      return task.workspace.preserveOnFailure;
+    }
+
+    // For worktree strategy, check git.worktree config
+    if (task.workspace?.strategy === 'worktree') {
+      return this.effectiveConfig.git?.worktree?.preserveOnFailure ?? false;
+    }
+
+    // For other strategies, default to false (cleanup on failure)
+    return false;
   }
 
   /**
