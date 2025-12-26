@@ -61,7 +61,7 @@ Prompt`;
   });
 });
 
-describe.skip('getEffectiveConfig', () => {
+describe('getEffectiveConfig', () => {
   it('should merge defaults with partial config', () => {
     const config: ApexConfig = {
       version: '1.0',
@@ -145,7 +145,7 @@ describe.skip('getEffectiveConfig', () => {
   });
 });
 
-describe.skip('isApexInitialized', () => {
+describe('isApexInitialized', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -168,7 +168,7 @@ describe.skip('isApexInitialized', () => {
   });
 });
 
-describe.skip('loadConfig and saveConfig', () => {
+describe('loadConfig and saveConfig', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -375,7 +375,7 @@ stages:
   });
 });
 
-describe.skip('initializeApex', () => {
+describe('initializeApex', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -897,6 +897,123 @@ describe.skip('Daemon Configuration', () => {
         autoStart: false,
         logLevel: 'info'
       });
+    });
+  });
+
+  describe('Container resource limits configuration', () => {
+    it('should apply workspace container defaults when workspace section is missing', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.workspace).toBeDefined();
+      expect(effective.workspace.container).toBeDefined();
+      expect(effective.workspace.container.resourceLimits).toBeUndefined();
+      expect(effective.workspace.container.networkMode).toBe('bridge');
+      expect(effective.workspace.container.autoRemove).toBe(true);
+    });
+
+    it('should preserve existing workspace container resource limits', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        workspace: {
+          container: {
+            resourceLimits: {
+              cpu: 2,
+              memory: '1g',
+            },
+          },
+        },
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.workspace.container.resourceLimits).toEqual({
+        cpu: 2,
+        memory: '1g',
+      });
+      expect(effective.workspace.container.networkMode).toBe('bridge'); // Still gets default
+      expect(effective.workspace.container.autoRemove).toBe(true); // Still gets default
+    });
+
+    it('should handle partial workspace container configuration', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        workspace: {
+          container: {
+            networkMode: 'host',
+            resourceLimits: {
+              cpu: 4,
+            },
+          },
+        },
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.workspace.container.networkMode).toBe('host');
+      expect(effective.workspace.container.resourceLimits?.cpu).toBe(4);
+      expect(effective.workspace.container.resourceLimits?.memory).toBeUndefined();
+      expect(effective.workspace.container.autoRemove).toBe(true); // Gets default
+    });
+
+    it('should apply all workspace defaults correctly', () => {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' }
+      });
+
+      const effective = getEffectiveConfig(config);
+
+      expect(effective.workspace.defaultStrategy).toBe('none');
+      expect(effective.workspace.cleanupOnComplete).toBe(true);
+      expect(effective.workspace.container.networkMode).toBe('bridge');
+      expect(effective.workspace.container.autoRemove).toBe(true);
+      expect(effective.workspace.container.resourceLimits).toBeUndefined(); // Not set by default in getEffectiveConfig
+    });
+  });
+
+  describe('initializeApex integration', () => {
+    let testDir: string;
+
+    beforeEach(async () => {
+      testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-init-integration-'));
+    });
+
+    afterEach(async () => {
+      await fs.rm(testDir, { recursive: true, force: true });
+    });
+
+    it('should create initialized config with container resource limits', async () => {
+      await initializeApex(testDir, {
+        projectName: 'integration-test',
+        language: 'typescript',
+      });
+
+      const config = await loadConfig(testDir);
+
+      expect(config.workspace?.container?.resourceLimits).toEqual({
+        cpu: 1,
+        memory: '512m',
+      });
+    });
+
+    it('should create effective config that preserves initialized resource limits', async () => {
+      await initializeApex(testDir, {
+        projectName: 'effective-config-test',
+      });
+
+      const config = await loadConfig(testDir);
+      const effective = getEffectiveConfig(config);
+
+      // The initialized config should have resource limits
+      expect(config.workspace?.container?.resourceLimits?.cpu).toBe(1);
+      expect(config.workspace?.container?.resourceLimits?.memory).toBe('512m');
+
+      // The effective config should preserve them
+      expect(effective.workspace.container.resourceLimits?.cpu).toBe(1);
+      expect(effective.workspace.container.resourceLimits?.memory).toBe('512m');
     });
   });
 });

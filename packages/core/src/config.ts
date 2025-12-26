@@ -258,6 +258,18 @@ export async function initializeApex(
       maxTurns: 100,
       maxConcurrentTasks: 3,
     },
+    workspace: {
+      defaultStrategy: 'none',
+      cleanupOnComplete: true,
+      container: {
+        networkMode: 'bridge',
+        autoRemove: true,
+        resourceLimits: {
+          cpu: 1,
+          memory: '512m',
+        },
+      },
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);
