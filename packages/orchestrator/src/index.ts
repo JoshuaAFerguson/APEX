@@ -4353,3 +4353,15 @@ export {
 } from './idle-task-generator';
 export { WorktreeManager, WorktreeError, type WorktreeManagerOptions } from './worktree-manager';
 export { WorkspaceManager, type WorkspaceManagerOptions, type WorkspaceInfo, type WorkspaceManagerEvents } from './workspace-manager';
+export {
+  ContainerExecutionProxy,
+  createContainerExecutionProxy,
+  type ExecutionContext,
+  type CommandExecutionOptions,
+  type CommandExecutionResult,
+  type ContainerExecutionProxyEvents,
+  type ExecutionStartedEvent,
+  type ExecutionCompletedEvent,
+  type ExecutionFailedEvent,
+  type CommandBlockedEvent,
+} from './container-execution-proxy';
