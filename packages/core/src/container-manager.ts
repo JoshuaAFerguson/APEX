@@ -1,4 +1,4 @@
-import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits, ContainerLogStreamOptions, ContainerLogEntry } from './types';
+import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits, ContainerLogStreamOptions, ContainerLogEntry, ContainerDiedEventData } from './types';
 import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
@@ -80,6 +80,38 @@ export interface ContainerOperationEvent extends ContainerEvent {
 }
 
 /**
+ * Docker event data parsed from docker events stream
+ */
+export interface DockerEventData {
+  /** Event status (e.g., 'die', 'start', 'stop') */
+  status: string;
+  /** Container ID */
+  id: string;
+  /** Container name (without leading slash) */
+  name?: string;
+  /** Image name */
+  image?: string;
+  /** Event timestamp as Unix timestamp */
+  time: number;
+  /** Exit code for die events */
+  exitCode?: number;
+  /** Additional attributes */
+  attributes?: Record<string, string>;
+}
+
+/**
+ * Options for Docker events monitoring
+ */
+export interface DockerEventsMonitorOptions {
+  /** Only monitor events for containers with this name prefix */
+  namePrefix?: string;
+  /** Only monitor events for containers with specific labels */
+  labelFilters?: Record<string, string>;
+  /** Specific event types to monitor (default: ['die']) */
+  eventTypes?: string[];
+}
+
+/**
  * Typed events emitted by ContainerManager
  */
 export interface ContainerManagerEvents {
@@ -89,10 +121,12 @@ export interface ContainerManagerEvents {
   'container:started': (event: ContainerOperationEvent) => void;
   /** Emitted when a container is stopped */
   'container:stopped': (event: ContainerOperationEvent) => void;
+  /** Emitted when a container dies unexpectedly */
+  'container:died': (event: ContainerEvent & { exitCode: number; signal?: string; oomKilled?: boolean }) => void;
   /** Emitted when a container is removed */
   'container:removed': (event: ContainerOperationEvent) => void;
   /** Emitted for general container lifecycle events */
-  'container:lifecycle': (event: ContainerEvent, operation: 'created' | 'started' | 'stopped' | 'removed') => void;
+  'container:lifecycle': (event: ContainerEvent, operation: 'created' | 'started' | 'stopped' | 'removed' | 'died') => void;
 }
 
 /**
@@ -103,6 +137,14 @@ export interface ContainerManagerEvents {
 export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> {
   private runtime: ContainerRuntime;
   private defaultNamingConfig: ContainerNamingConfig;
+
+  // Docker events monitoring properties
+  private eventsMonitorProcess?: ChildProcess;
+  private isMonitoring: boolean = false;
+  private monitorOptions: DockerEventsMonitorOptions = {
+    namePrefix: 'apex',
+    eventTypes: ['die', 'start', 'stop', 'create', 'destroy']
+  };
 
   constructor(
     runtime?: ContainerRuntime,
@@ -686,6 +728,94 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
     }
 
     return parts.join(namingConfig.separator);
+  }
+
+  // ============================================================================
+  // Docker Events Monitoring
+  // ============================================================================
+
+  /**
+   * Start monitoring Docker/Podman events for container lifecycle changes
+   * @param options Optional monitoring configuration
+   * @returns Promise that resolves when monitoring starts
+   */
+  async startEventsMonitoring(options?: Partial<DockerEventsMonitorOptions>): Promise<void> {
+    if (this.isMonitoring) {
+      return; // Already monitoring
+    }
+
+    const runtime = await this.runtime.getBestRuntime();
+    if (runtime === 'none') {
+      throw new Error('No container runtime available for events monitoring');
+    }
+
+    // Merge provided options with defaults
+    this.monitorOptions = {
+      ...this.monitorOptions,
+      ...options
+    };
+
+    try {
+      await this.startDockerEventsProcess(runtime);
+      this.isMonitoring = true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to start Docker events monitoring: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Stop monitoring Docker/Podman events
+   * @returns Promise that resolves when monitoring stops
+   */
+  async stopEventsMonitoring(): Promise<void> {
+    if (!this.isMonitoring || !this.eventsMonitorProcess) {
+      return;
+    }
+
+    this.isMonitoring = false;
+
+    try {
+      // Gracefully terminate the events process
+      if (!this.eventsMonitorProcess.killed) {
+        this.eventsMonitorProcess.kill('SIGTERM');
+
+        // Wait a bit for graceful shutdown
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            if (this.eventsMonitorProcess && !this.eventsMonitorProcess.killed) {
+              this.eventsMonitorProcess.kill('SIGKILL');
+            }
+            resolve();
+          }, 5000);
+
+          this.eventsMonitorProcess?.on('exit', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+      }
+    } catch (error) {
+      console.warn('Error stopping Docker events monitoring:', error);
+    } finally {
+      this.eventsMonitorProcess = undefined;
+    }
+  }
+
+  /**
+   * Check if Docker events monitoring is currently active
+   * @returns True if monitoring is active
+   */
+  isEventsMonitoringActive(): boolean {
+    return this.isMonitoring && !!this.eventsMonitorProcess && !this.eventsMonitorProcess.killed;
+  }
+
+  /**
+   * Get current monitoring options
+   * @returns Current monitoring configuration
+   */
+  getMonitoringOptions(): DockerEventsMonitorOptions {
+    return { ...this.monitorOptions };
   }
 
   // ============================================================================

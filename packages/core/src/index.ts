@@ -15,3 +15,6 @@ export * from './container-runtime';
 
 // Container Management
 export * from './container-manager';
+
+// Image Building
+export * from './image-builder';
