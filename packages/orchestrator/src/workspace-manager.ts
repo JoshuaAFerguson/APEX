@@ -349,9 +349,20 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     await fs.mkdir(workspacePath, { recursive: true });
 
     try {
-      // Ensure the project root is mounted in the container
+      // Check for project-specific Dockerfile
+      const dockerfilePath = join(this.projectPath, '.apex', 'Dockerfile');
+      const hasProjectDockerfile = await this.fileExists(dockerfilePath);
+
+      // Build container configuration
       const containerConfig = {
         ...config.container,
+        // Use project Dockerfile if it exists
+        ...(hasProjectDockerfile && {
+          dockerfile: '.apex/Dockerfile',
+          buildContext: this.projectPath,
+        }),
+        // Ensure default image fallback
+        image: config.container.image || 'node:20-alpine',
         volumes: {
           [this.projectPath]: '/workspace',
           ...config.container.volumes,
@@ -467,5 +478,17 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     const filepath = join(this.workspacesDir, filename);
 
     await fs.writeFile(filepath, JSON.stringify(workspace, null, 2), 'utf-8');
+  }
+
+  /**
+   * Check if a file exists
+   */
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

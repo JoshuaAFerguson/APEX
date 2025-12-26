@@ -547,10 +547,19 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
 /**
  * Default container health monitor instance
+ * Note: Initialized lazily to avoid circular dependency issues
  */
-export const containerHealthMonitor = new ContainerHealthMonitor(
-  require('./container-manager').containerManager
-);
+let _defaultMonitor: ContainerHealthMonitor | null = null;
+
+export const containerHealthMonitor = {
+  get instance(): ContainerHealthMonitor {
+    if (!_defaultMonitor) {
+      const { containerManager } = require('./container-manager');
+      _defaultMonitor = new ContainerHealthMonitor(containerManager);
+    }
+    return _defaultMonitor;
+  }
+};
 
 /**
  * Convenience function to start container health monitoring
@@ -568,5 +577,5 @@ export async function startContainerHealthMonitoring(
  * Convenience function to get container health status
  */
 export function getContainerHealth(containerId: string): ContainerHealthCheck | null {
-  return containerHealthMonitor.getContainerHealth(containerId);
+  return containerHealthMonitor.instance.getContainerHealth(containerId);
 }
