@@ -21,3 +21,6 @@ export * from './container-health-monitor';
 
 // Image Building
 export * from './image-builder';
+
+// Dependency Detection
+export * from './dependency-detector';
