@@ -585,6 +585,118 @@ describe('ContainerConfigSchema', () => {
     });
   });
 
+  describe('autoDependencyInstall field validation', () => {
+    it('should accept boolean values', () => {
+      const resultTrue = ContainerConfigSchema.parse({ image: 'node:20', autoDependencyInstall: true });
+      expect(resultTrue.autoDependencyInstall).toBe(true);
+
+      const resultFalse = ContainerConfigSchema.parse({ image: 'node:20', autoDependencyInstall: false });
+      expect(resultFalse.autoDependencyInstall).toBe(false);
+    });
+
+    it('should default to true', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.autoDependencyInstall).toBe(true);
+    });
+
+    it('should reject non-boolean values', () => {
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        autoDependencyInstall: 'true'
+      })).toThrow();
+
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        autoDependencyInstall: 1
+      })).toThrow();
+    });
+  });
+
+  describe('customInstallCommand field validation', () => {
+    it('should accept valid command strings', () => {
+      const validCommands = [
+        'npm install',
+        'yarn install --frozen-lockfile',
+        'pip install -r requirements.txt',
+        'bundle install --jobs=4',
+        'composer install --no-dev',
+        'make dependencies',
+        'poetry install --no-dev',
+      ];
+
+      for (const customInstallCommand of validCommands) {
+        const result = ContainerConfigSchema.parse({ image: 'node:20', customInstallCommand });
+        expect(result.customInstallCommand).toBe(customInstallCommand);
+      }
+    });
+
+    it('should be optional', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.customInstallCommand).toBeUndefined();
+    });
+
+    it('should accept empty string', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20', customInstallCommand: '' });
+      expect(result.customInstallCommand).toBe('');
+    });
+
+    it('should accept complex command with pipes and flags', () => {
+      const complexCommand = 'npm ci --production && npm run build:prod';
+      const result = ContainerConfigSchema.parse({ image: 'node:20', customInstallCommand: complexCommand });
+      expect(result.customInstallCommand).toBe(complexCommand);
+    });
+  });
+
+  describe('installTimeout field validation', () => {
+    it('should accept valid positive timeout values', () => {
+      const validTimeouts = [1000, 30000, 60000, 300000, 600000, 1800000];
+
+      for (const installTimeout of validTimeouts) {
+        const result = ContainerConfigSchema.parse({ image: 'node:20', installTimeout });
+        expect(result.installTimeout).toBe(installTimeout);
+      }
+    });
+
+    it('should be optional', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.installTimeout).toBeUndefined();
+    });
+
+    it('should reject zero and negative values', () => {
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        installTimeout: 0
+      })).toThrow();
+
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        installTimeout: -1000
+      })).toThrow();
+
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        installTimeout: -500
+      })).toThrow();
+    });
+
+    it('should reject non-number values', () => {
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        installTimeout: '30000'
+      })).toThrow();
+
+      expect(() => ContainerConfigSchema.parse({
+        image: 'node:20',
+        installTimeout: true
+      })).toThrow();
+    });
+
+    it('should accept decimal values', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20', installTimeout: 30000.5 });
+      expect(result.installTimeout).toBe(30000.5);
+    });
+  });
+
   describe('full configuration scenarios', () => {
     it('should accept minimal valid configuration', () => {
       const config = ContainerConfigSchema.parse({ image: 'node:20' });
@@ -614,6 +726,9 @@ describe('ContainerConfigSchema', () => {
         securityOpts: ['no-new-privileges:true'],
         capAdd: ['SYS_ADMIN'],
         capDrop: ['ALL'],
+        autoDependencyInstall: true,
+        customInstallCommand: 'npm ci --production',
+        installTimeout: 300000,
       };
 
       const result = ContainerConfigSchema.parse(fullConfig);
@@ -749,6 +864,71 @@ describe('ContainerConfigSchema', () => {
       expect(result.buildContext).toBe('/home/builder/project');
       expect(result.imageTag).toBe('registry.internal.com/team/service:release-1.0');
       expect(result.environment?.ENVIRONMENT).toBe('production');
+    });
+
+    it('should handle dependency auto-install configuration scenarios', () => {
+      // Test Node.js project with custom npm command
+      const nodeConfig = {
+        image: 'node:20-alpine',
+        autoDependencyInstall: true,
+        customInstallCommand: 'npm ci --production --silent',
+        installTimeout: 120000,
+        environment: { NODE_ENV: 'production' },
+      };
+
+      const nodeResult = ContainerConfigSchema.parse(nodeConfig);
+      expect(nodeResult.autoDependencyInstall).toBe(true);
+      expect(nodeResult.customInstallCommand).toBe('npm ci --production --silent');
+      expect(nodeResult.installTimeout).toBe(120000);
+
+      // Test Python project with pip requirements
+      const pythonConfig = {
+        image: 'python:3.11-slim',
+        autoDependencyInstall: true,
+        customInstallCommand: 'pip install -r requirements.txt --no-cache-dir',
+        installTimeout: 600000, // 10 minutes for large ML dependencies
+      };
+
+      const pythonResult = ContainerConfigSchema.parse(pythonConfig);
+      expect(pythonResult.customInstallCommand).toBe('pip install -r requirements.txt --no-cache-dir');
+      expect(pythonResult.installTimeout).toBe(600000);
+
+      // Test configuration with dependency installation disabled
+      const noDepConfig = {
+        image: 'alpine:3.18',
+        autoDependencyInstall: false,
+        workingDir: '/app',
+      };
+
+      const noDepResult = ContainerConfigSchema.parse(noDepConfig);
+      expect(noDepResult.autoDependencyInstall).toBe(false);
+      expect(noDepResult.customInstallCommand).toBeUndefined();
+      expect(noDepResult.installTimeout).toBeUndefined();
+
+      // Test Ruby project with bundler
+      const rubyConfig = {
+        image: 'ruby:3.2-alpine',
+        autoDependencyInstall: true,
+        customInstallCommand: 'bundle install --deployment --jobs=4',
+        installTimeout: 180000,
+        environment: { BUNDLE_WITHOUT: 'development:test' },
+      };
+
+      const rubyResult = ContainerConfigSchema.parse(rubyConfig);
+      expect(rubyResult.autoDependencyInstall).toBe(true);
+      expect(rubyResult.customInstallCommand).toBe('bundle install --deployment --jobs=4');
+      expect(rubyResult.installTimeout).toBe(180000);
+
+      // Test configuration with default auto-install but custom timeout
+      const defaultConfig = {
+        image: 'node:18',
+        installTimeout: 90000,
+      };
+
+      const defaultResult = ContainerConfigSchema.parse(defaultConfig);
+      expect(defaultResult.autoDependencyInstall).toBe(true); // Default value
+      expect(defaultResult.customInstallCommand).toBeUndefined();
+      expect(defaultResult.installTimeout).toBe(90000);
     });
   });
 });
@@ -1280,6 +1460,9 @@ describe('Type Safety', () => {
       networkMode: 'bridge',
       autoRemove: true,
       privileged: false,
+      autoDependencyInstall: true,
+      customInstallCommand: 'npm ci',
+      installTimeout: 60000,
     };
 
     expect(typeof config.image).toBe('string');
@@ -1288,6 +1471,9 @@ describe('Type Safety', () => {
     expect(typeof config.imageTag).toBe('string');
     expect(config.networkMode).toBe('bridge');
     expect(typeof config.autoRemove).toBe('boolean');
+    expect(typeof config.autoDependencyInstall).toBe('boolean');
+    expect(typeof config.customInstallCommand).toBe('string');
+    expect(typeof config.installTimeout).toBe('number');
   });
 
   it('should enforce ContainerStatus type correctly', () => {

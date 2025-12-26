@@ -514,6 +514,12 @@ export const ContainerConfigSchema = z.object({
   capAdd: z.array(z.string()).optional(),
   /** Capabilities to drop from the container */
   capDrop: z.array(z.string()).optional(),
+  /** Whether to automatically install dependencies (defaults to true) */
+  autoDependencyInstall: z.boolean().optional().default(true),
+  /** Custom command to install dependencies (overrides default detection) */
+  customInstallCommand: z.string().optional(),
+  /** Timeout for dependency installation in milliseconds */
+  installTimeout: z.number().positive().optional(),
 });
 export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;
 
