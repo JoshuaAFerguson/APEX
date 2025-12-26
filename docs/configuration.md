@@ -67,6 +67,24 @@ limits:
   maxTurns: 100
   maxConcurrentTasks: 3
 
+# Workspace isolation settings
+workspace:
+  defaultStrategy: "none"
+  cleanupOnComplete: true
+  container:
+    image: "node:20-alpine"
+    resourceLimits:
+      cpu: 2
+      memory: "4g"
+      memoryReservation: "2g"
+      cpuShares: 1024
+      pidsLimit: 1000
+    networkMode: "bridge"
+    environment:
+      NODE_ENV: "development"
+    autoRemove: true
+    installTimeout: 300000
+
 # API server settings
 api:
   url: "http://localhost:3000"
@@ -164,6 +182,103 @@ Safety limits to control costs.
 | `dailyBudget` | number | 100.00 | Daily budget in USD |
 | `maxTurns` | number | 100 | Max agent turns |
 | `maxConcurrentTasks` | number | 3 | Parallel task limit |
+
+### workspace
+
+Workspace isolation configuration for running tasks in controlled environments.
+
+```yaml
+workspace:
+  defaultStrategy: "container"  # none, directory, worktree, container
+  cleanupOnComplete: true
+  container:
+    image: "node:20-alpine"
+    resourceLimits:
+      cpu: 2
+      memory: "4g"
+      memoryReservation: "2g"
+      cpuShares: 1024
+      pidsLimit: 1000
+    networkMode: "bridge"
+    environment:
+      NODE_ENV: "development"
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+    autoRemove: true
+    installTimeout: 300000
+```
+
+#### Workspace Strategies
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `none` | No isolation (default) | Development on local machine |
+| `directory` | Copy to isolated directory | Simple file isolation |
+| `worktree` | Use Git worktrees | Branch isolation |
+| `container` | Run in Docker container | Full environment isolation |
+
+#### Container Resource Limits
+
+Resource limits control CPU, memory, and process constraints for containerized tasks.
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `cpu` | number | 0.1-64 | CPU limit in cores (e.g., 0.5 for half core) |
+| `memory` | string | - | Memory limit with unit (e.g., "256m", "1g", "2048m") |
+| `memoryReservation` | string | - | Memory reservation (soft limit) |
+| `memorySwap` | string | - | Maximum memory swap with unit |
+| `cpuShares` | number | 2-262144 | CPU shares for relative weighting (1024 = 1 share) |
+| `pidsLimit` | number | 1+ | Maximum number of processes allowed |
+
+**Memory Units**: Support standard suffixes - k/K (kilobytes), m/M (megabytes), g/G (gigabytes)
+
+#### Container Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `image` | string | - | Docker image (e.g., "node:20-alpine") |
+| `dockerfile` | string | - | Path to custom Dockerfile |
+| `buildContext` | string | "." | Build context for custom images |
+| `imageTag` | string | - | Custom tag for built images |
+| `volumes` | object | - | Host:container path mappings |
+| `environment` | object | - | Environment variables |
+| `resourceLimits` | object | - | CPU/memory constraints |
+| `networkMode` | string | "bridge" | Network mode (bridge/host/none) |
+| `workingDir` | string | - | Working directory in container |
+| `user` | string | - | User to run as (e.g., "1000:1000") |
+| `autoRemove` | boolean | true | Remove container after completion |
+| `installTimeout` | number | - | Dependency installation timeout (ms) |
+
+#### Per-Task Resource Overrides
+
+Individual tasks can override the default resource limits:
+
+```bash
+# CLI override example
+apex run "build project" --workspace-strategy container \
+  --container-cpu 4 --container-memory "8g"
+
+# Programmatic override via task configuration
+{
+  "workspace": {
+    "strategy": "container",
+    "container": {
+      "resourceLimits": {
+        "cpu": 1,
+        "memory": "2g",
+        "pidsLimit": 500
+      }
+    }
+  }
+}
+```
+
+**Available Override Options**:
+- `--workspace-strategy`: Change isolation strategy
+- `--container-cpu`: Override CPU limit
+- `--container-memory`: Override memory limit
+- `--container-memory-reservation`: Override memory reservation
+- `--container-cpu-shares`: Override CPU shares
+- `--container-pids-limit`: Override process limit
 
 ## Environment Variables
 
