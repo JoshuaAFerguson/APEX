@@ -73,9 +73,16 @@ describe('WorkspaceManager Dockerfile Detection', () => {
     // Mock container manager to avoid actual container operations
     const mockContainerManager = {
       createContainer: vi.fn().mockResolvedValue({ success: true }),
+      execCommand: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '', exitCode: 0 }),
     };
     (workspaceManager as any).containerManager = mockContainerManager;
     (workspaceManager as any).containerRuntimeType = 'docker';
+
+    // Mock dependency detector to avoid filesystem operations
+    const mockDependencyDetector = {
+      detectPackageManagers: vi.fn().mockResolvedValue({ primaryManager: null }),
+    };
+    (workspaceManager as any).dependencyDetector = mockDependencyDetector;
   });
 
   afterEach(async () => {
@@ -274,6 +281,92 @@ CMD ["npm", "start"]
 
       // Verify container manager was called
       expect((workspaceManager as any).containerManager.createContainer).toHaveBeenCalled();
+    });
+  });
+
+  describe('Container ID Management', () => {
+    it('should store container ID in workspace info when creating container workspace', async () => {
+      const testContainerId = 'test-container-123';
+
+      // Create mock task
+      const task = createMockTask();
+
+      // Mock the containerManager.createContainer to return container ID
+      (workspaceManager as any).containerManager.createContainer = vi.fn().mockResolvedValue({
+        success: true,
+        containerId: testContainerId,
+      });
+
+      // Create workspace
+      const workspaceInfo = await workspaceManager.createWorkspace(task);
+
+      // Verify container ID is stored
+      expect(workspaceInfo.containerId).toBe(testContainerId);
+      expect(workspaceInfo.config.strategy).toBe('container');
+    });
+
+    it('should return container ID for task using getContainerIdForTask', async () => {
+      const testContainerId = 'test-container-456';
+
+      // Create mock task
+      const task = createMockTask();
+
+      // Mock the containerManager.createContainer to return container ID
+      (workspaceManager as any).containerManager.createContainer = vi.fn().mockResolvedValue({
+        success: true,
+        containerId: testContainerId,
+      });
+
+      // Create workspace
+      await workspaceManager.createWorkspace(task);
+
+      // Test getContainerIdForTask method
+      const retrievedContainerId = workspaceManager.getContainerIdForTask(task.id);
+      expect(retrievedContainerId).toBe(testContainerId);
+    });
+
+    it('should return undefined for non-container workspaces', async () => {
+      // Create mock task with directory strategy
+      const task: Task = {
+        id: `test-task-${Date.now()}`,
+        description: 'Test task for non-container workspace',
+        workflow: 'test',
+        autonomy: 'review-before-commit',
+        status: 'pending' as TaskStatus,
+        priority: 'normal',
+        effort: 'medium',
+        currentStage: undefined,
+        projectPath: '',
+        retryCount: 0,
+        maxRetries: 3,
+        resumeAttempts: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+        },
+        logs: [],
+        artifacts: [],
+        workspace: {
+          strategy: 'directory',
+          cleanup: true,
+        } as WorkspaceConfig,
+      };
+
+      // Create workspace
+      await workspaceManager.createWorkspace(task);
+
+      // Test getContainerIdForTask method
+      const retrievedContainerId = workspaceManager.getContainerIdForTask(task.id);
+      expect(retrievedContainerId).toBeUndefined();
+    });
+
+    it('should return undefined for non-existent tasks', async () => {
+      const retrievedContainerId = workspaceManager.getContainerIdForTask('non-existent-task');
+      expect(retrievedContainerId).toBeUndefined();
     });
   });
 });

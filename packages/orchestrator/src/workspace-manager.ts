@@ -31,6 +31,11 @@ export interface WorkspaceInfo {
   status: 'active' | 'cleanup-pending' | 'cleaned';
   createdAt: Date;
   lastAccessed: Date;
+  /**
+   * Container ID for container-based workspaces
+   * Undefined for other workspace strategies
+   */
+  containerId?: string;
 }
 
 /**
@@ -146,7 +151,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
         workspaceInfo.workspacePath = await this.createWorktreeWorkspace(task);
         break;
       case 'container':
-        workspaceInfo.workspacePath = await this.createContainerWorkspace(task, config);
+        await this.createContainerWorkspace(task, config, workspaceInfo);
         break;
       case 'directory':
         workspaceInfo.workspacePath = await this.createDirectoryWorkspace(task);
@@ -270,6 +275,20 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
+   * Get the container ID for a specific task
+   * Returns the active container ID if the task uses a container workspace
+   * @param taskId - The task identifier
+   * @returns The container ID or undefined if not using a container workspace
+   */
+  getContainerIdForTask(taskId: string): string | undefined {
+    const workspace = this.activeWorkspaces.get(taskId);
+    if (!workspace || workspace.config.strategy !== 'container') {
+      return undefined;
+    }
+    return workspace.containerId;
+  }
+
+  /**
    * Get container health status for a specific task
    */
   async getContainerHealth(taskId: string): Promise<any> {
@@ -378,7 +397,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   // Container Implementation
   // ============================================================================
 
-  private async createContainerWorkspace(task: Task, config: WorkspaceConfig): Promise<string> {
+  private async createContainerWorkspace(task: Task, config: WorkspaceConfig, workspaceInfo: WorkspaceInfo): Promise<void> {
     if (!config.container) {
       throw new Error('Container configuration required for container strategy');
     }
@@ -444,6 +463,10 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
         throw new Error(result.error || 'Failed to create container');
       }
 
+      // Store workspace path and container ID in workspace info
+      workspaceInfo.workspacePath = workspacePath;
+      workspaceInfo.containerId = result.containerId;
+
       // Install dependencies after container starts
       if (result.containerId) {
         await this.installDependencies(
@@ -453,8 +476,6 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
           mergedContainerConfig
         );
       }
-
-      return workspacePath;
     } catch (error) {
       throw new Error(`Failed to create container workspace: ${error}`);
     }
