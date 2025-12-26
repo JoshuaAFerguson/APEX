@@ -3,6 +3,7 @@ import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
+import { EventEmitter as TypedEventEmitter } from 'eventemitter3';
 
 const execAsync = promisify(exec);
 
@@ -53,10 +54,53 @@ export interface ContainerNamingConfig {
 }
 
 /**
+ * Event data for container lifecycle events
+ */
+export interface ContainerEvent {
+  /** Container ID */
+  containerId: string;
+  /** Task ID associated with the container */
+  taskId?: string;
+  /** Container information (if available) */
+  containerInfo?: ContainerInfo;
+  /** Timestamp when the event occurred */
+  timestamp: Date;
+}
+
+/**
+ * Event data for container operation events (includes success/failure info)
+ */
+export interface ContainerOperationEvent extends ContainerEvent {
+  /** Whether the operation was successful */
+  success: boolean;
+  /** Error message if operation failed */
+  error?: string;
+  /** Command that was executed */
+  command?: string;
+}
+
+/**
+ * Typed events emitted by ContainerManager
+ */
+export interface ContainerManagerEvents {
+  /** Emitted when a container is created */
+  'container:created': (event: ContainerOperationEvent) => void;
+  /** Emitted when a container is started */
+  'container:started': (event: ContainerOperationEvent) => void;
+  /** Emitted when a container is stopped */
+  'container:stopped': (event: ContainerOperationEvent) => void;
+  /** Emitted when a container is removed */
+  'container:removed': (event: ContainerOperationEvent) => void;
+  /** Emitted for general container lifecycle events */
+  'container:lifecycle': (event: ContainerEvent, operation: 'created' | 'started' | 'stopped' | 'removed') => void;
+}
+
+/**
  * Container manager for creating and managing containerized workspaces
  * Provides high-level container operations with support for Docker and Podman
+ * Extends EventEmitter3 to emit typed lifecycle events
  */
-export class ContainerManager {
+export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> {
   private runtime: ContainerRuntime;
   private defaultNamingConfig: ContainerNamingConfig;
 
@@ -64,6 +108,7 @@ export class ContainerManager {
     runtime?: ContainerRuntime,
     namingConfig?: Partial<ContainerNamingConfig>
   ) {
+    super();
     this.runtime = runtime || new ContainerRuntime();
     this.defaultNamingConfig = {
       prefix: 'apex',
@@ -84,10 +129,21 @@ export class ContainerManager {
       const runtimeType = await this.runtime.getBestRuntime();
 
       if (runtimeType === 'none') {
-        return {
+        const result = {
           success: false,
           error: 'No container runtime available. Please install Docker or Podman.',
         };
+
+        // Emit creation failed event
+        this.emitContainerEvent('created', {
+          containerId: '',
+          taskId: options.taskId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+        });
+
+        return result;
       }
 
       const containerName = options.nameOverride || this.generateContainerName(options.taskId);
@@ -96,12 +152,24 @@ export class ContainerManager {
       const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
 
       if (stderr && stderr.trim()) {
-        return {
+        const result = {
           success: false,
           error: `Container creation failed: ${stderr.trim()}`,
           command,
           output: stdout,
         };
+
+        // Emit creation failed event
+        this.emitContainerEvent('created', {
+          containerId: '',
+          taskId: options.taskId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+          command: result.command,
+        });
+
+        return result;
       }
 
       // Extract container ID from output
@@ -119,19 +187,42 @@ export class ContainerManager {
 
       const containerInfo = await this.getContainerInfo(containerId, runtimeType);
 
-      return {
+      const result = {
         success: true,
         containerId,
         containerInfo,
         command,
         output: stdout,
       };
+
+      // Emit creation success event
+      this.emitContainerEvent('created', {
+        containerId,
+        taskId: options.taskId,
+        containerInfo,
+        timestamp: new Date(),
+        success: true,
+        command,
+      });
+
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
+      const result = {
         success: false,
         error: `Container creation failed: ${errorMessage}`,
       };
+
+      // Emit creation failed event
+      this.emitContainerEvent('created', {
+        containerId: '',
+        taskId: options.taskId,
+        timestamp: new Date(),
+        success: false,
+        error: result.error,
+      });
+
+      return result;
     }
   }
 
@@ -146,39 +237,81 @@ export class ContainerManager {
       const runtime = runtimeType || await this.runtime.getBestRuntime();
 
       if (runtime === 'none') {
-        return {
+        const result = {
           success: false,
           error: 'No container runtime available',
         };
+
+        // Emit start failed event
+        this.emitContainerEvent('started', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+        });
+
+        return result;
       }
 
       const command = `${runtime} start ${containerId}`;
       const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
 
       if (stderr && stderr.trim()) {
-        return {
+        const result = {
           success: false,
           error: `Container start failed: ${stderr.trim()}`,
           command,
           output: stdout,
         };
+
+        // Emit start failed event
+        this.emitContainerEvent('started', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+          command: result.command,
+        });
+
+        return result;
       }
 
       const containerInfo = await this.getContainerInfo(containerId, runtime);
 
-      return {
+      const result = {
         success: true,
         containerId,
         containerInfo,
         command,
         output: stdout,
       };
+
+      // Emit start success event
+      this.emitContainerEvent('started', {
+        containerId,
+        containerInfo,
+        timestamp: new Date(),
+        success: true,
+        command,
+      });
+
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
+      const result = {
         success: false,
         error: `Container start failed: ${errorMessage}`,
       };
+
+      // Emit start failed event
+      this.emitContainerEvent('started', {
+        containerId,
+        timestamp: new Date(),
+        success: false,
+        error: result.error,
+      });
+
+      return result;
     }
   }
 
@@ -198,36 +331,77 @@ export class ContainerManager {
       const runtime = runtimeType || await this.runtime.getBestRuntime();
 
       if (runtime === 'none') {
-        return {
+        const result = {
           success: false,
           error: 'No container runtime available',
         };
+
+        // Emit stop failed event
+        this.emitContainerEvent('stopped', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+        });
+
+        return result;
       }
 
       const command = `${runtime} stop --time ${timeout} ${containerId}`;
       const { stdout, stderr } = await execAsync(command, { timeout: (timeout + 10) * 1000 });
 
       if (stderr && stderr.trim()) {
-        return {
+        const result = {
           success: false,
           error: `Container stop failed: ${stderr.trim()}`,
           command,
           output: stdout,
         };
+
+        // Emit stop failed event
+        this.emitContainerEvent('stopped', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+          command: result.command,
+        });
+
+        return result;
       }
 
-      return {
+      const result = {
         success: true,
         containerId,
         command,
         output: stdout,
       };
+
+      // Emit stop success event
+      this.emitContainerEvent('stopped', {
+        containerId,
+        timestamp: new Date(),
+        success: true,
+        command,
+      });
+
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
+      const result = {
         success: false,
         error: `Container stop failed: ${errorMessage}`,
       };
+
+      // Emit stop failed event
+      this.emitContainerEvent('stopped', {
+        containerId,
+        timestamp: new Date(),
+        success: false,
+        error: result.error,
+      });
+
+      return result;
     }
   }
 
@@ -247,10 +421,20 @@ export class ContainerManager {
       const runtime = runtimeType || await this.runtime.getBestRuntime();
 
       if (runtime === 'none') {
-        return {
+        const result = {
           success: false,
           error: 'No container runtime available',
         };
+
+        // Emit remove failed event
+        this.emitContainerEvent('removed', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+        });
+
+        return result;
       }
 
       const forceFlag = force ? ' --force' : '';
@@ -258,26 +442,57 @@ export class ContainerManager {
       const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
 
       if (stderr && stderr.trim()) {
-        return {
+        const result = {
           success: false,
           error: `Container removal failed: ${stderr.trim()}`,
           command,
           output: stdout,
         };
+
+        // Emit remove failed event
+        this.emitContainerEvent('removed', {
+          containerId,
+          timestamp: new Date(),
+          success: false,
+          error: result.error,
+          command: result.command,
+        });
+
+        return result;
       }
 
-      return {
+      const result = {
         success: true,
         containerId,
         command,
         output: stdout,
       };
+
+      // Emit remove success event
+      this.emitContainerEvent('removed', {
+        containerId,
+        timestamp: new Date(),
+        success: true,
+        command,
+      });
+
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
+      const result = {
         success: false,
         error: `Container removal failed: ${errorMessage}`,
       };
+
+      // Emit remove failed event
+      this.emitContainerEvent('removed', {
+        containerId,
+        timestamp: new Date(),
+        success: false,
+        error: result.error,
+      });
+
+      return result;
     }
   }
 
@@ -476,6 +691,22 @@ export class ContainerManager {
   // ============================================================================
   // Private Methods
   // ============================================================================
+
+  /**
+   * Emit container lifecycle events
+   * @param operation Type of operation performed
+   * @param event Event data
+   */
+  private emitContainerEvent(
+    operation: 'created' | 'started' | 'stopped' | 'removed',
+    event: ContainerOperationEvent
+  ): void {
+    // Emit specific operation event
+    this.emit(`container:${operation}`, event);
+
+    // Emit general lifecycle event
+    this.emit('container:lifecycle', event, operation);
+  }
 
   /**
    * Build the container creation command

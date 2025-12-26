@@ -480,6 +480,12 @@ export type ContainerNetworkMode = z.infer<typeof ContainerNetworkModeSchema>;
 export const ContainerConfigSchema = z.object({
   /** Docker/OCI image to use (e.g., "node:20-alpine", "python:3.11-slim") */
   image: z.string().min(1),
+  /** Path to Dockerfile for building custom images (relative to build context) */
+  dockerfile: z.string().min(1).optional(),
+  /** Build context path for Docker image builds (defaults to current directory) */
+  buildContext: z.string().min(1).optional(),
+  /** Custom tag for built images (e.g., "my-app:latest") */
+  imageTag: z.string().min(1).optional(),
   /** Volume mounts mapping host paths to container paths */
   volumes: z.record(z.string(), z.string()).optional(),
   /** Environment variables to set in the container */

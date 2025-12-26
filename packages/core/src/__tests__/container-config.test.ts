@@ -240,6 +240,103 @@ describe('ContainerConfigSchema', () => {
     });
   });
 
+  describe('dockerfile field validation', () => {
+    it('should accept valid dockerfile paths', () => {
+      const validDockerfiles = [
+        'Dockerfile',
+        'Dockerfile.dev',
+        'docker/Dockerfile',
+        './Dockerfile',
+        'deployments/web/Dockerfile',
+        'build/Dockerfile.production',
+      ];
+
+      for (const dockerfile of validDockerfiles) {
+        const result = ContainerConfigSchema.parse({ image: 'node:20', dockerfile });
+        expect(result.dockerfile).toBe(dockerfile);
+      }
+    });
+
+    it('should be optional', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.dockerfile).toBeUndefined();
+    });
+
+    it('should accept dockerfile with relative paths', () => {
+      const result = ContainerConfigSchema.parse({
+        image: 'node:20',
+        dockerfile: '../docker/Dockerfile.web'
+      });
+      expect(result.dockerfile).toBe('../docker/Dockerfile.web');
+    });
+  });
+
+  describe('buildContext field validation', () => {
+    it('should accept valid build context paths', () => {
+      const validBuildContexts = [
+        '.',
+        './',
+        './src',
+        '/absolute/path',
+        '../parent-dir',
+        'relative/path',
+        '/home/user/project',
+        'build-context',
+      ];
+
+      for (const buildContext of validBuildContexts) {
+        const result = ContainerConfigSchema.parse({ image: 'node:20', buildContext });
+        expect(result.buildContext).toBe(buildContext);
+      }
+    });
+
+    it('should be optional', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.buildContext).toBeUndefined();
+    });
+
+    it('should accept current directory notation', () => {
+      const result = ContainerConfigSchema.parse({
+        image: 'node:20',
+        buildContext: '.'
+      });
+      expect(result.buildContext).toBe('.');
+    });
+  });
+
+  describe('imageTag field validation', () => {
+    it('should accept valid image tags', () => {
+      const validImageTags = [
+        'my-app:latest',
+        'my-app:v1.0.0',
+        'company/project:dev',
+        'localhost:5000/app:staging',
+        'registry.example.com/app:production',
+        'my-custom-image',
+        'app:1.2.3-beta',
+        'ghcr.io/owner/repo:feature-branch',
+      ];
+
+      for (const imageTag of validImageTags) {
+        const result = ContainerConfigSchema.parse({ image: 'node:20', imageTag });
+        expect(result.imageTag).toBe(imageTag);
+      }
+    });
+
+    it('should be optional', () => {
+      const result = ContainerConfigSchema.parse({ image: 'node:20' });
+      expect(result.imageTag).toBeUndefined();
+    });
+
+    it('should accept simple tag names without registry', () => {
+      const result = ContainerConfigSchema.parse({
+        image: 'node:20',
+        imageTag: 'my-custom-app:latest'
+      });
+      expect(result.imageTag).toBe('my-custom-app:latest');
+    });
+  });
+
   describe('volumes field validation', () => {
     it('should accept valid volume mappings', () => {
       const volumes = {
@@ -500,6 +597,9 @@ describe('ContainerConfigSchema', () => {
     it('should accept full configuration', () => {
       const fullConfig = {
         image: 'node:20-alpine',
+        dockerfile: 'docker/Dockerfile.prod',
+        buildContext: '.',
+        imageTag: 'my-app:v1.0.0',
         volumes: { '/host/path': '/container/path' },
         environment: { NODE_ENV: 'production' },
         resourceLimits: { cpu: 2, memory: '1g' },
@@ -568,6 +668,87 @@ describe('ContainerConfigSchema', () => {
       expect(result.privileged).toBe(false);
       expect(result.capDrop).toEqual(['ALL']);
       expect(result.securityOpts).toEqual(['no-new-privileges:true']);
+    });
+
+    it('should handle custom build configuration', () => {
+      const buildConfig = {
+        image: 'node:20',
+        dockerfile: 'Dockerfile.web',
+        buildContext: './web-app',
+        imageTag: 'company/web-app:staging',
+        volumes: {
+          '/app/dist': '/var/www/html',
+        },
+        environment: {
+          NODE_ENV: 'staging',
+          BUILD_ENV: 'docker',
+        },
+        resourceLimits: {
+          cpu: 1,
+          memory: '2g',
+        },
+        workingDir: '/app',
+        autoRemove: true,
+      };
+
+      const result = ContainerConfigSchema.parse(buildConfig);
+      expect(result.dockerfile).toBe('Dockerfile.web');
+      expect(result.buildContext).toBe('./web-app');
+      expect(result.imageTag).toBe('company/web-app:staging');
+      expect(result.environment?.BUILD_ENV).toBe('docker');
+      expect(result.resourceLimits?.cpu).toBe(1);
+    });
+
+    it('should handle multi-stage build configuration', () => {
+      const multiBuildConfig = {
+        image: 'node:20-alpine',
+        dockerfile: 'docker/Dockerfile.multi-stage',
+        buildContext: '.',
+        imageTag: 'ghcr.io/company/api:v2.1.0',
+        environment: {
+          NODE_ENV: 'production',
+          API_VERSION: '2.1.0',
+        },
+        resourceLimits: {
+          cpu: 0.5,
+          memory: '512m',
+          cpuShares: 512,
+        },
+        networkMode: 'bridge' as const,
+        user: 'node',
+        labels: {
+          'org.opencontainers.image.source': 'https://github.com/company/api',
+          'org.opencontainers.image.version': '2.1.0',
+        },
+        autoRemove: true,
+        privileged: false,
+      };
+
+      const result = ContainerConfigSchema.parse(multiBuildConfig);
+      expect(result.dockerfile).toBe('docker/Dockerfile.multi-stage');
+      expect(result.buildContext).toBe('.');
+      expect(result.imageTag).toBe('ghcr.io/company/api:v2.1.0');
+      expect(result.labels?.['org.opencontainers.image.version']).toBe('2.1.0');
+      expect(result.user).toBe('node');
+    });
+
+    it('should handle build configuration with all new fields', () => {
+      const allNewFieldsConfig = {
+        image: 'ubuntu:22.04',
+        dockerfile: 'deployments/production/Dockerfile',
+        buildContext: '/home/builder/project',
+        imageTag: 'registry.internal.com/team/service:release-1.0',
+        environment: {
+          ENVIRONMENT: 'production',
+        },
+      };
+
+      const result = ContainerConfigSchema.parse(allNewFieldsConfig);
+      expect(result.image).toBe('ubuntu:22.04');
+      expect(result.dockerfile).toBe('deployments/production/Dockerfile');
+      expect(result.buildContext).toBe('/home/builder/project');
+      expect(result.imageTag).toBe('registry.internal.com/team/service:release-1.0');
+      expect(result.environment?.ENVIRONMENT).toBe('production');
     });
   });
 });
@@ -1093,12 +1274,18 @@ describe('Type Safety', () => {
   it('should enforce ContainerConfig type correctly', () => {
     const config: ContainerConfig = {
       image: 'node:20',
+      dockerfile: 'Dockerfile',
+      buildContext: '.',
+      imageTag: 'my-app:latest',
       networkMode: 'bridge',
       autoRemove: true,
       privileged: false,
     };
 
     expect(typeof config.image).toBe('string');
+    expect(typeof config.dockerfile).toBe('string');
+    expect(typeof config.buildContext).toBe('string');
+    expect(typeof config.imageTag).toBe('string');
     expect(config.networkMode).toBe('bridge');
     expect(typeof config.autoRemove).toBe('boolean');
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { exec } from 'child_process';
+import { EventEmitter } from 'eventemitter3';
 import {
   ContainerManager,
   ContainerLogStream,
@@ -8,6 +9,9 @@ import {
   generateTaskContainerName,
   type ContainerOperationResult,
   type CreateContainerOptions,
+  type ContainerEvent,
+  type ContainerOperationEvent,
+  type ContainerManagerEvents,
 } from '../container-manager';
 import { ContainerRuntime } from '../container-runtime';
 import { ContainerConfig, ContainerStats, ContainerStatus } from '../types';
@@ -410,6 +414,360 @@ describe('ContainerManager', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Container removal failed');
+    });
+  });
+
+  // ============================================================================
+  // Event Emission Tests
+  // ============================================================================
+
+  describe('event emission', () => {
+    it('should extend EventEmitter3', () => {
+      expect(manager).toBeInstanceOf(EventEmitter);
+    });
+
+    it('should emit container:created event on successful creation', async () => {
+      const containerId = 'abc123';
+      const taskId = 'task-123';
+      const events: ContainerOperationEvent[] = [];
+
+      // Listen for events
+      manager.on('container:created', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+
+      await manager.createContainer({
+        config: { image: 'node:20-alpine' },
+        taskId,
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].taskId).toBe(taskId);
+      expect(events[0].success).toBe(true);
+      expect(events[0].timestamp).toBeInstanceOf(Date);
+    });
+
+    it('should emit container:created event on failed creation', async () => {
+      const taskId = 'task-123';
+      const stderr = 'Image not found';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:created', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback('', stderr));
+
+      await manager.createContainer({
+        config: { image: 'nonexistent:image' },
+        taskId,
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe('');
+      expect(events[0].taskId).toBe(taskId);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('Container creation failed');
+    });
+
+    it('should emit container:started event on successful start', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:started', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      // Mock start command
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      // Mock inspect command
+      mockExec.mockImplementationOnce(mockExecCallback('abc123|test|node:20|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>'));
+
+      await manager.startContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(true);
+      expect(events[0].containerInfo?.status).toBe('running');
+    });
+
+    it('should emit container:started event on failed start', async () => {
+      const containerId = 'abc123';
+      const stderr = 'Container not found';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:started', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback('', stderr));
+
+      await manager.startContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('Container start failed');
+    });
+
+    it('should emit container:stopped event on successful stop', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:stopped', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+
+      await manager.stopContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(true);
+    });
+
+    it('should emit container:stopped event on failed stop', async () => {
+      const containerId = 'abc123';
+      const stderr = 'Container not running';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:stopped', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback('', stderr));
+
+      await manager.stopContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('Container stop failed');
+    });
+
+    it('should emit container:removed event on successful removal', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:removed', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+
+      await manager.removeContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(true);
+    });
+
+    it('should emit container:removed event on failed removal', async () => {
+      const containerId = 'abc123';
+      const stderr = 'Container is running';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:removed', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback('', stderr));
+
+      await manager.removeContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerId).toBe(containerId);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('Container removal failed');
+    });
+
+    it('should emit container:lifecycle event for all operations', async () => {
+      const containerId = 'abc123';
+      const lifecycleEvents: Array<{ event: ContainerEvent; operation: string }> = [];
+
+      manager.on('container:lifecycle', (event: ContainerEvent, operation: string) => {
+        lifecycleEvents.push({ event, operation });
+      });
+
+      // Test creation
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.createContainer({
+        config: { image: 'node:20-alpine' },
+        taskId: 'test-lifecycle',
+      });
+
+      // Test start
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      mockExec.mockImplementationOnce(mockExecCallback('abc123|test|node:20|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>'));
+      await manager.startContainer(containerId);
+
+      // Test stop
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.stopContainer(containerId);
+
+      // Test removal
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.removeContainer(containerId);
+
+      expect(lifecycleEvents).toHaveLength(4);
+      expect(lifecycleEvents[0].operation).toBe('created');
+      expect(lifecycleEvents[1].operation).toBe('started');
+      expect(lifecycleEvents[2].operation).toBe('stopped');
+      expect(lifecycleEvents[3].operation).toBe('removed');
+
+      // Verify all events have the same container ID
+      lifecycleEvents.forEach(({ event }) => {
+        expect(event.containerId).toBe(containerId);
+      });
+    });
+
+    it('should emit events with correct data when no runtime available', async () => {
+      vi.mocked(mockRuntime.getBestRuntime).mockResolvedValue('none');
+
+      const events: ContainerOperationEvent[] = [];
+      manager.on('container:created', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      await manager.createContainer({
+        config: { image: 'node:20-alpine' },
+        taskId: 'no-runtime-test',
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('No container runtime available');
+      expect(events[0].containerId).toBe('');
+    });
+
+    it('should emit events with command information', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:created', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+
+      await manager.createContainer({
+        config: {
+          image: 'node:20-alpine',
+          environment: { NODE_ENV: 'test' }
+        },
+        taskId: 'command-test',
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].command).toContain('docker create');
+      expect(events[0].command).toContain('node:20-alpine');
+      expect(events[0].command).toContain('NODE_ENV=test');
+    });
+
+    it('should handle multiple event listeners', async () => {
+      const containerId = 'abc123';
+      const listener1Events: ContainerOperationEvent[] = [];
+      const listener2Events: ContainerOperationEvent[] = [];
+
+      manager.on('container:created', (event) => listener1Events.push(event));
+      manager.on('container:created', (event) => listener2Events.push(event));
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+
+      await manager.createContainer({
+        config: { image: 'node:20-alpine' },
+        taskId: 'multi-listener-test',
+      });
+
+      expect(listener1Events).toHaveLength(1);
+      expect(listener2Events).toHaveLength(1);
+      expect(listener1Events[0].containerId).toBe(containerId);
+      expect(listener2Events[0].containerId).toBe(containerId);
+    });
+
+    it('should include container info in events when available', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:started', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      mockExec.mockImplementationOnce(mockExecCallback('abc123|test-container|node:20|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>'));
+
+      await manager.startContainer(containerId);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].containerInfo).toBeDefined();
+      expect(events[0].containerInfo?.id).toBe(containerId);
+      expect(events[0].containerInfo?.name).toBe('test-container');
+      expect(events[0].containerInfo?.status).toBe('running');
+    });
+
+    it('should emit events with exception handling', async () => {
+      const containerId = 'abc123';
+      const events: ContainerOperationEvent[] = [];
+
+      manager.on('container:created', (event: ContainerOperationEvent) => {
+        events.push(event);
+      });
+
+      // Mock an exception during command execution
+      mockExec.mockImplementationOnce(() => {
+        throw new Error('Command execution failed');
+      });
+
+      await manager.createContainer({
+        config: { image: 'node:20-alpine' },
+        taskId: 'exception-test',
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].success).toBe(false);
+      expect(events[0].error).toContain('Container creation failed');
+    });
+
+    it('should preserve event data integrity across operations', async () => {
+      const containerId = 'abc123';
+      const taskId = 'integrity-test';
+      const allEvents: ContainerOperationEvent[] = [];
+
+      // Listen to all event types
+      manager.on('container:created', (event) => allEvents.push({ ...event, _type: 'created' }));
+      manager.on('container:started', (event) => allEvents.push({ ...event, _type: 'started' }));
+      manager.on('container:stopped', (event) => allEvents.push({ ...event, _type: 'stopped' }));
+      manager.on('container:removed', (event) => allEvents.push({ ...event, _type: 'removed' }));
+
+      // Perform full lifecycle
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.createContainer({ config: { image: 'node:20-alpine' }, taskId });
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      mockExec.mockImplementationOnce(mockExecCallback('abc123|test|node:20|running|2023-01-01T10:00:00Z|2023-01-01T10:00:01Z|<no value>|<no value>'));
+      await manager.startContainer(containerId);
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.stopContainer(containerId);
+
+      mockExec.mockImplementationOnce(mockExecCallback(containerId));
+      await manager.removeContainer(containerId);
+
+      expect(allEvents).toHaveLength(4);
+
+      // Verify all events maintain consistent container ID
+      allEvents.forEach(event => {
+        expect(event.containerId).toBe(containerId);
+        expect(event.timestamp).toBeInstanceOf(Date);
+      });
+
+      // Verify task ID is preserved for creation event
+      const createEvent = allEvents.find(e => (e as any)._type === 'created');
+      expect(createEvent?.taskId).toBe(taskId);
     });
   });
 
