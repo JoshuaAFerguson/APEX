@@ -524,6 +524,8 @@ export const ContainerConfigSchema = z.object({
   customInstallCommand: z.string().optional(),
   /** Timeout for dependency installation in milliseconds */
   installTimeout: z.number().positive().optional(),
+  /** Number of retry attempts for dependency installation on failure */
+  installRetries: z.number().int().min(0).optional(),
 });
 export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;
 
@@ -652,6 +654,8 @@ export const ContainerDefaultsSchema = z.object({
   autoRemove: z.boolean().optional().default(true),
   /** Default timeout for dependency installation in milliseconds */
   installTimeout: z.number().positive().optional(),
+  /** Default number of retry attempts for dependency installation on failure */
+  installRetries: z.number().int().min(0).optional(),
 });
 export type ContainerDefaults = z.infer<typeof ContainerDefaultsSchema>;
 
