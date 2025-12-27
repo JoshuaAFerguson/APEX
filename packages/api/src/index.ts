@@ -1087,6 +1087,81 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       data: { subtask: { ...subtask } as Record<string, unknown>, error: error.message },
     });
   });
+
+  // Task lifecycle events
+  orchestrator.on('task:trashed', (task: Task) => {
+    broadcast(task.id, {
+      type: 'task:trashed',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task } as Record<string, unknown>,
+        trashedAt: task.trashedAt
+      },
+    });
+  });
+
+  orchestrator.on('task:restored', (task: Task) => {
+    broadcast(task.id, {
+      type: 'task:restored',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task } as Record<string, unknown>,
+        status: task.status
+      },
+    });
+  });
+
+  orchestrator.on('task:archived', (task: Task) => {
+    broadcast(task.id, {
+      type: 'task:archived',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task } as Record<string, unknown>,
+        archivedAt: task.archivedAt
+      },
+    });
+  });
+
+  orchestrator.on('task:unarchived', (task: Task) => {
+    broadcast(task.id, {
+      type: 'task:unarchived',
+      taskId: task.id,
+      timestamp: new Date(),
+      data: {
+        task: { ...task } as Record<string, unknown>,
+        status: task.status
+      },
+    });
+  });
+
+  orchestrator.on('trash:emptied', (deletedCount: number, taskIds: string[]) => {
+    // Broadcast to all connected clients for each deleted task
+    taskIds.forEach(taskId => {
+      broadcast(taskId, {
+        type: 'trash:emptied',
+        taskId: taskId,
+        timestamp: new Date(),
+        data: {
+          deletedCount,
+          deletedTaskIds: taskIds
+        },
+      });
+    });
+
+    // Also broadcast a global trash emptied event to task '0' for general listeners
+    broadcast('0', {
+      type: 'trash:emptied',
+      taskId: '0',
+      timestamp: new Date(),
+      data: {
+        deletedCount,
+        deletedTaskIds: taskIds
+      },
+    });
+  });
 }
 
 /**
@@ -1143,7 +1218,19 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log('Other Endpoints:');
       console.log(`  GET    /agents                   - List agents`);
       console.log(`  GET    /config                   - Get configuration`);
-      console.log(`  WS     /stream/:taskId           - Real-time task updates\n`);
+      console.log('');
+      console.log('WebSocket Streaming:');
+      console.log(`  WS     /stream/:taskId           - Real-time task updates`);
+      console.log('');
+      console.log('WebSocket Events (broadcasted via /stream/:taskId):');
+      console.log(`    • task:trashed              - Task moved to trash`);
+      console.log(`    • task:restored             - Task restored from trash`);
+      console.log(`    • task:archived             - Task archived`);
+      console.log(`    • task:unarchived           - Task unarchived`);
+      console.log(`    • trash:emptied             - Trash permanently emptied`);
+      console.log(`    • task:created/started/completed/failed - Standard lifecycle`);
+      console.log(`    • agent:message/thinking/tool-use - Agent activity`);
+      console.log(`    • subtask:created/completed/failed - Subtask events\n`);
     }
   } catch (error) {
     if (!silent) {
