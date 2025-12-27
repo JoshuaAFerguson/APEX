@@ -160,16 +160,17 @@ export const commands: Command[] = [
     name: 'status',
     aliases: ['s'],
     description: 'Show task status or check outdated documentation',
-    usage: '/status [task_id] [--check-docs]',
+    usage: '/status [task_id] [--check-docs] [--include-archived]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
         return;
       }
 
-      // Check for --check-docs flag
+      // Check for flags
       const checkDocs = args.includes('--check-docs');
-      const filteredArgs = args.filter(arg => arg !== '--check-docs');
+      const includeArchived = args.includes('--include-archived');
+      const filteredArgs = args.filter(arg => arg !== '--check-docs' && arg !== '--include-archived');
       const taskId = filteredArgs[0];
 
       // If --check-docs flag is provided, show documentation analysis findings
@@ -341,20 +342,38 @@ export const commands: Command[] = [
           console.log(chalk.red(`Error: ${task.error}`));
         }
       } else {
-        const tasks = await ctx.orchestrator.listTasks({ limit: 10 });
+        const tasks = await ctx.orchestrator.listTasks({
+          limit: 10,
+          includeArchived
+        });
 
         if (tasks.length === 0) {
           console.log(chalk.gray('\nNo tasks found.\n'));
+          if (!includeArchived) {
+            console.log(chalk.gray('Use /status --include-archived to see archived tasks.\n'));
+          }
           return;
         }
 
-        console.log(chalk.cyan('\nRecent Tasks:\n'));
+        const headerText = includeArchived ? 'Recent Tasks (including archived):' : 'Recent Tasks:';
+        console.log(chalk.cyan(`\n${headerText}\n`));
 
         for (const task of tasks) {
-          const status = `${getStatusEmoji(task.status)} ${task.status.padEnd(12)}`;
+          let statusText = task.status;
+          let statusEmoji = getStatusEmoji(task.status);
+
+          // If task is archived, show archived status
+          if (task.archivedAt) {
+            statusText = 'archived';
+            statusEmoji = '📁';
+          }
+
+          const status = `${statusEmoji} ${statusText.padEnd(12)}`;
           const cost = formatCost(task.usage.estimatedCost).padStart(10);
+          const archivedIndicator = task.archivedAt ? chalk.gray(' [archived]') : '';
+
           console.log(
-            `  ${chalk.gray(task.id.substring(0, 16))} ${status} ${cost}  ${task.description.substring(0, 50)}`
+            `  ${chalk.gray(task.id.substring(0, 16))} ${status} ${cost}  ${task.description.substring(0, 50)}${archivedIndicator}`
           );
         }
         console.log();
@@ -2275,6 +2294,179 @@ export const commands: Command[] = [
       }
     },
   },
+  {
+    name: 'trash',
+    aliases: ['del'],
+    description: 'Manage task trash',
+    usage: '/trash <taskId> | /trash <list|empty|restore> [args]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.cyan('\nTrash Commands:\n'));
+        console.log(chalk.yellow('  /trash <taskId>') + chalk.gray('          - Move task to trash'));
+        console.log(chalk.yellow('  /trash list') + chalk.gray('              - List all trashed tasks'));
+        console.log(chalk.yellow('  /trash empty') + chalk.gray('             - Permanently delete all trashed tasks'));
+        console.log(chalk.yellow('  /trash restore <taskId>') + chalk.gray('  - Restore task from trash\n'));
+        return;
+      }
+
+      const firstArg = args[0];
+      const subArgs = args.slice(1);
+
+      try {
+        switch (firstArg) {
+          case 'list':
+            await handleTrashList(ctx);
+            break;
+          case 'empty':
+            await handleTrashEmpty(ctx);
+            break;
+          case 'restore':
+            await handleTrashRestore(ctx, subArgs);
+            break;
+          default:
+            // Assume it's a task ID to trash
+            await handleTrashTask(ctx, [firstArg]);
+            break;
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
+
+  // Archive management commands
+  {
+    name: 'archive',
+    aliases: [],
+    description: 'Archive completed tasks or manage archived tasks',
+    usage: '/archive <taskId> | /archive list',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /archive <taskId> or /archive list'));
+        console.log(chalk.gray('\nArchive a completed task:'));
+        console.log(chalk.gray('  /archive abc123'));
+        console.log(chalk.gray('\nList all archived tasks:'));
+        console.log(chalk.gray('  /archive list'));
+        return;
+      }
+
+      const subcommand = args[0];
+
+      try {
+        if (subcommand === 'list') {
+          // List all archived tasks
+          const archivedTasks = await ctx.orchestrator.listArchivedTasks();
+
+          if (archivedTasks.length === 0) {
+            console.log(chalk.gray('\nNo archived tasks found.\n'));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n📁 Archived Tasks (${archivedTasks.length}):\n`));
+
+          for (const task of archivedTasks) {
+            const statusEmoji = '✅'; // All archived tasks are completed
+            const taskIdShort = task.id.substring(0, 12);
+            const createdDate = task.createdAt.toLocaleDateString();
+            const archivedDate = task.archivedAt?.toLocaleDateString() || 'Unknown';
+            const cost = task.usage ? `$${task.usage.estimatedCost.toFixed(4)}` : '$0.0000';
+
+            console.log(`  ${statusEmoji} ${chalk.cyan(taskIdShort)} ${chalk.yellow(task.name)}`);
+            console.log(`     ${chalk.gray(`Created: ${createdDate} | Archived: ${archivedDate} | Cost: ${cost}`)}`);
+
+            if (task.description) {
+              const truncatedDesc = task.description.length > 80
+                ? task.description.substring(0, 80) + '...'
+                : task.description;
+              console.log(`     ${chalk.gray(truncatedDesc)}`);
+            }
+            console.log();
+          }
+        } else {
+          // Archive a specific task
+          const taskId = subcommand;
+
+          // Find the full task ID from partial ID (include archived tasks in search)
+          const allTasks = await ctx.orchestrator.listTasks({ limit: 100, includeArchived: true });
+          const task = allTasks.find(t => t.id.startsWith(taskId));
+
+          if (!task) {
+            console.log(chalk.red(`❌ Task not found: ${taskId}`));
+            console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+            return;
+          }
+
+          // Check if task is already archived
+          if (task.archivedAt) {
+            console.log(chalk.yellow(`⚠️  Task ${task.id.substring(0, 12)} is already archived (${task.archivedAt.toLocaleDateString()})`));
+            console.log(chalk.gray('Use /unarchive to restore it if needed.'));
+            return;
+          }
+
+          await ctx.orchestrator.archiveTask(task.id);
+
+          console.log(chalk.green(`✅ Task ${task.id.substring(0, 12)} archived successfully`));
+          console.log(chalk.gray(`   ${task.name}`));
+          console.log(chalk.gray('   Use /archive list to view archived tasks or /unarchive to restore.'));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
+
+  {
+    name: 'unarchive',
+    aliases: [],
+    description: 'Restore an archived task',
+    usage: '/unarchive <taskId>',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /unarchive <taskId>'));
+        console.log(chalk.gray('\nRestore an archived task:'));
+        console.log(chalk.gray('  /unarchive abc123'));
+        console.log(chalk.gray('\nUse /archive list to see archived tasks.'));
+        return;
+      }
+
+      const taskId = args[0];
+
+      try {
+        // Find the task in archived tasks
+        const archivedTasks = await ctx.orchestrator.listArchivedTasks();
+        const task = archivedTasks.find(t => t.id.startsWith(taskId));
+
+        if (!task) {
+          console.log(chalk.red(`❌ Archived task not found: ${taskId}`));
+          console.log(chalk.gray('Use /archive list to see available archived tasks.'));
+          return;
+        }
+
+        await ctx.orchestrator.unarchiveTask(task.id);
+
+        console.log(chalk.green(`✅ Task ${task.id.substring(0, 12)} unarchived successfully`));
+        console.log(chalk.gray(`   ${task.name}`));
+        console.log(chalk.gray('   Task is now visible in /status output.'));
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
 ];
 
 // ============================================================================
@@ -2744,6 +2936,146 @@ async function handleTemplateInfo(ctx: ApexContext, args: string[]): Promise<voi
     console.log();
   } catch (error) {
     console.log(chalk.red(`Failed to get template info: ${(error as Error).message}`));
+  }
+}
+
+// ============================================================================
+// Trash Management Handlers
+// ============================================================================
+
+async function handleTrashTask(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.log(chalk.red('Usage: /trash <taskId>'));
+    return;
+  }
+
+  const taskId = args[0];
+
+  try {
+    // Find the full task ID from partial ID
+    const tasks = await ctx.orchestrator!.listTasks({ limit: 100 });
+    const task = tasks.find(t => t.id.startsWith(taskId));
+
+    if (!task) {
+      console.log(chalk.red(`❌ Task not found: ${taskId}`));
+      console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+      return;
+    }
+
+    // Check if task is already trashed
+    if (task.trashedAt) {
+      console.log(chalk.yellow(`⚠️  Task ${task.id.substring(0, 16)}... is already in trash`));
+      return;
+    }
+
+    await ctx.orchestrator!.trashTask(task.id);
+
+    console.log(chalk.green(`🗑️  Task moved to trash: ${task.id.substring(0, 16)}...`));
+    console.log(chalk.gray(`   Description: ${task.description.substring(0, 50)}`));
+    console.log(chalk.gray(`   Use '/trash restore ${task.id.substring(0, 16)}' to restore`));
+  } catch (error) {
+    console.log(chalk.red(`❌ Failed to trash task: ${(error as Error).message}`));
+  }
+}
+
+async function handleTrashList(ctx: ApexContext): Promise<void> {
+  try {
+    const trashedTasks = await ctx.orchestrator!.listTrashed();
+
+    if (trashedTasks.length === 0) {
+      console.log(chalk.gray('\n🗑️  Trash is empty.\n'));
+      return;
+    }
+
+    console.log(chalk.cyan(`\n🗑️  Trashed Tasks (${trashedTasks.length}):\n`));
+
+    for (const task of trashedTasks) {
+      const taskIdShort = task.id.substring(0, 16);
+      const status = task.status.padEnd(12);
+      const cost = formatCost(task.usage.estimatedCost).padStart(10);
+      const trashedTime = task.trashedAt ? getTimeAgo(task.trashedAt) : 'unknown';
+
+      console.log(
+        `  ${chalk.gray(taskIdShort)} ${chalk.red(status)} ${cost}  ${task.description.substring(0, 40)}`
+      );
+      console.log(chalk.gray(`    Trashed: ${trashedTime}`));
+    }
+
+    console.log(chalk.gray(`\nUse '/trash restore <taskId>' to restore a task`));
+    console.log(chalk.gray(`Use '/trash empty' to permanently delete all trashed tasks\n`));
+  } catch (error) {
+    console.log(chalk.red(`❌ Failed to list trashed tasks: ${(error as Error).message}`));
+  }
+}
+
+async function handleTrashRestore(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.log(chalk.red('Usage: /trash restore <taskId>'));
+    return;
+  }
+
+  const taskId = args[0];
+
+  try {
+    // Find the task in trash
+    const trashedTasks = await ctx.orchestrator!.listTrashed();
+    const task = trashedTasks.find(t => t.id.startsWith(taskId));
+
+    if (!task) {
+      console.log(chalk.red(`❌ Task not found in trash: ${taskId}`));
+      console.log(chalk.gray('Use /trash list to see trashed tasks'));
+      return;
+    }
+
+    await ctx.orchestrator!.restoreTask(task.id);
+
+    console.log(chalk.green(`♻️  Task restored from trash: ${task.id.substring(0, 16)}...`));
+    console.log(chalk.gray(`   Description: ${task.description.substring(0, 50)}`));
+    console.log(chalk.gray(`   Status: pending`));
+  } catch (error) {
+    console.log(chalk.red(`❌ Failed to restore task: ${(error as Error).message}`));
+  }
+}
+
+async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
+  try {
+    const trashedTasks = await ctx.orchestrator!.listTrashed();
+
+    if (trashedTasks.length === 0) {
+      console.log(chalk.gray('🗑️  Trash is already empty.'));
+      return;
+    }
+
+    console.log(chalk.yellow(`⚠️  This will permanently delete ${trashedTasks.length} task(s) from trash.`));
+    console.log(chalk.red('⚠️  This action cannot be undone!'));
+    console.log('\nTasks to be deleted:');
+
+    for (const task of trashedTasks) {
+      console.log(`  ${chalk.gray(task.id.substring(0, 16))} ${task.description.substring(0, 50)}`);
+    }
+
+    // Simple confirmation - in a real implementation you might want to use inquirer for better UX
+    const readline = require('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(chalk.yellow('\nType "yes" to permanently delete all trashed tasks: '), resolve);
+    });
+    rl.close();
+
+    if (answer.toLowerCase().trim() !== 'yes') {
+      console.log(chalk.gray('Operation cancelled.'));
+      return;
+    }
+
+    const deletedCount = await ctx.orchestrator!.emptyTrash();
+
+    console.log(chalk.green(`🗑️  Successfully deleted ${deletedCount} task(s) from trash`));
+  } catch (error) {
+    console.log(chalk.red(`❌ Failed to empty trash: ${(error as Error).message}`));
   }
 }
 
@@ -3579,6 +3911,7 @@ ${chalk.bold('Commands:')}
   agents                  List available agents
   workflows               List available workflows
   template <cmd> [args]   Manage task templates (save|list|use|delete|info)
+  trash <cmd> [args]      Manage task trash (list|empty|restore|<taskId>)
   config [get|set]        View or edit configuration
   logs <task_id>          Show task logs
   cancel <task_id>        Cancel a running task

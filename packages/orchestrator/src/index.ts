@@ -2105,7 +2105,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * List all tasks
    */
-  async listTasks(options?: { status?: TaskStatus; limit?: number }): Promise<Task[]> {
+  async listTasks(options?: {
+    status?: TaskStatus;
+    limit?: number;
+    orderByPriority?: boolean;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): Promise<Task[]> {
     await this.ensureInitialized();
     return this.store.listTasks(options);
   }
@@ -3077,6 +3083,36 @@ Parent: ${parentTask.description}`;
     if (restoredTask) {
       this.emit('task:restored', restoredTask);
     }
+  }
+
+  /**
+   * List all trashed tasks
+   */
+  async listTrashed(): Promise<Task[]> {
+    await this.ensureInitialized();
+    return this.store.listTrashed();
+  }
+
+  /**
+   * Permanently delete all trashed tasks
+   * Returns the number of tasks that were permanently deleted
+   */
+  async emptyTrash(): Promise<number> {
+    await this.ensureInitialized();
+
+    const trashedTasks = await this.store.listTrashed();
+    if (trashedTasks.length === 0) {
+      return 0;
+    }
+
+    const deletedCount = await this.store.emptyTrash();
+
+    // Emit event for each deleted task
+    for (const task of trashedTasks) {
+      this.emit('task:permanently_deleted', task);
+    }
+
+    return deletedCount;
   }
 
   /**
