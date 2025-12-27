@@ -991,6 +991,149 @@ export const commands: Command[] = [
     },
   },
   {
+    name: 'iterate',
+    aliases: [],
+    description: 'Iterate on a running task with feedback',
+    usage: '/iterate <task-id> [feedback] [--diff]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('❌ Orchestrator not available'));
+        return;
+      }
+
+      if (args.length < 1) {
+        console.log(chalk.red('Usage: /iterate <task-id> [feedback] [--diff]'));
+        console.log(chalk.gray('Interactive mode: /iterate <task-id>'));
+        console.log(chalk.gray('Direct mode: /iterate <task-id> "your feedback here"'));
+        console.log(chalk.gray('Show diff: /iterate <task-id> --diff'));
+        return;
+      }
+
+      const taskId = args[0];
+
+      // Check if --diff flag is present
+      if (args.includes('--diff')) {
+        try {
+          console.log(chalk.blue(`📊 Getting iteration diff for task ${taskId}...`));
+          const diff = await ctx.orchestrator.getIterationDiff(taskId);
+
+          console.log(chalk.cyan('\n📈 Iteration Diff:'));
+          console.log(chalk.gray(`Iteration: ${diff.iterationId}`));
+          if (diff.previousIterationId) {
+            console.log(chalk.gray(`Previous: ${diff.previousIterationId}`));
+          }
+
+          if (diff.stageChange) {
+            console.log(chalk.yellow(`Stage: ${diff.stageChange.from} → ${diff.stageChange.to}`));
+          }
+
+          if (diff.statusChange) {
+            console.log(chalk.yellow(`Status: ${diff.statusChange.from} → ${diff.statusChange.to}`));
+          }
+
+          if (diff.filesChanged.added.length > 0) {
+            console.log(chalk.green(`Added files (${diff.filesChanged.added.length}):`));
+            diff.filesChanged.added.forEach(file => console.log(chalk.green(`  + ${file}`)));
+          }
+
+          if (diff.filesChanged.modified.length > 0) {
+            console.log(chalk.blue(`Modified files (${diff.filesChanged.modified.length}):`));
+            diff.filesChanged.modified.forEach(file => console.log(chalk.blue(`  M ${file}`)));
+          }
+
+          if (diff.filesChanged.removed.length > 0) {
+            console.log(chalk.red(`Removed files (${diff.filesChanged.removed.length}):`));
+            diff.filesChanged.removed.forEach(file => console.log(chalk.red(`  - ${file}`)));
+          }
+
+          if (diff.tokenUsageDelta > 0) {
+            console.log(chalk.gray(`Token usage: +${diff.tokenUsageDelta}`));
+          }
+
+          if (diff.costDelta > 0) {
+            console.log(chalk.gray(`Cost: +$${diff.costDelta.toFixed(4)}`));
+          }
+
+          console.log(chalk.gray(`\nSummary: ${diff.summary}`));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Failed to get iteration diff: ${error}`));
+        }
+        return;
+      }
+
+      // Check if task exists first
+      try {
+        const task = await ctx.orchestrator.getTask(taskId);
+        if (!task) {
+          console.log(chalk.red(`❌ Task ${taskId} not found`));
+          return;
+        }
+
+        if (task.status !== 'in-progress') {
+          console.log(chalk.red(`❌ Task ${taskId} is not in progress (status: ${task.status})`));
+          console.log(chalk.gray('Only in-progress tasks can be iterated'));
+          return;
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Failed to check task: ${error}`));
+        return;
+      }
+
+      // Check if feedback is provided directly
+      const feedbackArg = args.slice(1).filter(arg => arg !== '--diff').join(' ');
+
+      if (feedbackArg.trim()) {
+        // Direct feedback mode
+        try {
+          console.log(chalk.blue(`🔄 Processing feedback for task ${taskId}...`));
+          console.log(chalk.gray(`Feedback: "${feedbackArg}"`));
+
+          const iterationId = await ctx.orchestrator.iterateTask(taskId, feedbackArg);
+          console.log(chalk.green(`✅ Iteration started with ID: ${iterationId}`));
+          console.log(chalk.gray('Use "/iterate <task-id> --diff" to see changes'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Iteration failed: ${error}`));
+        }
+      } else {
+        // Interactive mode - prompt for feedback
+        try {
+          console.log(chalk.cyan(`\n💭 Providing feedback for task ${taskId}`));
+          console.log(chalk.gray('Enter your feedback below. Press Ctrl+C to cancel.\n'));
+
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          const feedback = await new Promise<string>((resolve, reject) => {
+            rl.question('Feedback: ', (answer) => {
+              rl.close();
+              if (!answer.trim()) {
+                reject(new Error('No feedback provided'));
+              } else {
+                resolve(answer);
+              }
+            });
+          });
+
+          console.log(chalk.blue(`🔄 Processing feedback for task ${taskId}...`));
+          const iterationId = await ctx.orchestrator.iterateTask(taskId, feedback);
+          console.log(chalk.green(`✅ Iteration started with ID: ${iterationId}`));
+          console.log(chalk.gray('Use "/iterate <task-id> --diff" to see changes'));
+
+        } catch (error) {
+          if (error.message === 'No feedback provided') {
+            console.log(chalk.yellow('⚠️  No feedback provided, iteration cancelled'));
+          } else {
+            console.log(chalk.red(`❌ Iteration failed: ${error}`));
+          }
+        }
+      }
+    },
+  },
+  {
     name: 'workspace',
     aliases: ['ws'],
     description: 'Manage task workspaces',

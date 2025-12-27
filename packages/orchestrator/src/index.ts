@@ -52,6 +52,7 @@ import { createHooks } from './hooks';
 import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
+import { InteractionManager } from './interaction-manager';
 
 const execAsync = promisify(exec);
 
@@ -209,6 +210,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private agents: Record<string, AgentDefinition> = {};
   private store!: TaskStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
+  private interactionManager!: InteractionManager;
   private worktreeManager?: WorktreeManager;
   private workspaceManager!: WorkspaceManager;
   private projectPath: string;
@@ -246,6 +248,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize thought capture manager
     this.thoughtCaptureManager = new ThoughtCaptureManager(this.projectPath, this.store);
     await this.thoughtCaptureManager.initialize();
+
+    // Initialize interaction manager
+    this.interactionManager = new InteractionManager(this.store);
+
+    // Set up interaction event handlers
+    this.setupInteractionEventHandlers();
 
     // Initialize worktree manager if autoWorktree is enabled
     if (this.effectiveConfig.git.autoWorktree) {
@@ -4343,6 +4351,23 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Set up interaction event handlers
+   * Handles iteration events emitted by the interaction manager
+   */
+  private setupInteractionEventHandlers(): void {
+    this.interactionManager.on('task:iterate', async (taskId: string, parameters: Record<string, unknown>) => {
+      // The iteration has been logged, but we might want to handle it further
+      // For now, just complete the iteration to capture the after state
+      try {
+        const iterationId = parameters.iterationId as string;
+        await this.interactionManager.completeIteration(taskId, iterationId);
+      } catch (error) {
+        console.error(`Failed to complete iteration for task ${taskId}:`, error);
+      }
+    });
+  }
+
+  /**
    * Set up automatic workspace cleanup when tasks are completed or failed
    * Listens to 'task:completed' and 'task:failed' events and calls workspaceManager.cleanupWorkspace
    * Respects the workspace.cleanup configuration flag and preserveOnFailure setting
@@ -4481,6 +4506,45 @@ Parent: ${parentTask.description}`;
    */
   getWorkspaceManager(): WorkspaceManager {
     return this.workspaceManager;
+  }
+
+  /**
+   * Get the interaction manager instance
+   * Provides access to task iteration and interaction capabilities
+   */
+  getInteractionManager(): InteractionManager {
+    return this.interactionManager;
+  }
+
+  /**
+   * Iterate on a running task with new instructions
+   */
+  async iterateTask(
+    taskId: string,
+    instructions: string,
+    context?: Record<string, unknown>
+  ): Promise<string> {
+    await this.ensureInitialized();
+    return await this.interactionManager.iterateTask(taskId, instructions, context);
+  }
+
+  /**
+   * Get the difference between iterations of a task
+   */
+  async getIterationDiff(
+    taskId: string,
+    iterationId?: string
+  ): Promise<import('@apexcli/core').IterationDiff> {
+    await this.ensureInitialized();
+    return await this.interactionManager.getIterationDiff(taskId, iterationId);
+  }
+
+  /**
+   * Get iteration history for a task
+   */
+  async getIterationHistory(taskId: string): Promise<import('@apexcli/core').IterationHistory> {
+    await this.ensureInitialized();
+    return await this.store.getIterationHistory(taskId);
   }
 }
 
