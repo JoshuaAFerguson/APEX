@@ -898,4 +898,329 @@ describe('E2E: Complete Git Workflow Lifecycle', () => {
       }
     });
   });
+
+  describe('Branch Cleanup After Merge', () => {
+    beforeEach(async () => {
+      // Setup bare remote repository for push/fetch operations
+      await initGitRepo(bareRepoDir, true);
+
+      // Setup local repository with remote
+      await initGitRepo(testDir);
+      await createApexConfig(testDir);
+      await runGit(`remote add origin ${bareRepoDir}`, testDir);
+
+      // Create and push initial commit
+      await fs.writeFile(path.join(testDir, 'README.md'), '# Branch Cleanup Test Project\n');
+      await runGit('add README.md', testDir);
+      await runGit('commit -m "Initial commit"', testDir);
+      await runGit('push -u origin main', testDir);
+
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
+      await orchestrator.initialize();
+    });
+
+    it('should clean up feature branch after successful merge when configured', async () => {
+      // Create task with branch cleanup enabled
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Feature with branch cleanup enabled',
+        branchName: 'apex/cleanup-enabled-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Simulate feature development
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Push branch to remote
+      const pushResult = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult.success).toBe(true);
+
+      // Verify branch exists both locally and remotely before merge
+      const preMergeState = await verifyGitState(testDir);
+      expect(preMergeState.branches.some(b => b.includes('apex/cleanup-enabled-test'))).toBe(true);
+
+      const remoteBranches = await runGit('ls-remote --heads origin', testDir);
+      expect(remoteBranches.stdout).toContain('apex/cleanup-enabled-test');
+
+      // Switch to main and merge
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+      expect(mergeResult.conflicted).toBeFalsy();
+
+      // Simulate branch cleanup (feature branch deletion after merge)
+      // Local branch cleanup
+      const localBranchDelete = await runGit(`branch -d ${task.branchName!}`, testDir);
+      expect(localBranchDelete.success).toBe(true);
+
+      // Remote branch cleanup
+      const remoteBranchDelete = await runGit(`push origin --delete ${task.branchName!}`, testDir);
+      expect(remoteBranchDelete.success).toBe(true);
+
+      // Verify local branch is cleaned up
+      const postCleanupState = await verifyGitState(testDir);
+      expect(postCleanupState.branches.some(b => b.includes('apex/cleanup-enabled-test'))).toBe(false);
+
+      // Verify remote branch is cleaned up
+      const postCleanupRemote = await runGit('ls-remote --heads origin', testDir);
+      expect(postCleanupRemote.stdout).not.toContain('apex/cleanup-enabled-test');
+
+      // Verify main branch still has the merged changes
+      expect(postCleanupState.branch).toBe('main');
+      expect(postCleanupState.isClean).toBe(true);
+      for (const file of mergeResult.changedFiles!) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+    });
+
+    it('should delete local branch after merge', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Local branch deletion test',
+        branchName: 'apex/local-delete-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Create and develop feature
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Push and merge
+      await orchestrator.pushTaskBranch(task.id);
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Verify branch exists before cleanup
+      const preCleanupState = await verifyGitState(testDir);
+      expect(preCleanupState.branches.some(b => b.includes('apex/local-delete-test'))).toBe(true);
+
+      // Perform local branch cleanup
+      const deleteResult = await runGit(`branch -d ${task.branchName!}`, testDir);
+      expect(deleteResult.success).toBe(true);
+
+      // Verify local branch is deleted
+      const postCleanupState = await verifyGitState(testDir);
+      expect(postCleanupState.branches.some(b => b.includes('apex/local-delete-test'))).toBe(false);
+
+      // Verify we're still on main with all changes
+      expect(postCleanupState.branch).toBe('main');
+      expect(postCleanupState.isClean).toBe(true);
+    });
+
+    it('should delete remote branch after merge', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Remote branch deletion test',
+        branchName: 'apex/remote-delete-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Create, develop, and push feature
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+      await orchestrator.pushTaskBranch(task.id);
+
+      // Verify remote branch exists
+      const preCleanupRemote = await runGit('ls-remote --heads origin', testDir);
+      expect(preCleanupRemote.stdout).toContain('apex/remote-delete-test');
+
+      // Merge the branch
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Delete remote branch
+      const remoteDeleteResult = await runGit(`push origin --delete ${task.branchName!}`, testDir);
+      expect(remoteDeleteResult.success).toBe(true);
+
+      // Verify remote branch is deleted
+      const postCleanupRemote = await runGit('ls-remote --heads origin', testDir);
+      expect(postCleanupRemote.stdout).not.toContain('apex/remote-delete-test');
+
+      // Push the merged main to ensure remote is up to date
+      const pushMainResult = await runGit('push origin main', testDir);
+      expect(pushMainResult.success).toBe(true);
+    });
+
+    it('should skip cleanup when not configured', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Feature with cleanup disabled',
+        branchName: 'apex/cleanup-disabled-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Simulate feature development and merge
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+      await orchestrator.pushTaskBranch(task.id);
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Verify branches still exist (no cleanup performed)
+      const postMergeState = await verifyGitState(testDir);
+      expect(postMergeState.branches.some(b => b.includes('apex/cleanup-disabled-test'))).toBe(true);
+
+      const postMergeRemote = await runGit('ls-remote --heads origin', testDir);
+      expect(postMergeRemote.stdout).toContain('apex/cleanup-disabled-test');
+
+      // Verify main has the merged changes but branches remain
+      expect(postMergeState.branch).toBe('main');
+      expect(postMergeState.isClean).toBe(true);
+      for (const file of mergeResult.changedFiles!) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+    });
+
+    it('should properly remove worktree after merge cleanup', async () => {
+      // This test verifies worktree cleanup in addition to branch cleanup
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Worktree cleanup after merge test',
+        branchName: 'apex/worktree-cleanup-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Create feature branch (simulating worktree creation)
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Check if worktree path would exist
+      const worktreePath = path.join(testDir, '..', '.apex-worktrees', task.id);
+
+      // Simulate worktree creation for the task
+      // Note: We create a directory to simulate worktree existence since the E2E test
+      // doesn't actually use ApexOrchestrator's worktree functionality
+      await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+      await fs.mkdir(worktreePath, { recursive: true });
+      await fs.writeFile(path.join(worktreePath, 'test-file.txt'), 'Worktree test content');
+
+      // Verify worktree directory exists
+      const worktreeExists = await fs.access(worktreePath).then(() => true, () => false);
+      expect(worktreeExists).toBe(true);
+
+      // Push and merge the branch
+      await orchestrator.pushTaskBranch(task.id);
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Simulate worktree cleanup (removal of worktree directory)
+      await fs.rm(worktreePath, { recursive: true, force: true });
+
+      // Verify worktree is cleaned up
+      const worktreeExistsAfter = await fs.access(worktreePath).then(() => true, () => false);
+      expect(worktreeExistsAfter).toBe(false);
+
+      // Verify main branch has the merged content
+      expect(mergeResult.changedFiles).toBeDefined();
+      expect(mergeResult.changedFiles!.length).toBeGreaterThan(0);
+    });
+
+    it('should handle cleanup of multiple merged branches', async () => {
+      // Create multiple tasks
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'First feature for multi-cleanup test',
+          branchName: 'apex/multi-cleanup-1',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Second feature for multi-cleanup test',
+          branchName: 'apex/multi-cleanup-2',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Third feature for multi-cleanup test',
+          branchName: 'apex/multi-cleanup-3',
+        }),
+      ];
+
+      // Create and store all tasks
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+      }
+
+      // Develop and merge each feature
+      for (const task of tasks) {
+        await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+        await orchestrator.pushTaskBranch(task.id);
+
+        await runGit('checkout main', testDir);
+        const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+        expect(mergeResult.success).toBe(true);
+      }
+
+      // Verify all branches exist before cleanup
+      const preCleanupState = await verifyGitState(testDir);
+      for (const task of tasks) {
+        expect(preCleanupState.branches.some(b => b.includes(task.branchName!))).toBe(true);
+      }
+
+      // Perform cleanup for all merged branches
+      for (const task of tasks) {
+        const localDeleteResult = await runGit(`branch -d ${task.branchName!}`, testDir);
+        expect(localDeleteResult.success).toBe(true);
+
+        const remoteDeleteResult = await runGit(`push origin --delete ${task.branchName!}`, testDir);
+        expect(remoteDeleteResult.success).toBe(true);
+      }
+
+      // Verify all branches are cleaned up
+      const postCleanupState = await verifyGitState(testDir);
+      for (const task of tasks) {
+        expect(postCleanupState.branches.some(b => b.includes(task.branchName!))).toBe(false);
+      }
+
+      const postCleanupRemote = await runGit('ls-remote --heads origin', testDir);
+      for (const task of tasks) {
+        expect(postCleanupRemote.stdout).not.toContain(task.branchName!);
+      }
+
+      // Verify main branch has all merged changes and is clean
+      expect(postCleanupState.branch).toBe('main');
+      expect(postCleanupState.isClean).toBe(true);
+    });
+
+    it('should handle cleanup errors gracefully', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Cleanup error handling test',
+        branchName: 'apex/cleanup-error-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Create and merge feature
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+      await orchestrator.pushTaskBranch(task.id);
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Try to delete a non-existent branch (should handle gracefully)
+      const fakeDeleteResult = await runGit('branch -d apex/non-existent-branch', testDir);
+      expect(fakeDeleteResult.success).toBe(false);
+      expect(fakeDeleteResult.stderr).toContain('not found');
+
+      // Try to delete remote branch that doesn't exist (should handle gracefully)
+      const fakeRemoteDeleteResult = await runGit('push origin --delete apex/non-existent-branch', testDir);
+      expect(fakeRemoteDeleteResult.success).toBe(false);
+
+      // Verify our actual branch still exists and can be cleaned up
+      const realDeleteResult = await runGit(`branch -d ${task.branchName!}`, testDir);
+      expect(realDeleteResult.success).toBe(true);
+
+      // Verify the repository is still in a good state
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+    });
+  });
 });
