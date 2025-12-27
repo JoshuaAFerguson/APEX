@@ -554,4 +554,240 @@ describe('Templates API Focused Tests', () => {
       expect(body.tags).toEqual(manyTags);
     });
   });
+
+  // ============================================================================
+  // Missing Error Handling Tests for GET Endpoints
+  // ============================================================================
+
+  describe('GET /templates - Error Handling', () => {
+    it('should handle orchestrator errors gracefully', async () => {
+      // Mock orchestrator to throw an error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalListTemplates = mockOrchestrator.listTemplates;
+      mockOrchestrator.listTemplates = vi.fn().mockRejectedValue(new Error('Database connection failed'));
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Database connection failed');
+
+      // Restore original method
+      mockOrchestrator.listTemplates = originalListTemplates;
+    });
+
+    it('should handle non-Error exceptions from orchestrator', async () => {
+      // Mock orchestrator to throw a non-Error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalListTemplates = mockOrchestrator.listTemplates;
+      mockOrchestrator.listTemplates = vi.fn().mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Failed to list templates');
+
+      // Restore original method
+      mockOrchestrator.listTemplates = originalListTemplates;
+    });
+  });
+
+  describe('GET /templates/:id - Error Handling', () => {
+    it('should handle orchestrator errors gracefully', async () => {
+      // Mock orchestrator to throw an error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalGetTemplate = mockOrchestrator.getTemplate;
+      mockOrchestrator.getTemplate = vi.fn().mockRejectedValue(new Error('Database query failed'));
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates/test-id',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Database query failed');
+
+      // Restore original method
+      mockOrchestrator.getTemplate = originalGetTemplate;
+    });
+
+    it('should handle non-Error exceptions from orchestrator', async () => {
+      // Mock orchestrator to throw a non-Error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalGetTemplate = mockOrchestrator.getTemplate;
+      mockOrchestrator.getTemplate = vi.fn().mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates/test-id',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Failed to get template');
+
+      // Restore original method
+      mockOrchestrator.getTemplate = originalGetTemplate;
+    });
+
+    it('should handle very long template IDs', async () => {
+      const longId = 'x'.repeat(1000);
+      const response = await server.inject({
+        method: 'GET',
+        url: `/templates/${longId}`,
+      });
+
+      // Should still work - backend should handle long IDs gracefully
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template not found');
+    });
+  });
+
+  // ============================================================================
+  // Additional Edge Cases to Meet Acceptance Criteria
+  // ============================================================================
+
+  describe('GET Endpoints - Acceptance Criteria Validation', () => {
+    it('should return exact format for GET /templates with populated database', async () => {
+      // Create a few templates to test populated database
+      const templates = [
+        {
+          name: 'Template 1',
+          description: 'First template',
+          workflow: 'feature',
+          priority: 'high',
+          effort: 'large',
+          tags: ['test']
+        },
+        {
+          name: 'Template 2',
+          description: 'Second template',
+          workflow: 'bugfix',
+          priority: 'urgent',
+          effort: 'small'
+        }
+      ];
+
+      const createdTemplates = [];
+      for (const template of templates) {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: template,
+        });
+        expect(response.statusCode).toBe(201);
+        createdTemplates.push(JSON.parse(response.body));
+      }
+
+      // Test the GET /templates endpoint
+      const listResponse = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(listResponse.statusCode).toBe(200);
+      const body = JSON.parse(listResponse.body);
+
+      // Verify exact acceptance criteria format
+      expect(body).toHaveProperty('templates');
+      expect(body).toHaveProperty('count');
+      expect(Array.isArray(body.templates)).toBe(true);
+      expect(typeof body.count).toBe('number');
+      expect(body.count).toBe(body.templates.length);
+      expect(body.templates.length).toBeGreaterThanOrEqual(2);
+
+      // Verify each template has all required fields
+      body.templates.forEach((template: any) => {
+        expect(template).toHaveProperty('id');
+        expect(template).toHaveProperty('name');
+        expect(template).toHaveProperty('description');
+        expect(template).toHaveProperty('workflow');
+        expect(template).toHaveProperty('priority');
+        expect(template).toHaveProperty('effort');
+        expect(template).toHaveProperty('createdAt');
+        expect(template).toHaveProperty('updatedAt');
+      });
+    });
+
+    it('should return exact format for GET /templates/:id with existing template', async () => {
+      // Create a template
+      const createResponse = await server.inject({
+        method: 'POST',
+        url: '/templates',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {
+          name: 'Detail Test Template',
+          description: 'For testing detailed retrieval',
+          workflow: 'feature',
+          priority: 'normal',
+          effort: 'medium',
+          acceptanceCriteria: 'Should return complete template object',
+          tags: ['test', 'acceptance']
+        },
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      const createdTemplate = JSON.parse(createResponse.body);
+
+      // Test GET /templates/:id endpoint
+      const getResponse = await server.inject({
+        method: 'GET',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(getResponse.statusCode).toBe(200);
+      const retrievedTemplate = JSON.parse(getResponse.body);
+
+      // Verify it returns the complete template object (not wrapped)
+      expect(retrievedTemplate).toEqual(createdTemplate);
+      expect(retrievedTemplate.id).toBe(createdTemplate.id);
+      expect(retrievedTemplate.name).toBe('Detail Test Template');
+      expect(retrievedTemplate.description).toBe('For testing detailed retrieval');
+      expect(retrievedTemplate.workflow).toBe('feature');
+      expect(retrievedTemplate.priority).toBe('normal');
+      expect(retrievedTemplate.effort).toBe('medium');
+      expect(retrievedTemplate.acceptanceCriteria).toBe('Should return complete template object');
+      expect(retrievedTemplate.tags).toEqual(['test', 'acceptance']);
+    });
+
+    it('should demonstrate correct behavior with empty database', async () => {
+      // The empty database test is already covered in line 411-425
+      // This is just for clarity in meeting acceptance criteria
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+
+      // Verify empty database works correctly
+      expect(body).toEqual({
+        templates: [],
+        count: 0
+      });
+    });
+
+    it('should demonstrate 404 behavior for non-existent template', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/templates/non-existent-id-12345',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template not found');
+    });
+  });
 });
