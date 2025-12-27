@@ -4546,6 +4546,41 @@ Parent: ${parentTask.description}`;
     await this.ensureInitialized();
     return await this.store.getIterationHistory(taskId);
   }
+
+  /**
+   * Push a task's branch to the remote repository
+   */
+  async pushTaskBranch(taskId: string): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return { success: false, error: `Task not found: ${taskId}` };
+    }
+
+    if (!task.branchName) {
+      return { success: false, error: 'Task does not have a branch' };
+    }
+
+    try {
+      // Push to remote
+      await execAsync(`git push -u origin ${task.branchName}`, { cwd: this.projectPath });
+
+      await this.store.addLog(task.id, {
+        level: 'info',
+        message: `Pushed changes to origin/${task.branchName}`,
+      });
+
+      return { success: true };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Failed to push branch: ${errorMsg}`,
+      });
+      return { success: false, error: errorMsg };
+    }
+  }
 }
 
 export { TaskStore } from './store';

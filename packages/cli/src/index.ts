@@ -805,6 +805,46 @@ export const commands: Command[] = [
   },
 
   {
+    name: 'push',
+    aliases: ['p'],
+    description: 'Push task branch to remote origin',
+    usage: '/push <task_id>',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      const taskId = args[0];
+      if (!taskId) {
+        console.log(chalk.red('Usage: /push <task_id>'));
+        return;
+      }
+
+      const task = await ctx.orchestrator.getTask(taskId);
+      if (!task) {
+        console.log(chalk.red(`Task not found: ${taskId}`));
+        return;
+      }
+
+      if (!task.branchName) {
+        console.log(chalk.red('Task does not have a branch'));
+        return;
+      }
+
+      console.log(chalk.cyan(`\nPushing branch ${task.branchName} to remote...\n`));
+
+      const result = await ctx.orchestrator.pushTaskBranch(taskId);
+
+      if (result.success) {
+        console.log(chalk.green(`✓ Successfully pushed ${task.branchName} to origin`));
+      } else {
+        console.log(chalk.red(`Failed to push: ${result.error}`));
+      }
+    },
+  },
+
+  {
     name: 'run',
     aliases: ['r'],
     description: 'Run a task with specific options',

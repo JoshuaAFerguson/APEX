@@ -3443,4 +3443,101 @@ You are a developer agent that implements code changes.
       (orchestrator as any).effectiveConfig = originalEffectiveConfig;
     });
   });
+
+  describe('pushTaskBranch', () => {
+    beforeEach(() => {
+      // Reset exec mock behavior
+      execMockBehavior = {};
+    });
+
+    it('should successfully push a task branch', async () => {
+      await orchestrator.initialize();
+
+      const task = await orchestrator.createTask({
+        description: 'Test task for push',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-branch',
+      });
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should fail when task is not found', async () => {
+      await orchestrator.initialize();
+
+      const result = await orchestrator.pushTaskBranch('non-existent-task');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Task not found: non-existent-task');
+    });
+
+    it('should fail when task has no branch', async () => {
+      await orchestrator.initialize();
+
+      const task = await orchestrator.createTask({
+        description: 'Test task without branch',
+        workflow: 'feature',
+      });
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Task does not have a branch');
+    });
+
+    it('should handle git push failures gracefully', async () => {
+      await orchestrator.initialize();
+
+      const task = await orchestrator.createTask({
+        description: 'Test task for failed push',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-branch-fail',
+      });
+
+      // Mock git push to fail
+      execMockBehavior['git push'] = {
+        error: new Error('fatal: remote origin does not exist'),
+      };
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('fatal: remote origin does not exist');
+    });
+
+    it('should handle network errors during push', async () => {
+      await orchestrator.initialize();
+
+      const task = await orchestrator.createTask({
+        description: 'Test task for network error',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-network-error',
+      });
+
+      // Mock git push to fail with network error
+      execMockBehavior['git push'] = {
+        error: new Error('fatal: unable to access repository: Could not resolve host'),
+      };
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('unable to access repository');
+    });
+  });
 });
