@@ -4550,7 +4550,7 @@ Parent: ${parentTask.description}`;
   /**
    * Push a task's branch to the remote repository
    */
-  async pushTaskBranch(taskId: string): Promise<{ success: boolean; error?: string }> {
+  async pushTaskBranch(taskId: string): Promise<{ success: boolean; error?: string; remoteBranch?: string }> {
     await this.ensureInitialized();
 
     const task = await this.store.getTask(taskId);
@@ -4563,21 +4563,26 @@ Parent: ${parentTask.description}`;
     }
 
     try {
-      // Push to remote
-      await execAsync(`git push -u origin ${task.branchName}`, { cwd: this.projectPath });
+      // Use existing gitPushTask method which includes build/test validation
+      const success = await this.gitPushTask(task);
 
-      await this.store.addLog(task.id, {
-        level: 'info',
-        message: `Pushed changes to origin/${task.branchName}`,
-      });
+      if (success) {
+        return {
+          success: true,
+          remoteBranch: `origin/${task.branchName}`
+        };
+      } else {
+        // gitPushTask returned false - check if it's due to configuration or validation
+        const logs = await this.store.getLogs(taskId);
+        const recentErrorLog = logs
+          .filter(log => log.level === 'error' || log.level === 'warn')
+          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0];
 
-      return { success: true };
+        const errorMessage = recentErrorLog?.message || 'Push failed - check task logs for details';
+        return { success: false, error: errorMessage };
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      await this.store.addLog(task.id, {
-        level: 'error',
-        message: `Failed to push branch: ${errorMsg}`,
-      });
       return { success: false, error: errorMsg };
     }
   }

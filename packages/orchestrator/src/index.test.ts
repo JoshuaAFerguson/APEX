@@ -3453,6 +3453,13 @@ You are a developer agent that implements code changes.
     it('should successfully push a task branch', async () => {
       await orchestrator.initialize();
 
+      // Enable git push after task
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = true;
+
+      // Mock successful build and test validation
+      const originalValidateBuildAndTests = (orchestrator as any).validateBuildAndTests;
+      (orchestrator as any).validateBuildAndTests = vi.fn().mockResolvedValue({ success: true });
+
       const task = await orchestrator.createTask({
         description: 'Test task for push',
         workflow: 'feature',
@@ -3467,6 +3474,10 @@ You are a developer agent that implements code changes.
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
+      expect(result.remoteBranch).toBe('origin/feature/test-branch');
+
+      // Restore original method
+      (orchestrator as any).validateBuildAndTests = originalValidateBuildAndTests;
     });
 
     it('should fail when task is not found', async () => {
@@ -3495,6 +3506,13 @@ You are a developer agent that implements code changes.
     it('should handle git push failures gracefully', async () => {
       await orchestrator.initialize();
 
+      // Enable git push after task
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = true;
+
+      // Mock successful build and test validation but failed git push
+      const originalValidateBuildAndTests = (orchestrator as any).validateBuildAndTests;
+      (orchestrator as any).validateBuildAndTests = vi.fn().mockResolvedValue({ success: true });
+
       const task = await orchestrator.createTask({
         description: 'Test task for failed push',
         workflow: 'feature',
@@ -3513,11 +3531,21 @@ You are a developer agent that implements code changes.
       const result = await orchestrator.pushTaskBranch(task.id);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('fatal: remote origin does not exist');
+      expect(result.error).toContain('Failed to push changes');
+
+      // Restore original method
+      (orchestrator as any).validateBuildAndTests = originalValidateBuildAndTests;
     });
 
     it('should handle network errors during push', async () => {
       await orchestrator.initialize();
+
+      // Enable git push after task
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = true;
+
+      // Mock successful build and test validation but failed git push
+      const originalValidateBuildAndTests = (orchestrator as any).validateBuildAndTests;
+      (orchestrator as any).validateBuildAndTests = vi.fn().mockResolvedValue({ success: true });
 
       const task = await orchestrator.createTask({
         description: 'Test task for network error',
@@ -3537,7 +3565,92 @@ You are a developer agent that implements code changes.
       const result = await orchestrator.pushTaskBranch(task.id);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('unable to access repository');
+      expect(result.error).toContain('Failed to push changes');
+
+      // Restore original method
+      (orchestrator as any).validateBuildAndTests = originalValidateBuildAndTests;
+    });
+
+    it('should fail when git push is disabled in configuration', async () => {
+      await orchestrator.initialize();
+
+      // Disable git push after task (default behavior)
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = false;
+
+      const task = await orchestrator.createTask({
+        description: 'Test task with push disabled',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-push-disabled',
+      });
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Push failed - check task logs for details');
+    });
+
+    it('should handle exceptions thrown by gitPushTask', async () => {
+      await orchestrator.initialize();
+
+      // Enable git push after task
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = true;
+
+      // Mock gitPushTask to throw an exception
+      const originalGitPushTask = (orchestrator as any).gitPushTask;
+      (orchestrator as any).gitPushTask = vi.fn().mockRejectedValue(new Error('Unexpected git error'));
+
+      const task = await orchestrator.createTask({
+        description: 'Test task for exception handling',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-exception',
+      });
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Unexpected git error');
+
+      // Restore original method
+      (orchestrator as any).gitPushTask = originalGitPushTask;
+    });
+
+    it('should handle build/test validation failures', async () => {
+      await orchestrator.initialize();
+
+      // Enable git push after task
+      (orchestrator as any).effectiveConfig.git.pushAfterTask = true;
+
+      // Mock gitPushTask to throw build validation error (simulating validateBuildAndTests failure)
+      const originalGitPushTask = (orchestrator as any).gitPushTask;
+      (orchestrator as any).gitPushTask = vi.fn().mockRejectedValue(
+        new Error('Pre-push validation failed: Build failed\n\nnpm run build exited with code 1')
+      );
+
+      const task = await orchestrator.createTask({
+        description: 'Test task for build validation failure',
+        workflow: 'feature',
+      });
+
+      // Update the task to have a branch name
+      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
+        branchName: 'feature/test-build-fail',
+      });
+
+      const result = await orchestrator.pushTaskBranch(task.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Pre-push validation failed: Build failed');
+
+      // Restore original method
+      (orchestrator as any).gitPushTask = originalGitPushTask;
     });
   });
 });
