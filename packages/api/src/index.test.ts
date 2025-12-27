@@ -34,8 +34,22 @@ vi.mock('@apex/orchestrator', () => {
     project: { name: 'test-project' },
   };
 
+  const mockTemplate = {
+    id: 'template_test_123',
+    name: 'Test Template',
+    description: 'A test template for testing',
+    workflow: 'feature',
+    priority: 'normal' as const,
+    effort: 'medium' as const,
+    acceptanceCriteria: 'Should pass all tests',
+    tags: ['test'],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   class MockOrchestrator {
     private tasks: Map<string, typeof mockTask> = new Map();
+    private templates: Map<string, typeof mockTemplate> = new Map();
     private listeners: Map<string, Function[]> = new Map();
 
     async initialize() {}
@@ -124,6 +138,26 @@ vi.mock('@apex/orchestrator', () => {
 
     async listArchivedTasks() {
       return Array.from(this.tasks.values()).filter(task => task.archivedAt);
+    }
+
+    // Template management methods
+    async createTemplate(data: Omit<typeof mockTemplate, 'id' | 'createdAt' | 'updatedAt'>) {
+      const template = {
+        ...data,
+        id: `template_${Date.now()}_test`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.templates.set(template.id, template);
+      return template;
+    }
+
+    async listTemplates() {
+      return Array.from(this.templates.values());
+    }
+
+    async getTemplate(id: string) {
+      return this.templates.get(id) || null;
     }
 
     async getAgents() {
@@ -1266,6 +1300,365 @@ describe('API Server', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.tasks).toBeInstanceOf(Array);
+    });
+  });
+
+  describe('Templates API', () => {
+    describe('POST /templates', () => {
+      it('should create a new template', async () => {
+        const templateData = {
+          name: 'Test Template',
+          description: 'A test template for automated testing',
+          workflow: 'feature',
+          priority: 'normal',
+          effort: 'medium',
+          acceptanceCriteria: 'Should work correctly',
+          tags: ['test', 'automation']
+        };
+
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: templateData,
+        });
+
+        expect(response.statusCode).toBe(201);
+        const body = JSON.parse(response.body);
+        expect(body.id).toBeDefined();
+        expect(body.name).toBe(templateData.name);
+        expect(body.description).toBe(templateData.description);
+        expect(body.workflow).toBe(templateData.workflow);
+        expect(body.priority).toBe(templateData.priority);
+        expect(body.effort).toBe(templateData.effort);
+        expect(body.acceptanceCriteria).toBe(templateData.acceptanceCriteria);
+        expect(body.tags).toEqual(templateData.tags);
+        expect(body.createdAt).toBeDefined();
+        expect(body.updatedAt).toBeDefined();
+      });
+
+      it('should create a template with minimal required fields', async () => {
+        const templateData = {
+          name: 'Minimal Template',
+          description: 'A minimal template',
+          workflow: 'bugfix'
+        };
+
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: templateData,
+        });
+
+        expect(response.statusCode).toBe(201);
+        const body = JSON.parse(response.body);
+        expect(body.name).toBe(templateData.name);
+        expect(body.description).toBe(templateData.description);
+        expect(body.workflow).toBe(templateData.workflow);
+        expect(body.priority).toBe('normal'); // default
+        expect(body.effort).toBe('medium'); // default
+        expect(body.tags).toEqual([]); // default
+      });
+
+      it('should return 400 for missing name', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            description: 'Missing name template',
+            workflow: 'feature'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template name is required');
+      });
+
+      it('should return 400 for empty name', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: '  ',
+            description: 'Empty name template',
+            workflow: 'feature'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template name is required');
+      });
+
+      it('should return 400 for missing description', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Test Template',
+            workflow: 'feature'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template description is required');
+      });
+
+      it('should return 400 for missing workflow', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Test Template',
+            description: 'A test template'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Workflow is required');
+      });
+
+      it('should return 400 for name too long', async () => {
+        const longName = 'x'.repeat(101);
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: longName,
+            description: 'A test template',
+            workflow: 'feature'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template name must be 100 characters or less');
+      });
+
+      it('should return 400 for invalid priority', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Test Template',
+            description: 'A test template',
+            workflow: 'feature',
+            priority: 'invalid'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Priority must be one of: low, normal, high, urgent');
+      });
+
+      it('should return 400 for invalid effort', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Test Template',
+            description: 'A test template',
+            workflow: 'feature',
+            effort: 'invalid'
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Effort must be one of: xs, small, medium, large, xl');
+      });
+    });
+
+    describe('GET /templates', () => {
+      it('should list all templates', async () => {
+        // Create a couple of templates first
+        await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Template 1',
+            description: 'First template',
+            workflow: 'feature'
+          },
+        });
+
+        await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Template 2',
+            description: 'Second template',
+            workflow: 'bugfix'
+          },
+        });
+
+        const response = await server.inject({
+          method: 'GET',
+          url: '/templates',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.templates).toBeInstanceOf(Array);
+        expect(body.templates.length).toBe(2);
+        expect(body.count).toBe(2);
+        expect(body.templates[0]).toHaveProperty('id');
+        expect(body.templates[0]).toHaveProperty('name');
+        expect(body.templates[0]).toHaveProperty('description');
+        expect(body.templates[0]).toHaveProperty('workflow');
+      });
+
+      it('should return empty array when no templates exist', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/templates',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.templates).toBeInstanceOf(Array);
+        expect(body.templates.length).toBe(0);
+        expect(body.count).toBe(0);
+      });
+    });
+
+    describe('GET /templates/:id', () => {
+      it('should get template by ID', async () => {
+        // Create a template first
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: 'Get Test Template',
+            description: 'Template for get test',
+            workflow: 'feature',
+            priority: 'high',
+            effort: 'large'
+          },
+        });
+
+        const createdTemplate = JSON.parse(createResponse.body);
+
+        // Get the template by ID
+        const response = await server.inject({
+          method: 'GET',
+          url: `/templates/${createdTemplate.id}`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.id).toBe(createdTemplate.id);
+        expect(body.name).toBe('Get Test Template');
+        expect(body.description).toBe('Template for get test');
+        expect(body.workflow).toBe('feature');
+        expect(body.priority).toBe('high');
+        expect(body.effort).toBe('large');
+      });
+
+      it('should return 404 for non-existent template', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/templates/non-existent-id',
+        });
+
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template not found');
+      });
+
+      it('should return 400 for empty template ID', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/templates/ ',
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template ID is required');
+      });
+    });
+
+    describe('Templates workflow integration', () => {
+      it('should handle complete template lifecycle: create -> list -> get', async () => {
+        // 1. Create template
+        const templateData = {
+          name: 'Lifecycle Template',
+          description: 'Template for lifecycle test',
+          workflow: 'feature',
+          priority: 'urgent',
+          effort: 'xl',
+          acceptanceCriteria: 'Must work end-to-end',
+          tags: ['lifecycle', 'test', 'e2e']
+        };
+
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: templateData,
+        });
+
+        expect(createResponse.statusCode).toBe(201);
+        const createdTemplate = JSON.parse(createResponse.body);
+
+        // 2. Verify template appears in list
+        const listResponse = await server.inject({
+          method: 'GET',
+          url: '/templates',
+        });
+
+        expect(listResponse.statusCode).toBe(200);
+        const listBody = JSON.parse(listResponse.body);
+        expect(listBody.templates.some((t: any) => t.id === createdTemplate.id)).toBe(true);
+
+        // 3. Get template by ID and verify all data
+        const getResponse = await server.inject({
+          method: 'GET',
+          url: `/templates/${createdTemplate.id}`,
+        });
+
+        expect(getResponse.statusCode).toBe(200);
+        const getBody = JSON.parse(getResponse.body);
+        expect(getBody).toEqual(createdTemplate);
+      });
+
+      it('should preserve whitespace trimming in template data', async () => {
+        const templateData = {
+          name: '  Whitespace Test  ',
+          description: '  Test description with spaces  ',
+          workflow: '  feature  ',
+          acceptanceCriteria: '  Should trim spaces  '
+        };
+
+        const response = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: templateData,
+        });
+
+        expect(response.statusCode).toBe(201);
+        const body = JSON.parse(response.body);
+        expect(body.name).toBe('Whitespace Test');
+        expect(body.description).toBe('Test description with spaces');
+        expect(body.workflow).toBe('feature');
+        expect(body.acceptanceCriteria).toBe('Should trim spaces');
+      });
     });
   });
 

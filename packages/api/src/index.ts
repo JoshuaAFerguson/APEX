@@ -13,6 +13,7 @@ import {
   ApexEvent,
   SubtaskStrategy,
   SubtaskDefinition,
+  TaskTemplate,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apex/orchestrator';
 
@@ -20,6 +21,17 @@ import { ApexOrchestrator } from '@apex/orchestrator';
 interface DecomposeTaskRequest {
   subtasks: SubtaskDefinition[];
   strategy?: SubtaskStrategy;
+}
+
+// Template API request types
+interface CreateTemplateRequest {
+  name: string;
+  description: string;
+  workflow: string;
+  priority?: string;
+  effort?: string;
+  acceptanceCriteria?: string;
+  tags?: string[];
 }
 
 // WebSocket client tracking
@@ -689,6 +701,94 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // ============================================================================
+  // Templates API
+  // ============================================================================
+
+  // Create a new template
+  app.post<{ Body: CreateTemplateRequest }>('/templates', async (request, reply) => {
+    const { name, description, workflow, priority, effort, acceptanceCriteria, tags } = request.body;
+
+    // Validate required fields
+    if (!name || !name.trim()) {
+      return reply.status(400).send({ error: 'Template name is required' });
+    }
+    if (!description || !description.trim()) {
+      return reply.status(400).send({ error: 'Template description is required' });
+    }
+    if (!workflow || !workflow.trim()) {
+      return reply.status(400).send({ error: 'Workflow is required' });
+    }
+
+    // Validate name length
+    if (name.length > 100) {
+      return reply.status(400).send({ error: 'Template name must be 100 characters or less' });
+    }
+
+    // Validate priority if provided
+    if (priority && !['low', 'normal', 'high', 'urgent'].includes(priority)) {
+      return reply.status(400).send({ error: 'Priority must be one of: low, normal, high, urgent' });
+    }
+
+    // Validate effort if provided
+    if (effort && !['xs', 'small', 'medium', 'large', 'xl'].includes(effort)) {
+      return reply.status(400).send({ error: 'Effort must be one of: xs, small, medium, large, xl' });
+    }
+
+    try {
+      const template = await orchestrator.createTemplate({
+        name: name.trim(),
+        description: description.trim(),
+        workflow: workflow.trim(),
+        priority: priority as any || 'normal',
+        effort: effort as any || 'medium',
+        acceptanceCriteria: acceptanceCriteria?.trim(),
+        tags: tags || [],
+      });
+
+      return reply.status(201).send(template);
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to create template'
+      });
+    }
+  });
+
+  // List all templates
+  app.get('/templates', async (request, reply) => {
+    try {
+      const templates = await orchestrator.listTemplates();
+      return { templates, count: templates.length };
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to list templates'
+      });
+    }
+  });
+
+  // Get template by ID
+  app.get<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
+    const { id } = request.params;
+
+    if (!id || !id.trim()) {
+      return reply.status(400).send({ error: 'Template ID is required' });
+    }
+
+    try {
+      const template = await orchestrator.getTemplate(id);
+
+      if (!template) {
+        return reply.status(404).send({ error: 'Template not found' });
+      }
+
+      return template;
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to get template'
+      });
+    }
+  });
+
+  // ============================================================================
   // WebSocket for real-time streaming
   // ============================================================================
 
@@ -929,6 +1029,11 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /tasks/:id/gates/:n       - Check gate status`);
       console.log(`  POST   /tasks/:id/gates/:n/approve - Approve gate`);
       console.log(`  POST   /tasks/:id/gates/:n/reject  - Reject gate`);
+      console.log('');
+      console.log('Template Endpoints:');
+      console.log(`  POST   /templates                - Create a new template`);
+      console.log(`  GET    /templates                - List all templates`);
+      console.log(`  GET    /templates/:id            - Get template by ID`);
       console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /agents                   - List agents`);
