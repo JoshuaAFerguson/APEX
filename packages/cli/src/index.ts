@@ -18,6 +18,7 @@ import {
   formatDuration,
   getEffectiveConfig,
   ApexConfig,
+  Task,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -2018,7 +2019,369 @@ export const commands: Command[] = [
       await handleUninstallService(ctx, args);
     },
   },
+  {
+    name: 'diff',
+    aliases: ['d'],
+    description: 'Show code changes made by a task',
+    usage: '/diff <task_id> [--stat] [--file <path>] [--staged]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length < 1) {
+        console.log(chalk.red('Usage: /diff <task_id> [--stat] [--file <path>] [--staged]'));
+        console.log(chalk.gray('\nOptions:'));
+        console.log(chalk.gray('  --stat           Show diff statistics (files changed, lines added/removed)'));
+        console.log(chalk.gray('  --file <path>    Show diff for specific file only'));
+        console.log(chalk.gray('  --staged         Show what will be committed (working directory changes)'));
+        console.log(chalk.gray('\nExamples:'));
+        console.log(chalk.gray('  /diff abc123                     Show all changes made by task'));
+        console.log(chalk.gray('  /diff abc123 --stat              Show change statistics'));
+        console.log(chalk.gray('  /diff abc123 --file src/app.js   Show changes to specific file'));
+        console.log(chalk.gray('  /diff abc123 --staged            Show staged/uncommitted changes'));
+        return;
+      }
+
+      const taskId = args[0];
+
+      // Parse options
+      let showStat = false;
+      let specificFile: string | null = null;
+      let showStaged = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--stat') {
+          showStat = true;
+        } else if (args[i] === '--file' && args[i + 1]) {
+          specificFile = args[++i];
+        } else if (args[i] === '--staged') {
+          showStaged = true;
+        }
+      }
+
+      try {
+        const task = await ctx.orchestrator.getTask(taskId);
+        if (!task) {
+          console.log(chalk.red(`❌ Task ${taskId} not found`));
+          return;
+        }
+
+        console.log(chalk.blue(`📋 Code changes for task ${task.id.substring(0, 12)}:`));
+        console.log(chalk.gray(`   Description: ${task.description}`));
+        console.log(chalk.gray(`   Status: ${task.status}`));
+        console.log();
+
+        if (showStaged) {
+          await showStagedChanges(task);
+          return;
+        }
+
+        if (showStat) {
+          await showDiffStats(task, specificFile);
+        } else {
+          await showDetailedDiff(task, specificFile);
+        }
+
+      } catch (error) {
+        console.log(chalk.red(`❌ Failed to show diff: ${(error as Error).message}`));
+      }
+    },
+  },
 ];
+
+// ============================================================================
+// Diff Helper Functions
+// ============================================================================
+
+async function showDetailedDiff(task: Task, specificFile?: string | null): Promise<void> {
+  const { spawn } = await import('child_process');
+  const projectPath = process.cwd();
+
+  // Get changes from iteration history first
+  if (task.iterationHistory?.entries.length) {
+    console.log(chalk.cyan('📝 Changes from iteration history:'));
+    console.log();
+
+    for (const entry of task.iterationHistory.entries) {
+      if (entry.diffSummary || entry.modifiedFiles) {
+        console.log(chalk.yellow(`Iteration ${entry.id.split('-').pop()}:`));
+        console.log(chalk.gray(`  Feedback: ${entry.feedback.substring(0, 100)}${entry.feedback.length > 100 ? '...' : ''}`));
+
+        if (entry.diffSummary) {
+          console.log(chalk.gray(`  Changes: ${entry.diffSummary}`));
+        }
+
+        if (entry.modifiedFiles?.length) {
+          console.log(chalk.gray(`  Files modified: ${entry.modifiedFiles.join(', ')}`));
+        }
+        console.log();
+      }
+    }
+  }
+
+  // Check for artifacts with type 'diff'
+  const diffArtifacts = task.artifacts.filter(a => a.type === 'diff');
+  if (diffArtifacts.length > 0) {
+    console.log(chalk.cyan('📄 Diff artifacts:'));
+    console.log();
+
+    for (const artifact of diffArtifacts) {
+      if (specificFile && artifact.path && !artifact.path.includes(specificFile)) {
+        continue;
+      }
+
+      console.log(chalk.yellow(`${artifact.name}:`));
+      if (artifact.path) {
+        console.log(chalk.gray(`  File: ${artifact.path}`));
+      }
+
+      if (artifact.content) {
+        // Display the diff content with syntax highlighting
+        console.log(chalk.gray(artifact.content));
+      }
+      console.log();
+    }
+  }
+
+  // Fall back to git diff if we have a branch
+  if (task.branchName) {
+    console.log(chalk.cyan('🔀 Git changes:'));
+    console.log();
+
+    try {
+      const args = ['diff', 'main...HEAD'];
+      if (specificFile) {
+        args.push('--', specificFile);
+      }
+
+      const gitProcess = spawn('git', args, {
+        cwd: projectPath,
+        stdio: ['inherit', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      gitProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      await new Promise<void>((resolve) => {
+        gitProcess.on('close', (code) => {
+          if (output.trim()) {
+            // Simple syntax highlighting for diff output
+            const lines = output.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('+++') || line.startsWith('---')) {
+                console.log(chalk.cyan(line));
+              } else if (line.startsWith('+')) {
+                console.log(chalk.green(line));
+              } else if (line.startsWith('-')) {
+                console.log(chalk.red(line));
+              } else if (line.startsWith('@@')) {
+                console.log(chalk.magenta(line));
+              } else {
+                console.log(chalk.gray(line));
+              }
+            }
+          } else {
+            console.log(chalk.gray('No git changes found.'));
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.log(chalk.yellow('⚠️  Could not fetch git diff'));
+    }
+  }
+
+  // Show file artifacts
+  const fileArtifacts = task.artifacts.filter(a => a.type === 'file');
+  if (fileArtifacts.length > 0 && !specificFile) {
+    console.log(chalk.cyan('📁 Modified files:'));
+    console.log();
+
+    for (const artifact of fileArtifacts) {
+      console.log(chalk.gray(`  ${artifact.name}${artifact.path ? ` (${artifact.path})` : ''}`));
+    }
+    console.log();
+  }
+
+  if (!task.iterationHistory?.entries.length && !diffArtifacts.length && !task.branchName) {
+    console.log(chalk.yellow('⚠️  No diff information available for this task.'));
+    console.log(chalk.gray('The task may not have made any code changes yet.'));
+  }
+}
+
+async function showDiffStats(task: Task, specificFile?: string | null): Promise<void> {
+  const { spawn } = await import('child_process');
+  const projectPath = process.cwd();
+
+  let totalFiles = 0;
+  let totalAdditions = 0;
+  let totalDeletions = 0;
+
+  // Analyze artifacts
+  const diffArtifacts = task.artifacts.filter(a => a.type === 'diff');
+  const fileArtifacts = task.artifacts.filter(a => a.type === 'file');
+
+  console.log(chalk.blue('📊 Change Statistics:'));
+  console.log();
+
+  if (task.iterationHistory?.entries.length) {
+    const iterationsWithChanges = task.iterationHistory.entries.filter(e => e.modifiedFiles?.length);
+    if (iterationsWithChanges.length > 0) {
+      const allModifiedFiles = new Set<string>();
+      iterationsWithChanges.forEach(e => {
+        e.modifiedFiles?.forEach(f => allModifiedFiles.add(f));
+      });
+
+      console.log(chalk.cyan('From iteration history:'));
+      console.log(chalk.gray(`  Iterations with changes: ${iterationsWithChanges.length}`));
+      console.log(chalk.gray(`  Files modified: ${allModifiedFiles.size}`));
+      console.log();
+    }
+  }
+
+  // Get git stats if we have a branch
+  if (task.branchName) {
+    try {
+      const args = ['diff', '--stat', 'main...HEAD'];
+      if (specificFile) {
+        args.push('--', specificFile);
+      }
+
+      const gitProcess = spawn('git', args, {
+        cwd: projectPath,
+        stdio: ['inherit', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      gitProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      await new Promise<void>((resolve) => {
+        gitProcess.on('close', (code) => {
+          if (output.trim()) {
+            console.log(chalk.cyan('Git diff statistics:'));
+            console.log(chalk.gray(output));
+          } else {
+            console.log(chalk.gray('No git changes found.'));
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.log(chalk.yellow('⚠️  Could not fetch git diff stats'));
+    }
+  }
+
+  // Show artifact counts
+  if (diffArtifacts.length > 0 || fileArtifacts.length > 0) {
+    console.log(chalk.cyan('Task artifacts:'));
+    if (diffArtifacts.length > 0) {
+      console.log(chalk.gray(`  Diff artifacts: ${diffArtifacts.length}`));
+    }
+    if (fileArtifacts.length > 0) {
+      console.log(chalk.gray(`  File artifacts: ${fileArtifacts.length}`));
+    }
+    console.log();
+  }
+
+  if (!task.iterationHistory?.entries.length && !task.branchName && diffArtifacts.length === 0) {
+    console.log(chalk.yellow('⚠️  No change statistics available for this task.'));
+  }
+}
+
+async function showStagedChanges(task: Task): Promise<void> {
+  const { spawn } = await import('child_process');
+  const projectPath = process.cwd();
+
+  console.log(chalk.blue('🚀 Staged/Working Directory Changes:'));
+  console.log();
+
+  try {
+    // Check working directory status
+    const statusProcess = spawn('git', ['status', '--porcelain'], {
+      cwd: projectPath,
+      stdio: ['inherit', 'pipe', 'pipe']
+    });
+
+    let statusOutput = '';
+    statusProcess.stdout?.on('data', (data) => {
+      statusOutput += data.toString();
+    });
+
+    await new Promise<void>((resolve) => {
+      statusProcess.on('close', () => {
+        if (statusOutput.trim()) {
+          console.log(chalk.cyan('Working directory changes:'));
+          const lines = statusOutput.trim().split('\n');
+          for (const line of lines) {
+            const status = line.substring(0, 2);
+            const file = line.substring(3);
+
+            let statusColor = chalk.gray;
+            let statusText = '';
+
+            if (status.includes('M')) statusColor = chalk.yellow, statusText = 'Modified';
+            if (status.includes('A')) statusColor = chalk.green, statusText = 'Added';
+            if (status.includes('D')) statusColor = chalk.red, statusText = 'Deleted';
+            if (status.includes('R')) statusColor = chalk.blue, statusText = 'Renamed';
+            if (status.includes('C')) statusColor = chalk.blue, statusText = 'Copied';
+            if (status.includes('U')) statusColor = chalk.magenta, statusText = 'Unmerged';
+            if (status.includes('?')) statusColor = chalk.cyan, statusText = 'Untracked';
+
+            console.log(statusColor(`  ${status} ${file} ${statusText ? `(${statusText})` : ''}`));
+          }
+        } else {
+          console.log(chalk.gray('No staged or working directory changes.'));
+        }
+        console.log();
+        resolve();
+      });
+    });
+
+    // Show staged changes diff
+    const stagedProcess = spawn('git', ['diff', '--staged'], {
+      cwd: projectPath,
+      stdio: ['inherit', 'pipe', 'pipe']
+    });
+
+    let stagedOutput = '';
+    stagedProcess.stdout?.on('data', (data) => {
+      stagedOutput += data.toString();
+    });
+
+    await new Promise<void>((resolve) => {
+      stagedProcess.on('close', () => {
+        if (stagedOutput.trim()) {
+          console.log(chalk.cyan('Staged changes (ready to commit):'));
+          // Simple syntax highlighting for diff output
+          const lines = stagedOutput.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('+++') || line.startsWith('---')) {
+              console.log(chalk.cyan(line));
+            } else if (line.startsWith('+')) {
+              console.log(chalk.green(line));
+            } else if (line.startsWith('-')) {
+              console.log(chalk.red(line));
+            } else if (line.startsWith('@@')) {
+              console.log(chalk.magenta(line));
+            } else {
+              console.log(chalk.gray(line));
+            }
+          }
+        }
+        resolve();
+      });
+    });
+
+  } catch (error) {
+    console.log(chalk.yellow('⚠️  Could not check staged changes'));
+  }
+}
 
 // ============================================================================
 // Task Execution
@@ -2855,6 +3218,7 @@ ${chalk.bold('Commands:')}
   logs <task_id>          Show task logs
   cancel <task_id>        Cancel a running task
   retry <task_id>         Retry a failed task
+  diff <task_id>          Show code changes made by a task
   checkout <task_id>      Switch to task worktree or manage worktrees
                           Also supports: checkout --list, checkout --cleanup [<task_id>]
   shell <task_id>         Attach interactive shell to running task container
