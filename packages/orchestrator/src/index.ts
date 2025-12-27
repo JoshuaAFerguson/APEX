@@ -3053,6 +3053,33 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Restore a task from trash
+   * The task will be restored to pending status and removed from trash
+   */
+  async restoreTask(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    // Validate task exists and is trashed
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    if (!task.trashedAt) {
+      throw new Error(`Task with ID ${taskId} is not in trash`);
+    }
+
+    // Restore the task from trash
+    await this.store.restoreFromTrash(taskId);
+
+    // Get the restored task and emit event
+    const restoredTask = await this.store.getTask(taskId);
+    if (restoredTask) {
+      this.emit('task:restored', restoredTask);
+    }
+  }
+
+  /**
    * Execute multiple tasks concurrently
    * Returns when all tasks are complete (or failed)
    */
