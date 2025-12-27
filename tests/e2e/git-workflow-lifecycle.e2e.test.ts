@@ -1223,4 +1223,575 @@ describe('E2E: Complete Git Workflow Lifecycle', () => {
       expect(finalState.isClean).toBe(true);
     });
   });
+
+  describe('Multiple Task Workflows in Sequence', () => {
+    beforeEach(async () => {
+      // Setup complete environment with remote for sequence testing
+      await initGitRepo(bareRepoDir, true);
+      await initGitRepo(testDir);
+      await createApexConfig(testDir);
+      await runGit(`remote add origin ${bareRepoDir}`, testDir);
+
+      // Create and push initial commit
+      await fs.writeFile(path.join(testDir, 'README.md'), '# Sequential Task Workflows Test Project\n');
+      await runGit('add README.md', testDir);
+      await runGit('commit -m "Initial commit"', testDir);
+      await runGit('push -u origin main', testDir);
+
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
+      await orchestrator.initialize();
+    });
+
+    it('should process two tasks sequentially with separate branches', async () => {
+      // Create two tasks for sequential processing
+      const task1 = createTestTask({
+        projectPath: testDir,
+        description: 'Implement authentication system',
+        branchName: 'apex/auth-system-seq-1',
+      });
+
+      const task2 = createTestTask({
+        projectPath: testDir,
+        description: 'Add user profile management',
+        branchName: 'apex/user-profile-seq-1',
+      });
+
+      // Store both tasks
+      await orchestrator.store.createTask(task1);
+      await orchestrator.store.createTask(task2);
+
+      // Verify initial state is clean
+      const initialState = await verifyGitState(testDir);
+      expect(initialState.branch).toBe('main');
+      expect(initialState.isClean).toBe(true);
+
+      // Execute first task workflow completely
+      await simulateFeatureDevelopment(testDir, task1.branchName!, task1.description);
+      const push1Result = await orchestrator.pushTaskBranch(task1.id);
+      expect(push1Result.success).toBe(true);
+
+      await runGit('checkout main', testDir);
+      const merge1Result = await orchestrator.mergeTaskBranch(task1.id);
+      expect(merge1Result.success).toBe(true);
+      expect(merge1Result.conflicted).toBeFalsy();
+
+      await orchestrator.updateTaskStatus(task1.id, 'completed');
+
+      // Verify repository state after first task
+      const midState = await verifyGitState(testDir);
+      expect(midState.branch).toBe('main');
+      expect(midState.isClean).toBe(true);
+
+      // Execute second task workflow completely
+      await simulateFeatureDevelopment(testDir, task2.branchName!, task2.description);
+      const push2Result = await orchestrator.pushTaskBranch(task2.id);
+      expect(push2Result.success).toBe(true);
+
+      await runGit('checkout main', testDir);
+      const merge2Result = await orchestrator.mergeTaskBranch(task2.id);
+      expect(merge2Result.success).toBe(true);
+      expect(merge2Result.conflicted).toBeFalsy();
+
+      await orchestrator.updateTaskStatus(task2.id, 'completed');
+
+      // Verify final state
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+
+      // Verify both task branches exist
+      expect(finalState.branches.some(b => b.includes('apex/auth-system-seq-1'))).toBe(true);
+      expect(finalState.branches.some(b => b.includes('apex/user-profile-seq-1'))).toBe(true);
+
+      // Verify both tasks are completed
+      const completedTask1 = await orchestrator.store.getTask(task1.id);
+      const completedTask2 = await orchestrator.store.getTask(task2.id);
+      expect(completedTask1!.status).toBe('completed');
+      expect(completedTask2!.status).toBe('completed');
+
+      // Verify all changes from both tasks are present in main
+      const allChangedFiles = [...(merge1Result.changedFiles || []), ...(merge2Result.changedFiles || [])];
+      for (const file of allChangedFiles) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+    });
+
+    it('should handle three tasks in sequence with individual branch creation', async () => {
+      // Create three tasks for comprehensive sequence testing
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'Add API endpoints',
+          branchName: 'apex/api-endpoints-seq-2',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Implement database models',
+          branchName: 'apex/db-models-seq-2',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Add frontend components',
+          branchName: 'apex/frontend-components-seq-2',
+        }),
+      ];
+
+      // Store all tasks
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+      }
+
+      // Execute each task workflow completely in sequence
+      const completedBranches: string[] = [];
+      const mergeResults: MergeTaskBranchResult[] = [];
+
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+
+        // Verify we start each task from clean main branch
+        const preTaskState = await verifyGitState(testDir);
+        expect(preTaskState.branch).toBe('main');
+        expect(preTaskState.isClean).toBe(true);
+
+        // Create branch and develop feature
+        await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+        // Verify task has its own unique branch
+        const taskBranchState = await verifyGitState(testDir);
+        expect(taskBranchState.branch).toBe(task.branchName!);
+        completedBranches.push(task.branchName!);
+
+        // Push branch to remote
+        const pushResult = await orchestrator.pushTaskBranch(task.id);
+        expect(pushResult.success).toBe(true);
+
+        // Switch to main and merge
+        await runGit('checkout main', testDir);
+        const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+        expect(mergeResult.success).toBe(true);
+        expect(mergeResult.conflicted).toBeFalsy();
+        mergeResults.push(mergeResult);
+
+        // Mark task as completed
+        await orchestrator.updateTaskStatus(task.id, 'completed');
+
+        // Verify task completion
+        const completedTask = await orchestrator.store.getTask(task.id);
+        expect(completedTask!.status).toBe('completed');
+
+        // Verify repository is clean for next task
+        const postTaskState = await verifyGitState(testDir);
+        expect(postTaskState.branch).toBe('main');
+        expect(postTaskState.isClean).toBe(true);
+      }
+
+      // Verify all branches were created
+      const finalState = await verifyGitState(testDir);
+      for (const branchName of completedBranches) {
+        expect(finalState.branches.some(b => b.includes(branchName))).toBe(true);
+      }
+
+      // Verify all changes from all tasks are integrated
+      const allChangedFiles = mergeResults.flatMap(result => result.changedFiles || []);
+      expect(allChangedFiles.length).toBeGreaterThan(0);
+      for (const file of allChangedFiles) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+
+      // Verify commit history shows all merges
+      expect(finalState.recentCommits.filter(commit => commit.includes('Merge')).length).toBe(3);
+    });
+
+    it('should execute sequential push operations for multiple tasks', async () => {
+      // Create multiple tasks to test sequential push operations
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'Task 1 for sequential push test',
+          branchName: 'apex/sequential-push-1',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Task 2 for sequential push test',
+          branchName: 'apex/sequential-push-2',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Task 3 for sequential push test',
+          branchName: 'apex/sequential-push-3',
+        }),
+      ];
+
+      // Store all tasks
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+      }
+
+      const pushedBranches: string[] = [];
+
+      // Execute development and push for each task sequentially
+      for (const task of tasks) {
+        // Ensure we start from main
+        await runGit('checkout main', testDir);
+
+        // Develop feature on task branch
+        await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+        // Push branch - each push should succeed independently
+        const pushResult = await orchestrator.pushTaskBranch(task.id);
+        expect(pushResult.success).toBe(true);
+        expect(pushResult.error).toBeUndefined();
+        expect(pushResult.remoteBranch).toBeDefined();
+
+        pushedBranches.push(task.branchName!);
+
+        // Verify branch exists on remote after push
+        const remoteBranches = await runGit('ls-remote --heads origin', testDir);
+        expect(remoteBranches.stdout).toContain(task.branchName!);
+        expect(remoteBranches.success).toBe(true);
+      }
+
+      // Verify all branches are present on remote
+      const finalRemoteBranches = await runGit('ls-remote --heads origin', testDir);
+      for (const branchName of pushedBranches) {
+        expect(finalRemoteBranches.stdout).toContain(branchName);
+      }
+
+      // Verify no conflicts between pushes
+      expect(finalRemoteBranches.success).toBe(true);
+
+      // Count total branches on remote (main + 3 task branches)
+      const remoteBranchList = finalRemoteBranches.stdout.trim().split('\n');
+      expect(remoteBranchList.length).toBeGreaterThanOrEqual(4); // main + 3 tasks
+    });
+
+    it('should execute sequential merge operations without conflicts', async () => {
+      // Create tasks that modify different files to avoid merge conflicts
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'Add utility functions',
+          branchName: 'apex/utils-merge-seq',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Add configuration management',
+          branchName: 'apex/config-merge-seq',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Add logging system',
+          branchName: 'apex/logging-merge-seq',
+        }),
+      ];
+
+      // Store all tasks
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+      }
+
+      // Develop and push all features first
+      const developedTasks: { task: Task; files: string[] }[] = [];
+
+      for (const task of tasks) {
+        await runGit('checkout main', testDir);
+
+        // Create unique files for each task to avoid conflicts
+        await runGit(`checkout -b ${task.branchName!}`, testDir);
+
+        // Create task-specific files with unique names
+        const taskPrefix = task.branchName!.split('-')[1]; // Extract unique part
+        const uniqueFile = `${taskPrefix}-module.js`;
+        const uniqueTestFile = `${taskPrefix}-module.test.js`;
+        const uniqueDocFile = `${taskPrefix}-README.md`;
+
+        await fs.writeFile(
+          path.join(testDir, uniqueFile),
+          `// ${task.description}\nexport function ${taskPrefix}Function() { return '${taskPrefix}'; }\n`
+        );
+        await runGit(`add ${uniqueFile}`, testDir);
+        await runGit(`commit -m "feat: add ${uniqueFile}"`, testDir);
+
+        await fs.writeFile(
+          path.join(testDir, uniqueTestFile),
+          `// Tests for ${uniqueFile}\nimport { ${taskPrefix}Function } from './${uniqueFile}';\n`
+        );
+        await runGit(`add ${uniqueTestFile}`, testDir);
+        await runGit(`commit -m "test: add tests for ${uniqueFile}"`, testDir);
+
+        await fs.writeFile(
+          path.join(testDir, uniqueDocFile),
+          `# ${task.description}\n\nDocumentation for ${taskPrefix} module.\n`
+        );
+        await runGit(`add ${uniqueDocFile}`, testDir);
+        await runGit(`commit -m "docs: add documentation for ${uniqueFile}"`, testDir);
+
+        // Push the branch
+        const pushResult = await orchestrator.pushTaskBranch(task.id);
+        expect(pushResult.success).toBe(true);
+
+        developedTasks.push({
+          task,
+          files: [uniqueFile, uniqueTestFile, uniqueDocFile]
+        });
+      }
+
+      // Now merge all tasks sequentially
+      const mergeResults: MergeTaskBranchResult[] = [];
+
+      for (const { task, files } of developedTasks) {
+        // Ensure we're on main before each merge
+        await runGit('checkout main', testDir);
+        const preMergeState = await verifyGitState(testDir);
+        expect(preMergeState.branch).toBe('main');
+        expect(preMergeState.isClean).toBe(true);
+
+        // Perform merge
+        const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+        expect(mergeResult.success).toBe(true);
+        expect(mergeResult.error).toBeUndefined();
+        expect(mergeResult.conflicted).toBeFalsy();
+        expect(mergeResult.changedFiles).toBeDefined();
+
+        mergeResults.push(mergeResult);
+
+        // Verify merge was successful and clean
+        const postMergeState = await verifyGitState(testDir);
+        expect(postMergeState.branch).toBe('main');
+        expect(postMergeState.isClean).toBe(true);
+
+        // Verify task files are present in main
+        for (const file of files) {
+          const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+          expect(fileExists).toBe(true);
+        }
+
+        // Mark task as completed
+        await orchestrator.updateTaskStatus(task.id, 'completed');
+      }
+
+      // Verify final state - all merges completed without conflicts
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+
+      // Verify all merge commits are present
+      const mergeCommits = finalState.recentCommits.filter(commit => commit.includes('Merge'));
+      expect(mergeCommits.length).toBe(3);
+
+      // Verify all task files from all merges are present
+      const allFiles = developedTasks.flatMap(({ files }) => files);
+      for (const file of allFiles) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+    });
+
+    it('should maintain repository cleanliness between task workflows', async () => {
+      // Create multiple tasks to verify clean state between workflows
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'First clean workflow test',
+          branchName: 'apex/clean-workflow-1',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Second clean workflow test',
+          branchName: 'apex/clean-workflow-2',
+        }),
+      ];
+
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+      }
+
+      // Execute first workflow and verify state at each step
+      const task1 = tasks[0];
+
+      // Initial state should be clean
+      const initialState = await verifyGitState(testDir);
+      expect(initialState.branch).toBe('main');
+      expect(initialState.isClean).toBe(true);
+
+      // Develop first task
+      await simulateFeatureDevelopment(testDir, task1.branchName!, task1.description);
+
+      // State after development should be clean on feature branch
+      const devState1 = await verifyGitState(testDir);
+      expect(devState1.branch).toBe(task1.branchName!);
+      expect(devState1.isClean).toBe(true);
+
+      // Push and merge first task
+      await orchestrator.pushTaskBranch(task1.id);
+      await runGit('checkout main', testDir);
+      const merge1Result = await orchestrator.mergeTaskBranch(task1.id);
+      expect(merge1Result.success).toBe(true);
+      await orchestrator.updateTaskStatus(task1.id, 'completed');
+
+      // State after first task completion should be clean
+      const postTask1State = await verifyGitState(testDir);
+      expect(postTask1State.branch).toBe('main');
+      expect(postTask1State.isClean).toBe(true);
+
+      // Execute second workflow
+      const task2 = tasks[1];
+
+      // Develop second task
+      await simulateFeatureDevelopment(testDir, task2.branchName!, task2.description);
+
+      // State after second development should be clean on its feature branch
+      const devState2 = await verifyGitState(testDir);
+      expect(devState2.branch).toBe(task2.branchName!);
+      expect(devState2.isClean).toBe(true);
+
+      // Push and merge second task
+      await orchestrator.pushTaskBranch(task2.id);
+      await runGit('checkout main', testDir);
+      const merge2Result = await orchestrator.mergeTaskBranch(task2.id);
+      expect(merge2Result.success).toBe(true);
+      await orchestrator.updateTaskStatus(task2.id, 'completed');
+
+      // Final state should be clean
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+
+      // Verify no uncommitted changes or untracked files
+      const statusCheck = await runGit('status --porcelain', testDir);
+      expect(statusCheck.stdout.trim()).toBe('');
+      expect(statusCheck.success).toBe(true);
+
+      // Verify both tasks completed successfully
+      const completedTask1 = await orchestrator.store.getTask(task1.id);
+      const completedTask2 = await orchestrator.store.getTask(task2.id);
+      expect(completedTask1!.status).toBe('completed');
+      expect(completedTask2!.status).toBe('completed');
+    });
+
+    it('should persist state across multiple task lifecycles', async () => {
+      // Create multiple tasks to test state persistence
+      const tasks = [
+        createTestTask({
+          projectPath: testDir,
+          description: 'Database setup task',
+          branchName: 'apex/db-setup-persist',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'API layer task',
+          branchName: 'apex/api-layer-persist',
+        }),
+        createTestTask({
+          projectPath: testDir,
+          description: 'Frontend integration task',
+          branchName: 'apex/frontend-persist',
+        }),
+      ];
+
+      // Store all tasks and verify persistence
+      for (const task of tasks) {
+        await orchestrator.store.createTask(task);
+
+        // Verify task was persisted
+        const storedTask = await orchestrator.store.getTask(task.id);
+        expect(storedTask).toBeDefined();
+        expect(storedTask!.id).toBe(task.id);
+        expect(storedTask!.status).toBe('pending');
+      }
+
+      const taskArtifacts: { taskId: string; files: string[]; commits: string[] }[] = [];
+
+      // Execute each task lifecycle and track persistence
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+
+        // Update task status to in-progress
+        await orchestrator.updateTaskStatus(task.id, 'in_progress');
+
+        // Verify status persistence
+        const inProgressTask = await orchestrator.store.getTask(task.id);
+        expect(inProgressTask!.status).toBe('in_progress');
+
+        // Develop and commit feature
+        await runGit('checkout main', testDir);
+        await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+        // Capture commit information for persistence verification
+        const commitLog = await runGit(`log ${task.branchName!} --oneline`, testDir);
+        const commits = commitLog.stdout.trim().split('\n');
+
+        // Push and merge
+        const pushResult = await orchestrator.pushTaskBranch(task.id);
+        expect(pushResult.success).toBe(true);
+
+        await runGit('checkout main', testDir);
+        const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+        expect(mergeResult.success).toBe(true);
+
+        // Complete task
+        await orchestrator.updateTaskStatus(task.id, 'completed');
+
+        // Verify completion persistence
+        const completedTask = await orchestrator.store.getTask(task.id);
+        expect(completedTask!.status).toBe('completed');
+        expect(completedTask!.updatedAt).toBeDefined();
+
+        // Store task artifacts for later verification
+        taskArtifacts.push({
+          taskId: task.id,
+          files: mergeResult.changedFiles || [],
+          commits: commits,
+        });
+
+        // Verify all previous tasks are still persisted correctly
+        for (let j = 0; j <= i; j++) {
+          const previousTask = await orchestrator.store.getTask(tasks[j].id);
+          expect(previousTask).toBeDefined();
+          expect(previousTask!.id).toBe(tasks[j].id);
+
+          if (j < i) {
+            // Previous tasks should be completed
+            expect(previousTask!.status).toBe('completed');
+          } else {
+            // Current task should be completed
+            expect(previousTask!.status).toBe('completed');
+          }
+        }
+      }
+
+      // Verify all artifacts from all tasks persist in the final state
+      for (const artifact of taskArtifacts) {
+        // Verify files from each task are still present
+        for (const file of artifact.files) {
+          const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+          expect(fileExists).toBe(true);
+        }
+
+        // Verify task record is still accessible
+        const persistedTask = await orchestrator.store.getTask(artifact.taskId);
+        expect(persistedTask).toBeDefined();
+        expect(persistedTask!.status).toBe('completed');
+      }
+
+      // Verify commit history contains all task merges
+      const finalCommitLog = await runGit('log --oneline -20', testDir);
+      const allCommits = finalCommitLog.stdout;
+
+      // Count merge commits (should be one per task)
+      const mergeCount = (allCommits.match(/Merge/g) || []).length;
+      expect(mergeCount).toBe(tasks.length);
+
+      // Verify repository integrity after multiple lifecycles
+      const integrityCheck = await runGit('fsck', testDir);
+      expect(integrityCheck.success).toBe(true);
+
+      // Verify final clean state
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+    });
+  });
 });
