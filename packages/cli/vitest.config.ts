@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom', // Use jsdom for React components
     setupFiles: ['./src/__tests__/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'src/**/*.integration.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'src/**/*.integration.test.{ts,tsx}', 'src/**/*.e2e.test.{ts,tsx}'],
     exclude: [
       'node_modules/**',
       'dist/**',

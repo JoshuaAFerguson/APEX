@@ -11,7 +11,7 @@ export default defineConfig({
       ['**/packages/cli/src/__tests__/**', 'node'],
       ['**/packages/cli/src/services/**', 'node'],
     ],
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.integration.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
+    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.integration.test.ts', 'packages/*/src/**/*.e2e.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
