@@ -6,7 +6,7 @@ import { createServer } from './index';
 import { FastifyInstance } from 'fastify';
 
 // Mock the orchestrator for focused template testing
-vi.mock('@apex/orchestrator', () => {
+vi.mock('@apexcli/orchestrator', () => {
   const mockTemplate = {
     id: 'template_test_123',
     name: 'Test Template',

@@ -15,7 +15,7 @@ import {
   SubtaskDefinition,
   TaskTemplate,
 } from '@apexcli/core';
-import { ApexOrchestrator } from '@apex/orchestrator';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
