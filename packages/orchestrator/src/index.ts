@@ -4586,6 +4586,180 @@ Parent: ${parentTask.description}`;
       return { success: false, error: errorMsg };
     }
   }
+
+  /**
+   * Merge a task branch into the main branch
+   * @param taskId The task identifier
+   * @param options Merge options
+   * @returns Promise with merge result
+   */
+  async mergeTaskBranch(taskId: string, options: { squash?: boolean } = {}): Promise<{ success: boolean; error?: string; commitHash?: string; changedFiles?: string[] }> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return { success: false, error: `Task not found: ${taskId}` };
+    }
+
+    if (!task.branchName) {
+      return { success: false, error: 'Task does not have a branch' };
+    }
+
+    try {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Starting ${options.squash ? 'squash ' : ''}merge of branch ${task.branchName}`,
+      });
+
+      // Determine the main branch (main or master)
+      let mainBranch = 'main';
+      try {
+        await execAsync('git show-ref --verify --quiet refs/heads/main', {
+          cwd: this.projectPath,
+        });
+      } catch {
+        // main branch doesn't exist, try master
+        try {
+          await execAsync('git show-ref --verify --quiet refs/heads/master', {
+            cwd: this.projectPath,
+          });
+          mainBranch = 'master';
+        } catch {
+          // Neither main nor master exists, default to main
+          mainBranch = 'main';
+        }
+      }
+
+      // Check if we're already on the task branch
+      const { stdout: currentBranch } = await execAsync('git rev-parse --abbrev-ref HEAD', {
+        cwd: this.projectPath,
+      });
+
+      if (currentBranch.trim() === task.branchName) {
+        // Switch to main branch first
+        await execAsync(`git checkout ${mainBranch}`, {
+          cwd: this.projectPath,
+        });
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Switched to ${mainBranch} branch for merge`,
+        });
+      }
+
+      // Pull latest changes from remote to ensure we're up to date
+      try {
+        await execAsync(`git pull origin ${mainBranch}`, {
+          cwd: this.projectPath,
+        });
+      } catch (pullError) {
+        // If pull fails, log warning but continue (might be working offline)
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'Could not pull latest changes from remote',
+        });
+      }
+
+      // Perform the merge
+      const mergeCommand = options.squash
+        ? `git merge --squash ${task.branchName}`
+        : `git merge --no-ff ${task.branchName}`;
+
+      try {
+        const { stdout: mergeOutput } = await execAsync(mergeCommand, {
+          cwd: this.projectPath,
+        });
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Merge completed: ${mergeOutput.substring(0, 200)}`,
+        });
+
+        // Get the list of changed files
+        const { stdout: diffOutput } = await execAsync('git diff --name-only HEAD~1', {
+          cwd: this.projectPath,
+        });
+        const changedFiles = diffOutput.trim().split('\n').filter(file => file.length > 0);
+
+        let commitHash: string | undefined;
+
+        // For squash merges, we need to commit the changes
+        if (options.squash) {
+          const commitMessage = `Squash merge of ${task.branchName}: ${task.description}
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
+
+          const { stdout: commitOutput } = await execAsync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
+            cwd: this.projectPath,
+          });
+
+          // Extract commit hash from commit output
+          const commitMatch = commitOutput.match(/\[.*?([a-f0-9]+)\]/);
+          commitHash = commitMatch?.[1];
+
+          await this.store.addLog(taskId, {
+            level: 'info',
+            message: `Squash merge commit created: ${commitHash}`,
+          });
+        } else {
+          // For normal merges, get the merge commit hash
+          const { stdout: hashOutput } = await execAsync('git rev-parse HEAD', {
+            cwd: this.projectPath,
+          });
+          commitHash = hashOutput.trim().substring(0, 8);
+        }
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `${options.squash ? 'Squash merge' : 'Merge'} completed successfully. Changed files: ${changedFiles.join(', ')}`,
+        });
+
+        return {
+          success: true,
+          commitHash,
+          changedFiles,
+        };
+
+      } catch (mergeError) {
+        const errorOutput = (mergeError as any).stdout || (mergeError as any).stderr || (mergeError as Error).message;
+
+        // Check for merge conflicts
+        if (errorOutput.includes('CONFLICT') || errorOutput.includes('Automatic merge failed')) {
+          await this.store.addLog(taskId, {
+            level: 'error',
+            message: 'Merge conflicts detected. Please resolve conflicts manually and commit.',
+          });
+
+          return {
+            success: false,
+            error: 'Merge conflicts detected. Please resolve conflicts manually using git status, edit the conflicted files, then git add and git commit.',
+          };
+        }
+
+        // Other merge errors
+        await this.store.addLog(taskId, {
+          level: 'error',
+          message: `Merge failed: ${errorOutput}`,
+        });
+
+        return {
+          success: false,
+          error: `Merge failed: ${errorOutput}`,
+        };
+      }
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error during merge: ${errorMsg}`,
+      });
+
+      return { success: false, error: errorMsg };
+    }
+  }
 }
 
 export { TaskStore } from './store';

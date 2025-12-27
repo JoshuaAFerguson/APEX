@@ -2129,6 +2129,97 @@ export const commands: Command[] = [
       }
     },
   },
+  {
+    name: 'merge',
+    aliases: ['m'],
+    description: 'Merge task branch into main branch',
+    usage: '/merge <task_id> [--squash]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length < 1) {
+        console.log(chalk.red('Usage: /merge <task_id> [--squash]'));
+        console.log(chalk.gray('\nOptions:'));
+        console.log(chalk.gray('  --squash    Perform a squash merge (combine all commits into one)'));
+        console.log(chalk.gray('\nExamples:'));
+        console.log(chalk.gray('  /merge abc123           Standard merge with merge commit'));
+        console.log(chalk.gray('  /merge abc123 --squash  Squash all commits into single commit'));
+        return;
+      }
+
+      const taskId = args[0];
+      const isSquash = args.includes('--squash');
+
+      try {
+        // Find the task (allow partial IDs)
+        const tasks = await ctx.orchestrator.listTasks({ limit: 100 });
+        const task = tasks.find(t => t.id.startsWith(taskId));
+
+        if (!task) {
+          console.log(chalk.red(`❌ Task not found: ${taskId}`));
+          console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
+          return;
+        }
+
+        if (!task.branchName) {
+          console.log(chalk.red(`❌ Task ${task.id.substring(0, 12)} does not have a branch`));
+          console.log(chalk.gray('Only tasks with git branches can be merged.'));
+          return;
+        }
+
+        console.log(chalk.cyan(`\n🔀 ${isSquash ? 'Squash merging' : 'Merging'} ${task.branchName} into main...\n`));
+        console.log(chalk.gray(`Task: ${task.description}`));
+
+        const result = await ctx.orchestrator.mergeTaskBranch(task.id, { squash: isSquash });
+
+        if (result.success) {
+          console.log(chalk.green(`✅ ${isSquash ? 'Squash merge' : 'Merge'} completed successfully!`));
+
+          if (result.commitHash) {
+            console.log(chalk.cyan(`📝 Commit hash: ${result.commitHash}`));
+          }
+
+          if (result.changedFiles && result.changedFiles.length > 0) {
+            console.log(chalk.cyan(`📁 Changed files (${result.changedFiles.length}):`));
+            result.changedFiles.slice(0, 10).forEach(file => {
+              console.log(chalk.gray(`  • ${file}`));
+            });
+
+            if (result.changedFiles.length > 10) {
+              console.log(chalk.gray(`  ... and ${result.changedFiles.length - 10} more`));
+            }
+          }
+
+          // Suggest next steps
+          console.log();
+          console.log(chalk.yellow('💡 Next steps:'));
+          console.log(chalk.gray('  • Push changes: git push origin main'));
+          if (!isSquash) {
+            console.log(chalk.gray('  • Delete feature branch: git branch -d ' + task.branchName));
+          }
+
+        } else {
+          console.log(chalk.red(`❌ Merge failed: ${result.error}`));
+
+          // Provide specific guidance for merge conflicts
+          if (result.error?.includes('merge conflicts')) {
+            console.log();
+            console.log(chalk.yellow('💡 To resolve conflicts:'));
+            console.log(chalk.gray('  1. Run: git status (see conflicted files)'));
+            console.log(chalk.gray('  2. Edit files to resolve conflicts'));
+            console.log(chalk.gray('  3. Run: git add <resolved-files>'));
+            console.log(chalk.gray('  4. Run: git commit'));
+          }
+        }
+
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
 ];
 
 // ============================================================================
@@ -3259,6 +3350,7 @@ ${chalk.bold('Commands:')}
   cancel <task_id>        Cancel a running task
   retry <task_id>         Retry a failed task
   diff <task_id>          Show code changes made by a task
+  merge <task_id>         Merge task branch into main branch
   checkout <task_id>      Switch to task worktree or manage worktrees
                           Also supports: checkout --list, checkout --cleanup [<task_id>]
   shell <task_id>         Attach interactive shell to running task container
