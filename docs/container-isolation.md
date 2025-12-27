@@ -2,6 +2,8 @@
 
 APEX supports running tasks in isolated container environments for secure, reproducible, and sandboxed execution. This guide covers how to set up and use container-based workspace isolation.
 
+> **Reference Documentation**: For a complete list of all container configuration fields, see the [Container Configuration Reference](./container-configuration.md).
+
 ## Overview
 
 Container isolation provides a sandboxed execution environment for AI agents by running tasks inside Docker or Podman containers. This ensures:
@@ -564,6 +566,7 @@ console.log(health); // { status: 'healthy', cpu: 15.2, memory: '512MB' }
 
 ## Related Documentation
 
+- [Container Configuration Reference](./container-configuration.md) - Complete field reference for container settings
 - [Configuration Reference](./configuration.md) - Full configuration options
 - [Workflows](./workflows.md) - Workflow definition and execution
 - [Agents](./agents.md) - Agent configuration and customization

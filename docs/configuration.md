@@ -187,6 +187,8 @@ Safety limits to control costs.
 
 Workspace isolation configuration for running tasks in controlled environments.
 
+> **Complete Reference**: For detailed documentation of all container configuration fields, see the [Container Configuration Reference](./container-configuration.md).
+
 ```yaml
 workspace:
   defaultStrategy: "container"  # none, directory, worktree, container
