@@ -21,6 +21,7 @@ import {
   IdleTaskType,
   IterationEntry,
   IterationHistory,
+  IterationSnapshot,
   generateTaskId,
   generateIdleTaskId,
 } from '@apexcli/core';
@@ -89,6 +90,8 @@ export class TaskStore {
           stage TEXT,
           modified_files TEXT,
           agent TEXT,
+          before_state TEXT,
+          after_state TEXT,
           FOREIGN KEY (task_id) REFERENCES tasks(id)
         )
       `);
@@ -97,6 +100,23 @@ export class TaskStore {
       `);
     } catch {
       // Table might already exist
+    }
+
+    // Add before_state and after_state columns to existing task_iterations table
+    try {
+      const iterColumns = this.db
+        .prepare("PRAGMA table_info(task_iterations)")
+        .all() as { name: string }[];
+      const iterColumnNames = new Set(iterColumns.map((c) => c.name));
+
+      if (!iterColumnNames.has('before_state')) {
+        this.db.exec('ALTER TABLE task_iterations ADD COLUMN before_state TEXT');
+      }
+      if (!iterColumnNames.has('after_state')) {
+        this.db.exec('ALTER TABLE task_iterations ADD COLUMN after_state TEXT');
+      }
+    } catch {
+      // Columns might already exist or table doesn't exist yet
     }
 
     for (const { column, definition } of migrations) {
@@ -279,6 +299,8 @@ export class TaskStore {
         stage TEXT,
         modified_files TEXT,
         agent TEXT,
+        before_state TEXT,
+        after_state TEXT,
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
@@ -1631,8 +1653,8 @@ export class TaskStore {
   async addIterationEntry(taskId: string, entry: Omit<IterationEntry, 'id'> & { id?: string }): Promise<void> {
     const iterationId = entry.id || `${taskId}-iter-${Date.now()}`;
     const stmt = this.db.prepare(`
-      INSERT INTO task_iterations (id, task_id, feedback, timestamp, diff_summary, stage, modified_files, agent)
-      VALUES (@id, @taskId, @feedback, @timestamp, @diffSummary, @stage, @modifiedFiles, @agent)
+      INSERT INTO task_iterations (id, task_id, feedback, timestamp, diff_summary, stage, modified_files, agent, before_state, after_state)
+      VALUES (@id, @taskId, @feedback, @timestamp, @diffSummary, @stage, @modifiedFiles, @agent, @beforeState, @afterState)
     `);
 
     stmt.run({
@@ -1644,6 +1666,31 @@ export class TaskStore {
       stage: entry.stage || null,
       modifiedFiles: entry.modifiedFiles ? JSON.stringify(entry.modifiedFiles) : null,
       agent: entry.agent || null,
+      beforeState: entry.beforeState ? JSON.stringify(entry.beforeState) : null,
+      afterState: entry.afterState ? JSON.stringify(entry.afterState) : null,
+    });
+  }
+
+  /**
+   * Update an existing iteration entry with after state and diff summary
+   */
+  async updateIterationEntry(
+    iterationId: string,
+    afterState: IterationSnapshot,
+    diffSummary: string,
+    modifiedFiles?: string[]
+  ): Promise<void> {
+    const stmt = this.db.prepare(`
+      UPDATE task_iterations
+      SET after_state = @afterState, diff_summary = @diffSummary, modified_files = @modifiedFiles
+      WHERE id = @iterationId
+    `);
+
+    stmt.run({
+      iterationId,
+      afterState: JSON.stringify(afterState),
+      diffSummary,
+      modifiedFiles: modifiedFiles ? JSON.stringify(modifiedFiles) : null,
     });
   }
 
@@ -1666,6 +1713,8 @@ export class TaskStore {
       stage: row.stage || undefined,
       modifiedFiles: row.modified_files ? JSON.parse(row.modified_files) : undefined,
       agent: row.agent || undefined,
+      beforeState: row.before_state ? JSON.parse(row.before_state) : undefined,
+      afterState: row.after_state ? JSON.parse(row.after_state) : undefined,
     }));
 
     return {
@@ -1785,4 +1834,6 @@ interface TaskIterationRow {
   stage: string | null;
   modified_files: string | null;
   agent: string | null;
+  before_state: string | null;
+  after_state: string | null;
 }

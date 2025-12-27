@@ -1,5 +1,13 @@
 import { EventEmitter } from 'eventemitter3';
-import { TaskInteraction, Task, TaskStatus } from '@apexcli/core';
+import {
+  TaskInteraction,
+  Task,
+  TaskStatus,
+  IterationEntry,
+  IterationHistory,
+  IterationSnapshot,
+  IterationDiff
+} from '@apexcli/core';
 import { TaskStore } from './store';
 
 export interface InteractionManagerEvents {
@@ -114,14 +122,229 @@ export class InteractionManager extends EventEmitter<InteractionManagerEvents> {
       throw new Error(`Task ${taskId} is not in progress (status: ${task.status})`);
     }
 
+    // Capture snapshot of current task state before iteration
+    const beforeState = await this.captureSnapshot(taskId);
+
+    // Create iteration entry
+    const iterationId = `${taskId}-iter-${Date.now()}`;
+    const iterationEntry: Omit<IterationEntry, 'id'> & { id: string } = {
+      id: iterationId,
+      feedback: instructions,
+      timestamp: new Date(),
+      stage: task.currentStage,
+      beforeState,
+    };
+
+    // Store the initial iteration entry
+    await this.store.addIterationEntry(taskId, iterationEntry);
+
     // Emit iteration event for the orchestrator to handle
     this.emit('task:iterate', taskId, {
+      iterationId,
       instructions,
       context,
       timestamp: new Date().toISOString(),
     });
 
-    return 'Iteration request sent to running task';
+    return iterationId;
+  }
+
+  /**
+   * Complete an iteration after the orchestrator has processed it
+   * This captures the after state and computes the diff summary
+   */
+  async completeIteration(
+    taskId: string,
+    iterationId: string,
+    agent?: string
+  ): Promise<void> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    // Capture snapshot of task state after iteration
+    const afterState = await this.captureSnapshot(taskId);
+
+    // Get the iteration entry to compare with before state
+    const iterationHistory = await this.store.getIterationHistory(taskId);
+    const iterationEntry = iterationHistory.entries.find(e => e.id === iterationId);
+
+    if (!iterationEntry) {
+      throw new Error(`Iteration ${iterationId} not found for task ${taskId}`);
+    }
+
+    // Compute diff summary
+    let diffSummary = 'No changes detected';
+    const modifiedFiles: string[] = [];
+
+    if (iterationEntry.beforeState && afterState) {
+      const before = iterationEntry.beforeState;
+      const after = afterState;
+
+      const changes: string[] = [];
+
+      // Stage change
+      if (before.stage !== after.stage) {
+        changes.push(`stage changed from '${before.stage}' to '${after.stage}'`);
+      }
+
+      // Status change
+      if (before.status !== after.status) {
+        changes.push(`status changed from '${before.status}' to '${after.status}'`);
+      }
+
+      // File changes
+      const addedFiles = after.files.created.filter(f => !before.files.created.includes(f));
+      const newModifiedFiles = after.files.modified.filter(f => !before.files.modified.includes(f));
+      modifiedFiles.push(...addedFiles, ...newModifiedFiles);
+
+      if (addedFiles.length > 0) {
+        changes.push(`${addedFiles.length} files added`);
+      }
+      if (newModifiedFiles.length > 0) {
+        changes.push(`${newModifiedFiles.length} files modified`);
+      }
+
+      // Usage changes
+      const tokenDelta = after.usage.totalTokens - before.usage.totalTokens;
+      if (tokenDelta > 0) {
+        changes.push(`${tokenDelta} tokens used`);
+      }
+
+      const artifactDelta = after.artifactCount - before.artifactCount;
+      if (artifactDelta > 0) {
+        changes.push(`${artifactDelta} artifacts created`);
+      }
+
+      if (changes.length > 0) {
+        diffSummary = changes.join(', ');
+      }
+    }
+
+    // Update the iteration entry with after state and diff summary
+    await this.store.updateIterationEntry(
+      iterationId,
+      afterState,
+      diffSummary,
+      modifiedFiles.length > 0 ? modifiedFiles : undefined
+    );
+  }
+
+  /**
+   * Get the difference between two iterations of a task
+   * If iterationId is not provided, compares the last two iterations
+   */
+  async getIterationDiff(
+    taskId: string,
+    iterationId?: string
+  ): Promise<IterationDiff> {
+    const iterationHistory = await this.store.getIterationHistory(taskId);
+
+    if (iterationHistory.entries.length === 0) {
+      throw new Error(`No iterations found for task ${taskId}`);
+    }
+
+    let currentIteration: IterationEntry;
+    let previousIteration: IterationEntry | undefined;
+
+    if (iterationId) {
+      // Find the specific iteration and the one before it
+      const currentIndex = iterationHistory.entries.findIndex(e => e.id === iterationId);
+      if (currentIndex === -1) {
+        throw new Error(`Iteration ${iterationId} not found for task ${taskId}`);
+      }
+      currentIteration = iterationHistory.entries[currentIndex];
+      previousIteration = currentIndex > 0 ? iterationHistory.entries[currentIndex - 1] : undefined;
+    } else {
+      // Compare the last two iterations
+      if (iterationHistory.entries.length < 2) {
+        throw new Error(`Insufficient iterations to compare for task ${taskId}`);
+      }
+      currentIteration = iterationHistory.entries[iterationHistory.entries.length - 1];
+      previousIteration = iterationHistory.entries[iterationHistory.entries.length - 2];
+    }
+
+    // If we don't have complete state data, fall back to basic comparison
+    if (!currentIteration.beforeState || !currentIteration.afterState) {
+      return {
+        iterationId: currentIteration.id,
+        previousIterationId: previousIteration?.id,
+        filesChanged: {
+          added: [],
+          modified: currentIteration.modifiedFiles || [],
+          removed: [],
+        },
+        tokenUsageDelta: 0,
+        costDelta: 0,
+        summary: currentIteration.diffSummary || 'No detailed diff available',
+      };
+    }
+
+    const currentBefore = currentIteration.beforeState;
+    const currentAfter = currentIteration.afterState;
+
+    // Compare with previous iteration's after state if available
+    const compareAgainst = previousIteration?.afterState || currentBefore;
+
+    // Calculate file changes
+    const addedFiles = currentAfter.files.created.filter(f => !compareAgainst.files.created.includes(f));
+    const removedFiles = compareAgainst.files.created.filter(f => !currentAfter.files.created.includes(f));
+    const modifiedFiles = [
+      ...currentAfter.files.modified.filter(f => !compareAgainst.files.modified.includes(f)),
+      ...currentAfter.files.created.filter(f => compareAgainst.files.modified.includes(f)), // File moved from modified to created
+    ];
+
+    // Calculate usage deltas
+    const tokenUsageDelta = currentAfter.usage.totalTokens - compareAgainst.usage.totalTokens;
+    const costDelta = currentAfter.usage.estimatedCost - compareAgainst.usage.estimatedCost;
+
+    // Stage and status changes
+    const stageChange = currentBefore.stage !== currentAfter.stage
+      ? { from: currentBefore.stage || 'unknown', to: currentAfter.stage || 'unknown' }
+      : undefined;
+
+    const statusChange = currentBefore.status !== currentAfter.status
+      ? { from: currentBefore.status, to: currentAfter.status }
+      : undefined;
+
+    // Generate summary
+    const changes: string[] = [];
+    if (stageChange) {
+      changes.push(`Stage: ${stageChange.from} → ${stageChange.to}`);
+    }
+    if (statusChange) {
+      changes.push(`Status: ${statusChange.from} → ${statusChange.to}`);
+    }
+    if (addedFiles.length > 0) {
+      changes.push(`${addedFiles.length} files added`);
+    }
+    if (modifiedFiles.length > 0) {
+      changes.push(`${modifiedFiles.length} files modified`);
+    }
+    if (removedFiles.length > 0) {
+      changes.push(`${removedFiles.length} files removed`);
+    }
+    if (tokenUsageDelta > 0) {
+      changes.push(`${tokenUsageDelta} tokens used`);
+    }
+
+    const summary = changes.length > 0 ? changes.join('; ') : 'No significant changes detected';
+
+    return {
+      iterationId: currentIteration.id,
+      previousIterationId: previousIteration?.id,
+      stageChange,
+      statusChange,
+      filesChanged: {
+        added: addedFiles,
+        modified: modifiedFiles,
+        removed: removedFiles,
+      },
+      tokenUsageDelta,
+      costDelta,
+      summary,
+    };
   }
 
   /**
@@ -296,6 +519,31 @@ export class InteractionManager extends EventEmitter<InteractionManagerEvents> {
   // Private Methods
   // ============================================================================
 
+  /**
+   * Capture a snapshot of the current task state for iteration tracking
+   */
+  private async captureSnapshot(taskId: string): Promise<IterationSnapshot> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    // Extract file changes from task
+    const files = this.extractFileChanges(task);
+
+    return {
+      timestamp: new Date(),
+      stage: task.currentStage,
+      status: task.status,
+      files: {
+        created: files.created,
+        modified: files.modified,
+      },
+      usage: task.usage,
+      artifactCount: task.artifacts.length,
+    };
+  }
+
   private async processInteraction(interaction: TaskInteraction): Promise<string> {
     const params = interaction.parameters ?? {};
 
@@ -317,6 +565,13 @@ export class InteractionManager extends EventEmitter<InteractionManagerEvents> {
           Boolean(params.staged)
         );
         return JSON.stringify(diff, null, 2);
+
+      case 'iteration-diff':
+        const iterDiff = await this.getIterationDiff(
+          interaction.taskId,
+          typeof params.iterationId === 'string' ? params.iterationId : undefined
+        );
+        return JSON.stringify(iterDiff, null, 2);
 
       case 'pause':
         await this.pauseTask(

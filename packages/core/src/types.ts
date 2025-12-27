@@ -725,6 +725,53 @@ export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 // ============================================================================
 
 /**
+ * Snapshot of task state at a specific point in time for iteration tracking
+ */
+export interface IterationSnapshot {
+  /** Timestamp when the snapshot was taken */
+  timestamp: Date;
+  /** Current stage of the task */
+  stage?: string;
+  /** Current status of the task */
+  status: TaskStatus;
+  /** Files that have been created or modified */
+  files: {
+    created: string[];
+    modified: string[];
+  };
+  /** Current usage statistics */
+  usage: TaskUsage;
+  /** Number of artifacts associated with the task */
+  artifactCount: number;
+}
+
+/**
+ * Difference computation between two iterations
+ */
+export interface IterationDiff {
+  /** ID of the iteration being compared */
+  iterationId: string;
+  /** ID of the previous iteration being compared against (if any) */
+  previousIterationId?: string;
+  /** Change in stage between iterations */
+  stageChange?: { from: string; to: string };
+  /** Files that changed between iterations */
+  filesChanged: {
+    added: string[];
+    modified: string[];
+    removed: string[];
+  };
+  /** Change in task status between iterations */
+  statusChange?: { from: TaskStatus; to: TaskStatus };
+  /** Difference in token usage */
+  tokenUsageDelta: number;
+  /** Difference in estimated cost */
+  costDelta: number;
+  /** Human-readable summary of the changes */
+  summary: string;
+}
+
+/**
  * Represents a single iteration entry containing user feedback and system response
  */
 export interface IterationEntry {
@@ -742,6 +789,10 @@ export interface IterationEntry {
   modifiedFiles?: string[];
   /** Agent that processed the iteration */
   agent?: string;
+  /** Snapshot of task state before the iteration */
+  beforeState?: IterationSnapshot;
+  /** Snapshot of task state after the iteration */
+  afterState?: IterationSnapshot;
 }
 
 /**
@@ -797,7 +848,7 @@ export interface ThoughtCapture {
  */
 export interface TaskInteraction {
   taskId: string;
-  command: 'iterate' | 'inspect' | 'diff' | 'pause' | 'resume' | 'cancel';
+  command: 'iterate' | 'inspect' | 'diff' | 'iteration-diff' | 'pause' | 'resume' | 'cancel';
   parameters?: Record<string, unknown>;
   requestedBy: string;
   requestedAt: Date;
@@ -918,6 +969,8 @@ export type ApexEventType =
   | 'task:paused'
   | 'task:session-resumed'
   | 'task:decomposed'
+  | 'task:iteration-started'
+  | 'task:iteration-completed'
   | 'subtask:created'
   | 'subtask:completed'
   | 'subtask:failed'
