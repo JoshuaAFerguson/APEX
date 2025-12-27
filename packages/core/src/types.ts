@@ -522,6 +522,8 @@ export const ContainerConfigSchema = z.object({
   autoDependencyInstall: z.boolean().optional().default(true),
   /** Custom command to install dependencies (overrides default detection) */
   customInstallCommand: z.string().optional(),
+  /** Whether to use frozen lockfile installation (npm ci, yarn --frozen-lockfile, etc.) */
+  useFrozenLockfile: z.boolean().optional().default(true),
   /** Timeout for dependency installation in milliseconds */
   installTimeout: z.number().positive().optional(),
   /** Number of retry attempts for dependency installation on failure */

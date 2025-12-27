@@ -443,6 +443,9 @@ export class DependencyDetector {
           metadata.hasWorkspaces = !!pkg.workspaces;
           metadata.dependencyCount = Object.keys(pkg.dependencies || {}).length +
                                    Object.keys(pkg.devDependencies || {}).length;
+
+          // Enhanced JavaScript package manager metadata
+          this.extractJavaScriptManagerMetadata(metadata, pkg, type, projectPath);
           break;
 
         case 'pip':
@@ -463,6 +466,202 @@ export class DependencyDetector {
     }
 
     return metadata;
+  }
+
+  /**
+   * Extract enhanced metadata for JavaScript package managers
+   * @param metadata - Metadata object to populate
+   * @param pkg - Parsed package.json content
+   * @param type - Package manager type
+   * @param projectPath - Project root path
+   */
+  private extractJavaScriptManagerMetadata(
+    metadata: Record<string, any>,
+    pkg: any,
+    type: PackageManagerType,
+    projectPath: string
+  ): void {
+    // Package manager version detection
+    if (pkg.packageManager) {
+      metadata.packageManagerVersion = pkg.packageManager;
+      const versionMatch = pkg.packageManager.match(/^(\w+)@(.+)$/);
+      if (versionMatch) {
+        const [, managerName, version] = versionMatch;
+        metadata[`${managerName}Version`] = version;
+
+        // Check for conflicts
+        if (managerName !== type) {
+          metadata.conflictingPackageManagerField = pkg.packageManager;
+        }
+      }
+    }
+
+    // Lockfile detection and metadata
+    this.extractLockfileMetadata(metadata, type, projectPath);
+
+    // Workspace and monorepo detection
+    this.extractWorkspaceMetadata(metadata, pkg, type, projectPath);
+
+    // Package manager specific configurations
+    this.extractPackageManagerConfigs(metadata, type, projectPath);
+  }
+
+  /**
+   * Extract lockfile metadata
+   */
+  private extractLockfileMetadata(
+    metadata: Record<string, any>,
+    type: PackageManagerType,
+    projectPath: string
+  ): void {
+    const lockFiles = {
+      npm: 'package-lock.json',
+      yarn: 'yarn.lock',
+      pnpm: 'pnpm-lock.yaml'
+    };
+
+    const lockFile = lockFiles[type as 'npm' | 'yarn' | 'pnpm'];
+    if (lockFile) {
+      const lockPath = join(projectPath, lockFile);
+      metadata.hasLockfile = existsSync(lockPath);
+
+      if (metadata.hasLockfile) {
+        metadata.lockfileType = lockFile;
+
+        try {
+          const lockContent = readFileSync(lockPath, 'utf-8');
+
+          if (type === 'pnpm' && lockFile === 'pnpm-lock.yaml') {
+            const versionMatch = lockContent.match(/lockfileVersion:\s*['"]?([^'"\\n]+)['"]?/);
+            if (versionMatch) {
+              metadata.lockfileVersion = versionMatch[1];
+            }
+          }
+        } catch (error) {
+          metadata.lockfileReadError = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract workspace and monorepo metadata
+   */
+  private extractWorkspaceMetadata(
+    metadata: Record<string, any>,
+    pkg: any,
+    type: PackageManagerType,
+    projectPath: string
+  ): void {
+    // Check for Lerna configuration
+    if (existsSync(join(projectPath, 'lerna.json'))) {
+      metadata.hasLernaConfig = true;
+      metadata.isMonorepoRoot = true;
+      metadata.monorepoType = 'lerna';
+    }
+
+    // Workspace pattern extraction
+    if (pkg.workspaces) {
+      metadata.isMonorepoRoot = true;
+
+      if (Array.isArray(pkg.workspaces)) {
+        metadata.workspacePatterns = pkg.workspaces;
+      } else if (pkg.workspaces.packages) {
+        metadata.workspacePatterns = pkg.workspaces.packages;
+
+        if (pkg.workspaces.nohoist) {
+          metadata.hasNohoistConfig = true;
+        }
+      }
+    }
+
+    // PNPM workspace configuration
+    if (type === 'pnpm') {
+      const workspaceFile = join(projectPath, 'pnpm-workspace.yaml');
+      if (existsSync(workspaceFile)) {
+        metadata.hasWorkspaceConfig = true;
+        metadata.isMonorepoRoot = true;
+
+        try {
+          const workspaceContent = readFileSync(workspaceFile, 'utf-8');
+          const packageMatches = workspaceContent.match(/packages:\s*\n((?:\s*-\s*"[^"]+"\s*\n?)*)/);
+          if (packageMatches) {
+            const patterns = packageMatches[1]
+              .split('\n')
+              .map(line => line.trim().replace(/^-\s*"([^"]+)"$/, '$1'))
+              .filter(Boolean);
+            metadata.workspacePatterns = patterns;
+          }
+        } catch (error) {
+          metadata.workspaceConfigReadError = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract package manager specific configurations
+   */
+  private extractPackageManagerConfigs(
+    metadata: Record<string, any>,
+    type: PackageManagerType,
+    projectPath: string
+  ): void {
+    switch (type) {
+      case 'yarn':
+        // Check for Yarn Berry (.yarnrc.yml)
+        const yarnrcPath = join(projectPath, '.yarnrc.yml');
+        if (existsSync(yarnrcPath)) {
+          metadata.hasYarnrcConfig = true;
+
+          try {
+            const yarnrcContent = readFileSync(yarnrcPath, 'utf-8');
+
+            const nodeLinkerMatch = yarnrcContent.match(/nodeLinker:\s*(.+)/);
+            if (nodeLinkerMatch) {
+              metadata.nodeLinker = nodeLinkerMatch[1].trim();
+            }
+
+            const yarnPathMatch = yarnrcContent.match(/yarnPath:\s*(.+)/);
+            if (yarnPathMatch && yarnPathMatch[1].includes('yarn-3.')) {
+              metadata.isYarnBerry = true;
+            }
+          } catch (error) {
+            metadata.yarnrcReadError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        break;
+
+      case 'pnpm':
+        // Check for .pnpmrc configuration
+        const pnpmrcPath = join(projectPath, '.pnpmrc');
+        if (existsSync(pnpmrcPath)) {
+          metadata.hasPnpmrcConfig = true;
+
+          try {
+            const pnpmrcContent = readFileSync(pnpmrcPath, 'utf-8');
+            const config: Record<string, any> = {};
+
+            const lines = pnpmrcContent.split('\n');
+            for (const line of lines) {
+              const match = line.match(/^([^=]+)=(.+)$/);
+              if (match) {
+                const key = match[1].trim();
+                const value = match[2].trim();
+
+                // Convert kebab-case to camelCase and parse values
+                const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+                config[camelKey] = value === 'true' ? true : value === 'false' ? false : value;
+              }
+            }
+
+            metadata.pnpmConfig = config;
+          } catch (error) {
+            metadata.pnpmrcReadError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        break;
+    }
   }
 
   /**

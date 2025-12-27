@@ -13,7 +13,9 @@ import {
   DependencyDetector,
   PackageManagerType,
   ContainerConfig,
-  ContainerDefaults
+  ContainerDefaults,
+  getInstallCommand,
+  getOptimizedInstallCommand
 } from '@apexcli/core';
 
 const execAsync = promisify(exec);
@@ -582,10 +584,22 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       // Auto-detect using DependencyDetector
       const detection = await this.dependencyDetector.detectPackageManagers(this.projectPath);
 
-      if (detection.primaryManager?.installCommand) {
-        installCommand = detection.primaryManager.installCommand;
+      if (detection.primaryManager) {
         packageManagerType = detection.primaryManager.type;
         language = detection.primaryManager.language;
+
+        // Use enhanced package manager utilities for optimized command generation
+        const useFrozen = containerConfig.useFrozenLockfile ?? true; // Default to true for CI-like behavior
+
+        if (useFrozen) {
+          // Use CI-optimized command with frozen lockfile when available
+          installCommand = getOptimizedInstallCommand(detection.primaryManager, true);
+        } else {
+          // Use basic install command generation
+          installCommand = getInstallCommand(detection.primaryManager, {
+            useFrozenLockfile: false
+          });
+        }
       }
     }
 

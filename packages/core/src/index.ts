@@ -24,3 +24,6 @@ export * from './image-builder';
 
 // Dependency Detection
 export * from './dependency-detector';
+
+// Package Manager Utilities
+export * from './package-manager-utils';
