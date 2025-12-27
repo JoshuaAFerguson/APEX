@@ -1,4 +1,7 @@
 import chalk from 'chalk';
+import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
 import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
 import { formatDuration } from '@apex/core';
 
@@ -345,4 +348,144 @@ function handleDaemonError(error: DaemonError): void {
   };
 
   console.log(chalk.red(messages[error.code] || error.message));
+}
+
+/**
+ * Handle daemon logs command
+ */
+export async function handleDaemonLogs(
+  ctx: ApexContext,
+  args: string[]
+): Promise<void> {
+  const logPath = path.join(ctx.cwd, '.apex', 'daemon.log');
+
+  // Parse options
+  let follow = false;
+  let lines = 20;
+  let level: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--follow' || args[i] === '-f') {
+      follow = true;
+    } else if (args[i] === '--lines' || args[i] === '-n') {
+      const linesStr = args[++i];
+      if (linesStr) {
+        const parsed = parseInt(linesStr, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          lines = parsed;
+        } else {
+          console.log(chalk.red('Invalid lines count. Must be a positive number.'));
+          return;
+        }
+      }
+    } else if (args[i] === '--level' || args[i] === '-l') {
+      const levelStr = args[++i];
+      if (levelStr) {
+        const validLevels = ['debug', 'info', 'warn', 'error'];
+        if (validLevels.includes(levelStr.toLowerCase())) {
+          level = levelStr.toLowerCase();
+        } else {
+          console.log(chalk.red(`Invalid log level. Must be one of: ${validLevels.join(', ')}`));
+          return;
+        }
+      }
+    }
+  }
+
+  // Check if log file exists
+  if (!fs.existsSync(logPath)) {
+    console.log(chalk.yellow('Daemon log file not found.'));
+    console.log(chalk.gray('Start the daemon to begin logging.'));
+    return;
+  }
+
+  try {
+    if (follow) {
+      // Use tail -f for following logs
+      const tailArgs = ['-f'];
+      if (lines > 0) {
+        tailArgs.push('-n', lines.toString());
+      }
+      tailArgs.push(logPath);
+
+      console.log(chalk.cyan(`Following daemon logs (${logPath})`));
+      console.log(chalk.gray('Press Ctrl+C to stop following\n'));
+
+      const tailProcess = spawn('tail', tailArgs, { stdio: 'inherit' });
+
+      // Handle process termination
+      process.on('SIGINT', () => {
+        tailProcess.kill('SIGTERM');
+        process.exit(0);
+      });
+
+      tailProcess.on('error', (error) => {
+        console.log(chalk.red(`Failed to follow logs: ${error.message}`));
+      });
+
+    } else {
+      // Read the file and display last N lines
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const allLines = content.split('\n').filter(line => line.trim() !== '');
+
+      // Filter by log level if specified
+      const filteredLines = level
+        ? filterLogsByLevel(allLines, level)
+        : allLines;
+
+      // Get last N lines
+      const lastLines = filteredLines.slice(-lines);
+
+      if (lastLines.length === 0) {
+        console.log(chalk.yellow('No matching log entries found.'));
+        return;
+      }
+
+      console.log(chalk.cyan(`Last ${lastLines.length} daemon log entries:`));
+      console.log(chalk.gray('─'.repeat(50)));
+
+      lastLines.forEach(line => {
+        console.log(formatLogLine(line));
+      });
+    }
+  } catch (error) {
+    console.log(chalk.red(`Failed to read daemon logs: ${(error as Error).message}`));
+  }
+}
+
+/**
+ * Filter log lines by level (hierarchical)
+ */
+function filterLogsByLevel(lines: string[], level: string): string[] {
+  const levelHierarchy: Record<string, string[]> = {
+    'debug': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
+    'info': ['INFO', 'WARN', 'ERROR'],
+    'warn': ['WARN', 'ERROR'],
+    'error': ['ERROR']
+  };
+
+  const allowedLevels = levelHierarchy[level] || [];
+
+  return lines.filter(line => {
+    return allowedLevels.some(logLevel =>
+      line.includes(`] ${logLevel} `) || line.includes(`] ${logLevel}\t`)
+    );
+  });
+}
+
+/**
+ * Format a log line with colors based on log level
+ */
+function formatLogLine(line: string): string {
+  if (line.includes('] ERROR ')) {
+    return chalk.red(line);
+  } else if (line.includes('] WARN ')) {
+    return chalk.yellow(line);
+  } else if (line.includes('] INFO ')) {
+    return chalk.white(line);
+  } else if (line.includes('] DEBUG ')) {
+    return chalk.gray(line);
+  } else {
+    return line;
+  }
 }

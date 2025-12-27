@@ -15,6 +15,7 @@ See [Session Management](#session-management) for persistence, branching, and ex
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Natural Language Tasks](#natural-language-tasks)
 - [Server Management](#server-management)
+- [Daemon Management](#daemon-management)
 - [Service Management](#service-management)
 - [Task Management](#task-management)
 - [Configuration](#configuration)
@@ -2649,6 +2650,207 @@ api:
 webUI:
   port: 3001
   autoStart: true
+```
+
+---
+
+## Daemon Management
+
+APEX includes a background daemon process that can poll for queued tasks and execute them autonomously. The daemon management commands allow you to control this background process lifecycle.
+
+### `/daemon start` - Start Background Daemon
+
+Start the APEX daemon process in the background to automatically execute queued tasks.
+
+**Usage:**
+```bash
+/daemon start [--poll-interval <ms>]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--poll-interval` | `-i` | Polling interval in milliseconds (default: 5000) |
+
+**Examples:**
+```bash
+/daemon start                        # Start with default 5000ms polling
+/daemon start --poll-interval 10000  # Start with 10 second polling
+/daemon start -i 3000               # Start with 3 second polling
+```
+
+**Output:**
+```
+✓ Daemon started (PID: 12345)
+  Polling every 5000ms for queued tasks
+  Logs: .apex/daemon.log
+```
+
+**Notes:**
+- Requires APEX to be initialized (run `/init` first)
+- Creates a PID file at `.apex/daemon.pid`
+- Logs daemon activity to `.apex/daemon.log`
+- Only one daemon instance can run per project
+
+### `/daemon stop` - Stop Background Daemon
+
+Stop the running APEX daemon process gracefully or forcefully.
+
+**Usage:**
+```bash
+/daemon stop [--force]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | `-f` | Force kill the daemon process |
+
+**Examples:**
+```bash
+/daemon stop         # Graceful shutdown
+/daemon stop --force # Force kill daemon
+/daemon stop -f      # Force kill daemon (short form)
+```
+
+**Output:**
+```
+# Graceful stop
+✓ Daemon stopped
+
+# Force stop
+✓ Daemon killed (force)
+
+# If daemon not running
+Daemon is not running.
+```
+
+**Notes:**
+- Graceful stop allows current tasks to complete
+- Force stop immediately terminates the daemon process
+- Removes the PID file after successful shutdown
+
+### `/daemon status` - Show Daemon Status
+
+Display detailed information about the current daemon status, including process information and capacity status.
+
+**Usage:**
+```bash
+/daemon status
+```
+
+**Output (Running):**
+```
+Daemon Status
+────────────────────────────────────
+  State:           running
+  PID:             12345
+  Started:         Dec 20, 2024 10:30 AM
+  Uptime:          2h 15m 30s
+  Log file:        .apex/daemon.log
+
+Capacity Status
+────────────────────────────────────
+  Mode:            day (9:00 AM - 6:00 PM)
+  Threshold:       80%
+  Current Usage:   45.2%
+  Auto-Pause:      No
+  Next Mode:       night at 6:00:00 PM
+```
+
+**Output (Not Running):**
+```
+Daemon Status
+────────────────────────────────────
+  State:           stopped
+
+Use '/daemon start' to start the daemon.
+```
+
+**Information Displayed:**
+- **State**: Current daemon status (running/stopped)
+- **PID**: Process ID of the running daemon
+- **Started**: Timestamp when daemon was started
+- **Uptime**: How long the daemon has been running
+- **Log file**: Location of daemon logs
+- **Capacity Status**: Time-based usage limits and current mode
+- **Mode**: Current time-based mode (day/night/off-hours)
+- **Usage**: Current capacity utilization percentage
+- **Auto-Pause**: Whether daemon is paused due to capacity limits
+
+### `/daemon logs` - View Daemon Logs
+
+View the daemon log file with optional filtering and following.
+
+**Usage:**
+```bash
+/daemon logs [--follow] [--lines <n>] [--level <level>]
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--follow` | `-f` | Follow log output (like `tail -f`) |
+| `--lines` | `-n` | Number of recent lines to show (default: 20) |
+| `--level` | `-l` | Filter by log level (debug, info, warn, error) |
+
+**Examples:**
+```bash
+/daemon logs                    # Show last 20 lines
+/daemon logs --lines 50         # Show last 50 lines
+/daemon logs -n 100            # Show last 100 lines
+/daemon logs --follow          # Follow log output in real-time
+/daemon logs -f                # Follow log output (short form)
+/daemon logs --level error     # Show only error messages
+/daemon logs -l warn           # Show warning and error messages
+/daemon logs --follow --level info  # Follow info-level and above
+```
+
+**Sample Output:**
+```
+[2024-12-20 15:30:15] INFO  Daemon started (PID: 12345)
+[2024-12-20 15:30:15] INFO  Polling interval: 5000ms
+[2024-12-20 15:30:20] DEBUG Checking for queued tasks...
+[2024-12-20 15:30:20] DEBUG No tasks found
+[2024-12-20 15:30:25] DEBUG Checking for queued tasks...
+[2024-12-20 15:30:25] INFO  Found 1 queued task: task_abc123_def
+[2024-12-20 15:30:25] INFO  Starting task execution...
+[2024-12-20 15:32:10] INFO  Task completed successfully
+```
+
+**Notes:**
+- Log file is located at `.apex/daemon.log`
+- Use `Ctrl+C` to stop following when using `--follow`
+- Log levels are hierarchical (error includes warn, info includes debug)
+
+### Error Handling
+
+Common daemon errors and their meanings:
+
+| Error | Meaning | Solution |
+|-------|---------|----------|
+| "APEX not initialized" | Project not set up | Run `/init` first |
+| "Daemon is already running" | Daemon already started | Check status or stop existing daemon |
+| "Daemon is not running" | No daemon to stop | Start daemon first |
+| "Permission denied" | Insufficient permissions | Check `.apex/` directory permissions |
+| "PID file is corrupted" | Invalid PID file | Use `/daemon stop --force` |
+
+### Non-Interactive Mode
+
+Daemon commands also work in non-interactive mode:
+
+```bash
+# Command-line usage
+apex daemon start
+apex daemon start --poll-interval 10000
+apex daemon stop
+apex daemon stop --force
+apex daemon status
+apex daemon logs
+apex daemon logs --follow
 ```
 
 ---

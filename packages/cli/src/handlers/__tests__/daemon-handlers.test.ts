@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import chalk from 'chalk';
-import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonHealth } from '../daemon-handlers';
+import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonHealth, handleDaemonLogs } from '../daemon-handlers';
 import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
 
 // Mock DaemonManager
@@ -22,10 +22,36 @@ vi.mock('chalk', () => ({
     yellow: (str: string) => str,
     cyan: (str: string) => str,
     gray: (str: string) => str,
+    white: (str: string) => str,
+    blue: (str: string) => str,
   },
 }));
 
+// Mock fs module
+vi.mock('fs', () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+
+// Mock child_process module
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
+}));
+
+// Mock path module
+vi.mock('path', () => ({
+  join: vi.fn((...args) => args.join('/')),
+}));
+
+// Import and mock the external modules
+import fs from 'fs';
+import { spawn } from 'child_process';
+import path from 'path';
+
 const mockDaemonManager = vi.mocked(DaemonManager);
+const mockFs = vi.mocked(fs);
+const mockSpawn = vi.mocked(spawn);
+const mockPath = vi.mocked(path);
 
 describe('daemon-handlers', () => {
   let mockManager: any;
@@ -1157,6 +1183,350 @@ describe('daemon-handlers', () => {
         call[0] && (call[0].includes('█') || call[0].includes('['))
       );
       expect(barCall).toBeTruthy();
+    });
+  });
+
+  describe('handleDaemonLogs', () => {
+    const ctx = { cwd: '/test/project', initialized: true };
+
+    beforeEach(() => {
+      // Reset all module mocks
+      vi.clearAllMocks();
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+    });
+
+    it('should display log file when it exists with default options', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Daemon started
+[2023-10-15T10:01:00.000Z] DEBUG Processing task 123
+[2023-10-15T10:02:00.000Z] WARN  High memory usage detected
+[2023-10-15T10:03:00.000Z] ERROR Task failed: network error`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(mockPath.join).toHaveBeenCalledWith('/test/project', '.apex', 'daemon.log');
+      expect(mockFs.existsSync).toHaveBeenCalledWith('/test/project/.apex/daemon.log');
+      expect(mockFs.readFileSync).toHaveBeenCalledWith('/test/project/.apex/daemon.log', 'utf-8');
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 4 daemon log entries:');
+      expect(consoleSpy).toHaveBeenCalledWith('─'.repeat(50));
+
+      // Check that all log lines are displayed with proper formatting
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Daemon started');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] DEBUG Processing task 123');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:02:00.000Z] WARN  High memory usage detected');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:03:00.000Z] ERROR Task failed: network error');
+    });
+
+    it('should limit output to specified number of lines', async () => {
+      const logContent = Array.from({ length: 50 }, (_, i) =>
+        `[2023-10-15T10:${i.toString().padStart(2, '0')}:00.000Z] INFO  Log entry ${i + 1}`
+      ).join('\n');
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--lines', '10']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 10 daemon log entries:');
+
+      // Should show only last 10 entries
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:49:00.000Z] INFO  Log entry 50');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:48:00.000Z] INFO  Log entry 49');
+      // Should not show earlier entries
+      expect(consoleSpy).not.toHaveBeenCalledWith('[2023-10-15T10:39:00.000Z] INFO  Log entry 40');
+    });
+
+    it('should support short form lines flag', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Line 1
+[2023-10-15T10:01:00.000Z] INFO  Line 2
+[2023-10-15T10:02:00.000Z] INFO  Line 3`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['-n', '2']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 2 daemon log entries:');
+    });
+
+    it('should filter logs by level (error only)', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Info message
+[2023-10-15T10:01:00.000Z] WARN  Warning message
+[2023-10-15T10:02:00.000Z] ERROR Error message
+[2023-10-15T10:03:00.000Z] DEBUG Debug message`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--level', 'error']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 1 daemon log entries:');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:02:00.000Z] ERROR Error message');
+      expect(consoleSpy).not.toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Info message');
+    });
+
+    it('should filter logs by level (warn and above)', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Info message
+[2023-10-15T10:01:00.000Z] WARN  Warning message
+[2023-10-15T10:02:00.000Z] ERROR Error message
+[2023-10-15T10:03:00.000Z] DEBUG Debug message`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--level', 'warn']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 2 daemon log entries:');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] WARN  Warning message');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:02:00.000Z] ERROR Error message');
+      expect(consoleSpy).not.toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Info message');
+      expect(consoleSpy).not.toHaveBeenCalledWith('[2023-10-15T10:03:00.000Z] DEBUG Debug message');
+    });
+
+    it('should support short form level flag', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Info message
+[2023-10-15T10:01:00.000Z] ERROR Error message`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['-l', 'error']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] ERROR Error message');
+      expect(consoleSpy).not.toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Info message');
+    });
+
+    it('should handle invalid log levels', async () => {
+      await handleDaemonLogs(ctx, ['--level', 'invalid']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Invalid log level. Must be one of: debug, info, warn, error');
+      expect(mockFs.existsSync).not.toHaveBeenCalled();
+    });
+
+    it('should handle invalid lines count', async () => {
+      await handleDaemonLogs(ctx, ['--lines', 'invalid']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Invalid lines count. Must be a positive number.');
+      expect(mockFs.existsSync).not.toHaveBeenCalled();
+    });
+
+    it('should handle negative lines count', async () => {
+      await handleDaemonLogs(ctx, ['--lines', '-5']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Invalid lines count. Must be a positive number.');
+      expect(mockFs.existsSync).not.toHaveBeenCalled();
+    });
+
+    it('should handle missing log file', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Daemon log file not found.');
+      expect(consoleSpy).toHaveBeenCalledWith('Start the daemon to begin logging.');
+      expect(mockFs.readFileSync).not.toHaveBeenCalled();
+    });
+
+    it('should handle empty log file', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue('');
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(consoleSpy).toHaveBeenCalledWith('No matching log entries found.');
+    });
+
+    it('should handle log file with only whitespace', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue('   \n  \n \t ');
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(consoleSpy).toHaveBeenCalledWith('No matching log entries found.');
+    });
+
+    it('should handle file read errors', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockImplementation(() => {
+        throw new Error('Permission denied');
+      });
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to read daemon logs: Permission denied');
+    });
+
+    it('should start following logs with tail command', async () => {
+      const mockTailProcess = {
+        kill: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(mockTailProcess as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      await handleDaemonLogs(ctx, ['--follow']);
+
+      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+      expect(consoleSpy).toHaveBeenCalledWith('Following daemon logs (/test/project/.apex/daemon.log)');
+      expect(consoleSpy).toHaveBeenCalledWith('Press Ctrl+C to stop following\n');
+      expect(mockProcessOn).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should follow logs with custom lines count', async () => {
+      const mockTailProcess = {
+        kill: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(mockTailProcess as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      await handleDaemonLogs(ctx, ['--follow', '--lines', '50']);
+
+      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '-n', '50', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should support short form follow flag', async () => {
+      const mockTailProcess = {
+        kill: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(mockTailProcess as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      await handleDaemonLogs(ctx, ['-f']);
+
+      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle tail command errors', async () => {
+      const mockTailProcess = {
+        kill: vi.fn(),
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'error') {
+            callback(new Error('tail command not found'));
+          }
+        }),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(mockTailProcess as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      await handleDaemonLogs(ctx, ['--follow']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to follow logs: tail command not found');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle combination of flags', async () => {
+      const logContent = Array.from({ length: 20 }, (_, i) =>
+        `[2023-10-15T10:${i.toString().padStart(2, '0')}:00.000Z] ${i % 2 === 0 ? 'INFO' : 'WARN'}  Message ${i + 1}`
+      ).join('\n');
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--level', 'warn', '--lines', '3']);
+
+      // Should filter to WARN level and show only 3 lines
+      expect(consoleSpy).toHaveBeenCalledWith('Last 3 daemon log entries:');
+
+      // Check that only WARN messages are shown
+      const warnCalls = consoleSpy.mock.calls.filter(call =>
+        call[0] && typeof call[0] === 'string' && call[0].includes('WARN')
+      );
+      expect(warnCalls.length).toBeGreaterThan(0);
+    });
+
+    it('should format log lines with colors based on level', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] ERROR Error message
+[2023-10-15T10:01:00.000Z] WARN  Warning message
+[2023-10-15T10:02:00.000Z] INFO  Info message
+[2023-10-15T10:03:00.000Z] DEBUG Debug message`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, []);
+
+      // All lines should be displayed (color formatting is handled by chalk mocks)
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] ERROR Error message');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] WARN  Warning message');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:02:00.000Z] INFO  Info message');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:03:00.000Z] DEBUG Debug message');
+    });
+
+    it('should handle logs with mixed line endings', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Line 1\r\n[2023-10-15T10:01:00.000Z] INFO  Line 2\n[2023-10-15T10:02:00.000Z] INFO  Line 3`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, []);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Last 3 daemon log entries:');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Line 1');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] INFO  Line 2');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:02:00.000Z] INFO  Line 3');
+    });
+
+    it('should handle zero lines count', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Line 1`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--lines', '0']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('Invalid lines count. Must be a positive number.');
+      expect(mockFs.readFileSync).not.toHaveBeenCalled();
+    });
+
+    it('should show no matching entries when level filter matches nothing', async () => {
+      const logContent = `[2023-10-15T10:00:00.000Z] INFO  Info message only`;
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(ctx, ['--level', 'error']);
+
+      expect(consoleSpy).toHaveBeenCalledWith('No matching log entries found.');
     });
   });
 });

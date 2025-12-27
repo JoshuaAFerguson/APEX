@@ -22,7 +22,7 @@ import {
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
-import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from './handlers/daemon-handlers.js';
+import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonLogs } from './handlers/daemon-handlers.js';
 import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
 
 const VERSION = '0.1.0';
@@ -752,7 +752,7 @@ export const commands: Command[] = [
     name: 'daemon',
     aliases: ['d'],
     description: 'Manage background daemon process',
-    usage: '/daemon <start|stop|status> [options]',
+    usage: '/daemon <start|stop|status|logs> [options]',
     handler: async (ctx, args) => {
       const subcommand = args[0]?.toLowerCase();
 
@@ -766,12 +766,16 @@ export const commands: Command[] = [
         case 'status':
           await handleDaemonStatus(ctx);
           break;
+        case 'logs':
+          await handleDaemonLogs(ctx, args.slice(1));
+          break;
         default:
-          console.log(chalk.red('Usage: /daemon <start|stop|status>'));
+          console.log(chalk.red('Usage: /daemon <start|stop|status|logs>'));
           console.log(chalk.gray('\nSubcommands:'));
           console.log(chalk.gray('  start [--poll-interval <ms>]   Start the daemon'));
           console.log(chalk.gray('  stop [--force]                 Stop the daemon'));
           console.log(chalk.gray('  status                         Show daemon status'));
+          console.log(chalk.gray('  logs [--follow] [--lines <n>]   View daemon logs'));
       }
     },
   },
@@ -3922,7 +3926,7 @@ ${chalk.bold('Commands:')}
                           Also supports: checkout --list, checkout --cleanup [<task_id>]
   shell <task_id>         Attach interactive shell to running task container
   serve [--port]          Start the API server
-  daemon <cmd>            Manage background daemon (start|stop|status)
+  daemon <cmd>            Manage background daemon (start|stop|status|logs)
   install-service         Install APEX daemon as system service
   uninstall-service       Remove APEX daemon system service
   pr <task_id>            Create a pull request
