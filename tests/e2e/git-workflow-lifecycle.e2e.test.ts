@@ -1794,4 +1794,445 @@ describe('E2E: Complete Git Workflow Lifecycle', () => {
       expect(finalState.isClean).toBe(true);
     });
   });
+
+  describe('Error Recovery Across Full Lifecycle', () => {
+    beforeEach(async () => {
+      // Setup complete environment with remote for error recovery testing
+      await initGitRepo(bareRepoDir, true);
+      await initGitRepo(testDir);
+      await createApexConfig(testDir);
+      await runGit(`remote add origin ${bareRepoDir}`, testDir);
+
+      // Create and push initial commit
+      await fs.writeFile(path.join(testDir, 'README.md'), '# Error Recovery Test Project\n');
+      await runGit('add README.md', testDir);
+      await runGit('commit -m "Initial commit"', testDir);
+      await runGit('push -u origin main', testDir);
+
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
+      await orchestrator.initialize();
+    });
+
+    it('should recover from failed push operation and continue workflow', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test push failure recovery',
+        branchName: 'apex/push-failure-recovery',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Develop feature normally
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Simulate push failure by temporarily removing remote
+      const originalRemote = await runGit('remote get-url origin', testDir);
+      await runGit('remote remove origin', testDir);
+
+      // Attempt push - should fail
+      const pushResult1 = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult1.success).toBe(false);
+      expect(pushResult1.error).toBeDefined();
+
+      // Verify task state is consistent (not marked as completed)
+      const taskAfterFailedPush = await orchestrator.store.getTask(task.id);
+      expect(taskAfterFailedPush!.status).not.toBe('completed');
+
+      // Restore remote to simulate network recovery
+      await runGit(`remote add origin ${originalRemote.stdout.trim()}`, testDir);
+
+      // Retry push - should succeed now
+      const pushResult2 = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult2.success).toBe(true);
+      expect(pushResult2.error).toBeUndefined();
+
+      // Verify branch exists on remote
+      const remoteBranches = await runGit('ls-remote --heads origin', testDir);
+      expect(remoteBranches.stdout).toContain('apex/push-failure-recovery');
+
+      // Continue workflow - merge should work
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+      expect(mergeResult.conflicted).toBeFalsy();
+
+      // Verify repository integrity after recovery
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+      expect(finalState.recentCommits.some(commit => commit.includes('Merge'))).toBe(true);
+    });
+
+    it('should recover from merge conflicts by aborting and cleaning up', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test merge conflict recovery',
+        branchName: 'apex/merge-conflict-recovery',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Create feature branch with changes to same file
+      await runGit(`checkout -b ${task.branchName!}`, testDir);
+      await fs.writeFile(
+        path.join(testDir, 'README.md'),
+        '# Error Recovery Test Project\n\n## Feature Branch Changes\nThis is from the feature branch.\n'
+      );
+      await runGit('add README.md', testDir);
+      await runGit('commit -m "feat: update README from feature branch"', testDir);
+
+      // Switch to main and make conflicting changes
+      await runGit('checkout main', testDir);
+      await fs.writeFile(
+        path.join(testDir, 'README.md'),
+        '# Error Recovery Test Project\n\n## Main Branch Changes\nThis is from main branch.\n'
+      );
+      await runGit('add README.md', testDir);
+      await runGit('commit -m "feat: update README from main branch"', testDir);
+
+      // Attempt merge - should fail with conflicts
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(false);
+      expect(mergeResult.conflicted).toBe(true);
+      expect(mergeResult.error).toContain('Merge conflicts detected');
+
+      // Verify repository is in clean state after conflict (merge was aborted)
+      const postConflictState = await verifyGitState(testDir);
+      expect(postConflictState.branch).toBe('main');
+      expect(postConflictState.isClean).toBe(true); // No uncommitted changes due to abort
+
+      // Verify the README still has main branch content (conflict was aborted)
+      const readmeContent = await fs.readFile(path.join(testDir, 'README.md'), 'utf-8');
+      expect(readmeContent).toContain('Main Branch Changes');
+      expect(readmeContent).not.toContain('Feature Branch Changes');
+
+      // Verify git status shows no conflicts
+      const status = await runGit('status --porcelain', testDir);
+      expect(status.stdout.trim()).toBe('');
+
+      // Task should remain available for retry or manual intervention
+      const taskAfterConflict = await orchestrator.store.getTask(task.id);
+      expect(taskAfterConflict!.status).not.toBe('completed');
+      expect(taskAfterConflict!.branchName).toBe('apex/merge-conflict-recovery');
+
+      // Verify branch still exists and can be checked out
+      const branchCheckout = await runGit(`checkout ${task.branchName!}`, testDir);
+      expect(branchCheckout.success).toBe(true);
+    });
+
+    it('should recover from network/remote failures during git operations', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test network failure recovery',
+        branchName: 'apex/network-failure-recovery',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Develop feature
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Simulate network failure by setting invalid remote
+      const originalRemote = await runGit('remote get-url origin', testDir);
+      await runGit('remote set-url origin invalid-remote-url', testDir);
+
+      // Attempt push - should fail with network error
+      const pushResult1 = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult1.success).toBe(false);
+      expect(pushResult1.error).toBeDefined();
+
+      // Verify repository state is not corrupted
+      const stateAfterFailure = await verifyGitState(testDir);
+      expect(stateAfterFailure.branch).toBe('apex/network-failure-recovery');
+      expect(stateAfterFailure.isClean).toBe(true);
+
+      // Verify task is not marked as completed
+      const taskAfterNetworkFailure = await orchestrator.store.getTask(task.id);
+      expect(taskAfterNetworkFailure!.status).not.toBe('completed');
+
+      // Restore network (fix remote URL)
+      await runGit(`remote set-url origin ${originalRemote.stdout.trim()}`, testDir);
+
+      // Retry operations - should work now
+      const pushResult2 = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult2.success).toBe(true);
+
+      // Continue workflow
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Verify final success
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+    });
+
+    it('should maintain state consistency after partial failures', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test state consistency during failures',
+        branchName: 'apex/state-consistency-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Verify initial state
+      const initialTask = await orchestrator.store.getTask(task.id);
+      expect(initialTask!.status).toBe('pending');
+      expect(initialTask!.branchName).toBe('apex/state-consistency-test');
+
+      // Start development
+      await runGit(`checkout -b ${task.branchName!}`, testDir);
+      await fs.writeFile(
+        path.join(testDir, 'feature.js'),
+        '// Partial feature implementation\nconsole.log("partial work");\n'
+      );
+      await runGit('add feature.js', testDir);
+      await runGit('commit -m "feat: partial implementation"', testDir);
+
+      // Simulate failure by removing remote during push
+      const originalRemote = await runGit('remote get-url origin', testDir);
+      await runGit('remote remove origin', testDir);
+
+      // Attempt push - will fail
+      const failedPush = await orchestrator.pushTaskBranch(task.id);
+      expect(failedPush.success).toBe(false);
+
+      // Verify state consistency after failure
+      const taskAfterFailure = await orchestrator.store.getTask(task.id);
+      expect(taskAfterFailure).toBeDefined();
+      expect(taskAfterFailure!.id).toBe(task.id);
+      expect(taskAfterFailure!.branchName).toBe('apex/state-consistency-test');
+      expect(taskAfterFailure!.status).not.toBe('completed');
+
+      // Verify git repository state is consistent
+      const gitStateAfterFailure = await verifyGitState(testDir);
+      expect(gitStateAfterFailure.branch).toBe('apex/state-consistency-test');
+      expect(gitStateAfterFailure.isClean).toBe(true);
+      expect(gitStateAfterFailure.recentCommits.length).toBeGreaterThan(0);
+
+      // Verify work is preserved - feature.js should exist with content
+      const featureExists = await fs.access(path.join(testDir, 'feature.js')).then(() => true, () => false);
+      expect(featureExists).toBe(true);
+      const featureContent = await fs.readFile(path.join(testDir, 'feature.js'), 'utf-8');
+      expect(featureContent).toContain('partial work');
+
+      // Restore remote and complete the work
+      await runGit(`remote add origin ${originalRemote.stdout.trim()}`, testDir);
+
+      // Add more work to the same branch
+      await fs.appendFile(path.join(testDir, 'feature.js'), '\n// Completed implementation\nconsole.log("completed");\n');
+      await runGit('add feature.js', testDir);
+      await runGit('commit -m "feat: complete implementation"', testDir);
+
+      // Now push should work
+      const successfulPush = await orchestrator.pushTaskBranch(task.id);
+      expect(successfulPush.success).toBe(true);
+
+      // Complete the workflow
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Verify final state includes all work
+      const finalFeatureContent = await fs.readFile(path.join(testDir, 'feature.js'), 'utf-8');
+      expect(finalFeatureContent).toContain('partial work');
+      expect(finalFeatureContent).toContain('completed');
+    });
+
+    it('should allow task to be resumed after failure recovery', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test task resumption after failure',
+        branchName: 'apex/resumption-test',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Start task development
+      await runGit(`checkout -b ${task.branchName!}`, testDir);
+      await fs.writeFile(path.join(testDir, 'partial-work.js'), 'console.log("initial work");\n');
+      await runGit('add partial-work.js', testDir);
+      await runGit('commit -m "feat: initial work"', testDir);
+
+      // Simulate infrastructure failure by corrupting remote
+      await runGit('remote set-url origin /invalid/path', testDir);
+
+      // Attempt push - should fail
+      const failedPush = await orchestrator.pushTaskBranch(task.id);
+      expect(failedPush.success).toBe(false);
+
+      // Verify task can still be accessed and resumed
+      const taskBeforeRecovery = await orchestrator.store.getTask(task.id);
+      expect(taskBeforeRecovery).toBeDefined();
+      expect(taskBeforeRecovery!.id).toBe(task.id);
+
+      // Simulate infrastructure recovery
+      const bareRemotePath = bareRepoDir;
+      await runGit(`remote set-url origin ${bareRemotePath}`, testDir);
+
+      // Resume by continuing work on the same branch
+      await runGit(`checkout ${task.branchName!}`, testDir);
+      expect(await fs.readFile(path.join(testDir, 'partial-work.js'), 'utf-8')).toContain('initial work');
+
+      // Add more work to complete the feature
+      await fs.appendFile(path.join(testDir, 'partial-work.js'), 'console.log("resumed work");\n');
+      await runGit('add partial-work.js', testDir);
+      await runGit('commit -m "feat: complete work after recovery"', testDir);
+
+      // Operations should now succeed
+      const successfulPush = await orchestrator.pushTaskBranch(task.id);
+      expect(successfulPush.success).toBe(true);
+
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+
+      // Verify completed work includes both initial and resumed portions
+      const finalWork = await fs.readFile(path.join(testDir, 'partial-work.js'), 'utf-8');
+      expect(finalWork).toContain('initial work');
+      expect(finalWork).toContain('resumed work');
+
+      // Verify task can be marked as completed after recovery
+      await orchestrator.updateTaskStatus(task.id, 'completed');
+      const completedTask = await orchestrator.store.getTask(task.id);
+      expect(completedTask!.status).toBe('completed');
+    });
+
+    it('should maintain repository integrity through error scenarios', async () => {
+      const task1 = createTestTask({
+        projectPath: testDir,
+        description: 'First task for integrity test',
+        branchName: 'apex/integrity-test-1',
+      });
+
+      const task2 = createTestTask({
+        projectPath: testDir,
+        description: 'Second task for integrity test',
+        branchName: 'apex/integrity-test-2',
+      });
+
+      await orchestrator.store.createTask(task1);
+      await orchestrator.store.createTask(task2);
+
+      // Develop first task successfully
+      await simulateFeatureDevelopment(testDir, task1.branchName!, task1.description);
+      const push1Result = await orchestrator.pushTaskBranch(task1.id);
+      expect(push1Result.success).toBe(true);
+
+      await runGit('checkout main', testDir);
+      const merge1Result = await orchestrator.mergeTaskBranch(task1.id);
+      expect(merge1Result.success).toBe(true);
+
+      // Develop second task but introduce failure
+      await simulateFeatureDevelopment(testDir, task2.branchName!, task2.description);
+
+      // Corrupt the repository state temporarily to test integrity
+      const originalRemote = await runGit('remote get-url origin', testDir);
+      await runGit('remote remove origin', testDir);
+
+      // Attempt operations on second task - should fail
+      const failedPush = await orchestrator.pushTaskBranch(task2.id);
+      expect(failedPush.success).toBe(false);
+
+      // Verify repository integrity is maintained
+      const gitFsck = await runGit('fsck --full', testDir);
+      expect(gitFsck.success).toBe(true);
+
+      // Verify first task's work is still intact
+      const firstTaskFiles = merge1Result.changedFiles || [];
+      for (const file of firstTaskFiles) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+
+      // Verify branch structure is consistent
+      const branchState = await verifyGitState(testDir);
+      expect(branchState.branches.some(b => b.includes('apex/integrity-test-1'))).toBe(true);
+      expect(branchState.branches.some(b => b.includes('apex/integrity-test-2'))).toBe(true);
+
+      // Restore remote and complete second task
+      await runGit(`remote add origin ${originalRemote.stdout.trim()}`, testDir);
+      const recoveredPush = await orchestrator.pushTaskBranch(task2.id);
+      expect(recoveredPush.success).toBe(true);
+
+      await runGit('checkout main', testDir);
+      const merge2Result = await orchestrator.mergeTaskBranch(task2.id);
+      expect(merge2Result.success).toBe(true);
+
+      // Verify final repository integrity
+      const finalIntegrityCheck = await runGit('fsck --full', testDir);
+      expect(finalIntegrityCheck.success).toBe(true);
+
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+
+      // Verify all work from both tasks is present
+      const allFiles = [...firstTaskFiles, ...(merge2Result.changedFiles || [])];
+      for (const file of allFiles) {
+        const fileExists = await fs.access(path.join(testDir, file)).then(() => true, () => false);
+        expect(fileExists).toBe(true);
+      }
+    });
+
+    it('should handle graceful error recovery with detailed error information', async () => {
+      const task = createTestTask({
+        projectPath: testDir,
+        description: 'Test detailed error recovery',
+        branchName: 'apex/detailed-error-recovery',
+      });
+
+      await orchestrator.store.createTask(task);
+
+      // Develop feature
+      await simulateFeatureDevelopment(testDir, task.branchName!, task.description);
+
+      // Create a scenario where push fails with specific error
+      await runGit('remote set-url origin https://invalid-github-url.com/user/repo.git', testDir);
+
+      // Attempt push and capture detailed error
+      const pushResult = await orchestrator.pushTaskBranch(task.id);
+      expect(pushResult.success).toBe(false);
+      expect(pushResult.error).toBeDefined();
+      expect(typeof pushResult.error).toBe('string');
+
+      // Verify error is logged in task history
+      const logs = await orchestrator.store.getLogs(task.id);
+      const errorLogs = logs.filter(log => log.level === 'error' || log.level === 'warn');
+      expect(errorLogs.length).toBeGreaterThan(0);
+
+      // Verify task state is preserved with error information
+      const taskAfterError = await orchestrator.store.getTask(task.id);
+      expect(taskAfterError).toBeDefined();
+      expect(taskAfterError!.status).not.toBe('completed');
+
+      // Fix the error condition
+      await runGit(`remote set-url origin ${bareRepoDir}`, testDir);
+
+      // Retry and verify success
+      const retryPushResult = await orchestrator.pushTaskBranch(task.id);
+      expect(retryPushResult.success).toBe(true);
+      expect(retryPushResult.error).toBeUndefined();
+
+      // Verify error recovery is logged
+      const updatedLogs = await orchestrator.store.getLogs(task.id);
+      const recoveryLogs = updatedLogs.filter(log =>
+        log.message.toLowerCase().includes('push') &&
+        log.level === 'info'
+      );
+      expect(recoveryLogs.length).toBeGreaterThan(0);
+
+      // Complete the workflow to ensure full recovery
+      await runGit('checkout main', testDir);
+      const mergeResult = await orchestrator.mergeTaskBranch(task.id);
+      expect(mergeResult.success).toBe(true);
+      expect(mergeResult.error).toBeUndefined();
+
+      const finalState = await verifyGitState(testDir);
+      expect(finalState.branch).toBe('main');
+      expect(finalState.isClean).toBe(true);
+    });
+  });
 });
