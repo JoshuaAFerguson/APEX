@@ -821,9 +821,13 @@ export const commands: Command[] = [
         return;
       }
 
-      const task = await ctx.orchestrator.getTask(taskId);
+      // Find the full task ID from partial ID
+      const tasks = await ctx.orchestrator.listTasks({ limit: 100 });
+      const task = tasks.find(t => t.id.startsWith(taskId));
+
       if (!task) {
         console.log(chalk.red(`Task not found: ${taskId}`));
+        console.log(chalk.gray('Use /status to see available tasks or provide a longer task ID.'));
         return;
       }
 
@@ -834,7 +838,7 @@ export const commands: Command[] = [
 
       console.log(chalk.cyan(`\nPushing branch ${task.branchName} to remote...\n`));
 
-      const result = await ctx.orchestrator.pushTaskBranch(taskId);
+      const result = await ctx.orchestrator.pushTaskBranch(task.id);
 
       if (result.success) {
         console.log(chalk.green(`✓ Successfully pushed ${task.branchName} to origin`));

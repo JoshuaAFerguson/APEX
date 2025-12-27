@@ -13,6 +13,7 @@ describe('Push Command', () => {
   beforeEach(() => {
     mockOrchestrator = {
       getTask: vi.fn(),
+      listTasks: vi.fn(),
       pushTaskBranch: vi.fn(),
     };
 
@@ -84,12 +85,13 @@ describe('Push Command', () => {
       const pushCommand = commands.find(cmd => cmd.name === 'push');
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      mockOrchestrator.getTask.mockResolvedValue(null);
+      mockOrchestrator.listTasks.mockResolvedValue([]);
 
       await pushCommand?.handler(mockContext, ['non-existent-task']);
 
-      expect(mockOrchestrator.getTask).toHaveBeenCalledWith('non-existent-task');
+      expect(mockOrchestrator.listTasks).toHaveBeenCalledWith({ limit: 100 });
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Task not found: non-existent-task'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Use /status to see available tasks'));
       consoleSpy.mockRestore();
     });
 
@@ -103,11 +105,11 @@ describe('Push Command', () => {
         branchName: null,
       };
 
-      mockOrchestrator.getTask.mockResolvedValue(taskWithoutBranch);
+      mockOrchestrator.listTasks.mockResolvedValue([taskWithoutBranch]);
 
       await pushCommand?.handler(mockContext, ['test-task']);
 
-      expect(mockOrchestrator.getTask).toHaveBeenCalledWith('test-task');
+      expect(mockOrchestrator.listTasks).toHaveBeenCalledWith({ limit: 100 });
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Task does not have a branch'));
       consoleSpy.mockRestore();
     });
@@ -124,12 +126,12 @@ describe('Push Command', () => {
         branchName: 'feature/test-branch',
       };
 
-      mockOrchestrator.getTask.mockResolvedValue(taskWithBranch);
+      mockOrchestrator.listTasks.mockResolvedValue([taskWithBranch]);
       mockOrchestrator.pushTaskBranch.mockResolvedValue({ success: true });
 
       await pushCommand?.handler(mockContext, ['test-task']);
 
-      expect(mockOrchestrator.getTask).toHaveBeenCalledWith('test-task');
+      expect(mockOrchestrator.listTasks).toHaveBeenCalledWith({ limit: 100 });
       expect(mockOrchestrator.pushTaskBranch).toHaveBeenCalledWith('test-task');
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Pushing branch feature/test-branch to remote'));
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('✓ Successfully pushed feature/test-branch to origin'));
@@ -148,7 +150,7 @@ describe('Push Command', () => {
         branchName: 'feature/test-branch',
       };
 
-      mockOrchestrator.getTask.mockResolvedValue(taskWithBranch);
+      mockOrchestrator.listTasks.mockResolvedValue([taskWithBranch]);
       mockOrchestrator.pushTaskBranch.mockResolvedValue({
         success: false,
         error: 'Remote repository not found'
@@ -156,7 +158,7 @@ describe('Push Command', () => {
 
       await pushCommand?.handler(mockContext, ['test-task']);
 
-      expect(mockOrchestrator.getTask).toHaveBeenCalledWith('test-task');
+      expect(mockOrchestrator.listTasks).toHaveBeenCalledWith({ limit: 100 });
       expect(mockOrchestrator.pushTaskBranch).toHaveBeenCalledWith('test-task');
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to push: Remote repository not found'));
       consoleSpy.mockRestore();
@@ -172,11 +174,11 @@ describe('Push Command', () => {
         branchName: 'feature/test-branch',
       };
 
-      mockOrchestrator.getTask.mockResolvedValue(taskWithBranch);
+      mockOrchestrator.listTasks.mockResolvedValue([taskWithBranch]);
       mockOrchestrator.pushTaskBranch.mockRejectedValue(new Error('Network error'));
 
-      // Should not throw, but handle the error gracefully
-      await expect(pushCommand?.handler(mockContext, ['test-task'])).resolves.not.toThrow();
+      // Now with the listTasks call, errors will propagate, so we expect it to reject
+      await expect(pushCommand?.handler(mockContext, ['test-task'])).rejects.toThrow('Network error');
 
       consoleSpy.mockRestore();
     });
