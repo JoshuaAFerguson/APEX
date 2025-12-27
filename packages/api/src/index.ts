@@ -14,8 +14,9 @@ import {
   SubtaskStrategy,
   SubtaskDefinition,
   TaskTemplate,
+  HealthMetrics,
 } from '@apexcli/core';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { ApexOrchestrator, DaemonManager, HealthMonitor } from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -78,6 +79,54 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
   await orchestrator.initialize();
 
+  // Initialize daemon manager and health monitor for health endpoint
+  const daemonManager = new DaemonManager({ projectPath });
+  const healthMonitor = new HealthMonitor();
+
+  // Store previous health metrics for comparison
+  let lastHealthMetrics: HealthMetrics | null = null;
+
+  // Optional: Set up periodic health monitoring (every 30 seconds)
+  // This will broadcast health:updated events when significant changes are detected
+  let healthMonitoringInterval: NodeJS.Timeout | null = null;
+  if (!process.env.DISABLE_HEALTH_MONITORING) {
+    healthMonitoringInterval = setInterval(async () => {
+      try {
+        const daemonStatus = await daemonManager.getStatus();
+        if (daemonStatus.isRunning && daemonStatus.health) {
+          const currentMetrics: HealthMetrics = {
+            uptime: daemonStatus.health.uptime,
+            memoryUsage: daemonStatus.health.memoryUsage,
+            taskCounts: daemonStatus.health.taskCounts,
+            lastHealthCheck: new Date(daemonStatus.health.lastHealthCheck),
+            healthChecksPassed: daemonStatus.health.healthChecksPassed,
+            healthChecksFailed: daemonStatus.health.healthChecksFailed,
+            restartHistory: daemonStatus.health.restartHistory,
+          };
+
+          const metricsChanged = checkHealthMetricsChanged(currentMetrics, lastHealthMetrics);
+          if (metricsChanged && lastHealthMetrics) {
+            broadcast('health', {
+              type: 'health:updated',
+              taskId: 'health',
+              timestamp: new Date(),
+              data: {
+                metrics: currentMetrics,
+                previous: lastHealthMetrics,
+                changeDetected: true,
+                source: 'periodic-monitoring'
+              },
+            });
+          }
+          lastHealthMetrics = currentMetrics;
+        }
+      } catch (error) {
+        // Silent fail for periodic monitoring to avoid spam
+        app.log.debug(`Periodic health monitoring error: ${error instanceof Error ? error.message : error}`);
+      }
+    }, 30000); // 30 seconds
+  }
+
   // Set up orchestrator event handlers for broadcasting
   setupEventBroadcasting(orchestrator);
 
@@ -87,6 +136,89 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
   app.get('/health', async () => {
     return { status: 'ok', version: '0.1.0' };
+  });
+
+  // Comprehensive daemon health endpoint
+  app.get('/daemon/health', async (request, reply) => {
+    try {
+      // Get daemon status
+      const daemonStatus = await daemonManager.getStatus();
+
+      if (!daemonStatus.isRunning) {
+        return reply.status(503).send({
+          error: 'Daemon not running',
+          status: 'unavailable',
+          metrics: null,
+          message: 'APEX daemon is not currently running. Start the daemon to get health metrics.'
+        });
+      }
+
+      // Get health metrics from daemon status or generate new ones
+      let healthMetrics: HealthMetrics;
+
+      if (daemonStatus.health) {
+        // Use health metrics from daemon status if available
+        healthMetrics = {
+          uptime: daemonStatus.health.uptime,
+          memoryUsage: daemonStatus.health.memoryUsage,
+          taskCounts: daemonStatus.health.taskCounts,
+          lastHealthCheck: new Date(daemonStatus.health.lastHealthCheck),
+          healthChecksPassed: daemonStatus.health.healthChecksPassed,
+          healthChecksFailed: daemonStatus.health.healthChecksFailed,
+          restartHistory: daemonStatus.health.restartHistory,
+        };
+      } else {
+        // Generate health metrics from health monitor if daemon status doesn't have them
+        healthMetrics = healthMonitor.getHealthReport();
+      }
+
+      // Check if metrics have changed significantly
+      const metricsChanged = checkHealthMetricsChanged(healthMetrics, lastHealthMetrics);
+
+      // If metrics changed significantly, broadcast WebSocket event
+      if (metricsChanged && lastHealthMetrics) {
+        broadcast('health', {
+          type: 'health:updated',
+          taskId: 'health',
+          timestamp: new Date(),
+          data: {
+            metrics: healthMetrics,
+            previous: lastHealthMetrics,
+            changeDetected: true
+          },
+        });
+      }
+
+      // Store current metrics for next comparison
+      lastHealthMetrics = healthMetrics;
+
+      // Perform health check
+      const isHealthy = assessDaemonHealth(healthMetrics);
+      healthMonitor.performHealthCheck(isHealthy);
+
+      return {
+        status: isHealthy ? 'healthy' : 'degraded',
+        metrics: healthMetrics,
+        daemon: {
+          isRunning: daemonStatus.isRunning,
+          pid: daemonStatus.pid,
+          version: daemonStatus.version,
+          startedAt: daemonStatus.startedAt,
+          projectPath: daemonStatus.projectPath,
+        },
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      app.log.error(`Health check failed: ${error instanceof Error ? error.message : error}`);
+
+      return reply.status(500).send({
+        error: 'Health check failed',
+        status: 'error',
+        metrics: null,
+        message: error instanceof Error ? error.message : 'Unknown error occurred during health check',
+        timestamp: new Date(),
+      });
+    }
   });
 
   // ============================================================================
@@ -943,7 +1075,79 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Server startup
   // ============================================================================
 
+  // Add cleanup hook for health monitoring interval
+  app.addHook('onClose', async () => {
+    if (healthMonitoringInterval) {
+      clearInterval(healthMonitoringInterval);
+      healthMonitoringInterval = null;
+    }
+  });
+
   return app;
+}
+
+/**
+ * Check if health metrics have changed significantly
+ */
+function checkHealthMetricsChanged(current: HealthMetrics, previous: HealthMetrics | null): boolean {
+  if (!previous) return false;
+
+  // Define thresholds for significant changes
+  const MEMORY_THRESHOLD = 0.1; // 10% change in memory usage
+  const TASK_THRESHOLD = 5; // 5 task difference
+  const UPTIME_THRESHOLD = 60000; // 1 minute difference (restarts)
+
+  // Check memory usage changes
+  const memoryChangePct = Math.abs(current.memoryUsage.heapUsed - previous.memoryUsage.heapUsed) / previous.memoryUsage.heapUsed;
+  if (memoryChangePct > MEMORY_THRESHOLD) return true;
+
+  // Check task count changes
+  if (Math.abs(current.taskCounts.processed - previous.taskCounts.processed) >= TASK_THRESHOLD) return true;
+  if (Math.abs(current.taskCounts.failed - previous.taskCounts.failed) >= TASK_THRESHOLD) return true;
+  if (Math.abs(current.taskCounts.active - previous.taskCounts.active) >= TASK_THRESHOLD) return true;
+
+  // Check for restart (uptime significantly decreased)
+  if (current.uptime < previous.uptime - UPTIME_THRESHOLD) return true;
+
+  // Check for health check failures
+  if (current.healthChecksFailed > previous.healthChecksFailed) return true;
+
+  // Check restart history changes
+  if (current.restartHistory.length > previous.restartHistory.length) return true;
+
+  return false;
+}
+
+/**
+ * Assess overall daemon health based on metrics
+ */
+function assessDaemonHealth(metrics: HealthMetrics): boolean {
+  // Consider daemon unhealthy if:
+  // - Recent health check failures (more than 10% failure rate)
+  // - High memory usage (over 1GB heap)
+  // - Recent restarts (within last 10 minutes)
+  // - Too many active tasks (over 50)
+
+  const totalHealthChecks = metrics.healthChecksPassed + metrics.healthChecksFailed;
+  if (totalHealthChecks > 0) {
+    const failureRate = metrics.healthChecksFailed / totalHealthChecks;
+    if (failureRate > 0.1) return false; // More than 10% failure rate
+  }
+
+  // Check memory usage (1GB threshold)
+  if (metrics.memoryUsage.heapUsed > 1024 * 1024 * 1024) return false;
+
+  // Check for recent restarts (last 10 minutes)
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  const recentRestarts = metrics.restartHistory.filter(restart =>
+    new Date(restart.timestamp).getTime() > tenMinutesAgo
+  );
+  if (recentRestarts.length > 0) return false;
+
+  // Check active task count
+  if (metrics.taskCounts.active > 50) return false;
+
+  return true;
 }
 
 /**
@@ -1216,11 +1420,14 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  DELETE /templates/:id            - Delete template by ID`);
       console.log('');
       console.log('Other Endpoints:');
+      console.log(`  GET    /health                   - Basic health check`);
+      console.log(`  GET    /daemon/health            - Comprehensive daemon health metrics`);
       console.log(`  GET    /agents                   - List agents`);
       console.log(`  GET    /config                   - Get configuration`);
       console.log('');
       console.log('WebSocket Streaming:');
       console.log(`  WS     /stream/:taskId           - Real-time task updates`);
+      console.log(`  WS     /stream/health            - Real-time health updates`);
       console.log('');
       console.log('WebSocket Events (broadcasted via /stream/:taskId):');
       console.log(`    • task:trashed              - Task moved to trash`);
@@ -1230,7 +1437,8 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • trash:emptied             - Trash permanently emptied`);
       console.log(`    • task:created/started/completed/failed - Standard lifecycle`);
       console.log(`    • agent:message/thinking/tool-use - Agent activity`);
-      console.log(`    • subtask:created/completed/failed - Subtask events\n`);
+      console.log(`    • subtask:created/completed/failed - Subtask events`);
+      console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }
   } catch (error) {
     if (!silent) {
