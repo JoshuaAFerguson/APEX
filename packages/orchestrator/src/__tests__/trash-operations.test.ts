@@ -1,532 +1,435 @@
+/**
+ * Unit tests for trash management in ApexOrchestrator
+ */
+
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as os from 'os';
-import { ApexOrchestrator, OrchestratorEvents } from '../index.js';
-import { Task } from '@apexcli/core';
+import { ApexOrchestrator } from '../index.js';
+import { TaskStore } from '../store.js';
+import { Task, TaskStatus } from '@apex/core';
+
+// Mock TaskStore
+vi.mock('../store.js', () => {
+  const mockTaskStore = {
+    getTask: vi.fn(),
+    trashTask: vi.fn(),
+    restoreTask: vi.fn(),
+    listTrashed: vi.fn(),
+    emptyTrash: vi.fn(),
+    ensureInitialized: vi.fn().mockResolvedValue(undefined),
+  };
+
+  return {
+    TaskStore: vi.fn(() => mockTaskStore),
+  };
+});
+
+// Mock Claude Agent SDK
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  AgentSDK: vi.fn(() => ({
+    query: vi.fn(),
+  })),
+}));
+
+// Mock fs
+vi.mock('fs/promises', () => ({
+  access: vi.fn().mockResolvedValue(undefined),
+  mkdir: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock yaml
+vi.mock('yaml', () => ({
+  parse: vi.fn().mockReturnValue({}),
+}));
+
+// Create mock task data
+const createMockTask = (overrides: Partial<Task> = {}): Task => ({
+  id: 'test-task-12345678',
+  description: 'Test task for trash functionality',
+  status: 'pending' as TaskStatus,
+  workflow: 'test-workflow',
+  agent: 'test-agent',
+  priority: 'medium',
+  createdAt: new Date('2023-01-01'),
+  updatedAt: new Date('2023-01-01'),
+  trashedAt: null,
+  archivedAt: null,
+  usage: {
+    inputTokens: 100,
+    outputTokens: 50,
+    estimatedCost: 0.01,
+  },
+  context: {},
+  result: null,
+  error: null,
+  metadata: {},
+  ...overrides,
+});
 
 describe('ApexOrchestrator Trash Operations', () => {
-  let testDir: string;
   let orchestrator: ApexOrchestrator;
+  let mockStore: any;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-trash-test-'));
-    await fs.mkdir(path.join(testDir, '.apex'), { recursive: true });
+    // Reset mocks
+    vi.clearAllMocks();
 
-    // Create basic config files
-    await fs.writeFile(
-      path.join(testDir, '.apex', 'config.yaml'),
-      `
-project:
-  name: "Trash Test Project"
-agents: {}
-workflows: {}
-`
-    );
+    // Create orchestrator instance
+    orchestrator = new ApexOrchestrator({
+      projectPath: '/test/path',
+      apiKey: 'test-key',
+    });
 
-    orchestrator = new ApexOrchestrator();
-    await orchestrator.initialize(testDir);
+    // Get reference to mocked store
+    mockStore = (orchestrator as any).store;
   });
 
-  afterEach(async () => {
-    if (orchestrator) {
-      await orchestrator.close();
-    }
-    await fs.rm(testDir, { recursive: true, force: true });
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  describe('Event Type Definitions', () => {
-    it('should have properly typed task:trashed event', () => {
-      // Verify the event type exists and has correct signature
-      const mockHandler = vi.fn<(task: Task) => void>();
+  describe('trashTask', () => {
+    it('should trash a task successfully', async () => {
+      const task = createMockTask();
+      mockStore.getTask.mockResolvedValue(task);
+      mockStore.trashTask.mockResolvedValue(undefined);
 
-      // This should compile without TypeScript errors
-      orchestrator.on('task:trashed', mockHandler);
+      await orchestrator.trashTask(task.id);
 
-      // Verify handler can accept a Task object
-      const mockTask: Task = {
-        id: 'test-task',
-        description: 'Test task',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test-branch',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      // This should not throw a TypeScript error
-      expect(() => mockHandler(mockTask)).not.toThrow();
+      expect(mockStore.getTask).toHaveBeenCalledWith(task.id);
+      expect(mockStore.trashTask).toHaveBeenCalledWith(task.id);
     });
 
-    it('should have properly typed task:restored event', () => {
-      // Verify the event type exists and has correct signature
-      const mockHandler = vi.fn<(task: Task) => void>();
+    it('should throw error if task not found', async () => {
+      mockStore.getTask.mockResolvedValue(null);
 
-      // This should compile without TypeScript errors
-      orchestrator.on('task:restored', mockHandler);
+      await expect(orchestrator.trashTask('nonexistent')).rejects.toThrow(
+        'Task with ID nonexistent not found'
+      );
 
-      // Verify handler can accept a Task object
-      const mockTask: Task = {
-        id: 'test-task',
-        description: 'Test task',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test-branch',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      // This should not throw a TypeScript error
-      expect(() => mockHandler(mockTask)).not.toThrow();
+      expect(mockStore.trashTask).not.toHaveBeenCalled();
     });
 
-    it('should have properly typed trash:emptied event', () => {
-      // Verify the event type exists and has correct signature
-      const mockHandler = vi.fn<(deletedCount: number, taskIds: string[]) => void>();
-
-      // This should compile without TypeScript errors
-      orchestrator.on('trash:emptied', mockHandler);
-
-      // Verify handler can accept correct parameters
-      expect(() => mockHandler(5, ['task1', 'task2', 'task3'])).not.toThrow();
-    });
-
-    it('should verify all three trash events are defined in OrchestratorEvents interface', () => {
-      // Type-level test: These should compile without errors
-      const events: Partial<OrchestratorEvents> = {
-        'task:trashed': (task: Task) => {},
-        'task:restored': (task: Task) => {},
-        'trash:emptied': (deletedCount: number, taskIds: string[]) => {},
-      };
-
-      expect(events).toBeDefined();
-      expect(typeof events['task:trashed']).toBe('function');
-      expect(typeof events['task:restored']).toBe('function');
-      expect(typeof events['trash:emptied']).toBe('function');
-    });
-  });
-
-  describe('Event Emission Behavior', () => {
-    it('should be able to listen for task:trashed events', async () => {
-      let eventReceived = false;
-      let receivedTask: Task | null = null;
-
-      orchestrator.on('task:trashed', (task: Task) => {
-        eventReceived = true;
-        receivedTask = task;
-      });
-
-      // Create a mock task for testing event emission
-      const mockTask: Task = {
-        id: 'test-task-1',
-        description: 'Test task for trashing',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test-branch',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+    it('should throw error if task is already trashed', async () => {
+      const trashedTask = createMockTask({
         trashedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      // Simulate event emission (this would be done by future trashTask method)
-      orchestrator.emit('task:trashed', mockTask);
-
-      expect(eventReceived).toBe(true);
-      expect(receivedTask).toEqual(mockTask);
-      expect(receivedTask?.id).toBe('test-task-1');
-      expect(receivedTask?.trashedAt).toBeInstanceOf(Date);
-    });
-
-    it('should be able to listen for task:restored events', async () => {
-      let eventReceived = false;
-      let receivedTask: Task | null = null;
-
-      orchestrator.on('task:restored', (task: Task) => {
-        eventReceived = true;
-        receivedTask = task;
+        status: 'cancelled' as TaskStatus,
       });
+      mockStore.getTask.mockResolvedValue(trashedTask);
 
-      // Create a mock task for testing event emission
-      const mockTask: Task = {
-        id: 'test-task-2',
-        description: 'Test task for restoring',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test-branch',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      // Simulate event emission (this would be done by future restoreTask method)
-      orchestrator.emit('task:restored', mockTask);
-
-      expect(eventReceived).toBe(true);
-      expect(receivedTask).toEqual(mockTask);
-      expect(receivedTask?.id).toBe('test-task-2');
-      expect(receivedTask?.trashedAt).toBeUndefined();
-    });
-
-    it('should be able to listen for trash:emptied events', async () => {
-      let eventReceived = false;
-      let deletedCount: number | null = null;
-      let taskIds: string[] | null = null;
-
-      orchestrator.on('trash:emptied', (count: number, ids: string[]) => {
-        eventReceived = true;
-        deletedCount = count;
-        taskIds = ids;
-      });
-
-      // Simulate event emission (this would be done by future emptyTrash method)
-      const testTaskIds = ['task1', 'task2', 'task3'];
-      orchestrator.emit('trash:emptied', testTaskIds.length, testTaskIds);
-
-      expect(eventReceived).toBe(true);
-      expect(deletedCount).toBe(3);
-      expect(taskIds).toEqual(testTaskIds);
-    });
-
-    it('should support multiple listeners for each trash event', async () => {
-      const listeners = {
-        trashed: [vi.fn(), vi.fn(), vi.fn()],
-        restored: [vi.fn(), vi.fn()],
-        emptied: [vi.fn()],
-      };
-
-      // Register multiple listeners
-      listeners.trashed.forEach(fn => orchestrator.on('task:trashed', fn));
-      listeners.restored.forEach(fn => orchestrator.on('task:restored', fn));
-      listeners.emptied.forEach(fn => orchestrator.on('trash:emptied', fn));
-
-      const mockTask: Task = {
-        id: 'multi-listener-task',
-        description: 'Test task for multiple listeners',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test-branch',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      // Emit events
-      orchestrator.emit('task:trashed', mockTask);
-      orchestrator.emit('task:restored', mockTask);
-      orchestrator.emit('trash:emptied', 2, ['task1', 'task2']);
-
-      // Verify all listeners were called
-      listeners.trashed.forEach(fn => expect(fn).toHaveBeenCalledWith(mockTask));
-      listeners.restored.forEach(fn => expect(fn).toHaveBeenCalledWith(mockTask));
-      listeners.emptied.forEach(fn => expect(fn).toHaveBeenCalledWith(2, ['task1', 'task2']));
-    });
-  });
-
-  describe('Event Integration with Other Events', () => {
-    it('should be able to combine trash events with other orchestrator events', async () => {
-      const eventLog: string[] = [];
-
-      // Listen to various events to test integration
-      orchestrator.on('task:created', () => eventLog.push('created'));
-      orchestrator.on('task:trashed', () => eventLog.push('trashed'));
-      orchestrator.on('task:restored', () => eventLog.push('restored'));
-      orchestrator.on('task:archived', () => eventLog.push('archived'));
-      orchestrator.on('trash:emptied', () => eventLog.push('emptied'));
-
-      const task = await orchestrator.createTask({
-        description: 'Integration test task',
-        workflow: 'feature',
-      });
-
-      // Simulate trash operation flow
-      const mockTrashedTask = { ...task, trashedAt: new Date() };
-      orchestrator.emit('task:trashed', mockTrashedTask);
-
-      const mockRestoredTask = { ...task, trashedAt: undefined };
-      orchestrator.emit('task:restored', mockRestoredTask);
-
-      orchestrator.emit('trash:emptied', 1, [task.id]);
-
-      expect(eventLog).toContain('created');
-      expect(eventLog).toContain('trashed');
-      expect(eventLog).toContain('restored');
-      expect(eventLog).toContain('emptied');
-    });
-
-    it('should handle trash events alongside task lifecycle events', async () => {
-      const events: Array<{ type: string; taskId?: string; data?: any }> = [];
-
-      // Monitor task lifecycle
-      orchestrator.on('task:created', (task) =>
-        events.push({ type: 'created', taskId: task.id })
-      );
-      orchestrator.on('task:started', (task) =>
-        events.push({ type: 'started', taskId: task.id })
-      );
-      orchestrator.on('task:trashed', (task) =>
-        events.push({ type: 'trashed', taskId: task.id })
-      );
-      orchestrator.on('task:restored', (task) =>
-        events.push({ type: 'restored', taskId: task.id })
+      await expect(orchestrator.trashTask(trashedTask.id)).rejects.toThrow(
+        'Task is already in trash'
       );
 
-      // Create a task
-      const task = await orchestrator.createTask({
-        description: 'Lifecycle test task',
-        workflow: 'feature',
-      });
-
-      // Simulate task operations with trash
-      const mockTask = { ...task };
-      orchestrator.emit('task:started', mockTask);
-      orchestrator.emit('task:trashed', { ...mockTask, trashedAt: new Date() });
-      orchestrator.emit('task:restored', mockTask);
-
-      // Verify event sequence
-      const eventTypes = events.map(e => e.type);
-      expect(eventTypes).toEqual(['created', 'started', 'trashed', 'restored']);
-
-      // Verify all events have the same task ID
-      const taskIds = events.map(e => e.taskId);
-      expect(taskIds.every(id => id === task.id)).toBe(true);
+      expect(mockStore.trashTask).not.toHaveBeenCalled();
     });
-  });
 
-  describe('Type Safety and Error Handling', () => {
-    it('should maintain type safety for task:trashed event parameters', () => {
-      // This test ensures TypeScript compilation catches type errors
-      const handler = (task: Task) => {
-        // These should all be available on the Task type
-        expect(task.id).toBeDefined();
-        expect(task.description).toBeDefined();
-        expect(task.workflow).toBeDefined();
-        expect(task.status).toBeDefined();
-        expect(task.createdAt).toBeInstanceOf(Date);
-        expect(task.updatedAt).toBeInstanceOf(Date);
-        // trashedAt should be available as optional field
-        expect(task.trashedAt === undefined || task.trashedAt instanceof Date).toBe(true);
-      };
-
-      orchestrator.on('task:trashed', handler);
-
-      // This should work with a valid Task object
-      const validTask: Task = {
-        id: 'type-safety-test',
-        description: 'Type safety test',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+    it('should emit task updated event after trashing', async () => {
+      const task = createMockTask();
+      const trashedTask = createMockTask({
         trashedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
-
-      expect(() => orchestrator.emit('task:trashed', validTask)).not.toThrow();
-    });
-
-    it('should maintain type safety for trash:emptied event parameters', () => {
-      const handler = (deletedCount: number, taskIds: string[]) => {
-        expect(typeof deletedCount).toBe('number');
-        expect(Array.isArray(taskIds)).toBe(true);
-        expect(taskIds.every(id => typeof id === 'string')).toBe(true);
-      };
-
-      orchestrator.on('trash:emptied', handler);
-
-      // These should work
-      expect(() => orchestrator.emit('trash:emptied', 0, [])).not.toThrow();
-      expect(() => orchestrator.emit('trash:emptied', 3, ['a', 'b', 'c'])).not.toThrow();
-      expect(() => orchestrator.emit('trash:emptied', 1, ['single-task'])).not.toThrow();
-    });
-
-    it('should handle event emission errors gracefully', async () => {
-      // Add a handler that throws an error
-      orchestrator.on('task:trashed', () => {
-        throw new Error('Handler error');
+        status: 'cancelled' as TaskStatus,
       });
 
-      const mockTask: Task = {
-        id: 'error-test-task',
-        description: 'Error test',
-        workflow: 'feature',
-        autonomy: 'full',
-        status: 'pending',
-        projectPath: testDir,
-        branchName: 'test',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        usage: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0,
-        },
-        logs: [],
-        artifacts: [],
-      };
+      mockStore.getTask.mockResolvedValueOnce(task);
+      mockStore.trashTask.mockResolvedValue(undefined);
+      mockStore.getTask.mockResolvedValueOnce(trashedTask);
 
-      // Event emission should not crash the orchestrator
-      expect(() => orchestrator.emit('task:trashed', mockTask)).not.toThrow();
+      const eventSpy = vi.fn();
+      orchestrator.on('taskUpdated', eventSpy);
+
+      await orchestrator.trashTask(task.id);
+
+      expect(eventSpy).toHaveBeenCalledWith(trashedTask);
+    });
+
+    it('should handle store errors gracefully', async () => {
+      const task = createMockTask();
+      mockStore.getTask.mockResolvedValue(task);
+      mockStore.trashTask.mockRejectedValue(new Error('Database error'));
+
+      await expect(orchestrator.trashTask(task.id)).rejects.toThrow('Database error');
     });
   });
 
-  describe('Future Implementation Readiness', () => {
-    it('should be ready for trashTask method implementation', () => {
-      // Verify that when trashTask is implemented, it can properly emit events
-      const trashEvents: Task[] = [];
-      orchestrator.on('task:trashed', (task) => trashEvents.push(task));
+  describe('restoreTask', () => {
+    it('should restore a task successfully', async () => {
+      const trashedTask = createMockTask({
+        trashedAt: new Date(),
+        status: 'cancelled' as TaskStatus,
+      });
+      const restoredTask = createMockTask({ status: 'pending' as TaskStatus });
 
-      // Mock what trashTask method would do
-      const mockTrashTask = (taskId: string) => {
-        // This is what the future implementation would look like
-        const task: Task = {
-          id: taskId,
-          description: 'Mocked trashed task',
-          workflow: 'feature',
-          autonomy: 'full',
-          status: 'pending',
-          projectPath: testDir,
-          branchName: 'test',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+      mockStore.getTask.mockResolvedValueOnce(trashedTask);
+      mockStore.restoreTask.mockResolvedValue(undefined);
+      mockStore.getTask.mockResolvedValueOnce(restoredTask);
+
+      await orchestrator.restoreTask(trashedTask.id);
+
+      expect(mockStore.getTask).toHaveBeenCalledWith(trashedTask.id);
+      expect(mockStore.restoreTask).toHaveBeenCalledWith(trashedTask.id);
+    });
+
+    it('should throw error if task not found', async () => {
+      mockStore.getTask.mockResolvedValue(null);
+
+      await expect(orchestrator.restoreTask('nonexistent')).rejects.toThrow(
+        'Task with ID nonexistent not found'
+      );
+
+      expect(mockStore.restoreTask).not.toHaveBeenCalled();
+    });
+
+    it('should throw error if task is not in trash', async () => {
+      const task = createMockTask(); // Not trashed
+      mockStore.getTask.mockResolvedValue(task);
+
+      await expect(orchestrator.restoreTask(task.id)).rejects.toThrow(
+        'Task is not in trash'
+      );
+
+      expect(mockStore.restoreTask).not.toHaveBeenCalled();
+    });
+
+    it('should emit task updated event after restoration', async () => {
+      const trashedTask = createMockTask({
+        trashedAt: new Date(),
+        status: 'cancelled' as TaskStatus,
+      });
+      const restoredTask = createMockTask({ status: 'pending' as TaskStatus });
+
+      mockStore.getTask.mockResolvedValueOnce(trashedTask);
+      mockStore.restoreTask.mockResolvedValue(undefined);
+      mockStore.getTask.mockResolvedValueOnce(restoredTask);
+
+      const eventSpy = vi.fn();
+      orchestrator.on('taskUpdated', eventSpy);
+
+      await orchestrator.restoreTask(trashedTask.id);
+
+      expect(eventSpy).toHaveBeenCalledWith(restoredTask);
+    });
+
+    it('should handle store errors gracefully', async () => {
+      const trashedTask = createMockTask({
+        trashedAt: new Date(),
+        status: 'cancelled' as TaskStatus,
+      });
+      mockStore.getTask.mockResolvedValue(trashedTask);
+      mockStore.restoreTask.mockRejectedValue(new Error('Database error'));
+
+      await expect(orchestrator.restoreTask(trashedTask.id)).rejects.toThrow('Database error');
+    });
+  });
+
+  describe('listTrashed', () => {
+    it('should return list of trashed tasks', async () => {
+      const trashedTasks = [
+        createMockTask({
+          id: 'task1',
           trashedAt: new Date(),
-          usage: {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-            estimatedCost: 0,
-          },
-          logs: [],
-          artifacts: [],
-        };
+          status: 'cancelled' as TaskStatus,
+        }),
+        createMockTask({
+          id: 'task2',
+          trashedAt: new Date(),
+          status: 'cancelled' as TaskStatus,
+        }),
+      ];
 
-        orchestrator.emit('task:trashed', task);
-        return task;
-      };
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
 
-      const result = mockTrashTask('future-trash-task');
+      const result = await orchestrator.listTrashed();
 
-      expect(trashEvents).toHaveLength(1);
-      expect(trashEvents[0].id).toBe('future-trash-task');
-      expect(trashEvents[0].trashedAt).toBeInstanceOf(Date);
-      expect(result.trashedAt).toBeInstanceOf(Date);
+      expect(result).toEqual(trashedTasks);
+      expect(mockStore.listTrashed).toHaveBeenCalled();
     });
 
-    it('should be ready for restoreTask method implementation', () => {
-      const restoreEvents: Task[] = [];
-      orchestrator.on('task:restored', (task) => restoreEvents.push(task));
+    it('should return empty array when no trashed tasks', async () => {
+      mockStore.listTrashed.mockResolvedValue([]);
 
-      // Mock what restoreTask method would do
-      const mockRestoreTask = (taskId: string) => {
-        const task: Task = {
-          id: taskId,
-          description: 'Mocked restored task',
-          workflow: 'feature',
-          autonomy: 'full',
-          status: 'pending',
-          projectPath: testDir,
-          branchName: 'test',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          // trashedAt should be undefined after restore
-          usage: {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-            estimatedCost: 0,
-          },
-          logs: [],
-          artifacts: [],
-        };
+      const result = await orchestrator.listTrashed();
 
-        orchestrator.emit('task:restored', task);
-        return task;
-      };
-
-      const result = mockRestoreTask('future-restore-task');
-
-      expect(restoreEvents).toHaveLength(1);
-      expect(restoreEvents[0].id).toBe('future-restore-task');
-      expect(restoreEvents[0].trashedAt).toBeUndefined();
-      expect(result.trashedAt).toBeUndefined();
+      expect(result).toEqual([]);
     });
 
-    it('should be ready for emptyTrash method implementation', () => {
-      const emptyEvents: Array<{ count: number; ids: string[] }> = [];
-      orchestrator.on('trash:emptied', (count, ids) => emptyEvents.push({ count, ids }));
+    it('should handle store errors gracefully', async () => {
+      mockStore.listTrashed.mockRejectedValue(new Error('Database error'));
 
-      // Mock what emptyTrash method would do
-      const mockEmptyTrash = (taskIds: string[]) => {
-        orchestrator.emit('trash:emptied', taskIds.length, taskIds);
-        return { deletedCount: taskIds.length, deletedTaskIds: taskIds };
-      };
+      await expect(orchestrator.listTrashed()).rejects.toThrow('Database error');
+    });
+  });
 
-      const testIds = ['trash1', 'trash2', 'trash3'];
-      const result = mockEmptyTrash(testIds);
+  describe('listTrashedTasks', () => {
+    it('should return list of trashed tasks (alias for listTrashed)', async () => {
+      const trashedTasks = [
+        createMockTask({
+          id: 'task1',
+          trashedAt: new Date(),
+          status: 'cancelled' as TaskStatus,
+        }),
+        createMockTask({
+          id: 'task2',
+          trashedAt: new Date(),
+          status: 'cancelled' as TaskStatus,
+        }),
+      ];
 
-      expect(emptyEvents).toHaveLength(1);
-      expect(emptyEvents[0].count).toBe(3);
-      expect(emptyEvents[0].ids).toEqual(testIds);
-      expect(result.deletedCount).toBe(3);
-      expect(result.deletedTaskIds).toEqual(testIds);
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
+
+      const result = await orchestrator.listTrashedTasks();
+
+      expect(result).toEqual(trashedTasks);
+      expect(mockStore.listTrashed).toHaveBeenCalled();
+    });
+
+    it('should return empty array when no trashed tasks', async () => {
+      mockStore.listTrashed.mockResolvedValue([]);
+
+      const result = await orchestrator.listTrashedTasks();
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('emptyTrash', () => {
+    it('should empty trash and return count of deleted tasks', async () => {
+      const trashedTasks = [
+        createMockTask({
+          id: 'task1',
+          trashedAt: new Date(),
+          status: 'cancelled' as TaskStatus,
+        }),
+        createMockTask({
+          id: 'task2',
+          trashedAt: new Date(),
+          status: 'cancelled' as TaskStatus,
+        }),
+      ];
+
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
+      mockStore.emptyTrash.mockResolvedValue(2);
+
+      const eventSpy = vi.fn();
+      orchestrator.on('trash:emptied', eventSpy);
+
+      const result = await orchestrator.emptyTrash();
+
+      expect(result).toBe(2);
+      expect(mockStore.listTrashed).toHaveBeenCalled();
+      expect(mockStore.emptyTrash).toHaveBeenCalled();
+      expect(eventSpy).toHaveBeenCalledTimes(1);
+      expect(eventSpy).toHaveBeenCalledWith(2, ['task1', 'task2']);
+    });
+
+    it('should return 0 when trash is already empty', async () => {
+      mockStore.listTrashed.mockResolvedValue([]);
+
+      const result = await orchestrator.emptyTrash();
+
+      expect(result).toBe(0);
+      expect(mockStore.emptyTrash).not.toHaveBeenCalled();
+    });
+
+    it('should emit trash:emptied event with count and task IDs', async () => {
+      const trashedTasks = [
+        createMockTask({ id: 'task1', trashedAt: new Date() }),
+        createMockTask({ id: 'task2', trashedAt: new Date() }),
+        createMockTask({ id: 'task3', trashedAt: new Date() }),
+      ];
+
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
+      mockStore.emptyTrash.mockResolvedValue(3);
+
+      const eventSpy = vi.fn();
+      orchestrator.on('trash:emptied', eventSpy);
+
+      await orchestrator.emptyTrash();
+
+      expect(eventSpy).toHaveBeenCalledTimes(1);
+      expect(eventSpy).toHaveBeenCalledWith(3, ['task1', 'task2', 'task3']);
+    });
+
+    it('should handle store errors gracefully', async () => {
+      const trashedTasks = [createMockTask({ trashedAt: new Date() })];
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
+      mockStore.emptyTrash.mockRejectedValue(new Error('Database error'));
+
+      await expect(orchestrator.emptyTrash()).rejects.toThrow('Database error');
+    });
+
+    it('should handle partial deletion scenarios', async () => {
+      const trashedTasks = [
+        createMockTask({ id: 'task1', trashedAt: new Date() }),
+        createMockTask({ id: 'task2', trashedAt: new Date() }),
+      ];
+
+      mockStore.listTrashed.mockResolvedValue(trashedTasks);
+      mockStore.emptyTrash.mockResolvedValue(1); // Only 1 deleted instead of 2
+
+      const eventSpy = vi.fn();
+      orchestrator.on('trash:emptied', eventSpy);
+
+      const result = await orchestrator.emptyTrash();
+
+      expect(result).toBe(1);
+      // Should emit event with actual deleted count and original task IDs
+      expect(eventSpy).toHaveBeenCalledTimes(1);
+      expect(eventSpy).toHaveBeenCalledWith(1, ['task1', 'task2']);
+    });
+  });
+
+  describe('Initialization Handling', () => {
+    it('should ensure initialization before operations', async () => {
+      const task = createMockTask();
+      mockStore.getTask.mockResolvedValue(task);
+      mockStore.trashTask.mockResolvedValue(undefined);
+
+      await orchestrator.trashTask(task.id);
+
+      expect(mockStore.ensureInitialized).toHaveBeenCalled();
+    });
+
+    it('should handle initialization errors', async () => {
+      mockStore.ensureInitialized.mockRejectedValue(new Error('Init failed'));
+
+      await expect(orchestrator.trashTask('task1')).rejects.toThrow('Init failed');
+    });
+  });
+
+  describe('Event Emission Edge Cases', () => {
+    it('should not emit events if task retrieval fails after trashing', async () => {
+      const task = createMockTask();
+
+      mockStore.getTask.mockResolvedValueOnce(task);
+      mockStore.trashTask.mockResolvedValue(undefined);
+      mockStore.getTask.mockRejectedValueOnce(new Error('Task retrieval failed'));
+
+      const eventSpy = vi.fn();
+      orchestrator.on('taskUpdated', eventSpy);
+
+      // Should not throw even if event emission fails
+      await orchestrator.trashTask(task.id);
+
+      expect(eventSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not emit events if task retrieval fails after restoring', async () => {
+      const trashedTask = createMockTask({
+        trashedAt: new Date(),
+        status: 'cancelled' as TaskStatus,
+      });
+
+      mockStore.getTask.mockResolvedValueOnce(trashedTask);
+      mockStore.restoreTask.mockResolvedValue(undefined);
+      mockStore.getTask.mockRejectedValueOnce(new Error('Task retrieval failed'));
+
+      const eventSpy = vi.fn();
+      orchestrator.on('taskUpdated', eventSpy);
+
+      // Should not throw even if event emission fails
+      await orchestrator.restoreTask(trashedTask.id);
+
+      expect(eventSpy).not.toHaveBeenCalled();
     });
   });
 });

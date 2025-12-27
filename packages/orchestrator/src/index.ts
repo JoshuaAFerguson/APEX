@@ -3094,6 +3094,14 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * List all trashed tasks (alias for listTrashed)
+   */
+  async listTrashedTasks(): Promise<Task[]> {
+    await this.ensureInitialized();
+    return this.store.listTrashed();
+  }
+
+  /**
    * Permanently delete all trashed tasks
    * Returns the number of tasks that were permanently deleted
    */
@@ -3105,12 +3113,11 @@ Parent: ${parentTask.description}`;
       return 0;
     }
 
+    const taskIds = trashedTasks.map(task => task.id);
     const deletedCount = await this.store.emptyTrash();
 
-    // Emit event for each deleted task
-    for (const task of trashedTasks) {
-      this.emit('task:permanently_deleted', task);
-    }
+    // Emit event with count and task IDs
+    this.emit('trash:emptied', deletedCount, taskIds);
 
     return deletedCount;
   }
