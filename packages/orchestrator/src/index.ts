@@ -209,6 +209,7 @@ export interface MergeTaskBranchResult {
   error?: string;
   conflicted?: boolean;
   changedFiles?: string[];
+  commitHash?: string;
 }
 
 export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
@@ -4726,6 +4727,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
         return {
           success: true,
           changedFiles,
+          commitHash,
         };
 
       } catch (mergeError) {
