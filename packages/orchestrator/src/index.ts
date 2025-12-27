@@ -204,6 +204,13 @@ export interface PRResult {
   error?: string;
 }
 
+export interface MergeTaskBranchResult {
+  success: boolean;
+  error?: string;
+  conflicted?: boolean;
+  changedFiles?: string[];
+}
+
 export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private config!: ApexConfig;
   private effectiveConfig!: ReturnType<typeof getEffectiveConfig>;
@@ -4593,7 +4600,7 @@ Parent: ${parentTask.description}`;
    * @param options Merge options
    * @returns Promise with merge result
    */
-  async mergeTaskBranch(taskId: string, options: { squash?: boolean } = {}): Promise<{ success: boolean; error?: string; commitHash?: string; changedFiles?: string[] }> {
+  async mergeTaskBranch(taskId: string, options: { squash?: boolean } = {}): Promise<MergeTaskBranchResult> {
     await this.ensureInitialized();
 
     const task = await this.store.getTask(taskId);
@@ -4718,7 +4725,6 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
         return {
           success: true,
-          commitHash,
           changedFiles,
         };
 
@@ -4727,13 +4733,25 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
         // Check for merge conflicts
         if (errorOutput.includes('CONFLICT') || errorOutput.includes('Automatic merge failed')) {
+          // Abort the merge to leave the repository in a clean state
+          try {
+            await execAsync('git merge --abort', { cwd: this.projectPath });
+          } catch (abortError) {
+            // If abort fails, log warning but continue
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: 'Failed to abort merge, repository may be in conflicted state',
+            });
+          }
+
           await this.store.addLog(taskId, {
             level: 'error',
-            message: 'Merge conflicts detected. Please resolve conflicts manually and commit.',
+            message: 'Merge conflicts detected. Merge has been aborted.',
           });
 
           return {
             success: false,
+            conflicted: true,
             error: 'Merge conflicts detected. Please resolve conflicts manually using git status, edit the conflicted files, then git add and git commit.',
           };
         }

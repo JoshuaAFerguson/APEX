@@ -118,7 +118,7 @@ api:
       const result = await orchestrator.mergeTaskBranch(testTask.id);
 
       expect(result.success).toBe(true);
-      expect(result.commitHash).toBeDefined();
+      expect(result.conflicted).toBeUndefined();
       expect(result.changedFiles).toBeDefined();
       expect(result.changedFiles).toEqual(expect.arrayContaining(['feature.txt']));
 
@@ -131,7 +131,7 @@ api:
       const result = await orchestrator.mergeTaskBranch(testTask.id, { squash: true });
 
       expect(result.success).toBe(true);
-      expect(result.commitHash).toBeDefined();
+      expect(result.conflicted).toBeUndefined();
       expect(result.changedFiles).toBeDefined();
       expect(result.changedFiles).toEqual(expect.arrayContaining(['feature.txt']));
 
@@ -195,6 +195,7 @@ api:
       const result = await orchestrator.mergeTaskBranch(testTask.id);
 
       expect(result.success).toBe(false);
+      expect(result.conflicted).toBe(true);
       expect(result.error).toMatch(/merge conflicts/i);
 
       // Verify logs contain conflict information
@@ -202,6 +203,10 @@ api:
       const errorLogs = logs.filter(log => log.level === 'error');
       expect(errorLogs.length).toBeGreaterThan(0);
       expect(errorLogs.some(log => log.message.includes('conflicts'))).toBe(true);
+
+      // Verify that merge was aborted and repository is in clean state
+      const { stdout: statusOutput } = await execAsync('git status --porcelain', { cwd: testDir });
+      expect(statusOutput.trim()).toBe(''); // Repository should be clean (no pending merge)
     });
 
     it('should handle non-existent branch gracefully', async () => {
