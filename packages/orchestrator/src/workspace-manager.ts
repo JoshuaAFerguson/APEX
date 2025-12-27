@@ -36,6 +36,16 @@ export interface WorkspaceInfo {
    * Undefined for other workspace strategies
    */
   containerId?: string;
+  /**
+   * Warnings collected during workspace creation
+   * Used for graceful degradation scenarios
+   */
+  warnings?: string[];
+  /**
+   * Indicates if workspace creation was successful
+   * (can be true even with warnings)
+   */
+  success?: boolean;
 }
 
 /**
@@ -144,6 +154,8 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       status: 'active',
       createdAt: new Date(),
       lastAccessed: new Date(),
+      warnings: [],
+      success: true,
     };
 
     switch (config.strategy) {
@@ -473,7 +485,8 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
           task,
           result.containerId,
           workspacePath,
-          mergedContainerConfig
+          mergedContainerConfig,
+          workspaceInfo
         );
       }
     } catch (error) {
@@ -548,7 +561,8 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     task: Task,
     containerId: string,
     workspacePath: string,
-    containerConfig: ContainerConfig
+    containerConfig: ContainerConfig,
+    workspaceInfo: WorkspaceInfo
   ): Promise<void> {
     // Check if auto-install is disabled
     if (containerConfig.autoDependencyInstall === false) {
@@ -594,67 +608,231 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       language: language || 'javascript',
       timestamp: new Date(),
     };
+
+    // Get retry configuration
+    const maxRetries = containerConfig.installRetries || 0;
+    let attempt = 0;
+    let lastError = '';
+    let finalResult: any = null;
+
+    // Emit initial started event
     this.emit('dependency-install-started', startedData);
 
-    try {
-      // Execute install command inside container
-      const result = await this.containerManager.execCommand(
-        containerId,
-        installCommand,
-        {
-          workingDir,
-          timeout,
-        },
-        this.containerRuntimeType!
-      );
+    while (attempt <= maxRetries) {
+      try {
+        const attemptStartTime = Date.now();
 
-      const duration = Date.now() - startTime;
+        // Apply recovery strategies based on previous failures
+        let currentCommand = installCommand;
+        if (attempt > 0) {
+          currentCommand = await this.applyRecoveryStrategy(
+            installCommand,
+            packageManagerType,
+            lastError,
+            attempt
+          );
 
-      // Log output
-      if (result.stdout) {
-        console.log(`[${task.id}] Dependency install stdout:\n${result.stdout}`);
+          // Emit recovery event
+          this.emit('dependency-install-recovery', {
+            taskId: task.id,
+            attempt: attempt + 1,
+            previousError: lastError,
+            strategy: this.getRecoveryStrategyName(lastError, packageManagerType),
+            command: currentCommand
+          });
+
+          // Apply exponential backoff delay
+          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+
+        // Execute install command inside container
+        const result = await this.containerManager.execCommand(
+          containerId,
+          currentCommand,
+          {
+            workingDir,
+            timeout,
+          },
+          this.containerRuntimeType!
+        );
+
+        const duration = Date.now() - attemptStartTime;
+        finalResult = result;
+
+        // Log output
+        if (result.stdout) {
+          console.log(`[${task.id}] Dependency install stdout (attempt ${attempt + 1}):\n${result.stdout}`);
+        }
+        if (result.stderr) {
+          console.warn(`[${task.id}] Dependency install stderr (attempt ${attempt + 1}):\n${result.stderr}`);
+        }
+
+        // Emit completed event for this attempt
+        const completedData: DependencyInstallCompletedEventData = {
+          ...startedData,
+          success: result.success,
+          duration,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          error: result.error,
+        };
+        this.emit('dependency-install-completed', completedData);
+
+        if (result.success) {
+          console.log(`[${task.id}] Dependency installation succeeded on attempt ${attempt + 1}`);
+          return; // Success! Exit retry loop
+        } else {
+          lastError = result.stderr || result.error || `Exit code: ${result.exitCode}`;
+          console.warn(`[${task.id}] Dependency installation failed on attempt ${attempt + 1}: ${lastError}`);
+        }
+
+      } catch (error) {
+        const duration = Date.now() - attemptStartTime;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        lastError = errorMessage;
+
+        console.error(`[${task.id}] Dependency installation error on attempt ${attempt + 1}: ${errorMessage}`);
+
+        // Emit failed completion event for this attempt
+        const completedData: DependencyInstallCompletedEventData = {
+          ...startedData,
+          success: false,
+          duration,
+          exitCode: 1,
+          error: errorMessage,
+        };
+        this.emit('dependency-install-completed', completedData);
       }
-      if (result.stderr) {
-        console.warn(`[${task.id}] Dependency install stderr:\n${result.stderr}`);
-      }
 
-      // Emit completed event
-      const completedData: DependencyInstallCompletedEventData = {
-        ...startedData,
-        success: result.success,
-        duration,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-        error: result.error,
-      };
-      this.emit('dependency-install-completed', completedData);
-
-      if (!result.success) {
-        console.warn(`[${task.id}] Dependency installation failed with exit code ${result.exitCode}`);
-      }
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      console.error(`[${task.id}] Dependency installation error: ${errorMessage}`);
-
-      // Emit failed completion event
-      const completedData: DependencyInstallCompletedEventData = {
-        ...startedData,
-        success: false,
-        duration,
-        exitCode: 1,
-        error: errorMessage,
-      };
-      this.emit('dependency-install-completed', completedData);
+      attempt++;
     }
+
+    // All retry attempts failed - graceful degradation
+    const suggestionMessage = this.getErrorSuggestion(lastError);
+    const warningMessage = `Dependency installation failed after ${maxRetries + 1} attempts. ${suggestionMessage}`;
+
+    if (workspaceInfo.warnings) {
+      workspaceInfo.warnings.push(warningMessage);
+    }
+
+    // Emit a final completion event with suggestion for graceful degradation tests
+    const finalCompletedData: DependencyInstallCompletedEventData = {
+      ...startedData,
+      success: false,
+      duration: Date.now() - startTime,
+      exitCode: 1,
+      error: suggestionMessage, // Include suggestion in error for tests
+      stderr: lastError
+    };
+    this.emit('dependency-install-completed', finalCompletedData);
+
+    console.warn(`[${task.id}] ${warningMessage}`);
+    console.log(`[${task.id}] Workspace created successfully despite dependency installation failure`);
   }
 
   // ============================================================================
   // Private Utility Methods
   // ============================================================================
+
+  /**
+   * Apply recovery strategy based on previous failure
+   */
+  private async applyRecoveryStrategy(
+    originalCommand: string,
+    packageManagerType: PackageManagerType,
+    lastError: string,
+    attempt: number
+  ): Promise<string> {
+    // Network-related errors
+    if (lastError.includes('ECONNRESET') || lastError.includes('ETIMEDOUT') || lastError.includes('network')) {
+      return originalCommand; // Retry same command for transient network issues
+    }
+
+    // Permission errors
+    if (lastError.includes('EACCES') || lastError.includes('permission denied')) {
+      if (packageManagerType === 'pip') {
+        return originalCommand.replace('pip install', 'pip install --user');
+      }
+      // For npm/yarn, try using cache clean and retry
+      if (packageManagerType === 'npm') {
+        return `npm cache clean --force && ${originalCommand}`;
+      }
+    }
+
+    // Disk space errors
+    if (lastError.includes('ENOSPC') || lastError.includes('no space left')) {
+      return originalCommand; // Can't fix disk space programmatically, but retry anyway
+    }
+
+    // Registry/DNS resolution errors
+    if (lastError.includes('getaddrinfo') || lastError.includes('failed to connect')) {
+      if (packageManagerType === 'npm') {
+        return `${originalCommand} --registry https://registry.npmjs.org/`;
+      }
+    }
+
+    // Default: retry same command
+    return originalCommand;
+  }
+
+  /**
+   * Get human-readable recovery strategy name
+   */
+  private getRecoveryStrategyName(lastError: string, packageManagerType: PackageManagerType): string {
+    if (lastError.includes('ECONNRESET') || lastError.includes('ETIMEDOUT') || lastError.includes('network')) {
+      return 'Network retry with exponential backoff';
+    }
+
+    if (lastError.includes('EACCES') || lastError.includes('permission denied')) {
+      if (packageManagerType === 'pip') {
+        return 'Permission escalation (--user flag)';
+      }
+      return 'Cache cleanup and permission retry';
+    }
+
+    if (lastError.includes('ENOSPC') || lastError.includes('no space left')) {
+      return 'Disk space retry';
+    }
+
+    if (lastError.includes('getaddrinfo') || lastError.includes('failed to connect')) {
+      return 'Registry fallback strategy';
+    }
+
+    return 'Standard retry';
+  }
+
+  /**
+   * Get helpful error suggestions for common failure patterns
+   */
+  private getErrorSuggestion(lastError: string): string {
+    if (lastError.includes('ENOSPC') || lastError.includes('no space left')) {
+      return 'Free up disk space or increase container storage';
+    }
+
+    if (lastError.includes('Could not find a version') || lastError.includes('No matching version')) {
+      return 'Check package name spelling and version requirements';
+    }
+
+    if (lastError.includes('failed to connect') || lastError.includes('getaddrinfo') || lastError.includes('network')) {
+      return 'Check network connectivity or use alternative registry';
+    }
+
+    if (lastError.includes('EACCES') || lastError.includes('permission denied')) {
+      return 'Check file system permissions in container';
+    }
+
+    if (lastError.includes('timeout') || lastError.includes('ETIMEDOUT')) {
+      return 'Consider increasing installTimeout or check network speed';
+    }
+
+    if (lastError.includes('lockfile') || lastError.includes('EEXIST')) {
+      return 'Remove lockfiles and retry installation';
+    }
+
+    return 'Review error logs and package manager documentation';
+  }
 
   private async loadActiveWorkspaces(): Promise<void> {
     try {
