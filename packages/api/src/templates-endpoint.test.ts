@@ -44,6 +44,22 @@ vi.mock('@apex/orchestrator', () => {
       return this.templates.get(id) || null;
     }
 
+    async updateTemplate(id: string, updates: Partial<Omit<typeof mockTemplate, 'id' | 'createdAt' | 'updatedAt'>>) {
+      const existing = this.templates.get(id);
+      if (!existing) {
+        throw new Error(`Template not found: ${id}`);
+      }
+
+      const updated = {
+        ...existing,
+        ...updates,
+        updatedAt: new Date(),
+      };
+
+      this.templates.set(id, updated);
+      return updated;
+    }
+
     // Required for other API endpoints to work
     async createTask() { throw new Error('Not implemented in template test'); }
     async getTask() { throw new Error('Not implemented in template test'); }
@@ -788,6 +804,480 @@ describe('Templates API Focused Tests', () => {
       expect(response.statusCode).toBe(404);
       const body = JSON.parse(response.body);
       expect(body.error).toBe('Template not found');
+    });
+  });
+
+  // ============================================================================
+  // PUT /templates/:id Tests
+  // ============================================================================
+
+  describe('PUT /templates/:id', () => {
+    let createdTemplate: any;
+
+    beforeEach(async () => {
+      // Create a template for updating in each test
+      const createResponse = await server.inject({
+        method: 'POST',
+        url: '/templates',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {
+          name: 'Original Template',
+          description: 'Original description',
+          workflow: 'feature',
+          priority: 'normal',
+          effort: 'medium',
+          acceptanceCriteria: 'Original criteria',
+          tags: ['original']
+        },
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      createdTemplate = JSON.parse(createResponse.body);
+    });
+
+    it('should update a template with all fields', async () => {
+      const updates = {
+        name: 'Updated Template',
+        description: 'Updated description',
+        workflow: 'bugfix',
+        priority: 'high',
+        effort: 'large',
+        acceptanceCriteria: 'Updated criteria',
+        tags: ['updated', 'test']
+      };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+
+      expect(body.id).toBe(createdTemplate.id);
+      expect(body.name).toBe(updates.name);
+      expect(body.description).toBe(updates.description);
+      expect(body.workflow).toBe(updates.workflow);
+      expect(body.priority).toBe(updates.priority);
+      expect(body.effort).toBe(updates.effort);
+      expect(body.acceptanceCriteria).toBe(updates.acceptanceCriteria);
+      expect(body.tags).toEqual(updates.tags);
+      expect(body.createdAt).toBe(createdTemplate.createdAt);
+      expect(new Date(body.updatedAt)).toBeInstanceOf(Date);
+      expect(new Date(body.updatedAt).getTime()).toBeGreaterThan(new Date(createdTemplate.updatedAt).getTime());
+    });
+
+    it('should update a template with partial fields', async () => {
+      const updates = {
+        name: 'Partially Updated',
+        priority: 'urgent'
+      };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+
+      // Updated fields
+      expect(body.name).toBe(updates.name);
+      expect(body.priority).toBe(updates.priority);
+
+      // Unchanged fields
+      expect(body.description).toBe(createdTemplate.description);
+      expect(body.workflow).toBe(createdTemplate.workflow);
+      expect(body.effort).toBe(createdTemplate.effort);
+      expect(body.acceptanceCriteria).toBe(createdTemplate.acceptanceCriteria);
+      expect(body.tags).toEqual(createdTemplate.tags);
+    });
+
+    it('should update only the name field', async () => {
+      const updates = { name: 'Only Name Updated' };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.name).toBe(updates.name);
+      // All other fields should remain unchanged
+      expect(body.description).toBe(createdTemplate.description);
+      expect(body.workflow).toBe(createdTemplate.workflow);
+      expect(body.priority).toBe(createdTemplate.priority);
+      expect(body.effort).toBe(createdTemplate.effort);
+      expect(body.acceptanceCriteria).toBe(createdTemplate.acceptanceCriteria);
+      expect(body.tags).toEqual(createdTemplate.tags);
+    });
+
+    it('should update only the tags field', async () => {
+      const updates = { tags: ['new', 'tags', 'only'] };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.tags).toEqual(updates.tags);
+      // All other fields should remain unchanged
+      expect(body.name).toBe(createdTemplate.name);
+      expect(body.description).toBe(createdTemplate.description);
+      expect(body.workflow).toBe(createdTemplate.workflow);
+      expect(body.priority).toBe(createdTemplate.priority);
+      expect(body.effort).toBe(createdTemplate.effort);
+      expect(body.acceptanceCriteria).toBe(createdTemplate.acceptanceCriteria);
+    });
+
+    it('should clear acceptanceCriteria when set to empty string', async () => {
+      const updates = { acceptanceCriteria: '' };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.acceptanceCriteria).toBe('');
+    });
+
+    it('should clear tags when set to empty array', async () => {
+      const updates = { tags: [] };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.tags).toEqual([]);
+    });
+
+    it('should trim whitespace from string fields', async () => {
+      const updates = {
+        name: '   Trimmed Name   ',
+        description: '   Trimmed Description   ',
+        workflow: '   feature   ',
+        acceptanceCriteria: '   Trimmed Criteria   '
+      };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: updates,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.name).toBe('Trimmed Name');
+      expect(body.description).toBe('Trimmed Description');
+      expect(body.workflow).toBe('feature');
+      expect(body.acceptanceCriteria).toBe('Trimmed Criteria');
+    });
+
+    // Error cases
+    it('should return 404 for non-existent template', async () => {
+      const response = await server.inject({
+        method: 'PUT',
+        url: '/templates/non-existent-id',
+        headers: { 'Content-Type': 'application/json' },
+        payload: { name: 'Updated Name' },
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template not found');
+    });
+
+    it('should return 400 for missing template ID', async () => {
+      const invalidIds = ['', ' ', '\t', '\n'];
+
+      for (const invalidId of invalidIds) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${encodeURIComponent(invalidId)}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { name: 'Updated Name' },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template ID is required');
+      }
+    });
+
+    it('should return 400 when no fields are provided for update', async () => {
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('At least one field must be provided for update');
+    });
+
+    it('should return 400 for empty name', async () => {
+      const invalidNames = ['', ' ', '\t', '\n', '   '];
+
+      for (const invalidName of invalidNames) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { name: invalidName },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template name cannot be empty');
+      }
+    });
+
+    it('should return 400 for name longer than 100 characters', async () => {
+      const longName = 'x'.repeat(101);
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: { name: longName },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template name must be 100 characters or less');
+    });
+
+    it('should return 400 for empty description', async () => {
+      const invalidDescriptions = ['', ' ', '\t', '\n', '   '];
+
+      for (const invalidDescription of invalidDescriptions) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: invalidDescription },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template description cannot be empty');
+      }
+    });
+
+    it('should return 400 for empty workflow', async () => {
+      const invalidWorkflows = ['', ' ', '\t', '\n', '   '];
+
+      for (const invalidWorkflow of invalidWorkflows) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { workflow: invalidWorkflow },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Workflow cannot be empty');
+      }
+    });
+
+    it('should validate priority values', async () => {
+      // Test valid priorities
+      const validPriorities = ['low', 'normal', 'high', 'urgent'];
+      for (const priority of validPriorities) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { priority },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.priority).toBe(priority);
+      }
+
+      // Test invalid priorities
+      const invalidPriorities = ['super-high', 'lowest', 'critical', 'medium', ''];
+      for (const priority of invalidPriorities) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { priority },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Priority must be one of: low, normal, high, urgent');
+      }
+    });
+
+    it('should validate effort values', async () => {
+      // Test valid efforts
+      const validEfforts = ['xs', 'small', 'medium', 'large', 'xl'];
+      for (const effort of validEfforts) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { effort },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.effort).toBe(effort);
+      }
+
+      // Test invalid efforts
+      const invalidEfforts = ['tiny', 'huge', 'epic', 'xxl', ''];
+      for (const effort of invalidEfforts) {
+        const response = await server.inject({
+          method: 'PUT',
+          url: `/templates/${createdTemplate.id}`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { effort },
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Effort must be one of: xs, small, medium, large, xl');
+      }
+    });
+
+    it('should handle orchestrator errors gracefully', async () => {
+      // Mock orchestrator to throw an error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalUpdateTemplate = mockOrchestrator.updateTemplate;
+      mockOrchestrator.updateTemplate = vi.fn().mockRejectedValue(new Error('Database update failed'));
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: { name: 'Updated Name' },
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Database update failed');
+
+      // Restore original method
+      mockOrchestrator.updateTemplate = originalUpdateTemplate;
+    });
+
+    it('should handle non-Error exceptions from orchestrator', async () => {
+      // Mock orchestrator to throw a non-Error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalUpdateTemplate = mockOrchestrator.updateTemplate;
+      mockOrchestrator.updateTemplate = vi.fn().mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: { name: 'Updated Name' },
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Failed to update template');
+
+      // Restore original method
+      mockOrchestrator.updateTemplate = originalUpdateTemplate;
+    });
+
+    it('should handle malformed JSON', async () => {
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: '{ invalid json',
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should accept maximum length name (100 characters)', async () => {
+      const maxLengthName = 'x'.repeat(100);
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: { name: maxLengthName },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.name).toBe(maxLengthName);
+    });
+
+    it('should preserve fields not included in update', async () => {
+      // First, update to a known state
+      const initialUpdate = {
+        name: 'Known State',
+        description: 'Known description',
+        workflow: 'known-workflow',
+        priority: 'high',
+        effort: 'xl',
+        acceptanceCriteria: 'Known criteria',
+        tags: ['known', 'tags']
+      };
+
+      await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: initialUpdate,
+      });
+
+      // Then update only one field
+      const partialUpdate = { name: 'Partially Updated Name' };
+
+      const response = await server.inject({
+        method: 'PUT',
+        url: `/templates/${createdTemplate.id}`,
+        headers: { 'Content-Type': 'application/json' },
+        payload: partialUpdate,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+
+      // Verify the updated field
+      expect(body.name).toBe(partialUpdate.name);
+
+      // Verify all other fields are preserved from initial update
+      expect(body.description).toBe(initialUpdate.description);
+      expect(body.workflow).toBe(initialUpdate.workflow);
+      expect(body.priority).toBe(initialUpdate.priority);
+      expect(body.effort).toBe(initialUpdate.effort);
+      expect(body.acceptanceCriteria).toBe(initialUpdate.acceptanceCriteria);
+      expect(body.tags).toEqual(initialUpdate.tags);
     });
   });
 });

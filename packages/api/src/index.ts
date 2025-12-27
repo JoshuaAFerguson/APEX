@@ -34,6 +34,16 @@ interface CreateTemplateRequest {
   tags?: string[];
 }
 
+interface UpdateTemplateRequest {
+  name?: string;
+  description?: string;
+  workflow?: string;
+  priority?: string;
+  effort?: string;
+  acceptanceCriteria?: string;
+  tags?: string[];
+}
+
 // WebSocket client tracking
 const clients = new Map<string, Set<WebSocket>>();
 
@@ -788,6 +798,77 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   });
 
+  // Update template by ID
+  app.put<{ Params: { id: string }; Body: UpdateTemplateRequest }>('/templates/:id', async (request, reply) => {
+    const { id } = request.params;
+    const { name, description, workflow, priority, effort, acceptanceCriteria, tags } = request.body;
+
+    // Validate template ID
+    if (!id || !id.trim()) {
+      return reply.status(400).send({ error: 'Template ID is required' });
+    }
+
+    // Validate that at least one field is provided for update
+    const hasUpdates = name !== undefined || description !== undefined || workflow !== undefined ||
+                      priority !== undefined || effort !== undefined || acceptanceCriteria !== undefined ||
+                      tags !== undefined;
+
+    if (!hasUpdates) {
+      return reply.status(400).send({ error: 'At least one field must be provided for update' });
+    }
+
+    // Validate individual fields if provided
+    if (name !== undefined) {
+      if (!name || !name.trim()) {
+        return reply.status(400).send({ error: 'Template name cannot be empty' });
+      }
+      if (name.length > 100) {
+        return reply.status(400).send({ error: 'Template name must be 100 characters or less' });
+      }
+    }
+
+    if (description !== undefined && (!description || !description.trim())) {
+      return reply.status(400).send({ error: 'Template description cannot be empty' });
+    }
+
+    if (workflow !== undefined && (!workflow || !workflow.trim())) {
+      return reply.status(400).send({ error: 'Workflow cannot be empty' });
+    }
+
+    // Validate priority if provided
+    if (priority !== undefined && !['low', 'normal', 'high', 'urgent'].includes(priority)) {
+      return reply.status(400).send({ error: 'Priority must be one of: low, normal, high, urgent' });
+    }
+
+    // Validate effort if provided
+    if (effort !== undefined && !['xs', 'small', 'medium', 'large', 'xl'].includes(effort)) {
+      return reply.status(400).send({ error: 'Effort must be one of: xs, small, medium, large, xl' });
+    }
+
+    // Prepare updates object (only include defined fields)
+    const updates: Partial<Omit<TaskTemplate, 'id' | 'createdAt' | 'updatedAt'>> = {};
+
+    if (name !== undefined) updates.name = name.trim();
+    if (description !== undefined) updates.description = description.trim();
+    if (workflow !== undefined) updates.workflow = workflow.trim();
+    if (priority !== undefined) updates.priority = priority as any;
+    if (effort !== undefined) updates.effort = effort as any;
+    if (acceptanceCriteria !== undefined) updates.acceptanceCriteria = acceptanceCriteria?.trim();
+    if (tags !== undefined) updates.tags = tags || [];
+
+    try {
+      const updatedTemplate = await orchestrator.updateTemplate(id, updates);
+      return updatedTemplate;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Template not found')) {
+        return reply.status(404).send({ error: 'Template not found' });
+      }
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to update template'
+      });
+    }
+  });
+
   // ============================================================================
   // WebSocket for real-time streaming
   // ============================================================================
@@ -1034,6 +1115,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /templates                - Create a new template`);
       console.log(`  GET    /templates                - List all templates`);
       console.log(`  GET    /templates/:id            - Get template by ID`);
+      console.log(`  PUT    /templates/:id            - Update template by ID`);
       console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /agents                   - List agents`);
