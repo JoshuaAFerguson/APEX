@@ -19,6 +19,8 @@ import {
   WorkspaceConfig,
   IdleTask,
   IdleTaskType,
+  IterationEntry,
+  IterationHistory,
   generateTaskId,
   generateIdleTaskId,
 } from '@apexcli/core';
@@ -74,6 +76,28 @@ export class TaskStore {
       { column: 'last_checkpoint', definition: 'TEXT' },
       { column: 'effort', definition: "TEXT DEFAULT 'medium'" },
     ];
+
+    // Create task_iterations table if it doesn't exist (v0.4.0 iteration history support)
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS task_iterations (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          feedback TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          diff_summary TEXT,
+          stage TEXT,
+          modified_files TEXT,
+          agent TEXT,
+          FOREIGN KEY (task_id) REFERENCES tasks(id)
+        )
+      `);
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_task_iterations_task_id ON task_iterations(task_id)
+      `);
+    } catch {
+      // Table might already exist
+    }
 
     for (const { column, definition } of migrations) {
       if (!columnNames.has(column)) {
@@ -246,6 +270,18 @@ export class TaskStore {
         FOREIGN KEY (implemented_task_id) REFERENCES tasks(id)
       );
 
+      CREATE TABLE IF NOT EXISTS task_iterations (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        feedback TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        diff_summary TEXT,
+        stage TEXT,
+        modified_files TEXT,
+        agent TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -260,6 +296,7 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_task_interactions_task_id ON task_interactions(task_id);
       CREATE INDEX IF NOT EXISTS idx_workspace_info_task_id ON workspace_info(task_id);
       CREATE INDEX IF NOT EXISTS idx_idle_tasks_status ON idle_tasks(implemented);
+      CREATE INDEX IF NOT EXISTS idx_task_iterations_task_id ON task_iterations(task_id);
     `);
   }
 
@@ -387,8 +424,9 @@ export class TaskStore {
     const artifacts = await this.getTaskArtifacts(taskId);
     const dependsOn = await this.getTaskDependencies(taskId);
     const blockedBy = await this.getBlockingTasks(taskId);
+    const iterationHistory = await this.getIterationHistory(taskId);
 
-    return this.rowToTask(row, logs, artifacts, dependsOn, blockedBy);
+    return this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory);
   }
 
   /**
@@ -582,7 +620,8 @@ export class TaskStore {
       const artifacts = await this.getTaskArtifacts(row.id);
       const dependsOn = await this.getTaskDependencies(row.id);
       const blockedBy = await this.getBlockingTasks(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
     }
 
     return tasks;
@@ -623,7 +662,8 @@ export class TaskStore {
       const artifacts = await this.getTaskArtifacts(row.id);
       const dependsOn = await this.getTaskDependencies(row.id);
       const blockedBy = await this.getBlockingTasks(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
     }
 
     return tasks;
@@ -943,7 +983,8 @@ export class TaskStore {
     logs: TaskLog[],
     artifacts: TaskArtifact[],
     dependsOn?: string[],
-    blockedBy?: string[]
+    blockedBy?: string[],
+    iterationHistory?: IterationHistory
   ): Task {
     const workspace = row.workspace_config
       ? (JSON.parse(row.workspace_config) as WorkspaceConfig)
@@ -959,6 +1000,14 @@ export class TaskStore {
       sessionData = {
         ...(sessionData || {}),
         lastCheckpoint: new Date(row.last_checkpoint),
+      };
+    }
+
+    // Include iteration history in session data and at top level if it exists
+    if (iterationHistory && iterationHistory.entries.length > 0) {
+      sessionData = {
+        ...(sessionData || { lastCheckpoint: new Date() }),
+        iterationHistory,
       };
     }
 
@@ -1000,6 +1049,7 @@ export class TaskStore {
       error: row.error || undefined,
       workspace,
       sessionData,
+      iterationHistory: iterationHistory, // Add iterationHistory at top level
     };
   }
 
@@ -1122,7 +1172,8 @@ export class TaskStore {
       const artifacts = await this.getTaskArtifacts(row.id);
       const dependsOn = await this.getTaskDependencies(row.id);
       const blockedBy = await this.getBlockingTasks(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
     }
 
     return tasks;
@@ -1167,7 +1218,8 @@ export class TaskStore {
       const artifacts = await this.getTaskArtifacts(row.id);
       const dependsOn = await this.getTaskDependencies(row.id);
       const blockedBy = await this.getBlockingTasks(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
     }
 
     return tasks;
@@ -1223,7 +1275,8 @@ export class TaskStore {
       const artifacts = await this.getTaskArtifacts(row.id);
       const dependsOn = await this.getTaskDependencies(row.id);
       const blockedBy = await this.getBlockingTasks(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy));
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
     }
 
     return tasks;
@@ -1568,6 +1621,60 @@ export class TaskStore {
     };
   }
 
+  // ============================================================================
+  // Iteration History Operations (v0.4.0)
+  // ============================================================================
+
+  /**
+   * Add an iteration entry to a task's history
+   */
+  async addIterationEntry(taskId: string, entry: Omit<IterationEntry, 'id'> & { id?: string }): Promise<void> {
+    const iterationId = entry.id || `${taskId}-iter-${Date.now()}`;
+    const stmt = this.db.prepare(`
+      INSERT INTO task_iterations (id, task_id, feedback, timestamp, diff_summary, stage, modified_files, agent)
+      VALUES (@id, @taskId, @feedback, @timestamp, @diffSummary, @stage, @modifiedFiles, @agent)
+    `);
+
+    stmt.run({
+      id: iterationId,
+      taskId,
+      feedback: entry.feedback,
+      timestamp: entry.timestamp.toISOString(),
+      diffSummary: entry.diffSummary || null,
+      stage: entry.stage || null,
+      modifiedFiles: entry.modifiedFiles ? JSON.stringify(entry.modifiedFiles) : null,
+      agent: entry.agent || null,
+    });
+  }
+
+  /**
+   * Get iteration history for a task
+   */
+  async getIterationHistory(taskId: string): Promise<IterationHistory> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_iterations
+      WHERE task_id = ?
+      ORDER BY timestamp ASC
+    `);
+    const rows = stmt.all(taskId) as TaskIterationRow[];
+
+    const entries: IterationEntry[] = rows.map((row) => ({
+      id: row.id,
+      feedback: row.feedback,
+      timestamp: new Date(row.timestamp),
+      diffSummary: row.diff_summary || undefined,
+      stage: row.stage || undefined,
+      modifiedFiles: row.modified_files ? JSON.parse(row.modified_files) : undefined,
+      agent: row.agent || undefined,
+    }));
+
+    return {
+      entries,
+      totalIterations: entries.length,
+      lastIterationAt: entries.length > 0 ? entries[entries.length - 1].timestamp : undefined,
+    };
+  }
+
   /**
    * Close the database connection
    */
@@ -1667,4 +1774,15 @@ interface IdleTaskRow {
   created_at: string;
   implemented: number;
   implemented_task_id: string | null;
+}
+
+interface TaskIterationRow {
+  id: string;
+  task_id: string;
+  feedback: string;
+  timestamp: string;
+  diff_summary: string | null;
+  stage: string | null;
+  modified_files: string | null;
+  agent: string | null;
 }

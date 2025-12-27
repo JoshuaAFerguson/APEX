@@ -401,6 +401,7 @@ export interface Task {
   workspace?: WorkspaceConfig;  // Workspace isolation settings
   sessionData?: TaskSessionData; // Session recovery data
   thoughtCaptures?: ThoughtCapture[]; // Quick ideas related to this task
+  iterationHistory?: IterationHistory; // Iteration history for the task
 }
 
 /**

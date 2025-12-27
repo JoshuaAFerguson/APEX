@@ -14,6 +14,8 @@ import type {
   IdleTaskType,
   TaskPriority,
   TaskEffort,
+  IterationEntry,
+  IterationHistory,
 } from '@apexcli/core';
 import { generateIdleTaskId } from '@apexcli/core';
 
@@ -1773,6 +1775,364 @@ describe('TaskStore', () => {
       const updated = await store.getIdleTask(idleTask.id);
       expect(updated!.implemented).toBe(false);
       expect(updated!.implementedTaskId).toBeUndefined();
+    });
+  });
+
+  describe('Iteration History', () => {
+    it('should add and retrieve iteration entries', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry = {
+        feedback: 'Please improve the error handling in the login function',
+        timestamp: new Date(),
+        diffSummary: 'Added try-catch blocks and better error messages',
+        stage: 'implementation',
+        modifiedFiles: ['src/auth.ts', 'src/utils.ts'],
+        agent: 'developer',
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.totalIterations).toBe(1);
+      expect(history.lastIterationAt).toEqual(entry.timestamp);
+
+      const retrievedEntry = history.entries[0];
+      expect(retrievedEntry.feedback).toBe(entry.feedback);
+      expect(retrievedEntry.timestamp).toEqual(entry.timestamp);
+      expect(retrievedEntry.diffSummary).toBe(entry.diffSummary);
+      expect(retrievedEntry.stage).toBe(entry.stage);
+      expect(retrievedEntry.modifiedFiles).toEqual(entry.modifiedFiles);
+      expect(retrievedEntry.agent).toBe(entry.agent);
+      expect(retrievedEntry.id).toContain(task.id);
+    });
+
+    it('should handle multiple iteration entries in chronological order', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry1 = {
+        feedback: 'First iteration feedback',
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        stage: 'planning',
+        agent: 'planner',
+      };
+
+      const entry2 = {
+        feedback: 'Second iteration feedback',
+        timestamp: new Date('2024-01-01T11:00:00Z'),
+        diffSummary: 'Updated implementation based on feedback',
+        stage: 'implementation',
+        agent: 'developer',
+      };
+
+      const entry3 = {
+        feedback: 'Third iteration feedback',
+        timestamp: new Date('2024-01-01T12:00:00Z'),
+        stage: 'testing',
+        modifiedFiles: ['test/auth.test.ts'],
+        agent: 'tester',
+      };
+
+      // Add entries in non-chronological order to test sorting
+      await store.addIterationEntry(task.id, entry2);
+      await store.addIterationEntry(task.id, entry1);
+      await store.addIterationEntry(task.id, entry3);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(3);
+      expect(history.totalIterations).toBe(3);
+      expect(history.lastIterationAt).toEqual(entry3.timestamp);
+
+      // Should be ordered chronologically
+      expect(history.entries[0].feedback).toBe('First iteration feedback');
+      expect(history.entries[0].timestamp).toEqual(entry1.timestamp);
+      expect(history.entries[1].feedback).toBe('Second iteration feedback');
+      expect(history.entries[1].timestamp).toEqual(entry2.timestamp);
+      expect(history.entries[2].feedback).toBe('Third iteration feedback');
+      expect(history.entries[2].timestamp).toEqual(entry3.timestamp);
+    });
+
+    it('should handle entries with minimal required data', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const minimalEntry = {
+        feedback: 'Minimal feedback with only required fields',
+        timestamp: new Date(),
+      };
+
+      await store.addIterationEntry(task.id, minimalEntry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      const entry = history.entries[0];
+      expect(entry.feedback).toBe(minimalEntry.feedback);
+      expect(entry.timestamp).toEqual(minimalEntry.timestamp);
+      expect(entry.diffSummary).toBeUndefined();
+      expect(entry.stage).toBeUndefined();
+      expect(entry.modifiedFiles).toBeUndefined();
+      expect(entry.agent).toBeUndefined();
+      expect(entry.id).toBeDefined();
+    });
+
+    it('should handle empty modified files array', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry = {
+        feedback: 'No files were modified',
+        timestamp: new Date(),
+        modifiedFiles: [],
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].modifiedFiles).toEqual([]);
+    });
+
+    it('should allow custom iteration IDs', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const customId = 'custom-iter-123';
+      const entry = {
+        id: customId,
+        feedback: 'Entry with custom ID',
+        timestamp: new Date(),
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].id).toBe(customId);
+    });
+
+    it('should return empty history for task without iterations', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(0);
+      expect(history.totalIterations).toBe(0);
+      expect(history.lastIterationAt).toBeUndefined();
+    });
+
+    it('should return empty history for non-existent task', async () => {
+      const history = await store.getIterationHistory('non-existent-task');
+
+      expect(history.entries).toHaveLength(0);
+      expect(history.totalIterations).toBe(0);
+      expect(history.lastIterationAt).toBeUndefined();
+    });
+
+    it('should handle special characters and unicode in feedback', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry = {
+        feedback: 'Feedback with special chars: éñ中文 🚀 & <script>alert("test")</script>',
+        timestamp: new Date(),
+        diffSummary: 'Added émojis and unicode support: 🎉 ✨',
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].feedback).toBe(entry.feedback);
+      expect(history.entries[0].diffSummary).toBe(entry.diffSummary);
+    });
+
+    it('should handle long feedback text', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const longFeedback = 'A'.repeat(10000); // 10KB of text
+      const entry = {
+        feedback: longFeedback,
+        timestamp: new Date(),
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].feedback).toBe(longFeedback);
+      expect(history.entries[0].feedback).toHaveLength(10000);
+    });
+
+    it('should handle many modified files', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Generate a large list of file paths
+      const manyFiles = Array.from({ length: 100 }, (_, i) => `src/component${i}.ts`);
+
+      const entry = {
+        feedback: 'Refactored many components',
+        timestamp: new Date(),
+        modifiedFiles: manyFiles,
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0].modifiedFiles).toEqual(manyFiles);
+      expect(history.entries[0].modifiedFiles).toHaveLength(100);
+    });
+
+    it('should include iteration history in task retrieval', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry1 = {
+        feedback: 'First feedback',
+        timestamp: new Date(),
+        stage: 'implementation',
+      };
+
+      const entry2 = {
+        feedback: 'Second feedback',
+        timestamp: new Date(),
+        stage: 'testing',
+      };
+
+      await store.addIterationEntry(task.id, entry1);
+      await store.addIterationEntry(task.id, entry2);
+
+      // Test getTask includes iteration history
+      const retrievedTask = await store.getTask(task.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask!.iterationHistory).toBeDefined();
+      expect(retrievedTask!.iterationHistory!.entries).toHaveLength(2);
+      expect(retrievedTask!.iterationHistory!.totalIterations).toBe(2);
+
+      // Test listTasks includes iteration history
+      const taskList = await store.listTasks({ status: 'pending' });
+      const taskFromList = taskList.find(t => t.id === task.id);
+      expect(taskFromList).toBeDefined();
+      expect(taskFromList!.iterationHistory).toBeDefined();
+      expect(taskFromList!.iterationHistory!.entries).toHaveLength(2);
+    });
+
+    it('should handle session data integration with iteration history', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Task without iterations should not have iteration history in session data
+      const taskWithoutIterations = await store.getTask(task.id);
+      expect(taskWithoutIterations).not.toBeNull();
+      // The iteration history should still be available at the top level
+      expect(taskWithoutIterations!.iterationHistory).toBeDefined();
+      expect(taskWithoutIterations!.iterationHistory!.entries).toHaveLength(0);
+
+      // Add an iteration
+      await store.addIterationEntry(task.id, {
+        feedback: 'Session data test feedback',
+        timestamp: new Date(),
+        stage: 'implementation',
+      });
+
+      // Task with iterations should have iteration history accessible
+      const taskWithIterations = await store.getTask(task.id);
+      expect(taskWithIterations).not.toBeNull();
+      expect(taskWithIterations!.iterationHistory).toBeDefined();
+      expect(taskWithIterations!.iterationHistory!.entries).toHaveLength(1);
+      expect(taskWithIterations!.iterationHistory!.entries[0].feedback).toBe('Session data test feedback');
+    });
+
+    it('should maintain data integrity with concurrent iteration additions', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Add multiple iterations concurrently
+      const entries = Array.from({ length: 10 }, (_, i) => ({
+        feedback: `Concurrent feedback ${i}`,
+        timestamp: new Date(Date.now() + i * 1000), // Spread out timestamps
+        stage: `stage-${i}`,
+      }));
+
+      await Promise.all(
+        entries.map(entry => store.addIterationEntry(task.id, entry))
+      );
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(10);
+      expect(history.totalIterations).toBe(10);
+
+      // Should be sorted by timestamp
+      for (let i = 0; i < history.entries.length - 1; i++) {
+        expect(history.entries[i].timestamp.getTime())
+          .toBeLessThanOrEqual(history.entries[i + 1].timestamp.getTime());
+      }
+    });
+
+    it('should handle edge cases with timestamps', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Test with very old timestamp
+      const oldEntry = {
+        feedback: 'Very old entry',
+        timestamp: new Date('1970-01-01T00:00:00Z'),
+      };
+
+      // Test with future timestamp
+      const futureEntry = {
+        feedback: 'Future entry',
+        timestamp: new Date('2099-12-31T23:59:59Z'),
+      };
+
+      await store.addIterationEntry(task.id, oldEntry);
+      await store.addIterationEntry(task.id, futureEntry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(2);
+      expect(history.entries[0].timestamp).toEqual(oldEntry.timestamp);
+      expect(history.entries[1].timestamp).toEqual(futureEntry.timestamp);
+    });
+
+    it('should handle null and empty values gracefully', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const entry = {
+        feedback: 'Test null values',
+        timestamp: new Date(),
+        diffSummary: '',
+        stage: '',
+        agent: '',
+      };
+
+      await store.addIterationEntry(task.id, entry);
+
+      const history = await store.getIterationHistory(task.id);
+
+      expect(history.entries).toHaveLength(1);
+      const retrievedEntry = history.entries[0];
+
+      // Empty strings should be preserved
+      expect(retrievedEntry.diffSummary).toBe('');
+      expect(retrievedEntry.stage).toBe('');
+      expect(retrievedEntry.agent).toBe('');
     });
   });
 });
