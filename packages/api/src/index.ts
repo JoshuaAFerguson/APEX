@@ -288,6 +288,98 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // ============================================================================
+  // Trash Management API
+  // ============================================================================
+
+  // Move task to trash
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/trash',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      if (task.trashedAt) {
+        return reply.status(400).send({ error: 'Task is already in trash' });
+      }
+
+      try {
+        await orchestrator.trashTask(id);
+        return { ok: true, message: 'Task moved to trash' };
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : 'Failed to trash task'
+        });
+      }
+    }
+  );
+
+  // Restore task from trash
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/restore',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      if (!task.trashedAt) {
+        return reply.status(400).send({ error: 'Task is not in trash' });
+      }
+
+      try {
+        await orchestrator.restoreTask(id);
+        return { ok: true, message: 'Task restored from trash' };
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : 'Failed to restore task'
+        });
+      }
+    }
+  );
+
+  // List trashed tasks
+  app.get('/tasks/trashed', async (request, reply) => {
+    try {
+      const trashedTasks = await orchestrator.listTrashedTasks();
+      return {
+        tasks: trashedTasks,
+        count: trashedTasks.length,
+        message: trashedTasks.length > 0
+          ? `${trashedTasks.length} trashed task(s) found`
+          : 'No trashed tasks found'
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to list trashed tasks'
+      });
+    }
+  });
+
+  // Permanently delete all trashed tasks
+  app.delete('/tasks/trash', async (request, reply) => {
+    try {
+      const deletedCount = await orchestrator.emptyTrash();
+      return {
+        ok: true,
+        deletedCount,
+        message: deletedCount > 0
+          ? `${deletedCount} task(s) permanently deleted from trash`
+          : 'No tasks were deleted (trash was already empty)'
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to empty trash'
+      });
+    }
+  });
+
+  // ============================================================================
   // Subtasks API
   // ============================================================================
 
@@ -769,6 +861,10 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /tasks/:id/retry          - Retry a failed task`);
       console.log(`  POST   /tasks/:id/resume         - Resume a paused task`);
       console.log(`  GET    /tasks/paused             - List paused tasks`);
+      console.log(`  POST   /tasks/:id/trash          - Move task to trash`);
+      console.log(`  POST   /tasks/:id/restore        - Restore task from trash`);
+      console.log(`  GET    /tasks/trashed            - List trashed tasks`);
+      console.log(`  DELETE /tasks/trash              - Permanently delete all trashed tasks`);
       console.log('');
       console.log('Subtask Endpoints:');
       console.log(`  POST   /tasks/:id/decompose      - Decompose task into subtasks`);

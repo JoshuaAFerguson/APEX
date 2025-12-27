@@ -20,6 +20,7 @@ vi.mock('@apex/orchestrator', () => {
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
     logs: [],
     artifacts: [],
+    trashedAt: null,
   };
 
   const mockAgents = {
@@ -68,6 +69,41 @@ vi.mock('@apex/orchestrator', () => {
       if (task) {
         task.status = status;
       }
+    }
+
+    // Trash management methods
+    async trashTask(taskId: string) {
+      const task = this.tasks.get(taskId);
+      if (!task) {
+        throw new Error(`Task with ID ${taskId} not found`);
+      }
+      if (task.trashedAt) {
+        throw new Error(`Task with ID ${taskId} is already in trash`);
+      }
+      task.trashedAt = new Date();
+      task.status = 'cancelled';
+    }
+
+    async restoreTask(taskId: string) {
+      const task = this.tasks.get(taskId);
+      if (!task) {
+        throw new Error(`Task with ID ${taskId} not found`);
+      }
+      if (!task.trashedAt) {
+        throw new Error(`Task with ID ${taskId} is not in trash`);
+      }
+      task.trashedAt = null;
+      task.status = 'pending';
+    }
+
+    async listTrashedTasks() {
+      return Array.from(this.tasks.values()).filter(task => task.trashedAt);
+    }
+
+    async emptyTrash() {
+      const trashedTasks = Array.from(this.tasks.values()).filter(task => task.trashedAt);
+      trashedTasks.forEach(task => this.tasks.delete(task.id));
+      return trashedTasks.length;
     }
 
     async getAgents() {
@@ -485,6 +521,331 @@ describe('API Server', () => {
 
       // CORS should be enabled
       expect(response.headers['access-control-allow-origin']).toBeDefined();
+    });
+  });
+
+  describe('Trash Management API', () => {
+    describe('POST /tasks/:id/trash', () => {
+      it('should move task to trash', async () => {
+        // Create a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to trash' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // Trash the task
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.message).toContain('moved to trash');
+      });
+
+      it('should return 404 for non-existent task', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/tasks/non-existent-id/trash',
+        });
+
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('Task not found');
+      });
+
+      it('should return 400 if task is already in trash', async () => {
+        // Create and trash a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to trash twice' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+
+        // Try to trash again
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('already in trash');
+      });
+    });
+
+    describe('POST /tasks/:id/restore', () => {
+      it('should restore task from trash', async () => {
+        // Create and trash a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to restore' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+
+        // Restore the task
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/restore`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.message).toContain('restored from trash');
+      });
+
+      it('should return 404 for non-existent task', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/tasks/non-existent-id/restore',
+        });
+
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('Task not found');
+      });
+
+      it('should return 400 if task is not in trash', async () => {
+        // Create a task but don't trash it
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task not trashed' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // Try to restore non-trashed task
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/restore`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('not in trash');
+      });
+    });
+
+    describe('GET /tasks/trashed', () => {
+      it('should list trashed tasks', async () => {
+        // Create and trash two tasks
+        const createResponse1 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Trashed task 1' },
+        });
+        const { taskId: taskId1 } = JSON.parse(createResponse1.body);
+
+        const createResponse2 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Trashed task 2' },
+        });
+        const { taskId: taskId2 } = JSON.parse(createResponse2.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId1}/trash`,
+        });
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId2}/trash`,
+        });
+
+        // List trashed tasks
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/trashed',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.tasks).toBeInstanceOf(Array);
+        expect(body.tasks.length).toBe(2);
+        expect(body.count).toBe(2);
+        expect(body.message).toContain('2 trashed task(s) found');
+      });
+
+      it('should return empty list when no tasks are trashed', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/trashed',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.tasks).toBeInstanceOf(Array);
+        expect(body.tasks.length).toBe(0);
+        expect(body.count).toBe(0);
+        expect(body.message).toContain('No trashed tasks found');
+      });
+    });
+
+    describe('DELETE /tasks/trash', () => {
+      it('should permanently delete all trashed tasks', async () => {
+        // Create and trash tasks
+        const createResponse1 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to delete 1' },
+        });
+        const { taskId: taskId1 } = JSON.parse(createResponse1.body);
+
+        const createResponse2 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to delete 2' },
+        });
+        const { taskId: taskId2 } = JSON.parse(createResponse2.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId1}/trash`,
+        });
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId2}/trash`,
+        });
+
+        // Empty trash
+        const response = await server.inject({
+          method: 'DELETE',
+          url: '/tasks/trash',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.deletedCount).toBe(2);
+        expect(body.message).toContain('2 task(s) permanently deleted');
+      });
+
+      it('should handle empty trash gracefully', async () => {
+        const response = await server.inject({
+          method: 'DELETE',
+          url: '/tasks/trash',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.deletedCount).toBe(0);
+        expect(body.message).toContain('No tasks were deleted');
+      });
+    });
+
+    describe('Trash Workflow Integration', () => {
+      it('should handle complete trash lifecycle: create -> trash -> list -> restore -> empty', async () => {
+        // Create a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Lifecycle test task' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // 1. Verify task exists in normal list
+        const listResponse1 = await server.inject({
+          method: 'GET',
+          url: '/tasks',
+        });
+        const listBody1 = JSON.parse(listResponse1.body);
+        expect(listBody1.tasks.some((t: any) => t.id === taskId)).toBe(true);
+
+        // 2. Move to trash
+        const trashResponse = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+        expect(trashResponse.statusCode).toBe(200);
+
+        // 3. Verify task no longer appears in normal list
+        const listResponse2 = await server.inject({
+          method: 'GET',
+          url: '/tasks',
+        });
+        const listBody2 = JSON.parse(listResponse2.body);
+        expect(listBody2.tasks.some((t: any) => t.id === taskId)).toBe(false);
+
+        // 4. Verify task appears in trashed list
+        const trashedResponse1 = await server.inject({
+          method: 'GET',
+          url: '/tasks/trashed',
+        });
+        const trashedBody1 = JSON.parse(trashedResponse1.body);
+        expect(trashedBody1.tasks.some((t: any) => t.id === taskId)).toBe(true);
+        expect(trashedBody1.count).toBe(1);
+
+        // 5. Restore from trash
+        const restoreResponse = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/restore`,
+        });
+        expect(restoreResponse.statusCode).toBe(200);
+
+        // 6. Verify task no longer appears in trashed list
+        const trashedResponse2 = await server.inject({
+          method: 'GET',
+          url: '/tasks/trashed',
+        });
+        const trashedBody2 = JSON.parse(trashedResponse2.body);
+        expect(trashedBody2.tasks.some((t: any) => t.id === taskId)).toBe(false);
+        expect(trashedBody2.count).toBe(0);
+
+        // 7. Verify task appears in normal list again
+        const listResponse3 = await server.inject({
+          method: 'GET',
+          url: '/tasks',
+        });
+        const listBody3 = JSON.parse(listResponse3.body);
+        expect(listBody3.tasks.some((t: any) => t.id === taskId)).toBe(true);
+
+        // 8. Trash again and permanently delete
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/trash`,
+        });
+
+        const emptyResponse = await server.inject({
+          method: 'DELETE',
+          url: '/tasks/trash',
+        });
+        const emptyBody = JSON.parse(emptyResponse.body);
+        expect(emptyBody.deletedCount).toBe(1);
+
+        // 9. Verify task is completely gone
+        const getResponse = await server.inject({
+          method: 'GET',
+          url: `/tasks/${taskId}`,
+        });
+        expect(getResponse.statusCode).toBe(404);
+      });
     });
   });
 
