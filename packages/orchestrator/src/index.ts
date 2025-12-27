@@ -5189,3 +5189,4 @@ export {
   type ExecutionFailedEvent,
   type CommandBlockedEvent,
 } from './container-execution-proxy';
+export { HealthMonitor } from './health-monitor';
