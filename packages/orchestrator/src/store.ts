@@ -19,11 +19,13 @@ import {
   WorkspaceConfig,
   IdleTask,
   IdleTaskType,
+  TaskTemplate,
   IterationEntry,
   IterationHistory,
   IterationSnapshot,
   generateTaskId,
   generateIdleTaskId,
+  generateTaskTemplateId,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -76,6 +78,9 @@ export class TaskStore {
       { column: 'session_data', definition: 'TEXT' },
       { column: 'last_checkpoint', definition: 'TEXT' },
       { column: 'effort', definition: "TEXT DEFAULT 'medium'" },
+      // Task lifecycle (trash/archive) support
+      { column: 'trashed_at', definition: 'TEXT' },
+      { column: 'archived_at', definition: 'TEXT' },
     ];
 
     // Create task_iterations table if it doesn't exist (v0.4.0 iteration history support)
@@ -168,7 +173,10 @@ export class TaskStore {
         -- v0.4.0 enhancements
         workspace_config TEXT,
         session_data TEXT,
-        last_checkpoint TEXT
+        last_checkpoint TEXT,
+        -- Task lifecycle (trash/archive) support
+        trashed_at TEXT,
+        archived_at TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -304,6 +312,19 @@ export class TaskStore {
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
+      CREATE TABLE IF NOT EXISTS task_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        workflow TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'normal',
+        effort TEXT NOT NULL DEFAULT 'medium',
+        acceptance_criteria TEXT,
+        tags TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -319,6 +340,8 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_workspace_info_task_id ON workspace_info(task_id);
       CREATE INDEX IF NOT EXISTS idx_idle_tasks_status ON idle_tasks(implemented);
       CREATE INDEX IF NOT EXISTS idx_task_iterations_task_id ON task_iterations(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_templates_name ON task_templates(name);
+      CREATE INDEX IF NOT EXISTS idx_task_templates_workflow ON task_templates(workflow);
     `);
   }
 
@@ -476,6 +499,8 @@ export class TaskStore {
       pausedAt: Date | undefined;
       resumeAfter: Date | undefined;
       pauseReason: string | undefined;
+      trashedAt: Date | undefined;
+      archivedAt: Date | undefined;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -590,6 +615,17 @@ export class TaskStore {
       params.pauseReason = updates.pauseReason ?? null;
     }
 
+    // Handle trash/archive lifecycle fields (allow setting to null/undefined to restore)
+    if ('trashedAt' in updates) {
+      setClauses.push('trashed_at = @trashedAt');
+      params.trashedAt = updates.trashedAt ? updates.trashedAt.toISOString() : null;
+    }
+
+    if ('archivedAt' in updates) {
+      setClauses.push('archived_at = @archivedAt');
+      params.archivedAt = updates.archivedAt ? updates.archivedAt.toISOString() : null;
+    }
+
     if (setClauses.length === 0) return;
 
     const sql = `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = @id`;
@@ -599,13 +635,33 @@ export class TaskStore {
   /**
    * List tasks
    */
-  async listTasks(options?: { status?: TaskStatus; limit?: number; orderByPriority?: boolean }): Promise<Task[]> {
+  async listTasks(options?: {
+    status?: TaskStatus;
+    limit?: number;
+    orderByPriority?: boolean;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): Promise<Task[]> {
     let sql = 'SELECT * FROM tasks';
     const params: unknown[] = [];
+    const whereClauses: string[] = [];
 
     if (options?.status) {
-      sql += ' WHERE status = ?';
+      whereClauses.push('status = ?');
       params.push(options.status);
+    }
+
+    // By default, exclude trashed and archived tasks unless explicitly requested
+    if (!options?.includeTrashed) {
+      whereClauses.push('trashed_at IS NULL');
+    }
+
+    if (!options?.includeArchived) {
+      whereClauses.push('archived_at IS NULL');
+    }
+
+    if (whereClauses.length > 0) {
+      sql += ' WHERE ' + whereClauses.join(' AND ');
     }
 
     if (options?.orderByPriority) {
@@ -655,6 +711,106 @@ export class TaskStore {
 
   async getAllTasks(): Promise<Task[]> {
     return this.listTasks();
+  }
+
+  /**
+   * Get only trashed tasks
+   */
+  async getTrashedTasks(): Promise<Task[]> {
+    let sql = 'SELECT * FROM tasks WHERE trashed_at IS NOT NULL';
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all() as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
+    }
+
+    return tasks;
+  }
+
+  /**
+   * Get only archived tasks
+   */
+  async getArchivedTasks(): Promise<Task[]> {
+    let sql = 'SELECT * FROM tasks WHERE archived_at IS NOT NULL';
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all() as TaskRow[];
+
+    const tasks: Task[] = [];
+    for (const row of rows) {
+      const logs = await this.getTaskLogs(row.id);
+      const artifacts = await this.getTaskArtifacts(row.id);
+      const dependsOn = await this.getTaskDependencies(row.id);
+      const blockedBy = await this.getBlockingTasks(row.id);
+      const iterationHistory = await this.getIterationHistory(row.id);
+      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
+    }
+
+    return tasks;
+  }
+
+  /**
+   * Get all tasks including trashed and archived
+   */
+  async getAllTasksIncludingLifecycleStates(): Promise<Task[]> {
+    return this.listTasks({ includeTrashed: true, includeArchived: true });
+  }
+
+  /**
+   * Trash a task (soft delete)
+   */
+  async trashTask(taskId: string): Promise<void> {
+    await this.updateTask(taskId, {
+      trashedAt: new Date(),
+      status: 'cancelled',
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Archive a task
+   */
+  async archiveTask(taskId: string): Promise<void> {
+    await this.updateTask(taskId, {
+      archivedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Restore a task from trash or archive
+   */
+  async restoreTask(taskId: string, newStatus?: TaskStatus): Promise<void> {
+    const task = await this.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    const updates: Partial<{
+      trashedAt: Date | undefined;
+      archivedAt: Date | undefined;
+      status: TaskStatus;
+      updatedAt: Date;
+    }> = {
+      trashedAt: undefined,
+      archivedAt: undefined,
+      updatedAt: new Date(),
+    };
+
+    // If restoring from trash, set status to pending unless specified
+    if (task.trashedAt && newStatus) {
+      updates.status = newStatus;
+    } else if (task.trashedAt && !newStatus) {
+      updates.status = 'pending';
+    }
+
+    await this.updateTask(taskId, updates);
   }
 
   /**
@@ -1060,6 +1216,8 @@ export class TaskStore {
       pausedAt: row.paused_at ? new Date(row.paused_at) : undefined,
       resumeAfter: row.resume_after ? new Date(row.resume_after) : undefined,
       pauseReason: row.pause_reason || undefined,
+      trashedAt: row.trashed_at ? new Date(row.trashed_at) : undefined,
+      archivedAt: row.archived_at ? new Date(row.archived_at) : undefined,
       usage: {
         inputTokens: row.usage_input_tokens,
         outputTokens: row.usage_output_tokens,
@@ -1724,6 +1882,206 @@ export class TaskStore {
     };
   }
 
+  // ============================================================================
+  // Task Template Operations
+  // ============================================================================
+
+  /**
+   * Create a new task template
+   */
+  async createTemplate(template: Omit<TaskTemplate, 'createdAt' | 'updatedAt'> & { createdAt?: Date; updatedAt?: Date }): Promise<TaskTemplate> {
+    const now = new Date();
+    const taskTemplate = {
+      ...template,
+      createdAt: template.createdAt || now,
+      updatedAt: template.updatedAt || now,
+    };
+
+    const stmt = this.db.prepare(`
+      INSERT INTO task_templates (
+        id, name, description, workflow, priority, effort,
+        acceptance_criteria, tags, created_at, updated_at
+      ) VALUES (
+        @id, @name, @description, @workflow, @priority, @effort,
+        @acceptanceCriteria, @tags, @createdAt, @updatedAt
+      )
+    `);
+
+    stmt.run({
+      id: taskTemplate.id,
+      name: taskTemplate.name,
+      description: taskTemplate.description,
+      workflow: taskTemplate.workflow,
+      priority: taskTemplate.priority,
+      effort: taskTemplate.effort,
+      acceptanceCriteria: taskTemplate.acceptanceCriteria || null,
+      tags: taskTemplate.tags && taskTemplate.tags.length > 0 ? JSON.stringify(taskTemplate.tags) : null,
+      createdAt: taskTemplate.createdAt.toISOString(),
+      updatedAt: taskTemplate.updatedAt.toISOString(),
+    });
+
+    return taskTemplate;
+  }
+
+  /**
+   * Get a template by ID
+   */
+  async getTemplate(id: string): Promise<TaskTemplate | null> {
+    const stmt = this.db.prepare('SELECT * FROM task_templates WHERE id = ?');
+    const row = stmt.get(id) as TaskTemplateRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToTaskTemplate(row);
+  }
+
+  /**
+   * Get all templates
+   */
+  async getAllTemplates(): Promise<TaskTemplate[]> {
+    const stmt = this.db.prepare('SELECT * FROM task_templates ORDER BY name ASC');
+    const rows = stmt.all() as TaskTemplateRow[];
+
+    return rows.map(row => this.rowToTaskTemplate(row));
+  }
+
+  /**
+   * Get templates by workflow
+   */
+  async getTemplatesByWorkflow(workflow: string): Promise<TaskTemplate[]> {
+    const stmt = this.db.prepare('SELECT * FROM task_templates WHERE workflow = ? ORDER BY name ASC');
+    const rows = stmt.all(workflow) as TaskTemplateRow[];
+
+    return rows.map(row => this.rowToTaskTemplate(row));
+  }
+
+  /**
+   * Search templates by name or description
+   */
+  async searchTemplates(query: string): Promise<TaskTemplate[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_templates
+      WHERE name LIKE ? OR description LIKE ?
+      ORDER BY
+        CASE
+          WHEN name LIKE ? THEN 1
+          ELSE 2
+        END, name ASC
+    `);
+    const searchPattern = `%${query}%`;
+    const namePattern = `%${query}%`;
+    const rows = stmt.all(searchPattern, searchPattern, namePattern) as TaskTemplateRow[];
+
+    return rows.map(row => this.rowToTaskTemplate(row));
+  }
+
+  /**
+   * Update a template
+   */
+  async updateTemplate(
+    id: string,
+    updates: Partial<Omit<TaskTemplate, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<void> {
+    const setClauses: string[] = [];
+    const params: Record<string, unknown> = { id };
+
+    if (updates.name !== undefined) {
+      setClauses.push('name = @name');
+      params.name = updates.name;
+    }
+
+    if (updates.description !== undefined) {
+      setClauses.push('description = @description');
+      params.description = updates.description;
+    }
+
+    if (updates.workflow !== undefined) {
+      setClauses.push('workflow = @workflow');
+      params.workflow = updates.workflow;
+    }
+
+    if (updates.priority !== undefined) {
+      setClauses.push('priority = @priority');
+      params.priority = updates.priority;
+    }
+
+    if (updates.effort !== undefined) {
+      setClauses.push('effort = @effort');
+      params.effort = updates.effort;
+    }
+
+    if (updates.acceptanceCriteria !== undefined) {
+      setClauses.push('acceptance_criteria = @acceptanceCriteria');
+      params.acceptanceCriteria = updates.acceptanceCriteria;
+    }
+
+    if (updates.tags !== undefined) {
+      setClauses.push('tags = @tags');
+      params.tags = updates.tags && updates.tags.length > 0 ? JSON.stringify(updates.tags) : null;
+    }
+
+    // Always update the updatedAt timestamp
+    setClauses.push('updated_at = @updatedAt');
+    params.updatedAt = new Date().toISOString();
+
+    if (setClauses.length === 1) return; // Only updatedAt was set
+
+    const sql = `UPDATE task_templates SET ${setClauses.join(', ')} WHERE id = @id`;
+    this.db.prepare(sql).run(params);
+  }
+
+  /**
+   * Delete a template
+   */
+  async deleteTemplate(id: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM task_templates WHERE id = ?');
+    const result = stmt.run(id);
+
+    if (result.changes === 0) {
+      throw new Error(`Task template with ID ${id} not found`);
+    }
+  }
+
+  /**
+   * Create a task from a template
+   */
+  async createTaskFromTemplate(templateId: string, overrides?: Partial<CreateTaskRequest>): Promise<Task> {
+    const template = await this.getTemplate(templateId);
+
+    if (!template) {
+      throw new Error(`Task template with ID ${templateId} not found`);
+    }
+
+    const taskRequest: CreateTaskRequest = {
+      description: overrides?.description || template.description,
+      acceptanceCriteria: overrides?.acceptanceCriteria || template.acceptanceCriteria,
+      workflow: overrides?.workflow || template.workflow,
+      priority: overrides?.priority || template.priority,
+      effort: overrides?.effort || template.effort,
+      projectPath: overrides?.projectPath || this.projectPath,
+    };
+
+    return this.createTask(taskRequest);
+  }
+
+  /**
+   * Convert database row to TaskTemplate object
+   */
+  private rowToTaskTemplate(row: TaskTemplateRow): TaskTemplate {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      workflow: row.workflow,
+      priority: row.priority as TaskPriority,
+      effort: row.effort as TaskEffort,
+      acceptanceCriteria: row.acceptance_criteria || undefined,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
   /**
    * Close the database connection
    */
@@ -1766,6 +2124,8 @@ interface TaskRow {
   workspace_config: string | null;
   session_data: string | null;
   last_checkpoint: string | null;
+  trashed_at: string | null;
+  archived_at: string | null;
 }
 
 interface TaskLogRow {
@@ -1836,4 +2196,17 @@ interface TaskIterationRow {
   agent: string | null;
   before_state: string | null;
   after_state: string | null;
+}
+
+interface TaskTemplateRow {
+  id: string;
+  name: string;
+  description: string;
+  workflow: string;
+  priority: string;
+  effort: string;
+  acceptance_criteria: string | null;
+  tags: string | null;
+  created_at: string;
+  updated_at: string;
 }

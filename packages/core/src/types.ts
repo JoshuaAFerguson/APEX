@@ -392,6 +392,8 @@ export interface Task {
   pausedAt?: Date;           // When the task was paused
   resumeAfter?: Date;        // When to auto-resume (e.g., after rate limit reset)
   pauseReason?: string;      // Why the task was paused (e.g., 'rate_limit', 'budget', 'manual')
+  trashedAt?: Date;          // When the task was moved to trash (soft delete)
+  archivedAt?: Date;         // When the task was archived
   usage: TaskUsage;
   logs: TaskLog[];
   artifacts: TaskArtifact[];
@@ -1597,6 +1599,24 @@ export interface TestAnalysis {
   /** Testing anti-patterns found in the codebase */
   antiPatterns: TestingAntiPattern[];
 }
+
+// ============================================================================
+// Task Template Types
+// ============================================================================
+
+export const TaskTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, 'Template name is required').max(100, 'Template name must be 100 characters or less'),
+  description: z.string().min(1, 'Template description is required'),
+  workflow: z.string().min(1, 'Workflow is required'),
+  priority: TaskPrioritySchema.default('normal'),
+  effort: TaskEffortSchema.default('medium'),
+  acceptanceCriteria: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
 
 // ============================================================================
 // Idle Task Types (v0.4.0)

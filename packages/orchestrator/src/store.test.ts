@@ -14,10 +14,11 @@ import type {
   IdleTaskType,
   TaskPriority,
   TaskEffort,
+  TaskTemplate,
   IterationEntry,
   IterationHistory,
 } from '@apexcli/core';
-import { generateIdleTaskId } from '@apexcli/core';
+import { generateIdleTaskId, generateTaskTemplateId } from '@apexcli/core';
 
 describe('TaskStore', () => {
   let testDir: string;
@@ -2133,6 +2134,645 @@ describe('TaskStore', () => {
       expect(retrievedEntry.diffSummary).toBe('');
       expect(retrievedEntry.stage).toBe('');
       expect(retrievedEntry.agent).toBe('');
+    });
+  });
+
+  describe('Task Lifecycle Management (Trash/Archive)', () => {
+    it('should update task to trashed state', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const trashedAt = new Date();
+      await store.updateTask(task.id, {
+        trashedAt,
+        status: 'cancelled',
+        updatedAt: new Date(),
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toEqual(trashedAt);
+      expect(updated?.status).toBe('cancelled');
+      expect(updated?.archivedAt).toBeUndefined();
+    });
+
+    it('should update task to archived state', async () => {
+      const task = createTestTask();
+      task.status = 'completed';
+      await store.createTask(task);
+
+      const archivedAt = new Date();
+      await store.updateTask(task.id, {
+        archivedAt,
+        updatedAt: new Date(),
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toEqual(archivedAt);
+      expect(updated?.status).toBe('completed');
+      expect(updated?.trashedAt).toBeUndefined();
+    });
+
+    it('should restore task from trash', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Trash the task
+      await store.updateTask(task.id, {
+        trashedAt: new Date(),
+        status: 'cancelled',
+      });
+
+      let updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeDefined();
+
+      // Restore from trash
+      await store.updateTask(task.id, {
+        trashedAt: undefined,
+        status: 'pending',
+      });
+
+      updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeUndefined();
+      expect(updated?.status).toBe('pending');
+    });
+
+    it('should restore task from archive', async () => {
+      const task = createTestTask();
+      task.status = 'completed';
+      await store.createTask(task);
+
+      // Archive the task
+      await store.updateTask(task.id, {
+        archivedAt: new Date(),
+      });
+
+      let updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeDefined();
+
+      // Restore from archive
+      await store.updateTask(task.id, {
+        archivedAt: undefined,
+      });
+
+      updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeUndefined();
+      expect(updated?.status).toBe('completed');
+    });
+
+    it('should handle null values for trash/archive fields', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Setting null should be treated as undefined
+      await store.updateTask(task.id, {
+        trashedAt: undefined,
+        archivedAt: undefined,
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeUndefined();
+      expect(updated?.archivedAt).toBeUndefined();
+    });
+
+    it('should allow task to be both completed and archived', async () => {
+      const task = createTestTask();
+      task.status = 'completed';
+      await store.createTask(task);
+
+      const completedAt = new Date();
+      const archivedAt = new Date();
+
+      await store.updateTask(task.id, {
+        status: 'completed',
+        completedAt,
+        archivedAt,
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('completed');
+      expect(updated?.completedAt).toEqual(completedAt);
+      expect(updated?.archivedAt).toEqual(archivedAt);
+      expect(updated?.trashedAt).toBeUndefined();
+    });
+
+    it('should allow task to be failed and trashed', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const trashedAt = new Date();
+
+      await store.updateTask(task.id, {
+        status: 'failed',
+        error: 'Task failed due to errors',
+        trashedAt,
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.status).toBe('failed');
+      expect(updated?.error).toBe('Task failed due to errors');
+      expect(updated?.trashedAt).toEqual(trashedAt);
+      expect(updated?.archivedAt).toBeUndefined();
+    });
+
+    it('should handle concurrent trash and archive operations', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const trashedAt = new Date();
+      const archivedAt = new Date(trashedAt.getTime() + 1000);
+
+      // This scenario shouldn't normally happen, but the system should handle it gracefully
+      await store.updateTask(task.id, {
+        trashedAt,
+        archivedAt,
+      });
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toEqual(trashedAt);
+      expect(updated?.archivedAt).toEqual(archivedAt);
+    });
+
+    it('should preserve original dates when task is retrieved multiple times', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      const trashedAt = new Date('2024-01-15T10:30:00.000Z');
+
+      await store.updateTask(task.id, { trashedAt });
+
+      // Retrieve multiple times
+      const retrieval1 = await store.getTask(task.id);
+      const retrieval2 = await store.getTask(task.id);
+
+      expect(retrieval1?.trashedAt).toEqual(trashedAt);
+      expect(retrieval2?.trashedAt).toEqual(trashedAt);
+      expect(retrieval1?.trashedAt).toEqual(retrieval2?.trashedAt);
+    });
+
+    it('should handle datetime precision correctly for lifecycle fields', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Use precise datetime with milliseconds
+      const preciseDate = new Date('2024-01-15T10:30:45.123Z');
+
+      await store.updateTask(task.id, {
+        trashedAt: preciseDate,
+      });
+
+      const updated = await store.getTask(task.id);
+      // SQLite stores datetime as string, so precision might be limited
+      expect(updated?.trashedAt).toBeDefined();
+      expect(updated?.trashedAt?.getTime()).toBeCloseTo(preciseDate.getTime(), -2); // Allow 10ms tolerance
+    });
+
+    it('should include lifecycle fields in task listing operations', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task_archived';
+      task1.status = 'completed';
+      await store.createTask(task1);
+      await store.updateTask(task1.id, { archivedAt: new Date() });
+
+      const task2 = createTestTask();
+      task2.id = 'task_trashed';
+      await store.createTask(task2);
+      await store.updateTask(task2.id, { trashedAt: new Date() });
+
+      const task3 = createTestTask();
+      task3.id = 'task_normal';
+      await store.createTask(task3);
+
+      const allTasks = await store.getAllTasks();
+
+      const archivedTask = allTasks.find(t => t.id === 'task_archived');
+      const trashedTask = allTasks.find(t => t.id === 'task_trashed');
+      const normalTask = allTasks.find(t => t.id === 'task_normal');
+
+      expect(archivedTask?.archivedAt).toBeDefined();
+      expect(archivedTask?.trashedAt).toBeUndefined();
+
+      expect(trashedTask?.trashedAt).toBeDefined();
+      expect(trashedTask?.archivedAt).toBeUndefined();
+
+      expect(normalTask?.archivedAt).toBeUndefined();
+      expect(normalTask?.trashedAt).toBeUndefined();
+    });
+
+    it('should maintain lifecycle fields through task dependency operations', async () => {
+      // Create dependency task
+      const depTask = createTestTask();
+      depTask.id = 'dep_task';
+      depTask.status = 'completed';
+      await store.createTask(depTask);
+      await store.updateTask(depTask.id, { archivedAt: new Date() });
+
+      // Create main task that depends on archived task
+      const mainTask = createTestTask();
+      mainTask.id = 'main_task';
+      mainTask.dependsOn = ['dep_task'];
+      await store.createTask(mainTask);
+
+      // Check dependencies are maintained even with lifecycle fields
+      const retrieved = await store.getTask('main_task');
+      expect(retrieved?.dependsOn).toEqual(['dep_task']);
+
+      const dependencies = await store.getTaskDependencies('main_task');
+      expect(dependencies).toEqual(['dep_task']);
+
+      // Dependency should still be retrievable with its lifecycle fields
+      const depRetrieved = await store.getTask('dep_task');
+      expect(depRetrieved?.archivedAt).toBeDefined();
+    });
+
+    it('should handle edge cases with empty and invalid dates', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Test with valid date first
+      const validDate = new Date('2024-01-15T10:00:00Z');
+      await store.updateTask(task.id, { trashedAt: validDate });
+
+      let updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toEqual(validDate);
+
+      // Test clearing the date
+      await store.updateTask(task.id, { trashedAt: undefined });
+
+      updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeUndefined();
+    });
+
+    it('should use convenience methods for trash and archive operations', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Test trash convenience method
+      await store.trashTask(task.id);
+
+      let updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeDefined();
+      expect(updated?.status).toBe('cancelled');
+
+      // Restore using convenience method
+      await store.restoreTask(task.id, 'pending');
+
+      updated = await store.getTask(task.id);
+      expect(updated?.trashedAt).toBeUndefined();
+      expect(updated?.archivedAt).toBeUndefined();
+      expect(updated?.status).toBe('pending');
+
+      // Test archive convenience method
+      await store.updateTask(task.id, { status: 'completed' });
+      await store.archiveTask(task.id);
+
+      updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeDefined();
+      expect(updated?.status).toBe('completed');
+    });
+
+    it('should filter tasks by lifecycle state', async () => {
+      // Create tasks in different lifecycle states
+      const normalTask = createTestTask();
+      normalTask.id = 'task_normal';
+      await store.createTask(normalTask);
+
+      const trashedTask = createTestTask();
+      trashedTask.id = 'task_trashed';
+      await store.createTask(trashedTask);
+      await store.trashTask(trashedTask.id);
+
+      const archivedTask = createTestTask();
+      archivedTask.id = 'task_archived';
+      archivedTask.status = 'completed';
+      await store.createTask(archivedTask);
+      await store.archiveTask(archivedTask.id);
+
+      // Test filtered queries
+      const normalTasks = await store.listTasks();
+      expect(normalTasks.map(t => t.id)).toContain('task_normal');
+      expect(normalTasks.map(t => t.id)).not.toContain('task_trashed');
+      expect(normalTasks.map(t => t.id)).not.toContain('task_archived');
+
+      const trashedTasks = await store.getTrashedTasks();
+      expect(trashedTasks.map(t => t.id)).toContain('task_trashed');
+      expect(trashedTasks.map(t => t.id)).not.toContain('task_normal');
+      expect(trashedTasks.map(t => t.id)).not.toContain('task_archived');
+
+      const archivedTasks = await store.getArchivedTasks();
+      expect(archivedTasks.map(t => t.id)).toContain('task_archived');
+      expect(archivedTasks.map(t => t.id)).not.toContain('task_normal');
+      expect(archivedTasks.map(t => t.id)).not.toContain('task_trashed');
+
+      const allTasksIncludingLifecycle = await store.getAllTasksIncludingLifecycleStates();
+      expect(allTasksIncludingLifecycle.map(t => t.id)).toContain('task_normal');
+      expect(allTasksIncludingLifecycle.map(t => t.id)).toContain('task_trashed');
+      expect(allTasksIncludingLifecycle.map(t => t.id)).toContain('task_archived');
+    });
+
+    it('should throw error when restoring non-existent task', async () => {
+      await expect(store.restoreTask('non-existent-task')).rejects.toThrow(
+        'Task with ID non-existent-task not found'
+      );
+    });
+  });
+
+  describe('Task Templates', () => {
+    const createTestTemplate = (): TaskTemplate => ({
+      id: generateTaskTemplateId(),
+      name: 'Feature Template',
+      description: 'Template for implementing new features',
+      workflow: 'feature',
+      priority: 'normal',
+      effort: 'medium',
+      acceptanceCriteria: 'Feature should be implemented with tests',
+      tags: ['feature', 'development'],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    describe('CRUD Operations', () => {
+      it('should create and retrieve a template', async () => {
+        const template = createTestTemplate();
+        await store.createTemplate(template);
+
+        const retrieved = await store.getTemplate(template.id);
+        expect(retrieved).not.toBeNull();
+        expect(retrieved?.id).toBe(template.id);
+        expect(retrieved?.name).toBe(template.name);
+        expect(retrieved?.description).toBe(template.description);
+        expect(retrieved?.workflow).toBe(template.workflow);
+        expect(retrieved?.priority).toBe(template.priority);
+        expect(retrieved?.effort).toBe(template.effort);
+        expect(retrieved?.acceptanceCriteria).toBe(template.acceptanceCriteria);
+        expect(retrieved?.tags).toEqual(template.tags);
+      });
+
+      it('should create template without optional fields', async () => {
+        const template: TaskTemplate = {
+          id: generateTaskTemplateId(),
+          name: 'Minimal Template',
+          description: 'A minimal template',
+          workflow: 'bugfix',
+          priority: 'high',
+          effort: 'small',
+          tags: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        await store.createTemplate(template);
+        const retrieved = await store.getTemplate(template.id);
+        expect(retrieved).not.toBeNull();
+        expect(retrieved?.acceptanceCriteria).toBeUndefined();
+        expect(retrieved?.tags).toEqual([]);
+      });
+
+      it('should return null for non-existent template', async () => {
+        const result = await store.getTemplate('non-existent-template');
+        expect(result).toBeNull();
+      });
+
+      it('should update a template', async () => {
+        const template = createTestTemplate();
+        await store.createTemplate(template);
+
+        const updates = {
+          name: 'Updated Feature Template',
+          description: 'Updated description',
+          priority: 'high' as TaskPriority,
+          tags: ['feature', 'development', 'urgent'],
+        };
+
+        await store.updateTemplate(template.id, updates);
+        const updated = await store.getTemplate(template.id);
+
+        expect(updated?.name).toBe(updates.name);
+        expect(updated?.description).toBe(updates.description);
+        expect(updated?.priority).toBe(updates.priority);
+        expect(updated?.tags).toEqual(updates.tags);
+        expect(updated?.updatedAt.getTime()).toBeGreaterThan(template.updatedAt.getTime());
+      });
+
+      it('should update template with partial data', async () => {
+        const template = createTestTemplate();
+        await store.createTemplate(template);
+
+        await store.updateTemplate(template.id, { name: 'New Name Only' });
+        const updated = await store.getTemplate(template.id);
+
+        expect(updated?.name).toBe('New Name Only');
+        expect(updated?.description).toBe(template.description); // Should remain unchanged
+      });
+
+      it('should delete a template', async () => {
+        const template = createTestTemplate();
+        await store.createTemplate(template);
+
+        await store.deleteTemplate(template.id);
+        const retrieved = await store.getTemplate(template.id);
+        expect(retrieved).toBeNull();
+      });
+
+      it('should throw error when deleting non-existent template', async () => {
+        await expect(store.deleteTemplate('non-existent')).rejects.toThrow(
+          'Task template with ID non-existent not found'
+        );
+      });
+    });
+
+    describe('Query Operations', () => {
+      beforeEach(async () => {
+        // Create test templates
+        const templates: TaskTemplate[] = [
+          {
+            id: generateTaskTemplateId(),
+            name: 'Bug Fix Template',
+            description: 'Template for fixing bugs',
+            workflow: 'bugfix',
+            priority: 'high',
+            effort: 'small',
+            tags: ['bugfix'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          {
+            id: generateTaskTemplateId(),
+            name: 'Feature Template',
+            description: 'Template for new features',
+            workflow: 'feature',
+            priority: 'normal',
+            effort: 'large',
+            tags: ['feature', 'development'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          {
+            id: generateTaskTemplateId(),
+            name: 'Documentation Template',
+            description: 'Template for documentation updates',
+            workflow: 'docs',
+            priority: 'low',
+            effort: 'medium',
+            tags: ['docs'],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ];
+
+        for (const template of templates) {
+          await store.createTemplate(template);
+        }
+      });
+
+      it('should get all templates', async () => {
+        const templates = await store.getAllTemplates();
+        expect(templates).toHaveLength(3);
+
+        // Should be sorted by name
+        const names = templates.map(t => t.name);
+        expect(names).toEqual(['Bug Fix Template', 'Documentation Template', 'Feature Template']);
+      });
+
+      it('should get templates by workflow', async () => {
+        const featureTemplates = await store.getTemplatesByWorkflow('feature');
+        expect(featureTemplates).toHaveLength(1);
+        expect(featureTemplates[0].name).toBe('Feature Template');
+
+        const bugfixTemplates = await store.getTemplatesByWorkflow('bugfix');
+        expect(bugfixTemplates).toHaveLength(1);
+        expect(bugfixTemplates[0].name).toBe('Bug Fix Template');
+
+        const nonExistentTemplates = await store.getTemplatesByWorkflow('nonexistent');
+        expect(nonExistentTemplates).toHaveLength(0);
+      });
+
+      it('should search templates by name', async () => {
+        const results = await store.searchTemplates('Bug');
+        expect(results).toHaveLength(1);
+        expect(results[0].name).toBe('Bug Fix Template');
+      });
+
+      it('should search templates by description', async () => {
+        const results = await store.searchTemplates('documentation');
+        expect(results).toHaveLength(1);
+        expect(results[0].name).toBe('Documentation Template');
+      });
+
+      it('should prioritize name matches in search results', async () => {
+        // Add a template with 'feature' in description but not name
+        const template: TaskTemplate = {
+          id: generateTaskTemplateId(),
+          name: 'Special Template',
+          description: 'This template helps with feature development',
+          workflow: 'custom',
+          priority: 'normal',
+          effort: 'medium',
+          tags: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await store.createTemplate(template);
+
+        const results = await store.searchTemplates('feature');
+        expect(results).toHaveLength(2);
+        // Name match should come first
+        expect(results[0].name).toBe('Feature Template');
+        expect(results[1].name).toBe('Special Template');
+      });
+
+      it('should return empty results for no matches', async () => {
+        const results = await store.searchTemplates('nonexistent');
+        expect(results).toHaveLength(0);
+      });
+    });
+
+    describe('Task Creation from Template', () => {
+      let template: TaskTemplate;
+
+      beforeEach(async () => {
+        template = createTestTemplate();
+        await store.createTemplate(template);
+      });
+
+      it('should create task from template', async () => {
+        const task = await store.createTaskFromTemplate(template.id);
+
+        expect(task.description).toBe(template.description);
+        expect(task.acceptanceCriteria).toBe(template.acceptanceCriteria);
+        expect(task.workflow).toBe(template.workflow);
+        expect(task.priority).toBe(template.priority);
+        expect(task.effort).toBe(template.effort);
+        expect(task.status).toBe('pending');
+        expect(task.projectPath).toBe(testDir);
+      });
+
+      it('should create task from template with overrides', async () => {
+        const overrides = {
+          description: 'Custom task description',
+          priority: 'urgent' as TaskPriority,
+          effort: 'large' as TaskEffort,
+        };
+
+        const task = await store.createTaskFromTemplate(template.id, overrides);
+
+        expect(task.description).toBe(overrides.description);
+        expect(task.priority).toBe(overrides.priority);
+        expect(task.effort).toBe(overrides.effort);
+        expect(task.acceptanceCriteria).toBe(template.acceptanceCriteria); // Not overridden
+        expect(task.workflow).toBe(template.workflow); // Not overridden
+      });
+
+      it('should throw error for non-existent template', async () => {
+        await expect(store.createTaskFromTemplate('non-existent')).rejects.toThrow(
+          'Task template with ID non-existent not found'
+        );
+      });
+    });
+
+    describe('Edge Cases', () => {
+      it('should handle templates with empty tags array', async () => {
+        const template = createTestTemplate();
+        template.tags = [];
+
+        await store.createTemplate(template);
+        const retrieved = await store.getTemplate(template.id);
+        expect(retrieved?.tags).toEqual([]);
+      });
+
+      it('should handle templates with null acceptance criteria', async () => {
+        const template = createTestTemplate();
+        template.acceptanceCriteria = undefined;
+
+        await store.createTemplate(template);
+        const retrieved = await store.getTemplate(template.id);
+        expect(retrieved?.acceptanceCriteria).toBeUndefined();
+      });
+
+      it('should preserve timestamps correctly', async () => {
+        const template = createTestTemplate();
+        const beforeCreate = new Date();
+
+        await store.createTemplate(template);
+
+        const afterCreate = new Date();
+        const retrieved = await store.getTemplate(template.id);
+
+        expect(retrieved?.createdAt).toBeDefined();
+        expect(retrieved?.updatedAt).toBeDefined();
+        expect(retrieved?.createdAt.getTime()).toBeGreaterThanOrEqual(beforeCreate.getTime());
+        expect(retrieved?.createdAt.getTime()).toBeLessThanOrEqual(afterCreate.getTime());
+      });
+
+      it('should handle search with special characters', async () => {
+        const template = createTestTemplate();
+        template.name = 'Template with "quotes" and symbols!';
+
+        await store.createTemplate(template);
+
+        const results = await store.searchTemplates('quotes');
+        expect(results).toHaveLength(1);
+        expect(results[0].id).toBe(template.id);
+      });
     });
   });
 });

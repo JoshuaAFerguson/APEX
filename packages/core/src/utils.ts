@@ -19,6 +19,15 @@ export function generateIdleTaskId(): string {
 }
 
 /**
+ * Generate a unique task template ID
+ */
+export function generateTaskTemplateId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = crypto.randomBytes(4).toString('hex');
+  return `template_${timestamp}_${random}`;
+}
+
+/**
  * Generate a slug from a string
  */
 export function slugify(text: string): string {
