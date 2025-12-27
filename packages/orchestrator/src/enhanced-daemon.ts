@@ -14,6 +14,7 @@ import { TaskStore } from './store';
 import { ApexOrchestrator, TasksAutoResumedEvent, TaskSessionResumedEvent } from './index';
 import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
 import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
+import { HealthMonitor } from './health-monitor';
 import {
   DaemonConfig,
   DaemonConfigSchema,
@@ -61,6 +62,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
   private idleProcessor!: IdleProcessor;
   private thoughtCapture!: ThoughtCaptureManager;
   private capacityMonitor!: CapacityMonitor;
+  private healthMonitor!: HealthMonitor;
 
   private orchestrator: ApexOrchestrator;
   private store: TaskStore;
@@ -204,7 +206,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       usageStats,
       workspaceStats,
       thoughtStats,
-      healthStatus,
+      serviceHealthStatus,
     ] = await Promise.all([
       this.daemonRunner.getMetrics(),
       this.serviceManager.getServiceStatus(),
@@ -214,13 +216,19 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       this.serviceManager.performHealthCheck(),
     ]);
 
+    // Get comprehensive health metrics from HealthMonitor
+    const healthMetrics = this.healthMonitor.getHealthReport(this.daemonRunner);
+
     return {
       daemon: daemonMetrics,
       service: serviceStatus,
       usage: usageStats,
       workspaces: workspaceStats,
       thoughts: thoughtStats,
-      health: healthStatus,
+      health: {
+        ...serviceHealthStatus,
+        metrics: healthMetrics,
+      },
       capacity: this.capacityMonitor.getStatus(),
     };
   }
@@ -233,10 +241,14 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     const daemonConfig = DaemonConfigSchema.parse(this.config.daemon ?? {});
     const limitsConfig = LimitsConfigSchema.parse(this.config.limits ?? {});
 
+    // Initialize HealthMonitor first
+    this.healthMonitor = new HealthMonitor();
+
     // Initialize daemon runner
     this.daemonRunner = new DaemonRunner({
       projectPath: this.projectPath,
       config: this.config,
+      healthMonitor: this.healthMonitor,
     });
 
     // Initialize service manager
@@ -391,16 +403,21 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
       try {
         const health = await this.serviceManager.performHealthCheck();
 
+        // Record health check result in HealthMonitor
+        this.healthMonitor.performHealthCheck(health.healthy);
+
         if (!health.healthy) {
           console.warn('⚠️ Health check failed:', health.errors);
 
           if (this.watchdogEnabled && this.canRestart()) {
             console.log('🔄 Attempting restart due to health check failure...');
-            await this.restartDaemon();
+            await this.restartDaemon('health_check_failure');
           }
         }
       } catch (error) {
         console.error('❌ Health check error:', error);
+        // Record failed health check
+        this.healthMonitor.performHealthCheck(false);
       }
     }, interval);
   }
@@ -424,7 +441,7 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
 
         setTimeout(async () => {
           try {
-            await this.restartDaemon();
+            await this.restartDaemon('daemon_error');
           } catch (restartError) {
             console.error('❌ Failed to restart daemon:', restartError);
           }
@@ -450,9 +467,12 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
     return this.restartCount < maxRestarts;
   }
 
-  private async restartDaemon(): Promise<void> {
+  private async restartDaemon(reason: string = 'watchdog'): Promise<void> {
     this.restartCount++;
     this.lastRestart = Date.now();
+
+    // Record restart event in HealthMonitor
+    this.healthMonitor.recordRestart(reason, undefined, true);
 
     try {
       await this.stop();
@@ -574,5 +594,12 @@ export class EnhancedDaemon extends EventEmitter<EnhancedDaemonEvents> {
    */
   getServiceManager(): ServiceManager {
     return this.serviceManager;
+  }
+
+  /**
+   * Get health monitor for CLI commands
+   */
+  getHealthMonitor(): HealthMonitor {
+    return this.healthMonitor;
   }
 }

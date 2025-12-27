@@ -8,6 +8,7 @@ import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 import { CapacityMonitor, CapacityRestoredEvent } from './capacity-monitor';
 import { CapacityMonitorUsageAdapter } from './capacity-monitor-usage-adapter';
 import { createContextSummary } from './context';
+import { HealthMonitor } from './health-monitor';
 
 // ============================================================================
 // Interface Definitions
@@ -56,6 +57,12 @@ export interface DaemonRunnerOptions {
    * If not provided, config will be loaded from projectPath
    */
   config?: ApexConfig;
+
+  /**
+   * Optional HealthMonitor instance for tracking health metrics
+   * If not provided, no health metrics will be tracked
+   */
+  healthMonitor?: HealthMonitor;
 }
 
 export interface DaemonMetrics {
@@ -116,6 +123,7 @@ export class DaemonRunner {
   private usageManager: UsageManager | null = null;
   private daemonScheduler: DaemonScheduler | null = null;
   private capacityMonitor: CapacityMonitor | null = null;
+  private healthMonitor: HealthMonitor | null = null;
 
   // Configuration
   private readonly options: Required<DaemonRunnerOptions>;
@@ -151,6 +159,7 @@ export class DaemonRunner {
       logToStdout: options.logToStdout ?? false,
       logLevel: options.logLevel, // Will be resolved in start()
       config: options.config, // Optional pre-loaded config
+      healthMonitor: options.healthMonitor, // Optional health monitor
     } as Required<DaemonRunnerOptions>;
   }
 
@@ -220,6 +229,9 @@ export class DaemonRunner {
         effectiveConfig.limits,
         capacityUsageProvider
       );
+
+      // Store healthMonitor if provided
+      this.healthMonitor = this.options.healthMonitor || null;
 
       // Subscribe to orchestrator events for logging
       this.setupOrchestratorEvents();
