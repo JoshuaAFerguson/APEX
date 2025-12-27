@@ -36,6 +36,7 @@ npm-debug.log*
 #AI Tools
 CLAUDE.md
 AGENTS.md
+GEMINI.md
 .claude/
 .zencoder/
 .zenflow/

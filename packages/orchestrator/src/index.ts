@@ -37,7 +37,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore } from './store';
 import { WorktreeManager } from './worktree-manager';
-import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData } from './workspace-manager';
+import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -4541,7 +4541,15 @@ export {
   type RemediationActionType,
 } from './idle-task-generator';
 export { WorktreeManager, WorktreeError, type WorktreeManagerOptions } from './worktree-manager';
-export { WorkspaceManager, type WorkspaceManagerOptions, type WorkspaceInfo, type WorkspaceManagerEvents } from './workspace-manager';
+export {
+  WorkspaceManager,
+  type WorkspaceManagerOptions,
+  type WorkspaceInfo,
+  type WorkspaceManagerEvents,
+  type DependencyInstallEventData,
+  type DependencyInstallCompletedEventData,
+  type DependencyInstallRecoveryEventData
+} from './workspace-manager';
 export {
   ContainerExecutionProxy,
   createContainerExecutionProxy,

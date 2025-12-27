@@ -76,6 +76,17 @@ export interface DependencyInstallCompletedEventData extends DependencyInstallEv
 }
 
 /**
+ * Event data for dependency installation recovery
+ */
+export interface DependencyInstallRecoveryEventData {
+  taskId: string;
+  attempt: number;
+  previousError: string;
+  strategy: string;
+  command: string;
+}
+
+/**
  * Manages isolated workspaces for task execution using various strategies
  */
 export interface WorkspaceManagerEvents {
@@ -83,6 +94,7 @@ export interface WorkspaceManagerEvents {
   'workspace-cleaned': (taskId: string) => void;
   'dependency-install-started': (data: DependencyInstallEventData) => void;
   'dependency-install-completed': (data: DependencyInstallCompletedEventData) => void;
+  'dependency-install-recovery': (data: DependencyInstallRecoveryEventData) => void;
 }
 
 export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {

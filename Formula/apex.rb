@@ -1,7 +1,7 @@
 class Apex < Formula
   desc "APEX - AI-powered development team automation CLI"
   homepage "https://github.com/JoshuaAFerguson/apex"
-  url "https://github.com/JoshuaAFerguson/apex/archive/refs/tags/v0.3.0.tar.gz"
+  url "https://github.com/JoshuaAFerguson/apex/archive/refs/tags/v0.4.0.tar.gz"
   sha256 "REPLACE_WITH_REAL_SHA256"
   license "MIT"
 
