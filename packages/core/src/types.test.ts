@@ -18,6 +18,9 @@ import {
   BranchCoverage,
   UntestedExport,
   MissingIntegrationTest,
+  IterationEntry,
+  IterationHistory,
+  TaskSessionData,
 } from './types';
 
 describe.skip('AgentModelSchema', () => {
@@ -2442,5 +2445,95 @@ describe('TestAnalysis Interface', () => {
       const uncoveredBranchCount = testAnalysis.branchCoverage.uncoveredBranches.length;
       expect(uncoveredBranchCount).toBe(2);
     });
+  });
+});
+
+// ============================================================================
+// Iteration History Types Export Tests
+// ============================================================================
+
+describe('Iteration History Types Exports', () => {
+  it('should properly export IterationEntry type', () => {
+    // This test verifies that IterationEntry is properly exported and can be used
+    const entry: IterationEntry = {
+      id: 'test_001',
+      feedback: 'Test feedback',
+      timestamp: new Date()
+    };
+
+    expect(entry.id).toBe('test_001');
+    expect(entry.feedback).toBe('Test feedback');
+    expect(entry.timestamp).toBeInstanceOf(Date);
+    // Types don't exist at runtime, so we just verify the interface works
+    expect(typeof IterationEntry).toBeUndefined();
+  });
+
+  it('should properly export IterationHistory type', () => {
+    // This test verifies that IterationHistory is properly exported and can be used
+    const history: IterationHistory = {
+      entries: [],
+      totalIterations: 0
+    };
+
+    expect(Array.isArray(history.entries)).toBe(true);
+    expect(history.entries).toHaveLength(0);
+    expect(history.totalIterations).toBe(0);
+    // Types don't exist at runtime, so we just verify the interface works
+    expect(typeof IterationHistory).toBeUndefined();
+  });
+
+  it('should properly export TaskSessionData with iterationHistory field', () => {
+    // This test verifies that TaskSessionData is exported with the new iterationHistory field
+    const sessionData: TaskSessionData = {
+      lastCheckpoint: new Date(),
+      iterationHistory: {
+        entries: [{
+          id: 'session_iter_001',
+          feedback: 'Session test feedback',
+          timestamp: new Date()
+        }],
+        totalIterations: 1,
+        lastIterationAt: new Date()
+      }
+    };
+
+    expect(sessionData.lastCheckpoint).toBeInstanceOf(Date);
+    expect(sessionData.iterationHistory).toBeDefined();
+    expect(sessionData.iterationHistory?.entries).toHaveLength(1);
+    expect(sessionData.iterationHistory?.totalIterations).toBe(1);
+    // Types don't exist at runtime, so we just verify the interface works
+    expect(typeof TaskSessionData).toBeUndefined();
+  });
+
+  it('should handle all iteration history type interfaces correctly', () => {
+    // Complete integration test to ensure all types work together
+    const entry: IterationEntry = {
+      id: 'integration_001',
+      feedback: 'Integration test feedback',
+      timestamp: new Date('2024-01-15T10:00:00Z'),
+      diffSummary: 'Test diff summary',
+      stage: 'testing',
+      modifiedFiles: ['/test/file.ts'],
+      agent: 'tester'
+    };
+
+    const history: IterationHistory = {
+      entries: [entry],
+      totalIterations: 1,
+      lastIterationAt: new Date('2024-01-15T10:00:00Z')
+    };
+
+    const sessionData: TaskSessionData = {
+      lastCheckpoint: new Date('2024-01-15T10:30:00Z'),
+      contextSummary: 'Integration test session',
+      iterationHistory: history
+    };
+
+    // Verify all relationships work correctly
+    expect(sessionData.iterationHistory?.entries[0]).toBe(entry);
+    expect(sessionData.iterationHistory?.entries[0].feedback).toBe('Integration test feedback');
+    expect(sessionData.iterationHistory?.entries[0].stage).toBe('testing');
+    expect(sessionData.iterationHistory?.entries[0].modifiedFiles).toEqual(['/test/file.ts']);
+    expect(sessionData.iterationHistory?.totalIterations).toBe(1);
   });
 });

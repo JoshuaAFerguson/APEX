@@ -719,6 +719,42 @@ export const WorkspaceConfigSchema = z.object({
 });
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 
+// ============================================================================
+// Iteration History Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Represents a single iteration entry containing user feedback and system response
+ */
+export interface IterationEntry {
+  /** Unique identifier for this iteration */
+  id: string;
+  /** User feedback provided for this iteration */
+  feedback: string;
+  /** Timestamp when the iteration was created */
+  timestamp: Date;
+  /** Summary of changes made in response to feedback */
+  diffSummary?: string;
+  /** Stage where the iteration occurred */
+  stage?: string;
+  /** Files that were modified in this iteration */
+  modifiedFiles?: string[];
+  /** Agent that processed the iteration */
+  agent?: string;
+}
+
+/**
+ * Collection of iteration entries for a task, maintaining chronological order
+ */
+export interface IterationHistory {
+  /** Array of iteration entries in chronological order */
+  entries: IterationEntry[];
+  /** Total number of iterations performed */
+  totalIterations: number;
+  /** Timestamp of the most recent iteration */
+  lastIterationAt?: Date;
+}
+
 /**
  * Session recovery and context data for tasks
  */
@@ -737,6 +773,8 @@ export interface TaskSessionData {
     stepIndex: number;
     metadata?: Record<string, unknown>;
   };
+  /** Iteration history for this task session */
+  iterationHistory?: IterationHistory;
 }
 
 /**
