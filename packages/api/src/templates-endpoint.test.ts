@@ -60,6 +60,14 @@ vi.mock('@apex/orchestrator', () => {
       return updated;
     }
 
+    async deleteTemplate(id: string) {
+      const existing = this.templates.get(id);
+      if (!existing) {
+        throw new Error(`Template not found: ${id}`);
+      }
+      this.templates.delete(id);
+    }
+
     // Required for other API endpoints to work
     async createTask() { throw new Error('Not implemented in template test'); }
     async getTask() { throw new Error('Not implemented in template test'); }
@@ -1278,6 +1286,314 @@ describe('Templates API Focused Tests', () => {
       expect(body.effort).toBe(initialUpdate.effort);
       expect(body.acceptanceCriteria).toBe(initialUpdate.acceptanceCriteria);
       expect(body.tags).toEqual(initialUpdate.tags);
+    });
+  });
+
+  // ============================================================================
+  // DELETE /templates/:id Tests
+  // ============================================================================
+
+  describe('DELETE /templates/:id', () => {
+    let createdTemplate: any;
+
+    beforeEach(async () => {
+      // Create a template for deleting in each test
+      const createResponse = await server.inject({
+        method: 'POST',
+        url: '/templates',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {
+          name: 'Template to Delete',
+          description: 'This template will be deleted',
+          workflow: 'feature',
+          priority: 'normal',
+          effort: 'medium',
+          acceptanceCriteria: 'Should be deletable',
+          tags: ['deletable', 'test']
+        },
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      createdTemplate = JSON.parse(createResponse.body);
+    });
+
+    it('should successfully delete a template', async () => {
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.ok).toBe(true);
+      expect(body.message).toBe('Template deleted');
+    });
+
+    it('should return 404 when attempting to delete non-existent template', async () => {
+      const response = await server.inject({
+        method: 'DELETE',
+        url: '/templates/non-existent-template-id',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template not found');
+    });
+
+    it('should return 400 for empty template ID', async () => {
+      const invalidIds = ['', ' ', '\t', '\n', '   '];
+
+      for (const invalidId of invalidIds) {
+        const response = await server.inject({
+          method: 'DELETE',
+          url: `/templates/${encodeURIComponent(invalidId)}`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template ID is required');
+      }
+    });
+
+    it('should verify template is actually deleted (idempotent check)', async () => {
+      // First deletion should succeed
+      const firstResponse = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(firstResponse.statusCode).toBe(200);
+      const firstBody = JSON.parse(firstResponse.body);
+      expect(firstBody.ok).toBe(true);
+      expect(firstBody.message).toBe('Template deleted');
+
+      // Second deletion should return 404 (idempotent behavior)
+      const secondResponse = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(secondResponse.statusCode).toBe(404);
+      const secondBody = JSON.parse(secondResponse.body);
+      expect(secondBody.error).toBe('Template not found');
+    });
+
+    it('should verify template is removed from list after deletion', async () => {
+      // Create another template to ensure list is not empty after deletion
+      const otherTemplateResponse = await server.inject({
+        method: 'POST',
+        url: '/templates',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {
+          name: 'Other Template',
+          description: 'This template should remain',
+          workflow: 'bugfix',
+        },
+      });
+
+      expect(otherTemplateResponse.statusCode).toBe(201);
+      const otherTemplate = JSON.parse(otherTemplateResponse.body);
+
+      // Verify both templates exist before deletion
+      const listBeforeResponse = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(listBeforeResponse.statusCode).toBe(200);
+      const listBefore = JSON.parse(listBeforeResponse.body);
+      expect(listBefore.count).toBe(2);
+      expect(listBefore.templates.map((t: any) => t.id)).toContain(createdTemplate.id);
+      expect(listBefore.templates.map((t: any) => t.id)).toContain(otherTemplate.id);
+
+      // Delete the first template
+      const deleteResponse = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(deleteResponse.statusCode).toBe(200);
+
+      // Verify template is removed from list
+      const listAfterResponse = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(listAfterResponse.statusCode).toBe(200);
+      const listAfter = JSON.parse(listAfterResponse.body);
+      expect(listAfter.count).toBe(1);
+      expect(listAfter.templates.map((t: any) => t.id)).not.toContain(createdTemplate.id);
+      expect(listAfter.templates.map((t: any) => t.id)).toContain(otherTemplate.id);
+    });
+
+    it('should verify deleted template cannot be retrieved', async () => {
+      // Delete the template
+      const deleteResponse = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(deleteResponse.statusCode).toBe(200);
+
+      // Try to retrieve the deleted template
+      const getResponse = await server.inject({
+        method: 'GET',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(getResponse.statusCode).toBe(404);
+      const body = JSON.parse(getResponse.body);
+      expect(body.error).toBe('Template not found');
+    });
+
+    it('should handle special characters in template IDs gracefully', async () => {
+      const specialIds = ['template@123', 'template%20with%20spaces', 'template-with-dashes', 'template_with_underscores'];
+
+      for (const specialId of specialIds) {
+        const response = await server.inject({
+          method: 'DELETE',
+          url: `/templates/${encodeURIComponent(specialId)}`,
+        });
+
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Template not found');
+      }
+    });
+
+    it('should handle very long template IDs', async () => {
+      const longId = 'x'.repeat(1000);
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${longId}`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Template not found');
+    });
+
+    it('should handle orchestrator errors gracefully', async () => {
+      // Mock orchestrator to throw an error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalDeleteTemplate = mockOrchestrator.deleteTemplate;
+      mockOrchestrator.deleteTemplate = vi.fn().mockRejectedValue(new Error('Database deletion failed'));
+
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Database deletion failed');
+
+      // Restore original method
+      mockOrchestrator.deleteTemplate = originalDeleteTemplate;
+    });
+
+    it('should handle non-Error exceptions from orchestrator', async () => {
+      // Mock orchestrator to throw a non-Error
+      const mockOrchestrator = (server as any).orchestrator;
+      const originalDeleteTemplate = mockOrchestrator.deleteTemplate;
+      mockOrchestrator.deleteTemplate = vi.fn().mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Failed to delete template');
+
+      // Restore original method
+      mockOrchestrator.deleteTemplate = originalDeleteTemplate;
+    });
+
+    it('should demonstrate exact response format for successful deletion', async () => {
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/templates/${createdTemplate.id}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+
+      // Verify exact response format matches acceptance criteria
+      expect(body).toEqual({
+        ok: true,
+        message: 'Template deleted'
+      });
+    });
+
+    it('should demonstrate exact response format for 404 error', async () => {
+      const response = await server.inject({
+        method: 'DELETE',
+        url: '/templates/definitely-non-existent-id',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+
+      // Verify exact error response format
+      expect(body).toEqual({
+        error: 'Template not found'
+      });
+    });
+
+    it('should handle concurrent deletion attempts', async () => {
+      // Create multiple templates
+      const templates = [];
+      for (let i = 0; i < 3; i++) {
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/templates',
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            name: `Concurrent Template ${i}`,
+            description: `For concurrent deletion test ${i}`,
+            workflow: 'feature',
+          },
+        });
+
+        expect(createResponse.statusCode).toBe(201);
+        templates.push(JSON.parse(createResponse.body));
+      }
+
+      // Attempt to delete all templates concurrently
+      const deletePromises = templates.map(template =>
+        server.inject({
+          method: 'DELETE',
+          url: `/templates/${template.id}`,
+        })
+      );
+
+      const deleteResponses = await Promise.all(deletePromises);
+
+      // All deletions should succeed
+      deleteResponses.forEach(response => {
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.message).toBe('Template deleted');
+      });
+
+      // Verify all templates are deleted
+      const listResponse = await server.inject({
+        method: 'GET',
+        url: '/templates',
+      });
+
+      expect(listResponse.statusCode).toBe(200);
+      const listBody = JSON.parse(listResponse.body);
+
+      // Should not contain any of the deleted template IDs
+      const remainingIds = listBody.templates.map((t: any) => t.id);
+      templates.forEach(template => {
+        expect(remainingIds).not.toContain(template.id);
+      });
     });
   });
 });

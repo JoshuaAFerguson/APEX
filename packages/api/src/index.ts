@@ -869,6 +869,28 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   });
 
+  // Delete template by ID
+  app.delete<{ Params: { id: string } }>('/templates/:id', async (request, reply) => {
+    const { id } = request.params;
+
+    // Validate template ID
+    if (!id || !id.trim()) {
+      return reply.status(400).send({ error: 'Template ID is required' });
+    }
+
+    try {
+      await orchestrator.deleteTemplate(id);
+      return { ok: true, message: 'Template deleted' };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Template not found')) {
+        return reply.status(404).send({ error: 'Template not found' });
+      }
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to delete template'
+      });
+    }
+  });
+
   // ============================================================================
   // WebSocket for real-time streaming
   // ============================================================================
@@ -1116,6 +1138,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /templates                - List all templates`);
       console.log(`  GET    /templates/:id            - Get template by ID`);
       console.log(`  PUT    /templates/:id            - Update template by ID`);
+      console.log(`  DELETE /templates/:id            - Delete template by ID`);
       console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /agents                   - List agents`);
