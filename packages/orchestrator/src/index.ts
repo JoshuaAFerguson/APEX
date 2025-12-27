@@ -71,6 +71,11 @@ export interface OrchestratorEvents {
   'task:failed': (task: Task, error: Error) => void;
   'task:paused': (task: Task, reason: string) => void;
   'task:decomposed': (task: Task, subtaskIds: string[]) => void;
+  'task:trashed': (task: Task) => void;
+  'task:restored': (task: Task) => void;
+  'task:archived': (task: Task) => void;
+  'task:unarchived': (task: Task) => void;
+  'trash:emptied': (deletedCount: number, taskIds: string[]) => void;
   'subtask:created': (subtask: Task, parentTaskId: string) => void;
   'subtask:completed': (subtask: Task, parentTaskId: string) => void;
   'subtask:failed': (subtask: Task, parentTaskId: string, error: Error) => void;
@@ -2978,6 +2983,48 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Archive a completed task
+   * Only tasks with status 'completed' can be archived
+   */
+  async archiveTask(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    // Archive the task - validation is handled by TaskStore
+    await this.store.archiveTask(taskId);
+
+    // Get the archived task and emit event
+    const archivedTask = await this.store.getTask(taskId);
+    if (archivedTask) {
+      this.emit('task:archived', archivedTask);
+    }
+  }
+
+  /**
+   * List all archived tasks
+   */
+  async listArchivedTasks(): Promise<Task[]> {
+    await this.ensureInitialized();
+    return this.store.listArchived();
+  }
+
+  /**
+   * Unarchive a task (restore from archive)
+   * The task will retain its completed status
+   */
+  async unarchiveTask(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    // Unarchive the task - validation is handled by TaskStore
+    await this.store.unarchiveTask(taskId);
+
+    // Get the unarchived task and emit event
+    const unarchivedTask = await this.store.getTask(taskId);
+    if (unarchivedTask) {
+      this.emit('task:unarchived', unarchivedTask);
+    }
+  }
+
+  /**
    * Execute multiple tasks concurrently
    * Returns when all tasks are complete (or failed)
    */
@@ -4872,6 +4919,15 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     }
 
     await this.store.deleteTemplate(templateId);
+  }
+
+  /**
+   * Close the orchestrator and cleanup resources
+   */
+  close(): void {
+    if (this.store) {
+      this.store.close();
+    }
   }
 }
 

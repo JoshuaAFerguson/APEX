@@ -2224,6 +2224,57 @@ export const commands: Command[] = [
       }
     },
   },
+
+  {
+    name: 'template',
+    aliases: ['tpl'],
+    description: 'Manage task templates',
+    usage: '/template <save|list|use|delete|info> [args]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.cyan('\nTemplate Commands:\n'));
+        console.log(chalk.yellow('  /template save <taskId> <name>') + chalk.gray('     - Save task as template'));
+        console.log(chalk.yellow('  /template list') + chalk.gray('                   - List all templates'));
+        console.log(chalk.yellow('  /template use <templateId|name>') + chalk.gray(' - Create task from template'));
+        console.log(chalk.yellow('  /template delete <templateId>') + chalk.gray('    - Delete a template'));
+        console.log(chalk.yellow('  /template info <templateId>') + chalk.gray('     - Show template details\n'));
+        return;
+      }
+
+      const subcommand = args[0];
+      const subArgs = args.slice(1);
+
+      try {
+        switch (subcommand) {
+          case 'save':
+            await handleTemplateSave(ctx, subArgs);
+            break;
+          case 'list':
+            await handleTemplateList(ctx, subArgs);
+            break;
+          case 'use':
+            await handleTemplateUse(ctx, subArgs);
+            break;
+          case 'delete':
+            await handleTemplateDelete(ctx, subArgs);
+            break;
+          case 'info':
+            await handleTemplateInfo(ctx, subArgs);
+            break;
+          default:
+            console.log(chalk.red(`Unknown template command: ${subcommand}`));
+            console.log(chalk.gray('Run /template for usage information.'));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
 ];
 
 // ============================================================================
@@ -2515,6 +2566,184 @@ async function showStagedChanges(task: Task): Promise<void> {
 
   } catch (error) {
     console.log(chalk.yellow('⚠️  Could not check staged changes'));
+  }
+}
+
+// ============================================================================
+// Template Management Handlers
+// ============================================================================
+
+async function handleTemplateSave(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length < 2) {
+    console.log(chalk.red('Usage: /template save <taskId> <name>'));
+    return;
+  }
+
+  const [taskId, ...nameParts] = args;
+  const name = nameParts.join(' ');
+
+  if (!name.trim()) {
+    console.log(chalk.red('Template name cannot be empty'));
+    return;
+  }
+
+  try {
+    const template = await ctx.orchestrator!.saveTemplate(taskId, name);
+    console.log(chalk.green(`✓ Template saved successfully!`));
+    console.log(chalk.gray(`  ID: ${template.id}`));
+    console.log(chalk.gray(`  Name: ${template.name}`));
+    console.log(chalk.gray(`  Description: ${template.description}`));
+    console.log(chalk.gray(`  Workflow: ${template.workflow}`));
+  } catch (error) {
+    console.log(chalk.red(`Failed to save template: ${(error as Error).message}`));
+  }
+}
+
+async function handleTemplateList(ctx: ApexContext, args: string[]): Promise<void> {
+  try {
+    const templates = await ctx.orchestrator!.listTemplates();
+
+    if (templates.length === 0) {
+      console.log(chalk.yellow('No templates found.'));
+      console.log(chalk.gray('Create one with: /template save <taskId> <name>'));
+      return;
+    }
+
+    console.log(chalk.cyan(`\n📋 Templates (${templates.length}):\n`));
+
+    for (const template of templates) {
+      console.log(chalk.yellow(`  ${template.name}`));
+      console.log(chalk.gray(`    ID: ${template.id}`));
+      console.log(chalk.gray(`    Workflow: ${template.workflow}`));
+      console.log(chalk.gray(`    Priority: ${template.priority}`));
+      console.log(chalk.gray(`    Effort: ${template.effort}`));
+      console.log(chalk.gray(`    Created: ${template.createdAt.toLocaleDateString()}`));
+      if (template.tags && template.tags.length > 0) {
+        console.log(chalk.gray(`    Tags: ${template.tags.join(', ')}`));
+      }
+      console.log();
+    }
+  } catch (error) {
+    console.log(chalk.red(`Failed to list templates: ${(error as Error).message}`));
+  }
+}
+
+async function handleTemplateUse(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.log(chalk.red('Usage: /template use <templateId|name>'));
+    return;
+  }
+
+  const identifier = args.join(' ');
+
+  try {
+    // First try to find by ID, then by name
+    const templates = await ctx.orchestrator!.listTemplates();
+    let templateId = identifier;
+
+    // If not found by ID, try to find by name
+    if (!templates.find(t => t.id === identifier)) {
+      const templateByName = templates.find(t => t.name.toLowerCase() === identifier.toLowerCase());
+      if (templateByName) {
+        templateId = templateByName.id;
+      } else {
+        console.log(chalk.red(`Template not found: ${identifier}`));
+        console.log(chalk.gray('Available templates:'));
+        for (const template of templates) {
+          console.log(chalk.gray(`  - ${template.name} (${template.id})`));
+        }
+        return;
+      }
+    }
+
+    const task = await ctx.orchestrator!.useTemplate(templateId);
+    console.log(chalk.green(`✓ Task created from template!`));
+    console.log(chalk.gray(`  Task ID: ${task.id}`));
+    console.log(chalk.gray(`  Description: ${task.description}`));
+    console.log(chalk.gray(`  Workflow: ${task.workflow}`));
+    console.log(chalk.gray(`  Branch: ${task.branchName}`));
+    console.log();
+    console.log(chalk.yellow('💡 To start the task, run:'));
+    console.log(chalk.gray(`  /status ${task.id}`));
+  } catch (error) {
+    console.log(chalk.red(`Failed to use template: ${(error as Error).message}`));
+  }
+}
+
+async function handleTemplateDelete(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.log(chalk.red('Usage: /template delete <templateId>'));
+    return;
+  }
+
+  const templateId = args[0];
+
+  try {
+    // First verify the template exists
+    const templates = await ctx.orchestrator!.listTemplates();
+    const template = templates.find(t => t.id === templateId);
+
+    if (!template) {
+      console.log(chalk.red(`Template not found: ${templateId}`));
+      console.log(chalk.gray('Available templates:'));
+      for (const tmpl of templates) {
+        console.log(chalk.gray(`  - ${tmpl.name} (${tmpl.id})`));
+      }
+      return;
+    }
+
+    await ctx.orchestrator!.deleteTemplate(templateId);
+    console.log(chalk.green(`✓ Template deleted successfully!`));
+    console.log(chalk.gray(`  Name: ${template.name}`));
+    console.log(chalk.gray(`  ID: ${templateId}`));
+  } catch (error) {
+    console.log(chalk.red(`Failed to delete template: ${(error as Error).message}`));
+  }
+}
+
+async function handleTemplateInfo(ctx: ApexContext, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.log(chalk.red('Usage: /template info <templateId>'));
+    return;
+  }
+
+  const templateId = args[0];
+
+  try {
+    const templates = await ctx.orchestrator!.listTemplates();
+    const template = templates.find(t => t.id === templateId);
+
+    if (!template) {
+      console.log(chalk.red(`Template not found: ${templateId}`));
+      console.log(chalk.gray('Available templates:'));
+      for (const tmpl of templates) {
+        console.log(chalk.gray(`  - ${tmpl.name} (${tmpl.id})`));
+      }
+      return;
+    }
+
+    console.log(chalk.cyan(`\n📋 Template Details:\n`));
+    console.log(chalk.yellow(`Name: ${template.name}`));
+    console.log(chalk.gray(`ID: ${template.id}`));
+    console.log(chalk.gray(`Description: ${template.description}`));
+    console.log(chalk.gray(`Workflow: ${template.workflow}`));
+    console.log(chalk.gray(`Priority: ${template.priority}`));
+    console.log(chalk.gray(`Effort: ${template.effort}`));
+
+    if (template.acceptanceCriteria) {
+      console.log(chalk.gray(`Acceptance Criteria:`));
+      console.log(chalk.gray(`  ${template.acceptanceCriteria}`));
+    }
+
+    if (template.tags && template.tags.length > 0) {
+      console.log(chalk.gray(`Tags: ${template.tags.join(', ')}`));
+    }
+
+    console.log(chalk.gray(`Created: ${template.createdAt.toLocaleString()}`));
+    console.log(chalk.gray(`Updated: ${template.updatedAt.toLocaleString()}`));
+    console.log();
+  } catch (error) {
+    console.log(chalk.red(`Failed to get template info: ${(error as Error).message}`));
   }
 }
 
@@ -3349,6 +3578,7 @@ ${chalk.bold('Commands:')}
   status [task_id] [--check-docs]  Show task status or check outdated docs
   agents                  List available agents
   workflows               List available workflows
+  template <cmd> [args]   Manage task templates (save|list|use|delete|info)
   config [get|set]        View or edit configuration
   logs <task_id>          Show task logs
   cancel <task_id>        Cancel a running task
