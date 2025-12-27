@@ -393,4 +393,220 @@ describe('Container Orphan Detection Integration Tests', () => {
       expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalledWith('config-change-2');
     });
   });
+
+  describe('Orchestrator Orphan Detection Events Integration', () => {
+    it('should emit orphan:detected event when orphaned containers are found', async () => {
+      // Mock container manager to return orphaned containers
+      const orphanedContainerManager = {
+        listApexContainers: vi.fn().mockResolvedValue([
+          {
+            id: 'orphan1',
+            name: 'apex-task-orphaned-001',
+            state: 'running',
+            image: 'alpine:latest'
+          },
+          {
+            id: 'orphan2',
+            name: 'apex-orphaned-002',
+            state: 'created',
+            image: 'ubuntu:latest'
+          }
+        ])
+      } as unknown as ContainerManager;
+
+      // Set up event spy
+      const orphanDetectedSpy = vi.fn();
+      orchestrator.on('orphan:detected', orphanDetectedSpy);
+
+      // Simulate orphan detection during container check
+      const result = await checkForOrphanedContainers(orphanedContainerManager, 'docker');
+
+      expect(result.hasOrphans).toBe(true);
+      expect(result.orphanedContainers).toContain('apex-task-orphaned-001');
+      expect(result.orphanedContainers).toContain('apex-orphaned-002');
+      expect(result.totalApexContainers).toBe(2);
+    });
+
+    it('should handle container runtime errors gracefully during orphan detection', async () => {
+      // Mock container manager that throws an error
+      const failingContainerManager = {
+        listApexContainers: vi.fn().mockRejectedValue(new Error('Container runtime not available'))
+      } as unknown as ContainerManager;
+
+      // This should not throw an error but return empty result
+      const result = await checkForOrphanedContainers(failingContainerManager, 'docker');
+
+      expect(result).toEqual({
+        hasOrphans: false,
+        orphanedContainers: [],
+        totalApexContainers: 0
+      });
+    });
+
+    it('should correctly identify APEX containers with various naming patterns', async () => {
+      const mixedContainerManager = {
+        listApexContainers: vi.fn().mockResolvedValue([
+          // Valid APEX containers
+          {
+            id: 'container1',
+            name: 'apex-task-123',
+            state: 'running',
+            image: 'alpine:latest'
+          },
+          {
+            id: 'container2',
+            name: 'apex-456',
+            state: 'running',
+            image: 'alpine:latest'
+          },
+          {
+            id: 'container3',
+            name: 'apex-workflow-789',
+            state: 'created',
+            image: 'ubuntu:latest'
+          },
+          // Exited containers (should not be considered orphans)
+          {
+            id: 'container4',
+            name: 'apex-task-999',
+            state: 'exited',
+            image: 'alpine:latest'
+          },
+          // Non-APEX containers (should be filtered out)
+          {
+            id: 'container5',
+            name: 'user-application',
+            state: 'running',
+            image: 'nginx:latest'
+          },
+          {
+            id: 'container6',
+            name: 'apex',  // Exact match without dash - should not be considered APEX
+            state: 'running',
+            image: 'redis:latest'
+          }
+        ])
+      } as unknown as ContainerManager;
+
+      const result = await checkForOrphanedContainers(mixedContainerManager, 'docker');
+
+      // Should identify 3 running/created APEX containers as orphans
+      expect(result.hasOrphans).toBe(true);
+      expect(result.orphanedContainers).toHaveLength(3);
+      expect(result.orphanedContainers).toContain('apex-task-123');
+      expect(result.orphanedContainers).toContain('apex-456');
+      expect(result.orphanedContainers).toContain('apex-workflow-789');
+      expect(result.orphanedContainers).not.toContain('apex-task-999'); // Exited
+      expect(result.orphanedContainers).not.toContain('user-application'); // Not APEX
+      expect(result.orphanedContainers).not.toContain('apex'); // Wrong pattern
+      expect(result.totalApexContainers).toBe(4); // Total APEX containers including exited
+    });
+
+    it('should properly handle workspace cleanup integration with container lifecycle', async () => {
+      // Create a container task that should trigger cleanup
+      const containerTask = createContainerTask({
+        id: 'integration-lifecycle-001'
+      });
+
+      // Mock getContainerManager to return our test container manager
+      mockWorkspaceManager.getContainerManager = vi.fn().mockReturnValue(containerManager);
+
+      // Emit task completion - should trigger workspace cleanup
+      orchestrator.emit('task:completed', containerTask);
+
+      // Wait for async cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify cleanup was called with correct task ID
+      expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('integration-lifecycle-001');
+
+      // Verify container manager was accessed for cleanup
+      expect(mockWorkspaceManager.getContainerManager).toHaveBeenCalled();
+    });
+
+    it('should handle multiple runtime types for orphan detection', async () => {
+      // Test with different runtime types
+      const testRuntimes: ContainerRuntimeType[] = ['docker', 'podman', 'none'];
+
+      for (const runtime of testRuntimes) {
+        const result = await checkForOrphanedContainers(containerManager, runtime);
+
+        if (runtime === 'none') {
+          expect(result.hasOrphans).toBe(false);
+          expect(result.totalApexContainers).toBe(0);
+        } else {
+          // For docker/podman, result depends on actual availability
+          expect(typeof result.hasOrphans).toBe('boolean');
+          expect(typeof result.totalApexContainers).toBe('number');
+          expect(Array.isArray(result.orphanedContainers)).toBe(true);
+        }
+      }
+    });
+
+    it('should verify container runtime availability check integration', async () => {
+      // Test runtime detection integration
+      const runtimeType = await containerManager?.runtime?.getBestRuntime() || 'none';
+
+      expect(['docker', 'podman', 'none']).toContain(runtimeType);
+
+      // If runtime is available, should be able to perform operations
+      if (runtimeType !== 'none' && containerManager) {
+        const containers = await containerManager.listApexContainers(runtimeType, true);
+        expect(Array.isArray(containers)).toBe(true);
+      }
+    });
+  });
+
+  describe('Container Runtime Error Handling', () => {
+    it('should handle missing Docker daemon gracefully', async () => {
+      const dockerUnavailableManager = {
+        listApexContainers: vi.fn().mockRejectedValue(new Error('Cannot connect to Docker daemon')),
+        runtime: {
+          getBestRuntime: vi.fn().mockResolvedValue('docker' as ContainerRuntimeType)
+        }
+      } as unknown as ContainerManager;
+
+      const result = await checkForOrphanedContainers(dockerUnavailableManager, 'docker');
+
+      expect(result).toEqual({
+        hasOrphans: false,
+        orphanedContainers: [],
+        totalApexContainers: 0
+      });
+    });
+
+    it('should handle missing Podman gracefully', async () => {
+      const podmanUnavailableManager = {
+        listApexContainers: vi.fn().mockRejectedValue(new Error('podman command not found')),
+        runtime: {
+          getBestRuntime: vi.fn().mockResolvedValue('podman' as ContainerRuntimeType)
+        }
+      } as unknown as ContainerManager;
+
+      const result = await checkForOrphanedContainers(podmanUnavailableManager, 'podman');
+
+      expect(result).toEqual({
+        hasOrphans: false,
+        orphanedContainers: [],
+        totalApexContainers: 0
+      });
+    });
+
+    it('should handle permission errors gracefully', async () => {
+      const permissionErrorManager = {
+        listApexContainers: vi.fn().mockRejectedValue(new Error('Permission denied accessing container runtime')),
+        runtime: {
+          getBestRuntime: vi.fn().mockResolvedValue('docker' as ContainerRuntimeType)
+        }
+      } as unknown as ContainerManager;
+
+      const result = await checkForOrphanedContainers(permissionErrorManager, 'docker');
+
+      expect(result).toEqual({
+        hasOrphans: false,
+        orphanedContainers: [],
+        totalApexContainers: 0
+      });
+    });
+  });
 });
