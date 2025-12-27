@@ -492,4 +492,492 @@ describe('Container Cleanup Integration Tests', () => {
       }));
     });
   });
+
+  describe('preserveOnFailure flag integration tests', () => {
+    beforeEach(() => {
+      // Reset mocks before each test in this section
+      vi.clearAllMocks();
+      consoleLogs.length = 0;
+      consoleWarns.length = 0;
+    });
+
+    describe('cleanup happens when preserveOnFailure=false', () => {
+      it('should cleanup container workspace when task-level preserveOnFailure=false', async () => {
+        const task = createMockTask({
+          id: 'container-cleanup-false',
+          strategy: 'container',
+          path: '/var/lib/docker/container-workspace',
+          preserveOnFailure: false
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Container task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was called
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('container-cleanup-false');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(1);
+
+        // Verify no preservation logs
+        expect(mockStore.addLog).not.toHaveBeenCalledWith('container-cleanup-false', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+
+        // Verify no preservation console output
+        expect(consoleLogs).not.toContain(expect.stringContaining('Preserving workspace'));
+      });
+
+      it('should cleanup worktree workspace when global preserveOnFailure=false', async () => {
+        // Ensure global worktree config is preserve=false
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = false;
+
+        const task = createMockTask({
+          id: 'worktree-cleanup-global-false',
+          strategy: 'worktree',
+          path: '/project/.apex/worktrees/feature-branch',
+          preserveOnFailure: undefined // Use global config
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Worktree task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was called
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('worktree-cleanup-global-false');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(1);
+
+        // Verify no preservation logs
+        expect(mockStore.addLog).not.toHaveBeenCalledWith('worktree-cleanup-global-false', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+      });
+
+      it('should cleanup directory workspace when preserveOnFailure=false', async () => {
+        const task = createMockTask({
+          id: 'directory-cleanup-false',
+          strategy: 'directory',
+          path: '/tmp/directory-workspace',
+          preserveOnFailure: false
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Directory task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was called
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('directory-cleanup-false');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(1);
+
+        // Verify no preservation logs
+        expect(mockStore.addLog).not.toHaveBeenCalledWith('directory-cleanup-false', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+      });
+    });
+
+    describe('cleanup skipped when preserveOnFailure=true', () => {
+      it('should skip cleanup when task-level preserveOnFailure=true for container', async () => {
+        const task = createMockTask({
+          id: 'container-preserve-true',
+          strategy: 'container',
+          path: '/var/lib/docker/preserved-container',
+          preserveOnFailure: true
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Container task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was NOT called
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify preservation log was created
+        expect(mockStore.addLog).toHaveBeenCalledWith('container-preserve-true', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: container, Path: /var/lib/docker/preserved-container',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify preservation console message
+        expect(consoleLogs).toContain('Preserving workspace for failed task container-preserve-true for debugging');
+      });
+
+      it('should skip cleanup when global worktree preserveOnFailure=true', async () => {
+        // Configure global worktree preservation
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = true;
+
+        const task = createMockTask({
+          id: 'worktree-preserve-global-true',
+          strategy: 'worktree',
+          path: '/project/.apex/worktrees/debug-branch',
+          preserveOnFailure: undefined // Use global config (true)
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Worktree task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was NOT called
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify preservation log was created
+        expect(mockStore.addLog).toHaveBeenCalledWith('worktree-preserve-global-true', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: worktree, Path: /project/.apex/worktrees/debug-branch',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify preservation console message
+        expect(consoleLogs).toContain('Preserving workspace for failed task worktree-preserve-global-true for debugging');
+      });
+
+      it('should skip cleanup when preserveOnFailure=true for directory strategy', async () => {
+        const task = createMockTask({
+          id: 'directory-preserve-true',
+          strategy: 'directory',
+          path: '/tmp/preserved-directory',
+          preserveOnFailure: true
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Directory task failure'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was NOT called
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify preservation log was created
+        expect(mockStore.addLog).toHaveBeenCalledWith('directory-preserve-true', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: directory, Path: /tmp/preserved-directory',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify preservation console message
+        expect(consoleLogs).toContain('Preserving workspace for failed task directory-preserve-true for debugging');
+      });
+    });
+
+    describe('task-level config overrides global config', () => {
+      it('should use task-level preserveOnFailure=false even when global=true', async () => {
+        // Set global worktree config to preserve=true
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = true;
+
+        const task = createMockTask({
+          id: 'task-override-false',
+          strategy: 'worktree',
+          path: '/project/.apex/worktrees/task-override',
+          preserveOnFailure: false // Task-level override
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Task override test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was called (task-level false overrides global true)
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('task-override-false');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(1);
+
+        // Verify no preservation logs
+        expect(mockStore.addLog).not.toHaveBeenCalledWith('task-override-false', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+
+        // Verify no preservation console output
+        expect(consoleLogs).not.toContain(expect.stringContaining('Preserving workspace'));
+      });
+
+      it('should use task-level preserveOnFailure=true even when global=false', async () => {
+        // Set global worktree config to preserve=false
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = false;
+
+        const task = createMockTask({
+          id: 'task-override-true',
+          strategy: 'worktree',
+          path: '/project/.apex/worktrees/task-preserve',
+          preserveOnFailure: true // Task-level override
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Task preserve test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was NOT called (task-level true overrides global false)
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify preservation log was created
+        expect(mockStore.addLog).toHaveBeenCalledWith('task-override-true', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: worktree, Path: /project/.apex/worktrees/task-preserve',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify preservation console message
+        expect(consoleLogs).toContain('Preserving workspace for failed task task-override-true for debugging');
+      });
+
+      it('should handle mixed strategies with different preservation configurations', async () => {
+        // Set global worktree config to preserve=true
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = true;
+
+        const containerTask = createMockTask({
+          id: 'mixed-container',
+          strategy: 'container',
+          preserveOnFailure: false // Container with task-level false
+        });
+
+        const worktreeTask = createMockTask({
+          id: 'mixed-worktree',
+          strategy: 'worktree',
+          preserveOnFailure: undefined // Worktree using global config (true)
+        });
+
+        const directoryTask = createMockTask({
+          id: 'mixed-directory',
+          strategy: 'directory',
+          path: '/tmp/mixed-directory',
+          preserveOnFailure: true // Directory with task-level true
+        });
+
+        // Emit failures for all tasks
+        orchestrator.emit('task:failed', containerTask, new Error('Container failure'));
+        orchestrator.emit('task:failed', worktreeTask, new Error('Worktree failure'));
+        orchestrator.emit('task:failed', directoryTask, new Error('Directory failure'));
+
+        // Wait for all async operations
+        await new Promise(resolve => setTimeout(resolve, 15));
+
+        // Verify cleanup behavior per configuration
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('mixed-container'); // Only container should be cleaned up
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalledWith('mixed-worktree');
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalledWith('mixed-directory');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(1);
+
+        // Verify preservation logs for preserved workspaces
+        expect(mockStore.addLog).toHaveBeenCalledWith('mixed-worktree', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+
+        expect(mockStore.addLog).toHaveBeenCalledWith('mixed-directory', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+
+        // Verify preservation console messages
+        expect(consoleLogs).toContain('Preserving workspace for failed task mixed-worktree for debugging');
+        expect(consoleLogs).toContain('Preserving workspace for failed task mixed-directory for debugging');
+      });
+    });
+
+    describe('preservation logging works correctly', () => {
+      it('should log preservation with correct message format for all strategies', async () => {
+        const testCases = [
+          {
+            id: 'log-container',
+            strategy: 'container' as const,
+            path: '/var/lib/docker/log-container',
+            expectedMessage: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: container, Path: /var/lib/docker/log-container'
+          },
+          {
+            id: 'log-worktree',
+            strategy: 'worktree' as const,
+            path: '/project/.apex/worktrees/log-worktree',
+            expectedMessage: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: worktree, Path: /project/.apex/worktrees/log-worktree'
+          },
+          {
+            id: 'log-directory',
+            strategy: 'directory' as const,
+            path: '/tmp/log-directory',
+            expectedMessage: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: directory, Path: /tmp/log-directory'
+          }
+        ];
+
+        for (const testCase of testCases) {
+          // Reset mocks for each test case
+          vi.clearAllMocks();
+          consoleLogs.length = 0;
+
+          const task = createMockTask({
+            id: testCase.id,
+            strategy: testCase.strategy,
+            path: testCase.path,
+            preserveOnFailure: true
+          });
+
+          // Emit task:failed event
+          orchestrator.emit('task:failed', task, new Error(`${testCase.strategy} logging test`));
+          await new Promise(resolve => setTimeout(resolve, 10));
+
+          // Verify preservation log format
+          expect(mockStore.addLog).toHaveBeenCalledWith(testCase.id, {
+            level: 'info',
+            message: testCase.expectedMessage,
+            timestamp: expect.any(Date),
+            component: 'workspace-cleanup'
+          });
+
+          // Verify console preservation message
+          expect(consoleLogs).toContain(`Preserving workspace for failed task ${testCase.id} for debugging`);
+
+          // Verify cleanup was not called
+          expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+        }
+      });
+
+      it('should handle logging errors gracefully during preservation', async () => {
+        const task = createMockTask({
+          id: 'log-error-preserve',
+          strategy: 'container',
+          preserveOnFailure: true
+        });
+
+        // Mock addLog to fail
+        vi.mocked(mockStore.addLog).mockRejectedValue(new Error('Database connection lost'));
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Logging error test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was still not called despite logging error
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify console preservation message still appeared
+        expect(consoleLogs).toContain('Preserving workspace for failed task log-error-preserve for debugging');
+
+        // Verify log attempt was made (even though it failed)
+        expect(mockStore.addLog).toHaveBeenCalledWith('log-error-preserve', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+      });
+
+      it('should include unknown strategy and path in logs when missing', async () => {
+        const taskWithoutPath = createMockTask({
+          id: 'log-unknown',
+          preserveOnFailure: true
+        });
+        // Clear path to test unknown handling
+        if (taskWithoutPath.workspace) {
+          taskWithoutPath.workspace.path = undefined;
+          taskWithoutPath.workspace.strategy = undefined as any;
+        }
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', taskWithoutPath, new Error('Unknown logging test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify log message includes 'unknown' for missing values
+        expect(mockStore.addLog).toHaveBeenCalledWith('log-unknown', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: unknown, Path: unknown',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify console preservation message
+        expect(consoleLogs).toContain('Preserving workspace for failed task log-unknown for debugging');
+      });
+
+      it('should log preservation message for worktree using global config', async () => {
+        // Set global worktree config to preserve=true
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = true;
+
+        const task = createMockTask({
+          id: 'log-global-worktree',
+          strategy: 'worktree',
+          path: '/project/.apex/worktrees/global-config',
+          preserveOnFailure: undefined // Use global config
+        });
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Global config logging test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify preservation log was created using global config
+        expect(mockStore.addLog).toHaveBeenCalledWith('log-global-worktree', {
+          level: 'info',
+          message: 'Workspace preserved for debugging (preserveOnFailure=true). Strategy: worktree, Path: /project/.apex/worktrees/global-config',
+          timestamp: expect.any(Date),
+          component: 'workspace-cleanup'
+        });
+
+        // Verify console preservation message
+        expect(consoleLogs).toContain('Preserving workspace for failed task log-global-worktree for debugging');
+
+        // Verify cleanup was not called
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('edge cases and error handling', () => {
+      it('should handle preservation when global cleanup is disabled', async () => {
+        const task = createMockTask({
+          id: 'preserve-cleanup-disabled',
+          preserveOnFailure: true
+        });
+
+        // Disable global cleanup
+        (orchestrator as any).effectiveConfig.workspace.cleanupOnComplete = false;
+
+        // Emit task:failed event
+        orchestrator.emit('task:failed', task, new Error('Cleanup disabled test'));
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // Verify cleanup was not called (due to global cleanup disabled)
+        expect(mockWorkspaceManager.cleanupWorkspace).not.toHaveBeenCalled();
+
+        // Verify preservation log was still created
+        expect(mockStore.addLog).toHaveBeenCalledWith('preserve-cleanup-disabled', expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+
+        // Verify preservation console message
+        expect(consoleLogs).toContain('Preserving workspace for failed task preserve-cleanup-disabled for debugging');
+      });
+
+      it('should handle non-worktree strategies with global worktree config', async () => {
+        // Set global worktree config to preserve=true
+        (orchestrator as any).effectiveConfig.git.worktree.preserveOnFailure = true;
+
+        const containerTask = createMockTask({
+          id: 'non-worktree-container',
+          strategy: 'container',
+          preserveOnFailure: undefined // Global worktree config should not apply
+        });
+
+        const directoryTask = createMockTask({
+          id: 'non-worktree-directory',
+          strategy: 'directory',
+          path: '/tmp/non-worktree-dir',
+          preserveOnFailure: undefined // Global worktree config should not apply
+        });
+
+        // Emit failures
+        orchestrator.emit('task:failed', containerTask, new Error('Container test'));
+        orchestrator.emit('task:failed', directoryTask, new Error('Directory test'));
+        await new Promise(resolve => setTimeout(resolve, 15));
+
+        // Both should be cleaned up since global worktree config doesn't apply to non-worktree strategies
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('non-worktree-container');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledWith('non-worktree-directory');
+        expect(mockWorkspaceManager.cleanupWorkspace).toHaveBeenCalledTimes(2);
+
+        // Verify no preservation logs
+        expect(mockStore.addLog).not.toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+          level: 'info',
+          message: expect.stringContaining('preserved for debugging')
+        }));
+      });
+    });
+  });
 });
