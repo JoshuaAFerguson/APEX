@@ -302,6 +302,75 @@ export const DaemonConfigSchema = z.object({
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 
+// ============================================================================
+// Daemon Health Metrics Types (v0.4.0)
+// ============================================================================
+
+/**
+ * Memory usage statistics for the daemon process
+ * Mirrors Node.js process.memoryUsage() structure for easy population
+ */
+export interface DaemonMemoryUsage {
+  /** V8 heap memory in use (bytes) */
+  heapUsed: number;
+  /** Total V8 heap memory allocated (bytes) */
+  heapTotal: number;
+  /** Resident Set Size - total memory allocated for the process (bytes) */
+  rss: number;
+}
+
+/**
+ * Task processing statistics for the daemon
+ * Tracks the lifecycle of tasks through the system
+ */
+export interface DaemonTaskCounts {
+  /** Total number of tasks processed since daemon start */
+  processed: number;
+  /** Number of tasks that completed successfully */
+  succeeded: number;
+  /** Number of tasks that failed */
+  failed: number;
+  /** Number of tasks currently being processed */
+  active: number;
+}
+
+/**
+ * Record of a daemon restart event
+ * Used to track restart history for monitoring and debugging
+ */
+export interface RestartRecord {
+  /** When the restart occurred */
+  timestamp: Date;
+  /** Reason for the restart (e.g., 'crash', 'oom', 'watchdog', 'manual') */
+  reason: string;
+  /** Exit code from the previous instance (if applicable) */
+  exitCode?: number;
+  /** Whether the restart was triggered by the watchdog */
+  triggeredByWatchdog: boolean;
+}
+
+/**
+ * Health metrics for the APEX daemon
+ * Tracks system health, resource usage, and operational statistics
+ * Used by the daemon health monitor, API endpoints, and CLI status command
+ */
+export interface HealthMetrics {
+  /** Daemon uptime in milliseconds */
+  uptime: number;
+  /** Current memory usage statistics */
+  memoryUsage: DaemonMemoryUsage;
+  /** Task processing statistics */
+  taskCounts: DaemonTaskCounts;
+  /** Timestamp of the last health check */
+  lastHealthCheck: Date;
+  /** Number of health checks that passed since daemon start */
+  healthChecksPassed: number;
+  /** Number of health checks that failed since daemon start */
+  healthChecksFailed: number;
+  /** History of daemon restarts (most recent first, limited to last N entries) */
+  restartHistory: RestartRecord[];
+}
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
