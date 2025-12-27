@@ -3025,6 +3025,34 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Trash a task (soft delete)
+   * The task status will be set to 'cancelled' and marked as trashed
+   */
+  async trashTask(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    // Validate task exists before trashing
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    // Validate task is not already trashed
+    if (task.trashedAt) {
+      throw new Error(`Task with ID ${taskId} is already in trash`);
+    }
+
+    // Trash the task - validation is handled by TaskStore
+    await this.store.trashTask(taskId);
+
+    // Get the trashed task and emit event
+    const trashedTask = await this.store.getTask(taskId);
+    if (trashedTask) {
+      this.emit('task:trashed', trashedTask);
+    }
+  }
+
+  /**
    * Execute multiple tasks concurrently
    * Returns when all tasks are complete (or failed)
    */
