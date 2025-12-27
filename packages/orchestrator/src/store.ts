@@ -735,6 +735,88 @@ export class TaskStore {
   }
 
   /**
+   * List all trashed tasks (alias for getTrashedTasks)
+   */
+  async listTrashed(): Promise<Task[]> {
+    return this.getTrashedTasks();
+  }
+
+  /**
+   * Permanently delete all trashed tasks and their related data
+   */
+  async emptyTrash(): Promise<number> {
+    // First get all trashed task IDs for cleanup
+    const trashedTasks = await this.getTrashedTasks();
+    const trashedTaskIds = trashedTasks.map(task => task.id);
+
+    if (trashedTaskIds.length === 0) {
+      return 0;
+    }
+
+    // Prepare the list of placeholders for the IN clause
+    const placeholders = trashedTaskIds.map(() => '?').join(',');
+
+    try {
+      // Begin transaction for data consistency
+      this.db.exec('BEGIN TRANSACTION');
+
+      // Delete related data first (foreign key constraints)
+      // Delete task logs
+      const deleteLogsStmt = this.db.prepare(`DELETE FROM task_logs WHERE task_id IN (${placeholders})`);
+      deleteLogsStmt.run(...trashedTaskIds);
+
+      // Delete task artifacts
+      const deleteArtifactsStmt = this.db.prepare(`DELETE FROM task_artifacts WHERE task_id IN (${placeholders})`);
+      deleteArtifactsStmt.run(...trashedTaskIds);
+
+      // Delete gates
+      const deleteGatesStmt = this.db.prepare(`DELETE FROM gates WHERE task_id IN (${placeholders})`);
+      deleteGatesStmt.run(...trashedTaskIds);
+
+      // Delete commands
+      const deleteCommandsStmt = this.db.prepare(`DELETE FROM commands WHERE task_id IN (${placeholders})`);
+      deleteCommandsStmt.run(...trashedTaskIds);
+
+      // Delete task dependencies (both directions)
+      const deleteDepsStmt = this.db.prepare(`DELETE FROM task_dependencies WHERE task_id IN (${placeholders}) OR depends_on_task_id IN (${placeholders})`);
+      deleteDepsStmt.run(...trashedTaskIds, ...trashedTaskIds);
+
+      // Delete checkpoints
+      const deleteCheckpointsStmt = this.db.prepare(`DELETE FROM task_checkpoints WHERE task_id IN (${placeholders})`);
+      deleteCheckpointsStmt.run(...trashedTaskIds);
+
+      // Delete task interactions
+      const deleteInteractionsStmt = this.db.prepare(`DELETE FROM task_interactions WHERE task_id IN (${placeholders})`);
+      deleteInteractionsStmt.run(...trashedTaskIds);
+
+      // Delete workspace info
+      const deleteWorkspaceStmt = this.db.prepare(`DELETE FROM workspace_info WHERE task_id IN (${placeholders})`);
+      deleteWorkspaceStmt.run(...trashedTaskIds);
+
+      // Delete task iterations
+      const deleteIterationsStmt = this.db.prepare(`DELETE FROM task_iterations WHERE task_id IN (${placeholders})`);
+      deleteIterationsStmt.run(...trashedTaskIds);
+
+      // Update idle tasks that reference deleted tasks
+      const updateIdleTasksStmt = this.db.prepare(`UPDATE idle_tasks SET implemented_task_id = NULL WHERE implemented_task_id IN (${placeholders})`);
+      updateIdleTasksStmt.run(...trashedTaskIds);
+
+      // Finally, delete the tasks themselves
+      const deleteTasksStmt = this.db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders}) AND trashed_at IS NOT NULL`);
+      const result = deleteTasksStmt.run(...trashedTaskIds);
+
+      // Commit the transaction
+      this.db.exec('COMMIT');
+
+      return result.changes;
+    } catch (error) {
+      // Rollback on error
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
    * Get only archived tasks
    */
   async getArchivedTasks(): Promise<Task[]> {
@@ -756,6 +838,13 @@ export class TaskStore {
   }
 
   /**
+   * List archived tasks (alias for getArchivedTasks)
+   */
+  async listArchived(): Promise<Task[]> {
+    return this.getArchivedTasks();
+  }
+
+  /**
    * Get all tasks including trashed and archived
    */
   async getAllTasksIncludingLifecycleStates(): Promise<Task[]> {
@@ -774,11 +863,50 @@ export class TaskStore {
   }
 
   /**
-   * Archive a task
+   * Move a task to trash (alias for trashTask)
+   */
+  async moveToTrash(taskId: string): Promise<void> {
+    await this.trashTask(taskId);
+  }
+
+  /**
+   * Archive a task (only completed tasks can be archived)
    */
   async archiveTask(taskId: string): Promise<void> {
+    // Get the task to validate its status
+    const task = await this.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    // Only allow archiving of completed tasks
+    if (task.status !== 'completed') {
+      throw new Error(`Cannot archive task ${taskId}: only completed tasks can be archived (current status: ${task.status})`);
+    }
+
     await this.updateTask(taskId, {
       archivedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Unarchive a task (restore from archive)
+   */
+  async unarchiveTask(taskId: string): Promise<void> {
+    // Get the task to validate it exists and is archived
+    const task = await this.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    // Only allow unarchiving of archived tasks
+    if (!task.archivedAt) {
+      throw new Error(`Task ${taskId} is not archived`);
+    }
+
+    await this.updateTask(taskId, {
+      archivedAt: undefined,
       updatedAt: new Date(),
     });
   }
@@ -811,6 +939,26 @@ export class TaskStore {
     }
 
     await this.updateTask(taskId, updates);
+  }
+
+  /**
+   * Restore a task specifically from trash (clears trashed_at timestamp)
+   */
+  async restoreFromTrash(taskId: string): Promise<void> {
+    const task = await this.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+
+    if (!task.trashedAt) {
+      throw new Error(`Task with ID ${taskId} is not in trash`);
+    }
+
+    await this.updateTask(taskId, {
+      trashedAt: undefined,
+      status: 'pending',
+      updatedAt: new Date(),
+    });
   }
 
   /**

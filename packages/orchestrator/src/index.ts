@@ -26,6 +26,7 @@ import {
   getEffectiveConfig,
   generateTaskId,
   generateBranchName,
+  generateTaskTemplateId,
   calculateCost,
   OutdatedDocumentation,
   MissingReadmeSection,
@@ -33,6 +34,7 @@ import {
   IdleTaskType,
   TaskPriority,
   CreateTaskRequest,
+  TaskTemplate,
   WorktreeInfo,
 } from '@apexcli/core';
 import { TaskStore } from './store';
@@ -4779,6 +4781,97 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
       return { success: false, error: errorMsg };
     }
+  }
+
+  // ============================================================================
+  // Task Template Operations
+  // ============================================================================
+
+  /**
+   * Save a task as a template
+   * @param taskId ID of the task to save as template
+   * @param name Name for the template
+   * @returns The created template
+   */
+  async saveTemplate(taskId: string, name: string): Promise<TaskTemplate> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Generate template from the task
+    const templateId = generateTaskTemplateId();
+    const template = await this.store.createTemplate({
+      id: templateId,
+      name: name.trim(),
+      description: task.description,
+      workflow: task.workflow,
+      priority: task.priority,
+      effort: task.effort,
+      acceptanceCriteria: task.acceptanceCriteria,
+      tags: [], // Start with empty tags, can be customized later
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Task saved as template: ${name} (ID: ${templateId})`,
+    });
+
+    return template;
+  }
+
+  /**
+   * List all available templates
+   * @returns Array of all templates
+   */
+  async listTemplates(): Promise<TaskTemplate[]> {
+    await this.ensureInitialized();
+    return this.store.getAllTemplates();
+  }
+
+  /**
+   * Create a new task from a template
+   * @param templateId ID of the template to use
+   * @param overrides Optional task property overrides
+   * @returns The created task
+   */
+  async useTemplate(templateId: string, overrides?: Partial<CreateTaskRequest>): Promise<Task> {
+    await this.ensureInitialized();
+
+    const template = await this.store.getTemplate(templateId);
+    if (!template) {
+      throw new Error(`Template not found: ${templateId}`);
+    }
+
+    const task = await this.store.createTaskFromTemplate(templateId, {
+      ...overrides,
+      projectPath: overrides?.projectPath || this.projectPath,
+    });
+
+    await this.store.addLog(task.id, {
+      level: 'info',
+      message: `Task created from template: ${template.name} (Template ID: ${templateId})`,
+    });
+
+    this.emit('task:created', task);
+    return task;
+  }
+
+  /**
+   * Delete a template
+   * @param templateId ID of the template to delete
+   */
+  async deleteTemplate(templateId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const template = await this.store.getTemplate(templateId);
+    if (!template) {
+      throw new Error(`Template not found: ${templateId}`);
+    }
+
+    await this.store.deleteTemplate(templateId);
   }
 }
 

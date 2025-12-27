@@ -3653,4 +3653,375 @@ You are a developer agent that implements code changes.
       (orchestrator as any).gitPushTask = originalGitPushTask;
     });
   });
+
+  describe('template operations', () => {
+    describe('saveTemplate', () => {
+      it('should save a task as a template', async () => {
+        // Create a task first
+        const task = await orchestrator.createTask({
+          description: 'Test task for template',
+          acceptanceCriteria: 'Should work correctly',
+          workflow: 'feature',
+          priority: 'high',
+          effort: 'medium',
+        });
+
+        // Save the task as a template
+        const template = await orchestrator.saveTemplate(task.id, 'My Test Template');
+
+        expect(template).toBeDefined();
+        expect(template.name).toBe('My Test Template');
+        expect(template.description).toBe(task.description);
+        expect(template.workflow).toBe(task.workflow);
+        expect(template.priority).toBe(task.priority);
+        expect(template.effort).toBe(task.effort);
+        expect(template.acceptanceCriteria).toBe(task.acceptanceCriteria);
+        expect(template.tags).toEqual([]);
+        expect(template.id).toMatch(/^tpl_/);
+        expect(template.createdAt).toBeInstanceOf(Date);
+        expect(template.updatedAt).toBeInstanceOf(Date);
+
+        // Verify log was added
+        const logs = await orchestrator.store.getLogs(task.id);
+        const templateLog = logs.find(log => log.message.includes('Task saved as template'));
+        expect(templateLog).toBeDefined();
+        expect(templateLog!.message).toContain('My Test Template');
+        expect(templateLog!.message).toContain(template.id);
+      });
+
+      it('should fail when task does not exist', async () => {
+        await expect(
+          orchestrator.saveTemplate('non-existent-task', 'Test Template')
+        ).rejects.toThrow('Task not found: non-existent-task');
+      });
+
+      it('should trim template name', async () => {
+        const task = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(task.id, '  Trimmed Template Name  ');
+
+        expect(template.name).toBe('Trimmed Template Name');
+      });
+
+      it('should handle minimal task data', async () => {
+        const task = await orchestrator.createTask({
+          description: 'Minimal task',
+          workflow: 'bugfix',
+        });
+
+        const template = await orchestrator.saveTemplate(task.id, 'Minimal Template');
+
+        expect(template.name).toBe('Minimal Template');
+        expect(template.description).toBe('Minimal task');
+        expect(template.workflow).toBe('bugfix');
+        expect(template.priority).toBe('normal'); // default
+        expect(template.effort).toBe('medium'); // default
+        expect(template.acceptanceCriteria).toBeUndefined();
+      });
+    });
+
+    describe('listTemplates', () => {
+      it('should return empty array when no templates exist', async () => {
+        const templates = await orchestrator.listTemplates();
+        expect(templates).toEqual([]);
+      });
+
+      it('should list all templates', async () => {
+        // Create multiple tasks and save as templates
+        const task1 = await orchestrator.createTask({
+          description: 'Task 1',
+          workflow: 'feature',
+          priority: 'high',
+        });
+
+        const task2 = await orchestrator.createTask({
+          description: 'Task 2',
+          workflow: 'bugfix',
+          priority: 'low',
+        });
+
+        const template1 = await orchestrator.saveTemplate(task1.id, 'Template 1');
+        const template2 = await orchestrator.saveTemplate(task2.id, 'Template 2');
+
+        const templates = await orchestrator.listTemplates();
+
+        expect(templates).toHaveLength(2);
+
+        const foundTemplate1 = templates.find(t => t.id === template1.id);
+        const foundTemplate2 = templates.find(t => t.id === template2.id);
+
+        expect(foundTemplate1).toBeDefined();
+        expect(foundTemplate1!.name).toBe('Template 1');
+        expect(foundTemplate1!.workflow).toBe('feature');
+
+        expect(foundTemplate2).toBeDefined();
+        expect(foundTemplate2!.name).toBe('Template 2');
+        expect(foundTemplate2!.workflow).toBe('bugfix');
+      });
+
+      it('should return templates sorted by name', async () => {
+        const task1 = await orchestrator.createTask({
+          description: 'Task Z',
+          workflow: 'feature',
+        });
+
+        const task2 = await orchestrator.createTask({
+          description: 'Task A',
+          workflow: 'bugfix',
+        });
+
+        await orchestrator.saveTemplate(task1.id, 'Z Template');
+        await orchestrator.saveTemplate(task2.id, 'A Template');
+
+        const templates = await orchestrator.listTemplates();
+
+        expect(templates).toHaveLength(2);
+        expect(templates[0].name).toBe('A Template');
+        expect(templates[1].name).toBe('Z Template');
+      });
+    });
+
+    describe('useTemplate', () => {
+      it('should create a task from a template', async () => {
+        // Create a task and save as template
+        const originalTask = await orchestrator.createTask({
+          description: 'Original task description',
+          acceptanceCriteria: 'Original acceptance criteria',
+          workflow: 'feature',
+          priority: 'high',
+          effort: 'large',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        // Use the template to create a new task
+        const newTask = await orchestrator.useTemplate(template.id);
+
+        expect(newTask).toBeDefined();
+        expect(newTask.id).toMatch(/^task_/);
+        expect(newTask.description).toBe(template.description);
+        expect(newTask.workflow).toBe(template.workflow);
+        expect(newTask.priority).toBe(template.priority);
+        expect(newTask.effort).toBe(template.effort);
+        expect(newTask.acceptanceCriteria).toContain('Implement: Test Template');
+        expect(newTask.status).toBe('pending');
+
+        // Verify log was added
+        const logs = await orchestrator.store.getLogs(newTask.id);
+        const templateLog = logs.find(log => log.message.includes('Task created from template'));
+        expect(templateLog).toBeDefined();
+        expect(templateLog!.message).toContain('Test Template');
+        expect(templateLog!.message).toContain(template.id);
+      });
+
+      it('should emit task:created event when using template', async () => {
+        const originalTask = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        const createdEvents: any[] = [];
+        orchestrator.on('task:created', (task) => {
+          createdEvents.push(task);
+        });
+
+        const newTask = await orchestrator.useTemplate(template.id);
+
+        expect(createdEvents).toHaveLength(1);
+        expect(createdEvents[0].id).toBe(newTask.id);
+      });
+
+      it('should allow overriding template properties', async () => {
+        const originalTask = await orchestrator.createTask({
+          description: 'Original description',
+          workflow: 'feature',
+          priority: 'normal',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        const newTask = await orchestrator.useTemplate(template.id, {
+          description: 'Overridden description',
+          priority: 'urgent',
+          workflow: 'bugfix',
+        });
+
+        expect(newTask.description).toBe('Overridden description');
+        expect(newTask.priority).toBe('urgent');
+        expect(newTask.workflow).toBe('bugfix');
+      });
+
+      it('should use orchestrator projectPath when not overridden', async () => {
+        const originalTask = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        const newTask = await orchestrator.useTemplate(template.id);
+
+        expect(newTask.projectPath).toBe(testDir);
+      });
+
+      it('should allow overriding projectPath', async () => {
+        const originalTask = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        const customPath = '/custom/project/path';
+        const newTask = await orchestrator.useTemplate(template.id, {
+          projectPath: customPath,
+        });
+
+        expect(newTask.projectPath).toBe(customPath);
+      });
+
+      it('should fail when template does not exist', async () => {
+        await expect(
+          orchestrator.useTemplate('non-existent-template')
+        ).rejects.toThrow('Template not found: non-existent-template');
+      });
+    });
+
+    describe('deleteTemplate', () => {
+      it('should delete an existing template', async () => {
+        const task = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(task.id, 'Test Template');
+
+        // Verify template exists
+        let templates = await orchestrator.listTemplates();
+        expect(templates.find(t => t.id === template.id)).toBeDefined();
+
+        // Delete the template
+        await orchestrator.deleteTemplate(template.id);
+
+        // Verify template no longer exists
+        templates = await orchestrator.listTemplates();
+        expect(templates.find(t => t.id === template.id)).toBeUndefined();
+      });
+
+      it('should fail when template does not exist', async () => {
+        await expect(
+          orchestrator.deleteTemplate('non-existent-template')
+        ).rejects.toThrow('Template not found: non-existent-template');
+      });
+
+      it('should not affect tasks created from the template after deletion', async () => {
+        const originalTask = await orchestrator.createTask({
+          description: 'Test task',
+          workflow: 'feature',
+        });
+
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Test Template');
+
+        // Create a task from the template
+        const taskFromTemplate = await orchestrator.useTemplate(template.id);
+
+        // Delete the template
+        await orchestrator.deleteTemplate(template.id);
+
+        // Verify the task from template still exists and works
+        const retrievedTask = await orchestrator.getTask(taskFromTemplate.id);
+        expect(retrievedTask).toBeDefined();
+        expect(retrievedTask!.description).toBe(originalTask.description);
+      });
+
+      it('should handle deleting multiple templates', async () => {
+        const task1 = await orchestrator.createTask({
+          description: 'Task 1',
+          workflow: 'feature',
+        });
+
+        const task2 = await orchestrator.createTask({
+          description: 'Task 2',
+          workflow: 'bugfix',
+        });
+
+        const template1 = await orchestrator.saveTemplate(task1.id, 'Template 1');
+        const template2 = await orchestrator.saveTemplate(task2.id, 'Template 2');
+
+        // Verify both templates exist
+        let templates = await orchestrator.listTemplates();
+        expect(templates).toHaveLength(2);
+
+        // Delete first template
+        await orchestrator.deleteTemplate(template1.id);
+
+        templates = await orchestrator.listTemplates();
+        expect(templates).toHaveLength(1);
+        expect(templates[0].id).toBe(template2.id);
+
+        // Delete second template
+        await orchestrator.deleteTemplate(template2.id);
+
+        templates = await orchestrator.listTemplates();
+        expect(templates).toHaveLength(0);
+      });
+    });
+
+    describe('template integration', () => {
+      it('should support full template lifecycle', async () => {
+        // Create a task with full data
+        const originalTask = await orchestrator.createTask({
+          description: 'Complete feature implementation',
+          acceptanceCriteria: 'Feature should handle all edge cases and include comprehensive tests',
+          workflow: 'feature',
+          priority: 'high',
+          effort: 'large',
+        });
+
+        // Save as template
+        const template = await orchestrator.saveTemplate(originalTask.id, 'Feature Template');
+
+        // List templates and verify it appears
+        const templates = await orchestrator.listTemplates();
+        expect(templates.find(t => t.id === template.id)).toBeDefined();
+
+        // Use template to create multiple tasks with different overrides
+        const task1 = await orchestrator.useTemplate(template.id, {
+          description: 'Implement user authentication',
+          priority: 'urgent',
+        });
+
+        const task2 = await orchestrator.useTemplate(template.id, {
+          description: 'Implement data validation',
+          effort: 'small',
+        });
+
+        // Verify tasks were created correctly
+        expect(task1.description).toBe('Implement user authentication');
+        expect(task1.priority).toBe('urgent');
+        expect(task1.effort).toBe('large'); // inherited from template
+
+        expect(task2.description).toBe('Implement data validation');
+        expect(task2.effort).toBe('small'); // overridden
+        expect(task2.priority).toBe('high'); // inherited from template
+
+        // Clean up by deleting the template
+        await orchestrator.deleteTemplate(template.id);
+
+        // Verify template is deleted but tasks remain
+        const remainingTemplates = await orchestrator.listTemplates();
+        expect(remainingTemplates.find(t => t.id === template.id)).toBeUndefined();
+
+        const remainingTask1 = await orchestrator.getTask(task1.id);
+        const remainingTask2 = await orchestrator.getTask(task2.id);
+        expect(remainingTask1).toBeDefined();
+        expect(remainingTask2).toBeDefined();
+      });
+    });
+  });
 });

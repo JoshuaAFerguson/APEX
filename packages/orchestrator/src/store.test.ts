@@ -2474,6 +2474,90 @@ describe('TaskStore', () => {
         'Task with ID non-existent-task not found'
       );
     });
+
+    // Archive operation validation tests
+    it('should only allow archiving completed tasks', async () => {
+      const task = createTestTask();
+      task.status = 'pending';
+      await store.createTask(task);
+
+      // Should throw error when trying to archive non-completed task
+      await expect(store.archiveTask(task.id)).rejects.toThrow(
+        `Cannot archive task ${task.id}: only completed tasks can be archived (current status: pending)`
+      );
+    });
+
+    it('should successfully archive completed tasks', async () => {
+      const task = createTestTask();
+      task.status = 'completed';
+      await store.createTask(task);
+
+      // Should succeed for completed task
+      await store.archiveTask(task.id);
+
+      const updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeDefined();
+      expect(updated?.status).toBe('completed');
+    });
+
+    it('should throw error when archiving non-existent task', async () => {
+      await expect(store.archiveTask('non-existent-task')).rejects.toThrow(
+        'Task with ID non-existent-task not found'
+      );
+    });
+
+    // listArchived tests
+    it('should list archived tasks using listArchived method', async () => {
+      const task1 = createTestTask();
+      task1.id = 'task1';
+      task1.status = 'completed';
+      await store.createTask(task1);
+      await store.archiveTask(task1.id);
+
+      const task2 = createTestTask();
+      task2.id = 'task2';
+      task2.status = 'completed';
+      await store.createTask(task2);
+
+      const archivedTasks = await store.listArchived();
+      expect(archivedTasks).toHaveLength(1);
+      expect(archivedTasks[0].id).toBe('task1');
+      expect(archivedTasks[0].archivedAt).toBeDefined();
+    });
+
+    // unarchiveTask tests
+    it('should successfully unarchive archived tasks', async () => {
+      const task = createTestTask();
+      task.status = 'completed';
+      await store.createTask(task);
+
+      // Archive the task first
+      await store.archiveTask(task.id);
+      let updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeDefined();
+
+      // Unarchive the task
+      await store.unarchiveTask(task.id);
+      updated = await store.getTask(task.id);
+      expect(updated?.archivedAt).toBeUndefined();
+      expect(updated?.status).toBe('completed');
+    });
+
+    it('should throw error when unarchiving non-archived task', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Should throw error when trying to unarchive non-archived task
+      await expect(store.unarchiveTask(task.id)).rejects.toThrow(
+        `Task ${task.id} is not archived`
+      );
+    });
+
+    it('should throw error when unarchiving non-existent task', async () => {
+      await expect(store.unarchiveTask('non-existent-task')).rejects.toThrow(
+        'Task with ID non-existent-task not found'
+      );
+    });
   });
 
   describe('Task Templates', () => {
