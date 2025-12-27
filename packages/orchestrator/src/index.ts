@@ -5020,6 +5020,65 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   }
 
   /**
+   * Create a new template directly (not from a task)
+   * @param data Template data without timestamps and ID
+   * @returns The created template
+   */
+  async createTemplate(data: Omit<TaskTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<TaskTemplate> {
+    await this.ensureInitialized();
+
+    // Generate template ID
+    const templateId = generateTaskTemplateId();
+
+    // Create the template with generated ID
+    const template = await this.store.createTemplate({
+      id: templateId,
+      ...data,
+    });
+
+    this.emit('template:created', template);
+    return template;
+  }
+
+  /**
+   * Get a template by ID
+   * @param id Template ID
+   * @returns The template or null if not found
+   */
+  async getTemplate(id: string): Promise<TaskTemplate | null> {
+    await this.ensureInitialized();
+    return this.store.getTemplate(id);
+  }
+
+  /**
+   * Update a template
+   * @param id Template ID
+   * @param updates Partial template updates
+   * @returns The updated template
+   */
+  async updateTemplate(id: string, updates: Partial<Omit<TaskTemplate, 'id' | 'createdAt' | 'updatedAt'>>): Promise<TaskTemplate> {
+    await this.ensureInitialized();
+
+    // Check if template exists
+    const existingTemplate = await this.store.getTemplate(id);
+    if (!existingTemplate) {
+      throw new Error(`Template not found: ${id}`);
+    }
+
+    // Update the template
+    await this.store.updateTemplate(id, updates);
+
+    // Get the updated template
+    const updatedTemplate = await this.store.getTemplate(id);
+    if (!updatedTemplate) {
+      throw new Error(`Failed to retrieve updated template: ${id}`);
+    }
+
+    this.emit('template:updated', updatedTemplate);
+    return updatedTemplate;
+  }
+
+  /**
    * Close the orchestrator and cleanup resources
    */
   close(): void {

@@ -4023,5 +4023,233 @@ You are a developer agent that implements code changes.
         expect(remainingTask2).toBeDefined();
       });
     });
+
+    describe('direct template CRUD operations', () => {
+      describe('createTemplate', () => {
+        it('should create a template directly without needing a task', async () => {
+          const templateData = {
+            name: 'Direct Template',
+            description: 'Template created directly',
+            workflow: 'feature',
+            priority: 'high' as const,
+            effort: 'medium' as const,
+            acceptanceCriteria: 'Should work correctly',
+            tags: ['direct', 'test'],
+          };
+
+          const template = await orchestrator.createTemplate(templateData);
+
+          expect(template).toBeDefined();
+          expect(template.id).toMatch(/^template_/);
+          expect(template.name).toBe('Direct Template');
+          expect(template.description).toBe('Template created directly');
+          expect(template.workflow).toBe('feature');
+          expect(template.priority).toBe('high');
+          expect(template.effort).toBe('medium');
+          expect(template.acceptanceCriteria).toBe('Should work correctly');
+          expect(template.tags).toEqual(['direct', 'test']);
+          expect(template.createdAt).toBeInstanceOf(Date);
+          expect(template.updatedAt).toBeInstanceOf(Date);
+        });
+
+        it('should create template with minimal required fields', async () => {
+          const templateData = {
+            name: 'Minimal Template',
+            description: 'Minimal template',
+            workflow: 'bugfix',
+          };
+
+          const template = await orchestrator.createTemplate(templateData);
+
+          expect(template.name).toBe('Minimal Template');
+          expect(template.description).toBe('Minimal template');
+          expect(template.workflow).toBe('bugfix');
+          expect(template.priority).toBe('normal'); // default
+          expect(template.effort).toBe('medium'); // default
+          expect(template.tags).toEqual([]); // default
+          expect(template.acceptanceCriteria).toBeUndefined();
+        });
+
+        it('should emit template:created event', async () => {
+          let emittedTemplate: any;
+          orchestrator.on('template:created', (template) => {
+            emittedTemplate = template;
+          });
+
+          const templateData = {
+            name: 'Event Test Template',
+            description: 'Template for testing events',
+            workflow: 'feature',
+          };
+
+          const template = await orchestrator.createTemplate(templateData);
+
+          expect(emittedTemplate).toBeDefined();
+          expect(emittedTemplate.id).toBe(template.id);
+          expect(emittedTemplate.name).toBe('Event Test Template');
+        });
+      });
+
+      describe('getTemplate', () => {
+        let templateId: string;
+
+        beforeEach(async () => {
+          const template = await orchestrator.createTemplate({
+            name: 'Get Test Template',
+            description: 'Template for testing get method',
+            workflow: 'feature',
+          });
+          templateId = template.id;
+        });
+
+        it('should retrieve a template by ID', async () => {
+          const template = await orchestrator.getTemplate(templateId);
+
+          expect(template).toBeDefined();
+          expect(template!.id).toBe(templateId);
+          expect(template!.name).toBe('Get Test Template');
+          expect(template!.description).toBe('Template for testing get method');
+          expect(template!.workflow).toBe('feature');
+        });
+
+        it('should return null for non-existent template', async () => {
+          const template = await orchestrator.getTemplate('non-existent-template');
+          expect(template).toBeNull();
+        });
+      });
+
+      describe('updateTemplate', () => {
+        let templateId: string;
+
+        beforeEach(async () => {
+          const template = await orchestrator.createTemplate({
+            name: 'Update Test Template',
+            description: 'Template for testing update method',
+            workflow: 'feature',
+            priority: 'normal',
+            effort: 'medium',
+            acceptanceCriteria: 'Original criteria',
+            tags: ['original', 'test'],
+          });
+          templateId = template.id;
+        });
+
+        it('should update template fields', async () => {
+          const updates = {
+            name: 'Updated Template Name',
+            description: 'Updated description',
+            priority: 'high' as const,
+            effort: 'large' as const,
+            acceptanceCriteria: 'Updated criteria',
+            tags: ['updated', 'test'],
+          };
+
+          const updatedTemplate = await orchestrator.updateTemplate(templateId, updates);
+
+          expect(updatedTemplate.id).toBe(templateId);
+          expect(updatedTemplate.name).toBe('Updated Template Name');
+          expect(updatedTemplate.description).toBe('Updated description');
+          expect(updatedTemplate.priority).toBe('high');
+          expect(updatedTemplate.effort).toBe('large');
+          expect(updatedTemplate.acceptanceCriteria).toBe('Updated criteria');
+          expect(updatedTemplate.tags).toEqual(['updated', 'test']);
+          expect(updatedTemplate.updatedAt.getTime()).toBeGreaterThan(updatedTemplate.createdAt.getTime());
+        });
+
+        it('should update only specified fields', async () => {
+          const originalTemplate = await orchestrator.getTemplate(templateId);
+
+          const updates = {
+            name: 'Partially Updated Name',
+            priority: 'urgent' as const,
+          };
+
+          const updatedTemplate = await orchestrator.updateTemplate(templateId, updates);
+
+          expect(updatedTemplate.name).toBe('Partially Updated Name');
+          expect(updatedTemplate.priority).toBe('urgent');
+          // Other fields should remain unchanged
+          expect(updatedTemplate.description).toBe(originalTemplate!.description);
+          expect(updatedTemplate.workflow).toBe(originalTemplate!.workflow);
+          expect(updatedTemplate.effort).toBe(originalTemplate!.effort);
+          expect(updatedTemplate.acceptanceCriteria).toBe(originalTemplate!.acceptanceCriteria);
+          expect(updatedTemplate.tags).toEqual(originalTemplate!.tags);
+        });
+
+        it('should emit template:updated event', async () => {
+          let emittedTemplate: any;
+          orchestrator.on('template:updated', (template) => {
+            emittedTemplate = template;
+          });
+
+          const updates = { name: 'Event Updated Template' };
+          const updatedTemplate = await orchestrator.updateTemplate(templateId, updates);
+
+          expect(emittedTemplate).toBeDefined();
+          expect(emittedTemplate.id).toBe(updatedTemplate.id);
+          expect(emittedTemplate.name).toBe('Event Updated Template');
+        });
+
+        it('should throw error when updating non-existent template', async () => {
+          await expect(
+            orchestrator.updateTemplate('non-existent-template', { name: 'New Name' })
+          ).rejects.toThrow('Template not found: non-existent-template');
+        });
+      });
+
+      describe('template CRUD integration', () => {
+        it('should support full direct CRUD lifecycle', async () => {
+          // Create a template directly
+          const template = await orchestrator.createTemplate({
+            name: 'CRUD Test Template',
+            description: 'Template for testing CRUD operations',
+            workflow: 'feature',
+            priority: 'normal',
+            effort: 'medium',
+            acceptanceCriteria: 'Should support all CRUD operations',
+            tags: ['crud', 'test'],
+          });
+
+          // Get the template
+          const retrievedTemplate = await orchestrator.getTemplate(template.id);
+          expect(retrievedTemplate).toBeDefined();
+          expect(retrievedTemplate!.name).toBe('CRUD Test Template');
+
+          // Update the template
+          const updatedTemplate = await orchestrator.updateTemplate(template.id, {
+            name: 'Updated CRUD Template',
+            priority: 'high',
+            tags: ['crud', 'updated'],
+          });
+          expect(updatedTemplate.name).toBe('Updated CRUD Template');
+          expect(updatedTemplate.priority).toBe('high');
+          expect(updatedTemplate.tags).toEqual(['crud', 'updated']);
+
+          // Verify template appears in list
+          const allTemplates = await orchestrator.listTemplates();
+          const foundTemplate = allTemplates.find(t => t.id === template.id);
+          expect(foundTemplate).toBeDefined();
+          expect(foundTemplate!.name).toBe('Updated CRUD Template');
+
+          // Use template to create a task
+          const task = await orchestrator.useTemplate(template.id, {
+            description: 'Task from CRUD template',
+          });
+          expect(task.description).toBe('Task from CRUD template');
+          expect(task.workflow).toBe('feature');
+          expect(task.priority).toBe('high');
+
+          // Delete the template
+          await orchestrator.deleteTemplate(template.id);
+
+          // Verify template is gone but task remains
+          const deletedTemplate = await orchestrator.getTemplate(template.id);
+          expect(deletedTemplate).toBeNull();
+
+          const remainingTask = await orchestrator.getTask(task.id);
+          expect(remainingTask).toBeDefined();
+        });
+      });
+    });
   });
 });
