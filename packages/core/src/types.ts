@@ -66,11 +66,29 @@ export const WorkflowStageSchema = z.object({
 });
 export type WorkflowStage = z.infer<typeof WorkflowStageSchema>;
 
+/**
+ * Isolation configuration schema for workflows
+ * Defines how tasks should be isolated during execution
+ */
+export const IsolationConfigSchema = z.object({
+  /** Isolation mode for this workflow */
+  mode: IsolationModeSchema,
+  /** Container configuration for 'full' mode (optional) */
+  container: z.lazy(() => ContainerConfigSchema).optional(),
+  /** Whether to cleanup workspace after task completion (default: true) */
+  cleanupOnComplete: z.boolean().optional().default(true),
+  /** Whether to preserve workspace on task failure (default: false) */
+  preserveOnFailure: z.boolean().optional().default(false),
+});
+export type IsolationConfig = z.infer<typeof IsolationConfigSchema>;
+
 export const WorkflowDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
   trigger: z.array(z.string()).optional(),
   stages: z.array(WorkflowStageSchema),
+  /** Task isolation configuration for this workflow (optional) */
+  isolation: IsolationConfigSchema.optional(),
 });
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
@@ -628,6 +646,15 @@ export interface ContainerLogEntry {
   /** Raw log line as received from the container runtime */
   raw?: string;
 }
+
+/**
+ * Task isolation mode enumeration
+ * - 'full': Full isolation with container + worktree
+ * - 'worktree': Git worktree isolation only (no container)
+ * - 'shared': Shared workspace with current directory (current behavior)
+ */
+export const IsolationModeSchema = z.enum(['full', 'worktree', 'shared']);
+export type IsolationMode = z.infer<typeof IsolationModeSchema>;
 
 /**
  * Workspace isolation strategy enumeration

@@ -1014,6 +1014,29 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const inProgressStages = new Set<string>();
     const allStages = new Set(workflow.stages.map(s => s.name));
 
+    // Set up workspace isolation based on workflow configuration
+    if (workflow.isolation) {
+      try {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Setting up isolation mode: ${workflow.isolation.mode}`,
+        });
+
+        const workspaceInfo = await this.workspaceManager.createWorkspaceWithIsolation(task, workflow.isolation);
+
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Isolated workspace created at: ${workspaceInfo.workspacePath}`,
+        });
+      } catch (error) {
+        await this.store.addLog(task.id, {
+          level: 'error',
+          message: `Failed to setup workspace isolation: ${(error as Error).message}`,
+        });
+        throw error;
+      }
+    }
+
     await this.store.addLog(task.id, {
       level: 'info',
       message: `Starting workflow "${workflow.name}" with ${workflow.stages.length} stages`,

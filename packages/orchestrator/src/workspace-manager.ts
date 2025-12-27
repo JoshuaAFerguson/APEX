@@ -6,6 +6,8 @@ import { EventEmitter } from 'eventemitter3';
 import {
   WorkspaceConfig,
   Task,
+  IsolationMode,
+  IsolationConfig,
   containerRuntime,
   ContainerRuntimeType,
   ContainerManager,
@@ -150,6 +152,54 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
         console.warn('Failed to start container monitoring:', error);
       }
     }
+  }
+
+  /**
+   * Convert isolation configuration to workspace configuration
+   */
+  private isolationConfigToWorkspaceConfig(isolationConfig: IsolationConfig): WorkspaceConfig {
+    switch (isolationConfig.mode) {
+      case 'full':
+        // Full isolation: container + worktree
+        return {
+          strategy: 'container',
+          container: isolationConfig.container,
+          cleanup: isolationConfig.cleanupOnComplete ?? true,
+          preserveOnFailure: isolationConfig.preserveOnFailure ?? false,
+        };
+      case 'worktree':
+        // Worktree isolation: git worktree only
+        return {
+          strategy: 'worktree',
+          cleanup: isolationConfig.cleanupOnComplete ?? true,
+          preserveOnFailure: isolationConfig.preserveOnFailure ?? false,
+        };
+      case 'shared':
+        // Shared workspace: current behavior (no isolation)
+        return {
+          strategy: 'none',
+          cleanup: isolationConfig.cleanupOnComplete ?? true,
+          preserveOnFailure: isolationConfig.preserveOnFailure ?? false,
+        };
+      default:
+        throw new Error(`Unknown isolation mode: ${isolationConfig.mode}`);
+    }
+  }
+
+  /**
+   * Create a new isolated workspace for a task using isolation configuration
+   */
+  async createWorkspaceWithIsolation(task: Task, isolationConfig: IsolationConfig): Promise<WorkspaceInfo> {
+    // Convert isolation config to workspace config
+    const workspaceConfig = this.isolationConfigToWorkspaceConfig(isolationConfig);
+
+    // Create a task copy with the workspace config
+    const taskWithWorkspace: Task = {
+      ...task,
+      workspace: workspaceConfig,
+    };
+
+    return this.createWorkspace(taskWithWorkspace);
   }
 
   /**
