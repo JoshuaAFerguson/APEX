@@ -1918,6 +1918,87 @@ export const commands: Command[] = [
     },
   },
 
+  {
+    name: 'inspect',
+    aliases: ['ins'],
+    description: 'Inspect task results and details',
+    usage: '/inspect <task_id> [--files|--file <path>|--timeline|--docs|--logs|--artifacts|--checkpoints]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      if (args.length === 0) {
+        console.log(chalk.red('Usage: /inspect <task_id> [options]'));
+        console.log(chalk.gray('Options:'));
+        console.log(chalk.gray('  --files       List modified files'));
+        console.log(chalk.gray('  --file <path> Show specific file content'));
+        console.log(chalk.gray('  --timeline    Show execution timeline'));
+        console.log(chalk.gray('  --docs        Show generated documentation'));
+        console.log(chalk.gray('  --logs        Show task logs'));
+        console.log(chalk.gray('  --artifacts   Show task artifacts'));
+        console.log(chalk.gray('  --checkpoints Show task checkpoints'));
+        console.log(chalk.gray('\nWith no options, shows comprehensive task overview.'));
+        return;
+      }
+
+      // Parse arguments
+      const taskId = args[0];
+      let files = false;
+      let file: string | undefined;
+      let timeline = false;
+      let docs = false;
+      let logs = false;
+      let artifacts = false;
+      let checkpoints = false;
+
+      for (let i = 1; i < args.length; i++) {
+        switch (args[i]) {
+          case '--files':
+            files = true;
+            break;
+          case '--file':
+            file = args[++i];
+            break;
+          case '--timeline':
+            timeline = true;
+            break;
+          case '--docs':
+            docs = true;
+            break;
+          case '--logs':
+            logs = true;
+            break;
+          case '--artifacts':
+            artifacts = true;
+            break;
+          case '--checkpoints':
+            checkpoints = true;
+            break;
+        }
+      }
+
+      try {
+        // Import the TaskInspector service
+        const { TaskInspector } = await import('./services/task-inspector.js');
+        const inspector = new TaskInspector(ctx.orchestrator);
+
+        await inspector.inspectTask(taskId, {
+          files,
+          file,
+          timeline,
+          docs,
+          logs,
+          artifacts,
+          checkpoints
+        });
+      } catch (error) {
+        console.log(chalk.red(`Failed to inspect task: ${(error as Error).message}`));
+      }
+    },
+  },
+
   // Service management commands
   {
     name: 'install-service',
