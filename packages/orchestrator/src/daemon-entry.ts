@@ -1,4 +1,5 @@
 import { DaemonRunner } from './runner';
+import { HealthMonitor } from './health-monitor';
 import { ApexConfig } from '@apexcli/core';
 
 /**
@@ -39,12 +40,16 @@ async function main(): Promise<void> {
   }
   console.log(`Debug logging: ${logToStdout}`);
 
+  // Create HealthMonitor for tracking daemon health metrics
+  const healthMonitor = new HealthMonitor();
+
   const runner = new DaemonRunner({
     projectPath,
     pollIntervalMs,
     logLevel,
     logToStdout,
     config, // Pass pre-loaded config if available
+    healthMonitor, // Enable health monitoring
   });
 
   try {

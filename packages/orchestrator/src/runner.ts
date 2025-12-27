@@ -927,12 +927,37 @@ export class DaemonRunner {
         };
       }
 
+      // Get health information if daemon is running and healthMonitor is available
+      let healthInfo: any = undefined;
+      if (running && this.healthMonitor) {
+        try {
+          const healthReport = this.healthMonitor.getHealthReport(this);
+          healthInfo = {
+            uptime: healthReport.uptime,
+            memoryUsage: healthReport.memoryUsage,
+            taskCounts: healthReport.taskCounts,
+            lastHealthCheck: healthReport.lastHealthCheck.toISOString(),
+            healthChecksPassed: healthReport.healthChecksPassed,
+            healthChecksFailed: healthReport.healthChecksFailed,
+            restartHistory: healthReport.restartHistory.map(record => ({
+              timestamp: record.timestamp.toISOString(),
+              reason: record.reason,
+              exitCode: record.exitCode,
+              triggeredByWatchdog: record.triggeredByWatchdog,
+            })),
+          };
+        } catch (error) {
+          this.log('warn', `Failed to get health report for state file: ${(error as Error).message}`);
+        }
+      }
+
       const stateData = {
         timestamp: new Date().toISOString(),
         pid: process.pid,
         startedAt: this.startedAt.toISOString(),
         running,
         capacity: capacityInfo,
+        health: healthInfo,
       };
 
       await fs.writeFile(stateFilePath, JSON.stringify(stateData, null, 2));

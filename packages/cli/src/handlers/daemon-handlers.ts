@@ -213,6 +213,124 @@ function getNextModeText(currentMode: 'day' | 'night' | 'off-hours'): string {
 }
 
 /**
+ * Handle daemon health command
+ */
+export async function handleDaemonHealth(ctx: ApexContext): Promise<void> {
+  const manager = new DaemonManager({
+    projectPath: ctx.cwd,
+  });
+
+  try {
+    const healthReport = await manager.getHealthReport();
+    displayHealthReport(healthReport);
+  } catch (error) {
+    if (error instanceof DaemonError) {
+      handleDaemonError(error);
+    } else {
+      console.log(chalk.red(`Failed to get health report: ${(error as Error).message}`));
+    }
+  }
+}
+
+/**
+ * Display formatted health report with bar charts and color coding
+ */
+function displayHealthReport(healthReport: any): void {
+  console.log(chalk.cyan('\nDaemon Health Report'));
+  console.log(chalk.gray('─'.repeat(50)));
+
+  // Uptime
+  console.log(`  Uptime:              ${formatDuration(healthReport.uptime)}`);
+
+  // Memory usage with bar chart
+  console.log();
+  console.log(chalk.cyan('Memory Usage'));
+  console.log(chalk.gray('─'.repeat(50)));
+
+  const memUsage = healthReport.memoryUsage;
+  const heapUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+  const heapBar = createMemoryBar(heapUsagePercent);
+
+  console.log(`  Heap Used:           ${formatBytes(memUsage.heapUsed)} / ${formatBytes(memUsage.heapTotal)} (${heapUsagePercent.toFixed(1)}%)`);
+  console.log(`                       ${heapBar}`);
+  console.log(`  RSS:                 ${formatBytes(memUsage.rss)}`);
+
+  // Task statistics
+  console.log();
+  console.log(chalk.cyan('Task Statistics'));
+  console.log(chalk.gray('─'.repeat(50)));
+
+  const taskCounts = healthReport.taskCounts;
+  console.log(`  Processed:           ${chalk.green(taskCounts.processed)}`);
+  console.log(`  Succeeded:           ${chalk.green(taskCounts.succeeded)}`);
+  console.log(`  Failed:              ${taskCounts.failed > 0 ? chalk.red(taskCounts.failed) : chalk.gray(taskCounts.failed)}`);
+  console.log(`  Active:              ${taskCounts.active > 0 ? chalk.yellow(taskCounts.active) : chalk.gray(taskCounts.active)}`);
+
+  // Health check statistics
+  console.log();
+  console.log(chalk.cyan('Health Check Statistics'));
+  console.log(chalk.gray('─'.repeat(50)));
+
+  const totalChecks = healthReport.healthChecksPassed + healthReport.healthChecksFailed;
+  const passRate = totalChecks > 0 ? (healthReport.healthChecksPassed / totalChecks * 100).toFixed(1) : '0.0';
+  const passRateColor = parseFloat(passRate) >= 95 ? chalk.green : parseFloat(passRate) >= 80 ? chalk.yellow : chalk.red;
+
+  console.log(`  Passed:              ${chalk.green(healthReport.healthChecksPassed)}`);
+  console.log(`  Failed:              ${healthReport.healthChecksFailed > 0 ? chalk.red(healthReport.healthChecksFailed) : chalk.gray(healthReport.healthChecksFailed)}`);
+  console.log(`  Pass Rate:           ${passRateColor(passRate + '%')}`);
+  console.log(`  Last Check:          ${healthReport.lastHealthCheck.toLocaleString()}`);
+
+  // Restart history (last 5 events)
+  console.log();
+  console.log(chalk.cyan('Recent Restart Events (Last 5)'));
+  console.log(chalk.gray('─'.repeat(50)));
+
+  if (healthReport.restartHistory.length === 0) {
+    console.log(`  ${chalk.gray('No restart events recorded')}`);
+  } else {
+    const recentRestarts = healthReport.restartHistory.slice(0, 5);
+    recentRestarts.forEach((restart: any, index: number) => {
+      const timeStr = restart.timestamp.toLocaleString();
+      const reasonColor = restart.triggeredByWatchdog ? chalk.red : chalk.yellow;
+      const watchdogText = restart.triggeredByWatchdog ? ' (watchdog)' : '';
+      const exitCodeText = restart.exitCode !== undefined ? ` [exit: ${restart.exitCode}]` : '';
+
+      console.log(`  ${index + 1}. ${timeStr}`);
+      console.log(`     ${reasonColor(restart.reason)}${watchdogText}${exitCodeText}`);
+    });
+  }
+
+  console.log();
+}
+
+/**
+ * Create a visual memory usage bar chart
+ */
+function createMemoryBar(percentage: number, width: number = 30): string {
+  const filled = Math.floor((percentage / 100) * width);
+  const empty = width - filled;
+
+  let color = chalk.green;
+  if (percentage > 80) color = chalk.red;
+  else if (percentage > 60) color = chalk.yellow;
+
+  const filledBar = '█'.repeat(filled);
+  const emptyBar = '░'.repeat(empty);
+
+  return `[${color(filledBar)}${chalk.gray(emptyBar)}]`;
+}
+
+/**
+ * Format bytes to human readable format
+ */
+function formatBytes(bytes: number): string {
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  if (bytes === 0) return '0 B';
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+/**
  * Handle daemon-specific errors with user-friendly messages
  */
 function handleDaemonError(error: DaemonError): void {

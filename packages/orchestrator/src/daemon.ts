@@ -99,6 +99,7 @@ export interface DaemonStateFile {
   timestamp: string;
   pid: number;
   startedAt: string;
+  running?: boolean;
   capacity?: {
     mode: 'day' | 'night' | 'off-hours';
     capacityThreshold: number;
@@ -107,6 +108,29 @@ export interface DaemonStateFile {
     pauseReason?: string;
     nextModeSwitch: string;
     timeBasedUsageEnabled: boolean;
+  };
+  health?: {
+    uptime: number;
+    memoryUsage: {
+      heapUsed: number;
+      heapTotal: number;
+      rss: number;
+    };
+    taskCounts: {
+      processed: number;
+      succeeded: number;
+      failed: number;
+      active: number;
+    };
+    lastHealthCheck: string;
+    healthChecksPassed: number;
+    healthChecksFailed: number;
+    restartHistory: Array<{
+      timestamp: string;
+      reason: string;
+      exitCode?: number;
+      triggeredByWatchdog: boolean;
+    }>;
   };
 }
 
@@ -346,6 +370,41 @@ export class DaemonManager {
     }
 
     return basicStatus;
+  }
+
+  /**
+   * Get comprehensive health report from the running daemon
+   * Returns health metrics including uptime, memory usage, task stats, and restart history
+   */
+  async getHealthReport(): Promise<any> {
+    const basicStatus = await this.getStatus();
+
+    if (!basicStatus.running) {
+      throw new DaemonError('Daemon is not running', 'NOT_RUNNING');
+    }
+
+    // Try to read health information from state file
+    try {
+      const stateData = await this.readStateFile();
+
+      if (stateData && stateData.health) {
+        return {
+          ...stateData.health,
+          lastHealthCheck: new Date(stateData.health.lastHealthCheck),
+          restartHistory: stateData.health.restartHistory.map(record => ({
+            ...record,
+            timestamp: new Date(record.timestamp),
+          })),
+        };
+      } else {
+        throw new DaemonError('Health data not available in daemon state', 'NOT_RUNNING');
+      }
+    } catch (error) {
+      if (error instanceof DaemonError) {
+        throw error;
+      }
+      throw new DaemonError(`Failed to read health data: ${(error as Error).message}`, 'NOT_RUNNING');
+    }
   }
 
   /**

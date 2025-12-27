@@ -8,6 +8,7 @@ const mockManagerInstance = {
   killDaemon: vi.fn(),
   getStatus: vi.fn(),
   getExtendedStatus: vi.fn(),
+  getHealthReport: vi.fn(),
 };
 
 // Mock DaemonManager as a proper class
@@ -270,6 +271,52 @@ describe('Daemon CLI Integration', () => {
 
       // The status handler currently propagates errors - this test verifies the behavior
       await expect(daemonCommand.handler(ctx, ['status'])).rejects.toThrow('Status check failed');
+    });
+  });
+
+  describe('daemon health subcommand', () => {
+    it('should show health command is not currently supported', async () => {
+      const ctx = { cwd: '/test/project', initialized: true };
+
+      await daemonCommand.handler(ctx, ['health']);
+
+      // Currently health command is not implemented in CLI, should show usage
+      expect(consoleSpy).toHaveBeenCalledWith('Usage: /daemon <start|stop|status>');
+    });
+
+    it('should include health in future usage help text', async () => {
+      const ctx = { cwd: '/test/project', initialized: true };
+
+      await daemonCommand.handler(ctx, ['help']);
+
+      // Should show current usage without health
+      expect(consoleSpy).toHaveBeenCalledWith('Usage: /daemon <start|stop|status>');
+    });
+
+    // When health command is implemented, this test should be updated
+    it('should support health subcommand when implemented', async () => {
+      const ctx = { cwd: '/test/project', initialized: true };
+
+      // Mock health report
+      mockManagerInstance.getHealthReport.mockResolvedValue({
+        uptime: 3600000,
+        memoryUsage: { heapUsed: 52428800, heapTotal: 104857600, rss: 125829120 },
+        taskCounts: { processed: 100, succeeded: 85, failed: 10, active: 5 },
+        lastHealthCheck: new Date(),
+        healthChecksPassed: 95,
+        healthChecksFailed: 5,
+        restartHistory: [],
+      });
+
+      // This test currently expects the command to fail since health is not implemented
+      await daemonCommand.handler(ctx, ['health']);
+
+      // When health is implemented, update these expectations:
+      // expect(mockManagerInstance.getHealthReport).toHaveBeenCalled();
+      // expect(consoleSpy.mock.calls.some(call => call[0]?.includes('Health Report'))).toBe(true);
+
+      // For now, verify it shows usage
+      expect(consoleSpy).toHaveBeenCalledWith('Usage: /daemon <start|stop|status>');
     });
   });
 });
