@@ -380,6 +380,54 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // ============================================================================
+  // Archive Management API
+  // ============================================================================
+
+  // Archive a task
+  app.post<{ Params: { id: string } }>(
+    '/tasks/:id/archive',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      if (task.archivedAt) {
+        return reply.status(400).send({ error: 'Task is already archived' });
+      }
+
+      try {
+        await orchestrator.archiveTask(id);
+        return { ok: true, message: 'Task archived' };
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : 'Failed to archive task'
+        });
+      }
+    }
+  );
+
+  // List archived tasks
+  app.get('/tasks/archived', async (request, reply) => {
+    try {
+      const archivedTasks = await orchestrator.listArchivedTasks();
+      return {
+        tasks: archivedTasks,
+        count: archivedTasks.length,
+        message: archivedTasks.length > 0
+          ? `${archivedTasks.length} archived task(s) found`
+          : 'No archived tasks found'
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to list archived tasks'
+      });
+    }
+  });
+
+  // ============================================================================
   // Subtasks API
   // ============================================================================
 
@@ -865,6 +913,8 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /tasks/:id/restore        - Restore task from trash`);
       console.log(`  GET    /tasks/trashed            - List trashed tasks`);
       console.log(`  DELETE /tasks/trash              - Permanently delete all trashed tasks`);
+      console.log(`  POST   /tasks/:id/archive        - Archive a completed task`);
+      console.log(`  GET    /tasks/archived           - List archived tasks`);
       console.log('');
       console.log('Subtask Endpoints:');
       console.log(`  POST   /tasks/:id/decompose      - Decompose task into subtasks`);

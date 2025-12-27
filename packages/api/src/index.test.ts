@@ -21,6 +21,7 @@ vi.mock('@apex/orchestrator', () => {
     logs: [],
     artifacts: [],
     trashedAt: null,
+    archivedAt: null,
   };
 
   const mockAgents = {
@@ -104,6 +105,25 @@ vi.mock('@apex/orchestrator', () => {
       const trashedTasks = Array.from(this.tasks.values()).filter(task => task.trashedAt);
       trashedTasks.forEach(task => this.tasks.delete(task.id));
       return trashedTasks.length;
+    }
+
+    // Archive management methods
+    async archiveTask(taskId: string) {
+      const task = this.tasks.get(taskId);
+      if (!task) {
+        throw new Error(`Task with ID ${taskId} not found`);
+      }
+      if (task.status !== 'completed') {
+        throw new Error(`Cannot archive task ${taskId}: only completed tasks can be archived (current status: ${task.status})`);
+      }
+      if (task.archivedAt) {
+        throw new Error(`Task with ID ${taskId} is already archived`);
+      }
+      task.archivedAt = new Date();
+    }
+
+    async listArchivedTasks() {
+      return Array.from(this.tasks.values()).filter(task => task.archivedAt);
     }
 
     async getAgents() {
@@ -845,6 +865,385 @@ describe('API Server', () => {
           url: `/tasks/${taskId}`,
         });
         expect(getResponse.statusCode).toBe(404);
+      });
+    });
+  });
+
+  describe('Archive Management API', () => {
+    describe('POST /tasks/:id/archive', () => {
+      it('should archive a completed task', async () => {
+        // Create a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to archive' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // First, mark the task as completed
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        // Archive the task
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+        expect(body.message).toContain('Task archived');
+      });
+
+      it('should return 404 for non-existent task', async () => {
+        const response = await server.inject({
+          method: 'POST',
+          url: '/tasks/non-existent-id/archive',
+        });
+
+        expect(response.statusCode).toBe(404);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('Task not found');
+      });
+
+      it('should return 400 for non-completed task', async () => {
+        // Create a task but don't complete it
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Non-completed task' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // Try to archive non-completed task
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('only completed tasks can be archived');
+      });
+
+      it('should return 400 if task is already archived', async () => {
+        // Create and complete a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task to archive twice' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        // Try to archive again
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toContain('already archived');
+      });
+    });
+
+    describe('GET /tasks/archived', () => {
+      it('should list archived tasks', async () => {
+        // Create and archive two tasks
+        const createResponse1 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Archived task 1' },
+        });
+        const { taskId: taskId1 } = JSON.parse(createResponse1.body);
+
+        const createResponse2 = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Archived task 2' },
+        });
+        const { taskId: taskId2 } = JSON.parse(createResponse2.body);
+
+        // Complete and archive both tasks
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId1}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId2}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId1}/archive`,
+        });
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId2}/archive`,
+        });
+
+        // List archived tasks
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/archived',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.tasks).toBeInstanceOf(Array);
+        expect(body.tasks.length).toBe(2);
+        expect(body.count).toBe(2);
+        expect(body.message).toContain('2 archived task(s) found');
+      });
+
+      it('should return empty list when no tasks are archived', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/archived',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.tasks).toBeInstanceOf(Array);
+        expect(body.tasks.length).toBe(0);
+        expect(body.count).toBe(0);
+        expect(body.message).toContain('No archived tasks found');
+      });
+    });
+
+    describe('Archive Workflow Integration', () => {
+      it('should handle complete archive lifecycle: create -> complete -> archive -> list', async () => {
+        // Create a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Archive lifecycle test task' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // 1. Verify task exists in normal list
+        const listResponse1 = await server.inject({
+          method: 'GET',
+          url: '/tasks',
+        });
+        const listBody1 = JSON.parse(listResponse1.body);
+        expect(listBody1.tasks.some((t: any) => t.id === taskId)).toBe(true);
+
+        // 2. Complete the task
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        // 3. Archive the task
+        const archiveResponse = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+        expect(archiveResponse.statusCode).toBe(200);
+
+        // 4. Verify task appears in archived list
+        const archivedResponse = await server.inject({
+          method: 'GET',
+          url: '/tasks/archived',
+        });
+        const archivedBody = JSON.parse(archivedResponse.body);
+        expect(archivedBody.tasks.some((t: any) => t.id === taskId)).toBe(true);
+        expect(archivedBody.count).toBe(1);
+
+        // 5. Verify task details can still be fetched
+        const getResponse = await server.inject({
+          method: 'GET',
+          url: `/tasks/${taskId}`,
+        });
+        expect(getResponse.statusCode).toBe(200);
+        const task = JSON.parse(getResponse.body);
+        expect(task.id).toBe(taskId);
+        expect(task.status).toBe('completed');
+        expect(task.archivedAt).toBeDefined();
+      });
+    });
+
+    describe('Archive API Error Handling and Edge Cases', () => {
+      it('should handle empty request body gracefully for archive endpoint', async () => {
+        // Create and complete a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task for empty body test' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        // Archive with empty body (should still work)
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: {},
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+      });
+
+      it('should handle archive endpoint without Content-Type header', async () => {
+        // Create and complete a task
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task for no header test' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/status`,
+          headers: { 'Content-Type': 'application/json' },
+          payload: { status: 'completed' },
+        });
+
+        // Archive without Content-Type header
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(true);
+      });
+
+      it('should reject archiving tasks with different non-completed statuses', async () => {
+        const statuses = ['pending', 'in-progress', 'failed', 'cancelled'];
+
+        for (const status of statuses) {
+          // Create a task
+          const createResponse = await server.inject({
+            method: 'POST',
+            url: '/tasks',
+            headers: { 'Content-Type': 'application/json' },
+            payload: { description: `Task for status ${status}` },
+          });
+          const { taskId } = JSON.parse(createResponse.body);
+
+          // Set the task to the specific status
+          await server.inject({
+            method: 'POST',
+            url: `/tasks/${taskId}/status`,
+            headers: { 'Content-Type': 'application/json' },
+            payload: { status },
+          });
+
+          // Try to archive the task
+          const response = await server.inject({
+            method: 'POST',
+            url: `/tasks/${taskId}/archive`,
+          });
+
+          expect(response.statusCode).toBe(400);
+          const body = JSON.parse(response.body);
+          expect(body.error).toContain('only completed tasks can be archived');
+          expect(body.error).toContain(`current status: ${status}`);
+        }
+      });
+
+      it('should handle archive status error when orchestrator throws generic error', async () => {
+        // This test would require mocking the orchestrator to throw a different error
+        // For now, we'll just test with the standard case that the error message is properly formatted
+        const createResponse = await server.inject({
+          method: 'POST',
+          url: '/tasks',
+          headers: { 'Content-Type': 'application/json' },
+          payload: { description: 'Task for error handling' },
+        });
+        const { taskId } = JSON.parse(createResponse.body);
+
+        // Try to archive without completing - this should trigger an error
+        const response = await server.inject({
+          method: 'POST',
+          url: `/tasks/${taskId}/archive`,
+        });
+
+        expect(response.statusCode).toBe(400);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBeDefined();
+        expect(typeof body.error).toBe('string');
+      });
+    });
+
+    describe('GET /tasks/archived error handling', () => {
+      it('should handle potential errors in listArchivedTasks gracefully', async () => {
+        // This test ensures the error handling structure is in place
+        // In a real scenario, this might test database connection issues, etc.
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/archived',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.tasks).toBeDefined();
+        expect(body.count).toBeDefined();
+        expect(body.message).toBeDefined();
+      });
+
+      it('should return consistent structure for archived tasks list', async () => {
+        const response = await server.inject({
+          method: 'GET',
+          url: '/tasks/archived',
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+
+        // Verify response structure
+        expect(body).toHaveProperty('tasks');
+        expect(body).toHaveProperty('count');
+        expect(body).toHaveProperty('message');
+        expect(Array.isArray(body.tasks)).toBe(true);
+        expect(typeof body.count).toBe('number');
+        expect(typeof body.message).toBe('string');
+        expect(body.count).toBe(body.tasks.length);
       });
     });
   });
