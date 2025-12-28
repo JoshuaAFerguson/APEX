@@ -94,6 +94,7 @@ apex run "Add user authentication with JWT tokens"
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Configuration](docs/configuration.md) | Project configuration options |
+| [Time-Based Usage Management](docs/time-based-usage-management.md) | Day/night modes, auto-pause/resume, capacity management |
 | [Service Management](docs/service-management.md) | Install and manage as system service |
 | [Agents](docs/agents.md) | Built-in agents and customization |
 | [Workflows](docs/workflows.md) | Defining development workflows |

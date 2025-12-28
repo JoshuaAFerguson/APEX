@@ -282,6 +282,33 @@ apex run "build project" --workspace-strategy container \
 - `--container-cpu-shares`: Override CPU shares
 - `--container-pids-limit`: Override process limit
 
+### daemon
+
+Daemon configuration for background task processing and time-based usage management.
+
+```yaml
+daemon:
+  pollInterval: 5000       # Daemon polling interval (ms)
+  autoStart: false         # Start daemon automatically
+  logLevel: "info"         # Daemon log level
+
+  # Time-based usage management
+  timeBasedUsage:
+    enabled: true
+    dayModeHours: [9, 10, 11, 12, 13, 14, 15, 16, 17]
+    nightModeHours: [22, 23, 0, 1, 2, 3, 4, 5, 6]
+    dayModeCapacityThreshold: 0.80
+    nightModeCapacityThreshold: 0.95
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `pollInterval` | number | 5000 | Daemon polling interval in milliseconds |
+| `autoStart` | boolean | false | Start daemon automatically with APEX |
+| `logLevel` | string | `info` | Log level (debug, info, warn, error) |
+
+> **Complete Reference**: For detailed time-based usage configuration including day/night modes, auto-pause/resume, and capacity management, see the [Time-Based Usage Management Guide](./time-based-usage-management.md).
+
 ## Environment Variables
 
 These override configuration file settings:
