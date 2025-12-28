@@ -27,3 +27,6 @@ export * from './dependency-detector';
 
 // Package Manager Utilities
 export * from './package-manager-utils';
+
+// Path Utilities
+export * from './path-utils';
