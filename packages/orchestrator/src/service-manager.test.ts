@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockedFunction } from 'vitest';
 import { promises as fs } from 'fs';
 import { exec } from 'child_process';
+import { getHomeDir, getConfigDir } from '@apex/core';
 import {
   ServiceManager,
   SystemdGenerator,
@@ -31,6 +32,11 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }));
 
+vi.mock('@apex/core', () => ({
+  getHomeDir: vi.fn(() => '/home/user'),
+  getConfigDir: vi.fn(() => '/home/user/.config'),
+}));
+
 // Mock process for platform detection
 const mockProcess = {
   platform: 'linux',
@@ -47,6 +53,16 @@ Object.defineProperty(global, 'process', {
 
 const mockFs = vi.mocked(fs);
 const mockExec = vi.mocked(exec) as MockedFunction<typeof exec>;
+const mockGetHomeDir = vi.mocked(getHomeDir);
+const mockGetConfigDir = vi.mocked(getConfigDir);
+
+// Reset mocks before each test
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Set default return values that match the old behavior
+  mockGetHomeDir.mockReturnValue('/home/user');
+  mockGetConfigDir.mockReturnValue('/home/user/.config');
+});
 
 describe('ServiceError', () => {
   it('should create ServiceError with correct properties', () => {
@@ -747,16 +763,16 @@ describe('ServiceManager', () => {
       mockProcess.platform = 'linux';
     });
 
-    it('should handle missing HOME environment variable', () => {
-      const originalHome = mockProcess.env.HOME;
-      mockProcess.env.HOME = '';
+    it('should handle path utility errors gracefully', () => {
+      mockGetConfigDir.mockImplementationOnce(() => {
+        throw new Error('Unable to determine config directory');
+      });
 
       const manager = new ServiceManager(defaultOptions);
-      const serviceFile = manager.generateServiceFile();
 
-      expect(serviceFile.path).toContain('/tmp/.config/systemd/user');
-
-      mockProcess.env.HOME = originalHome;
+      expect(() => {
+        manager.generateServiceFile();
+      }).toThrow('Unable to determine config directory');
     });
 
     it('should handle missing USER environment variable', () => {

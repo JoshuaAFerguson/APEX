@@ -1,7 +1,9 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getHomeDir, getConfigDir } from '@apex/core';
 
 const execPromise = promisify(exec);
 
@@ -202,8 +204,8 @@ WantedBy=multi-user.target
     if (isRoot) {
       return `/etc/systemd/system/${this.options.serviceName}.service`;
     }
-    const homeDir = process.env.HOME || '/tmp';
-    return `${homeDir}/.config/systemd/user/${this.options.serviceName}.service`;
+    const configDir = getConfigDir();
+    return path.join(configDir, 'systemd', 'user', `${this.options.serviceName}.service`);
   }
 
   private mapRestartPolicy(policy: string): string {
@@ -285,8 +287,8 @@ export class LaunchdGenerator {
 
   getInstallPath(): string {
     // User-level LaunchAgents
-    const homeDir = process.env.HOME || '/tmp';
-    return `${homeDir}/Library/LaunchAgents/${this.getLaunchdLabel()}.plist`;
+    const homeDir = getHomeDir();
+    return path.join(homeDir, 'Library', 'LaunchAgents', `${this.getLaunchdLabel()}.plist`);
   }
 
   private getLaunchdLabel(): string {
@@ -567,7 +569,7 @@ if ($Install) {
       const possiblePaths = [
         path.join(process.cwd(), 'node_modules', '@apex', 'cli', 'dist', 'index.js'),
         path.join(process.cwd(), 'packages', 'cli', 'dist', 'index.js'),
-        path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@apex', 'cli', 'dist', 'index.js'),
+        path.join(getConfigDir(), 'npm', 'node_modules', '@apex', 'cli', 'dist', 'index.js'),
       ];
 
       for (const possiblePath of possiblePaths) {
@@ -951,7 +953,7 @@ set APEX_PROJECT_PATH=${this.options.projectPath}
 ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${value}`).join('\n')}
 "${nodePath}" "${apexCliPath}" daemon start --foreground`;
 
-    const wrapperPath = path.join(process.env.TEMP || 'C:\\temp', 'apex-service-wrapper.bat');
+    const wrapperPath = path.join(os.tmpdir(), 'apex-service-wrapper.bat');
 
     try {
       await fs.writeFile(wrapperPath, wrapperScript, 'utf-8');
@@ -992,7 +994,7 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
       await this.execCommand(`sc delete "${this.options.serviceName}"`);
 
       // Clean up wrapper script
-      const wrapperPath = path.join(process.env.TEMP || 'C:\\temp', 'apex-service-wrapper.bat');
+      const wrapperPath = path.join(os.tmpdir(), 'apex-service-wrapper.bat');
       try {
         await fs.unlink(wrapperPath);
       } catch {
