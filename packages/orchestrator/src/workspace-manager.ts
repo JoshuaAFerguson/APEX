@@ -17,7 +17,9 @@ import {
   ContainerConfig,
   ContainerDefaults,
   getInstallCommand,
-  getOptimizedInstallCommand
+  getOptimizedInstallCommand,
+  getPlatformShell,
+  resolveExecutable
 } from '@apexcli/core';
 
 const execAsync = promisify(exec);
@@ -414,7 +416,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       // Calculate disk usage (approximate)
       try {
         if (workspace.workspacePath && workspace.workspacePath !== this.projectPath) {
-          const { stdout } = await execAsync(`du -s "${workspace.workspacePath}" 2>/dev/null || echo "0"`);
+          const { stdout } = await execAsync(`du -s "${workspace.workspacePath}" 2>/dev/null || echo "0"`, { shell: getPlatformShell().shell });
           const sizeKB = parseInt(stdout.split('\t')[0]) || 0;
           totalDiskUsage += sizeKB * 1024; // Convert to bytes
         }
@@ -451,7 +453,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
 
     try {
       // Create new worktree
-      await execAsync(`git worktree add "${workspacePath}" -b "${branchName}"`);
+      await execAsync(`git worktree add "${workspacePath}" -b "${branchName}"`, { shell: getPlatformShell().shell });
 
       return workspacePath;
     } catch (error) {
@@ -462,7 +464,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private async cleanupWorktree(workspace: WorkspaceInfo): Promise<void> {
     try {
       // Remove worktree
-      await execAsync(`git worktree remove "${workspace.workspacePath}" --force`);
+      await execAsync(`git worktree remove "${workspace.workspacePath}" --force`, { shell: getPlatformShell().shell });
     } catch (error) {
       console.warn(`Failed to remove worktree ${workspace.workspacePath}:`, error);
       // Try manual cleanup
@@ -592,7 +594,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
       await fs.mkdir(workspacePath, { recursive: true });
 
       // Use cp command for efficient copying
-      await execAsync(`cp -r "${this.projectPath}/." "${workspacePath}"`);
+      await execAsync(`cp -r "${this.projectPath}/." "${workspacePath}"`, { shell: getPlatformShell().shell });
 
       // Remove .git directory to avoid confusion (optional)
       await fs.rm(join(workspacePath, '.git'), { recursive: true, force: true });
@@ -641,7 +643,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
 
     if (containerConfig.customInstallCommand) {
       // Use custom command if provided
-      installCommand = containerConfig.customInstallCommand;
+      installCommand = this.resolvePackageManagerCommand(containerConfig.customInstallCommand);
       packageManagerType = 'unknown';
     } else {
       // Auto-detect using DependencyDetector
@@ -663,6 +665,9 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
             useFrozenLockfile: false
           });
         }
+
+        // Resolve command for Windows compatibility
+        installCommand = this.resolvePackageManagerCommand(installCommand);
       }
     }
 
@@ -830,11 +835,13 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     // Permission errors
     if (lastError.includes('EACCES') || lastError.includes('permission denied')) {
       if (packageManagerType === 'pip') {
-        return originalCommand.replace('pip install', 'pip install --user');
+        const resolvedPip = resolveExecutable('pip');
+        return this.resolvePackageManagerCommand(originalCommand.replace('pip install', `${resolvedPip} install --user`));
       }
       // For npm/yarn, try using cache clean and retry
       if (packageManagerType === 'npm') {
-        return `npm cache clean --force && ${originalCommand}`;
+        const resolvedNpm = resolveExecutable('npm');
+        return this.resolvePackageManagerCommand(`${resolvedNpm} cache clean --force && ${originalCommand}`);
       }
     }
 
@@ -846,7 +853,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     // Registry/DNS resolution errors
     if (lastError.includes('getaddrinfo') || lastError.includes('failed to connect')) {
       if (packageManagerType === 'npm') {
-        return `${originalCommand} --registry https://registry.npmjs.org/`;
+        return this.resolvePackageManagerCommand(`${originalCommand} --registry https://registry.npmjs.org/`);
       }
     }
 
@@ -974,5 +981,25 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Resolve package manager commands with proper Windows executable extensions
+   * @param command - The package manager command to resolve
+   * @returns Resolved command with Windows-compatible executable names
+   */
+  private resolvePackageManagerCommand(command: string): string {
+    if (!command) return command;
+
+    // Split command into parts
+    const parts = command.split(' ');
+    if (parts.length === 0) return command;
+
+    // Resolve the first part (the executable) for Windows compatibility
+    const executable = parts[0];
+    const resolvedExecutable = resolveExecutable(executable);
+
+    // Reconstruct the command with the resolved executable
+    return [resolvedExecutable, ...parts.slice(1)].join(' ');
   }
 }
