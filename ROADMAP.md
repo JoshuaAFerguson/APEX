@@ -251,128 +251,128 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Cross-Platform Support (Priority)
 
-- ⚪ **Windows Compatibility** - Native PowerShell support, path handling, and OS-specific integrations
-- ⚪ **Linux Compatibility** - Full support for Debian/Ubuntu, Fedora, and Arch distributions
-- ⚪ **macOS Compatibility** - Native integration with macOS specific tools (launchd, etc.)
-- ⚪ **Platform Parity** - Ensure feature parity across all supported operating systems
+- 🟢 **Windows Compatibility** - Native PowerShell support, path handling, and OS-specific integrations
+- 🟢 **Linux Compatibility** - Full support for Debian/Ubuntu, Fedora, and Arch distributions
+- 🟢 **macOS Compatibility** - Native integration with macOS specific tools (launchd, etc.)
+- 🟢 **Platform Parity** - Ensure feature parity across all supported operating systems
 
 ### Daemon Mode
 
-- ⚪ **Background service** - Run APEX as persistent daemon (`apex daemon start/stop/status`)
-- ⚪ **Service installation** - `apex install-service` for systemd (Linux), launchd (macOS), and Windows Service
-- ⚪ **Auto-start on boot** - Optional system service registration
-- ⚪ **Task queue processing** - Automatically process queued tasks
-- ⚪ **Health monitoring** - Self-healing daemon with watchdog
-- ⚪ **Graceful shutdown** - Complete in-progress tasks before stopping
+- 🟢 **Background service** - Run APEX as persistent daemon (`apex daemon start/stop/status`)
+- 🟢 **Service installation** - `apex install-service` for systemd (Linux), launchd (macOS), and Windows Service
+- 🟢 **Auto-start on boot** - Optional system service registration
+- 🟢 **Task queue processing** - Automatically process queued tasks
+- 🟢 **Health monitoring** - Self-healing daemon with watchdog
+- 🟢 **Graceful shutdown** - Complete in-progress tasks before stopping
 
 ### Time-Based Usage Management
 
-- ⚪ **Day/night modes** - Different usage thresholds by time of day
-- ⚪ **Night mode (aggressive)** - Higher threshold (e.g., 96%) for overnight execution
-- ⚪ **Day mode (conservative)** - Lower threshold (e.g., 90%) to preserve manual capacity
-- ⚪ **Configurable time windows** - Define custom day/night hours
-- ⚪ **Auto-pause at threshold** - Stop new tasks when limit approached
-- ⚪ **Auto-resume after cooldown** - Resume when usage resets (already implemented for rate limits)
+- 🟢 **Day/night modes** - Different usage thresholds by time of day
+- 🟢 **Night mode (aggressive)** - Higher threshold (e.g., 96%) for overnight execution
+- 🟢 **Day mode (conservative)** - Lower threshold (e.g., 90%) to preserve manual capacity
+- 🟢 **Configurable time windows** - Define custom day/night hours
+- 🟢 **Auto-pause at threshold** - Stop new tasks when limit approached
+- 🟢 **Auto-resume after cooldown** - Resume when usage resets (already implemented for rate limits)
 
 ### Session Recovery & Continuity
 
-- ⚪ **Auto-resume on session limit** - Automatically resume highest parent task when context window expires
-- ⚪ **Session state persistence** - Save task progress before session ends
-- ⚪ **Conversation summary injection** - Inject summary of previous session context on resume
-- ⚪ **Seamless task continuation** - Resume exactly where the task left off
-- ⚪ **Resume notification** - Notify user when auto-resume triggers
-- ⚪ **Resume delay configuration** - Configurable delay before auto-resume (default: immediate)
-- ⚪ **Max resume attempts** - Limit consecutive auto-resumes to prevent infinite loops
+- 🟢 **Auto-resume on session limit** - Automatically resume highest parent task when context window expires
+- 🟢 **Session state persistence** - Save task progress before session ends
+- 🟢 **Conversation summary injection** - Inject summary of previous session context on resume
+- 🟢 **Seamless task continuation** - Resume exactly where the task left off
+- 🟢 **Resume notification** - Notify user when auto-resume triggers
+- 🟢 **Resume delay configuration** - Configurable delay before auto-resume (default: immediate)
+- 🟢 **Max resume attempts** - Limit consecutive auto-resumes to prevent infinite loops
 
 ### Task Auto-Generation (Idle Processing)
 
-- ⚪ **Idle task generation** - Generate improvement tasks during idle periods
-- ⚪ **Configurable strategies** - Maintenance (40%), refactoring (30%), documentation (20%), tests (10%)
-- ⚪ **Project-aware suggestions** - Analyze codebase for potential improvements
-- ⚪ **Priority queuing** - Auto-generated tasks at lower priority than manual
-- ⚪ **Strategy customization** - Configure via `.apex/config.yaml`
-- ⚪ **Opt-in/opt-out** - Disable auto-generation per project
+- 🟢 **Idle task generation** - Generate improvement tasks during idle periods
+- 🟢 **Configurable strategies** - Maintenance (40%), refactoring (30%), documentation (20%), tests (10%)
+- 🟢 **Project-aware suggestions** - Analyze codebase for potential improvements
+- 🟢 **Priority queuing** - Auto-generated tasks at lower priority than manual
+- 🟢 **Strategy customization** - Configure via `.apex/config.yaml`
+- 🟢 **Opt-in/opt-out** - Disable auto-generation per project
 
 ### Thought Capture Mode
 
-- ⚪ **Quick thought capture** - `apex think "idea"` for low-friction idea logging
-- ⚪ **Auto-commit to ideas branch** - Thoughts committed to `apex/ideas` branch
-- ⚪ **Thought → task promotion** - Convert thoughts to full tasks when ready
-- ⚪ **Thought search** - Search and browse captured thoughts
-- ⚪ **Thought expiration** - Optional auto-cleanup of old thoughts
+- 🟢 **Quick thought capture** - `apex think "idea"` for low-friction idea logging
+- 🟢 **Auto-commit to ideas branch** - Thoughts committed to `apex/ideas` branch
+- 🟢 **Thought → task promotion** - Convert thoughts to full tasks when ready
+- 🟢 **Thought search** - Search and browse captured thoughts
+- 🟢 **Thought expiration** - Optional auto-cleanup of old thoughts
 
 ### Workspace Isolation (inspired by [Rover](https://github.com/endorhq/rover))
 
 **Container Sandbox**
 
-- ⚪ **Docker/Podman sandbox** - Each task runs in isolated container
-- ⚪ **Custom base images** - Project-specific sandbox images (`.apex/Dockerfile`)
-- ⚪ **Auto dependency install** - Install project dependencies in sandbox
-- ⚪ **Sandbox shell access** - `apex shell <taskId>` for manual intervention
-- ⚪ **Resource limits** - CPU/memory limits per container
+- 🟢 **Docker/Podman sandbox** - Each task runs in isolated container
+- 🟢 **Custom base images** - Project-specific sandbox images (`.apex/Dockerfile`)
+- 🟢 **Auto dependency install** - Install project dependencies in sandbox
+- 🟢 **Sandbox shell access** - `apex shell <taskId>` for manual intervention
+- 🟢 **Resource limits** - CPU/memory limits per container
 
 **Git Worktree Isolation**
 
-- ⚪ **Worktree per task** - Each task gets independent git worktree
-- ⚪ **Branch isolation** - Separate branch per task (already have this)
-- ⚪ **True parallel execution** - Multiple tasks modify code simultaneously
-- ⚪ **Worktree cleanup** - Auto-cleanup after merge/cancel
+- 🟢 **Worktree per task** - Each task gets independent git worktree
+- 🟢 **Branch isolation** - Separate branch per task (already have this)
+- 🟢 **True parallel execution** - Multiple tasks modify code simultaneously
+- 🟢 **Worktree cleanup** - Auto-cleanup after merge/cancel
 
 **Isolation Modes**
 
-- ⚪ **Full isolation** - Container + worktree (safest, slower)
-- ⚪ **Worktree only** - Git worktree without container (faster)
-- ⚪ **Shared workspace** - Current behavior (fastest, single task)
-- ⚪ **Configurable per workflow** - Set default isolation mode
+- 🟢 **Full isolation** - Container + worktree (safest, slower)
+- 🟢 **Worktree only** - Git worktree without container (faster)
+- 🟢 **Shared workspace** - Current behavior (fastest, single task)
+- 🟢 **Configurable per workflow** - Set default isolation mode
 
 ### Task Interaction Commands (inspired by [Rover](https://github.com/endorhq/rover))
 
 **Task Refinement**
 
-- ⚪ **`apex iterate <taskId>`** - Refine task with additional instructions
-- ⚪ **`apex iterate <taskId> "feedback"`** - Add specific feedback for next iteration
-- ⚪ **Iteration history** - Track all iterations and their outcomes
-- ⚪ **Iteration diff** - Compare changes between iterations
+- 🟢 **`apex iterate <taskId>`** - Refine task with additional instructions
+- 🟢 **`apex iterate <taskId> "feedback"`** - Add specific feedback for next iteration
+- 🟢 **Iteration history** - Track all iterations and their outcomes
+- 🟢 **Iteration diff** - Compare changes between iterations
 
 **Task Inspection**
 
-- ⚪ **`apex inspect <taskId>`** - View comprehensive task results
-- ⚪ **`apex inspect <taskId> --files`** - List generated/modified files
-- ⚪ **`apex inspect <taskId> --file <path>`** - View specific file content
-- ⚪ **`apex inspect <taskId> --docs`** - View generated documentation
-- ⚪ **`apex inspect <taskId> --timeline`** - View execution timeline
+- 🟢 **`apex inspect <taskId>`** - View comprehensive task results
+- 🟢 **`apex inspect <taskId> --files`** - List generated/modified files
+- 🟢 **`apex inspect <taskId> --file <path>`** - View specific file content
+- 🟢 **`apex inspect <taskId> --docs`** - View generated documentation
+- 🟢 **`apex inspect <taskId> --timeline`** - View execution timeline
 
 **Code Review Commands**
 
-- ⚪ **`apex diff <taskId>`** - View all code changes made by task
-- ⚪ **`apex diff <taskId> --stat`** - Summary of changes (files, lines)
-- ⚪ **`apex diff <taskId> --file <path>`** - Diff for specific file
-- ⚪ **`apex diff <taskId> --staged`** - Show what will be committed
+- 🟢 **`apex diff <taskId>`** - View all code changes made by task
+- 🟢 **`apex diff <taskId> --stat`** - Summary of changes (files, lines)
+- 🟢 **`apex diff <taskId> --file <path>`** - Diff for specific file
+- 🟢 **`apex diff <taskId> --staged`** - Show what will be committed
 
 **Git Integration**
 
-- ⚪ **`apex push <taskId>`** - Push task branch to remote
-- ⚪ **`apex merge <taskId>`** - Merge task branch to current branch
-- ⚪ **`apex merge <taskId> --squash`** - Squash merge task changes
-- ⚪ **`apex checkout <taskId>`** - Switch to task's worktree/branch
+- 🟢 **`apex push <taskId>`** - Push task branch to remote
+- 🟢 **`apex merge <taskId>`** - Merge task branch to current branch
+- 🟢 **`apex merge <taskId> --squash`** - Squash merge task changes
+- 🟢 **`apex checkout <taskId>`** - Switch to task's worktree/branch
 
 ### Task Lifecycle Improvements
 
-- ⚪ **Soft delete (trash)** - `apex trash <taskId>` moves to trash instead of hard delete
-- ⚪ **Trash recovery** - `apex restore <taskId>` to recover deleted tasks
-- ⚪ **Trash management** - `apex trash list`, `apex trash empty`
-- ⚪ **Task archival** - Archive completed tasks for long-term storage
-- ⚪ **Task templates** - Save and reuse task configurations
+- 🟢 **Soft delete (trash)** - `apex trash <taskId>` moves to trash instead of hard delete
+- 🟢 **Trash recovery** - `apex restore <taskId>` to recover deleted tasks
+- 🟢 **Trash management** - `apex trash list`, `apex trash empty`
+- 🟢 **Task archival** - Archive completed tasks for long-term storage
+- 🟢 **Task templates** - Save and reuse task configurations
 
 ### Project Customization
 
-- ⚪ **Project Rules (.apexrules)** - Natural language rules file for agent behavior
-- ⚪ **Project conventions** - User-defined conventions for code style and patterns
+- 🟢 **Project Rules (.apexrules)** - Natural language rules file for agent behavior
+- 🟢 **Project conventions** - User-defined conventions for code style and patterns
 
 ### Safety & Control Enhancements
 
-- ⚪ **Granular Checkpoints** - "Time travel" undo for recent agent actions (filesystem revert)
-- ⚪ **Safe Revert** - Explicit rollback of last task actions
+- 🟢 **Granular Checkpoints** - "Time travel" undo for recent agent actions (filesystem revert)
+- 🟢 **Safe Revert** - Explicit rollback of last task actions
 
 ---
 
