@@ -10,6 +10,7 @@ import {
   WorkflowDefinitionSchema,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
+import { normalizePath } from './path-utils';
 
 const APEX_DIR = '.apex';
 const CONFIG_FILE = 'config.yaml';
@@ -49,7 +50,7 @@ export interface ContainerValidationResult {
  * Check if APEX is initialized in the given directory
  */
 export async function isApexInitialized(projectPath: string): Promise<boolean> {
-  const apexDir = path.join(projectPath, APEX_DIR);
+  const apexDir = normalizePath(path.join(projectPath, APEX_DIR));
   try {
     await fs.access(apexDir);
     return true;
@@ -116,7 +117,7 @@ export async function validateContainerWorkspaceConfig(config: ApexConfig): Prom
  * Load the APEX configuration from a project
  */
 export async function loadConfig(projectPath: string): Promise<ApexConfig> {
-  const configPath = path.join(projectPath, APEX_DIR, CONFIG_FILE);
+  const configPath = normalizePath(path.join(projectPath, APEX_DIR, CONFIG_FILE));
 
   try {
     const content = await fs.readFile(configPath, 'utf-8');
@@ -171,7 +172,7 @@ export async function loadConfig(projectPath: string): Promise<ApexConfig> {
  * Save the APEX configuration
  */
 export async function saveConfig(projectPath: string, config: ApexConfig): Promise<void> {
-  const configPath = path.join(projectPath, APEX_DIR, CONFIG_FILE);
+  const configPath = normalizePath(path.join(projectPath, APEX_DIR, CONFIG_FILE));
   const content = yaml.stringify(config, { indent: 2 });
   await fs.writeFile(configPath, content, 'utf-8');
 }
@@ -182,7 +183,7 @@ export async function saveConfig(projectPath: string, config: ApexConfig): Promi
 export async function loadAgents(
   projectPath: string
 ): Promise<Record<string, AgentDefinition>> {
-  const agentsDir = path.join(projectPath, APEX_DIR, AGENTS_DIR);
+  const agentsDir = normalizePath(path.join(projectPath, APEX_DIR, AGENTS_DIR));
   const agents: Record<string, AgentDefinition> = {};
 
   try {
@@ -191,7 +192,7 @@ export async function loadAgents(
     for (const file of files) {
       if (!file.endsWith('.md')) continue;
 
-      const filePath = path.join(agentsDir, file);
+      const filePath = normalizePath(path.join(agentsDir, file));
       const content = await fs.readFile(filePath, 'utf-8');
       const agent = parseAgentMarkdown(content);
 
@@ -251,7 +252,7 @@ export function parseAgentMarkdown(content: string): AgentDefinition | null {
 export async function loadWorkflows(
   projectPath: string
 ): Promise<Record<string, WorkflowDefinition>> {
-  const workflowsDir = path.join(projectPath, APEX_DIR, WORKFLOWS_DIR);
+  const workflowsDir = normalizePath(path.join(projectPath, APEX_DIR, WORKFLOWS_DIR));
   const workflows: Record<string, WorkflowDefinition> = {};
 
   try {
@@ -260,7 +261,7 @@ export async function loadWorkflows(
     for (const file of files) {
       if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue;
 
-      const filePath = path.join(workflowsDir, file);
+      const filePath = normalizePath(path.join(workflowsDir, file));
       const content = await fs.readFile(filePath, 'utf-8');
       const workflow = WorkflowDefinitionSchema.parse(yaml.parse(content));
       workflows[workflow.name] = workflow;
@@ -289,7 +290,7 @@ export async function loadWorkflow(
  * Get the path to a skill directory
  */
 export function getSkillPath(projectPath: string, skillName: string): string {
-  return path.join(projectPath, APEX_DIR, SKILLS_DIR, skillName, 'SKILL.md');
+  return normalizePath(path.join(projectPath, APEX_DIR, SKILLS_DIR, skillName, 'SKILL.md'));
 }
 
 /**
@@ -309,7 +310,7 @@ export async function loadSkill(projectPath: string, skillName: string): Promise
  * Get the scripts directory path
  */
 export function getScriptsDir(projectPath: string): string {
-  return path.join(projectPath, APEX_DIR, SCRIPTS_DIR);
+  return normalizePath(path.join(projectPath, APEX_DIR, SCRIPTS_DIR));
 }
 
 /**
@@ -337,13 +338,13 @@ export async function initializeApex(
     framework?: string;
   }
 ): Promise<void> {
-  const apexDir = path.join(projectPath, APEX_DIR);
+  const apexDir = normalizePath(path.join(projectPath, APEX_DIR));
 
   // Create directory structure
-  await fs.mkdir(path.join(apexDir, AGENTS_DIR), { recursive: true });
-  await fs.mkdir(path.join(apexDir, WORKFLOWS_DIR), { recursive: true });
-  await fs.mkdir(path.join(apexDir, SKILLS_DIR), { recursive: true });
-  await fs.mkdir(path.join(apexDir, SCRIPTS_DIR), { recursive: true });
+  await fs.mkdir(normalizePath(path.join(apexDir, AGENTS_DIR)), { recursive: true });
+  await fs.mkdir(normalizePath(path.join(apexDir, WORKFLOWS_DIR)), { recursive: true });
+  await fs.mkdir(normalizePath(path.join(apexDir, SKILLS_DIR)), { recursive: true });
+  await fs.mkdir(normalizePath(path.join(apexDir, SCRIPTS_DIR)), { recursive: true });
 
   // Create default config - use schema.parse() to apply defaults
   const defaultConfig = ApexConfigSchema.parse({
