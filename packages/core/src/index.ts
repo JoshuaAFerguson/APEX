@@ -30,3 +30,6 @@ export * from './package-manager-utils';
 
 // Path Utilities
 export * from './path-utils';
+
+// Shell Utilities
+export * from './shell-utils';
