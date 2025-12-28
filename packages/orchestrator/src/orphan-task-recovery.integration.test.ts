@@ -121,7 +121,6 @@ interface CreateTestTaskOptions {
   effort?: TaskEffort;
   pauseReason?: string;
   lastUpdatedAgo?: number; // milliseconds ago
-  subtaskIds?: string[];
   resumeAttempts?: number;
 }
 
@@ -150,18 +149,17 @@ beforeEach(async () => {
 
   // Initialize orchestrator
   orchestrator = new ApexOrchestrator({
-    projectRoot: testProjectPath,
-    dataDir: testProjectPath,
-    logLevel: 'debug',
+    projectPath: testProjectPath,
   });
+  await orchestrator.initialize();
 
   // Initialize daemon runner with orphan detection enabled
-  daemonRunner = new DaemonRunner(
-    store,
-    orchestrator,
-    DEFAULT_TEST_CONFIG,
-    testProjectPath
-  );
+  daemonRunner = new DaemonRunner({
+    projectPath: testProjectPath,
+    pollIntervalMs: 1000,
+    logToStdout: false,
+    config: DEFAULT_TEST_CONFIG,
+  });
 
   // Setup event capture
   orphanDetectedEvents = [];
@@ -215,23 +213,30 @@ async function createTestTask(options: CreateTestTaskOptions = {}): Promise<stri
     effort = 'medium',
     pauseReason,
     lastUpdatedAgo = 0,
-    subtaskIds = [],
     resumeAttempts = 0,
   } = options;
 
-  const taskId = await store.createTask({
+  const task = await store.createTask({
     description,
     priority,
     effort,
     workflow: 'development',
-    subtaskIds,
-    dependencies: [],
-    tags: [],
   });
+  const taskId = task.id;
 
   // Update status if different from default
   if (status !== 'pending') {
-    await store.updateTaskStatus(taskId, status, pauseReason);
+    if (status === 'paused' && pauseReason) {
+      // For paused tasks, use updateTask to set pauseReason properly
+      await store.updateTask(taskId, {
+        status,
+        pausedAt: new Date(),
+        pauseReason,
+        updatedAt: new Date(),
+      });
+    } else {
+      await store.updateTaskStatus(taskId, status);
+    }
   }
 
   // Simulate task being updated in the past
@@ -296,17 +301,16 @@ async function simulateDaemonRestart(): Promise<{
   await newStore.initialize();
 
   const newOrchestrator = new ApexOrchestrator({
-    projectRoot: testProjectPath,
-    dataDir: testProjectPath,
-    logLevel: 'debug',
+    projectPath: testProjectPath,
   });
+  await newOrchestrator.initialize();
 
-  const newRunner = new DaemonRunner(
-    newStore,
-    newOrchestrator,
-    DEFAULT_TEST_CONFIG,
-    testProjectPath
-  );
+  const newRunner = new DaemonRunner({
+    projectPath: testProjectPath,
+    pollIntervalMs: 1000,
+    logToStdout: false,
+    config: DEFAULT_TEST_CONFIG,
+  });
 
   // Setup event capture for new orchestrator
   newOrchestrator.on('orphan:detected', (event: OrphanDetectedEvent) => {
