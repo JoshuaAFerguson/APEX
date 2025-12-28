@@ -137,6 +137,18 @@ export function isWindowsServiceAvailable(): boolean {
   }
 }
 
+export function isNSSMAvailable(): boolean {
+  // Check if NSSM (Non-Sucking Service Manager) is available on Windows
+  if (process.platform !== 'win32') return false;
+
+  try {
+    require('child_process').execSync('nssm version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ============================================================================
 // SystemdGenerator Implementation
 // ============================================================================
@@ -640,6 +652,13 @@ export class ServiceManager {
     return false;
   }
 
+  /**
+   * Check if NSSM (Non-Sucking Service Manager) is available on Windows
+   */
+  isNSSMSupported(): boolean {
+    return this.platform === 'win32' && isNSSMAvailable();
+  }
+
   // ============================================================================
   // Service File Generation
   // ============================================================================
@@ -913,6 +932,106 @@ export class ServiceManager {
     }
   }
 
+  /**
+   * Installs Windows service directly using sc.exe when NSSM is not available
+   */
+  async installWindowsServiceDirect(): Promise<void> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Direct Windows service install only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const nodePath = process.execPath;
+    const apexCliPath = this.findApexCliPath();
+
+    // Create a wrapper batch script
+    const wrapperScript = `@echo off
+cd /d "${this.options.workingDirectory}"
+set NODE_ENV=production
+set APEX_PROJECT_PATH=${this.options.projectPath}
+${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${value}`).join('\n')}
+"${nodePath}" "${apexCliPath}" daemon start --foreground`;
+
+    const wrapperPath = path.join(process.env.TEMP || 'C:\\temp', 'apex-service-wrapper.bat');
+
+    try {
+      await fs.writeFile(wrapperPath, wrapperScript, 'utf-8');
+
+      // Create service using sc.exe directly
+      const startType = this.enableOnBoot ? 'auto' : 'demand';
+      await this.execCommand(
+        `sc create "${this.options.serviceName}" binPath= "\\"${wrapperPath}\\"" DisplayName= "${this.options.serviceDescription}" start= ${startType}`
+      );
+      await this.execCommand(`sc description "${this.options.serviceName}" "${this.options.serviceDescription}"`);
+
+    } catch (error) {
+      throw new ServiceError(
+        `Failed to install Windows service directly: ${(error as Error).message}`,
+        'INSTALL_FAILED',
+        error as Error
+      );
+    }
+  }
+
+  /**
+   * Uninstalls Windows service directly using sc.exe
+   */
+  async uninstallWindowsServiceDirect(): Promise<void> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Direct Windows service uninstall only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    try {
+      // Stop service if running
+      try {
+        await this.stop();
+      } catch {
+        // Ignore stop errors during uninstall
+      }
+
+      // Delete service
+      await this.execCommand(`sc delete "${this.options.serviceName}"`);
+
+      // Clean up wrapper script
+      const wrapperPath = path.join(process.env.TEMP || 'C:\\temp', 'apex-service-wrapper.bat');
+      try {
+        await fs.unlink(wrapperPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    } catch (error) {
+      throw new ServiceError(
+        `Failed to uninstall Windows service: ${(error as Error).message}`,
+        'UNINSTALL_FAILED',
+        error as Error
+      );
+    }
+  }
+
+  private findApexCliPath(): string {
+    try {
+      return require.resolve('@apex/cli/dist/index.js');
+    } catch {
+      // Fallback to checking common locations
+      const possiblePaths = [
+        path.join(process.cwd(), 'node_modules/@apex/cli/dist/index.js'),
+        path.join(process.cwd(), 'packages/cli/dist/index.js'),
+        '/usr/local/lib/node_modules/@apex/cli/dist/index.js',
+      ];
+
+      for (const possiblePath of possiblePaths) {
+        try {
+          require('fs').accessSync(possiblePath);
+          return possiblePath;
+        } catch {
+          // Continue to next path
+        }
+      }
+
+      // If nothing found, return a reasonable default
+      return path.join(process.cwd(), 'node_modules/@apex/cli/dist/index.js');
+    }
+  }
+
   async disable(): Promise<void> {
     if (this.platform === 'linux') {
       await this.execCommand(`systemctl --user disable ${this.options.serviceName}`);
@@ -1079,12 +1198,14 @@ export class ServiceManager {
       // Parse sc query output
       const running = stdout.includes('RUNNING');
       const stopped = stdout.includes('STOPPED');
+      const startPending = stdout.includes('START_PENDING');
+      const stopPending = stdout.includes('STOP_PENDING');
 
       // Check if service is set to auto-start (enabled)
       let enabled = false;
       try {
         const { stdout: configOutput } = await execPromise(`sc qc "${this.options.serviceName}"`);
-        enabled = configOutput.includes('AUTO_START');
+        enabled = configOutput.includes('AUTO_START') || configOutput.includes('DEMAND_START');
       } catch {
         // If we can't get config, assume not enabled
         enabled = false;
@@ -1092,8 +1213,9 @@ export class ServiceManager {
 
       // Try to get PID if running
       let pid: number | undefined;
-      if (running) {
+      if (running || startPending) {
         try {
+          // Try wmic first
           const { stdout: processOutput } = await execPromise(
             `wmic service where "name='${this.options.serviceName}'" get ProcessId /value`
           );
@@ -1103,19 +1225,43 @@ export class ServiceManager {
             if (pid === 0) pid = undefined; // Service not actually running if PID is 0
           }
         } catch {
-          // PID detection failed, continue without it
+          // Try PowerShell as fallback
+          try {
+            const { stdout: psOutput } = await execPromise(
+              `powershell.exe -Command "Get-WmiObject -Class Win32_Service -Filter \\"Name='${this.options.serviceName}'\\" | Select-Object ProcessId"`
+            );
+            const psMatch = psOutput.match(/(\d+)/);
+            if (psMatch) {
+              pid = parseInt(psMatch[1], 10);
+              if (pid === 0) pid = undefined;
+            }
+          } catch {
+            // PID detection failed completely, continue without it
+          }
         }
       }
 
       return {
         installed: true,
         enabled,
-        running,
+        running: running && !stopPending,
         pid,
         platform: this.platform,
         servicePath,
       };
-    } catch {
+    } catch (error) {
+      const err = error as Error & { stderr?: string };
+      // If service doesn't exist, we would have thrown a more specific error earlier
+      // This catch is for other unexpected errors
+      if (err.stderr?.includes('The specified service does not exist')) {
+        return {
+          installed: false,
+          enabled: false,
+          running: false,
+          platform: this.platform,
+        };
+      }
+
       return {
         installed: true,
         enabled: false,
@@ -1142,9 +1288,49 @@ export class ServiceManager {
       await execPromise(command);
     } catch (error) {
       const err = error as Error & { stderr?: string };
+      const errorMessage = err.stderr || err.message;
+
+      // Provide more specific error codes based on the command and error
+      let errorCode: ServiceErrorCode = 'PERMISSION_DENIED';
+
+      if (this.platform === 'win32') {
+        // Windows-specific error handling
+        if (command.includes('sc query') || command.includes('sc qc')) {
+          if (errorMessage.includes('The specified service does not exist')) {
+            errorCode = 'SERVICE_NOT_FOUND';
+          } else if (errorMessage.includes('Access is denied')) {
+            errorCode = 'PERMISSION_DENIED';
+          }
+        } else if (command.includes('sc start')) {
+          if (errorMessage.includes('service is already running') || errorMessage.includes('already started')) {
+            // Service already running - this could be considered success
+            return; // Don't throw error for already running service
+          } else if (errorMessage.includes('The specified service does not exist')) {
+            errorCode = 'SERVICE_NOT_FOUND';
+          }
+        } else if (command.includes('sc stop')) {
+          if (errorMessage.includes('service is not started') || errorMessage.includes('not running')) {
+            // Service already stopped - this could be considered success
+            return; // Don't throw error for already stopped service
+          } else if (errorMessage.includes('The specified service does not exist')) {
+            errorCode = 'SERVICE_NOT_FOUND';
+          }
+        } else if (command.includes('powershell') && command.includes('-Install')) {
+          if (errorMessage.includes('already exists')) {
+            errorCode = 'SERVICE_EXISTS';
+          } else if (errorMessage.includes('Access is denied')) {
+            errorCode = 'PERMISSION_DENIED';
+          } else {
+            errorCode = 'INSTALL_FAILED';
+          }
+        } else if (command.includes('powershell') && command.includes('-Uninstall')) {
+          errorCode = 'UNINSTALL_FAILED';
+        }
+      }
+
       throw new ServiceError(
-        err.stderr || err.message,
-        'PERMISSION_DENIED',
+        errorMessage,
+        errorCode,
         err
       );
     }

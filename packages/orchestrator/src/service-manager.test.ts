@@ -11,6 +11,7 @@ import {
   isSystemdAvailable,
   isLaunchdAvailable,
   isWindowsServiceAvailable,
+  isNSSMAvailable,
   type ServiceManagerOptions,
 } from './service-manager';
 
@@ -162,6 +163,22 @@ describe('ServiceManager', () => {
 
       mockProcess.platform = 'linux';
       expect(isWindowsServiceAvailable()).toBe(false);
+    });
+
+    it('should check NSSM availability', () => {
+      mockProcess.platform = 'win32';
+      const execSync = require('child_process').execSync;
+
+      vi.mocked(execSync).mockImplementationOnce(() => 'NSSM 2.24');
+      expect(isNSSMAvailable()).toBe(true);
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error('nssm is not recognized');
+      });
+      expect(isNSSMAvailable()).toBe(false);
+
+      mockProcess.platform = 'linux';
+      expect(isNSSMAvailable()).toBe(false);
     });
   });
 
@@ -443,6 +460,21 @@ describe('ServiceManager', () => {
       const manager = new ServiceManager(defaultOptions);
       expect(manager.getPlatform()).toBe('win32');
       expect(manager.isSupported()).toBeDefined();
+    });
+
+    it('should check NSSM support on Windows', () => {
+      const execSync = require('child_process').execSync;
+      const manager = new ServiceManager(defaultOptions);
+
+      // Mock NSSM available
+      vi.mocked(execSync).mockImplementationOnce(() => 'NSSM 2.24');
+      expect(manager.isNSSMSupported()).toBe(true);
+
+      // Mock NSSM not available
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error('nssm is not recognized');
+      });
+      expect(manager.isNSSMSupported()).toBe(false);
     });
 
     it('should generate PowerShell script file', () => {
@@ -1561,6 +1593,394 @@ describe('ServiceManager', () => {
     });
   });
 
+  describe('Windows Direct Service Management Methods', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'win32';
+    });
+
+    describe('installWindowsServiceDirect', () => {
+      it('should install Windows service directly using sc.exe', async () => {
+        mockFs.writeFile.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.installWindowsServiceDirect()).resolves.not.toThrow();
+
+        // Should create wrapper script
+        expect(mockFs.writeFile).toHaveBeenCalledWith(
+          expect.stringContaining('apex-service-wrapper.bat'),
+          expect.stringContaining('@echo off'),
+          'utf-8'
+        );
+
+        // Should call sc create with correct parameters
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining('sc create "apex-daemon"'),
+          expect.any(Function)
+        );
+
+        // Should set service description
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining('sc description "apex-daemon"'),
+          expect.any(Function)
+        );
+      });
+
+      it('should install with auto start when enableOnBoot is true', async () => {
+        mockFs.writeFile.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        manager.setEnableOnBoot(true);
+        await manager.installWindowsServiceDirect();
+
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining('start= auto'),
+          expect.any(Function)
+        );
+      });
+
+      it('should install with demand start when enableOnBoot is false', async () => {
+        mockFs.writeFile.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        manager.setEnableOnBoot(false);
+        await manager.installWindowsServiceDirect();
+
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining('start= demand'),
+          expect.any(Function)
+        );
+      });
+
+      it('should include environment variables in wrapper script', async () => {
+        mockFs.writeFile.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager({
+          ...defaultOptions,
+          environment: { TEST_VAR: 'test_value', ANOTHER_VAR: 'another_value' },
+        });
+
+        await manager.installWindowsServiceDirect();
+
+        expect(mockFs.writeFile).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.stringMatching(/set TEST_VAR=test_value/),
+          'utf-8'
+        );
+        expect(mockFs.writeFile).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.stringMatching(/set ANOTHER_VAR=another_value/),
+          'utf-8'
+        );
+      });
+
+      it('should throw error on non-Windows platform', async () => {
+        mockProcess.platform = 'linux';
+        const manager = new ServiceManager(defaultOptions);
+
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(ServiceError);
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(/Direct Windows service install only available on Windows/);
+      });
+
+      it('should handle sc create command failure', async () => {
+        mockFs.writeFile.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc create')) {
+            const error = new Error('Access denied') as Error & { stderr?: string };
+            error.stderr = 'Access denied';
+            if (callback) callback(error);
+          } else {
+            if (callback) callback(null, { stdout: '', stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(ServiceError);
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(/Failed to install Windows service directly/);
+      });
+
+      it('should handle wrapper script creation failure', async () => {
+        mockFs.writeFile.mockRejectedValue(new Error('Permission denied'));
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(ServiceError);
+        await expect(manager.installWindowsServiceDirect()).rejects.toThrow(/Failed to install Windows service directly/);
+      });
+    });
+
+    describe('uninstallWindowsServiceDirect', () => {
+      it('should uninstall Windows service directly using sc.exe', async () => {
+        mockFs.unlink.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.uninstallWindowsServiceDirect()).resolves.not.toThrow();
+
+        // Should call sc delete
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining('sc delete "apex-daemon"'),
+          expect.any(Function)
+        );
+
+        // Should clean up wrapper script
+        expect(mockFs.unlink).toHaveBeenCalledWith(
+          expect.stringContaining('apex-service-wrapper.bat')
+        );
+      });
+
+      it('should stop service before uninstalling', async () => {
+        mockFs.unlink.mockResolvedValue(undefined);
+        let stopCalled = false;
+
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc stop')) {
+            stopCalled = true;
+          }
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await manager.uninstallWindowsServiceDirect();
+
+        expect(stopCalled).toBe(true);
+      });
+
+      it('should continue with uninstall even if stop fails', async () => {
+        mockFs.unlink.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc stop')) {
+            const error = new Error('Service not running');
+            if (callback) callback(error);
+          } else {
+            if (callback) callback(null, { stdout: '', stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.uninstallWindowsServiceDirect()).resolves.not.toThrow();
+      });
+
+      it('should continue with cleanup even if wrapper script removal fails', async () => {
+        mockFs.unlink.mockRejectedValue(new Error('File not found'));
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.uninstallWindowsServiceDirect()).resolves.not.toThrow();
+      });
+
+      it('should throw error on non-Windows platform', async () => {
+        mockProcess.platform = 'linux';
+        const manager = new ServiceManager(defaultOptions);
+
+        await expect(manager.uninstallWindowsServiceDirect()).rejects.toThrow(ServiceError);
+        await expect(manager.uninstallWindowsServiceDirect()).rejects.toThrow(/Direct Windows service uninstall only available on Windows/);
+      });
+
+      it('should handle sc delete command failure', async () => {
+        mockFs.unlink.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc delete')) {
+            const error = new Error('Service not found') as Error & { stderr?: string };
+            error.stderr = 'Service not found';
+            if (callback) callback(error);
+          } else {
+            if (callback) callback(null, { stdout: '', stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.uninstallWindowsServiceDirect()).rejects.toThrow(ServiceError);
+        await expect(manager.uninstallWindowsServiceDirect()).rejects.toThrow(/Failed to uninstall Windows service/);
+      });
+    });
+  });
+
+  describe('Windows Service Enhanced Error Handling', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'win32';
+    });
+
+    describe('sc start command error handling', () => {
+      it('should not throw error when service is already running', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc start')) {
+            const error = new Error('Service already running') as Error & { stderr?: string };
+            error.stderr = 'The service is already running';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.start()).resolves.not.toThrow();
+      });
+
+      it('should not throw error when service is already started', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc start')) {
+            const error = new Error('Already started') as Error & { stderr?: string };
+            error.stderr = 'Service already started';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.start()).resolves.not.toThrow();
+      });
+
+      it('should throw SERVICE_NOT_FOUND when service does not exist', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc start')) {
+            const error = new Error('Service not found') as Error & { stderr?: string };
+            error.stderr = 'The specified service does not exist';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.start()).rejects.toThrow(ServiceError);
+        await expect(manager.start()).rejects.toThrow(/specified service does not exist/);
+      });
+
+      it('should throw PERMISSION_DENIED on access denied', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc start')) {
+            const error = new Error('Access denied') as Error & { stderr?: string };
+            error.stderr = 'Access is denied';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.start()).rejects.toThrow(ServiceError);
+        await expect(manager.start()).rejects.toThrow(/Access is denied/);
+      });
+    });
+
+    describe('sc stop command error handling', () => {
+      it('should not throw error when service is not running', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc stop')) {
+            const error = new Error('Service not running') as Error & { stderr?: string };
+            error.stderr = 'The service is not started';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.stop()).resolves.not.toThrow();
+      });
+
+      it('should not throw error when service is not running (alternative message)', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc stop')) {
+            const error = new Error('Not running') as Error & { stderr?: string };
+            error.stderr = 'Service not running';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.stop()).resolves.not.toThrow();
+      });
+
+      it('should throw SERVICE_NOT_FOUND when service does not exist', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc stop')) {
+            const error = new Error('Service not found') as Error & { stderr?: string };
+            error.stderr = 'The specified service does not exist';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.stop()).rejects.toThrow(ServiceError);
+        await expect(manager.stop()).rejects.toThrow(/specified service does not exist/);
+      });
+    });
+
+    describe('sc query command error handling', () => {
+      it('should handle non-existent service in query commands', async () => {
+        mockFs.access.mockResolvedValue(undefined);
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            const error = new Error('Service does not exist') as Error & { stderr?: string };
+            error.stderr = 'The specified service does not exist';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.installed).toBe(false);
+        expect(status.running).toBe(false);
+      });
+    });
+
+    describe('PowerShell script error handling', () => {
+      it('should handle PowerShell install script failures', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('powershell') && command.includes('-Install')) {
+            const error = new Error('PowerShell execution failed') as Error & { stderr?: string };
+            error.stderr = 'PowerShell script failed';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.enable()).rejects.toThrow(ServiceError);
+      });
+
+      it('should handle service already exists error during install', async () => {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('powershell') && command.includes('-Install')) {
+            const error = new Error('Service exists') as Error & { stderr?: string };
+            error.stderr = 'Service already exists';
+            if (callback) callback(error);
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        await expect(manager.enable()).rejects.toThrow(ServiceError);
+      });
+    });
+  });
+
   describe('Advanced Integration Tests', () => {
     it('should handle rapid successive operations', async () => {
       mockProcess.platform = 'linux';
@@ -2291,6 +2711,266 @@ describe('ServiceManager', () => {
       await expect(manager.start()).resolves.not.toThrow();
 
       expect(attemptCount).toBe(2);
+    });
+
+    it('should handle Windows service complete lifecycle with direct methods', async () => {
+      mockProcess.platform = 'win32';
+      let serviceInstalled = false;
+      let serviceRunning = false;
+
+      mockFs.writeFile.mockImplementation(() => {
+        serviceInstalled = true;
+        return Promise.resolve();
+      });
+
+      mockFs.unlink.mockImplementation(() => {
+        serviceInstalled = false;
+        return Promise.resolve();
+      });
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc create')) {
+          serviceInstalled = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('sc delete')) {
+          serviceInstalled = false;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('sc start')) {
+          serviceRunning = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('sc stop')) {
+          serviceRunning = false;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('sc query')) {
+          const state = serviceRunning ? 'RUNNING' : 'STOPPED';
+          const output = `SERVICE_NAME: apex-daemon\n        STATE              : 4  ${state}`;
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('sc qc')) {
+          const output = 'START_TYPE         : 2   AUTO_START';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // Test direct installation
+      await manager.installWindowsServiceDirect();
+      expect(serviceInstalled).toBe(true);
+
+      // Test start
+      await manager.start();
+      expect(serviceRunning).toBe(true);
+
+      // Test restart (should call both stop and start on Windows)
+      await manager.restart();
+      expect(serviceRunning).toBe(true); // Should be running after restart
+
+      // Test stop
+      await manager.stop();
+      expect(serviceRunning).toBe(false);
+
+      // Test direct uninstallation
+      await manager.uninstallWindowsServiceDirect();
+      expect(serviceInstalled).toBe(false);
+    });
+
+    it('should handle Windows service operations with PowerShell fallback scenarios', async () => {
+      mockProcess.platform = 'win32';
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      let enableCalled = false;
+      let disableCalled = false;
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('powershell') && command.includes('-Install')) {
+          enableCalled = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('powershell') && command.includes('-Uninstall')) {
+          disableCalled = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // Test PowerShell script-based enable (used by regular install)
+      await manager.enable();
+      expect(enableCalled).toBe(true);
+
+      // Test PowerShell script-based disable (used by regular uninstall)
+      await manager.disable();
+      expect(disableCalled).toBe(true);
+    });
+  });
+
+  describe('Windows Service Integration Test Scenarios', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'win32';
+    });
+
+    it('should handle mixed Windows service installation approaches', async () => {
+      // Test scenario where NSSM is preferred but fallback to sc.exe is needed
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      let nssmUsed = false;
+      let scUsed = false;
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('nssm install')) {
+          nssmUsed = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else if (command.includes('sc create')) {
+          scUsed = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // Regular install should use PowerShell script (which may use NSSM or sc.exe)
+      await manager.install();
+
+      // Direct install should always use sc.exe
+      await manager.installWindowsServiceDirect();
+      expect(scUsed).toBe(true);
+    });
+
+    it('should handle Windows service status with various edge cases', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+
+      // Test different status combinations
+      const statusTests = [
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 4  RUNNING',
+          configOutput: 'START_TYPE         : 2   AUTO_START',
+          wmicOutput: 'ProcessId=1234',
+          expectedRunning: true,
+          expectedEnabled: true,
+          expectedPid: 1234,
+        },
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 1  STOPPED',
+          configOutput: 'START_TYPE         : 4   DISABLED',
+          wmicOutput: 'ProcessId=0',
+          expectedRunning: false,
+          expectedEnabled: false,
+          expectedPid: undefined,
+        },
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 2  START_PENDING',
+          configOutput: 'START_TYPE         : 3   DEMAND_START',
+          wmicOutput: 'ProcessId=5678',
+          expectedRunning: false, // START_PENDING is not considered running
+          expectedEnabled: false,
+          expectedPid: 5678,
+        },
+      ];
+
+      for (const test of statusTests) {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            if (callback) callback(null, { stdout: test.queryOutput, stderr: '' });
+          } else if (command.includes('sc qc')) {
+            if (callback) callback(null, { stdout: test.configOutput, stderr: '' });
+          } else if (command.includes('wmic service')) {
+            if (callback) callback(null, { stdout: test.wmicOutput, stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.running).toBe(test.expectedRunning);
+        expect(status.enabled).toBe(test.expectedEnabled);
+        expect(status.pid).toBe(test.expectedPid);
+        expect(status.platform).toBe('win32');
+        expect(status.installed).toBe(true);
+      }
+    });
+
+    it('should handle Windows service recovery and error resilience', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      let operationCount = 0;
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        operationCount++;
+
+        if (command.includes('sc start') && operationCount === 1) {
+          // First start attempt fails with permission error
+          const error = new Error('Access denied') as Error & { stderr?: string };
+          error.stderr = 'Access is denied';
+          if (callback) callback(error);
+        } else if (command.includes('sc start') && operationCount === 2) {
+          // Second start attempt fails with service already running (should succeed)
+          const error = new Error('Already running') as Error & { stderr?: string };
+          error.stderr = 'The service is already running';
+          if (callback) callback(error);
+        } else if (command.includes('sc stop') && operationCount === 3) {
+          // Stop attempt fails with service not running (should succeed)
+          const error = new Error('Not running') as Error & { stderr?: string };
+          error.stderr = 'The service is not started';
+          if (callback) callback(error);
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // First start should fail due to permission
+      await expect(manager.start()).rejects.toThrow(ServiceError);
+
+      // Second start should succeed (service already running)
+      await expect(manager.start()).resolves.not.toThrow();
+
+      // Stop should succeed (service not running)
+      await expect(manager.stop()).resolves.not.toThrow();
+
+      expect(operationCount).toBe(3);
+    });
+
+    it('should handle Windows service PowerShell execution fallback gracefully', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      // PowerShell script execution fails
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('powershell') && command.includes('-Install')) {
+          const error = new Error('PowerShell execution failed') as Error & { stderr?: string };
+          error.stderr = 'PowerShell execution policy restrictions';
+          if (callback) callback(error);
+        } else if (command.includes('daemon-reload')) {
+          // Skip on Windows
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      // Install should succeed but enableAfterInstall should add warnings
+      const result = await manager.install({ enableAfterInstall: true });
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(false); // Should be false because enable failed
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings[0]).toContain('could not be enabled');
     });
   });
 });
