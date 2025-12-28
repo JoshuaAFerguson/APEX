@@ -258,11 +258,11 @@ describe('Archive API Contract Tests', () => {
   describe('Archive API HTTP method validation', () => {
     it('should reject unsupported HTTP methods on archive endpoint', async () => {
       // Test various unsupported methods
-      const unsupportedMethods = ['GET', 'PUT', 'DELETE', 'PATCH'];
+      const unsupportedMethods = ['GET', 'PUT', 'DELETE', 'PATCH'] as const;
 
       for (const method of unsupportedMethods) {
         const response = await server.inject({
-          method,
+          method: method as 'GET' | 'PUT' | 'DELETE' | 'PATCH',
           url: '/tasks/some-id/archive',
         });
 
@@ -272,11 +272,11 @@ describe('Archive API Contract Tests', () => {
     });
 
     it('should reject unsupported HTTP methods on archived list endpoint', async () => {
-      const unsupportedMethods = ['POST', 'PUT', 'DELETE', 'PATCH'];
+      const unsupportedMethods = ['POST', 'PUT', 'DELETE', 'PATCH'] as const;
 
       for (const method of unsupportedMethods) {
         const response = await server.inject({
-          method,
+          method: method as 'POST' | 'PUT' | 'DELETE' | 'PATCH',
           url: '/tasks/archived',
         });
 

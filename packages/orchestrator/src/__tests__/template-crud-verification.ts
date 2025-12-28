@@ -132,6 +132,9 @@ export async function verifyTemplateCRUDImplementation(orchestrator: ApexOrchest
       name: 'Event Test Template',
       description: 'Testing events',
       workflow: 'feature',
+      priority: 'normal',
+      effort: 'medium',
+      tags: [],
     });
 
     // Update the template to test update events
@@ -159,8 +162,9 @@ export async function verifyTemplateCRUDImplementation(orchestrator: ApexOrchest
         description: 'Task from verification template',
       });
 
-      if (taskFromTemplate.name !== updatedTemplate.name) {
-        errors.push('❌ Integration: Task name not inherited from template');
+      // Note: Task doesn't have a 'name' field - verify description was used from override
+      if (taskFromTemplate.description !== 'Task from verification template') {
+        errors.push('❌ Integration: Task description not set correctly');
       } else {
         results.push('✅ Integration: Task created successfully from template');
       }
@@ -231,7 +235,7 @@ export async function runTemplateVerification(testDir: string): Promise<boolean>
   let orchestrator: ApexOrchestrator | null = null;
 
   try {
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
 
     const verification = await verifyTemplateCRUDImplementation(orchestrator);

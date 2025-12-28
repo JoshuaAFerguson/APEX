@@ -251,10 +251,10 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Cross-Platform Support (Priority)
 
-- 🟢 **Windows Compatibility** - Native PowerShell support, path handling, and OS-specific integrations
-- 🟢 **Linux Compatibility** - Full support for Debian/Ubuntu, Fedora, and Arch distributions
-- 🟢 **macOS Compatibility** - Native integration with macOS specific tools (launchd, etc.)
-- 🟢 **Platform Parity** - Ensure feature parity across all supported operating systems
+- ⚪ **Windows Compatibility** - Native PowerShell support, Windows Service integration, path handling
+- 🟢 **Linux Compatibility** - Full support for Debian/Ubuntu, Fedora, and Arch distributions (systemd)
+- 🟢 **macOS Compatibility** - Native integration with macOS specific tools (launchd)
+- ⚪ **Platform Parity** - Ensure feature parity across all supported operating systems
 
 ### Daemon Mode
 

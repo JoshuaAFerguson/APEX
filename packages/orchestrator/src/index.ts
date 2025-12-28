@@ -125,6 +125,10 @@ export interface OrchestratorEvents {
   // Dependency installation events
   'dependency:install-started': (event: DependencyInstallEventData) => void;
   'dependency:install-completed': (event: DependencyInstallCompletedEventData) => void;
+
+  // Template events
+  'template:created': (template: TaskTemplate) => void;
+  'template:updated': (template: TaskTemplate) => void;
 }
 
 /**
@@ -381,6 +385,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             strategy: 'worktree' as const,
             path: worktreePath,
             cleanup: this.effectiveConfig.git.worktree?.cleanupOnComplete ?? true,
+            preserveOnFailure: this.effectiveConfig.git.worktree?.preserveOnFailure ?? false,
           },
         };
 
@@ -4540,7 +4545,7 @@ Parent: ${parentTask.description}`;
             level: 'warn',
             message: `Workspace cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
             timestamp: new Date(),
-            component: 'workspace-cleanup'
+            metadata: { component: 'workspace-cleanup' }
           });
         }
       }
@@ -4558,7 +4563,7 @@ Parent: ${parentTask.description}`;
           level: 'info',
           message: `Workspace preserved for debugging (preserveOnFailure=true). Strategy: ${task.workspace?.strategy || 'unknown'}, Path: ${task.workspace?.path || 'unknown'}`,
           timestamp: new Date(),
-          component: 'workspace-cleanup'
+          metadata: { component: 'workspace-cleanup' }
         });
       } else {
         // Clean up workspace since preserveOnFailure is false
@@ -4571,7 +4576,7 @@ Parent: ${parentTask.description}`;
               level: 'warn',
               message: `Workspace cleanup failed after task failure: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
               timestamp: new Date(),
-              component: 'workspace-cleanup'
+              metadata: { component: 'workspace-cleanup' }
             });
           }
         }

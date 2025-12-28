@@ -501,6 +501,7 @@ export class TaskStore {
       pauseReason: string | undefined;
       trashedAt: Date | undefined;
       archivedAt: Date | undefined;
+      workspace: WorkspaceConfig | undefined;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -624,6 +625,11 @@ export class TaskStore {
     if ('archivedAt' in updates) {
       setClauses.push('archived_at = @archivedAt');
       params.archivedAt = updates.archivedAt ? updates.archivedAt.toISOString() : null;
+    }
+
+    if ('workspace' in updates) {
+      setClauses.push('workspace_config = @workspaceConfig');
+      params.workspaceConfig = updates.workspace ? JSON.stringify(updates.workspace) : null;
     }
 
     if (setClauses.length === 0) return;

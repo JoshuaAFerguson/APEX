@@ -72,7 +72,7 @@ export type WorkflowStage = z.infer<typeof WorkflowStageSchema>;
  */
 export const IsolationConfigSchema = z.object({
   /** Isolation mode for this workflow */
-  mode: IsolationModeSchema,
+  mode: z.lazy(() => IsolationModeSchema),
   /** Container configuration for 'full' mode (optional) */
   container: z.lazy(() => ContainerConfigSchema).optional(),
   /** Whether to cleanup workspace after task completion (default: true) */
@@ -406,7 +406,7 @@ export const ApexConfigSchema = z.object({
     .optional(),
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
-  workspace: WorkspaceDefaultsSchema.optional(),
+  workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 

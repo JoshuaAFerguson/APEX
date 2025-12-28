@@ -11,7 +11,7 @@
  */
 
 import { ContainerManager } from '../container-manager';
-import { ContainerConfig } from '../types';
+import { ContainerConfigSchema } from '../types';
 
 async function main() {
   const containerManager = new ContainerManager();
@@ -60,7 +60,7 @@ async function main() {
     // Example: Create and run a test container that will exit
     console.log('Creating example container for testing...');
 
-    const testConfig: ContainerConfig = {
+    const testConfig = ContainerConfigSchema.parse({
       image: 'alpine:latest',
       command: ['sh', '-c', 'echo "Hello from APEX container"; sleep 2; exit 1'],
       autoRemove: true,
@@ -68,7 +68,7 @@ async function main() {
         'apex.managed': 'true',
         'apex.task.id': 'example-task-123'
       }
-    };
+    });
 
     const result = await containerManager.createContainer({
       config: testConfig,

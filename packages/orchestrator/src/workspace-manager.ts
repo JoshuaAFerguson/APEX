@@ -209,6 +209,7 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     const config = task.workspace || {
       strategy: this.defaultStrategy,
       cleanup: true,
+      preserveOnFailure: false,
     };
 
     const workspaceInfo: WorkspaceInfo = {
@@ -695,8 +696,8 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     this.emit('dependency-install-started', startedData);
 
     while (attempt <= maxRetries) {
+      const attemptStartTime = Date.now();
       try {
-        const attemptStartTime = Date.now();
 
         // Apply recovery strategies based on previous failures
         let currentCommand = installCommand;

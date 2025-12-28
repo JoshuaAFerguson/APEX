@@ -426,6 +426,8 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       prDraft: config.git?.prDraft ?? false,
       prLabels: config.git?.prLabels,
       prReviewers: config.git?.prReviewers,
+      autoWorktree: config.git?.autoWorktree ?? false,
+      worktree: config.git?.worktree,
     },
     limits: {
       maxTokensPerTask: config.limits?.maxTokensPerTask || 500000,

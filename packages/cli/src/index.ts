@@ -359,7 +359,7 @@ export const commands: Command[] = [
         console.log(chalk.cyan(`\n${headerText}\n`));
 
         for (const task of tasks) {
-          let statusText = task.status;
+          let statusText: string = task.status;
           let statusEmoji = getStatusEmoji(task.status);
 
           // If task is archived, show archived status
@@ -1192,10 +1192,10 @@ export const commands: Command[] = [
           console.log(chalk.gray('Use "/iterate <task-id> --diff" to see changes'));
 
         } catch (error) {
-          if (error.message === 'No feedback provided') {
+          if (error instanceof Error && error.message === 'No feedback provided') {
             console.log(chalk.yellow('⚠️  No feedback provided, iteration cancelled'));
           } else {
-            console.log(chalk.red(`❌ Iteration failed: ${error}`));
+            console.log(chalk.red(`❌ Iteration failed: ${error instanceof Error ? error.message : error}`));
           }
         }
       }
@@ -2385,7 +2385,7 @@ export const commands: Command[] = [
             const archivedDate = task.archivedAt?.toLocaleDateString() || 'Unknown';
             const cost = task.usage ? `$${task.usage.estimatedCost.toFixed(4)}` : '$0.0000';
 
-            console.log(`  ${statusEmoji} ${chalk.cyan(taskIdShort)} ${chalk.yellow(task.name)}`);
+            console.log(`  ${statusEmoji} ${chalk.cyan(taskIdShort)} ${chalk.yellow(task.description.substring(0, 50))}`);
             console.log(`     ${chalk.gray(`Created: ${createdDate} | Archived: ${archivedDate} | Cost: ${cost}`)}`);
 
             if (task.description) {
@@ -2420,7 +2420,7 @@ export const commands: Command[] = [
           await ctx.orchestrator.archiveTask(task.id);
 
           console.log(chalk.green(`✅ Task ${task.id.substring(0, 12)} archived successfully`));
-          console.log(chalk.gray(`   ${task.name}`));
+          console.log(chalk.gray(`   ${task.description}`));
           console.log(chalk.gray('   Use /archive list to view archived tasks or /unarchive to restore.'));
         }
       } catch (error) {
@@ -2464,7 +2464,7 @@ export const commands: Command[] = [
         await ctx.orchestrator.unarchiveTask(task.id);
 
         console.log(chalk.green(`✅ Task ${task.id.substring(0, 12)} unarchived successfully`));
-        console.log(chalk.gray(`   ${task.name}`));
+        console.log(chalk.gray(`   ${task.description}`));
         console.log(chalk.gray('   Task is now visible in /status output.'));
       } catch (error) {
         console.log(chalk.red(`❌ Error: ${(error as Error).message}`));

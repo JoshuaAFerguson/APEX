@@ -8,7 +8,27 @@ import { FastifyInstance } from 'fastify';
 
 // Mock the orchestrator to control event emission for testing WebSocket events
 vi.mock('@apex/orchestrator', () => {
-  const mockTask = {
+  const mockTask: {
+    id: string;
+    description: string;
+    workflow: string;
+    autonomy: string;
+    status: string;
+    priority: string;
+    effort: string;
+    projectPath: string;
+    branchName: string;
+    retryCount: number;
+    maxRetries: number;
+    resumeAttempts: number;
+    createdAt: Date;
+    updatedAt: Date;
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number };
+    logs: never[];
+    artifacts: never[];
+    trashedAt: Date | undefined;
+    archivedAt: Date | undefined;
+  } = {
     id: 'task_123_test',
     description: 'Test task for WebSocket events',
     workflow: 'feature',
@@ -26,8 +46,8 @@ vi.mock('@apex/orchestrator', () => {
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
     logs: [],
     artifacts: [],
-    trashedAt: null,
-    archivedAt: null,
+    trashedAt: undefined,
+    archivedAt: undefined,
   };
 
   class MockOrchestrator {
@@ -75,7 +95,7 @@ vi.mock('@apex/orchestrator', () => {
       const task = this.tasks.get(taskId);
       if (!task) throw new Error(`Task with ID ${taskId} not found`);
       if (!task.trashedAt) throw new Error(`Task with ID ${taskId} is not in trash`);
-      task.trashedAt = null;
+      task.trashedAt = undefined;
       task.status = 'pending';
 
       // Emit the restored event
@@ -116,7 +136,7 @@ vi.mock('@apex/orchestrator', () => {
       const task = this.tasks.get(taskId);
       if (!task) throw new Error(`Task with ID ${taskId} not found`);
       if (!task.archivedAt) throw new Error(`Task with ID ${taskId} is not archived`);
-      task.archivedAt = null;
+      task.archivedAt = undefined;
 
       // Emit the unarchived event
       this.emit('task:unarchived', task);
@@ -180,7 +200,8 @@ describe('WebSocket Task Lifecycle Events', () => {
 
     server = await createServer(options);
     await server.listen({ port: 0, host: '127.0.0.1' });
-    port = server.server.address()?.port || 0;
+    const address = server.server.address();
+    port = (typeof address === 'object' && address !== null) ? address.port : 0;
   });
 
   afterEach(async () => {

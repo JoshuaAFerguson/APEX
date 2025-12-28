@@ -1,7 +1,7 @@
 import { EventEmitter } from 'eventemitter3';
-import { ContainerManager, ContainerInfo } from './container-manager';
+import { ContainerManager } from './container-manager';
 import { ContainerRuntimeType } from './container-runtime';
-import { ContainerHealthStatus, ContainerHealthEventData } from './types';
+import { ContainerHealthStatus, ContainerHealthEventData, ContainerInfo } from './types';
 
 /**
  * Configuration options for container health monitoring

@@ -95,9 +95,9 @@ export interface ContainerNamingConfig {
 }
 
 /**
- * Event data for container lifecycle events
+ * Event data for container lifecycle events (internal to ContainerManager)
  */
-export interface ContainerEvent {
+export interface ContainerManagerEvent {
   /** Container ID */
   containerId: string;
   /** Task ID associated with the container */
@@ -111,7 +111,7 @@ export interface ContainerEvent {
 /**
  * Event data for container operation events (includes success/failure info)
  */
-export interface ContainerOperationEvent extends ContainerEvent {
+export interface ContainerOperationEvent extends ContainerManagerEvent {
   /** Whether the operation was successful */
   success: boolean;
   /** Error message if operation failed */
@@ -163,11 +163,11 @@ export interface ContainerManagerEvents {
   /** Emitted when a container is stopped */
   'container:stopped': (event: ContainerOperationEvent) => void;
   /** Emitted when a container dies unexpectedly */
-  'container:died': (event: ContainerEvent & { exitCode: number; signal?: string; oomKilled?: boolean }) => void;
+  'container:died': (event: ContainerManagerEvent & { exitCode: number; signal?: string; oomKilled?: boolean }) => void;
   /** Emitted when a container is removed */
   'container:removed': (event: ContainerOperationEvent) => void;
   /** Emitted for general container lifecycle events */
-  'container:lifecycle': (event: ContainerEvent, operation: 'created' | 'started' | 'stopped' | 'removed' | 'died') => void;
+  'container:lifecycle': (event: ContainerOperationEvent, operation: 'created' | 'started' | 'stopped' | 'removed' | 'died') => void;
 }
 
 /**
@@ -336,7 +336,7 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
         }
       }
 
-      const containerInfo = await this.getContainerInfo(containerId, runtimeType);
+      const containerInfo = await this.getContainerInfo(containerId, runtimeType) ?? undefined;
 
       const result = {
         success: true,
@@ -427,7 +427,7 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
         return result;
       }
 
-      const containerInfo = await this.getContainerInfo(containerId, runtime);
+      const containerInfo = await this.getContainerInfo(containerId, runtime) ?? undefined;
 
       const result = {
         success: true,
@@ -1207,10 +1207,10 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
         signal = 'SIGKILL'; // Most likely signal for exit code 137
       }
 
-      const containerEvent: ContainerEvent & { exitCode: number; signal?: string; oomKilled?: boolean } = {
+      const containerEvent: ContainerManagerEvent & { exitCode: number; signal?: string; oomKilled?: boolean } = {
         containerId: eventData.id,
         taskId,
-        containerInfo,
+        containerInfo: containerInfo ?? undefined,
         timestamp: new Date(eventData.time),
         exitCode: eventData.exitCode || 1,
         signal,
@@ -1220,8 +1220,16 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
       // Emit container:died event
       this.emit('container:died', containerEvent);
 
-      // Emit general lifecycle event
-      this.emit('container:lifecycle', containerEvent, 'died');
+      // Emit general lifecycle event with ContainerOperationEvent shape
+      const lifecycleEvent: ContainerOperationEvent = {
+        containerId: containerEvent.containerId,
+        taskId: containerEvent.taskId,
+        containerInfo: containerEvent.containerInfo,
+        timestamp: containerEvent.timestamp,
+        success: false, // Container died, so operation was not successful
+        error: `Container died with exit code ${containerEvent.exitCode}${signal ? ` (signal: ${signal})` : ''}`,
+      };
+      this.emit('container:lifecycle', lifecycleEvent, 'died');
 
     } catch (error) {
       console.warn('Error handling container died event:', error);

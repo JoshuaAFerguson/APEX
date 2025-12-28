@@ -16,7 +16,9 @@ describe('ROADMAP Basic Validation', () => {
     expect(content).toContain('## v0.4.0 - Sleepless Mode & Autonomy');
 
     // Should have complete features marked with green circles
-    expect(content).toContain('🟢 **Windows Compatibility**');
+    // Note: Windows Compatibility is ⚪ (planned) - not yet implemented
+    expect(content).toContain('🟢 **Linux Compatibility**');
+    expect(content).toContain('🟢 **macOS Compatibility**');
     expect(content).toContain('🟢 **Background service**');
     expect(content).toContain('🟢 **Day/night modes**');
     expect(content).toContain('🟢 **Auto-resume on session limit**');

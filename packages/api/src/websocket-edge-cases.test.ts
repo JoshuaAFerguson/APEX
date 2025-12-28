@@ -8,7 +8,27 @@ import { FastifyInstance } from 'fastify';
 
 // Mock the orchestrator with enhanced error simulation capabilities
 vi.mock('@apex/orchestrator', () => {
-  const mockTask = {
+  const mockTask: {
+    id: string;
+    description: string;
+    workflow: string;
+    autonomy: string;
+    status: string;
+    priority: string;
+    effort: string;
+    projectPath: string;
+    branchName: string;
+    retryCount: number;
+    maxRetries: number;
+    resumeAttempts: number;
+    createdAt: Date;
+    updatedAt: Date;
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number };
+    logs: never[];
+    artifacts: never[];
+    trashedAt: Date | undefined;
+    archivedAt: Date | undefined;
+  } = {
     id: 'task_edge_test',
     description: 'Edge case test task',
     workflow: 'feature',
@@ -26,8 +46,8 @@ vi.mock('@apex/orchestrator', () => {
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
     logs: [],
     artifacts: [],
-    trashedAt: null,
-    archivedAt: null,
+    trashedAt: undefined,
+    archivedAt: undefined,
   };
 
   class MockOrchestrator {
@@ -121,12 +141,12 @@ vi.mock('@apex/orchestrator', () => {
       if (!task) throw new Error(`Task with ID ${taskId} not found`);
       if (!task.trashedAt) throw new Error(`Task with ID ${taskId} is not in trash`);
 
-      task.trashedAt = null;
+      task.trashedAt = undefined;
       task.status = 'pending';
 
       // Emit event with missing required fields to test error handling
       if (this.errorScenario === 'missing-fields') {
-        const corruptedTask = { ...task };
+        const corruptedTask = { ...task } as Record<string, unknown>;
         delete corruptedTask.id;
         this.emit('task:restored', corruptedTask);
       } else {
@@ -182,7 +202,7 @@ vi.mock('@apex/orchestrator', () => {
 
       // Test circular reference in event data
       if (this.errorScenario === 'circular-reference') {
-        const taskWithCircularRef = { ...task };
+        const taskWithCircularRef = { ...task } as Record<string, unknown>;
         taskWithCircularRef.self = taskWithCircularRef; // Create circular reference
         this.emit('task:archived', taskWithCircularRef);
       } else {
@@ -225,7 +245,7 @@ vi.mock('@apex/orchestrator', () => {
             listener(...args);
           } catch (error) {
             // In real orchestrator, this would be logged but not propagated
-            console.warn(`Error in event listener for ${event}:`, error.message);
+            console.warn(`Error in event listener for ${event}:`, error instanceof Error ? error.message : error);
           }
         });
       }
@@ -260,7 +280,8 @@ describe('WebSocket Edge Cases and Error Handling', () => {
 
     server = await createServer(options);
     await server.listen({ port: 0, host: '127.0.0.1' });
-    port = server.server.address()?.port || 0;
+    const address = server.server.address();
+    port = (typeof address === 'object' && address !== null) ? address.port : 0;
 
     // Access the orchestrator instance for error simulation
     orchestrator = (server as any).orchestrator;

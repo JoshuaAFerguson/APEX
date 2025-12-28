@@ -7,7 +7,22 @@ import { FastifyInstance } from 'fastify';
 
 // Mock the orchestrator to avoid SQLite issues in tests
 vi.mock('@apex/orchestrator', () => {
-  const mockTask = {
+  const mockTask: {
+    id: string;
+    description: string;
+    workflow: string;
+    autonomy: string;
+    status: string;
+    projectPath: string;
+    branchName: string;
+    createdAt: Date;
+    updatedAt: Date;
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number };
+    logs: never[];
+    artifacts: never[];
+    trashedAt: Date | undefined;
+    archivedAt: Date | undefined;
+  } = {
     id: 'task_123_abc',
     description: 'Test task',
     workflow: 'feature',
@@ -20,8 +35,8 @@ vi.mock('@apex/orchestrator', () => {
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
     logs: [],
     artifacts: [],
-    trashedAt: null,
-    archivedAt: null,
+    trashedAt: undefined,
+    archivedAt: undefined,
   };
 
   const mockAgents = {
@@ -107,7 +122,7 @@ vi.mock('@apex/orchestrator', () => {
       if (!task.trashedAt) {
         throw new Error(`Task with ID ${taskId} is not in trash`);
       }
-      task.trashedAt = null;
+      task.trashedAt = undefined;
       task.status = 'pending';
     }
 
