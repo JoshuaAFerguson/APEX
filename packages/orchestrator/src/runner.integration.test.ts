@@ -4,7 +4,7 @@ import { join } from 'path';
 import { DaemonRunner, type DaemonRunnerOptions } from './runner';
 import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
-import type { Task } from '@apex/core';
+import type { Task } from '@apexcli/core';
 
 // Integration tests with minimal mocking
 describe('DaemonRunner Integration', () => {
