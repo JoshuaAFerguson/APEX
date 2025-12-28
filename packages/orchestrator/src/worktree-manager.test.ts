@@ -1,12 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorktreeManager, WorktreeError } from './worktree-manager';
-import { WorktreeStatus } from '@apexcli/core';
+import { WorktreeStatus, getPlatformShell } from '@apexcli/core';
 import { exec } from 'child_process';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
 // Mock external dependencies
 vi.mock('child_process');
+vi.mock('@apexcli/core', () => ({
+  getPlatformShell: vi.fn(() => ({
+    shell: '/bin/sh',
+    shellArgs: ['-c']
+  })),
+  WorktreeStatus: {
+    active: 'active',
+    stale: 'stale',
+    prunable: 'prunable',
+  },
+}));
 vi.mock('fs', () => ({
   promises: {
     mkdir: vi.fn(),
@@ -19,6 +30,7 @@ vi.mock('fs', () => ({
 
 const mockExec = exec as any;
 const mockFs = fs as any;
+const mockGetPlatformShell = getPlatformShell as any;
 
 describe('WorktreeManager', () => {
   let worktreeManager: WorktreeManager;
@@ -104,7 +116,10 @@ describe('WorktreeManager', () => {
       expect(mockFs.mkdir).toHaveBeenCalledWith(worktreeBaseDir, { recursive: true });
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('worktree add'),
-        expect.objectContaining({ cwd: projectPath }),
+        expect.objectContaining({
+          cwd: projectPath,
+          shell: '/bin/sh'
+        }),
         expect.any(Function)
       );
     });
@@ -339,7 +354,10 @@ branch feature/test-branch
       expect(result).toBe(true);
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('worktree remove'),
-        expect.objectContaining({ cwd: projectPath }),
+        expect.objectContaining({
+          cwd: projectPath,
+          shell: '/bin/sh'
+        }),
         expect.any(Function)
       );
     });

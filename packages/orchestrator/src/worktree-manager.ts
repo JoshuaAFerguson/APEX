@@ -2,7 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join, resolve, basename } from 'path';
 import { promises as fs } from 'fs';
-import { WorktreeInfo, WorktreeStatus, WorktreeConfig } from '@apexcli/core';
+import { WorktreeInfo, WorktreeStatus, WorktreeConfig, getPlatformShell } from '@apexcli/core';
 
 const execAsync = promisify(exec);
 
@@ -89,7 +89,7 @@ export class WorktreeManager {
       // Create the worktree with a new branch
       await execAsync(
         `git worktree add "${worktreePath}" -b "${branchName}"`,
-        { cwd: this.projectPath }
+        { cwd: this.projectPath, shell: getPlatformShell().shell }
       );
 
       // Verify the worktree was created successfully
@@ -179,7 +179,7 @@ export class WorktreeManager {
       // Remove the worktree using git
       await execAsync(
         `git worktree remove "${worktree.path}" --force`,
-        { cwd: this.projectPath }
+        { cwd: this.projectPath, shell: getPlatformShell().shell }
       );
 
       return true;
@@ -188,7 +188,7 @@ export class WorktreeManager {
       try {
         await fs.rm(worktree.path, { recursive: true, force: true });
         // Also try to prune the worktree from git's perspective
-        await execAsync('git worktree prune', { cwd: this.projectPath });
+        await execAsync('git worktree prune', { cwd: this.projectPath, shell: getPlatformShell().shell });
         return true;
       } catch (cleanupError) {
         throw new WorktreeError(
@@ -208,7 +208,7 @@ export class WorktreeManager {
       // Get list of worktrees from git
       const { stdout } = await execAsync(
         'git worktree list --porcelain',
-        { cwd: this.projectPath }
+        { cwd: this.projectPath, shell: getPlatformShell().shell }
       );
 
       const worktrees: WorktreeInfo[] = [];
@@ -279,7 +279,7 @@ export class WorktreeManager {
             // No task ID, remove manually
             await execAsync(
               `git worktree remove "${worktree.path}" --force`,
-              { cwd: this.projectPath }
+              { cwd: this.projectPath, shell: getPlatformShell().shell }
             );
           }
         } catch (error) {
