@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
 import { CompletionEngine, CompletionProvider, CompletionContext, CompletionSuggestion } from '../CompletionEngine';
 
 vi.mock('fs/promises');
-vi.mock('os');
+vi.mock('@apexcli/core', () => ({
+  getHomeDir: vi.fn()
+}));
 
 const mockFs = vi.mocked(fs);
-const mockOs = vi.mocked(os);
+const mockGetHomeDir = vi.mocked((await import('@apexcli/core')).getHomeDir);
 
 describe('CompletionEngine', () => {
   let engine: CompletionEngine;
@@ -34,8 +35,8 @@ describe('CompletionEngine', () => {
       ]
     };
 
-    // Mock OS
-    mockOs.homedir.mockReturnValue('/home/user');
+    // Mock getHomeDir from @apexcli/core
+    mockGetHomeDir.mockReturnValue('/home/user');
   });
 
   afterEach(() => {

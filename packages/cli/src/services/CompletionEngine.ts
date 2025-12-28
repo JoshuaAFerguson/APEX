@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
+import { getHomeDir } from '@apexcli/core';
 
 export interface CompletionProvider {
   type: 'command' | 'path' | 'agent' | 'workflow' | 'task';
@@ -181,7 +181,7 @@ export class CompletionEngine {
 
         // Resolve path
         if (dir.startsWith('~')) {
-          dir = dir.replace('~', os.homedir());
+          dir = dir.replace('~', getHomeDir());
         } else if (!path.isAbsolute(dir)) {
           dir = path.resolve(context.projectPath, dir);
         }
