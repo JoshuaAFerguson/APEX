@@ -1,7 +1,8 @@
 import chalk from 'chalk';
-import fs from 'fs';
+import fs, { createReadStream } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { createInterface } from 'readline';
 import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
 import { formatDuration } from '@apex/core';
 
@@ -351,6 +352,107 @@ function handleDaemonError(error: DaemonError): void {
 }
 
 /**
+ * Cross-platform file watcher for tailing logs
+ * Uses fs.watch() and incremental reading instead of Unix-only tail command
+ */
+async function followLogFile(
+  filePath: string,
+  lines: number = 20,
+  level?: string
+): Promise<void> {
+  let fileSize = 0;
+  let isWatching = true;
+
+  // Read initial content and display last N lines
+  try {
+    const stats = fs.statSync(filePath);
+    fileSize = stats.size;
+
+    // Display initial lines if file has content
+    if (fileSize > 0) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const allLines = content.split('\n').filter(line => line.trim() !== '');
+
+      const filteredLines = level
+        ? filterLogsByLevel(allLines, level)
+        : allLines;
+
+      const initialLines = filteredLines.slice(-lines);
+
+      initialLines.forEach(line => {
+        console.log(formatLogLine(line));
+      });
+    }
+  } catch (error) {
+    console.log(chalk.red(`Failed to read initial log content: ${(error as Error).message}`));
+    return;
+  }
+
+  // Watch for file changes
+  const watcher = fs.watch(filePath, (eventType) => {
+    if (!isWatching || eventType !== 'change') {
+      return;
+    }
+
+    try {
+      const stats = fs.statSync(filePath);
+      const newSize = stats.size;
+
+      // Only read new content if file has grown
+      if (newSize > fileSize) {
+        const stream = createReadStream(filePath, {
+          start: fileSize,
+          end: newSize - 1,
+          encoding: 'utf-8'
+        });
+
+        const rl = createInterface({
+          input: stream,
+          crlfDelay: Infinity
+        });
+
+        rl.on('line', (line) => {
+          if (line.trim() === '') return;
+
+          // Filter by log level if specified
+          if (level) {
+            const filteredLines = filterLogsByLevel([line], level);
+            if (filteredLines.length === 0) return;
+          }
+
+          console.log(formatLogLine(line));
+        });
+
+        rl.on('close', () => {
+          fileSize = newSize;
+        });
+
+        rl.on('error', (error) => {
+          console.log(chalk.red(`Error reading log updates: ${error.message}`));
+        });
+      }
+    } catch (error) {
+      // File might have been deleted or rotated, silently continue watching
+    }
+  });
+
+  // Handle graceful shutdown
+  const cleanup = () => {
+    isWatching = false;
+    watcher.close();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+
+  watcher.on('error', (error) => {
+    console.log(chalk.red(`File watcher error: ${error.message}`));
+    cleanup();
+  });
+}
+
+/**
  * Handle daemon logs command
  */
 export async function handleDaemonLogs(
@@ -401,28 +503,11 @@ export async function handleDaemonLogs(
 
   try {
     if (follow) {
-      // Use tail -f for following logs
-      const tailArgs = ['-f'];
-      if (lines > 0) {
-        tailArgs.push('-n', lines.toString());
-      }
-      tailArgs.push(logPath);
-
+      // Use cross-platform file watching for following logs
       console.log(chalk.cyan(`Following daemon logs (${logPath})`));
       console.log(chalk.gray('Press Ctrl+C to stop following\n'));
 
-      const tailProcess = spawn('tail', tailArgs, { stdio: 'inherit' });
-
-      // Handle process termination
-      process.on('SIGINT', () => {
-        tailProcess.kill('SIGTERM');
-        process.exit(0);
-      });
-
-      tailProcess.on('error', (error) => {
-        console.log(chalk.red(`Failed to follow logs: ${error.message}`));
-      });
-
+      await followLogFile(logPath, lines, level);
     } else {
       // Read the file and display last N lines
       const content = fs.readFileSync(logPath, 'utf-8');

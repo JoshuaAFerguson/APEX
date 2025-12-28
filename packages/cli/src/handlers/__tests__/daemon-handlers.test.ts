@@ -31,6 +31,9 @@ vi.mock('chalk', () => ({
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
+  statSync: vi.fn(),
+  createReadStream: vi.fn(),
+  watch: vi.fn(),
 }));
 
 // Mock child_process module
@@ -43,15 +46,22 @@ vi.mock('path', () => ({
   join: vi.fn((...args) => args.join('/')),
 }));
 
+// Mock readline module
+vi.mock('readline', () => ({
+  createInterface: vi.fn(),
+}));
+
 // Import and mock the external modules
 import fs from 'fs';
 import { spawn } from 'child_process';
 import path from 'path';
+import { createInterface } from 'readline';
 
 const mockDaemonManager = vi.mocked(DaemonManager);
 const mockFs = vi.mocked(fs);
 const mockSpawn = vi.mocked(spawn);
 const mockPath = vi.mocked(path);
+const mockCreateInterface = vi.mocked(createInterface);
 
 describe('daemon-handlers', () => {
   let mockManager: any;
@@ -1359,99 +1369,140 @@ describe('daemon-handlers', () => {
       expect(consoleSpy).toHaveBeenCalledWith('Failed to read daemon logs: Permission denied');
     });
 
-    it('should start following logs with tail command', async () => {
-      const mockTailProcess = {
-        kill: vi.fn(),
+    it('should start following logs with cross-platform file watcher', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
         on: vi.fn(),
       };
 
+      const initialLogContent = '[2023-10-15T10:00:00.000Z] INFO  Initial log entry';
+
       mockFs.existsSync.mockReturnValue(true);
-      mockSpawn.mockReturnValue(mockTailProcess as any);
+      mockFs.statSync.mockReturnValue({ size: initialLogContent.length } as any);
+      mockFs.readFileSync.mockReturnValue(initialLogContent);
+      mockFs.watch.mockReturnValue(mockWatcher as any);
 
       // Mock process.on to avoid actual signal handling
       const originalProcessOn = process.on;
       const mockProcessOn = vi.fn();
       process.on = mockProcessOn;
 
-      await handleDaemonLogs(ctx, ['--follow']);
+      // Create a promise that resolves to simulate async behavior
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
 
-      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+      // Allow a short time for the initial setup
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(mockFs.watch).toHaveBeenCalledWith('/test/project/.apex/daemon.log', expect.any(Function));
       expect(consoleSpy).toHaveBeenCalledWith('Following daemon logs (/test/project/.apex/daemon.log)');
       expect(consoleSpy).toHaveBeenCalledWith('Press Ctrl+C to stop following\n');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Initial log entry');
       expect(mockProcessOn).toHaveBeenCalledWith('SIGINT', expect.any(Function));
 
       // Restore original process.on
       process.on = originalProcessOn;
     });
 
-    it('should follow logs with custom lines count', async () => {
-      const mockTailProcess = {
-        kill: vi.fn(),
+    it('should follow logs with custom lines count in cross-platform mode', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
         on: vi.fn(),
       };
 
+      const logLines = Array.from({ length: 100 }, (_, i) =>
+        `[2023-10-15T10:${i.toString().padStart(2, '0')}:00.000Z] INFO  Log entry ${i + 1}`
+      );
+      const logContent = logLines.join('\n');
+
       mockFs.existsSync.mockReturnValue(true);
-      mockSpawn.mockReturnValue(mockTailProcess as any);
+      mockFs.statSync.mockReturnValue({ size: logContent.length } as any);
+      mockFs.readFileSync.mockReturnValue(logContent);
+      mockFs.watch.mockReturnValue(mockWatcher as any);
 
       // Mock process.on to avoid actual signal handling
       const originalProcessOn = process.on;
       const mockProcessOn = vi.fn();
       process.on = mockProcessOn;
 
-      await handleDaemonLogs(ctx, ['--follow', '--lines', '50']);
+      const followPromise = handleDaemonLogs(ctx, ['--follow', '--lines', '5']);
 
-      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '-n', '50', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+      // Allow a short time for the initial setup
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Should show only the last 5 lines initially
+      const lastFiveLines = logLines.slice(-5);
+      lastFiveLines.forEach(line => {
+        expect(consoleSpy).toHaveBeenCalledWith(line);
+      });
+
+      // Should not show earlier lines
+      expect(consoleSpy).not.toHaveBeenCalledWith(logLines[0]);
 
       // Restore original process.on
       process.on = originalProcessOn;
     });
 
-    it('should support short form follow flag', async () => {
-      const mockTailProcess = {
-        kill: vi.fn(),
+    it('should support short form follow flag with cross-platform watcher', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
         on: vi.fn(),
       };
 
       mockFs.existsSync.mockReturnValue(true);
-      mockSpawn.mockReturnValue(mockTailProcess as any);
+      mockFs.statSync.mockReturnValue({ size: 0 } as any);
+      mockFs.watch.mockReturnValue(mockWatcher as any);
 
       // Mock process.on to avoid actual signal handling
       const originalProcessOn = process.on;
       const mockProcessOn = vi.fn();
       process.on = mockProcessOn;
 
-      await handleDaemonLogs(ctx, ['-f']);
+      const followPromise = handleDaemonLogs(ctx, ['-f']);
 
-      expect(mockSpawn).toHaveBeenCalledWith('tail', ['-f', '/test/project/.apex/daemon.log'], { stdio: 'inherit' });
+      // Allow a short time for the initial setup
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(mockFs.watch).toHaveBeenCalledWith('/test/project/.apex/daemon.log', expect.any(Function));
 
       // Restore original process.on
       process.on = originalProcessOn;
     });
 
-    it('should handle tail command errors', async () => {
-      const mockTailProcess = {
-        kill: vi.fn(),
+    it('should handle file watcher errors gracefully', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'error') {
-            callback(new Error('tail command not found'));
+            callback(new Error('File system error'));
           }
         }),
       };
 
       mockFs.existsSync.mockReturnValue(true);
-      mockSpawn.mockReturnValue(mockTailProcess as any);
+      mockFs.statSync.mockReturnValue({ size: 0 } as any);
+      mockFs.watch.mockReturnValue(mockWatcher as any);
 
       // Mock process.on to avoid actual signal handling
       const originalProcessOn = process.on;
       const mockProcessOn = vi.fn();
       process.on = mockProcessOn;
 
-      await handleDaemonLogs(ctx, ['--follow']);
+      // Mock process.exit to prevent actual exit
+      const originalProcessExit = process.exit;
+      const mockProcessExit = vi.fn();
+      process.exit = mockProcessExit as any;
 
-      expect(consoleSpy).toHaveBeenCalledWith('Failed to follow logs: tail command not found');
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
 
-      // Restore original process.on
+      // Allow a short time for the initial setup
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(consoleSpy).toHaveBeenCalledWith('File watcher error: File system error');
+      expect(mockProcessExit).toHaveBeenCalledWith(0);
+
+      // Restore original methods
       process.on = originalProcessOn;
+      process.exit = originalProcessExit;
     });
 
     it('should handle combination of flags', async () => {
@@ -1527,6 +1578,383 @@ describe('daemon-handlers', () => {
       await handleDaemonLogs(ctx, ['--level', 'error']);
 
       expect(consoleSpy).toHaveBeenCalledWith('No matching log entries found.');
+    });
+
+    it('should handle Windows-style paths correctly', async () => {
+      const windowsCtx = { cwd: 'C:\\Users\\test\\project', initialized: true };
+      const logContent = '[2023-10-15T10:00:00.000Z] INFO  Windows test log';
+
+      // Mock path.join to simulate Windows behavior
+      mockPath.join.mockImplementation((...args) => args.join('\\'));
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(logContent);
+
+      await handleDaemonLogs(windowsCtx, []);
+
+      expect(mockPath.join).toHaveBeenCalledWith('C:\\Users\\test\\project', '.apex', 'daemon.log');
+      expect(mockFs.existsSync).toHaveBeenCalledWith('C:\\Users\\test\\project\\.apex\\daemon.log');
+      expect(mockFs.readFileSync).toHaveBeenCalledWith('C:\\Users\\test\\project\\.apex\\daemon.log', 'utf-8');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Windows test log');
+
+      // Reset path.join mock to default behavior for other tests
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+    });
+
+    it('should handle file watching on Windows paths with follow mode', async () => {
+      const windowsCtx = { cwd: 'C:\\Users\\test\\project', initialized: true };
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      // Mock path.join to simulate Windows behavior
+      mockPath.join.mockImplementation((...args) => args.join('\\'));
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockReturnValue({ size: 0 } as any);
+      mockFs.watch.mockReturnValue(mockWatcher as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(windowsCtx, ['--follow']);
+
+      // Allow a short time for the initial setup
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(mockPath.join).toHaveBeenCalledWith('C:\\Users\\test\\project', '.apex', 'daemon.log');
+      expect(mockFs.watch).toHaveBeenCalledWith('C:\\Users\\test\\project\\.apex\\daemon.log', expect.any(Function));
+      expect(consoleSpy).toHaveBeenCalledWith('Following daemon logs (C:\\Users\\test\\project\\.apex\\daemon.log)');
+
+      // Restore original methods and reset path.join
+      process.on = originalProcessOn;
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+    });
+
+    it('should handle incremental file reading on file changes (cross-platform)', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      const mockReadStream = {
+        on: vi.fn(),
+      };
+
+      const mockReadlineInterface = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'line') {
+            callback('[2023-10-15T10:01:00.000Z] INFO  New log entry');
+          } else if (event === 'close') {
+            callback();
+          }
+        }),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockImplementation((path) => {
+        // Simulate file size growing from initial read
+        return { size: 100 } as any;
+      });
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.watch.mockImplementation((path, callback) => {
+        // Simulate file change event
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+      mockFs.createReadStream.mockReturnValue(mockReadStream as any);
+      mockCreateInterface.mockReturnValue(mockReadlineInterface as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and file change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(mockFs.createReadStream).toHaveBeenCalledWith('/test/project/.apex/daemon.log', {
+        start: expect.any(Number),
+        end: expect.any(Number),
+        encoding: 'utf-8'
+      });
+      expect(mockCreateInterface).toHaveBeenCalledWith({
+        input: mockReadStream,
+        crlfDelay: Infinity
+      });
+
+      // Should display both initial and new log entries
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] INFO  New log entry');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle file size not growing during watch (Windows edge case)', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      let callCount = 0;
+      mockFs.statSync.mockImplementation(() => {
+        // File size stays the same (file truncated or no new content)
+        return { size: 50 } as any;
+      });
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.watch.mockImplementation((path, callback) => {
+        // Simulate change event but no new content
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should not call createReadStream since file didn't grow
+      expect(mockFs.createReadStream).not.toHaveBeenCalled();
+
+      // Should still display initial entry
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle file deletion/rotation during watch', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.statSync.mockImplementation(() => {
+        // Simulate file stats failing (file deleted/rotated)
+        throw new Error('ENOENT: no such file or directory');
+      });
+      mockFs.watch.mockImplementation((path, callback) => {
+        // Simulate change event after file deletion
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should handle the error gracefully without crashing
+      // Should still display initial entry
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle non-change events from fs.watch', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockReturnValue({ size: 100 } as any);
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.watch.mockImplementation((path, callback) => {
+        // Simulate rename event (should be ignored)
+        setTimeout(() => callback('rename'), 5);
+        return mockWatcher as any;
+      });
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and rename event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should not process non-change events
+      expect(mockFs.createReadStream).not.toHaveBeenCalled();
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should filter new log entries by level during follow mode', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      const mockReadStream = {
+        on: vi.fn(),
+      };
+
+      const mockReadlineInterface = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'line') {
+            // Simulate multiple new lines with different levels
+            callback('[2023-10-15T10:01:00.000Z] INFO  Info entry');
+            callback('[2023-10-15T10:02:00.000Z] WARN  Warning entry');
+            callback('[2023-10-15T10:03:00.000Z] ERROR Error entry');
+          } else if (event === 'close') {
+            callback();
+          }
+        }),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockImplementation(() => {
+        return { size: 200 } as any;
+      });
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] ERROR Initial error');
+      mockFs.watch.mockImplementation((path, callback) => {
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+      mockFs.createReadStream.mockReturnValue(mockReadStream as any);
+      mockCreateInterface.mockReturnValue(mockReadlineInterface as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow', '--level', 'error']);
+
+      // Allow time for initial setup and change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should display initial ERROR entry
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] ERROR Initial error');
+
+      // Should display new ERROR entry but not INFO or WARN
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:03:00.000Z] ERROR Error entry');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle empty lines during file watching', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      const mockReadStream = {
+        on: vi.fn(),
+      };
+
+      const mockReadlineInterface = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'line') {
+            // Simulate empty lines and whitespace
+            callback('');
+            callback('   ');
+            callback('\t');
+            callback('[2023-10-15T10:01:00.000Z] INFO  Real entry');
+          } else if (event === 'close') {
+            callback();
+          }
+        }),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockImplementation(() => {
+        return { size: 100 } as any;
+      });
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.watch.mockImplementation((path, callback) => {
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+      mockFs.createReadStream.mockReturnValue(mockReadStream as any);
+      mockCreateInterface.mockReturnValue(mockReadlineInterface as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should only display non-empty lines
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      expect(consoleSpy).toHaveBeenCalledWith('[2023-10-15T10:01:00.000Z] INFO  Real entry');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
+    });
+
+    it('should handle readline interface errors during watch', async () => {
+      const mockWatcher = {
+        close: vi.fn(),
+        on: vi.fn(),
+      };
+
+      const mockReadStream = {
+        on: vi.fn(),
+      };
+
+      const mockReadlineInterface = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'error') {
+            callback(new Error('Readline error'));
+          }
+        }),
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockImplementation(() => {
+        return { size: 100 } as any;
+      });
+      mockFs.readFileSync.mockReturnValue('[2023-10-15T10:00:00.000Z] INFO  Initial entry');
+      mockFs.watch.mockImplementation((path, callback) => {
+        setTimeout(() => callback('change'), 5);
+        return mockWatcher as any;
+      });
+      mockFs.createReadStream.mockReturnValue(mockReadStream as any);
+      mockCreateInterface.mockReturnValue(mockReadlineInterface as any);
+
+      // Mock process.on to avoid actual signal handling
+      const originalProcessOn = process.on;
+      const mockProcessOn = vi.fn();
+      process.on = mockProcessOn;
+
+      const followPromise = handleDaemonLogs(ctx, ['--follow']);
+
+      // Allow time for initial setup and change event
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should display error message for readline errors
+      expect(consoleSpy).toHaveBeenCalledWith('Error reading log updates: Readline error');
+
+      // Restore original process.on
+      process.on = originalProcessOn;
     });
   });
 });
