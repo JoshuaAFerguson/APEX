@@ -9,7 +9,7 @@ const execPromise = promisify(exec);
 // Types and Interfaces
 // ============================================================================
 
-export type Platform = 'linux' | 'darwin' | 'unsupported';
+export type Platform = 'linux' | 'darwin' | 'win32' | 'unsupported';
 
 export type ServiceErrorCode =
   | 'PLATFORM_UNSUPPORTED'
@@ -105,6 +105,7 @@ export function detectPlatform(): Platform {
   const platform = process.platform;
   if (platform === 'linux') return 'linux';
   if (platform === 'darwin') return 'darwin';
+  if (platform === 'win32') return 'win32';
   return 'unsupported';
 }
 
@@ -121,6 +122,19 @@ export function isSystemdAvailable(): boolean {
 export function isLaunchdAvailable(): boolean {
   // macOS always has launchd if platform is darwin
   return process.platform === 'darwin';
+}
+
+export function isWindowsServiceAvailable(): boolean {
+  // Check if we're on Windows and can access service control manager
+  if (process.platform !== 'win32') return false;
+
+  try {
+    // Check if sc command is available (Service Control Manager)
+    require('child_process').execSync('sc query', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ============================================================================
@@ -370,13 +384,203 @@ export class LaunchdGenerator {
 }
 
 // ============================================================================
+// WindowsServiceGenerator Implementation
+// ============================================================================
+
+export class WindowsServiceGenerator {
+  constructor(
+    private readonly options: Required<ServiceManagerOptions>,
+    private readonly enableOnBoot: boolean = false
+  ) {}
+
+  generate(): string {
+    const nodePath = process.execPath.replace(/\\/g, '\\\\');
+    const apexCliPath = this.findApexCliPath().replace(/\\/g, '\\\\');
+
+    // Generate a PowerShell script that uses NSSM (Non-Sucking Service Manager)
+    // or falls back to sc.exe for basic service creation
+    return `# APEX Service Installation Script for Windows
+# This script creates a Windows service for APEX Daemon
+
+param(
+    [Parameter(Mandatory=$false)]
+    [switch]$Install,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Uninstall,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$UseNSSM = $true
+)
+
+$serviceName = "${this.options.serviceName}"
+$serviceDisplayName = "${this.options.serviceDescription}"
+$nodePath = "${nodePath}"
+$apexCliPath = "${apexCliPath}"
+$workingDirectory = "${this.options.workingDirectory.replace(/\\/g, '\\\\')}"
+$enableOnBoot = $${this.enableOnBoot.toString().toLowerCase()}
+
+function Install-ApexService {
+    if ($UseNSSM -and (Get-Command "nssm" -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing service using NSSM..."
+
+        # Install service with NSSM
+        & nssm install $serviceName $nodePath $apexCliPath daemon start --foreground
+        & nssm set $serviceName DisplayName "$serviceDisplayName"
+        & nssm set $serviceName Description "$serviceDisplayName"
+        & nssm set $serviceName AppDirectory "$workingDirectory"
+
+        # Set environment variables
+        & nssm set $serviceName AppEnvironmentExtra "NODE_ENV=production" "APEX_PROJECT_PATH=${this.options.projectPath.replace(/\\/g, '\\\\')}"
+${this.formatEnvironmentForNSSM()}
+
+        # Set restart policy
+        & nssm set $serviceName AppExit Default ${this.mapRestartPolicyForNSSM()}
+        & nssm set $serviceName AppRestartDelay ${this.options.restartDelaySeconds * 1000}
+
+        # Set startup type
+        if ($enableOnBoot) {
+            & nssm set $serviceName Start SERVICE_AUTO_START
+        } else {
+            & nssm set $serviceName Start SERVICE_DEMAND_START
+        }
+
+        # Set log files
+        $logDir = Join-Path "${this.options.projectPath.replace(/\\/g, '\\\\')}" ".apex"
+        if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force }
+        & nssm set $serviceName AppStdout (Join-Path $logDir "daemon.out.log")
+        & nssm set $serviceName AppStderr (Join-Path $logDir "daemon.err.log")
+
+        Write-Host "Service installed successfully with NSSM"
+    } else {
+        Write-Host "Installing service using built-in Windows Service Manager..."
+        Write-Warning "NSSM not available. Using basic service creation. Consider installing NSSM for better service management."
+
+        # Create a wrapper script for the service
+        $wrapperScript = @"
+@echo off
+cd /d "$workingDirectory"
+set NODE_ENV=production
+set APEX_PROJECT_PATH=${this.options.projectPath}
+${this.formatEnvironmentForBatch()}
+"$nodePath" "$apexCliPath" daemon start --foreground
+"@
+
+        $wrapperPath = Join-Path $env:TEMP "apex-service-wrapper.bat"
+        $wrapperScript | Out-File -FilePath $wrapperPath -Encoding ASCII
+
+        # Create service using sc.exe
+        $startType = if ($enableOnBoot) { "auto" } else { "demand" }
+        & sc.exe create $serviceName binPath= "\`"$wrapperPath\`"" DisplayName= "$serviceDisplayName" start= $startType
+        & sc.exe description $serviceName "$serviceDisplayName"
+
+        Write-Host "Basic service installed successfully"
+        Write-Host "Wrapper script created at: $wrapperPath"
+    }
+}
+
+function Uninstall-ApexService {
+    Write-Host "Uninstalling service..."
+
+    # Stop service if running
+    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($service -and $service.Status -eq "Running") {
+        Write-Host "Stopping service..."
+        Stop-Service -Name $serviceName -Force
+        Start-Sleep -Seconds 2
+    }
+
+    if ($UseNSSM -and (Get-Command "nssm" -ErrorAction SilentlyContinue)) {
+        & nssm remove $serviceName confirm
+    } else {
+        & sc.exe delete $serviceName
+    }
+
+    # Clean up wrapper script if it exists
+    $wrapperPath = Join-Path $env:TEMP "apex-service-wrapper.bat"
+    if (Test-Path $wrapperPath) {
+        Remove-Item $wrapperPath -Force
+        Write-Host "Cleaned up wrapper script"
+    }
+
+    Write-Host "Service uninstalled successfully"
+}
+
+# Main execution
+if ($Install) {
+    Install-ApexService
+} elseif ($Uninstall) {
+    Uninstall-ApexService
+} else {
+    Write-Host "Usage: .\\service-install.ps1 -Install or .\\service-install.ps1 -Uninstall"
+    Write-Host "Optional: Add -UseNSSM:`$false to use basic Windows service manager"
+}
+`;
+  }
+
+  getInstallPath(): string {
+    // Windows service scripts typically go in the project .apex directory
+    return path.join(this.options.projectPath, '.apex', 'service-install.ps1');
+  }
+
+  private mapRestartPolicyForNSSM(): string {
+    switch (this.options.restartPolicy) {
+      case 'always': return 'Restart';
+      case 'on-failure': return 'Restart';
+      case 'never': return 'Exit';
+      default: return 'Restart';
+    }
+  }
+
+  private formatEnvironmentForNSSM(): string {
+    const entries = Object.entries(this.options.environment);
+    if (entries.length === 0) return '';
+
+    return entries
+      .map(([key, value]) => `        & nssm set $serviceName AppEnvironmentExtra "${key}=${value}"`)
+      .join('\n');
+  }
+
+  private formatEnvironmentForBatch(): string {
+    return Object.entries(this.options.environment)
+      .map(([key, value]) => `set ${key}=${value}`)
+      .join('\n');
+  }
+
+  private findApexCliPath(): string {
+    try {
+      return require.resolve('@apex/cli/dist/index.js');
+    } catch {
+      // Fallback to checking common locations on Windows
+      const possiblePaths = [
+        path.join(process.cwd(), 'node_modules', '@apex', 'cli', 'dist', 'index.js'),
+        path.join(process.cwd(), 'packages', 'cli', 'dist', 'index.js'),
+        path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@apex', 'cli', 'dist', 'index.js'),
+      ];
+
+      for (const possiblePath of possiblePaths) {
+        try {
+          require('fs').accessSync(possiblePath);
+          return possiblePath;
+        } catch {
+          // Continue to next path
+        }
+      }
+
+      // If nothing found, return a reasonable default
+      return path.join(process.cwd(), 'node_modules', '@apex', 'cli', 'dist', 'index.js');
+    }
+  }
+}
+
+// ============================================================================
 // ServiceManager Implementation
 // ============================================================================
 
 export class ServiceManager {
   private readonly options: Required<ServiceManagerOptions>;
   private readonly platform: Platform;
-  private generator: SystemdGenerator | LaunchdGenerator | null = null;
+  private generator: SystemdGenerator | LaunchdGenerator | WindowsServiceGenerator | null = null;
   private enableOnBoot: boolean = false;
 
   constructor(options: ServiceManagerOptions = {}) {
@@ -414,6 +618,8 @@ export class ServiceManager {
       this.generator = new SystemdGenerator(this.options, this.enableOnBoot);
     } else if (this.platform === 'darwin') {
       this.generator = new LaunchdGenerator(this.options, this.enableOnBoot);
+    } else if (this.platform === 'win32') {
+      this.generator = new WindowsServiceGenerator(this.options, this.enableOnBoot);
     } else {
       this.generator = null;
     }
@@ -430,6 +636,7 @@ export class ServiceManager {
   isSupported(): boolean {
     if (this.platform === 'linux') return isSystemdAvailable();
     if (this.platform === 'darwin') return isLaunchdAvailable();
+    if (this.platform === 'win32') return isWindowsServiceAvailable();
     return false;
   }
 
@@ -591,6 +798,17 @@ export class ServiceManager {
           warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
         }
       }
+    } else if (this.platform === 'win32') {
+      // For Windows, both enableAfterInstall and enableOnBoot work the same way
+      // The PowerShell script handles the enableOnBoot setting internally
+      if (enableAfterInstall || enableOnBoot) {
+        try {
+          await this.enable();
+          enabled = true;
+        } catch (error) {
+          warnings.push(`Service installed but could not be enabled: ${(error as Error).message}`);
+        }
+      }
     }
 
     return {
@@ -688,6 +906,10 @@ export class ServiceManager {
       // Just ensure the plist is loaded
       const plistPath = this.getServiceFilePath();
       await this.execCommand(`launchctl load -w ${plistPath}`);
+    } else if (this.platform === 'win32') {
+      // For Windows, we execute the PowerShell installation script with the -Install flag
+      const scriptPath = this.getServiceFilePath();
+      await this.execCommand(`powershell.exe -ExecutionPolicy Bypass -File "${scriptPath}" -Install`);
     }
   }
 
@@ -697,6 +919,10 @@ export class ServiceManager {
     } else if (this.platform === 'darwin') {
       const plistPath = this.getServiceFilePath();
       await this.execCommand(`launchctl unload -w ${plistPath}`);
+    } else if (this.platform === 'win32') {
+      // For Windows, we execute the PowerShell script with the -Uninstall flag
+      const scriptPath = this.getServiceFilePath();
+      await this.execCommand(`powershell.exe -ExecutionPolicy Bypass -File "${scriptPath}" -Uninstall`);
     }
   }
 
@@ -706,6 +932,8 @@ export class ServiceManager {
     } else if (this.platform === 'darwin') {
       const label = `com.apex.${this.options.serviceName.replace('apex-', '')}`;
       await this.execCommand(`launchctl start ${label}`);
+    } else if (this.platform === 'win32') {
+      await this.execCommand(`sc start "${this.options.serviceName}"`);
     }
   }
 
@@ -715,6 +943,8 @@ export class ServiceManager {
     } else if (this.platform === 'darwin') {
       const label = `com.apex.${this.options.serviceName.replace('apex-', '')}`;
       await this.execCommand(`launchctl stop ${label}`);
+    } else if (this.platform === 'win32') {
+      await this.execCommand(`sc stop "${this.options.serviceName}"`);
     }
   }
 
@@ -722,6 +952,9 @@ export class ServiceManager {
     if (this.platform === 'linux') {
       await this.execCommand(`systemctl --user restart ${this.options.serviceName}`);
     } else if (this.platform === 'darwin') {
+      await this.stop();
+      await this.start();
+    } else if (this.platform === 'win32') {
       await this.stop();
       await this.start();
     }
@@ -751,6 +984,8 @@ export class ServiceManager {
       return this.getSystemdStatus(servicePath);
     } else if (this.platform === 'darwin') {
       return this.getLaunchdStatus(servicePath);
+    } else if (this.platform === 'win32') {
+      return this.getWindowsStatus(servicePath);
     }
 
     return {
@@ -821,6 +1056,60 @@ export class ServiceManager {
       return {
         installed: true,
         enabled: true, // If plist exists and launchctl knows about it
+        running,
+        pid,
+        platform: this.platform,
+        servicePath,
+      };
+    } catch {
+      return {
+        installed: true,
+        enabled: false,
+        running: false,
+        platform: this.platform,
+        servicePath,
+      };
+    }
+  }
+
+  private async getWindowsStatus(servicePath: string): Promise<ServiceStatus> {
+    try {
+      const { stdout } = await execPromise(`sc query "${this.options.serviceName}"`);
+
+      // Parse sc query output
+      const running = stdout.includes('RUNNING');
+      const stopped = stdout.includes('STOPPED');
+
+      // Check if service is set to auto-start (enabled)
+      let enabled = false;
+      try {
+        const { stdout: configOutput } = await execPromise(`sc qc "${this.options.serviceName}"`);
+        enabled = configOutput.includes('AUTO_START');
+      } catch {
+        // If we can't get config, assume not enabled
+        enabled = false;
+      }
+
+      // Try to get PID if running
+      let pid: number | undefined;
+      if (running) {
+        try {
+          const { stdout: processOutput } = await execPromise(
+            `wmic service where "name='${this.options.serviceName}'" get ProcessId /value`
+          );
+          const pidMatch = processOutput.match(/ProcessId=(\d+)/);
+          if (pidMatch) {
+            pid = parseInt(pidMatch[1], 10);
+            if (pid === 0) pid = undefined; // Service not actually running if PID is 0
+          }
+        } catch {
+          // PID detection failed, continue without it
+        }
+      }
+
+      return {
+        installed: true,
+        enabled,
         running,
         pid,
         platform: this.platform,

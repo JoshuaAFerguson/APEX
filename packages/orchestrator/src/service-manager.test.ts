@@ -5,10 +5,12 @@ import {
   ServiceManager,
   SystemdGenerator,
   LaunchdGenerator,
+  WindowsServiceGenerator,
   ServiceError,
   detectPlatform,
   isSystemdAvailable,
   isLaunchdAvailable,
+  isWindowsServiceAvailable,
   type ServiceManagerOptions,
 } from './service-manager';
 
@@ -117,8 +119,13 @@ describe('ServiceManager', () => {
       expect(detectPlatform()).toBe('darwin');
     });
 
-    it('should detect unsupported platform', () => {
+    it('should detect Windows platform', () => {
       mockProcess.platform = 'win32';
+      expect(detectPlatform()).toBe('win32');
+    });
+
+    it('should detect unsupported platform for other platforms', () => {
+      mockProcess.platform = 'freebsd';
       expect(detectPlatform()).toBe('unsupported');
     });
 
@@ -139,6 +146,22 @@ describe('ServiceManager', () => {
 
       mockProcess.platform = 'linux';
       expect(isLaunchdAvailable()).toBe(false);
+    });
+
+    it('should check Windows service availability', () => {
+      mockProcess.platform = 'win32';
+      const execSync = require('child_process').execSync;
+
+      vi.mocked(execSync).mockImplementationOnce(() => 'SERVICE CONTROL MANAGER');
+      expect(isWindowsServiceAvailable()).toBe(true);
+
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw new Error('Command not found');
+      });
+      expect(isWindowsServiceAvailable()).toBe(false);
+
+      mockProcess.platform = 'linux';
+      expect(isWindowsServiceAvailable()).toBe(false);
     });
   });
 
@@ -411,9 +434,148 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Unsupported Platform', () => {
+  describe('ServiceManager - Windows', () => {
     beforeEach(() => {
       mockProcess.platform = 'win32';
+    });
+
+    it('should construct for Windows platform', () => {
+      const manager = new ServiceManager(defaultOptions);
+      expect(manager.getPlatform()).toBe('win32');
+      expect(manager.isSupported()).toBeDefined();
+    });
+
+    it('should generate PowerShell script file', () => {
+      const manager = new ServiceManager(defaultOptions);
+      const serviceFile = manager.generateServiceFile();
+
+      expect(serviceFile.platform).toBe('win32');
+      expect(serviceFile.content).toContain('# APEX Service Installation Script for Windows');
+      expect(serviceFile.content).toContain('param(');
+      expect(serviceFile.content).toContain('$Install');
+      expect(serviceFile.content).toContain('$Uninstall');
+      expect(serviceFile.content).toContain('$UseNSSM');
+      expect(serviceFile.content).toContain('Install-ApexService');
+      expect(serviceFile.content).toContain('Uninstall-ApexService');
+      expect(serviceFile.path).toContain('service-install.ps1');
+      expect(serviceFile.path).toContain('.apex');
+    });
+
+    it('should install PowerShell script successfully', async () => {
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.install()).resolves.not.toThrow();
+
+      expect(mockFs.mkdir).toHaveBeenCalled();
+      expect(mockFs.writeFile).toHaveBeenCalled();
+    });
+
+    it('should get Windows service status', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+
+      // Mock sc query output for running service
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          const output = 'SERVICE_NAME: apex-daemon\n        TYPE               : 10  WIN32_OWN_PROCESS\n        STATE              : 4  RUNNING';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('sc qc')) {
+          const output = 'START_TYPE         : 2   AUTO_START';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('wmic service')) {
+          const output = 'ProcessId=1234';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const status = await manager.getStatus();
+
+      expect(status.installed).toBe(true);
+      expect(status.running).toBe(true);
+      expect(status.enabled).toBe(true);
+      expect(status.pid).toBe(1234);
+      expect(status.platform).toBe('win32');
+    });
+
+    it('should handle Windows service operations', async () => {
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+
+      await expect(manager.enable()).resolves.not.toThrow();
+      await expect(manager.disable()).resolves.not.toThrow();
+      await expect(manager.start()).resolves.not.toThrow();
+      await expect(manager.stop()).resolves.not.toThrow();
+      await expect(manager.restart()).resolves.not.toThrow();
+    });
+
+    it('should handle Windows restart correctly', async () => {
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      await expect(manager.restart()).resolves.not.toThrow();
+
+      // Should call both stop and start for Windows
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('sc stop'),
+        expect.any(Function)
+      );
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('sc start'),
+        expect.any(Function)
+      );
+    });
+
+    it('should install and enable service when enableAfterInstall is true', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ enableAfterInstall: true });
+
+      expect(result.success).toBe(true);
+      expect(result.enabled).toBe(true);
+      expect(result.platform).toBe('win32');
+    });
+
+    it('should install with enableOnBoot option', async () => {
+      mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (callback) callback(null, { stdout: '', stderr: '' });
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.install({ enableOnBoot: true });
+
+      expect(result.success).toBe(true);
+      expect(result.platform).toBe('win32');
+
+      // Check that the service file contains enableOnBoot configuration
+      const serviceFile = manager.generateServiceFile();
+      expect(serviceFile.content).toContain('$enableOnBoot = $true');
+    });
+  });
+
+  describe('Unsupported Platform', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'freebsd';
     });
 
     it('should throw error for unsupported platform', () => {
@@ -704,6 +866,233 @@ describe('ServiceManager', () => {
     });
   });
 
+  describe('WindowsServiceGenerator', () => {
+    const requiredOptions = {
+      ...defaultOptions,
+      projectPath: 'C:\\test\\project',
+      serviceName: 'apex-daemon',
+      serviceDescription: 'Test Service',
+      user: 'testuser',
+      workingDirectory: 'C:\\test\\project',
+      environment: { FOO: 'bar', PATH_VAR: 'C:\\some\\path' },
+      restartPolicy: 'on-failure' as const,
+      restartDelaySeconds: 5,
+    };
+
+    beforeEach(() => {
+      mockProcess.platform = 'win32';
+      mockProcess.execPath = 'C:\\Program Files\\nodejs\\node.exe';
+    });
+
+    it('should generate valid PowerShell script', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('# APEX Service Installation Script for Windows');
+      expect(content).toContain('param(');
+      expect(content).toContain('[Parameter(Mandatory=$false)]');
+      expect(content).toContain('[switch]$Install');
+      expect(content).toContain('[switch]$Uninstall');
+      expect(content).toContain('[switch]$UseNSSM = $true');
+      expect(content).toContain('$serviceName = "apex-daemon"');
+      expect(content).toContain('$serviceDisplayName = "Test Service"');
+      expect(content).toContain('$nodePath = "C:\\\\Program Files\\\\nodejs\\\\node.exe"');
+      expect(content).toContain('function Install-ApexService');
+      expect(content).toContain('function Uninstall-ApexService');
+    });
+
+    it('should handle NSSM installation path', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('if ($UseNSSM -and (Get-Command "nssm" -ErrorAction SilentlyContinue))');
+      expect(content).toContain('& nssm install $serviceName $nodePath');
+      expect(content).toContain('& nssm set $serviceName DisplayName "$serviceDisplayName"');
+      expect(content).toContain('& nssm set $serviceName AppDirectory "$workingDirectory"');
+      expect(content).toContain('& nssm set $serviceName AppEnvironmentExtra "NODE_ENV=production"');
+    });
+
+    it('should handle fallback to sc.exe when NSSM not available', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('Write-Warning "NSSM not available. Using basic service creation.');
+      expect(content).toContain('$wrapperScript = @"');
+      expect(content).toContain('& sc.exe create $serviceName binPath=');
+      expect(content).toContain('& sc.exe description $serviceName');
+    });
+
+    it('should map restart policies correctly for NSSM', () => {
+      const alwaysGenerator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartPolicy: 'always',
+      });
+      expect(alwaysGenerator.generate()).toContain('AppExit Default Restart');
+
+      const neverGenerator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartPolicy: 'never',
+      });
+      expect(neverGenerator.generate()).toContain('AppExit Default Exit');
+
+      const onFailureGenerator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartPolicy: 'on-failure',
+      });
+      expect(onFailureGenerator.generate()).toContain('AppExit Default Restart');
+    });
+
+    it('should handle environment variables for NSSM', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        environment: { VAR1: 'value1', VAR2: 'value2', COMPLEX_VAR: 'value with spaces' },
+      });
+      const content = generator.generate();
+
+      expect(content).toContain('& nssm set $serviceName AppEnvironmentExtra "VAR1=value1"');
+      expect(content).toContain('& nssm set $serviceName AppEnvironmentExtra "VAR2=value2"');
+      expect(content).toContain('& nssm set $serviceName AppEnvironmentExtra "COMPLEX_VAR=value with spaces"');
+    });
+
+    it('should handle environment variables for batch script fallback', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        environment: { VAR1: 'value1', VAR2: 'value2' },
+      });
+      const content = generator.generate();
+
+      expect(content).toContain('set VAR1=value1');
+      expect(content).toContain('set VAR2=value2');
+    });
+
+    it('should handle enableOnBoot option', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions, true);
+      const content = generator.generate();
+
+      expect(content).toContain('$enableOnBoot = $true');
+      expect(content).toContain('if ($enableOnBoot)');
+      expect(content).toContain('& nssm set $serviceName Start SERVICE_AUTO_START');
+      expect(content).toContain('} else {');
+      expect(content).toContain('& nssm set $serviceName Start SERVICE_DEMAND_START');
+    });
+
+    it('should handle restart delay configuration', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartDelaySeconds: 30,
+      });
+      const content = generator.generate();
+
+      expect(content).toContain('& nssm set $serviceName AppRestartDelay 30000'); // Should be in milliseconds
+    });
+
+    it('should use project .apex directory for install path', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const path = generator.getInstallPath();
+      expect(path).toBe('C:\\test\\project\\.apex\\service-install.ps1');
+    });
+
+    it('should handle log file configuration', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('$logDir = Join-Path "C:\\\\test\\\\project" ".apex"');
+      expect(content).toContain('if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force }');
+      expect(content).toContain('& nssm set $serviceName AppStdout (Join-Path $logDir "daemon.out.log")');
+      expect(content).toContain('& nssm set $serviceName AppStderr (Join-Path $logDir "daemon.err.log")');
+    });
+
+    it('should handle Windows path escaping', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        projectPath: 'C:\\Program Files\\My App\\project',
+        workingDirectory: 'C:\\Program Files\\My App\\project',
+      });
+      const content = generator.generate();
+
+      expect(content).toContain('$workingDirectory = "C:\\\\Program Files\\\\My App\\\\project"');
+      expect(content).toContain('"APEX_PROJECT_PATH=C:\\\\Program Files\\\\My App\\\\project"');
+    });
+
+    it('should handle service uninstallation', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('function Uninstall-ApexService');
+      expect(content).toContain('$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue');
+      expect(content).toContain('if ($service -and $service.Status -eq "Running")');
+      expect(content).toContain('Stop-Service -Name $serviceName -Force');
+      expect(content).toContain('& nssm remove $serviceName confirm');
+      expect(content).toContain('& sc.exe delete $serviceName');
+    });
+
+    it('should handle CLI path resolution fallbacks', () => {
+      const originalResolve = require.resolve;
+      require.resolve = vi.fn().mockImplementation((path) => {
+        if (path === '@apex/cli/dist/index.js') {
+          throw new Error('Module not found');
+        }
+        return originalResolve(path);
+      });
+
+      // Mock fs.accessSync to simulate file not found
+      const originalAccessSync = require('fs').accessSync;
+      require('fs').accessSync = vi.fn().mockImplementation(() => {
+        throw new Error('ENOENT: file not found');
+      });
+
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('$apexCliPath = "');
+
+      require.resolve = originalResolve;
+      require('fs').accessSync = originalAccessSync;
+    });
+
+    it('should handle empty environment variables', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        environment: {},
+      });
+      const content = generator.generate();
+
+      // Should still contain NODE_ENV and APEX_PROJECT_PATH
+      expect(content).toContain('& nssm set $serviceName AppEnvironmentExtra "NODE_ENV=production"');
+      expect(content).toContain('"APEX_PROJECT_PATH=C:\\\\test\\\\project"');
+    });
+
+    it('should handle different restart delay values', () => {
+      const generator = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartDelaySeconds: 0,
+      });
+      const content = generator.generate();
+      expect(content).toContain('& nssm set $serviceName AppRestartDelay 0');
+
+      const generator2 = new WindowsServiceGenerator({
+        ...requiredOptions,
+        restartDelaySeconds: 3600,
+      });
+      const content2 = generator2.generate();
+      expect(content2).toContain('& nssm set $serviceName AppRestartDelay 3600000');
+    });
+
+    it('should include main execution logic', () => {
+      const generator = new WindowsServiceGenerator(requiredOptions);
+      const content = generator.generate();
+
+      expect(content).toContain('# Main execution');
+      expect(content).toContain('if ($Install) {');
+      expect(content).toContain('Install-ApexService');
+      expect(content).toContain('} elseif ($Uninstall) {');
+      expect(content).toContain('Uninstall-ApexService');
+      expect(content).toContain('} else {');
+      expect(content).toContain('Write-Host "Usage: .\\service-install.ps1 -Install or .\\service-install.ps1 -Uninstall"');
+      expect(content).toContain('Write-Host "Optional: Add -UseNSSM:$false to use basic Windows service manager"');
+    });
+  });
+
   describe('Platform-specific Generator Edge Cases', () => {
     const requiredOptions = {
       ...defaultOptions,
@@ -958,6 +1347,220 @@ describe('ServiceManager', () => {
     });
   });
 
+  describe('Windows Status Parsing Edge Cases', () => {
+    beforeEach(() => {
+      mockProcess.platform = 'win32';
+      mockFs.access.mockResolvedValue(undefined);
+    });
+
+    it('should handle different sc query output formats', async () => {
+      const testCases = [
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 4  RUNNING',
+          configOutput: 'START_TYPE         : 2   AUTO_START',
+          wmicOutput: 'ProcessId=1234',
+          expectedRunning: true,
+          expectedEnabled: true,
+          expectedPid: 1234,
+        },
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 1  STOPPED',
+          configOutput: 'START_TYPE         : 3   DEMAND_START',
+          wmicOutput: 'ProcessId=0',
+          expectedRunning: false,
+          expectedEnabled: false,
+          expectedPid: undefined,
+        },
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 2  START_PENDING',
+          configOutput: 'START_TYPE         : 2   AUTO_START',
+          wmicOutput: 'ProcessId=5678',
+          expectedRunning: false, // START_PENDING is not considered running
+          expectedEnabled: true,
+          expectedPid: 5678,
+        },
+        {
+          queryOutput: 'SERVICE_NAME: apex-daemon\n        STATE              : 3  STOP_PENDING',
+          configOutput: 'START_TYPE         : 4   DISABLED',
+          wmicOutput: '',
+          expectedRunning: false,
+          expectedEnabled: false,
+          expectedPid: undefined,
+        },
+      ];
+
+      for (const { queryOutput, configOutput, wmicOutput, expectedRunning, expectedEnabled, expectedPid } of testCases) {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            if (callback) callback(null, { stdout: queryOutput, stderr: '' });
+          } else if (command.includes('sc qc')) {
+            if (callback) callback(null, { stdout: configOutput, stderr: '' });
+          } else if (command.includes('wmic service')) {
+            if (callback) callback(null, { stdout: wmicOutput, stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.running).toBe(expectedRunning);
+        expect(status.enabled).toBe(expectedEnabled);
+        expect(status.pid).toBe(expectedPid);
+      }
+    });
+
+    it('should handle sc query command failure', async () => {
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          if (callback) callback(new Error('Service not found'));
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const status = await manager.getStatus();
+
+      expect(status.installed).toBe(true);
+      expect(status.enabled).toBe(false);
+      expect(status.running).toBe(false);
+    });
+
+    it('should handle sc qc config command failure', async () => {
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          const output = 'SERVICE_NAME: apex-daemon\n        STATE              : 4  RUNNING';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('sc qc')) {
+          if (callback) callback(new Error('Access denied'));
+        } else if (command.includes('wmic service')) {
+          const output = 'ProcessId=1234';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const status = await manager.getStatus();
+
+      expect(status.running).toBe(true);
+      expect(status.enabled).toBe(false); // Should default to false when config can't be read
+      expect(status.pid).toBe(1234);
+    });
+
+    it('should handle wmic command failure gracefully', async () => {
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          const output = 'SERVICE_NAME: apex-daemon\n        STATE              : 4  RUNNING';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('sc qc')) {
+          const output = 'START_TYPE         : 2   AUTO_START';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('wmic service')) {
+          if (callback) callback(new Error('WMI service unavailable'));
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const status = await manager.getStatus();
+
+      expect(status.running).toBe(true);
+      expect(status.enabled).toBe(true);
+      expect(status.pid).toBeUndefined(); // Should be undefined when wmic fails
+    });
+
+    it('should handle malformed wmic output', async () => {
+      const testCases = [
+        { wmicOutput: 'ProcessId=0', expectedPid: undefined }, // PID 0 means not actually running
+        { wmicOutput: 'ProcessId=invalid', expectedPid: undefined },
+        { wmicOutput: 'SomethingElse=1234', expectedPid: undefined },
+        { wmicOutput: '', expectedPid: undefined },
+        { wmicOutput: 'ProcessId=', expectedPid: undefined },
+      ];
+
+      for (const { wmicOutput, expectedPid } of testCases) {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            const output = 'SERVICE_NAME: apex-daemon\n        STATE              : 4  RUNNING';
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          } else if (command.includes('sc qc')) {
+            const output = 'START_TYPE         : 2   AUTO_START';
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          } else if (command.includes('wmic service')) {
+            if (callback) callback(null, { stdout: wmicOutput, stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.pid).toBe(expectedPid);
+      }
+    });
+
+    it('should handle different Windows service state strings', async () => {
+      const testCases = [
+        { state: 'RUNNING', expectedRunning: true },
+        { state: 'STOPPED', expectedRunning: false },
+        { state: 'START_PENDING', expectedRunning: false },
+        { state: 'STOP_PENDING', expectedRunning: false },
+        { state: 'CONTINUE_PENDING', expectedRunning: false },
+        { state: 'PAUSE_PENDING', expectedRunning: false },
+        { state: 'PAUSED', expectedRunning: false },
+        { state: 'UNKNOWN_STATE', expectedRunning: false },
+      ];
+
+      for (const { state, expectedRunning } of testCases) {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            const output = `SERVICE_NAME: apex-daemon\n        STATE              : 4  ${state}`;
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          } else if (command.includes('sc qc')) {
+            const output = 'START_TYPE         : 2   AUTO_START';
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.running).toBe(expectedRunning);
+      }
+    });
+
+    it('should handle different Windows service startup types', async () => {
+      const testCases = [
+        { startType: 'AUTO_START', expectedEnabled: true },
+        { startType: 'DEMAND_START', expectedEnabled: false },
+        { startType: 'DISABLED', expectedEnabled: false },
+        { startType: 'BOOT_START', expectedEnabled: true },
+        { startType: 'SYSTEM_START', expectedEnabled: true },
+        { startType: 'UNKNOWN_START', expectedEnabled: false },
+      ];
+
+      for (const { startType, expectedEnabled } of testCases) {
+        mockExec.mockImplementation((command: string, callback?: any) => {
+          if (command.includes('sc query')) {
+            const output = 'SERVICE_NAME: apex-daemon\n        STATE              : 1  STOPPED';
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          } else if (command.includes('sc qc')) {
+            const output = `START_TYPE         : 2   ${startType}`;
+            if (callback) callback(null, { stdout: output, stderr: '' });
+          }
+          return {} as any;
+        });
+
+        const manager = new ServiceManager(defaultOptions);
+        const status = await manager.getStatus();
+
+        expect(status.enabled).toBe(expectedEnabled);
+      }
+    });
+  });
+
   describe('Advanced Integration Tests', () => {
     it('should handle rapid successive operations', async () => {
       mockProcess.platform = 'linux';
@@ -998,6 +1601,10 @@ describe('ServiceManager', () => {
       mockProcess.platform = 'darwin';
       const macManager = new ServiceManager(defaultOptions);
       expect(macManager.getPlatform()).toBe('darwin');
+
+      mockProcess.platform = 'win32';
+      const windowsManager = new ServiceManager(defaultOptions);
+      expect(windowsManager.getPlatform()).toBe('win32');
 
       mockProcess.platform = 'freebsd';
       const unsupportedManager = new ServiceManager(defaultOptions);
@@ -1470,6 +2077,56 @@ describe('ServiceManager', () => {
 
       expect(result.success).toBe(true);
       expect(result.warnings).toEqual(['Could not disable service: Failed to disable service']); // Only disable warning
+    });
+
+    it('should uninstall Windows service successfully', async () => {
+      mockProcess.platform = 'win32';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          const output = 'SERVICE_NAME: apex-daemon\n        STATE              : 1  STOPPED';
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.wasRunning).toBe(false);
+    });
+
+    it('should stop running Windows service during uninstall', async () => {
+      mockProcess.platform = 'win32';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      let serviceStopped = false;
+      mockExec.mockImplementation((command: string, callback?: any) => {
+        if (command.includes('sc query')) {
+          const isRunning = !serviceStopped;
+          const state = isRunning ? 'RUNNING' : 'STOPPED';
+          const output = `SERVICE_NAME: apex-daemon\n        STATE              : 4  ${state}`;
+          if (callback) callback(null, { stdout: output, stderr: '' });
+        } else if (command.includes('sc stop')) {
+          serviceStopped = true;
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        } else {
+          if (callback) callback(null, { stdout: '', stderr: '' });
+        }
+        return {} as any;
+      });
+
+      const manager = new ServiceManager(defaultOptions);
+      const result = await manager.uninstall();
+
+      expect(result.success).toBe(true);
+      expect(result.wasRunning).toBe(true);
     });
   });
 
