@@ -1,7 +1,10 @@
-import { fork, ChildProcess } from 'child_process';
+import { fork, ChildProcess, exec } from 'child_process';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { promisify } from 'util';
 import { ApexConfig } from '@apexcli/core';
+
+const execAsync = promisify(exec);
 
 // ============================================================================
 // Error Types
@@ -142,6 +145,71 @@ interface PidFileData {
 }
 
 // ============================================================================
+// Platform-specific Process Management Utilities
+// ============================================================================
+
+/**
+ * Check if a process is running using platform-appropriate methods
+ * @param pid - Process ID to check
+ * @returns Promise<boolean> - True if process is running
+ */
+async function isProcessRunningCrossPlatform(pid: number): Promise<boolean> {
+  if (process.platform === 'win32') {
+    try {
+      // On Windows, use tasklist command to check if process exists
+      const { stdout } = await execAsync(`tasklist /fi "PID eq ${pid}" /fo csv`);
+      // Check if the PID appears in the output (excluding header line)
+      const lines = stdout.split('\n').filter(line => line.trim().length > 0);
+      return lines.length > 1; // Header line + at least one process line
+    } catch (error) {
+      // If tasklist fails, assume process doesn't exist
+      return false;
+    }
+  } else {
+    // On Unix-like systems, use the traditional signal 0 method
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      // ESRCH = process doesn't exist
+      // EPERM = exists but no permission (process is still running)
+      return nodeError.code === 'EPERM';
+    }
+  }
+}
+
+/**
+ * Terminate a process gracefully using platform-appropriate methods
+ * @param pid - Process ID to terminate
+ * @returns Promise<void>
+ */
+async function terminateProcessCrossPlatform(pid: number): Promise<void> {
+  if (process.platform === 'win32') {
+    // On Windows, use taskkill for graceful termination
+    await execAsync(`taskkill /pid ${pid}`);
+  } else {
+    // On Unix-like systems, use SIGTERM
+    process.kill(pid, 'SIGTERM');
+  }
+}
+
+/**
+ * Force kill a process using platform-appropriate methods
+ * @param pid - Process ID to kill
+ * @returns Promise<void>
+ */
+async function forceKillProcessCrossPlatform(pid: number): Promise<void> {
+  if (process.platform === 'win32') {
+    // On Windows, use taskkill with /f flag for force kill
+    await execAsync(`taskkill /f /pid ${pid}`);
+  } else {
+    // On Unix-like systems, use SIGKILL
+    process.kill(pid, 'SIGKILL');
+  }
+}
+
+// ============================================================================
 // DaemonManager Implementation
 // ============================================================================
 
@@ -258,9 +326,9 @@ export class DaemonManager {
     }
 
     try {
-      // Send SIGTERM for graceful shutdown
-      process.kill(status.pid, 'SIGTERM');
-      this.writeToLog(`Sent SIGTERM to daemon PID: ${status.pid}`);
+      // Send platform-appropriate termination signal
+      await terminateProcessCrossPlatform(status.pid);
+      this.writeToLog(`Sent graceful termination signal to daemon PID: ${status.pid}`);
 
       // Wait for process to exit (with timeout)
       const stopped = await this.waitForExit(status.pid, 10000);
@@ -294,7 +362,7 @@ export class DaemonManager {
         return false;
       }
 
-      return this.isProcessRunning(pidData.pid);
+      return await this.isProcessRunning(pidData.pid);
     } catch {
       return false;
     }
@@ -311,7 +379,7 @@ export class DaemonManager {
         return { running: false };
       }
 
-      const running = this.isProcessRunning(pidData.pid);
+      const running = await this.isProcessRunning(pidData.pid);
 
       if (!running) {
         // Clean up stale PID file
@@ -408,7 +476,7 @@ export class DaemonManager {
   }
 
   /**
-   * Force kill the daemon (SIGKILL). Use as last resort.
+   * Force kill the daemon. Use as last resort.
    */
   async killDaemon(): Promise<boolean> {
     const status = await this.getStatus();
@@ -418,8 +486,8 @@ export class DaemonManager {
     }
 
     try {
-      process.kill(status.pid, 'SIGKILL');
-      this.writeToLog(`Sent SIGKILL to daemon PID: ${status.pid}`);
+      await forceKillProcessCrossPlatform(status.pid);
+      this.writeToLog(`Sent force kill signal to daemon PID: ${status.pid}`);
 
       // Wait a bit for the kill to take effect
       await this.sleep(1000);
@@ -445,17 +513,8 @@ export class DaemonManager {
   /**
    * Check if a process with given PID is running.
    */
-  private isProcessRunning(pid: number): boolean {
-    try {
-      // Signal 0 doesn't kill the process, just checks if it exists
-      process.kill(pid, 0);
-      return true;
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException;
-      // ESRCH = process doesn't exist
-      // EPERM = exists but no permission (process is still running)
-      return nodeError.code === 'EPERM';
-    }
+  private async isProcessRunning(pid: number): Promise<boolean> {
+    return await isProcessRunningCrossPlatform(pid);
   }
 
   /**
@@ -609,7 +668,7 @@ export class DaemonManager {
     const maxChecks = Math.floor(timeoutMs / checkInterval);
 
     for (let i = 0; i < maxChecks; i++) {
-      if (!this.isProcessRunning(pid)) {
+      if (!(await this.isProcessRunning(pid))) {
         return true; // Process has exited
       }
       await this.sleep(checkInterval);

@@ -3,8 +3,9 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { DaemonManager, DaemonError, type DaemonOptions } from './daemon';
 
-// Mock child_process.fork
+// Mock child_process.fork and exec
 const mockFork = vi.fn();
+const mockExecAsync = vi.fn();
 const mockChild = {
   pid: 12345,
   stdout: {
@@ -19,6 +20,11 @@ const mockChild = {
 
 vi.mock('child_process', () => ({
   fork: mockFork,
+  exec: vi.fn(),
+}));
+
+vi.mock('util', () => ({
+  promisify: vi.fn(() => mockExecAsync),
 }));
 
 // Mock file system operations
@@ -865,7 +871,7 @@ describe('DaemonManager', () => {
       const logCalls = (fs.appendFile as any).mock.calls;
 
       const sigtermLogCall = logCalls.find(call =>
-        call[0] === testLogFile && call[1].includes('Sent SIGTERM')
+        call[0] === testLogFile && call[1].includes('Sent graceful termination signal')
       );
       const gracefulLogCall = logCalls.find(call =>
         call[0] === testLogFile && call[1].includes('Daemon stopped gracefully')
@@ -874,7 +880,7 @@ describe('DaemonManager', () => {
       expect(sigtermLogCall).toBeDefined();
       expect(gracefulLogCall).toBeDefined();
 
-      expect(sigtermLogCall[1]).toMatch(/^\[2024-01-15T10:30:00\.000Z\] Sent SIGTERM to daemon PID: 12345\n$/);
+      expect(sigtermLogCall[1]).toMatch(/^\[2024-01-15T10:30:00\.000Z\] Sent graceful termination signal to daemon PID: 12345\n$/);
       expect(gracefulLogCall[1]).toMatch(/^\[2024-01-15T10:30:00\.000Z\] Daemon stopped gracefully\n$/);
     });
   });
@@ -1156,6 +1162,447 @@ describe('DaemonManager', () => {
       expect(error.message).toBe('Test message');
       expect(error.code).toBe('START_FAILED');
       expect(error.cause).toBe(cause);
+    });
+  });
+
+  describe('Cross-Platform Process Management', () => {
+    const originalPlatform = process.platform;
+
+    afterEach(() => {
+      // Restore original platform
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        writable: true,
+      });
+    });
+
+    describe('Cross-Platform Utility Functions', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+      });
+
+      describe('Windows Platform Utilities', () => {
+        beforeEach(() => {
+          Object.defineProperty(process, 'platform', {
+            value: 'win32',
+            writable: true,
+          });
+        });
+
+        it('should correctly parse tasklist output with multiple processes', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          // Mock tasklist output with multiple processes including our target PID
+          mockExecAsync.mockResolvedValue({
+            stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"notepad.exe","1234","Console","1","10,000 K"\n"node.exe","12345","Console","1","50,000 K"\n"chrome.exe","6789","Console","1","100,000 K"\n',
+          });
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(true);
+          expect(mockExecAsync).toHaveBeenCalledWith('tasklist /fi "PID eq 12345" /fo csv');
+        });
+
+        it('should handle tasklist output with empty lines and whitespace', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          // Mock tasklist output with empty lines and whitespace
+          mockExecAsync.mockResolvedValue({
+            stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n\n   \n"node.exe","12345","Console","1","50,000 K"\n\n',
+          });
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(true);
+        });
+
+        it('should handle taskkill command errors during graceful termination', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          // Mock tasklist showing process exists but taskkill fails
+          mockExecAsync.mockImplementation(async (cmd: string) => {
+            if (cmd.includes('tasklist')) {
+              return { stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"node.exe","12345","Console","1","50,000 K"\n' };
+            } else if (cmd.includes('taskkill') && !cmd.includes('/f')) {
+              throw new Error('Access denied');
+            }
+          });
+
+          await expect(daemonManager.stopDaemon()).rejects.toThrow(DaemonError);
+          expect(mockExecAsync).toHaveBeenCalledWith('tasklist /fi "PID eq 12345" /fo csv');
+          expect(mockExecAsync).toHaveBeenCalledWith('taskkill /pid 12345');
+        });
+
+        it('should handle taskkill force kill command errors', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          // Mock tasklist showing process exists but taskkill /f fails
+          mockExecAsync.mockImplementation(async (cmd: string) => {
+            if (cmd.includes('tasklist')) {
+              return { stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"node.exe","12345","Console","1","50,000 K"\n' };
+            } else if (cmd.includes('taskkill /f')) {
+              throw new Error('Process not found');
+            }
+          });
+
+          await expect(daemonManager.killDaemon()).rejects.toThrow(DaemonError);
+          expect(mockExecAsync).toHaveBeenCalledWith('tasklist /fi "PID eq 12345" /fo csv');
+          expect(mockExecAsync).toHaveBeenCalledWith('taskkill /f /pid 12345');
+        });
+      });
+
+      describe('Unix Platform Utilities', () => {
+        beforeEach(() => {
+          Object.defineProperty(process, 'platform', {
+            value: 'linux',
+            writable: true,
+          });
+          mockKill.mockClear();
+        });
+
+        it('should handle unknown error codes from process.kill gracefully', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          mockKill.mockImplementation(() => {
+            throw { code: 'UNKNOWN_ERROR' };
+          });
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(false); // Unknown errors should be treated as process not running
+          expect(mockKill).toHaveBeenCalledWith(12345, 0);
+        });
+
+        it('should handle process.kill throwing non-ErrnoException errors', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          mockKill.mockImplementation(() => {
+            throw new Error('Unexpected error without code');
+          });
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(false); // Any errors should be treated as process not running
+        });
+
+        it('should handle SIGTERM send failure during graceful termination', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          mockKill.mockImplementation((pid, signal) => {
+            if (signal === 0) return undefined; // Process exists
+            if (signal === 'SIGTERM') throw new Error('Permission denied');
+          });
+
+          await expect(daemonManager.stopDaemon()).rejects.toThrow(DaemonError);
+          expect(mockKill).toHaveBeenCalledWith(12345, 'SIGTERM');
+        });
+
+        it('should handle SIGKILL send failure during force kill', async () => {
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+          mockKill.mockImplementation((pid, signal) => {
+            if (signal === 0) return undefined; // Process exists
+            if (signal === 'SIGKILL') throw new Error('Cannot kill process');
+          });
+
+          await expect(daemonManager.killDaemon()).rejects.toThrow(DaemonError);
+          expect(mockKill).toHaveBeenCalledWith(12345, 'SIGKILL');
+        });
+      });
+
+      describe('Platform Detection Edge Cases', () => {
+        it('should handle Darwin (macOS) platform correctly', async () => {
+          Object.defineProperty(process, 'platform', {
+            value: 'darwin',
+            writable: true,
+          });
+
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+          mockKill.mockReturnValue(undefined);
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(true);
+          expect(mockKill).toHaveBeenCalledWith(12345, 0);
+        });
+
+        it('should handle FreeBSD platform correctly', async () => {
+          Object.defineProperty(process, 'platform', {
+            value: 'freebsd',
+            writable: true,
+          });
+
+          const pidData = {
+            pid: 12345,
+            startedAt: new Date().toISOString(),
+            projectPath: testProjectPath,
+          };
+          (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+          mockKill.mockReturnValue(undefined);
+
+          const running = await daemonManager.isDaemonRunning();
+          expect(running).toBe(true);
+          expect(mockKill).toHaveBeenCalledWith(12345, 0);
+        });
+      });
+    });
+
+    describe('Windows Platform', () => {
+      beforeEach(() => {
+        // Mock Windows platform
+        Object.defineProperty(process, 'platform', {
+          value: 'win32',
+          writable: true,
+        });
+        vi.clearAllMocks();
+      });
+
+      it('should use tasklist to check if process is running on Windows', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+        // Mock tasklist output showing the process exists
+        mockExecAsync.mockResolvedValue({
+          stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"node.exe","12345","Console","1","50,000 K"\n',
+        });
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(true);
+        expect(mockExecAsync).toHaveBeenCalledWith('tasklist /fi "PID eq 12345" /fo csv');
+      });
+
+      it('should return false when tasklist shows no matching process on Windows', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+        // Mock tasklist output showing no processes (just header)
+        mockExecAsync.mockResolvedValue({
+          stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n',
+        });
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(false);
+      });
+
+      it('should return false when tasklist command fails on Windows', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+
+        // Mock tasklist command failure
+        mockExecAsync.mockRejectedValue(new Error('Command failed'));
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(false);
+      });
+
+      it('should use taskkill for graceful termination on Windows', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        (fs.unlink as any).mockResolvedValue(undefined);
+
+        // Mock tasklist to show process running, then not running
+        let processExists = true;
+        mockExecAsync.mockImplementation(async (cmd: string) => {
+          if (cmd.includes('tasklist')) {
+            if (processExists) {
+              return { stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"node.exe","12345","Console","1","50,000 K"\n' };
+            } else {
+              return { stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n' };
+            }
+          } else if (cmd.includes('taskkill')) {
+            // Simulate process termination
+            setTimeout(() => { processExists = false; }, 50);
+            return { stdout: 'SUCCESS: Sent termination signal to process with PID 12345.' };
+          }
+        });
+
+        const result = await daemonManager.stopDaemon();
+
+        expect(result).toBe(true);
+        expect(mockExecAsync).toHaveBeenCalledWith('taskkill /pid 12345');
+        expect(fs.unlink).toHaveBeenCalledWith(testPidFile);
+      });
+
+      it('should use taskkill with /f flag for force kill on Windows', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        (fs.unlink as any).mockResolvedValue(undefined);
+
+        // Mock tasklist showing process exists
+        mockExecAsync.mockImplementation(async (cmd: string) => {
+          if (cmd.includes('tasklist')) {
+            return { stdout: '"Image Name","PID","Session Name","Session#","Mem Usage"\n"node.exe","12345","Console","1","50,000 K"\n' };
+          } else if (cmd.includes('taskkill')) {
+            return { stdout: 'SUCCESS: The process with PID 12345 has been terminated.' };
+          }
+        });
+
+        const result = await daemonManager.killDaemon();
+
+        expect(result).toBe(true);
+        expect(mockExecAsync).toHaveBeenCalledWith('taskkill /f /pid 12345');
+      });
+    });
+
+    describe('Unix-like Platform', () => {
+      beforeEach(() => {
+        // Mock Unix-like platform (Linux, macOS, etc.)
+        Object.defineProperty(process, 'platform', {
+          value: 'linux',
+          writable: true,
+        });
+        vi.clearAllMocks();
+        mockKill.mockClear();
+      });
+
+      it('should use process.kill(0) to check if process is running on Unix', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        mockKill.mockReturnValue(undefined); // Process exists
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(true);
+        expect(mockKill).toHaveBeenCalledWith(12345, 0);
+      });
+
+      it('should return false when process does not exist on Unix (ESRCH)', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        mockKill.mockImplementation(() => {
+          throw { code: 'ESRCH' };
+        });
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(false);
+      });
+
+      it('should return true when permission denied on Unix (EPERM)', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        mockKill.mockImplementation(() => {
+          throw { code: 'EPERM' };
+        });
+
+        const running = await daemonManager.isDaemonRunning();
+        expect(running).toBe(true);
+      });
+
+      it('should use SIGTERM for graceful termination on Unix', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        (fs.unlink as any).mockResolvedValue(undefined);
+
+        // Mock successful SIGTERM
+        let processRunning = true;
+        mockKill.mockImplementation((pid, signal) => {
+          if (signal === 'SIGTERM') {
+            setTimeout(() => { processRunning = false; }, 50);
+            return undefined;
+          }
+          if (signal === 0) {
+            if (!processRunning) throw { code: 'ESRCH' };
+            return undefined;
+          }
+        });
+
+        const result = await daemonManager.stopDaemon();
+
+        expect(result).toBe(true);
+        expect(mockKill).toHaveBeenCalledWith(12345, 'SIGTERM');
+        expect(fs.unlink).toHaveBeenCalledWith(testPidFile);
+      });
+
+      it('should use SIGKILL for force kill on Unix', async () => {
+        const pidData = {
+          pid: 12345,
+          startedAt: new Date().toISOString(),
+          projectPath: testProjectPath,
+        };
+        (fs.readFile as any).mockResolvedValue(JSON.stringify(pidData));
+        (fs.unlink as any).mockResolvedValue(undefined);
+        mockKill.mockReturnValue(undefined);
+
+        const result = await daemonManager.killDaemon();
+
+        expect(result).toBe(true);
+        expect(mockKill).toHaveBeenCalledWith(12345, 'SIGKILL');
+      });
     });
   });
 });
