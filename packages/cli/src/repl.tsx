@@ -23,6 +23,9 @@ import {
   type VerboseDebugData,
   type Task,
   type TaskUsage,
+  getPlatformShell,
+  isWindows,
+  resolveExecutable,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startInkApp, type InkAppInstance } from './ui/index.js';
@@ -74,10 +77,12 @@ const ctx: ApexContext = {
 
 function getGitBranch(): string | undefined {
   try {
+    const shellConfig = getPlatformShell();
     const branch = execSync('git branch --show-current', {
       cwd: ctx.cwd,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: shellConfig.shell,
     }).trim();
     return branch || undefined;
   } catch {
@@ -364,7 +369,7 @@ async function handleServe(args: string[]): Promise<void> {
     const apiPath = path.resolve(__dirname, '../../api');
 
     // Spawn the API server as a background process
-    const proc = spawn('node', [path.join(apiPath, 'dist/index.js')], {
+    const proc = spawn(resolveExecutable('node'), [path.join(apiPath, 'dist/index.js')], {
       cwd: ctx.cwd,
       env: {
         ...process.env,
@@ -432,7 +437,7 @@ async function handleWeb(args: string[]): Promise<void> {
   }
 
   const apiUrl = ctx.config?.api?.url || `http://localhost:${ctx.apiPort ?? 3000}`;
-  const proc = spawn('npx', ['next', 'dev', '-p', String(port)], {
+  const proc = spawn(resolveExecutable('npx'), ['next', 'dev', '-p', String(port)], {
     cwd: webUIPath,
     env: { ...process.env, PORT: String(port), NEXT_PUBLIC_APEX_API_URL: apiUrl },
     stdio: 'ignore',
@@ -1291,7 +1296,7 @@ async function checkAutoStart(): Promise<void> {
       const port = apiConfig.port || 3000;
       const apiPath = path.resolve(__dirname, '../../api');
 
-      const proc = spawn('node', [path.join(apiPath, 'dist/index.js')], {
+      const proc = spawn(resolveExecutable('node'), [path.join(apiPath, 'dist/index.js')], {
         cwd: ctx.cwd,
         env: {
           ...process.env,
@@ -1318,7 +1323,7 @@ async function checkAutoStart(): Promise<void> {
       const apiUrl = ctx.config?.api?.url || `http://localhost:${ctx.apiPort}`;
       const port = webUIConfig.port || 3001;
 
-      const proc = spawn('npx', ['next', 'dev', '-p', port.toString()], {
+      const proc = spawn(resolveExecutable('npx'), ['next', 'dev', '-p', port.toString()], {
         cwd: webUIPath,
         env: { ...process.env, PORT: port.toString(), NEXT_PUBLIC_APEX_API_URL: apiUrl },
         stdio: 'ignore',
@@ -1783,22 +1788,84 @@ export async function startInkREPL(): Promise<void> {
 }
 
 /**
+ * Cross-platform function to get processes listening on a port
+ * @param port - Port number to check
+ * @returns Array of process IDs listening on the port
+ */
+function getProcessesOnPort(port: number): number[] {
+  try {
+    const shellConfig = getPlatformShell();
+    let command: string;
+
+    if (isWindows()) {
+      // Windows: Use netstat to find processes on port
+      command = `netstat -ano | findstr :${port}`;
+    } else {
+      // Unix-like: Try lsof first, fall back to netstat if not available
+      command = `lsof -ti :${port} 2>/dev/null || netstat -tlnp 2>/dev/null | grep :${port} | awk '{print $7}' | cut -d/ -f1`;
+    }
+
+    const result = execSync(command, {
+      encoding: 'utf-8',
+      shell: shellConfig.shell,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const pids: number[] = [];
+
+    if (isWindows()) {
+      // Parse Windows netstat output
+      const lines = result.trim().split('\n');
+      for (const line of lines) {
+        if (line.includes(`${port}`)) {
+          // Extract PID from the last column
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(pid) && pid > 0) {
+            pids.push(pid);
+          }
+        }
+      }
+    } else {
+      // Parse Unix output (PIDs separated by newlines)
+      const lines = result.trim().split('\n').filter(Boolean);
+      for (const line of lines) {
+        const pid = parseInt(line.trim(), 10);
+        if (!isNaN(pid) && pid > 0) {
+          pids.push(pid);
+        }
+      }
+    }
+
+    return [...new Set(pids)]; // Remove duplicates
+  } catch {
+    // Command failed or not available
+    return [];
+  }
+}
+
+/**
  * Kill a process listening on a specific port
  */
 function killProcessOnPort(port: number): void {
-  try {
-    // Get PID of process listening on port (works on macOS and Linux)
-    const result = execSync(`lsof -ti :${port} 2>/dev/null || true`, { encoding: 'utf-8' });
-    const pids = result.trim().split('\n').filter(Boolean);
-    for (const pid of pids) {
-      try {
-        process.kill(parseInt(pid, 10), 'SIGTERM');
-      } catch {
-        // Process already dead
+  const pids = getProcessesOnPort(port);
+
+  for (const pid of pids) {
+    try {
+      if (isWindows()) {
+        // Windows: Use taskkill
+        const shellConfig = getPlatformShell();
+        execSync(`taskkill /f /pid ${pid}`, {
+          shell: shellConfig.shell,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      } else {
+        // Unix-like: Use kill
+        process.kill(pid, 'SIGTERM');
       }
+    } catch {
+      // Process already dead or access denied
     }
-  } catch {
-    // lsof not available or other error
   }
 }
 
