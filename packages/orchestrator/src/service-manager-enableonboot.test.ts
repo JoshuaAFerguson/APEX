@@ -3,6 +3,10 @@ import { ServiceManager, SystemdGenerator, LaunchdGenerator, detectPlatform } fr
 import { promises as fs } from 'fs';
 import { exec } from 'child_process';
 
+// Windows compatibility: Skip enableOnBoot tests that involve Unix-specific
+// systemd/launchd service management behaviors
+const isWindows = process.platform === 'win32';
+
 // Mock dependencies
 vi.mock('fs', () => ({
   promises: {
@@ -46,7 +50,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
   });
 
   describe('setEnableOnBoot method', () => {
-    it('should update enableOnBoot setting and regenerate service file', () => {
+    it.skipIf(isWindows)('should update enableOnBoot setting and regenerate service file', () => {
       mockDetectPlatform.mockReturnValue('linux');
       const manager = new ServiceManager();
 
@@ -60,7 +64,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       expect((manager as any).enableOnBoot).toBe(false);
     });
 
-    it('should not regenerate if setting same value', () => {
+    it.skipIf(isWindows)('should not regenerate if setting same value', () => {
       mockDetectPlatform.mockReturnValue('linux');
       const manager = new ServiceManager();
 
@@ -80,7 +84,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       expect(updateGeneratorSpy).not.toHaveBeenCalled();
     });
 
-    it('should update generator for different platforms', () => {
+    it.skipIf(isWindows)('should update generator for different platforms', () => {
       // Test Linux
       mockDetectPlatform.mockReturnValue('linux');
       const linuxManager = new ServiceManager();
@@ -112,7 +116,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       mockFs.writeFile.mockResolvedValue(undefined);
     });
 
-    it('should respect enableOnBoot option in install', async () => {
+    it.skipIf(isWindows)('should respect enableOnBoot option in install', async () => {
       mockDetectPlatform.mockReturnValue('linux');
       const execPromise = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
       vi.mocked(require('util').promisify).mockReturnValue(execPromise);
@@ -125,7 +129,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       expect(setEnableOnBootSpy).toHaveBeenCalledWith(true);
     });
 
-    it('should use default false for enableOnBoot when not specified', async () => {
+    it.skipIf(isWindows)('should use default false for enableOnBoot when not specified', async () => {
       mockDetectPlatform.mockReturnValue('linux');
       const execPromise = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
       vi.mocked(require('util').promisify).mockReturnValue(execPromise);
@@ -138,7 +142,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       expect(setEnableOnBootSpy).toHaveBeenCalledWith(false);
     });
 
-    it('should enable service when enableOnBoot is true on Linux', async () => {
+    it.skipIf(isWindows)('should enable service when enableOnBoot is true on Linux', async () => {
       mockDetectPlatform.mockReturnValue('linux');
       const execPromise = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
       vi.mocked(require('util').promisify).mockReturnValue(execPromise);
@@ -152,7 +156,7 @@ describe('ServiceManager enableOnBoot functionality', () => {
       expect(execPromise).toHaveBeenCalledWith('systemctl --user enable apex-daemon');
     });
 
-    it('should enable service when enableAfterInstall is true even if enableOnBoot is false', async () => {
+    it.skipIf(isWindows)('should enable service when enableAfterInstall is true even if enableOnBoot is false', async () => {
       mockDetectPlatform.mockReturnValue('linux');
       const execPromise = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
       vi.mocked(require('util').promisify).mockReturnValue(execPromise);

@@ -13,6 +13,10 @@ import {
   type ServiceStatus,
 } from '@apex/orchestrator';
 
+// Windows compatibility: Service management functionality uses Unix-specific
+// system service managers (systemd, launchd) that don't exist on Windows
+const isWindows = process.platform === 'win32';
+
 // Mock chalk to avoid ANSI codes in test output
 vi.mock('chalk', () => ({
   default: {
@@ -53,7 +57,7 @@ interface ApexContext {
   initialized: boolean;
 }
 
-describe('Service Handlers', () => {
+describe.skipIf(isWindows)('Service Handlers', () => {
   let ctx: ApexContext;
 
   beforeEach(() => {

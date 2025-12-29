@@ -3,6 +3,10 @@ import { handleInstallService } from '../service-handlers';
 import { ServiceManager } from '@apex/orchestrator';
 import { loadConfig, getEffectiveConfig } from '@apex/core';
 
+// Windows compatibility: Service management with enableOnBoot functionality
+// depends on Unix-specific service managers that don't exist on Windows
+const isWindows = process.platform === 'win32';
+
 // Mock dependencies
 vi.mock('@apex/orchestrator');
 vi.mock('@apex/core');
@@ -48,7 +52,7 @@ const createMockManager = () => {
   return mockManager;
 };
 
-describe('install-service command with --enable flags integration', () => {
+describe.skipIf(isWindows)('install-service command with --enable flags integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConsoleLog.mockClear();

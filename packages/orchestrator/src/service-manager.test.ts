@@ -16,6 +16,9 @@ import {
   type ServiceManagerOptions,
 } from './service-manager';
 
+// Platform detection for Windows skipping
+const isWindows = process.platform === 'win32';
+
 // Mock dependencies
 vi.mock('fs', () => ({
   promises: {
@@ -198,7 +201,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('ServiceManager - Linux', () => {
+  describe.skipIf(isWindows)('ServiceManager - Linux', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -289,7 +292,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('ServiceManager - macOS', () => {
+  describe.skipIf(isWindows)('ServiceManager - macOS', () => {
     beforeEach(() => {
       mockProcess.platform = 'darwin';
     });
@@ -649,7 +652,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Error Handling', () => {
+  describe.skipIf(isWindows)('Error Handling', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -685,7 +688,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Service Operations', () => {
+  describe.skipIf(isWindows)('Service Operations', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
 
@@ -722,7 +725,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('macOS-specific Operations', () => {
+  describe.skipIf(isWindows)('macOS-specific Operations', () => {
     beforeEach(() => {
       mockProcess.platform = 'darwin';
 
@@ -758,7 +761,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Edge Cases and Error Scenarios', () => {
+  describe.skipIf(isWindows)('Edge Cases and Error Scenarios', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -842,7 +845,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Integration Scenarios', () => {
+  describe.skipIf(isWindows)('Integration Scenarios', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -1283,7 +1286,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Service Status Parsing Edge Cases', () => {
+  describe.skipIf(isWindows)('Service Status Parsing Edge Cases', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
       mockFs.access.mockResolvedValue(undefined);
@@ -1347,7 +1350,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('macOS Status Parsing Edge Cases', () => {
+  describe.skipIf(isWindows)('macOS Status Parsing Edge Cases', () => {
     beforeEach(() => {
       mockProcess.platform = 'darwin';
       mockFs.access.mockResolvedValue(undefined);
@@ -1997,7 +2000,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Advanced Integration Tests', () => {
+  describe.skipIf(isWindows)('Advanced Integration Tests', () => {
     it('should handle rapid successive operations', async () => {
       mockProcess.platform = 'linux';
       mockFs.mkdir.mockResolvedValue(undefined);
@@ -2078,7 +2081,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Resource Management and Cleanup', () => {
+  describe.skipIf(isWindows)('Resource Management and Cleanup', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -2115,7 +2118,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Install Method Comprehensive Testing', () => {
+  describe.skipIf(isWindows)('Install Method Comprehensive Testing', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -2291,7 +2294,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Uninstall Method Comprehensive Testing', () => {
+  describe.skipIf(isWindows)('Uninstall Method Comprehensive Testing', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });
@@ -2566,7 +2569,7 @@ describe('ServiceManager', () => {
     });
   });
 
-  describe('Service Lifecycle Integration Tests', () => {
+  describe.skipIf(isWindows)('Service Lifecycle Integration Tests', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
     });

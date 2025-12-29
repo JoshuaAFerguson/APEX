@@ -10,6 +10,10 @@ import {
   handleServiceStatus,
 } from '../service-handlers';
 
+// Windows compatibility: Service management integration tests rely on Unix-specific
+// system service functionality (systemd, launchd) not available on Windows
+const isWindows = process.platform === 'win32';
+
 // Mock the orchestrator module
 vi.mock('@apex/orchestrator', async () => {
   const actual = await vi.importActual('@apex/orchestrator');
@@ -130,7 +134,7 @@ interface ApexContext {
   initialized: boolean;
 }
 
-describe.skip('Service Management Integration Tests', () => {
+describe.skipIf(isWindows)('Service Management Integration Tests', () => {
   let tempDir: string;
   let ctx: ApexContext;
 

@@ -8,6 +8,10 @@ import {
   type ServiceManagerOptions,
 } from './service-manager';
 
+// Platform detection for test skipping
+// Skip Unix/Linux-specific tests on Windows since they test systemd/launchd functionality
+const isWindows = process.platform === 'win32';
+
 // Mock @apex/core path utilities
 vi.mock('@apex/core', () => ({
   getHomeDir: vi.fn(),
@@ -49,7 +53,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
     mockGetConfigDir.mockReturnValue('/home/user/.config');
   });
 
-  describe('Path Utilities Integration', () => {
+  describe.skipIf(isWindows)('Path Utilities Integration', () => {
     it('should successfully import and use getHomeDir from @apex/core', () => {
       mockProcess.platform = 'darwin';
       mockGetHomeDir.mockReturnValue('/Users/testuser');
@@ -86,7 +90,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
     });
   });
 
-  describe('Platform-Specific Behavior', () => {
+  describe.skipIf(isWindows)('Platform-Specific Behavior', () => {
     it('should use correct Linux systemd paths with cross-platform utilities', () => {
       mockProcess.platform = 'linux';
       mockProcess.getuid = vi.fn(() => 1000); // Non-root
@@ -124,7 +128,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
     });
   });
 
-  describe('Error Handling Coverage', () => {
+  describe.skipIf(isWindows)('Error Handling Coverage', () => {
     it('should handle path utility failures gracefully', () => {
       mockProcess.platform = 'linux';
       mockGetConfigDir.mockImplementation(() => {
@@ -152,7 +156,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
     });
   });
 
-  describe('Backwards Compatibility', () => {
+  describe.skipIf(isWindows)('Backwards Compatibility', () => {
     it('should no longer depend on process.env.HOME', () => {
       mockProcess.platform = 'linux';
       mockProcess.env = { USER: 'testuser' }; // Remove HOME

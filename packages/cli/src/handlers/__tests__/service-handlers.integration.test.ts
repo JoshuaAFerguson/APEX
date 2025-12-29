@@ -13,6 +13,10 @@ import {
   type ServiceStatus,
 } from '@apex/orchestrator';
 
+// Windows compatibility: Service integration tests use Unix-specific system calls
+// (systemctl, launchctl) and service file formats that don't apply to Windows
+const isWindows = process.platform === 'win32';
+
 // Mock external dependencies
 vi.mock('fs', () => ({
   promises: {
@@ -44,7 +48,7 @@ interface ApexContext {
   initialized: boolean;
 }
 
-describe.skip('Service Handlers Integration Tests', () => {
+describe.skipIf(isWindows)('Service Handlers Integration Tests', () => {
   let ctx: ApexContext;
   let originalConsoleLog: typeof console.log;
   let originalConsoleError: typeof console.error;

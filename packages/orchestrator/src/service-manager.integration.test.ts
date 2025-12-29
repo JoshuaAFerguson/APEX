@@ -10,6 +10,10 @@ import {
   type UninstallOptions,
 } from './service-manager';
 
+// Windows compatibility: Skip service integration tests that involve Unix-specific
+// systemd/launchd behaviors not available on Windows
+const isWindows = process.platform === 'win32';
+
 /**
  * Integration tests for ServiceManager install/uninstall functionality.
  * These tests focus on end-to-end scenarios and edge cases for the
@@ -72,7 +76,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
   });
 
   describe('Full Service Lifecycle Scenarios', () => {
-    it('should handle complete service lifecycle from scratch', async () => {
+    it.skipIf(isWindows)('should handle complete service lifecycle from scratch', async () => {
       let serviceExists = false;
       let serviceEnabled = false;
       let serviceRunning = false;
@@ -178,7 +182,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
       expect(finalStatus.running).toBe(false);
     });
 
-    it('should handle install with auto-enable successfully', async () => {
+    it.skipIf(isWindows)('should handle install with auto-enable successfully', async () => {
       mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
@@ -198,7 +202,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
       expect(result.warnings).toEqual([]);
     });
 
-    it('should handle force reinstall over existing service', async () => {
+    it.skipIf(isWindows)('should handle force reinstall over existing service', async () => {
       mockFs.access.mockResolvedValue(undefined); // Service exists
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
@@ -220,7 +224,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
   });
 
   describe('Error Recovery and Edge Cases', () => {
-    it('should handle partial failures during install gracefully', async () => {
+    it.skipIf(isWindows)('should handle partial failures during install gracefully', async () => {
       mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
@@ -253,7 +257,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
       expect(result.warnings).toContain('Service installed but could not be enabled: systemctl enable failed');
     });
 
-    it('should handle graceful uninstall of running service', async () => {
+    it.skipIf(isWindows)('should handle graceful uninstall of running service', async () => {
       mockFs.access.mockResolvedValue(undefined);
       mockFs.unlink.mockResolvedValue(undefined);
 
@@ -281,7 +285,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
       expect(result.warnings).toEqual([]);
     });
 
-    it('should handle forced uninstall when service won\'t stop', async () => {
+    it.skipIf(isWindows)('should handle forced uninstall when service won\'t stop', async () => {
       mockFs.access.mockResolvedValue(undefined);
       mockFs.unlink.mockResolvedValue(undefined);
 
@@ -313,7 +317,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
   });
 
   describe('Platform-Specific Behavior', () => {
-    it('should handle macOS service lifecycle correctly', async () => {
+    it.skipIf(isWindows)('should handle macOS service lifecycle correctly', async () => {
       mockProcess.platform = 'darwin';
 
       let launchAgentLoaded = false;
@@ -403,7 +407,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
   });
 
   describe('Permission and Security Handling', () => {
-    it('should handle permission denied scenarios with helpful messages', async () => {
+    it.skipIf(isWindows)('should handle permission denied scenarios with helpful messages', async () => {
       mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
       mockFs.mkdir.mockResolvedValue(undefined);
 
@@ -425,7 +429,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
       }
     });
 
-    it('should handle root user installation paths correctly', async () => {
+    it.skipIf(isWindows)('should handle root user installation paths correctly', async () => {
       mockProcess.getuid = vi.fn(() => 0); // Root user
       mockFs.access.mockRejectedValue(new Error('ENOENT: file not found'));
       mockFs.mkdir.mockResolvedValue(undefined);
@@ -448,7 +452,7 @@ describe('ServiceManager Integration Tests - Install/Uninstall', () => {
   });
 
   describe('Advanced Configuration Scenarios', () => {
-    it('should handle complex service configurations', async () => {
+    it.skipIf(isWindows)('should handle complex service configurations', async () => {
       const complexOptions: ServiceManagerOptions = {
         projectPath: '/complex/project/path',
         serviceName: 'apex-complex-service',

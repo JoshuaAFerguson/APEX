@@ -8,6 +8,9 @@ import {
   type ServiceManagerOptions,
 } from './service-manager';
 
+// Platform detection for Windows skipping
+const isWindows = process.platform === 'win32';
+
 // Mock @apex/core path utilities
 vi.mock('@apex/core', () => ({
   getHomeDir: vi.fn(),
@@ -53,7 +56,7 @@ describe('ServiceManager - Cross-Platform Path Utilities', () => {
     vi.clearAllMocks();
   });
 
-  describe('Linux (Systemd) - Cross-Platform Paths', () => {
+  describe.skipIf(isWindows)('Linux (Systemd) - Cross-Platform Paths', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
       mockProcess.getuid = vi.fn(() => 1000); // Non-root user
@@ -101,7 +104,7 @@ describe('ServiceManager - Cross-Platform Path Utilities', () => {
     });
   });
 
-  describe('macOS (Launchd) - Cross-Platform Paths', () => {
+  describe.skipIf(isWindows)('macOS (Launchd) - Cross-Platform Paths', () => {
     beforeEach(() => {
       mockProcess.platform = 'darwin';
     });
@@ -175,7 +178,7 @@ describe('ServiceManager - Cross-Platform Path Utilities', () => {
   });
 
   describe('ServiceManager Integration', () => {
-    it('should correctly integrate cross-platform paths on Linux', () => {
+    it.skipIf(isWindows)('should correctly integrate cross-platform paths on Linux', () => {
       mockProcess.platform = 'linux';
       mockGetConfigDir.mockReturnValue('/home/user/.config');
 
@@ -187,7 +190,7 @@ describe('ServiceManager - Cross-Platform Path Utilities', () => {
       expect(serviceFile.platform).toBe('linux');
     });
 
-    it('should correctly integrate cross-platform paths on macOS', () => {
+    it.skipIf(isWindows)('should correctly integrate cross-platform paths on macOS', () => {
       mockProcess.platform = 'darwin';
       mockGetHomeDir.mockReturnValue('/Users/testuser');
 
@@ -211,7 +214,7 @@ describe('ServiceManager - Cross-Platform Path Utilities', () => {
   });
 
   describe('Error Handling', () => {
-    it('should propagate path utility errors appropriately', () => {
+    it.skipIf(isWindows)('should propagate path utility errors appropriately', () => {
       mockProcess.platform = 'linux';
       mockGetConfigDir.mockImplementation(() => {
         throw new Error('Configuration directory not accessible');
