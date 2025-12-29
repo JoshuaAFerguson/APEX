@@ -643,4 +643,341 @@ branch feature/compat-test
       );
     });
   });
+
+  describe('Windows PowerShell support', () => {
+    beforeEach(() => {
+      mockGetPlatformShell.mockReturnValue({
+        shell: 'powershell.exe',
+        shellArgs: ['-Command']
+      });
+    });
+
+    it('should use PowerShell for worktree operations when configured', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback && command.includes('worktree list')) {
+          const mockOutput = `worktree C:\\projects\\test-app
+HEAD abc123
+branch main
+`;
+          callback(null, { stdout: mockOutput, stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      await worktreeManager.listWorktrees();
+
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('worktree list --porcelain'),
+        expect.objectContaining({
+          shell: 'powershell.exe'
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle PowerShell-specific path escaping', async () => {
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback) {
+          if (command.includes('worktree list')) {
+            if (callCount === 0) {
+              callback(null, { stdout: '', stderr: '' } as any);
+            } else {
+              const mockOutput = `worktree C:\\Program Files\\My App\\..\\apex-worktrees\\task-ps-test
+HEAD abc123
+branch feature/powershell
+`;
+              callback(null, { stdout: mockOutput, stderr: '' } as any);
+            }
+            callCount++;
+          } else if (command.includes('worktree add')) {
+            callback(null, { stdout: 'Preparing worktree', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      await worktreeManager.createWorktree('ps-test', 'feature/powershell');
+
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('worktree add'),
+        expect.objectContaining({
+          shell: 'powershell.exe'
+        }),
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('Windows Command Prompt edge cases', () => {
+    beforeEach(() => {
+      mockGetPlatformShell.mockReturnValue({
+        shell: 'cmd.exe',
+        shellArgs: ['/d', '/s', '/c']
+      });
+    });
+
+    it('should handle Windows path separators in all operations', async () => {
+      const windowsProjectPath = 'C:\\dev\\myproject';
+      const windowsWorktreeManager = new WorktreeManager({
+        projectPath: windowsProjectPath,
+        config: { maxWorktrees: 3 }
+      });
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback) {
+          if (command.includes('worktree list')) {
+            const mockOutput = `worktree C:\\dev\\myproject\\..\\apex-worktrees\\task-windows-paths
+HEAD abc123
+branch feature/windows-paths
+
+worktree C:\\dev\\myproject
+HEAD def456
+branch main
+`;
+            callback(null, { stdout: mockOutput, stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const worktrees = await windowsWorktreeManager.listWorktrees();
+
+      expect(worktrees).toHaveLength(2);
+      expect(worktrees.some(w => w.taskId === 'windows-paths')).toBe(true);
+      expect(worktrees.some(w => w.isMain)).toBe(true);
+
+      // Verify cmd.exe was used with Windows project path
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          cwd: windowsProjectPath,
+          shell: 'cmd.exe'
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle special characters in Windows branch names', async () => {
+      // Test branch names with characters that need escaping in cmd.exe
+      const specialBranchNames = [
+        'feature/test&fix',
+        'hotfix/urgent|patch',
+        'release/v1.0<final>',
+        'feature/quotes"test'
+      ];
+
+      for (const branchName of specialBranchNames) {
+        let callCount = 0;
+        mockExec.mockImplementation((command, options, callback) => {
+          if (typeof options === 'function') {
+            callback = options;
+          }
+          if (callback) {
+            if (command.includes('worktree list')) {
+              if (callCount === 0) {
+                callback(null, { stdout: '', stderr: '' } as any);
+              } else {
+                const mockOutput = `worktree /test/project/../.apex-worktrees/task-special-${callCount}
+HEAD abc123
+branch ${branchName}
+`;
+                callback(null, { stdout: mockOutput, stderr: '' } as any);
+              }
+              callCount++;
+            } else if (command.includes('worktree add')) {
+              callback(null, { stdout: 'Preparing worktree', stderr: '' } as any);
+            }
+          }
+          return {} as any;
+        });
+
+        await worktreeManager.createWorktree(`special-${callCount}`, branchName);
+
+        // Verify the branch name was properly quoted in the command
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.stringContaining(`-b "${branchName}"`),
+          expect.objectContaining({ shell: 'cmd.exe' }),
+          expect.any(Function)
+        );
+      }
+    });
+
+    it('should handle Windows environment variable expansion', async () => {
+      // Simulate paths with Windows environment variables
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback && command.includes('worktree list')) {
+          // Simulate git returning expanded paths
+          const mockOutput = `worktree C:\\Users\\TestUser\\projects\\app\\..\\apex-worktrees\\task-env-test
+HEAD abc123
+branch feature/env-vars
+`;
+          callback(null, { stdout: mockOutput, stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      const worktrees = await worktreeManager.listWorktrees();
+
+      expect(worktrees).toHaveLength(1);
+      expect(worktrees[0].path).toContain('Users\\TestUser');
+      expect(worktrees[0].taskId).toBe('env-test');
+    });
+
+    it('should handle Windows network drive paths', async () => {
+      const networkPath = '\\\\fileserver\\projects\\myapp';
+      const networkWorktreeManager = new WorktreeManager({
+        projectPath: networkPath,
+        config: { maxWorktrees: 3 }
+      });
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback && command.includes('worktree list')) {
+          const mockOutput = `worktree \\\\fileserver\\projects\\myapp\\..\\apex-worktrees\\task-network
+HEAD abc123
+branch feature/network-drive
+`;
+          callback(null, { stdout: mockOutput, stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      const worktrees = await networkWorktreeManager.listWorktrees();
+
+      expect(worktrees).toHaveLength(1);
+      expect(worktrees[0].path).toContain('\\\\fileserver');
+      expect(worktrees[0].taskId).toBe('network');
+
+      // Verify cmd.exe was used with UNC path
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          cwd: networkPath,
+          shell: 'cmd.exe'
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle Windows cmd.exe timeout scenarios', async () => {
+      // Test long-running operations that might timeout on Windows
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback) {
+          // Simulate a slow operation that eventually succeeds
+          setTimeout(() => {
+            if (command.includes('worktree list')) {
+              callback(null, { stdout: '', stderr: '' } as any);
+            }
+          }, 100);
+        }
+        return {} as any;
+      });
+
+      const result = await worktreeManager.listWorktrees();
+
+      expect(result).toEqual([]);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ shell: 'cmd.exe' }),
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('Cross-platform compatibility verification', () => {
+    it('should maintain consistent behavior across different shells', async () => {
+      const shells = [
+        { shell: 'cmd.exe', shellArgs: ['/d', '/s', '/c'], platform: 'Windows' },
+        { shell: '/bin/sh', shellArgs: ['-c'], platform: 'Unix' },
+        { shell: '/bin/bash', shellArgs: ['-c'], platform: 'Linux' },
+        { shell: 'powershell.exe', shellArgs: ['-Command'], platform: 'Windows PowerShell' }
+      ];
+
+      for (const shellConfig of shells) {
+        mockGetPlatformShell.mockReturnValue(shellConfig);
+
+        mockExec.mockImplementation((command, options, callback) => {
+          if (typeof options === 'function') {
+            callback = options;
+          }
+          if (callback && command.includes('worktree list')) {
+            const mockOutput = `worktree /test/project/../.apex-worktrees/task-${shellConfig.platform.toLowerCase().replace(/\s+/g, '-')}
+HEAD abc123
+branch feature/cross-platform
+`;
+            callback(null, { stdout: mockOutput, stderr: '' } as any);
+          }
+          return {} as any;
+        });
+
+        const worktrees = await worktreeManager.listWorktrees();
+
+        expect(worktrees).toHaveLength(1);
+        expect(worktrees[0].branch).toBe('feature/cross-platform');
+
+        // Verify the correct shell was used
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            shell: shellConfig.shell
+          }),
+          expect.any(Function)
+        );
+      }
+    });
+
+    it('should handle getPlatformShell() returning different configurations', async () => {
+      const configurations = [
+        { shell: 'cmd.exe', shellArgs: ['/d', '/s', '/c'] },
+        { shell: 'powershell.exe', shellArgs: ['-Command'] },
+        { shell: 'pwsh.exe', shellArgs: ['-Command'] }, // PowerShell Core
+        { shell: '/bin/sh', shellArgs: ['-c'] },
+        { shell: '/bin/bash', shellArgs: ['-c'] },
+        { shell: '/usr/bin/zsh', shellArgs: ['-c'] }
+      ];
+
+      for (const config of configurations) {
+        mockGetPlatformShell.mockReturnValue(config);
+
+        mockExec.mockImplementation((command, options, callback) => {
+          if (typeof options === 'function') {
+            callback = options;
+          }
+          if (callback && command.includes('worktree list')) {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+          return {} as any;
+        });
+
+        await worktreeManager.listWorktrees();
+
+        // Verify the configuration was used correctly
+        expect(mockExec).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            shell: config.shell
+          }),
+          expect.any(Function)
+        );
+      }
+    });
+  });
 });
