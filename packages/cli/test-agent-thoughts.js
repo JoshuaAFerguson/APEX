@@ -3,13 +3,14 @@
 // Simple test runner for AgentThoughts component
 const { spawn } = require('child_process');
 const path = require('path');
+const { resolveExecutable } = require('@apexcli/core');
 
 console.log('Running AgentThoughts tests...');
 
 const testFile = 'src/ui/components/__tests__/AgentThoughts.test.tsx';
 const vitestCommand = path.join(__dirname, 'node_modules', '.bin', 'vitest');
 
-const vitest = spawn('npx', ['vitest', 'run', testFile], {
+const vitest = spawn(resolveExecutable('npx'), ['vitest', 'run', testFile], {
   stdio: 'inherit',
   cwd: __dirname
 });

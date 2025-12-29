@@ -19,6 +19,7 @@ import {
   getEffectiveConfig,
   ApexConfig,
   Task,
+  resolveExecutable,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -2538,7 +2539,7 @@ async function showDetailedDiff(task: Task, specificFile?: string | null): Promi
         args.push('--', specificFile);
       }
 
-      const gitProcess = spawn('git', args, {
+      const gitProcess = spawn(resolveExecutable('git'), args, {
         cwd: projectPath,
         stdio: ['inherit', 'pipe', 'pipe']
       });
@@ -2633,7 +2634,7 @@ async function showDiffStats(task: Task, specificFile?: string | null): Promise<
         args.push('--', specificFile);
       }
 
-      const gitProcess = spawn('git', args, {
+      const gitProcess = spawn(resolveExecutable('git'), args, {
         cwd: projectPath,
         stdio: ['inherit', 'pipe', 'pipe']
       });
@@ -2685,7 +2686,7 @@ async function showStagedChanges(task: Task): Promise<void> {
 
   try {
     // Check working directory status
-    const statusProcess = spawn('git', ['status', '--porcelain'], {
+    const statusProcess = spawn(resolveExecutable('git'), ['status', '--porcelain'], {
       cwd: projectPath,
       stdio: ['inherit', 'pipe', 'pipe']
     });
@@ -2726,7 +2727,7 @@ async function showStagedChanges(task: Task): Promise<void> {
     });
 
     // Show staged changes diff
-    const stagedProcess = spawn('git', ['diff', '--staged'], {
+    const stagedProcess = spawn(resolveExecutable('git'), ['diff', '--staged'], {
       cwd: projectPath,
       stdio: ['inherit', 'pipe', 'pipe']
     });
@@ -3216,7 +3217,7 @@ async function startWebUI(ctx: ApexContext, port: number, silent: boolean = fals
     ? ['next', 'dev', '-p', port.toString()]
     : ['next', 'start', '-p', port.toString()];
 
-  const proc = spawn('npx', args, {
+  const proc = spawn(resolveExecutable('npx'), args, {
     cwd: webUIPath,
     env: {
       ...process.env,

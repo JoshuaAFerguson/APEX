@@ -8,6 +8,7 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
+import { resolveExecutable } from '@apexcli/core';
 
 const testFiles = [
   'src/ui/components/agents/__tests__/AgentPanel.test.tsx',
@@ -38,7 +39,7 @@ function validateTestFiles() {
 function runTests() {
   console.log('\n🧪 Running test suite...');
 
-  const vitest = spawn('npx', ['vitest', 'run', '--reporter=verbose'], {
+  const vitest = spawn(resolveExecutable('npx'), ['vitest', 'run', '--reporter=verbose'], {
     stdio: 'inherit',
     shell: true
   });
@@ -61,7 +62,7 @@ function runTests() {
 function runCoverage() {
   console.log('\n📊 Running coverage analysis...');
 
-  const vitest = spawn('npx', ['vitest', 'run', '--coverage'], {
+  const vitest = spawn(resolveExecutable('npx'), ['vitest', 'run', '--coverage'], {
     stdio: 'inherit',
     shell: true
   });

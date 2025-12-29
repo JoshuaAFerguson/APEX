@@ -8,6 +8,7 @@
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+import { resolveExecutable } from '@apexcli/core';
 
 // Key v0.3.0 files to analyze
 const V030_SERVICE_FILES = [
@@ -80,7 +81,7 @@ async function runCoverageAnalysis() {
   console.log('📊 Running v0.3.0 coverage analysis...\n');
 
   return new Promise((resolve, reject) => {
-    const vitestProcess = spawn('npx', [
+    const vitestProcess = spawn(resolveExecutable('npx'), [
       'vitest',
       'run',
       '--coverage',

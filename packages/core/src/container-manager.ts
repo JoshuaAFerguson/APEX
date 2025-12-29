@@ -1,6 +1,7 @@
 import { ContainerConfig, ContainerInfo, ContainerStats, ContainerStatus, ResourceLimits, ContainerLogStreamOptions, ContainerLogEntry, ContainerDiedEventData } from './types';
 import { ContainerRuntime, ContainerRuntimeType } from './container-runtime';
 import { ImageBuilder, ImageBuildConfig, ImageBuildResult } from './image-builder';
+import { resolveExecutable } from './shell-utils';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
@@ -1042,7 +1043,7 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
     const command = this.buildEventsCommand(runtime);
     const args = command.split(' ').slice(1); // Remove the runtime command
 
-    this.eventsMonitorProcess = spawn(runtime, args, {
+    this.eventsMonitorProcess = spawn(resolveExecutable(runtime), args, {
       stdio: ['ignore', 'pipe', 'pipe']
     });
 

@@ -2,13 +2,14 @@
  * Simple test validation script to check individual test files
  */
 import { spawn } from 'child_process';
+import { resolveExecutable } from '@apexcli/core';
 
 async function runSingleTest(testFile) {
   console.log(`\n🧪 Testing: ${testFile}`);
   console.log('=' .repeat(60));
 
   return new Promise((resolve, reject) => {
-    const child = spawn('npx', ['vitest', 'run', testFile, '--reporter=verbose'], {
+    const child = spawn(resolveExecutable('npx'), ['vitest', 'run', testFile, '--reporter=verbose'], {
       stdio: 'inherit',
       cwd: process.cwd()
     });
