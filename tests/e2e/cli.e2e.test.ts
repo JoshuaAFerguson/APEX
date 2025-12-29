@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { skipOnWindows } from '@apexcli/core';
 
 const execAsync = promisify(exec);
 
@@ -257,6 +258,9 @@ describe('E2E: Project Structure', () => {
   });
 
   it('should create executable scripts', async () => {
+    // Unix-only: File permission bits don't work the same on Windows
+    skipOnWindows();
+
     const scriptsDir = path.join(testDir, '.apex', 'scripts');
     const files = await fs.readdir(scriptsDir);
 

@@ -17,7 +17,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'yaml';
 import type { ApexConfig } from '@apexcli/core';
-import { loadConfig, saveConfig } from '@apexcli/core';
+import { loadConfig, saveConfig, skipOnWindows } from '@apexcli/core';
 
 describe('Idle Enable/Disable Commands Integration', () => {
   let tempDir: string;
@@ -174,6 +174,9 @@ daemon:
     });
 
     it('should handle permission errors gracefully', async () => {
+      // Unix-only: chmod permission model doesn't apply to Windows
+      skipOnWindows();
+
       // Setup: Create a read-only config file
       const initialConfig: ApexConfig = {
         version: '1.0',

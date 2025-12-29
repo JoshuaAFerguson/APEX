@@ -8,7 +8,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 // Skip these tests on Windows since service management isn't supported
-const skipOnWindows = process.platform === 'win32' ? it.skip : it;
+const isWindows = process.platform === 'win32';
 
 describe('Service Management E2E Tests', () => {
   let tempProjectDir: string;
@@ -53,7 +53,7 @@ describe('Service Management E2E Tests', () => {
   });
 
   describe('Service Installation Commands', () => {
-    skipOnWindows('should install service successfully', async () => {
+    it.skipIf(isWindows)('should install service successfully', async () => {
       const { stdout, stderr } = await execAsync('npm run apex -- install-service --help', {
         cwd: tempProjectDir,
         timeout: 10000
@@ -62,7 +62,7 @@ describe('Service Management E2E Tests', () => {
       expect(stdout || stderr).toContain('install-service');
     });
 
-    skipOnWindows('should show service status', async () => {
+    it.skipIf(isWindows)('should show service status', async () => {
       const { stdout, stderr } = await execAsync('npm run apex -- install-service', {
         cwd: tempProjectDir,
         timeout: 15000
@@ -72,7 +72,7 @@ describe('Service Management E2E Tests', () => {
       expect(output).toMatch(/Service (installed successfully|already exists)/);
     });
 
-    skipOnWindows('should uninstall service', async () => {
+    it.skipIf(isWindows)('should uninstall service', async () => {
       // First install
       try {
         await execAsync('npm run apex -- install-service', {
@@ -93,7 +93,7 @@ describe('Service Management E2E Tests', () => {
       expect(output).toMatch(/Service (uninstalled successfully|not found)/);
     });
 
-    skipOnWindows('should handle force installation', async () => {
+    it.skipIf(isWindows)('should handle force installation', async () => {
       // Install once
       try {
         await execAsync('npm run apex -- install-service', {
@@ -114,7 +114,7 @@ describe('Service Management E2E Tests', () => {
       expect(output).toContain('install');
     });
 
-    skipOnWindows('should handle custom service name', async () => {
+    it.skipIf(isWindows)('should handle custom service name', async () => {
       const { stdout, stderr } = await execAsync('npm run apex -- install-service --name custom-apex', {
         cwd: tempProjectDir,
         timeout: 15000
@@ -159,7 +159,7 @@ describe('Service Management E2E Tests', () => {
       }
     });
 
-    skipOnWindows('should provide helpful error messages for invalid flags', async () => {
+    it.skipIf(isWindows)('should provide helpful error messages for invalid flags', async () => {
       try {
         const { stdout, stderr } = await execAsync('npm run apex -- install-service --invalid-flag', {
           cwd: tempProjectDir,
@@ -178,7 +178,7 @@ describe('Service Management E2E Tests', () => {
   });
 
   describe('Service Configuration Integration', () => {
-    skipOnWindows('should respect configuration file settings', async () => {
+    it.skipIf(isWindows)('should respect configuration file settings', async () => {
       // Modify config to enable auto-start
       const configPath = join(tempProjectDir, '.apex', 'config.yaml');
       const configContent = `
@@ -208,7 +208,7 @@ daemon:
       }
     });
 
-    skipOnWindows('should handle CLI flags overriding config', async () => {
+    it.skipIf(isWindows)('should handle CLI flags overriding config', async () => {
       // Set config to enable auto-start
       const configPath = join(tempProjectDir, '.apex', 'config.yaml');
       const configContent = `
@@ -240,7 +240,7 @@ daemon:
   });
 
   describe('Platform Compatibility', () => {
-    skipOnWindows('should work on Linux', async () => {
+    it.skipIf(isWindows)('should work on Linux', async () => {
       if (process.platform !== 'linux') {
         return; // Skip if not on Linux
       }
@@ -254,7 +254,7 @@ daemon:
       expect(output).toContain('systemd');
     });
 
-    skipOnWindows('should work on macOS', async () => {
+    it.skipIf(isWindows)('should work on macOS', async () => {
       if (process.platform !== 'darwin') {
         return; // Skip if not on macOS
       }
@@ -290,7 +290,7 @@ daemon:
   });
 
   describe('Command Output Validation', () => {
-    skipOnWindows('should provide clear installation feedback', async () => {
+    it.skipIf(isWindows)('should provide clear installation feedback', async () => {
       const { stdout, stderr } = await execAsync('npm run apex -- install-service', {
         cwd: tempProjectDir,
         timeout: 15000
@@ -319,7 +319,7 @@ daemon:
       }
     });
 
-    skipOnWindows('should provide clear uninstallation feedback', async () => {
+    it.skipIf(isWindows)('should provide clear uninstallation feedback', async () => {
       // First install
       try {
         await execAsync('npm run apex -- install-service', {
@@ -366,7 +366,7 @@ daemon:
   });
 
   describe('Service Lifecycle Management', () => {
-    skipOnWindows('should handle complete install-status-uninstall cycle', async () => {
+    it.skipIf(isWindows)('should handle complete install-status-uninstall cycle', async () => {
       // 1. Install
       const installResult = await execAsync('npm run apex -- install-service', {
         cwd: tempProjectDir,
@@ -387,7 +387,7 @@ daemon:
       expect(uninstallResult.stdout + uninstallResult.stderr).toMatch(/uninstall|remove|success/i);
     });
 
-    skipOnWindows('should handle reinstallation gracefully', async () => {
+    it.skipIf(isWindows)('should handle reinstallation gracefully', async () => {
       // Install twice
       try {
         await execAsync('npm run apex -- install-service', {

@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { Task } from '@apexcli/core';
+import { skipOnWindows } from '@apexcli/core';
 
 const execAsync = promisify(exec);
 
@@ -724,6 +725,9 @@ describe('E2E: Git Commands', () => {
     });
 
     it('should handle git hook integration', async () => {
+      // Unix-only: Git hooks and chmod permissions don't work the same on Windows
+      skipOnWindows();
+
       // Create a simple pre-commit hook
       const hooksDir = path.join(testDir, '.git', 'hooks');
       await fs.mkdir(hooksDir, { recursive: true });

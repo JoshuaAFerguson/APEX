@@ -20,6 +20,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'yaml';
 import type { ApexConfig } from '@apexcli/core';
+import { skipOnWindows } from '@apexcli/core';
 
 describe('Idle Enable/Disable Commands Edge Cases', () => {
   let tempDir: string;
@@ -207,6 +208,9 @@ daemon:
 
   describe('filesystem edge cases', () => {
     it('should handle read-only .apex directory', async () => {
+      // Unix-only: chmod permission model doesn't apply to Windows
+      skipOnWindows();
+
       // Setup: Create config and make .apex directory read-only
       const config: ApexConfig = {
         version: '1.0',
@@ -254,6 +258,9 @@ daemon:
     });
 
     it('should handle symlink to nonexistent file', async () => {
+      // Unix-only: Symlinks require elevated permissions or Developer Mode on Windows
+      skipOnWindows();
+
       // Setup: Create symlink to nonexistent file
       const nonexistentFile = path.join(tempDir, 'nonexistent.yaml');
       await fs.symlink(nonexistentFile, apexConfigPath);
