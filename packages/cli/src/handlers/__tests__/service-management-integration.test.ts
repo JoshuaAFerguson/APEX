@@ -134,6 +134,8 @@ interface ApexContext {
   initialized: boolean;
 }
 
+// Windows compatibility: Skip service management integration tests as Windows
+// service implementation is not available (uses Unix-specific systemd/launchd APIs)
 describe.skipIf(isWindows)('Service Management Integration Tests', () => {
   let tempDir: string;
   let ctx: ApexContext;

@@ -57,6 +57,8 @@ interface ApexContext {
   initialized: boolean;
 }
 
+// Windows compatibility: Skip service handler tests as Windows service management
+// is not yet implemented (uses Unix-specific systemd/launchd service APIs)
 describe.skipIf(isWindows)('Service Handlers', () => {
   let ctx: ApexContext;
 

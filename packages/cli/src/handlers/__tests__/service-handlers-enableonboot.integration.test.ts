@@ -52,6 +52,8 @@ const createMockManager = () => {
   return mockManager;
 };
 
+// Windows compatibility: Skip enable-on-boot integration tests as Windows service
+// management is not implemented (requires Unix-specific systemd/launchd APIs)
 describe.skipIf(isWindows)('install-service command with --enable flags integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();

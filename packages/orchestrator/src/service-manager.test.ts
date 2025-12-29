@@ -201,6 +201,7 @@ describe('ServiceManager', () => {
     });
   });
 
+  // Windows compatibility: Skip Linux systemd service tests as Windows uses different service management
   describe.skipIf(isWindows)('ServiceManager - Linux', () => {
     beforeEach(() => {
       mockProcess.platform = 'linux';
@@ -292,6 +293,7 @@ describe('ServiceManager', () => {
     });
   });
 
+  // Windows compatibility: Skip macOS launchd service tests as Windows uses different service management
   describe.skipIf(isWindows)('ServiceManager - macOS', () => {
     beforeEach(() => {
       mockProcess.platform = 'darwin';

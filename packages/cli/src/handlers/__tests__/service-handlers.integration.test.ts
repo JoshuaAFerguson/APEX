@@ -48,6 +48,8 @@ interface ApexContext {
   initialized: boolean;
 }
 
+// Windows compatibility: Skip service integration tests as Windows service management
+// is not yet implemented (requires systemd/launchd which are Unix-only)
 describe.skipIf(isWindows)('Service Handlers Integration Tests', () => {
   let ctx: ApexContext;
   let originalConsoleLog: typeof console.log;
