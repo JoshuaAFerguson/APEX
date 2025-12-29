@@ -33,3 +33,6 @@ export * from './path-utils';
 
 // Shell Utilities
 export * from './shell-utils';
+
+// Test Utilities
+export * from './test-utils';
