@@ -24,7 +24,7 @@ jobs:
         run: npx turbo run build
 
       - name: Test
-        run: npx turbo run test
+        run: npm test
 
       - name: Publish to NPM
         run: npm publish --access public --workspaces
