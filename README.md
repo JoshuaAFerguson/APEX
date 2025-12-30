@@ -49,6 +49,26 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 - **🔌 Extensible** - Add custom agents, skills, and workflows
 - **🏢 Enterprise Ready** - Scales from individual developers to large teams
 
+## Platform Support
+
+APEX is designed to work cross-platform with full compatibility across operating systems:
+
+| Platform | Status | Notes |
+|----------|--------|--------|
+| **Linux** | ✅ Full Support | All features including service management |
+| **macOS** | ✅ Full Support | All features including service management |
+| **Windows** | ✅ Core Support | All core functionality works; service management in development |
+
+### Windows Compatibility
+
+- ✅ **Core Features**: Task orchestration, AI agents, workflows, API server
+- ✅ **Build & Test**: Full CI/CD pipeline with Windows testing
+- ✅ **Git Operations**: Worktrees, branching, and all Git workflows
+- ✅ **Development**: TypeScript compilation, testing, and packaging
+- ⚠️ **Service Management**: Manual process management (Windows service support planned)
+
+For detailed Windows compatibility information, see [WINDOWS_COMPATIBILITY.md](WINDOWS_COMPATIBILITY.md).
+
 ## Quick Start
 
 ### Prerequisites
