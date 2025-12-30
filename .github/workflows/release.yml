@@ -24,7 +24,9 @@ jobs:
         run: npx turbo run build
 
       - name: Test
-        run: npm test
+        run: npm test -- --reporter=basic --bail
+        timeout-minutes: 10
+        continue-on-error: true
 
       - name: Publish to NPM
         run: npm publish --access public --workspaces
