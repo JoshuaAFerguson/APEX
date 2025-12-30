@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "APEX - AI-powered development team automation CLI",
   "type": "module",
   "main": "./dist/index.js",

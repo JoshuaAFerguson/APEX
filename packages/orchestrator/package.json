@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/orchestrator",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "APEX task orchestration engine using Claude Agent SDK",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -47,7 +47,14 @@
     "url": "https://github.com/JoshuaAFerguson/apex/issues"
   },
   "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
-  "keywords": ["apex", "ai", "agents", "orchestration", "claude", "anthropic"],
+  "keywords": [
+    "apex",
+    "ai",
+    "agents",
+    "orchestration",
+    "claude",
+    "anthropic"
+  ],
   "author": "Joshua A. Ferguson",
   "license": "MIT",
   "publishConfig": {

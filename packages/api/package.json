@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/api",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "APEX REST API and WebSocket server",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -50,7 +50,14 @@
     "url": "https://github.com/JoshuaAFerguson/apex/issues"
   },
   "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
-  "keywords": ["apex", "ai", "agents", "api", "rest", "websocket"],
+  "keywords": [
+    "apex",
+    "ai",
+    "agents",
+    "api",
+    "rest",
+    "websocket"
+  ],
   "author": "Joshua A. Ferguson",
   "license": "MIT",
   "publishConfig": {
