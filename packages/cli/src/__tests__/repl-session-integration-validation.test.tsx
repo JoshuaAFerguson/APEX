@@ -45,7 +45,7 @@ describe('REPL Session Integration Test Validation', () => {
       getEffectiveConfig: vi.fn(),
     }));
 
-    vi.mock('@apex/orchestrator', () => ({
+    vi.mock('@apexcli/orchestrator', () => ({
       ApexOrchestrator: vi.fn().mockImplementation(() => ({
         initialize: vi.fn(),
         createTask: vi.fn(),
@@ -65,7 +65,7 @@ describe('REPL Session Integration Test Validation', () => {
     const { isApexInitialized } = await import('@apexcli/core');
     expect(typeof isApexInitialized).toBe('function');
 
-    const { ApexOrchestrator } = await import('@apex/orchestrator');
+    const { ApexOrchestrator } = await import('@apexcli/orchestrator');
     expect(typeof ApexOrchestrator).toBe('function');
   });
 

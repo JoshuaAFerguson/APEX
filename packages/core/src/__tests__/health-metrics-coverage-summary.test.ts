@@ -235,7 +235,7 @@ describe('HealthMetrics Test Coverage Summary', () => {
        *   ✓ healthChecksFailed
        *   ✓ restartHistory array
        *
-       * ✓ Type exports from @apex/core
+       * ✓ Type exports from @apexcli/core
        *
        * ✓ Extended DaemonConfig schema
        */

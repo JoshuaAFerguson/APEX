@@ -4,7 +4,7 @@ import { join } from 'path';
 import { DaemonRunner, type DaemonRunnerOptions } from './runner';
 import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
-import type { Task, TaskPriority } from '@apex/core';
+import type { Task, TaskPriority } from '@apexcli/core';
 
 /**
  * High-Volume Queue Processing Integration Tests

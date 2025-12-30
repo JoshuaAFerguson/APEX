@@ -1,11 +1,11 @@
 // TODO: This test has mocking issues similar to daemon-cli - needs proper class mock
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { handleDaemonStatus } from '../handlers/daemon-handlers';
-import { DaemonManager, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
+import { DaemonManager, ExtendedDaemonStatus, CapacityStatusInfo } from '@apexcli/orchestrator';
 import chalk from 'chalk';
 
 // Mock dependencies
-vi.mock('@apex/orchestrator');
+vi.mock('@apexcli/orchestrator');
 vi.mock('chalk', () => ({
   default: {
     red: (str: string) => `[RED]${str}[/RED]`,

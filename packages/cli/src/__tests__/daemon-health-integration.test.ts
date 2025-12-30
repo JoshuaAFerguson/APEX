@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { handleDaemonHealth } from '../handlers/daemon-handlers';
-import { DaemonManager, DaemonError } from '@apex/orchestrator';
+import { DaemonManager, DaemonError } from '@apexcli/orchestrator';
 import type { HealthMetrics } from '@apexcli/core';
 
 // Mock DaemonManager
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   DaemonManager: vi.fn(),
   DaemonError: class extends Error {
     constructor(message: string, public code: string, public cause?: Error) {

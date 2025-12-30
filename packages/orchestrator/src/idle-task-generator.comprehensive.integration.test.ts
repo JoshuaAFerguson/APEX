@@ -12,13 +12,13 @@ import { describe, it, expect, beforeEach, vi, beforeAll, afterAll } from 'vites
 import { IdleTaskGenerator } from './idle-task-generator';
 import { CrossReferenceValidator, VersionMismatchDetector } from './analyzers';
 import type { ProjectAnalysis, IdleTask } from './idle-processor';
-import { StrategyWeights } from '@apex/core';
+import { StrategyWeights } from '@apexcli/core';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 // Mock generateTaskId for predictable test results
-vi.mock('@apex/core', async () => {
-  const actual = await vi.importActual('@apex/core');
+vi.mock('@apexcli/core', async () => {
+  const actual = await vi.importActual('@apexcli/core');
   let counter = 0;
   return {
     ...actual,

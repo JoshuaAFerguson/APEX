@@ -5,7 +5,7 @@
 
 import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 import { UsageManager } from './usage-manager';
-import { DaemonConfig, LimitsConfig } from '@apex/core';
+import { DaemonConfig, LimitsConfig } from '@apexcli/core';
 
 /**
  * Example function showing how to integrate DaemonScheduler with existing daemon logic

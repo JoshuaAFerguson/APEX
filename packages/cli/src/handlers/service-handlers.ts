@@ -5,8 +5,8 @@ import {
   type Platform,
   type InstallResult,
   type UninstallResult
-} from '@apex/orchestrator';
-import { loadConfig, getEffectiveConfig } from '@apex/core';
+} from '@apexcli/orchestrator';
+import { loadConfig, getEffectiveConfig } from '@apexcli/core';
 
 /**
  * Interface representing the CLI context

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CapacityMonitor, CapacityUsageProvider, CapacityUsage, ModeInfo, CapacityThresholds } from './capacity-monitor';
 import { UsageManager } from './usage-manager';
-import { DaemonConfig, LimitsConfig } from '@apex/core';
+import { DaemonConfig, LimitsConfig } from '@apexcli/core';
 
 /**
  * Integration test demonstrating how CapacityMonitor would integrate with

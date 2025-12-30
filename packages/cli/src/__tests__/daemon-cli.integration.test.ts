@@ -12,7 +12,7 @@ const mockManagerInstance = {
 };
 
 // Mock DaemonManager as a proper class
-vi.mock('@apex/orchestrator', () => {
+vi.mock('@apexcli/orchestrator', () => {
   return {
     DaemonManager: class MockDaemonManager {
       constructor() {
@@ -44,7 +44,7 @@ vi.mock('chalk', () => ({
 }));
 
 // Import after mocks are set up
-import { DaemonError } from '@apex/orchestrator';
+import { DaemonError } from '@apexcli/orchestrator';
 
 describe('Daemon CLI Integration', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;

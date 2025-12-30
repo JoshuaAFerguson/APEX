@@ -3,8 +3,8 @@ import fs, { createReadStream } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
-import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
-import { formatDuration } from '@apex/core';
+import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apexcli/orchestrator';
+import { formatDuration } from '@apexcli/core';
 
 /**
  * Interface representing the CLI context

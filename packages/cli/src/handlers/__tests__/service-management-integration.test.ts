@@ -15,8 +15,8 @@ import {
 const isWindows = process.platform === 'win32';
 
 // Mock the orchestrator module
-vi.mock('@apex/orchestrator', async () => {
-  const actual = await vi.importActual('@apex/orchestrator');
+vi.mock('@apexcli/orchestrator', async () => {
+  const actual = await vi.importActual('@apexcli/orchestrator');
   return {
     ...actual,
     ServiceManager: vi.fn().mockImplementation((config) => ({
@@ -115,7 +115,7 @@ vi.mock('@apex/orchestrator', async () => {
 });
 
 // Mock config loading
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadConfig: vi.fn(async () => ({
     daemon: {
       service: {

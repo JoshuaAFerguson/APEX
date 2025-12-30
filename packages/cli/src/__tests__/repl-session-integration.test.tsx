@@ -16,7 +16,7 @@ vi.mock('@apexcli/core', () => ({
   getEffectiveConfig: vi.fn(),
 }));
 
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     initialize: vi.fn(),
     createTask: vi.fn(),
@@ -115,7 +115,7 @@ describe('REPL + Session Integration Tests', () => {
     // Set up mock implementations
     const { SessionStore } = require('../services/SessionStore');
     const { SessionAutoSaver } = require('../services/SessionAutoSaver');
-    const { ApexOrchestrator } = require('@apex/orchestrator');
+    const { ApexOrchestrator } = require('@apexcli/orchestrator');
     const { startInkApp } = require('../ui/index.js');
 
     mockSessionStore = new SessionStore();

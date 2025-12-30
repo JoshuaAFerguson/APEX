@@ -13,7 +13,7 @@ vi.mock('@apexcli/core', () => ({
   getEffectiveConfig: vi.fn(),
 }));
 
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     initialize: vi.fn(),
     createTask: vi.fn(),
@@ -95,7 +95,7 @@ describe('REPL Integration Tests', () => {
 
     it('handles initialized project correctly', async () => {
       const { isApexInitialized, loadConfig } = await import('@apexcli/core');
-      const { ApexOrchestrator } = await import('@apex/orchestrator');
+      const { ApexOrchestrator } = await import('@apexcli/orchestrator');
       const { startInkApp } = await import('../ui/index.js');
 
       (isApexInitialized as any).mockResolvedValue(true);

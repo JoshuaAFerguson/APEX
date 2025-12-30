@@ -113,7 +113,7 @@ describe('Windows Compatibility Documentation Tests', () => {
   });
 
   describe('Platform Utilities Verification', () => {
-    it('should import platform utilities from @apex/core', () => {
+    it('should import platform utilities from @apexcli/core', () => {
       // Test that the documented import paths work
       expect(typeof isWindows).toBe('function');
       expect(typeof isUnix).toBe('function');
@@ -211,7 +211,7 @@ describe('Windows Compatibility Documentation Tests', () => {
       // Check that code blocks contain valid imports and function calls
       const hasValidImports = codeBlocks.some(block =>
         block.includes('import {') &&
-        block.includes('from \'@apex/core\'')
+        block.includes('from \'@apexcli/core\'')
       );
       expect(hasValidImports).toBe(true);
     });

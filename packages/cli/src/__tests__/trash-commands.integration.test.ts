@@ -3,8 +3,8 @@
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { ApexContext, ApexOrchestrator } from '@apex/orchestrator';
-import { Task } from '@apex/core';
+import { ApexContext, ApexOrchestrator } from '@apexcli/orchestrator';
+import { Task } from '@apexcli/core';
 
 // Mock console methods
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});

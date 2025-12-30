@@ -154,15 +154,15 @@ function generateCoverageReport(): void {
   console.log('🚀 Test Execution Commands:');
   console.log('-'.repeat(70));
   console.log('# Run all DaemonScheduler tests');
-  console.log('npm test --workspace=@apex/orchestrator');
+  console.log('npm test --workspace=@apexcli/orchestrator');
   console.log();
   console.log('# Run specific test categories');
-  console.log('npm test --workspace=@apex/orchestrator -- --testNamePattern="Capacity Reset Monitoring"');
-  console.log('npm test --workspace=@apex/orchestrator -- --testNamePattern="getTimeUntil"');
-  console.log('npm test --workspace=@apex/orchestrator -- --testNamePattern="onCapacityRestored"');
+  console.log('npm test --workspace=@apexcli/orchestrator -- --testNamePattern="Capacity Reset Monitoring"');
+  console.log('npm test --workspace=@apexcli/orchestrator -- --testNamePattern="getTimeUntil"');
+  console.log('npm test --workspace=@apexcli/orchestrator -- --testNamePattern="onCapacityRestored"');
   console.log();
   console.log('# Run with coverage');
-  console.log('npm test --workspace=@apex/orchestrator -- --coverage');
+  console.log('npm test --workspace=@apexcli/orchestrator -- --coverage');
   console.log();
 
   console.log('=' .repeat(70));

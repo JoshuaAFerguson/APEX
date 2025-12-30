@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
  * This test file verifies that all acceptance criteria from the task are met:
  * - Test utilities created in packages/core
  * - Helpers like skipOnWindows(), skipOnUnix(), isWindows(), describeWindows(), describeUnix()
- * - Utilities exported from @apex/core for use by all packages
+ * - Utilities exported from @apexcli/core for use by all packages
  */
 describe('Test Utils Acceptance Criteria', () => {
   describe('Required utilities exist', () => {
@@ -77,7 +77,7 @@ describe('Test Utils Acceptance Criteria', () => {
     });
   });
 
-  describe('Utilities exported from @apex/core', () => {
+  describe('Utilities exported from @apexcli/core', () => {
     it('should be available from main package exports', async () => {
       const coreExports = await import('../index.js');
 
@@ -101,7 +101,7 @@ describe('Test Utils Acceptance Criteria', () => {
     it('should be importable by other packages', async () => {
       // This simulates how other packages would import the utilities
       try {
-        const { isWindows, skipOnWindows, describeWindows } = await import('@apex/core');
+        const { isWindows, skipOnWindows, describeWindows } = await import('@apexcli/core');
 
         // In a real test environment, this would work if the package is built
         // For now, we just verify the direct import works
@@ -109,7 +109,7 @@ describe('Test Utils Acceptance Criteria', () => {
         expect(typeof skipOnWindows).toBe('function');
         expect(typeof describeWindows).toBe('function');
       } catch (error) {
-        // In the test environment, direct @apex/core import might not work
+        // In the test environment, direct @apexcli/core import might not work
         // So we verify the utilities exist in the index exports instead
         const coreExports = await import('../index.js');
         expect(coreExports.isWindows).toBeDefined();

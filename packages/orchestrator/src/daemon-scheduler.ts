@@ -1,4 +1,4 @@
-import { DaemonConfig, LimitsConfig } from '@apex/core';
+import { DaemonConfig, LimitsConfig } from '@apexcli/core';
 
 // ============================================================================
 // Interfaces

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DaemonScheduler, UsageManagerProvider } from './daemon-scheduler';
 import { UsageManager } from './usage-manager';
-import { DaemonConfig, LimitsConfig, TaskUsage } from '@apex/core';
+import { DaemonConfig, LimitsConfig, TaskUsage } from '@apexcli/core';
 
 // ============================================================================
 // Integration Test Setup

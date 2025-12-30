@@ -1,13 +1,13 @@
 /**
  * Windows-specific Cross-Module Integration Test
  *
- * This test file exercises real cross-module interactions between @apex/core and
- * @apex/orchestrator packages specifically on Windows platforms. It validates
+ * This test file exercises real cross-module interactions between @apexcli/core and
+ * @apexcli/orchestrator packages specifically on Windows platforms. It validates
  * that the core types, utilities, and configurations work correctly with the
  * orchestrator when running on Windows.
  *
  * ACCEPTANCE CRITERIA:
- * ✅ Tests real cross-module interactions between @apex/core and @apex/orchestrator
+ * ✅ Tests real cross-module interactions between @apexcli/core and @apexcli/orchestrator
  * ✅ Windows-specific file paths, shell commands, and process handling
  * ✅ SQLite database operations with Windows paths
  * ✅ Configuration loading and validation on Windows
@@ -40,11 +40,11 @@ import {
   createShellCommand,
   getPlatformShell,
   getKillCommand,
-} from '@apex/core';
+} from '@apexcli/core';
 
 // Mock orchestrator dependencies for isolated testing
-import { TaskStore } from '@apex/orchestrator/src/store';
-import { ApexOrchestrator } from '@apex/orchestrator/src/index';
+import { TaskStore } from '@apexcli/orchestrator/src/store';
+import { ApexOrchestrator } from '@apexcli/orchestrator/src/index';
 
 // Skip this entire test suite unless running on Windows or in a mocked Windows environment
 const isActuallyWindows = process.platform === 'win32';

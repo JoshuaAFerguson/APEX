@@ -4,7 +4,7 @@ import {
   ComplexityHotspot,
   CodeSmell,
   DuplicatePattern,
-} from '@apex/core';
+} from '@apexcli/core';
 import {
   createMinimalAnalysis,
   createAnalysisWithIssues,

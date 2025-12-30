@@ -11,7 +11,7 @@ import {
   type InstallResult,
   type UninstallResult,
   type ServiceStatus,
-} from '@apex/orchestrator';
+} from '@apexcli/orchestrator';
 
 /**
  * Windows-specific tests for service handlers error handling
@@ -51,7 +51,7 @@ const mockServiceManager = {
   isNSSMSupported: vi.fn(),
 };
 
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ServiceManager: vi.fn(() => mockServiceManager),
   ServiceError: class MockServiceError extends Error {
     constructor(message: string, public code: string) {

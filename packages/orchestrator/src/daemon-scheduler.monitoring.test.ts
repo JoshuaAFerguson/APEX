@@ -5,7 +5,7 @@ import {
   CapacityRestoredEvent,
   CapacityRestoredReason
 } from './daemon-scheduler';
-import { DaemonConfig, LimitsConfig } from '@apex/core';
+import { DaemonConfig, LimitsConfig } from '@apexcli/core';
 
 // ============================================================================
 // Test Utilities & Mocks for Capacity Reset Monitoring

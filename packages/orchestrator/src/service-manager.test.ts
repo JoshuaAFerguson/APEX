@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockedFunction } from 'vitest';
 import { promises as fs } from 'fs';
 import { exec } from 'child_process';
-import { getHomeDir, getConfigDir } from '@apex/core';
+import { getHomeDir, getConfigDir } from '@apexcli/core';
 import {
   ServiceManager,
   SystemdGenerator,
@@ -35,7 +35,7 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }));
 
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   getHomeDir: vi.fn(() => '/home/user'),
   getConfigDir: vi.fn(() => '/home/user/.config'),
 }));

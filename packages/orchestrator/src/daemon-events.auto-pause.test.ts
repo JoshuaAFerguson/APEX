@@ -17,7 +17,7 @@ vi.mock('./store', () => ({
   TaskStore: vi.fn(),
 }));
 
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadConfig: vi.fn(),
   getEffectiveConfig: vi.fn(),
 }));
@@ -114,7 +114,7 @@ describe('DaemonRunner - Auto-Pause Events', () => {
     });
 
     // Mock loadConfig and getEffectiveConfig
-    const { loadConfig, getEffectiveConfig } = require('@apex/core');
+    const { loadConfig, getEffectiveConfig } = require('@apexcli/core');
     loadConfig.mockResolvedValue({});
     getEffectiveConfig.mockReturnValue({
       limits: {

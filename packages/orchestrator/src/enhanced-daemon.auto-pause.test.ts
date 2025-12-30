@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EnhancedDaemon } from './enhanced-daemon';
-import { ApexConfig } from '@apex/core';
+import { ApexConfig } from '@apexcli/core';
 
 // Mock all dependencies
 vi.mock('./runner', () => ({
@@ -121,8 +121,8 @@ vi.mock('./daemon-scheduler', () => ({
   UsageManagerProvider: vi.fn().mockImplementation(() => ({})),
 }));
 
-vi.mock('@apex/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@apex/core')>();
+vi.mock('@apexcli/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@apexcli/core')>();
   return {
     ...actual,
     loadConfig: vi.fn(),

@@ -62,8 +62,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Task } from '@apex/core';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { Task } from '@apexcli/core';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import { commands, type CliContext } from '../index.js';
 
 // Test data helpers

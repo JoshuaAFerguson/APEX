@@ -5,7 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { vi } from 'vitest';
-import type { OrchestratorEvents } from '@apex/orchestrator';
+import type { OrchestratorEvents } from '@apexcli/orchestrator';
 
 /**
  * Mock implementation of ApexOrchestrator for testing

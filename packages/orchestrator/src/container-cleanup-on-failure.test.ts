@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApexOrchestrator } from './index.js';
 import { TaskStore } from './store.js';
 import { WorkspaceManager } from './workspace-manager.js';
-import { Task } from '@apex/core';
+import { Task } from '@apexcli/core';
 
 // Mock dependencies
 vi.mock('./store.js');

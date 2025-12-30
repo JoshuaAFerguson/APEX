@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CapacityMonitor, CapacityUsageProvider, CapacityUsage, ModeInfo, CapacityThresholds, CapacityRestoredEvent } from './capacity-monitor';
-import { DaemonConfig, LimitsConfig } from '@apex/core';
+import { DaemonConfig, LimitsConfig } from '@apexcli/core';
 
 describe('CapacityMonitor - Real-World Scenarios', () => {
   let capacityMonitor: CapacityMonitor;

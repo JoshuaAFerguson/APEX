@@ -4,7 +4,7 @@ import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
 import { CapacityMonitor } from './capacity-monitor';
 import { UsageManager } from './usage-manager';
-import { type Task, type TaskStatus, type TaskPriority } from '@apex/core';
+import { type Task, type TaskStatus, type TaskPriority } from '@apexcli/core';
 import { createWriteStream } from 'fs';
 
 // Mock dependencies
@@ -37,7 +37,7 @@ vi.mock('./daemon-scheduler', () => ({
   UsageManagerProvider: vi.fn(),
 }));
 
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   loadConfig: vi.fn(),
   getEffectiveConfig: vi.fn(),
 }));
@@ -115,7 +115,7 @@ describe('DaemonRunner Auto-Resume', () => {
     });
 
     // Mock loadConfig and getEffectiveConfig
-    const { loadConfig, getEffectiveConfig } = require('@apex/core');
+    const { loadConfig, getEffectiveConfig } = require('@apexcli/core');
     loadConfig.mockResolvedValue({});
     getEffectiveConfig.mockReturnValue({
       limits: {

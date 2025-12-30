@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApexOrchestrator } from './index.js';
 import { TaskStore } from './store.js';
-import type { ApexConfig, AgentDefinition, WorkflowDefinition } from '@apex/core';
+import type { ApexConfig, AgentDefinition, WorkflowDefinition } from '@apexcli/core';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';

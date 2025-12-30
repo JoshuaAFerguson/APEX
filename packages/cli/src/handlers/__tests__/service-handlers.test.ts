@@ -11,7 +11,7 @@ import {
   type InstallResult,
   type UninstallResult,
   type ServiceStatus,
-} from '@apex/orchestrator';
+} from '@apexcli/orchestrator';
 
 // Windows compatibility: Service management functionality uses Unix-specific
 // system service managers (systemd, launchd) that don't exist on Windows
@@ -42,7 +42,7 @@ const mockServiceManager = {
   getStatus: vi.fn(),
 };
 
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   ServiceManager: vi.fn(() => mockServiceManager),
   ServiceError: class MockServiceError extends Error {
     constructor(message: string, public code: string) {

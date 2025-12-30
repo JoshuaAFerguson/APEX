@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getHomeDir, getConfigDir } from '@apex/core';
+import { getHomeDir, getConfigDir } from '@apexcli/core';
 import { promises as fs } from 'fs';
 import {
   SystemdGenerator,
@@ -13,7 +13,7 @@ import {
 const isWindows = process.platform === 'win32';
 
 // Mock dependencies
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   getHomeDir: vi.fn(),
   getConfigDir: vi.fn(),
 }));

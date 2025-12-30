@@ -111,7 +111,7 @@ describe('NPM Scripts Windows Compatibility', () => {
         const scripts = packageJson.scripts || {};
 
         // Core packages should have build and dev scripts
-        if (['@apex/core', '@apex/orchestrator', '@apex/cli', '@apex/api'].includes(name)) {
+        if (['@apexcli/core', '@apexcli/orchestrator', '@apex/cli', '@apex/api'].includes(name)) {
           expect(scripts.build, `${name} should have build script`).toBeDefined();
           expect(scripts.dev, `${name} should have dev script`).toBeDefined();
           expect(scripts.lint, `${name} should have lint script`).toBeDefined();

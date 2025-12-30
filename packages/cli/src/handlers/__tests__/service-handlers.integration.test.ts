@@ -11,7 +11,7 @@ import {
   ServiceManager,
   ServiceError,
   type ServiceStatus,
-} from '@apex/orchestrator';
+} from '@apexcli/orchestrator';
 
 // Windows compatibility: Service integration tests use Unix-specific system calls
 // (systemctl, launchctl) and service file formats that don't apply to Windows

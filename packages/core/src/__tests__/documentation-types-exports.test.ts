@@ -17,7 +17,7 @@ import {
 } from '../index';
 
 describe('Documentation Types and Schema Exports', () => {
-  describe('Type Exports from @apex/core', () => {
+  describe('Type Exports from @apexcli/core', () => {
     it('should export OutdatedDocsConfig type correctly', () => {
       // Test that the type can be used
       const config: OutdatedDocsConfig = {
@@ -79,7 +79,7 @@ describe('Documentation Types and Schema Exports', () => {
     });
   });
 
-  describe('Schema Exports from @apex/core', () => {
+  describe('Schema Exports from @apexcli/core', () => {
     it('should export OutdatedDocsConfigSchema correctly', () => {
       const validConfig = {
         todoAgeThresholdDays: 45,

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TaskStore } from '../store.js';
-import { Task, TaskStatus } from '@apex/core';
+import { Task, TaskStatus } from '@apexcli/core';
 import Database from 'better-sqlite3';
 
 // Mock better-sqlite3

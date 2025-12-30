@@ -25,8 +25,8 @@
   },
   "dependencies": {
     "@apexcli/api": "^0.3.0",
-    "@apexcli/core": "^0.3.0",
-    "@apexcli/orchestrator": "^0.3.0",
+    "@apexcli/core": "*",
+    "@apexcli/orchestrator": "*",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
     "commander": "^11.1.0",

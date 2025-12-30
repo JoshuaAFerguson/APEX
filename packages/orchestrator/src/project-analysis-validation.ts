@@ -2,7 +2,7 @@
 // This file verifies the integration works correctly
 
 import { ProjectAnalysis } from './idle-processor';
-import { ComplexityHotspot, CodeSmell, DuplicatePattern } from '@apex/core';
+import { ComplexityHotspot, CodeSmell, DuplicatePattern } from '@apexcli/core';
 
 // Test that ProjectAnalysis works with enhanced types
 function createTestAnalysis(): ProjectAnalysis {

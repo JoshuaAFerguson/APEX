@@ -101,7 +101,7 @@ describe('Final HealthMetrics Implementation Validation', () => {
     expect(validated.watchdog?.restartDelay).toBe(5000);
   });
 
-  it('should validate type exports from @apex/core', () => {
+  it('should validate type exports from @apexcli/core', () => {
     // Verify types can be used in function signatures
     const createHealthMetrics = (): HealthMetrics => ({
       uptime: 1000,
@@ -212,7 +212,7 @@ describe('Final HealthMetrics Implementation Validation', () => {
      * ✓ memoryUsage with heapUsed, heapTotal, rss
      * ✓ taskCounts with processed, succeeded, failed, active
      * ✓ restartHistory array with RestartRecord objects
-     * ✓ Type exports from @apex/core
+     * ✓ Type exports from @apexcli/core
      * ✓ Extended DaemonConfig schema
      */
 

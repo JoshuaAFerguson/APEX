@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import chalk from 'chalk';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonHealth, handleDaemonLogs } from '../daemon-handlers';
-import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apex/orchestrator';
+import { DaemonManager, DaemonError, DaemonStatus, ExtendedDaemonStatus, CapacityStatusInfo } from '@apexcli/orchestrator';
 
 // Mock DaemonManager
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   DaemonManager: vi.fn(),
   DaemonError: class extends Error {
     constructor(message: string, public code: string, public cause?: Error) {

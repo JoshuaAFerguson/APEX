@@ -34,7 +34,7 @@ describe('Implementation Validation', () => {
     const dummyOrchestrator = {} as ApexOrchestrator;
 
     // These should be typed correctly
-    const trashedTasksPromise: Promise<import('@apex/core').Task[]> = dummyOrchestrator.listTrashedTasks();
+    const trashedTasksPromise: Promise<import('@apexcli/core').Task[]> = dummyOrchestrator.listTrashedTasks();
     const emptyTrashPromise: Promise<number> = dummyOrchestrator.emptyTrash();
 
     expect(trashedTasksPromise).toBeDefined();

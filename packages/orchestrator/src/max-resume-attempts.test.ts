@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApexOrchestrator } from './index.js';
 import { TaskStore } from './store.js';
-import type { ApexConfig, Task, TaskStatus } from '@apex/core';
+import type { ApexConfig, Task, TaskStatus } from '@apexcli/core';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtemp, rm } from 'fs/promises';
@@ -83,8 +83,8 @@ describe('Max Resume Attempts - Infinite Loop Prevention', () => {
       });
 
       // Mock the workflow module
-      vi.doMock('@apex/core', async () => {
-        const actual = await vi.importActual('@apex/core');
+      vi.doMock('@apexcli/core', async () => {
+        const actual = await vi.importActual('@apexcli/core');
         return {
           ...actual,
           loadWorkflow: mockLoadWorkflow,
@@ -393,8 +393,8 @@ describe('Max Resume Attempts - Infinite Loop Prevention', () => {
       });
 
       // Mock workflow loading to prevent execution errors
-      vi.doMock('@apex/core', async () => {
-        const actual = await vi.importActual('@apex/core');
+      vi.doMock('@apexcli/core', async () => {
+        const actual = await vi.importActual('@apexcli/core');
         return {
           ...actual,
           loadWorkflow: vi.fn().mockResolvedValue({
@@ -556,8 +556,8 @@ describe('Max Resume Attempts - Infinite Loop Prevention', () => {
       });
 
       // Mock workflow to prevent actual execution
-      vi.doMock('@apex/core', async () => {
-        const actual = await vi.importActual('@apex/core');
+      vi.doMock('@apexcli/core', async () => {
+        const actual = await vi.importActual('@apexcli/core');
         return {
           ...actual,
           loadWorkflow: vi.fn().mockResolvedValue({

@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleInstallService } from '../service-handlers';
-import { ServiceManager } from '@apex/orchestrator';
-import { loadConfig, getEffectiveConfig } from '@apex/core';
+import { ServiceManager } from '@apexcli/orchestrator';
+import { loadConfig, getEffectiveConfig } from '@apexcli/core';
 
 // Windows compatibility: Service management with enableOnBoot functionality
 // depends on Unix-specific service managers that don't exist on Windows
 const isWindows = process.platform === 'win32';
 
 // Mock dependencies
-vi.mock('@apex/orchestrator');
-vi.mock('@apex/core');
+vi.mock('@apexcli/orchestrator');
+vi.mock('@apexcli/core');
 vi.mock('chalk', () => ({
   default: {
     blue: (str: string) => str,

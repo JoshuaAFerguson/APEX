@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getHomeDir, getConfigDir } from '@apex/core';
+import { getHomeDir, getConfigDir } from '@apexcli/core';
 import {
   ServiceManager,
   SystemdGenerator,
@@ -12,8 +12,8 @@ import {
 // Skip Unix/Linux-specific tests on Windows since they test systemd/launchd functionality
 const isWindows = process.platform === 'win32';
 
-// Mock @apex/core path utilities
-vi.mock('@apex/core', () => ({
+// Mock @apexcli/core path utilities
+vi.mock('@apexcli/core', () => ({
   getHomeDir: vi.fn(),
   getConfigDir: vi.fn(),
 }));
@@ -54,7 +54,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
   });
 
   describe.skipIf(isWindows)('Path Utilities Integration', () => {
-    it('should successfully import and use getHomeDir from @apex/core', () => {
+    it('should successfully import and use getHomeDir from @apexcli/core', () => {
       mockProcess.platform = 'darwin';
       mockGetHomeDir.mockReturnValue('/Users/testuser');
 
@@ -66,7 +66,7 @@ describe('ServiceManager - Cross-Platform Coverage Tests', () => {
       expect(result.platform).toBe('darwin');
     });
 
-    it('should successfully import and use getConfigDir from @apex/core', () => {
+    it('should successfully import and use getConfigDir from @apexcli/core', () => {
       mockProcess.platform = 'linux';
       mockGetConfigDir.mockReturnValue('/home/user/.config');
 

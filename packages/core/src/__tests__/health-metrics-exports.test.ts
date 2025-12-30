@@ -6,7 +6,7 @@ import type {
   RestartRecord,
 } from '../types.js';
 
-describe('HealthMetrics Type Exports from @apex/core', () => {
+describe('HealthMetrics Type Exports from @apexcli/core', () => {
   describe('Type availability and structure', () => {
     it('should export HealthMetrics interface', () => {
       // Test that HealthMetrics interface is properly exported and can be used

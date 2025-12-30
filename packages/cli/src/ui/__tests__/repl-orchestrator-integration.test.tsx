@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '../test-utils';
 import React from 'react';
 import { EventEmitter } from 'events';
-import type { ApexOrchestrator } from '@apex/orchestrator';
+import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel';
 import { App, type AppState } from '../App';
 

@@ -16,10 +16,10 @@ vi.mock('chalk', () => ({
 // Test the utility functions used in daemon health display
 // Since these are not exported, we test them through the main handler
 import { handleDaemonHealth } from '../daemon-handlers';
-import { DaemonManager, DaemonError } from '@apex/orchestrator';
+import { DaemonManager, DaemonError } from '@apexcli/orchestrator';
 
 // Mock DaemonManager
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   DaemonManager: vi.fn(),
   DaemonError: class extends Error {
     constructor(message: string, public code: string, public cause?: Error) {

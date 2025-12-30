@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus } from '../handlers/daemon-handlers';
-import { DaemonManager, DaemonError } from '@apex/orchestrator';
+import { DaemonManager, DaemonError } from '@apexcli/orchestrator';
 
 // Mock DaemonManager and dependencies
-vi.mock('@apex/orchestrator', () => ({
+vi.mock('@apexcli/orchestrator', () => ({
   DaemonManager: vi.fn(),
   DaemonError: class extends Error {
     constructor(message: string, public code: string, public cause?: Error) {
@@ -23,7 +23,7 @@ vi.mock('chalk', () => ({
   },
 }));
 
-vi.mock('@apex/core', () => ({
+vi.mock('@apexcli/core', () => ({
   formatDuration: (ms: number) => {
     const hours = Math.floor(ms / 3600000);
     const minutes = Math.floor((ms % 3600000) / 60000);

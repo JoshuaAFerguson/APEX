@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getHomeDir, getConfigDir } from '@apex/core';
+import { getHomeDir, getConfigDir } from '@apexcli/core';
 import { ServiceManager, type ServiceManagerOptions } from './service-manager';
 
 // Windows compatibility: These tests involve Unix-specific system service behaviors
 // that don't apply on Windows platform
 const isWindows = process.platform === 'win32';
 
-// Mock @apex/core path utilities
-vi.mock('@apex/core', () => ({
+// Mock @apexcli/core path utilities
+vi.mock('@apexcli/core', () => ({
   getHomeDir: vi.fn(),
   getConfigDir: vi.fn(),
 }));

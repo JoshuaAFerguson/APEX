@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApexOrchestrator } from '../index.js';
 import { TaskStore } from '../store.js';
-import { Task, TaskStatus } from '@apex/core';
+import { Task, TaskStatus } from '@apexcli/core';
 
 // Mock TaskStore
 vi.mock('../store.js', () => {

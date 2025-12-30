@@ -22,7 +22,7 @@ import {
  *   - healthChecksPassed (number)
  *   - healthChecksFailed (number)
  *   - restartHistory array
- * - Type exports from @apex/core
+ * - Type exports from @apexcli/core
  * - Extended DaemonConfig schema
  */
 
@@ -306,7 +306,7 @@ describe('HealthMetrics Acceptance Criteria Validation', () => {
     });
   });
 
-  describe('Requirement: Type exports from @apex/core', () => {
+  describe('Requirement: Type exports from @apexcli/core', () => {
     it('should export HealthMetrics type from core package', () => {
       // This test validates that the types are properly exported
       // The fact that we can import and use them above proves this requirement
@@ -583,7 +583,7 @@ describe('HealthMetrics Acceptance Criteria Validation', () => {
       // ✓ taskCounts (processed, succeeded, failed, active)
       // ✓ lastHealthCheck, healthChecksPassed, healthChecksFailed
       // ✓ restartHistory array
-      // ✓ Type exports from @apex/core
+      // ✓ Type exports from @apexcli/core
       // ✓ Extended DaemonConfig schema
     });
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getHomeDir, getConfigDir } from '@apex/core';
+import { getHomeDir, getConfigDir } from '@apexcli/core';
 import {
   ServiceManager,
   SystemdGenerator,
@@ -11,8 +11,8 @@ import {
 // Platform detection for Windows skipping
 const isWindows = process.platform === 'win32';
 
-// Mock @apex/core path utilities
-vi.mock('@apex/core', () => ({
+// Mock @apexcli/core path utilities
+vi.mock('@apexcli/core', () => ({
   getHomeDir: vi.fn(),
   getConfigDir: vi.fn(),
 }));
