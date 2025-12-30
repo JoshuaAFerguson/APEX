@@ -31,6 +31,241 @@ export const AgentDefinitionSchema = z.object({
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
 
 // ============================================================================
+// Tool Definitions
+// ============================================================================
+
+/**
+ * Tool categories for organizing tools by function
+ */
+export const ToolCategorySchema = z.enum([
+  'filesystem',  // File reading/writing operations (Read, Write, Edit)
+  'search',      // Content/file searching (Grep, Glob)
+  'shell',       // Command execution (Bash)
+  'web',         // Web operations (WebFetch, WebSearch)
+  'system',      // System-level operations
+  'custom',      // User-defined tools
+]);
+export type ToolCategory = z.infer<typeof ToolCategorySchema>;
+
+/**
+ * Permission levels required for tool execution
+ */
+export const ToolPermissionSchema = z.enum([
+  'read',        // Read-only access to files
+  'write',       // Write access to files
+  'execute',     // Execute commands/scripts
+  'network',     // Network access
+  'admin',       // Administrative operations
+]);
+export type ToolPermission = z.infer<typeof ToolPermissionSchema>;
+
+/**
+ * JSON Schema type for tool parameters
+ */
+export const JSONSchemaTypeSchema = z.enum([
+  'string',
+  'number',
+  'integer',
+  'boolean',
+  'object',
+  'array',
+  'null',
+]);
+export type JSONSchemaType = z.infer<typeof JSONSchemaTypeSchema>;
+
+/**
+ * Tool parameter definition with JSON Schema-compatible structure
+ * Supports nested object and array types for complex parameter definitions
+ */
+export const ToolParameterSchema: z.ZodType<ToolParameter> = z.lazy(() =>
+  z.object({
+    /** Parameter name */
+    name: z.string().min(1, 'Parameter name is required'),
+    /** JSON Schema type */
+    type: JSONSchemaTypeSchema,
+    /** Human-readable description */
+    description: z.string().optional(),
+    /** Whether the parameter is required */
+    required: z.boolean().optional().default(false),
+    /** Default value for the parameter */
+    default: z.unknown().optional(),
+    /** Allowed values (for enum-like constraints) */
+    enum: z.array(z.unknown()).optional(),
+    /** Nested properties for object types */
+    properties: z.record(z.string(), ToolParameterSchema).optional(),
+    /** Schema for array items */
+    items: ToolParameterSchema.optional(),
+    /** Minimum value for numbers */
+    minimum: z.number().optional(),
+    /** Maximum value for numbers */
+    maximum: z.number().optional(),
+    /** Minimum length for strings/arrays */
+    minLength: z.number().optional(),
+    /** Maximum length for strings/arrays */
+    maxLength: z.number().optional(),
+    /** Pattern for string validation (regex) */
+    pattern: z.string().optional(),
+  })
+);
+
+/**
+ * Tool parameter interface for TypeScript
+ */
+export interface ToolParameter {
+  name: string;
+  type: JSONSchemaType;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  enum?: unknown[];
+  properties?: Record<string, ToolParameter>;
+  items?: ToolParameter;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+}
+
+/**
+ * JSON Schema representation of tool parameters
+ * Compatible with JSON Schema Draft 7 for tool parameter definitions
+ */
+export const ToolParametersSchemaSchema = z.object({
+  /** JSON Schema type (typically 'object' for tool parameters) */
+  type: z.literal('object').default('object'),
+  /** Object properties defining each parameter */
+  properties: z.record(z.string(), z.object({
+    type: JSONSchemaTypeSchema,
+    description: z.string().optional(),
+    default: z.unknown().optional(),
+    enum: z.array(z.unknown()).optional(),
+    properties: z.record(z.string(), z.unknown()).optional(),
+    items: z.unknown().optional(),
+    minimum: z.number().optional(),
+    maximum: z.number().optional(),
+    minLength: z.number().optional(),
+    maxLength: z.number().optional(),
+    pattern: z.string().optional(),
+  })).optional().default({}),
+  /** Array of required property names */
+  required: z.array(z.string()).optional().default([]),
+  /** Whether additional properties are allowed */
+  additionalProperties: z.boolean().optional().default(false),
+});
+export type ToolParametersSchema = z.infer<typeof ToolParametersSchemaSchema>;
+
+/**
+ * Example usage for a tool
+ */
+export const ToolExampleSchema = z.object({
+  /** Name/title of the example */
+  name: z.string().min(1),
+  /** Description of what this example demonstrates */
+  description: z.string().optional(),
+  /** Input parameters for the example */
+  input: z.record(z.string(), z.unknown()),
+  /** Expected output (optional) */
+  output: z.unknown().optional(),
+});
+export type ToolExample = z.infer<typeof ToolExampleSchema>;
+
+/**
+ * Complete tool definition schema
+ * Defines all metadata and configuration for a tool that agents can use
+ */
+export const ToolDefinitionSchema = z.object({
+  /** Unique tool identifier */
+  name: z.string().min(1, 'Tool name is required').max(64, 'Tool name must be 64 characters or less'),
+  /** Human-readable description of what the tool does */
+  description: z.string().min(1, 'Tool description is required'),
+  /** JSON Schema definition for tool parameters */
+  parameters: ToolParametersSchemaSchema,
+  /** Whether this tool performs dangerous operations requiring confirmation */
+  dangerous: z.boolean().default(false),
+  /** Permission requirements for executing this tool */
+  permissions: z.array(ToolPermissionSchema).default([]),
+  /** Category for organizing and filtering tools */
+  category: ToolCategorySchema,
+  /** Optional usage examples */
+  examples: z.array(ToolExampleSchema).optional(),
+  /** Deprecation notice if tool is deprecated */
+  deprecated: z.string().optional(),
+  /** Version of the tool (semver) */
+  version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Version must be semver format').optional(),
+  /** Whether the tool is enabled by default */
+  enabled: z.boolean().default(true),
+  /** Tags for additional categorization */
+  tags: z.array(z.string()).optional(),
+});
+export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
+
+/**
+ * Result of a tool execution
+ */
+export const ToolResultSchema = z.object({
+  /** Whether the tool execution was successful */
+  success: z.boolean(),
+  /** The output data from the tool */
+  output: z.unknown().optional(),
+  /** Error message if the execution failed */
+  error: z.string().optional(),
+  /** Execution duration in milliseconds */
+  duration: z.number().min(0).optional(),
+  /** Additional metadata about the execution */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Tool name that was executed */
+  toolName: z.string().optional(),
+  /** Timestamp when the tool was invoked */
+  invokedAt: z.date().optional(),
+  /** Timestamp when the tool completed */
+  completedAt: z.date().optional(),
+});
+export type ToolResult = z.infer<typeof ToolResultSchema>;
+
+/**
+ * Tool invocation request
+ */
+export const ToolInvocationSchema = z.object({
+  /** Tool to invoke */
+  toolName: z.string().min(1),
+  /** Parameters to pass to the tool */
+  parameters: z.record(z.string(), z.unknown()),
+  /** Optional timeout in milliseconds */
+  timeout: z.number().min(0).optional(),
+  /** Request ID for tracking */
+  requestId: z.string().optional(),
+  /** Context about who/what is invoking the tool */
+  context: z.object({
+    taskId: z.string().optional(),
+    agentName: z.string().optional(),
+    stageName: z.string().optional(),
+  }).optional(),
+});
+export type ToolInvocation = z.infer<typeof ToolInvocationSchema>;
+
+/**
+ * Tool registry entry combining definition with runtime state
+ */
+export const ToolRegistryEntrySchema = z.object({
+  /** The tool definition */
+  definition: ToolDefinitionSchema,
+  /** Whether the tool is currently available */
+  available: z.boolean().default(true),
+  /** Reason if the tool is unavailable */
+  unavailableReason: z.string().optional(),
+  /** Last time the tool was invoked */
+  lastInvoked: z.date().optional(),
+  /** Number of times the tool has been invoked */
+  invocationCount: z.number().min(0).default(0),
+  /** Number of successful invocations */
+  successCount: z.number().min(0).default(0),
+  /** Number of failed invocations */
+  failureCount: z.number().min(0).default(0),
+});
+export type ToolRegistryEntry = z.infer<typeof ToolRegistryEntrySchema>;
+
+// ============================================================================
 // Workflow Definitions
 // ============================================================================
 
