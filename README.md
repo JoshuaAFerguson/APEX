@@ -4,7 +4,7 @@ Autonomous Product Engineering eXecutor - AI-powered development team automation
 
 ## Installation
 
-### NPM
+### NPM (Windows, macOS, Linux)
 
 ```bash
 npm install -g @apexcli/cli
@@ -16,6 +16,25 @@ npm install -g @apexcli/cli
 brew tap joshuaaferguson/apex
 brew install apex
 ```
+
+### Windows-Specific Installation
+
+For Windows users, APEX works with Node.js and npm out of the box. You can also use Windows Package Manager:
+
+```powershell
+# Using winget (Windows Package Manager)
+winget install OpenJS.NodeJS
+
+# Then install APEX globally
+npm install -g @apexcli/cli
+```
+
+**Windows Prerequisites:**
+- Node.js 18+ ([Download](https://nodejs.org/))
+- Git for Windows ([Download](https://git-scm.com/download/win))
+- PowerShell 5.1+ (included with Windows 10/11)
+
+> 📋 **Windows Note:** APEX has excellent Windows compatibility for core functionality. Service management features use manual process management on Windows (Windows service support is planned for future releases).
 
 <p align="center">
   <img src="docs/logo.svg" alt="APEX Logo" width="200"/>
@@ -87,6 +106,8 @@ npm install -g @apexcli/cli
 npx @apexcli/cli init
 ```
 
+> **Windows Users:** Use Command Prompt, PowerShell, or Windows Terminal for the best experience. Git Bash is also supported.
+
 ### Initialize a Project
 
 ```bash
@@ -101,8 +122,14 @@ apex init
 ### Run Your First Task
 
 ```bash
-# Set your API key
+# Set your API key (Unix/Linux/macOS)
 export ANTHROPIC_API_KEY=your_key_here
+
+# Windows Command Prompt
+set ANTHROPIC_API_KEY=your_key_here
+
+# Windows PowerShell
+$env:ANTHROPIC_API_KEY="your_key_here"
 
 # Run a development task
 apex run "Add user authentication with JWT tokens"
@@ -113,6 +140,7 @@ apex run "Add user authentication with JWT tokens"
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
+| [Windows Installation Guide](docs/windows-installation.md) | Windows-specific setup and configuration |
 | [Configuration](docs/configuration.md) | Project configuration options |
 | [Time-Based Usage Management](docs/time-based-usage-management.md) | Day/night modes, auto-pause/resume, capacity management |
 | [Service Management](docs/service-management.md) | Install and manage as system service |

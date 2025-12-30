@@ -55,6 +55,8 @@ Error: ANTHROPIC_API_KEY environment variable is not set
 **Cause:** API key not configured.
 
 **Solution:**
+
+**Unix/Linux/macOS:**
 ```bash
 # Set temporarily
 export ANTHROPIC_API_KEY=your_key_here
@@ -62,6 +64,26 @@ export ANTHROPIC_API_KEY=your_key_here
 # Set permanently (add to shell profile)
 echo 'export ANTHROPIC_API_KEY=your_key_here' >> ~/.bashrc
 source ~/.bashrc
+```
+
+**Windows Command Prompt:**
+```cmd
+# Set temporarily
+set ANTHROPIC_API_KEY=your_key_here
+
+# Set permanently using setx
+setx ANTHROPIC_API_KEY "your_key_here"
+# Restart your terminal after this command
+```
+
+**Windows PowerShell:**
+```powershell
+# Set temporarily
+$env:ANTHROPIC_API_KEY="your_key_here"
+
+# Set permanently
+[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "your_key_here", "User")
+# Restart your terminal after this command
 ```
 
 ---
@@ -506,11 +528,139 @@ apex run "Step 2"
 
 ---
 
+## Windows-Specific Issues
+
+### "Module not found" or "Command not found" on Windows
+
+**Symptoms:**
+- `apex` command not recognized
+- Global npm packages not found
+
+**Cause:** npm global installation path not in PATH environment variable.
+
+**Solutions:**
+
+1. **Find npm global installation path:**
+```powershell
+npm config get prefix
+# Usually C:\Users\<username>\AppData\Roaming\npm
+```
+
+2. **Add to PATH environment variable:**
+   - Press `Win + R`, type `sysdm.cpl`, press Enter
+   - Click "Environment Variables"
+   - Under "User variables", find and edit "Path"
+   - Add the npm global path (e.g., `C:\Users\<username>\AppData\Roaming\npm`)
+   - Click OK and restart your terminal
+
+3. **Or set npm prefix to a PATH-accessible location:**
+```powershell
+npm config set prefix "%APPDATA%\npm"
+```
+
+### PowerShell Execution Policy Restrictions
+
+**Error:**
+```
+execution of scripts is disabled on this system
+```
+
+**Cause:** PowerShell execution policy prevents script execution.
+
+**Solution:**
+```powershell
+# Check current policy
+Get-ExecutionPolicy
+
+# Set to allow local scripts (recommended)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Or allow all scripts (less secure)
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
+```
+
+### Windows Path Separator Issues
+
+**Symptoms:**
+- File path errors in logs
+- "Cannot find file" errors with forward slashes
+
+**Cause:** Windows uses backslashes (`\`) while Unix uses forward slashes (`/`).
+
+**Solution:** APEX handles this automatically, but if you see issues:
+
+1. Use `path.join()` or `path.resolve()` in custom scripts
+2. Check `.apex/config.yaml` for correct path separators
+3. Report path-related issues as they should be automatically handled
+
+### Service Management Not Available
+
+**Error:**
+```
+Service management not supported on Windows
+```
+
+**Cause:** Windows service management is not yet implemented.
+
+**Workaround:**
+1. **Run APEX manually in a persistent terminal session**
+2. **Use Windows Task Scheduler to start APEX on boot:**
+   - Open Task Scheduler (`taskschd.msc`)
+   - Create Basic Task
+   - Trigger: "When the computer starts"
+   - Action: Start a program
+   - Program: `cmd.exe`
+   - Arguments: `/c "cd /d C:\path\to\your\project && apex serve"`
+
+3. **Use Windows Services Wrapper (NSSM):**
+```powershell
+# Install NSSM
+winget install NSSM.NSSM
+
+# Install APEX as Windows service
+nssm install apex-service
+# Set Application path to: node.exe
+# Set Arguments to: C:\Users\<username>\AppData\Roaming\npm\node_modules\@apexcli\cli\dist\index.js serve
+# Set Startup directory to your project directory
+```
+
+### Git Bash Compatibility Issues
+
+**Symptoms:**
+- Color/formatting issues in Git Bash
+- Unicode characters not displaying
+
+**Solutions:**
+1. **Use Windows Terminal with Git Bash:** Provides better color and Unicode support
+2. **Enable Unicode in Git Bash:**
+```bash
+# Add to ~/.bashrc
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+```
+
+3. **Use PowerShell or Command Prompt instead** for the best APEX experience
+
+### Permission Issues During Development
+
+**Symptoms:**
+- Cannot create files in project directory
+- "Access denied" errors during npm operations
+
+**Solutions:**
+1. **Run terminal as Administrator** (not recommended for regular use)
+2. **Change project location** to a user-writable directory like `C:\Users\<username>\Projects\`
+3. **Check Windows Defender** isn't blocking Node.js operations
+4. **Use Developer Mode** in Windows 10/11 Settings → Update & Security → For developers
+
+---
+
 ## Getting Help
 
 ### Check Documentation
 
 - [Getting Started](getting-started.md)
+- [Windows Installation Guide](windows-installation.md)
 - [Service Management Guide](service-management.md)
 - [Agent Authoring Guide](agents.md)
 - [Workflow Authoring Guide](workflows.md)

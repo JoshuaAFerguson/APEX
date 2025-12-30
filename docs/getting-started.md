@@ -10,11 +10,32 @@ Before you begin, ensure you have:
 - **Anthropic API Key** - [Get an API key](https://console.anthropic.com/)
 - **Git** - For version control operations
 
+### Windows-Specific Prerequisites
+
+For Windows users, ensure you have:
+- **Node.js 18+** - Install from [nodejs.org](https://nodejs.org/) or use `winget install OpenJS.NodeJS`
+- **Git for Windows** - [Download](https://git-scm.com/download/win) for full Git functionality
+- **PowerShell 5.1+** - Included with Windows 10/11
+- **Windows Terminal** (recommended) - [Install from Microsoft Store](https://aka.ms/terminal) for the best CLI experience
+
+> **Note:** APEX works in Command Prompt, PowerShell, Git Bash, and Windows Terminal. We recommend Windows Terminal for the best experience with colors and formatting.
+
 ## Installation
 
 ### Option 1: Global Installation (Recommended)
 
+**All Platforms:**
 ```bash
+npm install -g @apexcli/cli
+```
+
+**Windows-Specific:**
+```powershell
+# PowerShell (recommended)
+npm install -g @apexcli/cli
+
+# Or install Node.js first with winget
+winget install OpenJS.NodeJS
 npm install -g @apexcli/cli
 ```
 
@@ -34,19 +55,47 @@ npm run build
 npm link
 ```
 
+> **Windows Note:** If you encounter permission issues during global installation, run your terminal as Administrator or use `npm config set prefix %APPDATA%\npm` to install to your user directory.
+
 ## Quick Start
 
 ### 1. Set Your API Key
 
+**Unix/Linux/macOS:**
 ```bash
 export ANTHROPIC_API_KEY=your_api_key_here
 ```
 
-Or add it to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+**Windows Command Prompt:**
+```cmd
+set ANTHROPIC_API_KEY=your_api_key_here
+```
 
+**Windows PowerShell:**
+```powershell
+$env:ANTHROPIC_API_KEY="your_api_key_here"
+```
+
+#### Permanent Environment Variable Setup
+
+**Unix/Linux/macOS:** Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 ```bash
 echo 'export ANTHROPIC_API_KEY=your_api_key_here' >> ~/.bashrc
 source ~/.bashrc
+```
+
+**Windows:** Set permanently using System Properties:
+1. Press `Win + R`, type `sysdm.cpl`, press Enter
+2. Click "Environment Variables" button
+3. Under "User variables", click "New"
+4. Variable name: `ANTHROPIC_API_KEY`
+5. Variable value: `your_api_key_here`
+6. Click OK and restart your terminal
+
+**Or use PowerShell to set permanently:**
+```powershell
+[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "your_api_key_here", "User")
+# Restart your terminal after running this command
 ```
 
 ### 2. Initialize Your Project
