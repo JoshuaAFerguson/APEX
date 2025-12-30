@@ -485,7 +485,7 @@ ${this.formatEnvironmentForBatch()}
 
         # Create service using sc.exe
         $startType = if ($enableOnBoot) { "auto" } else { "demand" }
-        & sc.exe create $serviceName binPath= "\`"$wrapperPath\`"" DisplayName= "$serviceDisplayName" start= $startType
+        & sc.exe create $serviceName binPath= "\\\`"$wrapperPath\\\`"" DisplayName= "$serviceDisplayName" start= $startType
         & sc.exe description $serviceName "$serviceDisplayName"
 
         Write-Host "Basic service installed successfully"
@@ -527,7 +527,7 @@ if ($Install) {
     Uninstall-ApexService
 } else {
     Write-Host "Usage: .\\service-install.ps1 -Install or .\\service-install.ps1 -Uninstall"
-    Write-Host "Optional: Add -UseNSSM:`$false to use basic Windows service manager"
+    Write-Host "Optional: Add -UseNSSM:\\\`$false to use basic Windows service manager"
 }
 `;
   }

@@ -34,5 +34,5 @@ export * from './path-utils';
 // Shell Utilities
 export * from './shell-utils';
 
-// Test Utilities
-export * from './test-utils';
+// Note: test-utils is not exported from the main package as it depends on vitest
+// Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files
