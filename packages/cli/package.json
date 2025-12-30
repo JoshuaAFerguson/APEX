@@ -24,7 +24,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@apexcli/api": "^0.3.0",
+    "@apexcli/api": "*",
     "@apexcli/core": "*",
     "@apexcli/orchestrator": "*",
     "boxen": "^7.1.1",
