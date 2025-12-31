@@ -100,3 +100,24 @@ export {
   createBashTool,
 } from './shell/index.js';
 
+// Search tools
+export {
+  GrepTool,
+  type GrepToolInput,
+  type GrepToolOutput,
+  type GrepMatch,
+  type GrepFileCount,
+  registerSearchTools,
+} from './search/index.js';
+
+// Web tools
+export {
+  WebSearchTool,
+  type WebSearchToolInput,
+  type WebSearchToolOutput,
+  type WebSearchResult,
+  type WebSearchToolConfig,
+  registerWebTools,
+  registerWebSearchTool,
+  createWebSearchTool,
+} from './web/index.js';

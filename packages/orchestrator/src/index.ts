@@ -5195,3 +5195,13 @@ export {
   type CommandBlockedEvent,
 } from './container-execution-proxy';
 export { HealthMonitor } from './health-monitor';
+
+// Tools
+export {
+  WebFetchTool,
+  webFetchTool,
+  webFetch,
+  type WebFetchParams,
+  type WebFetchResult,
+  type HttpMethod,
+} from './tools';
