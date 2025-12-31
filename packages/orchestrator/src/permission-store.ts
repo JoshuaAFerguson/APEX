@@ -5,6 +5,11 @@ import {
   Permission,
   PermissionLevel,
   PermissionQuery,
+  ExtendedPermission,
+  ToolPermissionConfig,
+  DirectoryAccessConfig,
+  ExtendedPermissionSchema,
+  ToolPermissionConfigSchema,
 } from '@apexcli/core';
 
 /**
@@ -79,7 +84,11 @@ export class PermissionStore {
 
     // Add any missing columns for future migrations
     const migrations: { column: string; definition: string }[] = [
-      // Future migrations can be added here
+      // v0.5.0 Extended Permission Migration
+      { column: 'config', definition: 'TEXT' },
+      { column: 'grant_reason', definition: 'TEXT' },
+      { column: 'granted_by', definition: 'TEXT' },
+      { column: 'tags', definition: 'TEXT' },
     ];
 
     for (const { column, definition } of migrations) {
@@ -98,15 +107,37 @@ export class PermissionStore {
    * If a permission already exists for the same tool/scope combination, it will be updated
    */
   async savePermission(permission: Permission): Promise<void> {
+    // Delegate to extended version with optional fields as undefined
+    await this.saveExtendedPermission({
+      ...permission,
+      tags: [],
+    });
+  }
+
+  /**
+   * Save an extended permission to the database
+   * If a permission already exists for the same tool/scope combination, it will be updated
+   */
+  async saveExtendedPermission(permission: ExtendedPermission): Promise<void> {
     const id = this.generatePermissionId(permission.tool, permission.scope);
 
     const stmt = this.db.prepare(`
-      INSERT INTO permissions (id, tool_name, scope, level, expires_at, created_at)
-      VALUES (@id, @toolName, @scope, @level, @expiresAt, @createdAt)
+      INSERT INTO permissions (
+        id, tool_name, scope, level, expires_at, created_at,
+        config, grant_reason, granted_by, tags
+      )
+      VALUES (
+        @id, @toolName, @scope, @level, @expiresAt, @createdAt,
+        @config, @grantReason, @grantedBy, @tags
+      )
       ON CONFLICT(id) DO UPDATE SET
         level = @level,
         expires_at = @expiresAt,
-        created_at = @createdAt
+        created_at = @createdAt,
+        config = @config,
+        grant_reason = @grantReason,
+        granted_by = @grantedBy,
+        tags = @tags
     `);
 
     stmt.run({
@@ -116,6 +147,12 @@ export class PermissionStore {
       level: permission.level,
       expiresAt: permission.expiry ? permission.expiry.toISOString() : null,
       createdAt: permission.createdAt.toISOString(),
+      config: permission.config ? JSON.stringify(permission.config) : null,
+      grantReason: permission.grantReason || null,
+      grantedBy: permission.grantedBy || null,
+      tags: permission.tags && permission.tags.length > 0
+        ? JSON.stringify(permission.tags)
+        : null,
     });
   }
 
@@ -124,6 +161,24 @@ export class PermissionStore {
    * Returns null if no permission exists or if the permission has expired
    */
   async getPermission(query: PermissionQuery): Promise<Permission | null> {
+    const extended = await this.getExtendedPermission(query);
+    if (!extended) return null;
+
+    // Return only base Permission fields for backward compatibility
+    return {
+      tool: extended.tool,
+      scope: extended.scope,
+      level: extended.level,
+      expiry: extended.expiry,
+      createdAt: extended.createdAt,
+    };
+  }
+
+  /**
+   * Get an extended permission for a specific tool/scope combination
+   * Returns null if no permission exists or if the permission has expired
+   */
+  async getExtendedPermission(query: PermissionQuery): Promise<ExtendedPermission | null> {
     const stmt = this.db.prepare(`
       SELECT * FROM permissions
       WHERE tool_name = ? AND scope IS ?
@@ -131,7 +186,7 @@ export class PermissionStore {
       LIMIT 1
     `);
 
-    const row = stmt.get(query.tool, query.scope || null) as PermissionRow | undefined;
+    const row = stmt.get(query.tool, query.scope || null) as ExtendedPermissionRow | undefined;
 
     if (!row) return null;
 
@@ -145,7 +200,7 @@ export class PermissionStore {
       }
     }
 
-    return this.rowToPermission(row);
+    return this.rowToExtendedPermission(row);
   }
 
   /**
@@ -156,6 +211,28 @@ export class PermissionStore {
     level?: PermissionLevel;
     includeExpired?: boolean;
   }): Promise<Permission[]> {
+    const extended = await this.listExtendedPermissions(options);
+    // Convert extended permissions to base Permission type
+    return extended.map(perm => ({
+      tool: perm.tool,
+      scope: perm.scope,
+      level: perm.level,
+      expiry: perm.expiry,
+      createdAt: perm.createdAt,
+    }));
+  }
+
+  /**
+   * List all extended permissions with optional filtering
+   */
+  async listExtendedPermissions(options?: {
+    tool?: string;
+    level?: PermissionLevel;
+    grantedBy?: string;
+    tags?: string[];
+    includeExpired?: boolean;
+    hasConfig?: boolean;
+  }): Promise<ExtendedPermission[]> {
     let sql = 'SELECT * FROM permissions';
     const params: unknown[] = [];
     const whereClauses: string[] = [];
@@ -168,6 +245,29 @@ export class PermissionStore {
     if (options?.level) {
       whereClauses.push('level = ?');
       params.push(options.level);
+    }
+
+    if (options?.grantedBy) {
+      whereClauses.push('granted_by = ?');
+      params.push(options.grantedBy);
+    }
+
+    if (options?.hasConfig === true) {
+      whereClauses.push('config IS NOT NULL');
+    } else if (options?.hasConfig === false) {
+      whereClauses.push('config IS NULL');
+    }
+
+    // Tag filtering using JSON
+    if (options?.tags && options.tags.length > 0) {
+      // Match any of the provided tags
+      const tagConditions = options.tags.map(() =>
+        `json_each.value = ?`
+      ).join(' OR ');
+      whereClauses.push(`EXISTS (
+        SELECT 1 FROM json_each(tags) WHERE ${tagConditions}
+      )`);
+      params.push(...options.tags);
     }
 
     // By default, exclude expired permissions unless explicitly requested
@@ -183,9 +283,9 @@ export class PermissionStore {
     sql += ' ORDER BY created_at DESC';
 
     const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as PermissionRow[];
+    const rows = stmt.all(...params) as ExtendedPermissionRow[];
 
-    return rows.map(row => this.rowToPermission(row));
+    return rows.map(row => this.rowToExtendedPermission(row));
   }
 
   /**
@@ -263,6 +363,95 @@ export class PermissionStore {
   }
 
   /**
+   * Convert a database row to an ExtendedPermission object
+   */
+  private rowToExtendedPermission(row: ExtendedPermissionRow): ExtendedPermission {
+    const base: ExtendedPermission = {
+      tool: row.tool_name,
+      scope: row.scope || undefined,
+      level: row.level as PermissionLevel,
+      expiry: row.expires_at ? new Date(row.expires_at) : undefined,
+      createdAt: new Date(row.created_at),
+      tags: [],
+    };
+
+    // Parse extended fields
+    if (row.config) {
+      try {
+        const parsed = JSON.parse(row.config);
+        const result = ToolPermissionConfigSchema.safeParse(parsed);
+        if (result.success) {
+          base.config = result.data;
+        }
+      } catch {
+        // Invalid JSON, ignore config
+      }
+    }
+
+    if (row.grant_reason) {
+      base.grantReason = row.grant_reason;
+    }
+
+    if (row.granted_by) {
+      base.grantedBy = row.granted_by;
+    }
+
+    if (row.tags) {
+      try {
+        const parsed = JSON.parse(row.tags);
+        if (Array.isArray(parsed)) {
+          base.tags = parsed.filter((tag): tag is string => typeof tag === 'string');
+        }
+      } catch {
+        base.tags = [];
+      }
+    }
+
+    return base;
+  }
+
+  /**
+   * Get directory access configuration for a tool permission
+   */
+  async getDirectoryAccess(
+    query: PermissionQuery
+  ): Promise<DirectoryAccessConfig | null> {
+    const permission = await this.getExtendedPermission(query);
+
+    if (!permission?.config) return null;
+
+    // Extract directoryAccess from the appropriate config type
+    if ('directoryAccess' in permission.config) {
+      return permission.config.directoryAccess || null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Update directory access configuration for an existing permission
+   */
+  async updateDirectoryAccess(
+    query: PermissionQuery,
+    directoryAccess: DirectoryAccessConfig
+  ): Promise<boolean> {
+    const permission = await this.getExtendedPermission(query);
+
+    if (!permission) return false;
+
+    // Create or update the config with new directory access
+    const config = permission.config || {};
+    const updatedConfig = { ...config, directoryAccess };
+
+    await this.saveExtendedPermission({
+      ...permission,
+      config: updatedConfig as ToolPermissionConfig,
+    });
+
+    return true;
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {
@@ -272,7 +461,7 @@ export class PermissionStore {
   }
 }
 
-// Database row type
+// Database row type for basic permissions
 interface PermissionRow {
   id: string;
   tool_name: string;
@@ -280,4 +469,12 @@ interface PermissionRow {
   level: string;
   expires_at: string | null;
   created_at: string;
+}
+
+// Extended database row type for v0.5.0 extended permissions
+interface ExtendedPermissionRow extends PermissionRow {
+  config: string | null;          // JSON: ToolPermissionConfig
+  grant_reason: string | null;
+  granted_by: string | null;
+  tags: string | null;            // JSON: string[]
 }
