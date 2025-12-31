@@ -14,6 +14,7 @@
 import { spawn } from 'node:child_process';
 import { BaseTool, type ToolExecutionContext, type ValidationResult } from '../base-tool.js';
 import type { ToolCategory, ToolPermission } from '../../types.js';
+import { CommandSandbox, type SandboxConfig } from './command-sandbox.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -89,14 +90,17 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
   /** Maximum allowed timeout in milliseconds (10 minutes) */
   private static readonly MAX_TIMEOUT = 600000;
 
-  /** Commands that are potentially dangerous */
+  /** Commands that are potentially dangerous (kept for backward compatibility warnings) */
   private static readonly DANGEROUS_COMMANDS = new Set([
     'rm', 'rmdir', 'del', 'format', 'fdisk', 'mkfs',
     'dd', 'shred', 'wipe', 'shutdown', 'reboot', 'halt',
     'sudo', 'su', 'chmod', 'chown', 'passwd', 'userdel'
   ]);
 
-  constructor() {
+  /** Command sandbox for security validation */
+  private sandbox: CommandSandbox;
+
+  constructor(sandboxConfig?: Partial<SandboxConfig>) {
     super({
       name: 'Bash',
       description: 'Executes bash commands and returns structured output with stdout, stderr, and exit code',
@@ -158,6 +162,9 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
       version: '1.0.0',
       tags: ['shell', 'execution', 'command'],
     });
+
+    // Initialize the command sandbox with provided configuration
+    this.sandbox = new CommandSandbox(sandboxConfig);
   }
 
   /**
@@ -181,15 +188,30 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
     } else {
       const command = params.command.trim();
 
-      // Security: Check for potentially dangerous commands
+      // 1. NEW: Sandbox security validation (blocks dangerous commands)
+      const sandboxResult = this.sandbox.validate(command, context?.workingDirectory);
+      if (!sandboxResult.allowed) {
+        errors.push(sandboxResult.blockedReason || 'Command blocked by security policy');
+      }
+
+      // Add any sandbox warnings
+      if (sandboxResult.warnings) {
+        warnings.push(...sandboxResult.warnings);
+      }
+
+      // 2. LEGACY: Keep existing warning system for backward compatibility
+      // These only generate warnings now since blocking is handled by sandbox
       const firstWord = command.split(/\s+/)[0];
       const baseCommand = firstWord.split('/').pop() || firstWord; // Handle paths like /bin/rm
 
       if (BashTool.DANGEROUS_COMMANDS.has(baseCommand)) {
-        warnings.push(`Potentially dangerous command detected: ${baseCommand} - use with caution`);
+        // Only warn if sandbox didn't already block
+        if (sandboxResult.allowed) {
+          warnings.push(`Potentially dangerous command detected: ${baseCommand} - use with caution`);
+        }
       }
 
-      // Security: Check for shell injection patterns
+      // Legacy suspicious pattern checking (now mostly handled by sandbox)
       const suspiciousPatterns = [
         /;\s*rm\s+/,     // ; rm
         /\|\s*rm\s+/,    // | rm
@@ -200,7 +222,7 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
       ];
 
       for (const pattern of suspiciousPatterns) {
-        if (pattern.test(command)) {
+        if (pattern.test(command) && sandboxResult.allowed) {
           warnings.push('Command contains potentially suspicious patterns - review carefully');
           break;
         }

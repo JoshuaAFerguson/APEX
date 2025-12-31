@@ -14,33 +14,73 @@ export {
   type BashToolOutput,
 } from './bash-tool.js';
 
+// Security module exports
+export {
+  CommandSandbox,
+  type SandboxConfig,
+  createStrictSandbox,
+  createPermissiveSandbox,
+  createDisabledSandbox,
+} from './command-sandbox.js';
+
+export {
+  checkCommandBlocklist,
+  getAllBlocklistPatterns,
+  getBlocklistCategories,
+  getBlocklistCategory,
+  COMMAND_BLOCKLIST,
+  type CommandValidationResult,
+  type BlocklistCategory,
+} from './blocklist.js';
+
+export {
+  detectPathTraversal,
+  validateWorkingDirectory,
+  extractPathsFromCommand,
+  checkPathEscapesBase,
+  normalizePath,
+  pathsEqual,
+  getRelativePathIfWithin,
+  type PathTraversalResult,
+} from './path-validator.js';
+
 // Tool registry convenience functions
 import type { ToolRegistry } from '../tool-registry.js';
 import { BashTool } from './bash-tool.js';
+import type { SandboxConfig } from './command-sandbox.js';
 
 /**
  * Registers all shell tools with the provided registry.
  *
  * @param registry - The tool registry to register tools with
+ * @param sandboxConfig - Optional sandbox configuration for the BashTool
  */
-export function registerShellTools(registry: ToolRegistry): void {
-  registerBashTool(registry);
+export function registerShellTools(
+  registry: ToolRegistry,
+  sandboxConfig?: Partial<SandboxConfig>
+): void {
+  registerBashTool(registry, sandboxConfig);
 }
 
 /**
  * Registers the Bash tool with the provided registry.
  *
  * @param registry - The tool registry to register the tool with
+ * @param sandboxConfig - Optional sandbox configuration for the BashTool
  */
-export function registerBashTool(registry: ToolRegistry): void {
-  registry.register(new BashTool());
+export function registerBashTool(
+  registry: ToolRegistry,
+  sandboxConfig?: Partial<SandboxConfig>
+): void {
+  registry.register(new BashTool(sandboxConfig));
 }
 
 /**
  * Creates a new instance of the Bash tool.
  *
+ * @param sandboxConfig - Optional sandbox configuration
  * @returns A new BashTool instance
  */
-export function createBashTool(): BashTool {
-  return new BashTool();
+export function createBashTool(sandboxConfig?: Partial<SandboxConfig>): BashTool {
+  return new BashTool(sandboxConfig);
 }
