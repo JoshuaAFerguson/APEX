@@ -38,6 +38,22 @@ const DANGEROUS_PATTERNS = [
   '--no-preserve-root',
 ];
 
+// Restricted URL patterns for WebFetch
+const RESTRICTED_URL_PATTERNS = [
+  /^file:\/\//i, // Local file system access
+  /^ftp:\/\//i, // FTP protocols
+  /localhost/i, // Localhost access
+  /127\.0\.0\.1/, // Loopback IP
+  /192\.168\./, // Private network ranges
+  /10\./, // Private network ranges
+  /172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private network ranges
+  /169\.254\./, // Link-local addresses
+  /\.local/i, // mDNS/Bonjour local domains
+];
+
+// Allowed schemes for WebFetch
+const ALLOWED_SCHEMES = ['http:', 'https:'];
+
 // Sensitive file patterns that require extra caution
 const SENSITIVE_PATHS = [
   '/etc/passwd',
@@ -95,6 +111,15 @@ export function createHooks(context: HookContext): HooksConfig {
       {
         matcher: 'MultiEdit',
         hooks: [createHookCallback(context, auditFileWrite)],
+        timeout: 5,
+      },
+      // Audit WebFetch requests
+      {
+        matcher: 'WebFetch',
+        hooks: [
+          createHookCallback(context, auditWebFetchRequest),
+          createHookCallback(context, validateNetworkPermissions),
+        ],
         timeout: 5,
       },
       // Log all tool usage
@@ -235,6 +260,126 @@ async function auditFileWrite(
 
   // Notify callback
   context.onToolUse?.(toolName, { filePath });
+
+  return {};
+}
+
+/**
+ * Audit WebFetch requests
+ */
+async function auditWebFetchRequest(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const url = (toolInput.url as string) || '';
+  const method = (toolInput.method as string) || 'GET';
+  const toolName = getToolName(input);
+
+  // Log the WebFetch request
+  await context.store.addLog(context.taskId, {
+    level: 'info',
+    message: `WebFetch request: ${method} ${url}`,
+    metadata: {
+      tool: toolName,
+      url,
+      method,
+      hasPrompt: !!toolInput.prompt,
+    },
+  });
+
+  // Notify callback if provided
+  context.onToolUse?.(toolName, { url, method });
+
+  return {};
+}
+
+/**
+ * Validate network permissions for WebFetch
+ */
+async function validateNetworkPermissions(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolInput = getToolInput(input);
+  const url = (toolInput.url as string) || '';
+
+  try {
+    const parsedUrl = new URL(url);
+
+    // Check if scheme is allowed
+    if (!ALLOWED_SCHEMES.includes(parsedUrl.protocol)) {
+      await context.store.addLog(context.taskId, {
+        level: 'error',
+        message: `Blocked WebFetch: Invalid protocol "${parsedUrl.protocol}"`,
+        metadata: { url, blocked: true, reason: 'invalid_protocol' },
+      });
+
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `Blocked: Only HTTP and HTTPS protocols are allowed. Found: ${parsedUrl.protocol}`,
+        },
+      };
+    }
+
+    // Check against restricted patterns
+    for (const pattern of RESTRICTED_URL_PATTERNS) {
+      if (pattern.test(url)) {
+        await context.store.addLog(context.taskId, {
+          level: 'warn',
+          message: `Blocked WebFetch: Restricted URL pattern`,
+          metadata: { url, pattern: pattern.source, blocked: true },
+        });
+
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: `Blocked: URL matches restricted pattern for security reasons`,
+          },
+        };
+      }
+    }
+
+    // Warn about potentially sensitive requests
+    const sensitivePatterns = [
+      /password/i,
+      /secret/i,
+      /token/i,
+      /api.?key/i,
+      /credential/i,
+    ];
+
+    for (const pattern of sensitivePatterns) {
+      if (pattern.test(url)) {
+        await context.store.addLog(context.taskId, {
+          level: 'warn',
+          message: `WebFetch to potentially sensitive endpoint: ${url}`,
+          metadata: { url, pattern: pattern.source, warning: true },
+        });
+      }
+    }
+
+  } catch (urlError) {
+    // Invalid URL format
+    await context.store.addLog(context.taskId, {
+      level: 'error',
+      message: `Blocked WebFetch: Invalid URL format`,
+      metadata: { url, blocked: true, error: String(urlError) },
+    });
+
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: `Blocked: Invalid URL format`,
+      },
+    };
+  }
 
   return {};
 }
