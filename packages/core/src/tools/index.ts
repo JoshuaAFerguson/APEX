@@ -52,3 +52,23 @@ export {
   registerTool,
   unregisterTool,
 } from './tool-registry.js';
+
+// Filesystem tools
+export {
+  ReadTool,
+  type ReadToolInput,
+  type ReadToolOutput,
+  EditTool,
+  type EditFileParams,
+  type EditFileOutput,
+  StringNotFoundError,
+  AmbiguousReplacementError,
+  IdenticalStringsError,
+  FileAccessError,
+  registerFilesystemTools,
+  registerReadTool,
+  createReadTool,
+  registerEditTool,
+  createEditTool,
+} from './filesystem/index.js';
+
