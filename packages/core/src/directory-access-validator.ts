@@ -67,8 +67,8 @@ export interface ValidationOptions {
  *
  * ```typescript
  * const config: DirectoryAccessConfig = {
- *   allowlist: ['src/**/*', 'docs/*.md'],
- *   blocklist: ['src/secrets/*', '**/*.log'],
+ *   allowlist: ['src/**\/*', 'docs/*.md'],
+ *   blocklist: ['src/secrets/*', '**\/*.log'],
  *   defaultAllow: false
  * };
  *
@@ -76,7 +76,7 @@ export interface ValidationOptions {
  *
  * // Check if path is allowed
  * const result = validator.isPathAllowed('/project/src/main.ts', config);
- * console.log(result.allowed); // true (matches allowlist pattern 'src/**/*')
+ * console.log(result.allowed); // true (matches allowlist pattern 'src/**\/*')
  *
  * // Check blocklist match
  * const blocked = validator.matchesBlocklist('/project/src/secrets/key.txt', ['src/secrets/*']);

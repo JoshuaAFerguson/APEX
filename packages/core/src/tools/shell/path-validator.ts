@@ -39,8 +39,8 @@ const PATH_TRAVERSAL_PATTERNS = [
   /\.\.\\/g,                                    // ..\ (Windows)
   /\.\.%2[fF]/g,                                // URL encoded ../
   /\.\.%5[cC]/g,                                // URL encoded ..\
-  /\.\.\x2[fF]/g,                               // Hex encoded ../
-  /\.\.\x5[cC]/g,                               // Hex encoded ..\
+  /\.\.\\x2[fF]/g,                              // Hex encoded ../
+  /\.\.\\x5[cC]/g,                              // Hex encoded ..\
 ] as const;
 
 /**

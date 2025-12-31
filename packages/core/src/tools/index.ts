@@ -18,7 +18,8 @@ export {
   // Supporting types
   type ToolExecutionContext,
   type ValidationResult,
-  type ToolResult,
+  // Note: ToolResult is exported from types.ts, not here, to avoid conflicts
+  type ToolResult as TypedToolResult,  // Generic version for internal use
   type BaseToolOptions,
 
   // Type helpers

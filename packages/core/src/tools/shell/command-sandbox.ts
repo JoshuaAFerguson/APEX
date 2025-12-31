@@ -40,7 +40,7 @@ export interface SandboxConfig {
 /**
  * Default configuration values
  */
-const DEFAULT_CONFIG: Required<SandboxConfig> = {
+const DEFAULT_CONFIG: Omit<Required<SandboxConfig>, 'baseDirectory'> & { baseDirectory?: string } = {
   enabled: true,
   baseDirectory: undefined,
   allowedPaths: [],
@@ -69,7 +69,7 @@ const DEFAULT_CONFIG: Required<SandboxConfig> = {
  * to help users understand why their commands were rejected.
  */
 export class CommandSandbox {
-  private config: Required<SandboxConfig>;
+  private config: Omit<Required<SandboxConfig>, 'baseDirectory'> & { baseDirectory?: string };
   private customBlocklistPatterns: RegExp[];
   private allowlistPatterns: RegExp[];
 
@@ -204,7 +204,7 @@ export class CommandSandbox {
    *
    * @returns Copy of current configuration
    */
-  getConfig(): Required<SandboxConfig> {
+  getConfig(): Omit<Required<SandboxConfig>, 'baseDirectory'> & { baseDirectory?: string } {
     return { ...this.config };
   }
 

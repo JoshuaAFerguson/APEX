@@ -312,7 +312,7 @@ export class PermissionManager {
       level,
       requiresConfirmation,
       denialReason,
-      config,
+      config: config ?? undefined,
       pathValidation,
     };
   }

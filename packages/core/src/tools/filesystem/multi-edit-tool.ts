@@ -235,9 +235,7 @@ export class MultiEditTool extends BaseTool<MultiEditFileParams, MultiEditFileOu
         },
         edits: {
           type: 'array',
-          description: 'Array of edit operations to apply in order',
-          minItems: 1,
-          maxItems: MultiEditTool.MAX_EDITS,
+          description: `Array of edit operations to apply in order (1-${MultiEditTool.MAX_EDITS} edits)`,
           items: {
             type: 'object',
             properties: {

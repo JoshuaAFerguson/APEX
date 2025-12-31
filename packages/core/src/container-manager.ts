@@ -1694,10 +1694,20 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 }
 
 /**
+ * Events emitted by ContainerLogStream
+ */
+export interface ContainerLogStreamEvents {
+  data: (entry: ContainerLogEntry) => void;
+  error: (error: Error) => void;
+  exit: (code: number | null) => void;
+  end: () => void;
+}
+
+/**
  * Container log stream implementation
  * EventEmitter that streams logs from a container with async iterator support
  */
-export class ContainerLogStream extends EventEmitter {
+export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmitter<ContainerLogStreamEvents>) {
   private process?: ChildProcess;
   private containerId: string;
   private options: ContainerLogStreamOptions;
@@ -1760,7 +1770,7 @@ export class ContainerLogStream extends EventEmitter {
       });
 
     } catch (error) {
-      this.emit('error', error);
+      this.emit('error', error instanceof Error ? error : new Error(String(error)));
       this.end();
     }
   }

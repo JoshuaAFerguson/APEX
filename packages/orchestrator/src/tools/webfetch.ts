@@ -380,7 +380,7 @@ export class WebFetchTool {
   /**
    * Validate and normalize parameters
    */
-  private validateParams(params: WebFetchParams): Required<WebFetchParams> {
+  private validateParams(params: WebFetchParams): Omit<Required<WebFetchParams>, 'body' | 'prompt'> & { body?: string; prompt?: string } {
     // Validate URL
     if (!params.url) {
       throw new Error('URL is required');
@@ -710,7 +710,7 @@ ${prompt}`;
       });
 
       // Extract text response
-      const textBlock = response.content.find(block => block.type === 'text');
+      const textBlock = response.content.find((block): block is Anthropic.TextBlock => block.type === 'text');
       const analysisContent = textBlock ? textBlock.text : '';
 
       return {

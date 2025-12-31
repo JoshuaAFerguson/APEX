@@ -576,7 +576,7 @@ export class WebSearchTool extends BaseTool<WebSearchToolInput, WebSearchToolOut
         let data = '';
 
         // Handle gzip encoding
-        let stream = res;
+        let stream: NodeJS.ReadableStream = res;
         if (res.headers['content-encoding'] === 'gzip') {
           stream = res.pipe(zlib.createGunzip());
         }

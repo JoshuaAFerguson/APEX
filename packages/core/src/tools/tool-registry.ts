@@ -173,7 +173,7 @@ export class ToolRegistry {
   private readonly tools: Map<string, ToolRegistryEntry> = new Map();
 
   /** Map of tool name to tool interface for execution */
-  private readonly toolInterfaces: Map<string, ToolInterface> = new Map();
+  private readonly toolInterfaces: Map<string, ToolInterface<unknown, unknown>> = new Map();
 
   /** Event listeners */
   private readonly listeners: Map<
@@ -242,7 +242,7 @@ export class ToolRegistry {
    * registry.register(new MyCustomTool());
    * ```
    */
-  public register(tool: ToolInterface): void {
+  public register(tool: ToolInterface<unknown, unknown>): void {
     const definition = tool.getDefinition();
     const toolName = definition.name;
 

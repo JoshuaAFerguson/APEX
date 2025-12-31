@@ -35,7 +35,6 @@
 
 import type {
   ToolDefinition,
-  ToolResult,
   ToolCategory,
   ToolPermission,
   ToolParametersSchema,
@@ -109,7 +108,7 @@ export interface ValidationResult {
  * ```
  */
 export interface ToolInterface<
-  TInput extends Record<string, unknown> = Record<string, unknown>,
+  TInput = Record<string, unknown>,
   TOutput = unknown
 > {
   /**
@@ -272,7 +271,7 @@ export interface BaseToolOptions {
  * ```
  */
 export abstract class BaseTool<
-  TInput extends Record<string, unknown> = Record<string, unknown>,
+  TInput = Record<string, unknown>,
   TOutput = unknown
 > implements ToolInterface<TInput, TOutput> {
   /** Tool configuration options */

@@ -2,7 +2,7 @@
  * @fileoverview Glob tool - Fast file pattern matching with modification time sorting
  *
  * This tool provides fast file pattern matching capabilities using fast-glob with support for:
- * - Glob patterns like "**/*.js" or "src/**/*.ts"
+ * - Glob patterns like `**\/*.js` or `src/**\/*.ts`
  * - Path filtering for specific directories
  * - Result sorting by modification time (most recent first)
  * - Performance optimization for large codebases
@@ -85,17 +85,17 @@ export interface GlobToolOutput {
  *
  * ## Pattern Examples
  *
- * - `**/*.js` - All JavaScript files recursively
- * - `src/**/*.ts` - All TypeScript files in src directory
+ * - `**\/*.js` - All JavaScript files recursively
+ * - `src/**\/*.ts` - All TypeScript files in src directory
  * - `*.{ts,tsx}` - TypeScript files in current directory
- * - `**/*.test.js` - All test files
- * - `packages/*/src/**/*.ts` - TypeScript files in package src directories
+ * - `**\/*.test.js` - All test files
+ * - `packages/*\/src/**\/*.ts` - TypeScript files in package src directories
  *
  * ## Usage Examples
  *
  * ```typescript
  * // Find all TypeScript files
- * const result = await globTool.execute({ pattern: '**/*.ts' });
+ * const result = await globTool.execute({ pattern: '**\/*.ts' });
  *
  * // Search in specific directory
  * const result = await globTool.execute({
@@ -290,7 +290,7 @@ export class GlobTool extends BaseTool<GlobToolInput, GlobToolOutput> {
       }
 
       // Perform the glob search
-      matchedPaths = await fastGlob(params.pattern, globOptions);
+      matchedPaths = await fastGlob.glob(params.pattern, globOptions);
 
       // Check if we hit our safety limit
       if (matchedPaths.length > GlobTool.MAX_RESULTS) {
