@@ -991,9 +991,13 @@ export class DaemonRunner {
       this.logStream.write(logLine);
     }
 
-    // Optionally log to stdout
+    // Optionally log to stdout (may fail with EPIPE if stdout is disconnected)
     if (this.options.logToStdout) {
-      process.stdout.write(logLine);
+      try {
+        process.stdout.write(logLine);
+      } catch {
+        // Ignore EPIPE errors - stdout may be disconnected
+      }
     }
   }
 

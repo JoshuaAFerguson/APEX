@@ -24,6 +24,15 @@ import {
   PermissionLevelSchema,
   PermissionSchema,
   PermissionQuerySchema,
+  // New v0.5.0 permission schemas
+  DirectoryAccessConfigSchema,
+  BaseToolPermissionConfigSchema,
+  FilesystemToolConfigSchema,
+  ShellToolConfigSchema,
+  WebToolConfigSchema,
+  SearchToolConfigSchema,
+  ToolPermissionConfigSchema,
+  ExtendedPermissionSchema,
 } from './types';
 
 describe.skip('AgentModelSchema', () => {
@@ -2538,5 +2547,549 @@ describe('Iteration History Types Exports', () => {
     expect(sessionData.iterationHistory?.entries[0].stage).toBe('testing');
     expect(sessionData.iterationHistory?.entries[0].modifiedFiles).toEqual(['/test/file.ts']);
     expect(sessionData.iterationHistory?.totalIterations).toBe(1);
+  });
+});
+
+// ============================================================================
+// v0.5.0 Per-Tool Permission Configuration Tests
+// ============================================================================
+
+describe('DirectoryAccessConfigSchema', () => {
+  it('should accept minimal valid config', () => {
+    const config = DirectoryAccessConfigSchema.parse({});
+
+    expect(config.allowlist).toEqual([]);
+    expect(config.blocklist).toEqual([]);
+    expect(config.resolveSymlinks).toBe(true);
+    expect(config.maxDepth).toBe(0);
+    expect(config.defaultAllow).toBeUndefined();
+  });
+
+  it('should accept config with allowlist and blocklist', () => {
+    const config = DirectoryAccessConfigSchema.parse({
+      allowlist: ['/src/**', '/tests/**'],
+      blocklist: ['/node_modules/**', '/.git/**'],
+      defaultAllow: false,
+      resolveSymlinks: false,
+      maxDepth: 5
+    });
+
+    expect(config.allowlist).toEqual(['/src/**', '/tests/**']);
+    expect(config.blocklist).toEqual(['/node_modules/**', '/.git/**']);
+    expect(config.defaultAllow).toBe(false);
+    expect(config.resolveSymlinks).toBe(false);
+    expect(config.maxDepth).toBe(5);
+  });
+
+  it('should validate maxDepth is non-negative', () => {
+    expect(() => DirectoryAccessConfigSchema.parse({
+      maxDepth: -1
+    })).toThrow();
+
+    expect(() => DirectoryAccessConfigSchema.parse({
+      maxDepth: 0
+    })).not.toThrow();
+  });
+
+  it('should allow empty arrays for allowlist/blocklist', () => {
+    const config = DirectoryAccessConfigSchema.parse({
+      allowlist: [],
+      blocklist: []
+    });
+
+    expect(config.allowlist).toEqual([]);
+    expect(config.blocklist).toEqual([]);
+  });
+});
+
+describe('BaseToolPermissionConfigSchema', () => {
+  it('should accept minimal valid config with defaults', () => {
+    const config = BaseToolPermissionConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.timeout).toBe(0);
+    expect(config.requireConfirmation).toBe(false);
+    expect(config.rateLimitPerMinute).toBe(0);
+    expect(config.metadata).toBeUndefined();
+  });
+
+  it('should accept config with all fields', () => {
+    const config = BaseToolPermissionConfigSchema.parse({
+      enabled: false,
+      timeout: 30000,
+      requireConfirmation: true,
+      rateLimitPerMinute: 10,
+      metadata: {
+        reason: 'security policy',
+        approver: 'admin'
+      }
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.timeout).toBe(30000);
+    expect(config.requireConfirmation).toBe(true);
+    expect(config.rateLimitPerMinute).toBe(10);
+    expect(config.metadata).toEqual({
+      reason: 'security policy',
+      approver: 'admin'
+    });
+  });
+
+  it('should validate non-negative timeout', () => {
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      timeout: -1
+    })).toThrow();
+
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      timeout: 0
+    })).not.toThrow();
+  });
+
+  it('should validate non-negative rate limit', () => {
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      rateLimitPerMinute: -1
+    })).toThrow();
+
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      rateLimitPerMinute: 0
+    })).not.toThrow();
+  });
+});
+
+describe('FilesystemToolConfigSchema', () => {
+  it('should extend base config with filesystem-specific fields', () => {
+    const config = FilesystemToolConfigSchema.parse({
+      enabled: true,
+      timeout: 5000,
+      directoryAccess: {
+        allowlist: ['/src/**'],
+        blocklist: ['/node_modules/**']
+      },
+      maxFileSize: 1048576, // 1MB
+      allowedExtensions: ['.ts', '.js', '.json'],
+      blockedExtensions: ['.exe', '.bin']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.timeout).toBe(5000);
+    expect(config.directoryAccess?.allowlist).toEqual(['/src/**']);
+    expect(config.maxFileSize).toBe(1048576);
+    expect(config.allowedExtensions).toEqual(['.ts', '.js', '.json']);
+    expect(config.blockedExtensions).toEqual(['.exe', '.bin']);
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = FilesystemToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.maxFileSize).toBe(0);
+    expect(config.allowedExtensions).toEqual([]);
+    expect(config.blockedExtensions).toEqual([]);
+  });
+
+  it('should validate non-negative maxFileSize', () => {
+    expect(() => FilesystemToolConfigSchema.parse({
+      maxFileSize: -1
+    })).toThrow();
+
+    expect(() => FilesystemToolConfigSchema.parse({
+      maxFileSize: 0
+    })).not.toThrow();
+  });
+});
+
+describe('ShellToolConfigSchema', () => {
+  it('should extend base config with shell-specific fields', () => {
+    const config = ShellToolConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/project/**'],
+        defaultAllow: false
+      },
+      blockedCommands: ['^rm -rf', '^sudo', 'format.*'],
+      allowElevatedPrivileges: false,
+      environment: {
+        PATH: '/usr/local/bin:/usr/bin',
+        NODE_ENV: 'development'
+      },
+      workingDirectory: '/project/workspace'
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.directoryAccess?.allowlist).toEqual(['/project/**']);
+    expect(config.blockedCommands).toEqual(['^rm -rf', '^sudo', 'format.*']);
+    expect(config.allowElevatedPrivileges).toBe(false);
+    expect(config.environment).toEqual({
+      PATH: '/usr/local/bin:/usr/bin',
+      NODE_ENV: 'development'
+    });
+    expect(config.workingDirectory).toBe('/project/workspace');
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = ShellToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.blockedCommands).toEqual([]);
+    expect(config.allowElevatedPrivileges).toBe(false);
+    expect(config.environment).toBeUndefined();
+    expect(config.workingDirectory).toBeUndefined();
+  });
+});
+
+describe('WebToolConfigSchema', () => {
+  it('should extend base config with web-specific fields', () => {
+    const config = WebToolConfigSchema.parse({
+      enabled: true,
+      allowedDomains: ['api.github.com', '*.stackoverflow.com'],
+      blockedDomains: ['malicious.com', 'spam.net'],
+      maxResponseSize: 5242880, // 5MB
+      followRedirects: false,
+      headers: {
+        'User-Agent': 'APEX/1.0',
+        'Accept': 'application/json'
+      }
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.allowedDomains).toEqual(['api.github.com', '*.stackoverflow.com']);
+    expect(config.blockedDomains).toEqual(['malicious.com', 'spam.net']);
+    expect(config.maxResponseSize).toBe(5242880);
+    expect(config.followRedirects).toBe(false);
+    expect(config.headers).toEqual({
+      'User-Agent': 'APEX/1.0',
+      'Accept': 'application/json'
+    });
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = WebToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.allowedDomains).toEqual([]);
+    expect(config.blockedDomains).toEqual([]);
+    expect(config.maxResponseSize).toBe(0);
+    expect(config.followRedirects).toBe(true);
+    expect(config.headers).toBeUndefined();
+  });
+
+  it('should validate non-negative maxResponseSize', () => {
+    expect(() => WebToolConfigSchema.parse({
+      maxResponseSize: -1
+    })).toThrow();
+
+    expect(() => WebToolConfigSchema.parse({
+      maxResponseSize: 0
+    })).not.toThrow();
+  });
+});
+
+describe('SearchToolConfigSchema', () => {
+  it('should extend base config with search-specific fields', () => {
+    const config = SearchToolConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/src/**', '/docs/**'],
+        blocklist: ['/node_modules/**']
+      },
+      maxResults: 500,
+      includePatterns: ['*.ts', '*.js'],
+      excludePatterns: ['*.test.*', '*.spec.*']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.directoryAccess?.allowlist).toEqual(['/src/**', '/docs/**']);
+    expect(config.maxResults).toBe(500);
+    expect(config.includePatterns).toEqual(['*.ts', '*.js']);
+    expect(config.excludePatterns).toEqual(['*.test.*', '*.spec.*']);
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = SearchToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.maxResults).toBe(1000);
+    expect(config.includePatterns).toEqual([]);
+    expect(config.excludePatterns).toEqual([]);
+  });
+
+  it('should validate maxResults minimum value', () => {
+    expect(() => SearchToolConfigSchema.parse({
+      maxResults: 0
+    })).toThrow();
+
+    expect(() => SearchToolConfigSchema.parse({
+      maxResults: 1
+    })).not.toThrow();
+  });
+});
+
+describe('ToolPermissionConfigSchema', () => {
+  it('should accept FilesystemToolConfig', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/src/**']
+      },
+      maxFileSize: 1024000
+    });
+
+    expect(config.enabled).toBe(true);
+    expect((config as any).maxFileSize).toBe(1024000);
+  });
+
+  it('should accept ShellToolConfig', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: false,
+      blockedCommands: ['^rm -rf'],
+      allowElevatedPrivileges: false
+    });
+
+    expect(config.enabled).toBe(false);
+    expect((config as any).blockedCommands).toEqual(['^rm -rf']);
+  });
+
+  it('should accept WebToolConfig', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: true,
+      allowedDomains: ['github.com'],
+      maxResponseSize: 1048576
+    });
+
+    expect(config.enabled).toBe(true);
+    expect((config as any).allowedDomains).toEqual(['github.com']);
+  });
+
+  it('should accept SearchToolConfig', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: true,
+      maxResults: 100,
+      includePatterns: ['*.ts']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect((config as any).maxResults).toBe(100);
+  });
+
+  it('should accept BaseToolPermissionConfig as fallback', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: false,
+      timeout: 10000,
+      requireConfirmation: true
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.timeout).toBe(10000);
+    expect(config.requireConfirmation).toBe(true);
+  });
+});
+
+describe('ExtendedPermissionSchema', () => {
+  it('should extend base Permission with additional fields', () => {
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Write',
+      scope: '/project/**',
+      level: 'allow-always',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      config: {
+        enabled: true,
+        maxFileSize: 1048576,
+        allowedExtensions: ['.ts', '.js']
+      },
+      grantReason: 'Development work on project files',
+      grantedBy: 'user:admin',
+      tags: ['development', 'filesystem']
+    });
+
+    expect(permission.tool).toBe('Write');
+    expect(permission.scope).toBe('/project/**');
+    expect(permission.level).toBe('allow-always');
+    expect(permission.config?.enabled).toBe(true);
+    expect(permission.grantReason).toBe('Development work on project files');
+    expect(permission.grantedBy).toBe('user:admin');
+    expect(permission.tags).toEqual(['development', 'filesystem']);
+  });
+
+  it('should accept minimal permission without extended fields', () => {
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Read',
+      level: 'allow-once',
+      createdAt: new Date('2024-01-15T10:00:00Z')
+    });
+
+    expect(permission.tool).toBe('Read');
+    expect(permission.level).toBe('allow-once');
+    expect(permission.config).toBeUndefined();
+    expect(permission.grantReason).toBeUndefined();
+    expect(permission.grantedBy).toBeUndefined();
+    expect(permission.tags).toEqual([]);
+  });
+
+  it('should validate tool name is non-empty', () => {
+    expect(() => ExtendedPermissionSchema.parse({
+      tool: '',
+      level: 'allow-always',
+      createdAt: new Date()
+    })).toThrow();
+
+    expect(() => ExtendedPermissionSchema.parse({
+      tool: 'Bash',
+      level: 'allow-always',
+      createdAt: new Date()
+    })).not.toThrow();
+  });
+
+  it('should accept complex tool configurations', () => {
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Bash',
+      scope: 'build-commands',
+      level: 'allow-always',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      config: {
+        enabled: true,
+        timeout: 300000, // 5 minutes
+        directoryAccess: {
+          allowlist: ['/project/**'],
+          blocklist: ['/project/node_modules/**'],
+          defaultAllow: false
+        },
+        blockedCommands: ['^sudo', '^rm -rf /'],
+        allowElevatedPrivileges: false,
+        environment: {
+          NODE_ENV: 'development',
+          CI: 'false'
+        }
+      },
+      grantReason: 'Allow build and development commands within project directory',
+      grantedBy: 'system:auto-config',
+      tags: ['build', 'development', 'restricted']
+    });
+
+    expect(permission.tool).toBe('Bash');
+    expect(permission.scope).toBe('build-commands');
+    expect((permission.config as any)?.directoryAccess?.allowlist).toEqual(['/project/**']);
+    expect((permission.config as any)?.blockedCommands).toEqual(['^sudo', '^rm -rf /']);
+    expect(permission.tags).toEqual(['build', 'development', 'restricted']);
+  });
+
+  it('should handle expiry dates correctly', () => {
+    const expiryDate = new Date('2024-12-31T23:59:59Z');
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'WebSearch',
+      level: 'allow-once',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      expiry: expiryDate
+    });
+
+    expect(permission.expiry).toEqual(expiryDate);
+  });
+});
+
+// ============================================================================
+// Edge Cases and Error Validation Tests
+// ============================================================================
+
+describe('Permission Schema Edge Cases', () => {
+  describe('DirectoryAccessConfigSchema edge cases', () => {
+    it('should handle very large maxDepth values', () => {
+      const config = DirectoryAccessConfigSchema.parse({
+        maxDepth: Number.MAX_SAFE_INTEGER
+      });
+
+      expect(config.maxDepth).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it('should handle glob patterns in allowlist/blocklist', () => {
+      const config = DirectoryAccessConfigSchema.parse({
+        allowlist: ['**/*.ts', '/src/**/{test,spec}/**'],
+        blocklist: ['**/node_modules/**', '**/.git/**', '**/.*']
+      });
+
+      expect(config.allowlist).toEqual(['**/*.ts', '/src/**/{test,spec}/**']);
+      expect(config.blocklist).toEqual(['**/node_modules/**', '**/.git/**', '**/.*']);
+    });
+  });
+
+  describe('ToolPermissionConfigSchema validation errors', () => {
+    it('should reject invalid timeout values', () => {
+      expect(() => BaseToolPermissionConfigSchema.parse({
+        timeout: -100
+      })).toThrow();
+    });
+
+    it('should reject invalid rate limits', () => {
+      expect(() => BaseToolPermissionConfigSchema.parse({
+        rateLimitPerMinute: -5
+      })).toThrow();
+    });
+
+    it('should reject invalid maxFileSize in FilesystemToolConfig', () => {
+      expect(() => FilesystemToolConfigSchema.parse({
+        maxFileSize: -1024
+      })).toThrow();
+    });
+
+    it('should reject invalid maxResults in SearchToolConfig', () => {
+      expect(() => SearchToolConfigSchema.parse({
+        maxResults: 0
+      })).toThrow();
+
+      expect(() => SearchToolConfigSchema.parse({
+        maxResults: -10
+      })).toThrow();
+    });
+  });
+
+  describe('ExtendedPermissionSchema validation', () => {
+    it('should reject empty tool names', () => {
+      expect(() => ExtendedPermissionSchema.parse({
+        tool: '',
+        level: 'allow-always',
+        createdAt: new Date()
+      })).toThrow();
+    });
+
+    it('should reject invalid permission levels', () => {
+      expect(() => ExtendedPermissionSchema.parse({
+        tool: 'Read',
+        level: 'invalid-level' as any,
+        createdAt: new Date()
+      })).toThrow();
+    });
+
+    it('should accept very complex configurations', () => {
+      const complexPermission = ExtendedPermissionSchema.parse({
+        tool: 'MultiTool',
+        scope: 'complex-scope-pattern/**/*.{ts,js,json}',
+        level: 'allow-always',
+        createdAt: new Date(),
+        expiry: new Date(Date.now() + 86400000), // 24 hours from now
+        config: {
+          enabled: true,
+          timeout: 120000,
+          requireConfirmation: false,
+          rateLimitPerMinute: 30,
+          metadata: {
+            complexity: 'high',
+            risk: 'medium',
+            auditRequired: true,
+            approvers: ['admin1', 'admin2'],
+            nested: {
+              deep: {
+                value: 'deeply nested config'
+              }
+            }
+          }
+        },
+        grantReason: 'Complex multi-step automation requiring various tool permissions',
+        grantedBy: 'system:workflow-engine',
+        tags: ['automation', 'complex', 'multi-tool', 'time-sensitive']
+      });
+
+      expect(complexPermission.tool).toBe('MultiTool');
+      expect(complexPermission.scope).toContain('complex-scope-pattern');
+      expect(complexPermission.config?.metadata?.nested?.deep?.value).toBe('deeply nested config');
+      expect(complexPermission.tags).toHaveLength(4);
+    });
   });
 });

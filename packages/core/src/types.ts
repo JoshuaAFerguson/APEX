@@ -108,6 +108,171 @@ export const PermissionQuerySchema = z.object({
 });
 export type PermissionQuery = z.infer<typeof PermissionQuerySchema>;
 
+// ============================================================================
+// Per-Tool Permission Configuration (v0.5.0)
+// ============================================================================
+
+/**
+ * Directory access configuration for filesystem-related tools
+ * Controls which directories a tool can access using allowlist/blocklist patterns
+ */
+export const DirectoryAccessConfigSchema = z.object({
+  /** Paths that are explicitly allowed (glob patterns supported) */
+  allowlist: z.array(z.string()).optional().default([]),
+
+  /** Paths that are explicitly blocked (glob patterns supported) */
+  blocklist: z.array(z.string()).optional().default([]),
+
+  /**
+   * Whether to allow access to paths not in allowlist/blocklist
+   * Default: false if allowlist is non-empty, true otherwise
+   */
+  defaultAllow: z.boolean().optional(),
+
+  /** Whether to resolve symlinks when checking paths (default: true) */
+  resolveSymlinks: z.boolean().optional().default(true),
+
+  /** Maximum directory depth for recursive operations (0 = unlimited) */
+  maxDepth: z.number().int().min(0).optional().default(0),
+});
+export type DirectoryAccessConfig = z.infer<typeof DirectoryAccessConfigSchema>;
+
+/**
+ * Base configuration shared by all tool permission configs
+ * Contains common settings applicable to any tool type
+ */
+export const BaseToolPermissionConfigSchema = z.object({
+  /** Whether the tool is enabled */
+  enabled: z.boolean().optional().default(true),
+
+  /** Maximum execution time in milliseconds (0 = no limit) */
+  timeout: z.number().int().min(0).optional().default(0),
+
+  /** Whether to require confirmation before execution */
+  requireConfirmation: z.boolean().optional().default(false),
+
+  /** Rate limiting: maximum calls per minute (0 = no limit) */
+  rateLimitPerMinute: z.number().int().min(0).optional().default(0),
+
+  /** Custom metadata for the tool configuration */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type BaseToolPermissionConfig = z.infer<typeof BaseToolPermissionConfigSchema>;
+
+/**
+ * Configuration for filesystem tools (Read, Write, Edit, Glob)
+ * Extends base config with file-specific settings
+ */
+export const FilesystemToolConfigSchema = BaseToolPermissionConfigSchema.extend({
+  /** Directory access control */
+  directoryAccess: DirectoryAccessConfigSchema.optional(),
+
+  /** Maximum file size in bytes for read/write operations (0 = no limit) */
+  maxFileSize: z.number().int().min(0).optional().default(0),
+
+  /** Allowed file extensions (empty = all allowed) */
+  allowedExtensions: z.array(z.string()).optional().default([]),
+
+  /** Blocked file extensions */
+  blockedExtensions: z.array(z.string()).optional().default([]),
+});
+export type FilesystemToolConfig = z.infer<typeof FilesystemToolConfigSchema>;
+
+/**
+ * Configuration for shell/command execution tools (Bash)
+ * Extends base config with command-specific settings
+ */
+export const ShellToolConfigSchema = BaseToolPermissionConfigSchema.extend({
+  /** Directory access control for working directory */
+  directoryAccess: DirectoryAccessConfigSchema.optional(),
+
+  /** Command patterns to block (regex strings) */
+  blockedCommands: z.array(z.string()).optional().default([]),
+
+  /** Whether to allow running commands as root/admin */
+  allowElevatedPrivileges: z.boolean().optional().default(false),
+
+  /** Environment variables to inject */
+  environment: z.record(z.string(), z.string()).optional(),
+
+  /** Working directory override */
+  workingDirectory: z.string().optional(),
+});
+export type ShellToolConfig = z.infer<typeof ShellToolConfigSchema>;
+
+/**
+ * Configuration for web access tools (WebFetch, WebSearch)
+ * Extends base config with network-specific settings
+ */
+export const WebToolConfigSchema = BaseToolPermissionConfigSchema.extend({
+  /** Allowed domains for web access (empty = all allowed) */
+  allowedDomains: z.array(z.string()).optional().default([]),
+
+  /** Blocked domains */
+  blockedDomains: z.array(z.string()).optional().default([]),
+
+  /** Maximum response size in bytes */
+  maxResponseSize: z.number().int().min(0).optional().default(0),
+
+  /** Whether to follow redirects */
+  followRedirects: z.boolean().optional().default(true),
+
+  /** Custom headers to include in requests */
+  headers: z.record(z.string(), z.string()).optional(),
+});
+export type WebToolConfig = z.infer<typeof WebToolConfigSchema>;
+
+/**
+ * Configuration for search tools (Grep)
+ * Extends base config with search-specific settings
+ */
+export const SearchToolConfigSchema = BaseToolPermissionConfigSchema.extend({
+  /** Directory access control for search scope */
+  directoryAccess: DirectoryAccessConfigSchema.optional(),
+
+  /** Maximum number of results */
+  maxResults: z.number().int().min(1).optional().default(1000),
+
+  /** File patterns to include in search */
+  includePatterns: z.array(z.string()).optional().default([]),
+
+  /** File patterns to exclude from search */
+  excludePatterns: z.array(z.string()).optional().default([]),
+});
+export type SearchToolConfig = z.infer<typeof SearchToolConfigSchema>;
+
+/**
+ * Union of all tool-specific configuration schemas
+ * Provides per-tool settings that control how tools operate
+ */
+export const ToolPermissionConfigSchema = z.union([
+  FilesystemToolConfigSchema,
+  ShellToolConfigSchema,
+  WebToolConfigSchema,
+  SearchToolConfigSchema,
+  BaseToolPermissionConfigSchema, // Fallback for generic tools
+]);
+export type ToolPermissionConfig = z.infer<typeof ToolPermissionConfigSchema>;
+
+/**
+ * Extended permission schema with per-tool configuration
+ * Adds tool-specific settings, grant metadata, and categorization
+ */
+export const ExtendedPermissionSchema = PermissionSchema.extend({
+  /** Per-tool configuration settings */
+  config: ToolPermissionConfigSchema.optional(),
+
+  /** Description of why this permission was granted */
+  grantReason: z.string().optional(),
+
+  /** Who/what granted this permission (user, system, agent name) */
+  grantedBy: z.string().optional(),
+
+  /** Tags for categorizing and filtering permissions */
+  tags: z.array(z.string()).optional().default([]),
+});
+export type ExtendedPermission = z.infer<typeof ExtendedPermissionSchema>;
+
 /**
  * JSON Schema type for tool parameters
  */
@@ -2075,3 +2240,238 @@ export const TodoWriteOutputSchema = z.object({
   todos: z.array(TodoSchema),
 });
 export type TodoWriteOutput = z.infer<typeof TodoWriteOutputSchema>;
+
+// ============================================================================
+// Permission Presets (v0.5.0)
+// ============================================================================
+
+/**
+ * Permission preset enumeration
+ * Defines predefined permission configurations for agent tool access:
+ * - 'autonomous': All tools allowed without confirmation (full autonomy)
+ * - 'review-all': All tools require user confirmation before execution
+ * - 'read-only': Only read-only tools allowed (Read, Grep, Glob, WebFetch, WebSearch)
+ */
+export const PermissionPresetSchema = z.enum([
+  'autonomous',   // All tools allowed without confirmation
+  'review-all',   // All tools require confirmation before execution
+  'read-only',    // Only read-only tools allowed
+]);
+export type PermissionPreset = z.infer<typeof PermissionPresetSchema>;
+
+/**
+ * Tool permission behavior for a specific tool
+ * - 'allow': Tool is allowed without confirmation
+ * - 'confirm': Tool requires user confirmation before execution
+ * - 'deny': Tool is not allowed
+ */
+export const ToolPermissionBehaviorSchema = z.enum([
+  'allow',    // Tool is allowed without confirmation
+  'confirm',  // Tool requires user confirmation
+  'deny',     // Tool is not allowed
+]);
+export type ToolPermissionBehavior = z.infer<typeof ToolPermissionBehaviorSchema>;
+
+/**
+ * Read-only tools that don't modify the filesystem or execute commands
+ * These tools are safe to use in read-only mode
+ */
+export const READ_ONLY_TOOLS = [
+  'Read',
+  'Grep',
+  'Glob',
+  'WebFetch',
+  'WebSearch',
+] as const;
+export type ReadOnlyTool = typeof READ_ONLY_TOOLS[number];
+
+/**
+ * Write/execute tools that can modify the filesystem or execute commands
+ * These tools require elevated permissions in restricted modes
+ */
+export const WRITE_TOOLS = [
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+  'Bash',
+  'TodoWrite',
+] as const;
+export type WriteTool = typeof WRITE_TOOLS[number];
+
+/**
+ * All available tools combining read-only and write tools
+ */
+export const ALL_TOOLS = [...READ_ONLY_TOOLS, ...WRITE_TOOLS] as const;
+export type AllTool = typeof ALL_TOOLS[number];
+
+/**
+ * Tool permission rule schema
+ * Defines the permission behavior for a specific tool or tool pattern
+ */
+export const ToolPermissionRuleSchema = z.object({
+  /** Tool name or pattern (supports wildcards like 'Web*') */
+  tool: z.string().min(1, 'Tool name is required'),
+  /** Permission behavior for this tool */
+  behavior: ToolPermissionBehaviorSchema,
+  /** Optional scope restriction (e.g., file path pattern for file tools) */
+  scope: z.string().optional(),
+  /** Optional reason for this permission rule */
+  reason: z.string().optional(),
+});
+export type ToolPermissionRule = z.infer<typeof ToolPermissionRuleSchema>;
+
+/**
+ * Permission preset configuration schema
+ * Defines the complete permission configuration for a preset
+ */
+export const PermissionPresetConfigSchema = z.object({
+  /** Name of the preset */
+  name: PermissionPresetSchema,
+  /** Human-readable description of what this preset allows */
+  description: z.string(),
+  /** Default behavior for tools not explicitly listed */
+  defaultBehavior: ToolPermissionBehaviorSchema,
+  /** Specific tool permission rules (overrides default behavior) */
+  rules: z.array(ToolPermissionRuleSchema).optional().default([]),
+  /** Whether this preset allows creating new files */
+  allowFileCreation: z.boolean().default(false),
+  /** Whether this preset allows executing shell commands */
+  allowShellExecution: z.boolean().default(false),
+  /** Whether this preset allows network access */
+  allowNetworkAccess: z.boolean().default(true),
+});
+export type PermissionPresetConfig = z.infer<typeof PermissionPresetConfigSchema>;
+
+/**
+ * Predefined permission preset configurations
+ * These are the built-in presets that can be used out of the box
+ */
+export const PERMISSION_PRESET_CONFIGS: Record<PermissionPreset, PermissionPresetConfig> = {
+  /**
+   * Autonomous preset: All tools allowed without confirmation
+   * Use when you want agents to operate with full autonomy
+   */
+  autonomous: {
+    name: 'autonomous',
+    description: 'All tools allowed without confirmation. Agents operate with full autonomy.',
+    defaultBehavior: 'allow',
+    rules: [],
+    allowFileCreation: true,
+    allowShellExecution: true,
+    allowNetworkAccess: true,
+  },
+
+  /**
+   * Review-all preset: All tools require confirmation
+   * Use when you want to review every tool invocation before execution
+   */
+  'review-all': {
+    name: 'review-all',
+    description: 'All tools require user confirmation before execution.',
+    defaultBehavior: 'confirm',
+    rules: [],
+    allowFileCreation: true,
+    allowShellExecution: true,
+    allowNetworkAccess: true,
+  },
+
+  /**
+   * Read-only preset: Only read-only tools allowed
+   * Use when you want agents to only observe without making changes
+   */
+  'read-only': {
+    name: 'read-only',
+    description: 'Only read-only tools allowed. No file modifications or command execution.',
+    defaultBehavior: 'deny',
+    rules: [
+      { tool: 'Read', behavior: 'allow' },
+      { tool: 'Grep', behavior: 'allow' },
+      { tool: 'Glob', behavior: 'allow' },
+      { tool: 'WebFetch', behavior: 'allow' },
+      { tool: 'WebSearch', behavior: 'allow' },
+    ],
+    allowFileCreation: false,
+    allowShellExecution: false,
+    allowNetworkAccess: true,
+  },
+};
+
+/**
+ * Helper function to get the permission behavior for a tool given a preset
+ * @param preset - The permission preset to use
+ * @param toolName - The name of the tool to check
+ * @returns The permission behavior for the tool
+ */
+export function getToolBehaviorForPreset(
+  preset: PermissionPreset,
+  toolName: string
+): ToolPermissionBehavior {
+  const config = PERMISSION_PRESET_CONFIGS[preset];
+
+  // Check for specific rule for this tool
+  const rule = config.rules?.find(r => r.tool === toolName);
+  if (rule) {
+    return rule.behavior;
+  }
+
+  // Return default behavior
+  return config.defaultBehavior;
+}
+
+/**
+ * Helper function to check if a tool is allowed (without confirmation) for a preset
+ * @param preset - The permission preset to use
+ * @param toolName - The name of the tool to check
+ * @returns True if the tool is allowed without confirmation
+ */
+export function isToolAllowedForPreset(
+  preset: PermissionPreset,
+  toolName: string
+): boolean {
+  return getToolBehaviorForPreset(preset, toolName) === 'allow';
+}
+
+/**
+ * Helper function to check if a tool requires confirmation for a preset
+ * @param preset - The permission preset to use
+ * @param toolName - The name of the tool to check
+ * @returns True if the tool requires confirmation
+ */
+export function isToolConfirmRequiredForPreset(
+  preset: PermissionPreset,
+  toolName: string
+): boolean {
+  return getToolBehaviorForPreset(preset, toolName) === 'confirm';
+}
+
+/**
+ * Helper function to check if a tool is denied for a preset
+ * @param preset - The permission preset to use
+ * @param toolName - The name of the tool to check
+ * @returns True if the tool is denied
+ */
+export function isToolDeniedForPreset(
+  preset: PermissionPreset,
+  toolName: string
+): boolean {
+  return getToolBehaviorForPreset(preset, toolName) === 'deny';
+}
+
+/**
+ * Helper function to get the preset configuration
+ * @param preset - The permission preset name
+ * @returns The full preset configuration
+ */
+export function getPresetConfig(preset: PermissionPreset): PermissionPresetConfig {
+  return PERMISSION_PRESET_CONFIGS[preset];
+}
+
+/**
+ * Type guard to check if a string is a valid PermissionPreset
+ * @param value - The value to check
+ * @returns True if the value is a valid PermissionPreset
+ */
+export function isPermissionPreset(value: unknown): value is PermissionPreset {
+  return PermissionPresetSchema.safeParse(value).success;
+}
