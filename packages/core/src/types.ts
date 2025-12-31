@@ -856,6 +856,8 @@ export const ApexConfigSchema = z.object({
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),
+  /** Permission preset configuration for tool access control (v0.5.0) */
+  permissions: z.lazy(() => PermissionsConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -2475,3 +2477,24 @@ export function getPresetConfig(preset: PermissionPreset): PermissionPresetConfi
 export function isPermissionPreset(value: unknown): value is PermissionPreset {
   return PermissionPresetSchema.safeParse(value).success;
 }
+
+/**
+ * Permissions configuration schema for ApexConfig
+ * Defines the permission preset and optional custom rules for tool access control
+ */
+export const PermissionsConfigSchema = z.object({
+  /**
+   * Permission preset to use for tool access control
+   * - 'autonomous': All tools allowed without confirmation (full autonomy)
+   * - 'review-all': All tools require user confirmation before execution (default)
+   * - 'read-only': Only read-only tools allowed (Read, Grep, Glob, WebFetch, WebSearch)
+   */
+  preset: PermissionPresetSchema.optional().default('review-all'),
+
+  /**
+   * Custom per-tool permission rules that override the preset defaults
+   * Use this to fine-tune permissions for specific tools while using a preset as the base
+   */
+  customRules: z.array(ToolPermissionRuleSchema).optional().default([]),
+});
+export type PermissionsConfig = z.infer<typeof PermissionsConfigSchema>;

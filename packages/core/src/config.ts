@@ -8,6 +8,7 @@ import {
   AgentDefinitionSchema,
   WorkflowDefinition,
   WorkflowDefinitionSchema,
+  PermissionsConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -390,6 +391,9 @@ export async function initializeApex(
         },
       },
     },
+    permissions: {
+      preset: 'review-all',
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);
@@ -484,6 +488,10 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
         autoRemove: config.workspace?.container?.autoRemove ?? true,
         installTimeout: config.workspace?.container?.installTimeout,
       },
+    },
+    permissions: {
+      preset: config.permissions?.preset || 'review-all',
+      customRules: config.permissions?.customRules || [],
     },
   };
 }
