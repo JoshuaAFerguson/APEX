@@ -8,6 +8,7 @@ import type {
   PostToolUseHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
 import { TaskStore } from './store';
+import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 
 export type { HookInput };
 
@@ -15,6 +16,9 @@ export interface HookContext {
   taskId: string;
   store: TaskStore;
   onToolUse?: (tool: string, input: unknown) => void;
+  eventEmitter?: {
+    emit: (event: string, data: unknown) => void;
+  };
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -83,11 +87,106 @@ function createHookCallback(
 }
 
 /**
+ * Create a singleton instance of DangerousOperationDetector
+ */
+const dangerousOperationDetector = new DangerousOperationDetector();
+
+/**
+ * Map risk severity to operation type for event emission
+ */
+function mapSeverityToOperationType(toolName: string, severity: RiskSeverity): 'file-deletion' | 'system-command' | 'network-request' | 'privilege-escalation' | 'data-modification' {
+  switch (toolName) {
+    case 'Bash':
+      return severity === 'critical' || severity === 'high' ? 'system-command' : 'privilege-escalation';
+    case 'Write':
+    case 'Edit':
+    case 'MultiEdit':
+      return severity === 'critical' || severity === 'high' ? 'file-deletion' : 'data-modification';
+    case 'WebFetch':
+      return 'network-request';
+    default:
+      return 'data-modification';
+  }
+}
+
+/**
+ * Detect and handle dangerous operations
+ */
+async function detectDangerousOperation(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const result = await dangerousOperationDetector.detectDangerousOperation(input);
+
+  if (result.isDangerous && result.details) {
+    const { details } = result;
+    const operationType = mapSeverityToOperationType(details.tool, details.severity);
+
+    // Log the detection
+    await context.store.addLog(context.taskId, {
+      level: details.severity === 'critical' || details.severity === 'high' ? 'error' : 'warn',
+      message: `Dangerous operation detected: ${details.operation}`,
+      metadata: {
+        tool: details.tool,
+        severity: details.severity,
+        operation: details.operation,
+        reason: details.reason,
+        requiresConfirmation: details.requiresConfirmation,
+        ...details.metadata,
+      },
+    });
+
+    // Emit dangerous:detected event
+    context.eventEmitter?.emit('dangerous:detected', {
+      taskId: context.taskId,
+      timestamp: new Date(),
+      tool: details.tool,
+      operationType,
+      riskLevel: details.severity,
+      description: details.reason,
+      metadata: {
+        operation: details.operation,
+        ...details.metadata,
+      },
+    });
+
+    // Block critical operations that require confirmation
+    if (details.severity === 'critical' || details.requiresConfirmation) {
+      // Emit dangerous:blocked event
+      context.eventEmitter?.emit('dangerous:blocked', {
+        taskId: context.taskId,
+        timestamp: new Date(),
+        tool: details.tool,
+        operationType,
+        blockReason: details.reason,
+        blockedBy: 'DangerousOperationDetector',
+      });
+
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `Blocked dangerous operation: ${details.reason}`,
+        },
+      };
+    }
+  }
+
+  return {};
+}
+
+/**
  * Create hooks for the orchestrator
  */
 export function createHooks(context: HookContext): HooksConfig {
   return {
     PreToolUse: [
+      // Detect dangerous operations (runs first to catch and block dangerous operations early)
+      {
+        hooks: [createHookCallback(context, detectDangerousOperation)],
+        timeout: 10,
+      },
       // Audit all bash commands
       {
         matcher: 'Bash',

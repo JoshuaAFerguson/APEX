@@ -1469,6 +1469,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       onToolUse: (tool, input) => {
         this.emit('agent:tool-use', task.id, tool, input);
       },
+      eventEmitter: {
+        emit: (event: string, data: unknown) => {
+          this.emit(event as any, data);
+        },
+      },
     });
 
     // Track usage for this stage
