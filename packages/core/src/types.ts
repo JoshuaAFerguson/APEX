@@ -1580,7 +1580,13 @@ export type ApexEventType =
   | 'container:stopped'
   | 'container:died'
   | 'container:removed'
-  | 'container:health';
+  | 'container:health'
+  | 'permission:request'
+  | 'permission:granted'
+  | 'permission:denied'
+  | 'dangerous:detected'
+  | 'dangerous:confirmed'
+  | 'dangerous:blocked';
 
 export interface ApexEvent {
   type: ApexEventType;
