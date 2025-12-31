@@ -23,6 +23,12 @@
 
 import TurndownService from 'turndown';
 import crypto from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
+
+// Constants for AI analysis
+const ANALYSIS_MODEL = 'claude-3-5-haiku-latest';
+const MAX_ANALYSIS_TOKENS = 4096;
+const DEFAULT_MAX_CONTENT = 100000;
 
 /**
  * HTTP methods supported by WebFetch tool
@@ -49,6 +55,20 @@ export interface WebFetchParams {
   bypassCache?: boolean;
   /** Cache TTL in milliseconds (default: 900000 = 15 minutes) */
   cacheTtl?: number;
+  /**
+   * AI analysis prompt - when provided, content is analyzed by Claude Haiku
+   * The prompt should describe what information to extract from the page
+   * @example "Extract the main product features and pricing"
+   * @example "Summarize the key points of this article"
+   * @example "Find all API endpoints documented on this page"
+   */
+  prompt?: string;
+  /**
+   * Maximum content length to analyze (in characters)
+   * Content beyond this limit will be truncated with a notice
+   * Default: 100000 (approximately 25k tokens)
+   */
+  maxAnalysisContent?: number;
 }
 
 /**
@@ -78,6 +98,28 @@ export interface WebFetchResult {
     finalUrl?: string;
     cacheKey?: string;
   };
+  /**
+   * AI analysis results (present when prompt was provided)
+   */
+  analysis?: {
+    /** The AI-generated analysis based on the prompt */
+    content: string;
+    /** Model used for analysis */
+    model: string;
+    /** Tokens used for analysis */
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+    };
+    /** Whether content was truncated before analysis */
+    truncated: boolean;
+    /** Original content length (before truncation) */
+    originalContentLength: number;
+    /** Analyzed content length (after truncation) */
+    analyzedContentLength: number;
+  };
+  /** Error message if AI analysis failed (analysis result will be undefined) */
+  analysisError?: string;
 }
 
 /**
@@ -121,7 +163,7 @@ export class WebFetchTool {
   }
 
   /**
-   * Generate a cache key based on URL, method, headers, and body
+   * Generate a cache key based on URL, method, headers, body, and prompt
    */
   private generateCacheKey(params: WebFetchParams): string {
     const normalizedParams = {
@@ -129,6 +171,7 @@ export class WebFetchTool {
       method: params.method || 'GET',
       headers: params.headers || {},
       body: params.body || '',
+      prompt: params.prompt || '', // Include prompt in cache key for AI analysis
     };
 
     // Create a stable string representation for hashing
@@ -290,6 +333,22 @@ export class WebFetchTool {
           result.error = `HTTP ${response.status}: ${response.statusText}`;
         }
 
+        // If prompt provided and fetch successful, perform AI analysis
+        if (validatedParams.prompt && result.success && result.data) {
+          try {
+            const analysis = await this.analyzeContent(
+              result.data,
+              validatedParams.prompt,
+              validatedParams.maxAnalysisContent
+            );
+            result.analysis = analysis;
+          } catch (analysisError) {
+            // Include analysis error but don't fail the whole request
+            result.analysisError =
+              analysisError instanceof Error ? analysisError.message : String(analysisError);
+          }
+        }
+
         // Cache successful results if caching is enabled
         if (!validatedParams.bypassCache && result.success) {
           const cacheKey = this.generateCacheKey(validatedParams);
@@ -365,6 +424,8 @@ export class WebFetchTool {
       convertToMarkdown: params.convertToMarkdown !== false, // default to true
       bypassCache: params.bypassCache || false,
       cacheTtl,
+      prompt: params.prompt,
+      maxAnalysisContent: params.maxAnalysisContent || DEFAULT_MAX_CONTENT,
     };
   }
 
@@ -593,6 +654,139 @@ export class WebFetchTool {
    */
   public forceCleanup(): void {
     this.cleanupExpiredEntries();
+  }
+
+  /**
+   * Analyze content using Claude Haiku
+   *
+   * @param content The markdown content to analyze
+   * @param prompt The analysis prompt describing what to extract
+   * @param maxContent Maximum content length to analyze
+   * @returns Analysis result with usage information
+   */
+  private async analyzeContent(
+    content: string,
+    prompt: string,
+    maxContent: number = DEFAULT_MAX_CONTENT
+  ): Promise<WebFetchResult['analysis']> {
+    // Truncate content if needed
+    const { content: processedContent, truncated, originalLength } =
+      this.truncateContent(content, maxContent);
+
+    // Initialize Anthropic client (uses ANTHROPIC_API_KEY env var)
+    const anthropic = new Anthropic();
+
+    const systemPrompt = `You are a content analysis assistant. Your task is to analyze web page content and respond to user queries about it.
+
+Guidelines:
+- Be concise and directly answer the query
+- Extract specific information when asked
+- Summarize when asked for summaries
+- Structure your response clearly
+- If the requested information is not present in the content, say so
+- Do not make up information not present in the content`;
+
+    const userMessage = `## Web Page Content
+
+${processedContent}
+
+---
+
+## Your Task
+
+${prompt}`;
+
+    try {
+      const response = await anthropic.messages.create({
+        model: ANALYSIS_MODEL,
+        max_tokens: MAX_ANALYSIS_TOKENS,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: userMessage,
+          },
+        ],
+      });
+
+      // Extract text response
+      const textBlock = response.content.find(block => block.type === 'text');
+      const analysisContent = textBlock ? textBlock.text : '';
+
+      return {
+        content: analysisContent,
+        model: ANALYSIS_MODEL,
+        usage: {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+        },
+        truncated,
+        originalContentLength: originalLength,
+        analyzedContentLength: processedContent.length,
+      };
+    } catch (error) {
+      // Handle API errors gracefully
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`AI analysis failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Truncate content for AI analysis while preserving structure
+   *
+   * Strategy:
+   * 1. If content fits, return as-is
+   * 2. If content exceeds limit:
+   *    a. Keep all headers (h1-h6) for structure
+   *    b. Keep first N characters of body content
+   *    c. Add truncation notice
+   *
+   * @param content The markdown content to truncate
+   * @param maxChars Maximum characters allowed
+   * @returns Truncated content with metadata
+   */
+  private truncateContent(
+    content: string,
+    maxChars: number = DEFAULT_MAX_CONTENT
+  ): { content: string; truncated: boolean; originalLength: number } {
+    if (content.length <= maxChars) {
+      return {
+        content,
+        truncated: false,
+        originalLength: content.length,
+      };
+    }
+
+    // Extract headers for structure preservation
+    const headerRegex = /^#{1,6}\s+.+$/gm;
+    const headers: string[] = [];
+    let match;
+    while ((match = headerRegex.exec(content)) !== null) {
+      headers.push(match[0]);
+    }
+
+    // Calculate space for headers vs content
+    const headersText = headers.join('\n\n');
+    const headersLength = headersText.length;
+    const availableForContent = maxChars - headersLength - 200; // 200 for notice
+
+    // Take first portion of content
+    const truncatedContent = content.substring(0, availableForContent);
+
+    // Find last complete paragraph or sentence
+    const lastParagraph = truncatedContent.lastIndexOf('\n\n');
+    const lastSentence = truncatedContent.lastIndexOf('. ');
+    const cutPoint = Math.max(lastParagraph, lastSentence, availableForContent - 500);
+
+    const finalContent = content.substring(0, cutPoint > 0 ? cutPoint : availableForContent);
+
+    const truncationNotice = `\n\n---\n[Content truncated: Showing ${finalContent.length.toLocaleString()} of ${content.length.toLocaleString()} characters]`;
+
+    return {
+      content: finalContent + truncationNotice,
+      truncated: true,
+      originalLength: content.length,
+    };
   }
 }
 

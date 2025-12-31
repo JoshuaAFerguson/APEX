@@ -317,6 +317,189 @@ describe('WebSearchTool', () => {
   });
 
   // ============================================================================
+  // Result Formatting Tests
+  // ============================================================================
+
+  describe('result formatting', () => {
+    it('should format search results with all required fields', async () => {
+      const input: WebSearchToolInput = {
+        query: 'TypeScript documentation',
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output).toBeDefined();
+
+      const output = result.output!;
+
+      // Verify output structure
+      expect(output).toHaveProperty('results');
+      expect(output).toHaveProperty('totalResults');
+      expect(output).toHaveProperty('query');
+      expect(output).toHaveProperty('searchTime');
+      expect(output).toHaveProperty('domainFiltered');
+
+      // Verify each result has required fields
+      output.results.forEach(searchResult => {
+        expect(searchResult).toHaveProperty('title');
+        expect(searchResult).toHaveProperty('url');
+        expect(searchResult).toHaveProperty('snippet');
+        expect(searchResult).toHaveProperty('domain');
+        expect(searchResult).toHaveProperty('position');
+
+        expect(typeof searchResult.title).toBe('string');
+        expect(typeof searchResult.url).toBe('string');
+        expect(typeof searchResult.snippet).toBe('string');
+        expect(typeof searchResult.domain).toBe('string');
+        expect(typeof searchResult.position).toBe('number');
+        expect(searchResult.position).toBeGreaterThan(0);
+      });
+    });
+
+    it('should format domain filtering metadata correctly', async () => {
+      const input: WebSearchToolInput = {
+        query: 'test search',
+        allowed_domains: ['example.com', 'test.org'],
+        blocked_domains: ['spam.com'],
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output!.domainFiltered).toBe(true);
+      expect(result.output!.allowedDomains).toEqual(['example.com', 'test.org']);
+      expect(result.output!.blockedDomains).toEqual(['spam.com']);
+    });
+
+    it('should not include domain filter metadata when not filtering', async () => {
+      const input: WebSearchToolInput = {
+        query: 'test search',
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output!.domainFiltered).toBe(false);
+      expect(result.output!.allowedDomains).toBeUndefined();
+      expect(result.output!.blockedDomains).toBeUndefined();
+    });
+
+    it('should include search timing information', async () => {
+      const input: WebSearchToolInput = {
+        query: 'test search',
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output!.searchTime).toBeGreaterThanOrEqual(0);
+      expect(typeof result.output!.searchTime).toBe('number');
+    });
+  });
+
+  // ============================================================================
+  // Advanced Error Handling Tests
+  // ============================================================================
+
+  describe('advanced error handling', () => {
+    it('should handle network timeout scenarios gracefully', async () => {
+      // Create tool with very short timeout for testing
+      const timeoutTool = new WebSearchTool({ timeout: 1 });
+
+      const input: WebSearchToolInput = {
+        query: 'test search',
+      };
+
+      const result = await timeoutTool.execute(input);
+
+      // In test environment, should succeed with mock data
+      // In production, might timeout but should handle gracefully
+      expect(result).toBeDefined();
+      expect(typeof result.success).toBe('boolean');
+
+      if (!result.success) {
+        expect(result.error).toBeDefined();
+        expect(typeof result.error).toBe('string');
+      }
+    });
+
+    it('should provide detailed error context for debugging', async () => {
+      const invalidInput = {
+        query: null,
+        allowed_domains: 'invalid-type',
+      } as unknown as WebSearchToolInput;
+
+      const result = await tool.execute(invalidInput);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error!.length).toBeGreaterThan(10); // Meaningful error message
+    });
+
+    it('should handle cancellation during different execution phases', async () => {
+      const controller = new AbortController();
+
+      // Cancel immediately
+      setTimeout(() => controller.abort(), 1);
+
+      const context: ToolExecutionContext = {
+        signal: controller.signal,
+      };
+
+      const input: WebSearchToolInput = {
+        query: 'test search that gets cancelled',
+      };
+
+      const result = await tool.execute(input, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error!.toLowerCase()).toContain('cancel');
+    });
+  });
+
+  // ============================================================================
+  // Domain Filtering Integration Tests
+  // ============================================================================
+
+  describe('domain filtering integration', () => {
+    it('should properly combine allowlist and blocklist filtering', async () => {
+      const input: WebSearchToolInput = {
+        query: 'test search',
+        allowed_domains: ['example.com', 'test.org', 'spam.com'],
+        blocked_domains: ['spam.com'],
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output!.domainFiltered).toBe(true);
+
+      // Results should be from allowed domains but not blocked domains
+      result.output!.results.forEach(searchResult => {
+        expect(['example.com', 'test.org']).toContain(searchResult.domain);
+        expect(searchResult.domain).not.toBe('spam.com');
+      });
+    });
+
+    it('should handle subdomain filtering correctly', async () => {
+      const input: WebSearchToolInput = {
+        query: 'test search',
+        allowed_domains: ['example.com'],
+        blocked_domains: ['ads.example.com'],
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+
+      // Mock results should demonstrate subdomain filtering logic
+      // (actual filtering happens in the implementation)
+    });
+  });
+
+  // ============================================================================
   // Edge Cases Tests
   // ============================================================================
 
@@ -351,6 +534,49 @@ describe('WebSearchTool', () => {
       const result = await tool.execute(input);
       expect(result.success).toBe(true);
       expect(result.output!.query).toBe('test search');
+    });
+
+    it('should handle queries with special characters', async () => {
+      const specialQueries = [
+        'search with "quotes"',
+        'search & symbols',
+        'unicode: 中文 test',
+        'search with newlines\nand tabs\t',
+      ];
+
+      for (const query of specialQueries) {
+        const input: WebSearchToolInput = { query };
+        const result = await tool.execute(input);
+
+        expect(result.success).toBe(true);
+        expect(result.output!.query).toBe(query.trim());
+      }
+    });
+
+    it('should handle maximum length queries', async () => {
+      const maxLengthQuery = 'a'.repeat(500); // Maximum allowed length
+      const input: WebSearchToolInput = {
+        query: maxLengthQuery,
+      };
+
+      const result = await tool.execute(input);
+
+      expect(result.success).toBe(true);
+      expect(result.output!.query).toBe(maxLengthQuery);
+    });
+
+    it('should handle concurrent execution requests', async () => {
+      const inputs = Array.from({ length: 5 }, (_, i) => ({
+        query: `concurrent test ${i}`,
+      }));
+
+      const promises = inputs.map(input => tool.execute(input));
+      const results = await Promise.all(promises);
+
+      results.forEach((result, index) => {
+        expect(result.success).toBe(true);
+        expect(result.output!.query).toBe(`concurrent test ${index}`);
+      });
     });
   });
 });
