@@ -1,9 +1,9 @@
 /**
  * @fileoverview Export validation tests
  *
- * This test file verifies that all BaseTool and ToolInterface exports
- * are correctly exposed through the module system and can be imported
- * by consumers of the @apex/core package.
+ * This test file verifies that all tool exports are correctly exposed
+ * through the module system and can be imported by consumers of the
+ * @apex/core package.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -91,5 +91,119 @@ describe('BaseTool Module Exports', () => {
 
     expect(isToolInterface(tool)).toBe(true);
     expect(isBaseTool(tool)).toBe(true);
+  });
+});
+
+describe('Shell Module Exports', () => {
+  it('exports all required shell tool classes and types from shell/index', async () => {
+    const module = await import('../shell/index.js');
+
+    // Main tool classes
+    expect(module.BashTool).toBeDefined();
+    expect(typeof module.BashTool).toBe('function');
+    expect(module.BackgroundTaskManager).toBeDefined();
+    expect(typeof module.BackgroundTaskManager).toBe('function');
+
+    // Security classes and functions
+    expect(module.CommandSandbox).toBeDefined();
+    expect(typeof module.CommandSandbox).toBe('function');
+    expect(module.createStrictSandbox).toBeDefined();
+    expect(typeof module.createStrictSandbox).toBe('function');
+    expect(module.createPermissiveSandbox).toBeDefined();
+    expect(typeof module.createPermissiveSandbox).toBe('function');
+    expect(module.createDisabledSandbox).toBeDefined();
+    expect(typeof module.createDisabledSandbox).toBe('function');
+
+    // Blocklist functions
+    expect(module.checkCommandBlocklist).toBeDefined();
+    expect(typeof module.checkCommandBlocklist).toBe('function');
+    expect(module.getAllBlocklistPatterns).toBeDefined();
+    expect(typeof module.getAllBlocklistPatterns).toBe('function');
+    expect(module.getBlocklistCategories).toBeDefined();
+    expect(typeof module.getBlocklistCategories).toBe('function');
+    expect(module.getBlocklistCategory).toBeDefined();
+    expect(typeof module.getBlocklistCategory).toBe('function');
+    expect(module.COMMAND_BLOCKLIST).toBeDefined();
+    expect(typeof module.COMMAND_BLOCKLIST).toBe('object');
+
+    // Path validation functions
+    expect(module.detectPathTraversal).toBeDefined();
+    expect(typeof module.detectPathTraversal).toBe('function');
+    expect(module.validateWorkingDirectory).toBeDefined();
+    expect(typeof module.validateWorkingDirectory).toBe('function');
+    expect(module.extractPathsFromCommand).toBeDefined();
+    expect(typeof module.extractPathsFromCommand).toBe('function');
+    expect(module.checkPathEscapesBase).toBeDefined();
+    expect(typeof module.checkPathEscapesBase).toBe('function');
+    expect(module.normalizePath).toBeDefined();
+    expect(typeof module.normalizePath).toBe('function');
+    expect(module.pathsEqual).toBeDefined();
+    expect(typeof module.pathsEqual).toBe('function');
+    expect(module.getRelativePathIfWithin).toBeDefined();
+    expect(typeof module.getRelativePathIfWithin).toBe('function');
+
+    // Registration functions
+    expect(module.registerShellTools).toBeDefined();
+    expect(typeof module.registerShellTools).toBe('function');
+    expect(module.registerBashTool).toBeDefined();
+    expect(typeof module.registerBashTool).toBe('function');
+    expect(module.createBashTool).toBeDefined();
+    expect(typeof module.createBashTool).toBe('function');
+
+    // Constants
+    expect(module.BACKGROUND_TASK_DEFAULTS).toBeDefined();
+    expect(typeof module.BACKGROUND_TASK_DEFAULTS).toBe('object');
+  });
+
+  it('exports all shell tools from main tools index', async () => {
+    const module = await import('../index.js');
+
+    // Shell tool exports should be available from main index
+    expect(module.BashTool).toBeDefined();
+    expect(module.BackgroundTaskManager).toBeDefined();
+    expect(module.registerShellTools).toBeDefined();
+    expect(module.registerBashTool).toBeDefined();
+    expect(module.createBashTool).toBeDefined();
+
+    // Verify they're the same exports
+    const shellModule = await import('../shell/index.js');
+    expect(module.BashTool).toBe(shellModule.BashTool);
+    expect(module.BackgroundTaskManager).toBe(shellModule.BackgroundTaskManager);
+    expect(module.registerShellTools).toBe(shellModule.registerShellTools);
+    expect(module.registerBashTool).toBe(shellModule.registerBashTool);
+    expect(module.createBashTool).toBe(shellModule.createBashTool);
+  });
+
+  it('can create BashTool instances through shell module exports', async () => {
+    const { BashTool, createBashTool } = await import('../shell/index.js');
+
+    // Test direct instantiation
+    const tool1 = new BashTool();
+    expect(tool1.name).toBe('Bash');
+    expect(tool1.enabled).toBe(true);
+
+    // Test factory function
+    const tool2 = createBashTool();
+    expect(tool2.name).toBe('Bash');
+    expect(tool2.enabled).toBe(true);
+
+    // Test with sandbox config
+    const tool3 = createBashTool({
+      enabled: true,
+      mode: 'strict',
+    });
+    expect(tool3.name).toBe('Bash');
+    expect(tool3.enabled).toBe(true);
+  });
+
+  it('can create BackgroundTaskManager instances through shell module exports', async () => {
+    const { BackgroundTaskManager } = await import('../shell/index.js');
+
+    const manager = new BackgroundTaskManager();
+    expect(manager).toBeDefined();
+    expect(typeof manager.start).toBe('function');
+    expect(typeof manager.stop).toBe('function');
+    expect(typeof manager.kill).toBe('function');
+    expect(typeof manager.getInfo).toBe('function');
   });
 });
