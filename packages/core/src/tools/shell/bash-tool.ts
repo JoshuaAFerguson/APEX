@@ -26,7 +26,7 @@ import { CommandSandbox, type SandboxConfig } from './command-sandbox.js';
 export interface BashToolInput {
   /** The command to execute */
   command: string;
-  /** Optional timeout in milliseconds (default: 30000ms) */
+  /** Optional timeout in milliseconds (default: 120000ms) */
   timeout?: number;
   /** Clear, concise description of what this command does */
   description?: string;
@@ -85,7 +85,7 @@ export interface BashToolOutput {
  */
 export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
   /** Default timeout in milliseconds */
-  private static readonly DEFAULT_TIMEOUT = 30000;
+  private static readonly DEFAULT_TIMEOUT = 120000;
 
   /** Maximum allowed timeout in milliseconds (10 minutes) */
   private static readonly MAX_TIMEOUT = 600000;
@@ -116,7 +116,7 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
           },
           timeout: {
             type: 'integer',
-            description: 'Optional timeout in milliseconds (default: 30000ms, max: 600000ms)',
+            description: 'Optional timeout in milliseconds (default: 120000ms, max: 600000ms)',
             minimum: 1000,
             maximum: 600000,
           },
