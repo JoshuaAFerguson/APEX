@@ -13,6 +13,7 @@ import { EditTool } from './edit-tool.js';
 import { MultiEditTool } from './multi-edit-tool.js';
 import { WriteTool } from './write-tool.js';
 import { GlobTool } from './glob-tool.js';
+import { NotebookEditTool } from './notebook-edit-tool.js';
 
 /**
  * Registers all filesystem tools with the global registry.
@@ -23,6 +24,7 @@ import { GlobTool } from './glob-tool.js';
  * - MultiEditTool: Batch file editing with atomic rollback
  * - WriteTool: File creation and writing with safety features
  * - GlobTool: Fast file pattern matching with modification time sorting
+ * - NotebookEditTool: Jupyter notebook cell editing with format preservation
  *
  * @throws {DuplicateToolError} If any tool is already registered
  *
@@ -43,6 +45,7 @@ export function registerFilesystemTools(): void {
   registry.register(new MultiEditTool());
   registry.register(new WriteTool());
   registry.register(new GlobTool());
+  registry.register(new NotebookEditTool());
 }
 
 /**
@@ -218,4 +221,39 @@ export function createMultiEditTool(): MultiEditTool {
  */
 export function createGlobTool(): GlobTool {
   return new GlobTool();
+}
+
+/**
+ * Registers only the NotebookEdit tool with the global registry.
+ *
+ * @throws {DuplicateToolError} If the NotebookEdit tool is already registered
+ *
+ * @example
+ * ```typescript
+ * import { registerNotebookEditTool } from '@apex/core/tools/filesystem/register';
+ *
+ * // Register only the NotebookEdit tool
+ * registerNotebookEditTool();
+ * ```
+ */
+export function registerNotebookEditTool(): void {
+  const registry = getToolRegistry();
+  registry.register(new NotebookEditTool());
+}
+
+/**
+ * Creates a new NotebookEdit tool instance.
+ *
+ * @returns A new NotebookEditTool instance
+ *
+ * @example
+ * ```typescript
+ * import { createNotebookEditTool } from '@apex/core/tools/filesystem/register';
+ *
+ * const notebookEditTool = createNotebookEditTool();
+ * // Use the tool instance directly or register it manually
+ * ```
+ */
+export function createNotebookEditTool(): NotebookEditTool {
+  return new NotebookEditTool();
 }

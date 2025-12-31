@@ -21,6 +21,9 @@ import {
   IterationEntry,
   IterationHistory,
   TaskSessionData,
+  PermissionLevelSchema,
+  PermissionSchema,
+  PermissionQuerySchema,
 } from './types';
 
 describe.skip('AgentModelSchema', () => {

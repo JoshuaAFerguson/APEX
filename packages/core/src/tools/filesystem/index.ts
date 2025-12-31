@@ -48,6 +48,19 @@ export {
 } from './glob-tool.js';
 
 export {
+  NotebookEditTool,
+  type NotebookEditParams,
+  type NotebookEditOutput,
+  type NotebookEditMode,
+  type NotebookCellType,
+  CellNotFoundError,
+  InvalidNotebookError,
+  CellIndexOutOfBoundsError,
+  MissingCellTypeError,
+  NotebookAccessError,
+} from './notebook-edit-tool.js';
+
+export {
   registerFilesystemTools,
   registerReadTool,
   createReadTool,
@@ -59,4 +72,6 @@ export {
   createWriteTool,
   registerGlobTool,
   createGlobTool,
+  registerNotebookEditTool,
+  createNotebookEditTool,
 } from './register.js';

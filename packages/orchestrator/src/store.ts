@@ -26,6 +26,9 @@ import {
   generateTaskId,
   generateIdleTaskId,
   generateTaskTemplateId,
+  Todo,
+  TodoItem,
+  TodoStatus,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -325,6 +328,19 @@ export class TaskStore {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS todos (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed')),
+        active_form TEXT NOT NULL,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -342,6 +358,9 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_task_iterations_task_id ON task_iterations(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_templates_name ON task_templates(name);
       CREATE INDEX IF NOT EXISTS idx_task_templates_workflow ON task_templates(workflow);
+      CREATE INDEX IF NOT EXISTS idx_todos_task_id ON todos(task_id);
+      CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
+      CREATE INDEX IF NOT EXISTS idx_todos_order ON todos(task_id, order_index);
     `);
   }
 
@@ -2236,6 +2255,261 @@ export class TaskStore {
     };
   }
 
+  // ============================================================================
+  // Todo Management Methods
+  // ============================================================================
+
+  /**
+   * Replace all todos for a task with new ones (atomic operation)
+   * This is the main method used by the TodoWrite tool
+   */
+  async replaceTodos(taskId: string | undefined, items: TodoItem[]): Promise<Todo[]> {
+    const transaction = this.db.transaction(() => {
+      // Clear existing todos for this task
+      const deleteStmt = this.db.prepare('DELETE FROM todos WHERE task_id IS ? OR task_id = ?');
+      deleteStmt.run(taskId || null, taskId || null);
+
+      // Insert new todos
+      const insertStmt = this.db.prepare(`
+        INSERT INTO todos (
+          id, task_id, content, status, active_form, order_index,
+          created_at, updated_at, completed_at
+        ) VALUES (
+          @id, @taskId, @content, @status, @activeForm, @orderIndex,
+          @createdAt, @updatedAt, @completedAt
+        )
+      `);
+
+      const todos: Todo[] = [];
+      const now = new Date();
+
+      items.forEach((item, index) => {
+        const todo: Todo = {
+          id: `todo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          content: item.content,
+          status: item.status,
+          activeForm: item.activeForm,
+          taskId: taskId,
+          orderIndex: index,
+          createdAt: now,
+          updatedAt: now,
+          completedAt: item.status === 'completed' ? now : undefined,
+        };
+
+        insertStmt.run({
+          id: todo.id,
+          taskId: todo.taskId || null,
+          content: todo.content,
+          status: todo.status,
+          activeForm: todo.activeForm,
+          orderIndex: todo.orderIndex,
+          createdAt: todo.createdAt.toISOString(),
+          updatedAt: todo.updatedAt.toISOString(),
+          completedAt: todo.completedAt?.toISOString() || null,
+        });
+
+        todos.push(todo);
+      });
+
+      return todos;
+    });
+
+    return transaction();
+  }
+
+  /**
+   * Get all todos for a task
+   */
+  async getTodos(taskId: string | undefined): Promise<Todo[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM todos
+      WHERE task_id IS ? OR task_id = ?
+      ORDER BY order_index ASC, created_at ASC
+    `);
+    const rows = stmt.all(taskId || null, taskId || null) as TodoRow[];
+
+    return rows.map(row => this.rowToTodo(row));
+  }
+
+  /**
+   * Get a single todo by ID
+   */
+  async getTodo(todoId: string): Promise<Todo | null> {
+    const stmt = this.db.prepare('SELECT * FROM todos WHERE id = ?');
+    const row = stmt.get(todoId) as TodoRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToTodo(row);
+  }
+
+  /**
+   * Clear all todos for a task
+   */
+  async clearTodos(taskId: string | undefined): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM todos WHERE task_id IS ? OR task_id = ?');
+    stmt.run(taskId || null, taskId || null);
+  }
+
+  /**
+   * Update a single todo's status (for partial updates)
+   */
+  async updateTodoStatus(todoId: string, status: TodoStatus): Promise<Todo | null> {
+    const now = new Date();
+    const stmt = this.db.prepare(`
+      UPDATE todos
+      SET status = @status, updated_at = @updatedAt, completed_at = @completedAt
+      WHERE id = @id
+    `);
+
+    const result = stmt.run({
+      id: todoId,
+      status,
+      updatedAt: now.toISOString(),
+      completedAt: status === 'completed' ? now.toISOString() : null,
+    });
+
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return this.getTodo(todoId);
+  }
+
+  /**
+   * Get todos by status
+   */
+  async getTodosByStatus(status: TodoStatus, taskId?: string): Promise<Todo[]> {
+    let stmt: Database.Statement<unknown[]>;
+    let params: unknown[];
+
+    if (taskId) {
+      stmt = this.db.prepare(`
+        SELECT * FROM todos
+        WHERE status = ? AND task_id = ?
+        ORDER BY order_index ASC, created_at ASC
+      `);
+      params = [status, taskId];
+    } else {
+      stmt = this.db.prepare(`
+        SELECT * FROM todos
+        WHERE status = ?
+        ORDER BY task_id, order_index ASC, created_at ASC
+      `);
+      params = [status];
+    }
+
+    const rows = stmt.all(...params) as TodoRow[];
+    return rows.map(row => this.rowToTodo(row));
+  }
+
+  /**
+   * Update a todo's content and active form
+   */
+  async updateTodo(todoId: string, updates: {
+    content?: string;
+    activeForm?: string;
+    status?: TodoStatus;
+    orderIndex?: number;
+  }): Promise<Todo | null> {
+    const setClauses: string[] = ['updated_at = @updatedAt'];
+    const params: Record<string, unknown> = {
+      id: todoId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (updates.content !== undefined) {
+      setClauses.push('content = @content');
+      params.content = updates.content;
+    }
+
+    if (updates.activeForm !== undefined) {
+      setClauses.push('active_form = @activeForm');
+      params.activeForm = updates.activeForm;
+    }
+
+    if (updates.status !== undefined) {
+      setClauses.push('status = @status');
+      params.status = updates.status;
+
+      if (updates.status === 'completed') {
+        setClauses.push('completed_at = @completedAt');
+        params.completedAt = new Date().toISOString();
+      } else {
+        setClauses.push('completed_at = NULL');
+      }
+    }
+
+    if (updates.orderIndex !== undefined) {
+      setClauses.push('order_index = @orderIndex');
+      params.orderIndex = updates.orderIndex;
+    }
+
+    const sql = `UPDATE todos SET ${setClauses.join(', ')} WHERE id = @id`;
+    const result = this.db.prepare(sql).run(params);
+
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return this.getTodo(todoId);
+  }
+
+  /**
+   * Delete a single todo
+   */
+  async deleteTodo(todoId: string): Promise<boolean> {
+    const stmt = this.db.prepare('DELETE FROM todos WHERE id = ?');
+    const result = stmt.run(todoId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Get todo statistics for a task
+   */
+  async getTodoStats(taskId: string | undefined): Promise<{
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+  }> {
+    const stmt = this.db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as inProgress,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+      FROM todos
+      WHERE task_id IS ? OR task_id = ?
+    `);
+
+    const result = stmt.get(taskId || null, taskId || null) as {
+      total: number;
+      pending: number;
+      inProgress: number;
+      completed: number;
+    };
+
+    return result;
+  }
+
+  /**
+   * Convert a todo database row to a Todo object
+   */
+  private rowToTodo(row: TodoRow): Todo {
+    return {
+      id: row.id,
+      content: row.content,
+      status: row.status as TodoStatus,
+      activeForm: row.active_form,
+      taskId: row.task_id || undefined,
+      orderIndex: row.order_index,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+    };
+  }
+
   /**
    * Close the database connection
    */
@@ -2363,4 +2637,16 @@ interface TaskTemplateRow {
   tags: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface TodoRow {
+  id: string;
+  task_id: string | null;
+  content: string;
+  status: string;
+  active_form: string;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }

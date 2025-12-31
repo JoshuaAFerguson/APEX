@@ -12,11 +12,13 @@ export const AgentToolSchema = z.enum([
   'Write',
   'Edit',
   'MultiEdit',
+  'NotebookEdit',
   'Bash',
   'Grep',
   'Glob',
   'WebFetch',
   'WebSearch',
+  'TodoWrite',
 ]);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 
@@ -58,6 +60,53 @@ export const ToolPermissionSchema = z.enum([
   'admin',       // Administrative operations
 ]);
 export type ToolPermission = z.infer<typeof ToolPermissionSchema>;
+
+// ============================================================================
+// User Permission Management
+// ============================================================================
+
+/**
+ * Permission level for user-granted tool permissions
+ * - 'allow-always': Permanently allow the tool/scope combination
+ * - 'allow-once': Allow for a single invocation only
+ * - 'deny': Deny the tool/scope combination
+ */
+export const PermissionLevelSchema = z.enum([
+  'allow-always',  // Permanently allow the tool/scope combination
+  'allow-once',    // Allow for a single invocation only
+  'deny',          // Deny the tool/scope combination
+]);
+export type PermissionLevel = z.infer<typeof PermissionLevelSchema>;
+
+/**
+ * A stored permission record for tool access
+ * Tracks user decisions about whether agents can use specific tools
+ */
+export const PermissionSchema = z.object({
+  /** Name of the tool this permission applies to */
+  tool: z.string().min(1, 'Tool name is required'),
+  /** Optional scope to narrow the permission (e.g., file path pattern, command pattern) */
+  scope: z.string().optional(),
+  /** The permission level granted */
+  level: PermissionLevelSchema,
+  /** Optional expiration timestamp after which the permission is no longer valid */
+  expiry: z.date().optional(),
+  /** Timestamp when the permission was created */
+  createdAt: z.date(),
+});
+export type Permission = z.infer<typeof PermissionSchema>;
+
+/**
+ * Query parameters for looking up permissions
+ * Used to check if a permission exists for a specific tool/scope combination
+ */
+export const PermissionQuerySchema = z.object({
+  /** Tool name to query permission for */
+  tool: z.string().min(1, 'Tool name is required'),
+  /** Optional scope to narrow the query */
+  scope: z.string().optional(),
+});
+export type PermissionQuery = z.infer<typeof PermissionQuerySchema>;
 
 /**
  * JSON Schema type for tool parameters
@@ -1945,3 +1994,84 @@ export const IdleTaskSchema = z.object({
   implementedTaskId: z.string().optional(),
 });
 export type IdleTask = z.infer<typeof IdleTaskSchema>;
+
+// ============================================================================
+// Todo Management Types (TodoWrite Tool)
+// ============================================================================
+
+/**
+ * Todo status enumeration
+ * Represents the current state of a todo item
+ */
+export const TodoStatusSchema = z.enum(['pending', 'in_progress', 'completed']);
+export type TodoStatus = z.infer<typeof TodoStatusSchema>;
+
+/**
+ * Individual todo item (input format for TodoWrite tool)
+ * Minimal representation used when creating/updating todos
+ */
+export const TodoItemSchema = z.object({
+  /** Display content describing the task in imperative form (e.g., "Run tests") */
+  content: z.string().min(1, 'Todo content is required'),
+  /** Current status of the todo */
+  status: TodoStatusSchema,
+  /** Present continuous form for active display (e.g., "Running tests") */
+  activeForm: z.string().min(1, 'Active form is required'),
+});
+export type TodoItem = z.infer<typeof TodoItemSchema>;
+
+/**
+ * Full todo with metadata (used internally)
+ * Complete representation with database fields and timestamps
+ */
+export const TodoSchema = z.object({
+  /** Unique identifier for this todo */
+  id: z.string().min(1),
+  /** Display content describing the task */
+  content: z.string().min(1),
+  /** Current status */
+  status: TodoStatusSchema,
+  /** Present continuous form for active display */
+  activeForm: z.string().min(1),
+  /** Associated task ID (if any) */
+  taskId: z.string().optional(),
+  /** Order/position in the list */
+  orderIndex: z.number().int().min(0),
+  /** When the todo was created */
+  createdAt: z.date(),
+  /** When the todo was last updated */
+  updatedAt: z.date(),
+  /** When the todo was completed (if completed) */
+  completedAt: z.date().optional(),
+});
+export type Todo = z.infer<typeof TodoSchema>;
+
+/**
+ * TodoWrite tool input schema
+ * Contains the complete updated todo list
+ */
+export const TodoWriteInputSchema = z.object({
+  /** The complete updated todo list */
+  todos: z.array(TodoItemSchema),
+});
+export type TodoWriteInput = z.infer<typeof TodoWriteInputSchema>;
+
+/**
+ * TodoWrite tool output schema
+ * Summary information about the updated todo list
+ */
+export const TodoWriteOutputSchema = z.object({
+  /** Whether the operation was successful */
+  success: z.boolean(),
+  /** Total number of todos */
+  todosCount: z.number().int().min(0),
+  /** Number of pending todos */
+  pendingCount: z.number().int().min(0),
+  /** Number of in-progress todos */
+  inProgressCount: z.number().int().min(0),
+  /** Number of completed todos */
+  completedCount: z.number().int().min(0),
+  /** The complete updated todo list with metadata */
+  todos: z.array(TodoSchema),
+});
+export type TodoWriteOutput = z.infer<typeof TodoWriteOutputSchema>;
