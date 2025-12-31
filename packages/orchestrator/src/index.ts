@@ -22,6 +22,12 @@ import {
   SessionLimitStatus,
   PermissionLevel,
   PermissionPreset,
+  PermissionRequestEventData,
+  PermissionGrantedEventData,
+  PermissionDeniedEventData,
+  DangerousOperationDetectedEventData,
+  DangerousOperationConfirmedEventData,
+  DangerousOperationBlockedEventData,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -2302,6 +2308,229 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
+  }
+
+  // ============================================================================
+  // Permission Management Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Request permission for a tool operation and emit a permission:request event
+   * @param taskId The task requesting permission
+   * @param tool The tool requiring permission
+   * @param scope Optional scope/context for the permission
+   * @param description Description of what the tool will do
+   * @param isDangerous Whether this is flagged as a dangerous operation
+   * @param agent The agent requesting the permission
+   * @param metadata Additional metadata about the request
+   * @returns The generated request ID for tracking the permission request
+   */
+  async requestPermission(
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    description: string,
+    isDangerous = false,
+    agent: string,
+    metadata?: Record<string, unknown>
+  ): Promise<string> {
+    await this.ensureInitialized();
+
+    const requestId = `perm-req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date();
+
+    const eventData: PermissionRequestEventData = {
+      requestId,
+      tool,
+      scope,
+      description,
+      isDangerous,
+      agent,
+      timestamp,
+      metadata,
+    };
+
+    this.emit('permission:request', eventData);
+
+    return requestId;
+  }
+
+  /**
+   * Grant permission for a pending request
+   * @param requestId The permission request ID to grant
+   * @param taskId The task ID
+   * @param tool The tool being granted permission
+   * @param scope Optional scope for the permission
+   * @param level The permission level to grant
+   * @param grantedBy Who is granting the permission
+   * @param reason Optional reason for granting permission
+   */
+  async grantPermissionConfirmation(
+    requestId: string,
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    level: PermissionLevel,
+    grantedBy: string,
+    reason?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Save the permission to the permission store
+    await this.permissionManager.grantPermission(tool, scope, level);
+
+    const timestamp = new Date();
+    const eventData: PermissionGrantedEventData = {
+      requestId,
+      tool,
+      scope,
+      level,
+      grantedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('permission:granted', eventData);
+  }
+
+  /**
+   * Deny permission for a pending request
+   * @param requestId The permission request ID to deny
+   * @param taskId The task ID
+   * @param tool The tool being denied permission
+   * @param scope Optional scope for the permission
+   * @param deniedBy Who is denying the permission
+   * @param reason Reason for denying permission
+   */
+  async denyPermissionConfirmation(
+    requestId: string,
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    deniedBy: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Save a deny permission to the permission store
+    await this.permissionManager.grantPermission(tool, scope, 'deny');
+
+    const timestamp = new Date();
+    const eventData: PermissionDeniedEventData = {
+      requestId,
+      tool,
+      scope,
+      deniedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('permission:denied', eventData);
+  }
+
+  /**
+   * Detect and flag a dangerous operation
+   * @param taskId The task attempting the operation
+   * @param tool The tool involved in the dangerous operation
+   * @param operation Details about the dangerous operation
+   * @param riskLevel The risk level of the operation
+   * @param riskDescription Description of the potential risks
+   * @param agent The agent attempting the operation
+   * @param context Additional context about the operation
+   * @returns The generated operation ID for tracking
+   */
+  async flagDangerousOperation(
+    taskId: string,
+    tool: string,
+    operation: string,
+    riskLevel: 'low' | 'medium' | 'high' | 'critical',
+    riskDescription: string,
+    agent: string,
+    context?: Record<string, unknown>
+  ): Promise<string> {
+    await this.ensureInitialized();
+
+    const operationId = `danger-op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date();
+
+    const eventData: DangerousOperationDetectedEventData = {
+      operationId,
+      tool,
+      operation,
+      riskLevel,
+      riskDescription,
+      agent,
+      timestamp,
+      context,
+    };
+
+    this.emit('dangerous:detected', eventData);
+
+    return operationId;
+  }
+
+  /**
+   * Confirm a dangerous operation after user approval
+   * @param operationId The dangerous operation ID to confirm
+   * @param taskId The task ID
+   * @param tool The tool executing the dangerous operation
+   * @param operation Details about the operation
+   * @param confirmedBy Who confirmed the operation
+   * @param reason Optional reason for confirming the operation
+   */
+  async confirmDangerousOperation(
+    operationId: string,
+    taskId: string,
+    tool: string,
+    operation: string,
+    confirmedBy: string,
+    reason?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const timestamp = new Date();
+    const eventData: DangerousOperationConfirmedEventData = {
+      operationId,
+      tool,
+      operation,
+      confirmedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('dangerous:confirmed', eventData);
+  }
+
+  /**
+   * Block a dangerous operation after user denial
+   * @param operationId The dangerous operation ID to block
+   * @param taskId The task ID
+   * @param tool The tool that was blocked
+   * @param operation Details about the blocked operation
+   * @param blockedBy Who blocked the operation
+   * @param reason Reason for blocking the operation
+   */
+  async blockDangerousOperation(
+    operationId: string,
+    taskId: string,
+    tool: string,
+    operation: string,
+    blockedBy: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const timestamp = new Date();
+    const eventData: DangerousOperationBlockedEventData = {
+      operationId,
+      tool,
+      operation,
+      blockedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('dangerous:blocked', eventData);
   }
 
   // ============================================================================

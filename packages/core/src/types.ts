@@ -1743,6 +1743,168 @@ export type ContainerEventDataFor<T extends ApexEventType> =
   never;
 
 // ============================================================================
+// Permission Event Data Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event data for 'permission:request' event
+ * Emitted when an agent requests permission to use a tool with specific parameters
+ */
+export interface PermissionRequestEventData {
+  /** Unique identifier for this permission request */
+  requestId: string;
+  /** The tool that requires permission */
+  tool: string;
+  /** Optional scope/context for the permission (e.g., file path, command pattern) */
+  scope?: string;
+  /** Description of what the tool will do (for user confirmation) */
+  description: string;
+  /** Whether this is flagged as a dangerous operation */
+  isDangerous: boolean;
+  /** The agent requesting the permission */
+  agent: string;
+  /** Timestamp when the request was made */
+  timestamp: Date;
+  /** Additional metadata about the request */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Event data for 'permission:granted' event
+ * Emitted when a permission request has been approved by the user
+ */
+export interface PermissionGrantedEventData {
+  /** The permission request ID that was granted */
+  requestId: string;
+  /** The tool that was granted permission */
+  tool: string;
+  /** The scope for which permission was granted */
+  scope?: string;
+  /** The permission level that was granted */
+  level: PermissionLevel;
+  /** Who granted the permission (user, system, etc.) */
+  grantedBy: string;
+  /** Timestamp when permission was granted */
+  timestamp: Date;
+  /** Optional reason provided for granting permission */
+  reason?: string;
+}
+
+/**
+ * Event data for 'permission:denied' event
+ * Emitted when a permission request has been denied by the user
+ */
+export interface PermissionDeniedEventData {
+  /** The permission request ID that was denied */
+  requestId: string;
+  /** The tool that was denied permission */
+  tool: string;
+  /** The scope for which permission was denied */
+  scope?: string;
+  /** Who denied the permission (user, system, etc.) */
+  deniedBy: string;
+  /** Timestamp when permission was denied */
+  timestamp: Date;
+  /** Reason provided for denying permission */
+  reason: string;
+}
+
+/**
+ * Event data for 'dangerous:detected' event
+ * Emitted when a dangerous operation is detected and requires confirmation
+ */
+export interface DangerousOperationDetectedEventData {
+  /** Unique identifier for this dangerous operation detection */
+  operationId: string;
+  /** The tool involved in the dangerous operation */
+  tool: string;
+  /** Details about the dangerous operation */
+  operation: string;
+  /** Risk level (low, medium, high, critical) */
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  /** Description of the potential risks */
+  riskDescription: string;
+  /** The agent attempting the operation */
+  agent: string;
+  /** Timestamp when the dangerous operation was detected */
+  timestamp: Date;
+  /** Additional context about the operation */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Event data for 'dangerous:confirmed' event
+ * Emitted when a dangerous operation has been confirmed by the user
+ */
+export interface DangerousOperationConfirmedEventData {
+  /** The operation ID that was confirmed */
+  operationId: string;
+  /** The tool that will execute the dangerous operation */
+  tool: string;
+  /** Details about the confirmed operation */
+  operation: string;
+  /** Who confirmed the operation (user, system, etc.) */
+  confirmedBy: string;
+  /** Timestamp when operation was confirmed */
+  timestamp: Date;
+  /** Optional reason provided for confirming the operation */
+  reason?: string;
+}
+
+/**
+ * Event data for 'dangerous:blocked' event
+ * Emitted when a dangerous operation has been blocked by the user
+ */
+export interface DangerousOperationBlockedEventData {
+  /** The operation ID that was blocked */
+  operationId: string;
+  /** The tool that was blocked from executing the operation */
+  tool: string;
+  /** Details about the blocked operation */
+  operation: string;
+  /** Who blocked the operation (user, system, etc.) */
+  blockedBy: string;
+  /** Timestamp when operation was blocked */
+  timestamp: Date;
+  /** Reason provided for blocking the operation */
+  reason: string;
+}
+
+/**
+ * Union type for all permission-related event data
+ */
+export type PermissionEventData =
+  | PermissionRequestEventData
+  | PermissionGrantedEventData
+  | PermissionDeniedEventData
+  | DangerousOperationDetectedEventData
+  | DangerousOperationConfirmedEventData
+  | DangerousOperationBlockedEventData;
+
+/**
+ * Type-safe permission event interface
+ * Provides strong typing for permission-related events
+ */
+export interface PermissionEvent<T extends PermissionEventData = PermissionEventData> {
+  type: Extract<ApexEventType, `permission:${string}` | `dangerous:${string}`>;
+  taskId: string;
+  timestamp: Date;
+  data: T;
+}
+
+/**
+ * Helper type to get the event data type for a specific permission event type
+ */
+export type PermissionEventDataFor<T extends ApexEventType> =
+  T extends 'permission:request' ? PermissionRequestEventData :
+  T extends 'permission:granted' ? PermissionGrantedEventData :
+  T extends 'permission:denied' ? PermissionDeniedEventData :
+  T extends 'dangerous:detected' ? DangerousOperationDetectedEventData :
+  T extends 'dangerous:confirmed' ? DangerousOperationConfirmedEventData :
+  T extends 'dangerous:blocked' ? DangerousOperationBlockedEventData :
+  never;
+
+// ============================================================================
 // Enhanced Complexity Metrics Types (v0.4.0)
 // ============================================================================
 
