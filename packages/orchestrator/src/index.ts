@@ -1466,6 +1466,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const hooks = createHooks({
       taskId: task.id,
       store: this.store,
+      permissionPresetManager: this.permissionPresetManager,
       onToolUse: (tool, input) => {
         this.emit('agent:tool-use', task.id, tool, input);
       },

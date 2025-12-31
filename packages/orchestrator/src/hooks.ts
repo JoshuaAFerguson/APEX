@@ -9,12 +9,14 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { TaskStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
+import { PermissionPresetManager } from './permission-preset-manager';
 
 export type { HookInput };
 
 export interface HookContext {
   taskId: string;
   store: TaskStore;
+  permissionPresetManager?: PermissionPresetManager;
   onToolUse?: (tool: string, input: unknown) => void;
   eventEmitter?: {
     emit: (event: string, data: unknown) => void;
@@ -177,12 +179,164 @@ async function detectDangerousOperation(
 }
 
 /**
+ * Check tool permissions via permission preset manager
+ */
+async function checkToolPermissions(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  // Skip permission checks if no permission preset manager is available
+  if (!context.permissionPresetManager) {
+    return {};
+  }
+
+  const toolName = getToolName(input);
+  const toolInput = getToolInput(input);
+
+  // Determine scope based on tool type and input
+  let scope: string | undefined;
+  if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
+    scope = toolInput.file_path;
+  } else if ('path' in toolInput && typeof toolInput.path === 'string') {
+    scope = toolInput.path;
+  } else if ('url' in toolInput && typeof toolInput.url === 'string') {
+    scope = toolInput.url;
+  } else if ('command' in toolInput && typeof toolInput.command === 'string') {
+    scope = toolInput.command;
+  }
+
+  try {
+    // Check if tool is explicitly denied
+    const isDenied = await context.permissionPresetManager.isToolDenied(toolName, scope);
+    if (isDenied) {
+      // Log the denial
+      await context.store.addLog(context.taskId, {
+        level: 'warn',
+        message: `Tool usage denied by permission preset: ${toolName}`,
+        metadata: {
+          tool: toolName,
+          scope,
+          preset: context.permissionPresetManager.getCurrentPreset(),
+          denied: true,
+        },
+      });
+
+      // Emit permission:denied event
+      context.eventEmitter?.emit('permission:denied', {
+        taskId: context.taskId,
+        toolName,
+        scope,
+        timestamp: new Date(),
+        denialReason: `Tool ${toolName} is not allowed by current permission preset: ${context.permissionPresetManager.getCurrentPreset()}`,
+        deniedBy: `permission-preset:${context.permissionPresetManager.getCurrentPreset()}`,
+      });
+
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `Tool ${toolName} is not allowed by current permission preset`,
+        },
+      };
+    }
+
+    // Check if tool is allowed without confirmation
+    const isAllowed = await context.permissionPresetManager.isToolAllowed(toolName, scope);
+    if (isAllowed) {
+      // Log the allowed usage
+      await context.store.addLog(context.taskId, {
+        level: 'debug',
+        message: `Tool usage allowed by permission preset: ${toolName}`,
+        metadata: {
+          tool: toolName,
+          scope,
+          preset: context.permissionPresetManager.getCurrentPreset(),
+          allowed: true,
+        },
+      });
+
+      // Emit permission:granted event
+      context.eventEmitter?.emit('permission:granted', {
+        taskId: context.taskId,
+        toolName,
+        scope,
+        timestamp: new Date(),
+        level: 'allow-always',
+        grantedBy: `permission-preset:${context.permissionPresetManager.getCurrentPreset()}`,
+        grantReason: `Tool ${toolName} is automatically allowed by permission preset`,
+      });
+
+      return {};
+    }
+
+    // Check if confirmation is required
+    const requiresConfirmation = await context.permissionPresetManager.isConfirmationRequired(toolName, scope);
+    if (requiresConfirmation) {
+      // Log the confirmation request
+      await context.store.addLog(context.taskId, {
+        level: 'info',
+        message: `Tool usage requires confirmation: ${toolName}`,
+        metadata: {
+          tool: toolName,
+          scope,
+          preset: context.permissionPresetManager.getCurrentPreset(),
+          requiresConfirmation: true,
+        },
+      });
+
+      // Emit permission:request event
+      context.eventEmitter?.emit('permission:request', {
+        taskId: context.taskId,
+        toolName,
+        scope,
+        timestamp: new Date(),
+        reason: `Tool ${toolName} requires user confirmation under current permission preset: ${context.permissionPresetManager.getCurrentPreset()}`,
+        agentName: 'orchestrator', // TODO: Could be passed from context if available
+      });
+
+      // For now, deny the request and wait for user action
+      // In a full implementation, this would integrate with a user interaction system
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `Tool ${toolName} requires user confirmation before execution`,
+        },
+      };
+    }
+
+    // Default fallback - should not reach here if preset manager is working correctly
+    return {};
+
+  } catch (error) {
+    // Log error and allow the tool to proceed (fail open)
+    await context.store.addLog(context.taskId, {
+      level: 'error',
+      message: `Error checking tool permissions: ${String(error)}`,
+      metadata: {
+        tool: toolName,
+        scope,
+        error: String(error),
+      },
+    });
+
+    return {};
+  }
+}
+
+/**
  * Create hooks for the orchestrator
  */
 export function createHooks(context: HookContext): HooksConfig {
   return {
     PreToolUse: [
-      // Detect dangerous operations (runs first to catch and block dangerous operations early)
+      // Check tool permissions via preset manager (runs first to enforce permission policies)
+      {
+        hooks: [createHookCallback(context, checkToolPermissions)],
+        timeout: 5,
+      },
+      // Detect dangerous operations (runs after permission checks)
       {
         hooks: [createHookCallback(context, detectDangerousOperation)],
         timeout: 10,
