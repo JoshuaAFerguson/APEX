@@ -29,3 +29,26 @@ export {
   isToolInterface,
   isBaseTool,
 } from './base-tool.js';
+
+// Tool registry
+export {
+  // Main registry class
+  ToolRegistry,
+
+  // Error classes
+  DuplicateToolError,
+  ToolNotFoundError,
+  ToolValidationError,
+
+  // Event types
+  type ToolRegistryEvents,
+  type ToolRegistryEventListener,
+
+  // Options
+  type ToolRegistryOptions,
+
+  // Convenience functions
+  getToolRegistry,
+  registerTool,
+  unregisterTool,
+} from './tool-registry.js';
