@@ -21,6 +21,7 @@ import {
   TaskDecomposition,
   SessionLimitStatus,
   PermissionLevel,
+  PermissionPreset,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -56,6 +57,9 @@ import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
 import { InteractionManager } from './interaction-manager';
+import { PermissionStore } from './permission-store';
+import { PermissionManager } from './permission-manager';
+import { PermissionPresetManager } from './permission-preset-manager';
 
 const execAsync = promisify(exec);
 
@@ -310,6 +314,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private interactionManager!: InteractionManager;
   private worktreeManager?: WorktreeManager;
   private workspaceManager!: WorkspaceManager;
+  private permissionStore!: PermissionStore;
+  private permissionManager!: PermissionManager;
+  private permissionPresetManager!: PermissionPresetManager;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -367,6 +374,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       containerDefaults: this.effectiveConfig.workspace?.container,
     });
     await this.workspaceManager.initialize();
+
+    // Initialize permission managers
+    this.permissionStore = new PermissionStore(this.projectPath);
+    await this.permissionStore.initialize();
+
+    this.permissionManager = new PermissionManager(this.permissionStore);
+
+    this.permissionPresetManager = new PermissionPresetManager(
+      this.permissionStore,
+      this.effectiveConfig.permissions.preset
+    );
 
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
@@ -2213,6 +2231,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getConfig(): Promise<ApexConfig> {
     await this.ensureInitialized();
     return this.config;
+  }
+
+  /**
+   * Get the currently active permission preset
+   */
+  async getCurrentPreset(): Promise<PermissionPreset> {
+    await this.ensureInitialized();
+    return this.permissionPresetManager.getCurrentPreset();
+  }
+
+  /**
+   * Set the permission preset and apply it
+   * @param preset The permission preset to apply
+   */
+  async setPreset(preset: PermissionPreset): Promise<void> {
+    await this.ensureInitialized();
+    await this.permissionPresetManager.applyPreset(preset);
   }
 
   /**
