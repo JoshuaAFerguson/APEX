@@ -118,6 +118,9 @@ export {
   type WebSearchResult,
   type WebSearchToolConfig,
   registerWebTools,
+  registerWebToolsGlobal,
   registerWebSearchTool,
   createWebSearchTool,
+  webToolClasses,
+  webTools,
 } from './web/index.js';

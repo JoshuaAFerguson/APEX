@@ -207,3 +207,87 @@ describe('Shell Module Exports', () => {
     expect(typeof manager.getInfo).toBe('function');
   });
 });
+
+describe('Web Module Exports', () => {
+  it('exports all required web tool classes and types from web/index', async () => {
+    const module = await import('../web/index.js');
+
+    // Main tool classes
+    expect(module.WebSearchTool).toBeDefined();
+    expect(typeof module.WebSearchTool).toBe('function');
+
+    // Registration functions
+    expect(module.registerWebTools).toBeDefined();
+    expect(typeof module.registerWebTools).toBe('function');
+    expect(module.registerWebToolsGlobal).toBeDefined();
+    expect(typeof module.registerWebToolsGlobal).toBe('function');
+    expect(module.registerWebSearchTool).toBeDefined();
+    expect(typeof module.registerWebSearchTool).toBe('function');
+    expect(module.createWebSearchTool).toBeDefined();
+    expect(typeof module.createWebSearchTool).toBe('function');
+
+    // Tool class arrays
+    expect(module.webToolClasses).toBeDefined();
+    expect(Array.isArray(module.webToolClasses)).toBe(true);
+    expect(module.webTools).toBeDefined();
+    expect(Array.isArray(module.webTools)).toBe(true);
+  });
+
+  it('exports all web tools from main tools index', async () => {
+    const module = await import('../index.js');
+
+    // Web tool exports should be available from main index
+    expect(module.WebSearchTool).toBeDefined();
+    expect(module.registerWebTools).toBeDefined();
+    expect(module.registerWebToolsGlobal).toBeDefined();
+    expect(module.registerWebSearchTool).toBeDefined();
+    expect(module.createWebSearchTool).toBeDefined();
+    expect(module.webToolClasses).toBeDefined();
+    expect(module.webTools).toBeDefined();
+
+    // Verify they're the same exports
+    const webModule = await import('../web/index.js');
+    expect(module.WebSearchTool).toBe(webModule.WebSearchTool);
+    expect(module.registerWebTools).toBe(webModule.registerWebTools);
+    expect(module.registerWebToolsGlobal).toBe(webModule.registerWebToolsGlobal);
+    expect(module.registerWebSearchTool).toBe(webModule.registerWebSearchTool);
+    expect(module.createWebSearchTool).toBe(webModule.createWebSearchTool);
+    expect(module.webToolClasses).toBe(webModule.webToolClasses);
+    expect(module.webTools).toBe(webModule.webTools);
+  });
+
+  it('can create WebSearchTool instances through web module exports', async () => {
+    const { WebSearchTool, createWebSearchTool } = await import('../web/index.js');
+
+    // Test direct instantiation
+    const tool1 = new WebSearchTool();
+    expect(tool1.name).toBe('WebSearch');
+    expect(tool1.enabled).toBe(true);
+
+    // Test factory function
+    const tool2 = createWebSearchTool();
+    expect(tool2.name).toBe('WebSearch');
+    expect(tool2.enabled).toBe(true);
+
+    // Test with config
+    const tool3 = createWebSearchTool({ apiKey: 'test-key' });
+    expect(tool3.name).toBe('WebSearch');
+    expect(tool3.enabled).toBe(true);
+  });
+
+  it('web tools registration functions work correctly', async () => {
+    const { ToolRegistry } = await import('../tool-registry.js');
+    const { registerWebTools, registerWebSearchTool } = await import('../web/index.js');
+
+    const registry = new ToolRegistry();
+
+    // Test registerWebSearchTool
+    registerWebSearchTool(registry);
+    expect(registry.getTool('WebSearch')).toBeDefined();
+
+    // Create a new registry for the full registration test
+    const registry2 = new ToolRegistry();
+    registerWebTools(registry2);
+    expect(registry2.getTool('WebSearch')).toBeDefined();
+  });
+});

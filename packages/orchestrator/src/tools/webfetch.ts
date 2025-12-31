@@ -13,9 +13,16 @@
  *   - Navigation element filtering
  *   - Enhanced HTML entity handling
  *   - Structured content formatting suitable for AI analysis
+ * - 15-minute self-cleaning cache system:
+ *   - Configurable TTL (default 15 minutes)
+ *   - Cache by URL+method+headers+body hash
+ *   - Automatic cache cleanup every 5 minutes
+ *   - Cache bypass option
+ *   - Cache management API for monitoring and control
  */
 
 import TurndownService from 'turndown';
+import crypto from 'crypto';
 
 /**
  * HTTP methods supported by WebFetch tool
@@ -38,6 +45,10 @@ export interface WebFetchParams {
   timeout?: number;
   /** Whether to convert HTML responses to markdown (default: true) */
   convertToMarkdown?: boolean;
+  /** Whether to bypass cache (default: false) */
+  bypassCache?: boolean;
+  /** Cache TTL in milliseconds (default: 900000 = 15 minutes) */
+  cacheTtl?: number;
 }
 
 /**
@@ -54,6 +65,8 @@ export interface WebFetchResult {
   data?: string;
   /** Error message if request failed */
   error?: string;
+  /** Whether this result was served from cache */
+  fromCache?: boolean;
   /** Request metadata */
   metadata?: {
     url: string;
@@ -63,7 +76,20 @@ export interface WebFetchResult {
     contentType?: string;
     redirected?: boolean;
     finalUrl?: string;
+    cacheKey?: string;
   };
+}
+
+/**
+ * Cache entry for WebFetch responses
+ */
+interface WebFetchCacheEntry {
+  /** The cached result */
+  result: WebFetchResult;
+  /** Timestamp when this entry was created */
+  createdAt: number;
+  /** TTL in milliseconds */
+  ttl: number;
 }
 
 /**
@@ -76,6 +102,112 @@ export class WebFetchTool {
   private readonly defaultTimeout: number = 10000; // 10 seconds
   private readonly maxTimeout: number = 60000; // 1 minute
   private readonly userAgent: string = 'APEX-Agent/1.0';
+  private readonly defaultCacheTtl: number = 900000; // 15 minutes
+  private readonly cache = new Map<string, WebFetchCacheEntry>();
+  private readonly cleanupInterval: NodeJS.Timeout;
+
+  constructor() {
+    // Set up automatic cache cleanup every 5 minutes
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredEntries();
+    }, 300000); // 5 minutes
+
+    // Cleanup on process exit
+    if (typeof process !== 'undefined') {
+      process.on('exit', () => {
+        clearInterval(this.cleanupInterval);
+      });
+    }
+  }
+
+  /**
+   * Generate a cache key based on URL, method, headers, and body
+   */
+  private generateCacheKey(params: WebFetchParams): string {
+    const normalizedParams = {
+      url: params.url,
+      method: params.method || 'GET',
+      headers: params.headers || {},
+      body: params.body || '',
+    };
+
+    // Create a stable string representation for hashing
+    const cacheData = JSON.stringify(normalizedParams, Object.keys(normalizedParams).sort());
+
+    // Generate SHA-256 hash
+    return crypto.createHash('sha256').update(cacheData).digest('hex');
+  }
+
+  /**
+   * Clean up expired cache entries
+   */
+  private cleanupExpiredEntries(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.createdAt > entry.ttl) {
+        expiredKeys.push(key);
+      }
+    }
+
+    expiredKeys.forEach(key => this.cache.delete(key));
+
+    if (expiredKeys.length > 0) {
+      console.debug(`WebFetch cache: Cleaned up ${expiredKeys.length} expired entries`);
+    }
+  }
+
+  /**
+   * Get cached result if available and not expired
+   */
+  private getCachedResult(cacheKey: string): WebFetchResult | null {
+    const entry = this.cache.get(cacheKey);
+    if (!entry) {
+      return null;
+    }
+
+    const now = Date.now();
+    if (now - entry.createdAt > entry.ttl) {
+      this.cache.delete(cacheKey);
+      return null;
+    }
+
+    // Return a copy of the cached result with fromCache flag
+    return {
+      ...entry.result,
+      fromCache: true,
+      metadata: {
+        ...entry.result.metadata!,
+        responseTime: 0, // Cache hits have zero response time
+        cacheKey,
+      }
+    };
+  }
+
+  /**
+   * Store result in cache
+   */
+  private setCachedResult(cacheKey: string, result: WebFetchResult, ttl: number): void {
+    // Don't cache error results
+    if (!result.success) {
+      return;
+    }
+
+    const entry: WebFetchCacheEntry = {
+      result: {
+        ...result,
+        metadata: {
+          ...result.metadata!,
+          cacheKey,
+        }
+      },
+      createdAt: Date.now(),
+      ttl,
+    };
+
+    this.cache.set(cacheKey, entry);
+  }
 
   /**
    * Execute a WebFetch operation
@@ -86,6 +218,15 @@ export class WebFetchTool {
     try {
       // Validate and sanitize parameters
       const validatedParams = this.validateParams(params);
+
+      // Check cache if not bypassed
+      if (!validatedParams.bypassCache) {
+        const cacheKey = this.generateCacheKey(validatedParams);
+        const cachedResult = this.getCachedResult(cacheKey);
+        if (cachedResult) {
+          return cachedResult;
+        }
+      }
 
       // Create abort controller for timeout handling
       const controller = new AbortController();
@@ -149,6 +290,12 @@ export class WebFetchTool {
           result.error = `HTTP ${response.status}: ${response.statusText}`;
         }
 
+        // Cache successful results if caching is enabled
+        if (!validatedParams.bypassCache && result.success) {
+          const cacheKey = this.generateCacheKey(validatedParams);
+          this.setCachedResult(cacheKey, result, validatedParams.cacheTtl);
+        }
+
         return result;
 
       } catch (fetchError) {
@@ -203,6 +350,12 @@ export class WebFetchTool {
       throw new Error(`${method} requests cannot have a body`);
     }
 
+    // Validate cache TTL
+    const cacheTtl = params.cacheTtl || this.defaultCacheTtl;
+    if (cacheTtl < 0) {
+      throw new Error('Cache TTL cannot be negative');
+    }
+
     return {
       url: params.url,
       method,
@@ -210,6 +363,8 @@ export class WebFetchTool {
       body: params.body,
       timeout,
       convertToMarkdown: params.convertToMarkdown !== false, // default to true
+      bypassCache: params.bypassCache || false,
+      cacheTtl,
     };
   }
 
@@ -399,6 +554,45 @@ export class WebFetchTool {
     }
 
     return `Unknown error: ${String(error)}`;
+  }
+
+  /**
+   * Get cache statistics for monitoring
+   */
+  public getCacheStats(): { size: number; entries: Array<{ key: string; createdAt: number; ttl: number; url: string }> } {
+    const entries = Array.from(this.cache.entries()).map(([key, entry]) => ({
+      key,
+      createdAt: entry.createdAt,
+      ttl: entry.ttl,
+      url: entry.result.metadata?.url || 'unknown',
+    }));
+
+    return {
+      size: this.cache.size,
+      entries,
+    };
+  }
+
+  /**
+   * Clear the entire cache
+   */
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Remove specific cache entry by URL and parameters
+   */
+  public removeCacheEntry(params: WebFetchParams): boolean {
+    const cacheKey = this.generateCacheKey(params);
+    return this.cache.delete(cacheKey);
+  }
+
+  /**
+   * Force cleanup of expired entries (useful for testing)
+   */
+  public forceCleanup(): void {
+    this.cleanupExpiredEntries();
   }
 }
 

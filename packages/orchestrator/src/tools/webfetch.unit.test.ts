@@ -39,6 +39,7 @@ describe('WebFetchTool - Unit Tests with Mocks', () => {
 
   beforeEach(() => {
     tool = new WebFetchTool();
+    tool.clearCache(); // Clear cache to ensure tests are isolated
     vi.clearAllMocks();
   });
 

@@ -6,6 +6,8 @@ describe('WebFetchTool', () => {
 
   beforeEach(() => {
     tool = new WebFetchTool();
+    // Clear cache to ensure tests are isolated
+    tool.clearCache();
   });
 
   describe('Parameter validation', () => {
