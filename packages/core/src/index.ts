@@ -34,6 +34,9 @@ export * from './path-utils';
 // Directory Access Validation
 export * from './directory-access-validator';
 
+// Dangerous Operation Detection
+export * from './dangerous-operation-detector';
+
 // Shell Utilities
 export * from './shell-utils';
 

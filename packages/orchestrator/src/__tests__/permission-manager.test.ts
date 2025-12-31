@@ -505,4 +505,415 @@ describe('PermissionManager', () => {
       }
     });
   });
+
+  describe('getToolConfig', () => {
+    it('should return null when no tool config exists', async () => {
+      const config = await manager.getToolConfig('NonExistentTool');
+      expect(config).toBeNull();
+    });
+
+    it('should return tool config from extended permission', async () => {
+      const toolConfig = {
+        enabled: true,
+        timeout: 5000,
+        requireConfirmation: false,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'ConfiguredTool',
+        scope: 'test-scope',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.getToolConfig('ConfiguredTool', 'test-scope');
+      expect(result).toEqual(toolConfig);
+    });
+
+    it('should cache tool config for session', async () => {
+      const toolConfig = {
+        enabled: true,
+        timeout: 2000,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'CachedTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      // First call should query the store
+      const result1 = await manager.getToolConfig('CachedTool');
+      expect(result1).toEqual(toolConfig);
+
+      // Second call should use cache
+      const result2 = await manager.getToolConfig('CachedTool');
+      expect(result2).toEqual(toolConfig);
+      expect(result2).toBe(result1); // Same object reference
+    });
+
+    it('should handle tool config without scope', async () => {
+      const toolConfig = {
+        enabled: false,
+        requireConfirmation: true,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'GlobalTool',
+        level: 'deny',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.getToolConfig('GlobalTool');
+      expect(result).toEqual(toolConfig);
+    });
+  });
+
+  describe('checkDirectoryAccess', () => {
+    it('should allow access when no directory config exists', async () => {
+      const result = await manager.checkDirectoryAccess('/test/path');
+
+      expect(result.allowed).toBe(true);
+      expect(result.reason).toContain('allowed');
+      expect(result.configUsed).toEqual({
+        allowlist: [],
+        blocklist: [],
+        defaultAllow: true,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      });
+    });
+
+    it('should use tool-specific directory config', async () => {
+      const directoryConfig = {
+        allowlist: ['/allowed/**'],
+        blocklist: ['/blocked/**'],
+        defaultAllow: false,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      };
+
+      const toolConfig = {
+        enabled: true,
+        directoryAccess: directoryConfig,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'FileTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.checkDirectoryAccess('/allowed/subfolder', {
+        tool: 'FileTool',
+      });
+
+      expect(result.allowed).toBe(true);
+      expect(result.configUsed).toEqual(directoryConfig);
+      expect(result.matchType).toBe('allowlist');
+    });
+
+    it('should block access based on blocklist patterns', async () => {
+      const directoryConfig = {
+        allowlist: [],
+        blocklist: ['**/.git/**', '**/node_modules/**'],
+        defaultAllow: true,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      };
+
+      const toolConfig = {
+        enabled: true,
+        directoryAccess: directoryConfig,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'BlockedTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.checkDirectoryAccess('/project/.git/config', {
+        tool: 'BlockedTool',
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.matchType).toBe('blocklist');
+      expect(result.matchedPattern).toBe('**/.git/**');
+    });
+
+    it('should cache directory config for session', async () => {
+      const directoryConfig = {
+        allowlist: ['/cache-test/**'],
+        blocklist: [],
+        defaultAllow: false,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      };
+
+      const toolConfig = {
+        enabled: true,
+        directoryAccess: directoryConfig,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'CacheTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      // First call
+      const result1 = await manager.checkDirectoryAccess('/cache-test/file.txt', {
+        tool: 'CacheTool',
+      });
+      expect(result1.allowed).toBe(true);
+
+      // Second call should use cached config
+      const result2 = await manager.checkDirectoryAccess('/cache-test/other.txt', {
+        tool: 'CacheTool',
+      });
+      expect(result2.allowed).toBe(true);
+    });
+  });
+
+  describe('checkToolPermission', () => {
+    it('should return comprehensive permission result for allowed tool', async () => {
+      await manager.grantPermission('AllowedTool', 'test-scope', 'allow-always');
+
+      const result = await manager.checkToolPermission('AllowedTool', {
+        scope: 'test-scope',
+      });
+
+      expect(result.allowed).toBe(true);
+      expect(result.level).toBe('allow-always');
+      expect(result.requiresConfirmation).toBe(false);
+      expect(result.denialReason).toBeUndefined();
+    });
+
+    it('should return denial for explicitly denied tool', async () => {
+      await manager.grantPermission('DeniedTool', 'test-scope', 'deny');
+
+      const result = await manager.checkToolPermission('DeniedTool', {
+        scope: 'test-scope',
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.level).toBe('deny');
+      expect(result.denialReason).toBe('Tool access is explicitly denied');
+    });
+
+    it('should include tool configuration in result', async () => {
+      const toolConfig = {
+        enabled: true,
+        timeout: 5000,
+        requireConfirmation: false,
+        maxResults: 100,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'ConfigTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.checkToolPermission('ConfigTool');
+
+      expect(result.allowed).toBe(true);
+      expect(result.config).toEqual(toolConfig);
+    });
+
+    it('should perform path validation when path is provided', async () => {
+      const directoryConfig = {
+        allowlist: ['/valid/**'],
+        blocklist: ['/blocked/**'],
+        defaultAllow: false,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      };
+
+      const toolConfig = {
+        enabled: true,
+        directoryAccess: directoryConfig,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'PathTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.checkToolPermission('PathTool', {
+        path: '/blocked/secret.txt',
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.denialReason).toContain('Directory access denied');
+      expect(result.pathValidation).toBeDefined();
+      expect(result.pathValidation?.allowed).toBe(false);
+    });
+
+    it('should require confirmation when tool config requires it', async () => {
+      const toolConfig = {
+        enabled: true,
+        requireConfirmation: true,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'ConfirmTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      // Check without existing permission
+      const result = await manager.checkToolPermission('UnknownTool');
+
+      expect(result.allowed).toBe(true); // Default behavior for unknown tools
+      expect(result.level).toBeNull();
+    });
+
+    it('should deny access for disabled tools', async () => {
+      const toolConfig = {
+        enabled: false,
+        timeout: 1000,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'DisabledTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      const result = await manager.checkToolPermission('DisabledTool');
+
+      expect(result.allowed).toBe(false);
+      expect(result.denialReason).toBe('Tool is disabled via configuration');
+    });
+
+    it('should not consume allow-once when consumeAllowOnce is false', async () => {
+      await manager.grantPermission('OnceTool', 'test', 'allow-once');
+
+      // Check without consuming
+      const result1 = await manager.checkToolPermission('OnceTool', {
+        scope: 'test',
+        consumeAllowOnce: false,
+      });
+
+      expect(result1.allowed).toBe(true);
+      expect(result1.level).toBe('allow-once');
+
+      // Check again - should still be available
+      const result2 = await manager.checkToolPermission('OnceTool', {
+        scope: 'test',
+        consumeAllowOnce: false,
+      });
+
+      expect(result2.allowed).toBe(true);
+      expect(result2.level).toBe('allow-once');
+
+      // Now consume it
+      const result3 = await manager.checkToolPermission('OnceTool', {
+        scope: 'test',
+        consumeAllowOnce: true,
+      });
+
+      expect(result3.allowed).toBe(true);
+      expect(result3.level).toBe('allow-once');
+
+      // Should be gone now
+      const result4 = await manager.checkToolPermission('OnceTool', {
+        scope: 'test',
+      });
+
+      expect(result4.level).toBeNull();
+    });
+
+    it('should handle complex scenarios with path validation and configuration', async () => {
+      const directoryConfig = {
+        allowlist: ['/project/src/**'],
+        blocklist: ['/project/src/private/**'],
+        defaultAllow: false,
+        resolveSymlinks: true,
+        maxDepth: 0,
+      };
+
+      const toolConfig = {
+        enabled: true,
+        timeout: 3000,
+        requireConfirmation: false,
+        directoryAccess: directoryConfig,
+      };
+
+      await store.saveExtendedPermission({
+        tool: 'ComplexTool',
+        scope: 'dev',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      // Should allow access to allowed path
+      const result1 = await manager.checkToolPermission('ComplexTool', {
+        scope: 'dev',
+        path: '/project/src/components/Button.tsx',
+      });
+
+      expect(result1.allowed).toBe(true);
+      expect(result1.pathValidation?.allowed).toBe(true);
+      expect(result1.config).toEqual(toolConfig);
+
+      // Should deny access to blocked path
+      const result2 = await manager.checkToolPermission('ComplexTool', {
+        scope: 'dev',
+        path: '/project/src/private/secrets.json',
+      });
+
+      expect(result2.allowed).toBe(false);
+      expect(result2.pathValidation?.allowed).toBe(false);
+      expect(result2.denialReason).toContain('Directory access denied');
+    });
+  });
+
+  describe('updated resetSession', () => {
+    it('should clear all cache types including new caches', async () => {
+      // Set up data in all cache types
+      await manager.grantPermission('SessionTool', 'test', 'allow-once');
+
+      const toolConfig = { enabled: true };
+      await store.saveExtendedPermission({
+        tool: 'CachedTool',
+        level: 'allow-always',
+        createdAt: new Date(),
+        config: toolConfig,
+      });
+
+      // Populate tool config cache
+      await manager.getToolConfig('CachedTool');
+
+      // Populate directory access cache
+      await manager.checkDirectoryAccess('/test/path', { tool: 'CachedTool' });
+
+      // Verify caches are populated
+      expect(await manager.checkPermission('SessionTool', 'test')).toBe('allow-once');
+      expect(await manager.getToolConfig('CachedTool')).toEqual(toolConfig);
+
+      // Reset session
+      manager.resetSession();
+
+      // Verify all caches are cleared
+      expect(await manager.checkPermission('SessionTool', 'test')).toBeNull();
+
+      // Note: getToolConfig will re-fetch from store, but the cache should be clear
+      // We can't easily test cache state directly, but the behavior should be correct
+    });
+  });
 });

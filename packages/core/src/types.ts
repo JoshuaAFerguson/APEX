@@ -273,6 +273,70 @@ export const ExtendedPermissionSchema = PermissionSchema.extend({
 });
 export type ExtendedPermission = z.infer<typeof ExtendedPermissionSchema>;
 
+// ============================================================================
+// PermissionManager Extension Interfaces (v0.5.0)
+// ============================================================================
+
+/**
+ * Options for checkToolPermission method
+ */
+export interface ToolPermissionCheckOptions {
+  /** Optional scope for the permission check */
+  scope?: string;
+  /** Optional path to validate against directory access rules */
+  path?: string;
+  /** Whether to consume allow-once permissions (default: true) */
+  consumeAllowOnce?: boolean;
+  /** Optional base directory for path validation */
+  baseDir?: string;
+}
+
+/**
+ * Result of a comprehensive tool permission check
+ */
+export interface ToolPermissionResult {
+  /** Whether the tool is allowed to execute */
+  allowed: boolean;
+  /** The permission level (null if no permission exists) */
+  level: PermissionLevel | null;
+  /** Whether user confirmation is required */
+  requiresConfirmation: boolean;
+  /** Reason for denial (if not allowed) */
+  denialReason?: string;
+  /** Tool-specific configuration (if available) */
+  config?: ToolPermissionConfig;
+  /** Path validation result (if path was provided) */
+  pathValidation?: import('./directory-access-validator.js').PathValidationResult;
+}
+
+/**
+ * Options for checkDirectoryAccess method
+ */
+export interface DirectoryAccessCheckOptions {
+  /** Tool name for tool-specific directory access config */
+  tool?: string;
+  /** Scope for the permission check */
+  scope?: string;
+  /** Base directory for resolving relative paths */
+  baseDir?: string;
+}
+
+/**
+ * Result of directory access validation
+ */
+export interface DirectoryAccessResult {
+  /** Whether access to the path is allowed */
+  allowed: boolean;
+  /** Reason for the decision */
+  reason: string;
+  /** The matched pattern (if any) */
+  matchedPattern?: string;
+  /** Whether it matched allowlist, blocklist, or defaulted */
+  matchType?: 'allowlist' | 'blocklist' | 'default';
+  /** The directory access config that was used */
+  configUsed?: DirectoryAccessConfig;
+}
+
 /**
  * JSON Schema type for tool parameters
  */
