@@ -353,8 +353,17 @@ describe('BashTool Timeout Functionality', () => {
       const result = await bashTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output!.timedOut).toBe(true);
-      // Background processes should be cleaned up with parent
+
+      // Background execution should return task info immediately
+      if (result.output && 'background' in result.output && result.output.background) {
+        expect(result.output.taskId).toBeDefined();
+        expect(result.output.command).toBe('bash -c "sleep 10 &" && sleep 3');
+        expect(result.output.status).toBe('running');
+        expect(result.output.background).toBe(true);
+        // Background processes are managed independently
+      } else {
+        throw new Error('Expected background task output');
+      }
     }, 10000);
 
     it('should handle commands with unusual exit scenarios during timeout', async () => {

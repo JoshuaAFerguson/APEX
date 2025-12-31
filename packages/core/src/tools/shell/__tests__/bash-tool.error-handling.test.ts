@@ -232,7 +232,7 @@ describe('BashTool Error Handling Tests', () => {
   });
 
   describe('background execution flag handling', () => {
-    it('should accept background execution flag', async () => {
+    it('should accept background execution flag and return task info', async () => {
       const input: BashToolInput = {
         command: 'echo "background test"',
         run_in_background: true
@@ -240,11 +240,22 @@ describe('BashTool Error Handling Tests', () => {
 
       const result = await bashTool.execute(input);
       expect(result.success).toBe(true);
-      expect(result.output!.stdout).toContain('background test');
-      // For now, background execution is noted but executed normally
+      expect(result.output).toBeDefined();
+
+      // Should return background task information
+      if (result.output && 'background' in result.output && result.output.background) {
+        expect(result.output.taskId).toBeDefined();
+        expect(result.output.pid).toBeGreaterThan(0);
+        expect(result.output.command).toBe('echo "background test"');
+        expect(result.output.status).toBe('running');
+        expect(result.output.startedAt).toBeInstanceOf(Date);
+        expect(result.output.background).toBe(true);
+      } else {
+        throw new Error('Expected background task output');
+      }
     });
 
-    it('should handle background execution with timeout', async () => {
+    it('should handle background execution with timeout parameter', async () => {
       const input: BashToolInput = {
         command: 'echo "background with timeout"',
         run_in_background: true,
@@ -253,7 +264,16 @@ describe('BashTool Error Handling Tests', () => {
 
       const result = await bashTool.execute(input);
       expect(result.success).toBe(true);
-      expect(result.output!.stdout).toContain('background with timeout');
+      expect(result.output).toBeDefined();
+
+      // Timeout parameter should be ignored for background tasks
+      if (result.output && 'background' in result.output && result.output.background) {
+        expect(result.output.taskId).toBeDefined();
+        expect(result.output.command).toBe('echo "background with timeout"');
+        expect(result.output.background).toBe(true);
+      } else {
+        throw new Error('Expected background task output');
+      }
     });
   });
 });

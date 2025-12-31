@@ -12,7 +12,26 @@ export {
   BashTool,
   type BashToolInput,
   type BashToolOutput,
+  type BashToolSyncOutput,
+  type BashToolBackgroundOutput,
 } from './bash-tool.js';
+
+// Background task management exports
+export {
+  BackgroundTaskManager,
+} from './background-task-manager.js';
+
+export {
+  type BackgroundTaskId,
+  type BackgroundTaskStatus,
+  type BackgroundTaskInfo,
+  type BackgroundTaskOutput,
+  type BackgroundTaskManagerConfig,
+  type BackgroundTaskRegisterOptions,
+  type BackgroundTaskKillResult,
+  type BackgroundTaskManagerEvents,
+  BACKGROUND_TASK_DEFAULTS,
+} from './background-task-types.js';
 
 // Security module exports
 export {

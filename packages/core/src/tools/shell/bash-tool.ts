@@ -5,7 +5,7 @@
  * - Command execution via child_process.spawn
  * - Structured output with stdout, stderr, and exit code
  * - Timeout and cancellation support
- * - Background execution options
+ * - Background execution with task ID for later status checks
  * - Comprehensive error handling
  *
  * @module @apex/core/tools/shell/bash-tool
@@ -15,6 +15,8 @@ import { spawn } from 'node:child_process';
 import { BaseTool, type ToolExecutionContext, type ValidationResult } from '../base-tool.js';
 import type { ToolCategory, ToolPermission } from '../../types.js';
 import { CommandSandbox, type SandboxConfig } from './command-sandbox.js';
+import { BackgroundTaskManager } from './background-task-manager.js';
+import type { BackgroundTaskId, BackgroundTaskStatus } from './background-task-types.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -35,9 +37,9 @@ export interface BashToolInput {
 }
 
 /**
- * Output from the Bash tool
+ * Output from synchronous (foreground) command execution
  */
-export interface BashToolOutput {
+export interface BashToolSyncOutput {
   /** Standard output from the command */
   stdout: string;
   /** Standard error from the command */
@@ -52,7 +54,43 @@ export interface BashToolOutput {
   timedOut: boolean;
   /** Process ID (if available) */
   pid?: number;
+  /** Discriminator for type narrowing (false or undefined for sync) */
+  background?: false;
 }
+
+/**
+ * Output from background command execution
+ */
+export interface BashToolBackgroundOutput {
+  /** Background task ID for later reference */
+  taskId: BackgroundTaskId;
+  /** Process ID */
+  pid: number;
+  /** The command that was started */
+  command: string;
+  /** Indicates this is a background task */
+  background: true;
+  /** Initial status (always 'running' on success) */
+  status: BackgroundTaskStatus;
+  /** When the task started */
+  startedAt: Date;
+}
+
+/**
+ * Output from the Bash tool - either synchronous or background
+ *
+ * Use the `background` discriminator to narrow the type:
+ * ```typescript
+ * if (output.background === true) {
+ *   // BashToolBackgroundOutput
+ *   console.log(output.taskId);
+ * } else {
+ *   // BashToolSyncOutput
+ *   console.log(output.stdout);
+ * }
+ * ```
+ */
+export type BashToolOutput = BashToolSyncOutput | BashToolBackgroundOutput;
 
 // ============================================================================
 // Bash Tool Implementation
@@ -258,6 +296,9 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
 
   /**
    * Executes the shell command and returns structured output.
+   *
+   * When `run_in_background` is true, returns immediately with a task ID
+   * that can be used to check status and output later via BackgroundTaskManager.
    */
   protected async executeImpl(
     params: BashToolInput,
@@ -267,12 +308,62 @@ export class BashTool extends BaseTool<BashToolInput, BashToolOutput> {
     const timeout = params.timeout || BashTool.DEFAULT_TIMEOUT;
     const startTime = Date.now();
 
-    // Handle background execution (simplified - just note it for now)
+    // Handle background execution
     if (params.run_in_background) {
-      // Note: Real background execution would require additional infrastructure
-      // For now, we'll execute normally but could extend this later
+      return this.executeBackground(command, params.description, context);
     }
 
+    return this.executeForeground(command, timeout, startTime, context);
+  }
+
+  /**
+   * Execute a command in the background, returning immediately with a task ID.
+   */
+  private executeBackground(
+    command: string,
+    description?: string,
+    context?: ToolExecutionContext
+  ): BashToolBackgroundOutput {
+    // Spawn the process detached
+    const child = spawn('/bin/sh', ['-c', command], {
+      detached: true,  // Run independently of parent
+      cwd: context?.workingDirectory,
+      env: {
+        ...process.env,
+        ...(context?.environment || {})
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],  // stdin ignored, stdout/stderr piped
+    });
+
+    // Don't keep parent process waiting for this child
+    child.unref();
+
+    // Register with the background task manager
+    const manager = BackgroundTaskManager.getInstance();
+    const taskId = manager.register(child, command, {
+      workingDirectory: context?.workingDirectory,
+      description,
+    });
+
+    return {
+      taskId,
+      pid: child.pid ?? -1,
+      command,
+      background: true,
+      status: 'running',
+      startedAt: new Date(),
+    };
+  }
+
+  /**
+   * Execute a command in the foreground, waiting for completion.
+   */
+  private executeForeground(
+    command: string,
+    timeout: number,
+    startTime: number,
+    context?: ToolExecutionContext
+  ): Promise<BashToolSyncOutput> {
     return new Promise((resolve, reject) => {
       let timedOut = false;
       let stdout = '';

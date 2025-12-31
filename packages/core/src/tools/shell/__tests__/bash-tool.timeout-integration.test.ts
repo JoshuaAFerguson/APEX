@@ -278,8 +278,17 @@ describe('BashTool Timeout Integration Tests', () => {
       const result = await bashTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output!.timedOut).toBe(true);
-      expect(result.output!.stdout).toContain('Background process');
+
+      // Background execution should return task info, not execution results
+      if (result.output && 'background' in result.output && result.output.background) {
+        expect(result.output.taskId).toBeDefined();
+        expect(result.output.command).toBe('echo "Background process"; sleep 5');
+        expect(result.output.status).toBe('running');
+        expect(result.output.background).toBe(true);
+        // Timeout is ignored for background tasks - they run independently
+      } else {
+        throw new Error('Expected background task output');
+      }
     }, 10000);
   });
 });
