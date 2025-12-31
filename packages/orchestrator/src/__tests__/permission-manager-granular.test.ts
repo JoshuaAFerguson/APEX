@@ -223,20 +223,8 @@ describe('PermissionManager - Granular Permission Tests', () => {
         rateLimitPerMinute: 0
       };
 
-      const extendedPermission: ExtendedPermission = {
-        tool: 'Edit',
-        level: 'allow-always', // This will be overridden by no permission case
-        createdAt: new Date(),
-        config: confirmationConfig
-      };
-
-      // Save config but no permission
-      await store.saveExtendedPermission(extendedPermission);
-      await store.clearPermission({ tool: 'Edit' }); // Remove the permission but keep config
-
-      const result = await manager.checkToolPermission('UnknownTool');
-
-      // Mock the config retrieval to return our config
+      // Mock to simulate no permission but config exists
+      vi.spyOn(store, 'getPermission').mockResolvedValue(null);
       vi.spyOn(store, 'getExtendedPermission').mockResolvedValue({
         tool: 'UnknownTool',
         level: 'allow-always',
@@ -244,9 +232,13 @@ describe('PermissionManager - Granular Permission Tests', () => {
         config: confirmationConfig
       });
 
-      const resultWithConfig = await manager.checkToolPermission('UnknownTool');
+      const result = await manager.checkToolPermission('UnknownTool');
 
-      // Reset mock
+      expect(result.allowed).toBe(false);
+      expect(result.requiresConfirmation).toBe(true);
+      expect(result.denialReason).toContain('requires user confirmation');
+
+      // Reset mocks
       vi.restoreAllMocks();
     });
   });
@@ -477,9 +469,6 @@ describe('PermissionManager - Granular Permission Tests', () => {
       await store.clearPermission({ tool: 'UnknownTool' });
 
       // Mock to simulate no permission but config exists
-      const originalGetPermission = store.getPermission.bind(store);
-      const originalGetExtendedPermission = store.getExtendedPermission.bind(store);
-
       vi.spyOn(store, 'getPermission').mockResolvedValue(null);
       vi.spyOn(store, 'getExtendedPermission').mockResolvedValue(extendedPermission);
 
