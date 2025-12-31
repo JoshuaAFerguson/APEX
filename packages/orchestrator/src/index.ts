@@ -20,6 +20,7 @@ import {
   SubtaskDefinition,
   TaskDecomposition,
   SessionLimitStatus,
+  PermissionLevel,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -126,6 +127,14 @@ export interface OrchestratorEvents {
   'dependency:install-started': (event: DependencyInstallEventData) => void;
   'dependency:install-completed': (event: DependencyInstallCompletedEventData) => void;
 
+  // Permission management events (v0.5.0)
+  'permission:request': (event: PermissionRequestEventData) => void;
+  'permission:granted': (event: PermissionGrantedEventData) => void;
+  'permission:denied': (event: PermissionDeniedEventData) => void;
+  'dangerous:detected': (event: DangerousOperationDetectedEventData) => void;
+  'dangerous:confirmed': (event: DangerousOperationConfirmedEventData) => void;
+  'dangerous:blocked': (event: DangerousOperationBlockedEventData) => void;
+
   // Template events
   'template:created': (template: TaskTemplate) => void;
   'template:updated': (template: TaskTemplate) => void;
@@ -208,6 +217,75 @@ export interface ContainerDiedEventData extends ContainerEventData {
  * Container lifecycle operation types
  */
 export type ContainerLifecycleOperation = 'created' | 'started' | 'stopped' | 'removed' | 'died';
+
+/**
+ * Base interface for permission-related events
+ */
+export interface PermissionEventDataBase {
+  taskId: string;
+  toolName: string;
+  scope?: string;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for permission:request event
+ * Emitted when an agent requests permission to use a tool
+ */
+export interface PermissionRequestEventData extends PermissionEventDataBase {
+  reason?: string;
+  agentName?: string;
+}
+
+/**
+ * Event payload for permission:granted event
+ * Emitted when a permission request is approved
+ */
+export interface PermissionGrantedEventData extends PermissionEventDataBase {
+  level: PermissionLevel;
+  grantedBy: string;
+  grantReason?: string;
+}
+
+/**
+ * Event payload for permission:denied event
+ * Emitted when a permission request is rejected
+ */
+export interface PermissionDeniedEventData extends PermissionEventDataBase {
+  denialReason: string;
+  deniedBy: string;
+}
+
+/**
+ * Event payload for dangerous:detected event
+ * Emitted when a potentially dangerous operation is detected
+ */
+export interface DangerousOperationDetectedEventData extends PermissionEventDataBase {
+  operationType: 'file-deletion' | 'system-command' | 'network-request' | 'privilege-escalation' | 'data-modification';
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Event payload for dangerous:confirmed event
+ * Emitted when a user confirms a dangerous operation should proceed
+ */
+export interface DangerousOperationConfirmedEventData extends PermissionEventDataBase {
+  operationType: 'file-deletion' | 'system-command' | 'network-request' | 'privilege-escalation' | 'data-modification';
+  confirmedBy: string;
+  confirmation: string;
+}
+
+/**
+ * Event payload for dangerous:blocked event
+ * Emitted when a dangerous operation is blocked for safety
+ */
+export interface DangerousOperationBlockedEventData extends PermissionEventDataBase {
+  operationType: 'file-deletion' | 'system-command' | 'network-request' | 'privilege-escalation' | 'data-modification';
+  blockReason: string;
+  blockedBy: string;
+}
 
 export interface PRResult {
   success: boolean;
