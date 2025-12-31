@@ -25,6 +25,7 @@ import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonLogs } from './handlers/daemon-handlers.js';
 import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
+import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 
 const VERSION = '0.1.0';
 
@@ -604,6 +605,32 @@ export const commands: Command[] = [
       const taskId = args[0];
       if (!taskId) {
         console.log(chalk.red('Usage: /cancel <task_id>'));
+        return;
+      }
+
+      // Get task details for better context
+      const task = await ctx.orchestrator.getTask(taskId);
+      if (!task) {
+        console.log(chalk.red(`Task not found: ${taskId}`));
+        return;
+      }
+
+      // Get autonomy level from config
+      const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+
+      // Request confirmation based on autonomy level
+      const shouldProceed = await requestConfirmation(
+        DangerousOperation.CANCEL_TASK,
+        autonomyLevel,
+        {
+          resourceId: task.id,
+          resourceDescription: task.description,
+          context: `Status: ${task.status}, Stage: ${task.currentStage || 'unknown'}`
+        }
+      );
+
+      if (!shouldProceed) {
+        showOperationCancelled(DangerousOperation.CANCEL_TASK);
         return;
       }
 
@@ -2198,6 +2225,25 @@ export const commands: Command[] = [
           return;
         }
 
+        // Get autonomy level from config
+        const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+
+        // Request confirmation based on autonomy level
+        const shouldProceed = await requestConfirmation(
+          DangerousOperation.MERGE_TASK,
+          autonomyLevel,
+          {
+            resourceId: task.id,
+            resourceDescription: task.description,
+            context: `Branch: ${task.branchName}, ${isSquash ? 'Squash merge' : 'Standard merge'}`
+          }
+        );
+
+        if (!shouldProceed) {
+          showOperationCancelled(DangerousOperation.MERGE_TASK);
+          return;
+        }
+
         console.log(chalk.cyan(`\n🔀 ${isSquash ? 'Squash merging' : 'Merging'} ${task.branchName} into main...\n`));
         console.log(chalk.gray(`Task: ${task.description}`));
 
@@ -2973,6 +3019,25 @@ async function handleTrashTask(ctx: ApexContext, args: string[]): Promise<void> 
       return;
     }
 
+    // Get autonomy level from config
+    const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+
+    // Request confirmation based on autonomy level
+    const shouldProceed = await requestConfirmation(
+      DangerousOperation.TRASH_TASK,
+      autonomyLevel,
+      {
+        resourceId: task.id,
+        resourceDescription: task.description,
+        context: `Status: ${task.status}, Stage: ${task.currentStage || 'unknown'}`
+      }
+    );
+
+    if (!shouldProceed) {
+      showOperationCancelled(DangerousOperation.TRASH_TASK);
+      return;
+    }
+
     await ctx.orchestrator!.trashTask(task.id);
 
     console.log(chalk.green(`🗑️  Task moved to trash: ${task.id.substring(0, 16)}...`));
@@ -3051,28 +3116,32 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
       return;
     }
 
-    console.log(chalk.yellow(`⚠️  This will permanently delete ${trashedTasks.length} task(s) from trash.`));
-    console.log(chalk.red('⚠️  This action cannot be undone!'));
-    console.log('\nTasks to be deleted:');
+    // Show preview of tasks to be deleted
+    console.log(chalk.yellow(`\n⚠️  This will permanently delete ${trashedTasks.length} task(s) from trash:`));
 
-    for (const task of trashedTasks) {
-      console.log(`  ${chalk.gray(task.id.substring(0, 16))} ${task.description.substring(0, 50)}`);
+    for (const task of trashedTasks.slice(0, 5)) {
+      console.log(chalk.gray(`  • ${task.id.substring(0, 16)}... - ${task.description.substring(0, 50)}`));
     }
 
-    // Simple confirmation - in a real implementation you might want to use inquirer for better UX
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+    if (trashedTasks.length > 5) {
+      console.log(chalk.gray(`  ... and ${trashedTasks.length - 5} more tasks`));
+    }
 
-    const answer = await new Promise<string>((resolve) => {
-      rl.question(chalk.yellow('\nType "yes" to permanently delete all trashed tasks: '), resolve);
-    });
-    rl.close();
+    // Get autonomy level from config
+    const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
 
-    if (answer.toLowerCase().trim() !== 'yes') {
-      console.log(chalk.gray('Operation cancelled.'));
+    // Request confirmation based on autonomy level - always force confirmation for this dangerous operation
+    const shouldProceed = await requestConfirmation(
+      DangerousOperation.EMPTY_TRASH,
+      autonomyLevel,
+      {
+        context: `${trashedTasks.length} tasks will be permanently deleted`,
+        forceConfirmation: true // Always confirm for empty trash regardless of autonomy level
+      }
+    );
+
+    if (!shouldProceed) {
+      showOperationCancelled(DangerousOperation.EMPTY_TRASH);
       return;
     }
 

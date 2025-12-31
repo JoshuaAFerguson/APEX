@@ -85,6 +85,19 @@ workspace:
     autoRemove: true
     installTimeout: 300000
 
+# Permission presets for tool access control
+permissions:
+  preset: "review-all"  # "autonomous", "review-all", or "read-only"
+  customRules:
+    - tool: "Read"
+      behavior: "allow"  # Allow read operations without confirmation
+    - tool: "Write"
+      behavior: "confirm"
+      scope: "/src/**"
+      reason: "Source files require review"
+    - tool: "Bash"
+      behavior: "deny"  # Block shell commands
+
 # API server settings
 api:
   url: "http://localhost:3000"
@@ -281,6 +294,54 @@ apex run "build project" --workspace-strategy container \
 - `--container-memory-reservation`: Override memory reservation
 - `--container-cpu-shares`: Override CPU shares
 - `--container-pids-limit`: Override process limit
+
+### permissions
+
+Permission presets control which tools agents can use and when user confirmation is required.
+
+```yaml
+permissions:
+  preset: "review-all"         # Permission preset: autonomous, review-all, read-only
+  customRules:                 # Override preset behavior for specific tools
+    - tool: "Read"
+      behavior: "allow"        # allow, confirm, deny
+    - tool: "Write"
+      behavior: "confirm"
+      scope: "/src/**"
+      reason: "Source files require review"
+    - tool: "Bash"
+      behavior: "deny"
+```
+
+#### Permission Presets
+
+| Preset | Description | Use Case |
+|--------|-------------|----------|
+| `autonomous` | All tools allowed without confirmation | Full automation, trusted environments |
+| `review-all` | All tools require user confirmation (default) | Manual review of every action |
+| `read-only` | Only read-only tools allowed | Code exploration, analysis without changes |
+
+#### Custom Rules
+
+Override preset behavior for specific tools with custom rules:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tool` | string | Tool name (supports wildcards like `Web*`) |
+| `behavior` | string | `allow`, `confirm`, or `deny` |
+| `scope` | string | Optional scope restriction (e.g., file path pattern) |
+| `reason` | string | Optional reason for this permission rule |
+
+#### Tool Categories
+
+**Read-only tools** (safe in `read-only` preset):
+- `Read`, `Grep`, `Glob` - File system reading
+- `WebFetch`, `WebSearch` - Web access
+
+**Write/execute tools** (restricted in `read-only` preset):
+- `Write`, `Edit`, `MultiEdit`, `NotebookEdit` - File modifications
+- `Bash` - Command execution
+- `TodoWrite` - Todo management
 
 ### daemon
 
