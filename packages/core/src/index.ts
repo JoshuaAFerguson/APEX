@@ -31,6 +31,9 @@ export * from './package-manager-utils';
 // Path Utilities
 export * from './path-utils';
 
+// Directory Access Validation
+export * from './directory-access-validator';
+
 // Shell Utilities
 export * from './shell-utils';
 
