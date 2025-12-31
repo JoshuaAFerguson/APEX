@@ -5095,6 +5095,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
 export { TaskStore } from './store';
 export { PermissionStore } from './permission-store';
+export { PermissionManager } from './permission-manager';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
 export {
