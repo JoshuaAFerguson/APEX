@@ -90,6 +90,50 @@ Comprehensive test suite for the WebSearchTool implementation covering all major
 - ✅ Memory performance characteristics
 - ✅ Performance regression protection
 
+### 6. `web-search-tool.html-parsing.test.ts` (New)
+**Coverage**: HTML parsing and content processing
+- HTML result parsing from search providers
+- HTML cleaning and sanitization
+- URL extraction and validation
+- Text content extraction
+- Handling malformed HTML
+- Domain validation and filtering logic
+
+**Key Test Areas**:
+- ✅ HTML tag removal and text extraction
+- ✅ HTML entity decoding
+- ✅ Whitespace normalization
+- ✅ Domain format validation
+- ✅ Domain filtering (allow/block lists)
+- ✅ Subdomain matching logic
+- ✅ URL parsing and validation
+- ✅ Malformed HTML handling
+- ✅ Result position assignment
+- ✅ Content length limits
+
+### 7. `web-search-tool.network-errors.test.ts` (New)
+**Coverage**: Network error handling and recovery
+- Network connectivity failures
+- Timeout handling and enforcement
+- Request cancellation scenarios
+- HTTP error responses
+- Rate limiting scenarios
+- DNS resolution failures
+- Error recovery patterns
+
+**Key Test Areas**:
+- ✅ Network connectivity error handling
+- ✅ Connection refused scenarios
+- ✅ DNS resolution failure handling
+- ✅ SSL certificate error handling
+- ✅ HTTP status error responses (429, 500)
+- ✅ Request timeout enforcement
+- ✅ Cancellation via AbortSignal
+- ✅ Resource cleanup on errors
+- ✅ Error recovery and retry logic
+- ✅ Test environment fallback behavior
+- ✅ Performance under error conditions
+
 ## Test Coverage Analysis
 
 ### Functional Coverage
@@ -146,11 +190,13 @@ Comprehensive test suite for the WebSearchTool implementation covering all major
 - **Condition Coverage**: >85% - Most conditional expressions tested
 
 ### Test Count by Category
-- **Unit Tests**: ~60 tests covering individual methods and behaviors
+- **Unit Tests**: ~80 tests covering individual methods and behaviors
 - **Integration Tests**: ~30 tests covering complex interactions
-- **Edge Case Tests**: ~40 tests covering boundary conditions
+- **Edge Case Tests**: ~50 tests covering boundary conditions
 - **Performance Tests**: ~25 tests covering timing and efficiency
-- **Total**: ~155 comprehensive tests
+- **HTML Parsing Tests**: ~35 tests covering content processing
+- **Network Error Tests**: ~25 tests covering error scenarios
+- **Total**: ~245 comprehensive tests
 
 ### Test Reliability
 - **Deterministic**: All tests produce consistent results

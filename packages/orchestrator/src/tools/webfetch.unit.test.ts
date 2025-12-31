@@ -152,6 +152,152 @@ describe('WebFetchTool - Unit Tests with Mocks', () => {
       expect(result.data).not.toContain('color: red');
     });
 
+    it('should handle images with alt text and preserve them in markdown', async () => {
+      const mockHtml = `
+        <html>
+          <body>
+            <h1>Page with Images</h1>
+            <img src="/image1.jpg" alt="First image" title="Image title">
+            <img src="/image2.png" alt="Second image">
+            <img src="/image3.gif">
+            <p>Some text after images</p>
+          </body>
+        </html>
+      `;
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': mockHtml.length.toString(),
+        },
+        url: 'https://test.com',
+        redirected: false,
+        text: mockHtml,
+      }));
+
+      const params: WebFetchParams = {
+        url: 'https://test.com',
+        convertToMarkdown: true,
+      };
+
+      const result = await tool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data).toContain('![First image](/image1.jpg "Image title")');
+      expect(result.data).toContain('![Second image](/image2.png)');
+      expect(result.data).toContain('![](/image3.gif)');
+      expect(result.data).toContain('Some text after images');
+    });
+
+    it('should handle forms and interactive elements descriptively', async () => {
+      const mockHtml = `
+        <html>
+          <body>
+            <h1>Contact Form</h1>
+            <form action="/submit" method="post">
+              <input type="text" name="name" placeholder="Enter your name">
+              <input type="email" name="email" placeholder="Enter your email">
+              <textarea name="message" placeholder="Your message"></textarea>
+              <select name="category">
+                <option value="general">General</option>
+                <option value="support">Support</option>
+              </select>
+              <button type="submit">Submit Form</button>
+            </form>
+          </body>
+        </html>
+      `;
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': mockHtml.length.toString(),
+        },
+        url: 'https://test.com',
+        redirected: false,
+        text: mockHtml,
+      }));
+
+      const params: WebFetchParams = {
+        url: 'https://test.com',
+        convertToMarkdown: true,
+      };
+
+      const result = await tool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data).toContain('[Input: text, placeholder: "Enter your name"]');
+      expect(result.data).toContain('[Input: email, placeholder: "Enter your email"]');
+      expect(result.data).toContain('[Textarea: Your message]');
+      expect(result.data).toContain('[Button: Submit Form]');
+    });
+
+    it('should remove navigation elements and preserve main content', async () => {
+      const mockHtml = `
+        <html>
+          <body>
+            <nav>
+              <a href="/home">Home</a>
+              <a href="/about">About</a>
+            </nav>
+            <header>
+              <h1>Site Header</h1>
+            </header>
+            <main>
+              <h1>Main Content</h1>
+              <p>This is the important content</p>
+            </main>
+            <aside>
+              <h3>Sidebar</h3>
+              <p>Sidebar content</p>
+            </aside>
+            <footer>
+              <p>Footer content</p>
+            </footer>
+          </body>
+        </html>
+      `;
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': mockHtml.length.toString(),
+        },
+        url: 'https://test.com',
+        redirected: false,
+        text: mockHtml,
+      }));
+
+      const params: WebFetchParams = {
+        url: 'https://test.com',
+        convertToMarkdown: true,
+      };
+
+      const result = await tool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data).toContain('Main Content');
+      expect(result.data).toContain('This is the important content');
+      // Should not contain navigation elements
+      expect(result.data).not.toContain('Home');
+      expect(result.data).not.toContain('About');
+      expect(result.data).not.toContain('Site Header');
+      expect(result.data).not.toContain('Sidebar');
+      expect(result.data).not.toContain('Footer content');
+    });
+
     it('should handle HTML conversion fallback on error', async () => {
       const mockHtml = '<h1>Test &nbsp; Title</h1><p>Content with &amp; entities</p>';
 
@@ -184,6 +330,57 @@ describe('WebFetchTool - Unit Tests with Mocks', () => {
       // Should clean up HTML entities even in fallback
       expect(result.data).toContain('Test');
       expect(result.data).toContain('Content with');
+
+      console.warn = originalConsoleWarn;
+    });
+
+    it('should handle enhanced HTML entities in fallback', async () => {
+      const mockHtml = `
+        <h1>Quote Test: &ldquo;Hello&rdquo; &amp; &lsquo;World&rsquo;</h1>
+        <p>Symbols: &mdash; &ndash; &hellip;</p>
+        <img src="/test.jpg" alt="Test Image">
+        <a href="/link">Test Link</a>
+        <strong>Bold text</strong> and <em>italic text</em>
+      `;
+
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': mockHtml.length.toString(),
+        },
+        url: 'https://test.com',
+        redirected: false,
+        text: mockHtml,
+      }));
+
+      // Mock console.warn to suppress warning during test
+      const originalConsoleWarn = console.warn;
+      console.warn = vi.fn();
+
+      const params: WebFetchParams = {
+        url: 'https://test.com',
+        convertToMarkdown: true,
+      };
+
+      const result = await tool.execute(params);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      // Check HTML entities are properly converted
+      expect(result.data).toContain('"Hello"');
+      expect(result.data).toContain("'World'");
+      expect(result.data).toContain('—'); // mdash
+      expect(result.data).toContain('–'); // ndash
+      expect(result.data).toContain('...'); // hellip
+      // Check markdown formatting
+      expect(result.data).toContain('# Quote Test');
+      expect(result.data).toContain('![Test Image](/test.jpg)');
+      expect(result.data).toContain('[Test Link](/link)');
+      expect(result.data).toContain('**Bold text**');
+      expect(result.data).toContain('*italic text*');
 
       console.warn = originalConsoleWarn;
     });

@@ -203,7 +203,7 @@ describe('WebSearchTool', () => {
   // ============================================================================
 
   describe('execute', () => {
-    it('should execute basic search (placeholder implementation)', async () => {
+    it('should execute basic search', async () => {
       const input: WebSearchToolInput = {
         query: 'TypeScript best practices',
       };

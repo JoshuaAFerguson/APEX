@@ -108,9 +108,16 @@
   - Fetch error network prefix
   - Unknown error type handling
 
-## Total Test Count: 70+ tests
+## Test Files Summary
 
-### Functionality Covered
+### Enhanced Test Coverage (NEW)
+3. `webfetch.edge-cases.test.ts` - Comprehensive edge case testing (**NEW**)
+4. `webfetch.turndown.integration.test.ts` - Turndown library integration (**NEW**)
+5. `webfetch.test.md` - Comprehensive testing documentation (**NEW**)
+
+## Total Test Count: 125+ tests
+
+### Enhanced Functionality Coverage
 ✅ **Parameter validation** - All input validation scenarios
 ✅ **HTTP methods** - GET, POST, PUT, DELETE
 ✅ **Error handling** - Network errors, timeouts, HTTP errors
@@ -122,6 +129,12 @@
 ✅ **Convenience functions** - Exported functions and instances
 ✅ **Mock-based unit testing** - Internal method behavior
 ✅ **Integration testing** - Real network scenarios
+✅ **Complex HTML structures** - Tables, nested lists, forms (**NEW**)
+✅ **Malformed HTML handling** - Unclosed tags, mixed case (**NEW**)
+✅ **Performance testing** - Large documents, many images (**NEW**)
+✅ **Turndown library integration** - Custom rules, fallbacks (**NEW**)
+✅ **Special content handling** - Comments, CDATA, Unicode (**NEW**)
+✅ **HTML entities** - Extended entity handling (**NEW**)
 
 ### Test Quality Features
 - **Comprehensive parameter validation**
