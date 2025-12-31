@@ -84,6 +84,15 @@ describe('Hooks', () => {
       expect(multiEditMatcher).toBeDefined();
     });
 
+    it('should have WebFetch matcher for network auditing', () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      expect(webFetchMatcher).toBeDefined();
+      expect(webFetchMatcher?.hooks.length).toBe(2); // auditWebFetchRequest + validateNetworkPermissions
+    });
+
     it('should call onToolUse callback when provided', async () => {
       const onToolUse = vi.fn();
       const context: HookContext = { taskId, store, onToolUse };
@@ -368,6 +377,232 @@ describe('Hooks', () => {
       const task = await store.getTask(taskId);
       const debugLogs = task?.logs.filter(l => l.level === 'debug');
       expect(debugLogs?.some(l => l.message.includes('Completed'))).toBe(true);
+    });
+  });
+
+  describe('auditWebFetchRequest', () => {
+    it('should log WebFetch requests to store', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const auditHook = webFetchMatcher?.hooks[0]; // First hook is auditWebFetchRequest
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url: 'https://api.example.com', method: 'GET' },
+      };
+
+      const result = await auditHook?.(input, 'tool-1', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+
+      // Verify request was logged
+      const task = await store.getTask(taskId);
+      const infoLogs = task?.logs.filter(l => l.level === 'info');
+      expect(infoLogs?.some(l => l.message.includes('WebFetch request'))).toBe(true);
+    });
+
+    it('should notify onToolUse callback for WebFetch requests', async () => {
+      const onToolUse = vi.fn();
+      const context: HookContext = { taskId, store, onToolUse };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const auditHook = webFetchMatcher?.hooks[0];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url: 'https://api.github.com', method: 'POST' },
+      };
+
+      await auditHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(onToolUse).toHaveBeenCalledWith('WebFetch', {
+        url: 'https://api.github.com',
+        method: 'POST'
+      });
+    });
+
+    it('should log AI analysis prompt usage', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const auditHook = webFetchMatcher?.hooks[0];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: {
+          url: 'https://docs.example.com',
+          method: 'GET',
+          prompt: 'Extract the main API endpoints'
+        },
+      };
+
+      await auditHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      const task = await store.getTask(taskId);
+      const infoLogs = task?.logs.filter(l => l.level === 'info');
+      expect(infoLogs?.some(l => l.metadata?.hasPrompt === true)).toBe(true);
+    });
+  });
+
+  describe('validateNetworkPermissions', () => {
+    const restrictedUrls = [
+      'file:///etc/passwd',
+      'ftp://internal.server/data',
+      'http://localhost:8080',
+      'https://127.0.0.1:3000',
+      'http://192.168.1.1',
+      'https://10.0.0.1',
+      'http://172.16.0.1',
+      'https://169.254.1.1',
+      'http://internal.local',
+    ];
+
+    it.each(restrictedUrls)('should block restricted URL: %s', async (url) => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1]; // Second hook is validateNetworkPermissions
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url },
+      };
+
+      const result = await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(result).toHaveProperty('hookSpecificOutput');
+      expect(result?.hookSpecificOutput?.permissionDecision).toBe('deny');
+    });
+
+    const allowedUrls = [
+      'https://api.github.com',
+      'https://www.npmjs.com',
+      'http://example.com',
+      'https://docs.anthropic.com',
+      'https://registry.npmjs.org',
+    ];
+
+    it.each(allowedUrls)('should allow valid URL: %s', async (url) => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url },
+      };
+
+      const result = await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+    });
+
+    it('should block invalid URL formats', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1];
+
+      const invalidUrls = [
+        'not-a-url',
+        '',
+        'htp://missing-t.com',
+        '://no-protocol.com',
+      ];
+
+      for (const url of invalidUrls) {
+        const input = {
+          tool_name: 'WebFetch',
+          tool_input: { url },
+        };
+
+        const result = await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+        expect(result?.hookSpecificOutput?.permissionDecision).toBe('deny');
+      }
+    });
+
+    const sensitiveUrls = [
+      'https://api.example.com/password/reset',
+      'https://auth.service.com/secret-endpoint',
+      'https://api.provider.com/v1/token/refresh',
+      'https://service.com/api-key/generate',
+      'https://auth.example.com/credentials',
+    ];
+
+    it.each(sensitiveUrls)('should warn about sensitive URL: %s', async (url) => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url },
+      };
+
+      const result = await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      // Should allow but log warning
+      expect(result).toEqual({});
+
+      const task = await store.getTask(taskId);
+      const warnLogs = task?.logs.filter(l => l.level === 'warn');
+      expect(warnLogs?.some(l => l.message.includes('potentially sensitive endpoint'))).toBe(true);
+    });
+
+    const unsupportedProtocols = [
+      'ftp://files.example.com',
+      'file:///path/to/file',
+      'gopher://old.protocol.com',
+      'telnet://remote.server',
+      'ssh://git@github.com',
+    ];
+
+    it.each(unsupportedProtocols)('should block unsupported protocol: %s', async (url) => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url },
+      };
+
+      const result = await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(result?.hookSpecificOutput?.permissionDecision).toBe('deny');
+      expect(result?.hookSpecificOutput?.permissionDecisionReason).toContain('Only HTTP and HTTPS protocols are allowed');
+    });
+
+    it('should log blocked requests with proper metadata', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const webFetchMatcher = hooks.PreToolUse?.find(m => m.matcher === 'WebFetch');
+      const permissionHook = webFetchMatcher?.hooks[1];
+
+      const input = {
+        tool_name: 'WebFetch',
+        tool_input: { url: 'http://localhost:3000' },
+      };
+
+      await permissionHook?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      const task = await store.getTask(taskId);
+      const warnLogs = task?.logs.filter(l => l.level === 'warn');
+      const blockedLog = warnLogs?.find(l => l.metadata?.blocked === true);
+
+      expect(blockedLog).toBeDefined();
+      expect(blockedLog?.metadata?.url).toBe('http://localhost:3000');
     });
   });
 
