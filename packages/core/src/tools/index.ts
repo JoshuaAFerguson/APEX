@@ -65,10 +65,26 @@ export {
   AmbiguousReplacementError,
   IdenticalStringsError,
   FileAccessError,
+  GlobTool,
+  type GlobToolInput,
+  type GlobToolOutput,
+  type GlobFileResult,
   registerFilesystemTools,
   registerReadTool,
   createReadTool,
   registerEditTool,
   createEditTool,
+  registerGlobTool,
+  createGlobTool,
 } from './filesystem/index.js';
+
+// Shell tools
+export {
+  BashTool,
+  type BashToolInput,
+  type BashToolOutput,
+  registerShellTools,
+  registerBashTool,
+  createBashTool,
+} from './shell/index.js';
 

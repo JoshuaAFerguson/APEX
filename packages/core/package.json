@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "eventemitter3": "^5.0.1",
+    "fast-glob": "^3.3.2",
     "yaml": "^2.3.4",
     "zod": "^3.22.4"
   },

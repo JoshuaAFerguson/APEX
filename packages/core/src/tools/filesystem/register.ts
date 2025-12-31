@@ -10,7 +10,9 @@
 import { getToolRegistry } from '../tool-registry.js';
 import { ReadTool } from './read-tool.js';
 import { EditTool } from './edit-tool.js';
+import { MultiEditTool } from './multi-edit-tool.js';
 import { WriteTool } from './write-tool.js';
+import { GlobTool } from './glob-tool.js';
 
 /**
  * Registers all filesystem tools with the global registry.
@@ -18,7 +20,9 @@ import { WriteTool } from './write-tool.js';
  * This function registers the following tools:
  * - ReadTool: File reading with line numbers and multimodal support
  * - EditTool: Surgical file editing with string replacement
+ * - MultiEditTool: Batch file editing with atomic rollback
  * - WriteTool: File creation and writing with safety features
+ * - GlobTool: Fast file pattern matching with modification time sorting
  *
  * @throws {DuplicateToolError} If any tool is already registered
  *
@@ -36,7 +40,9 @@ export function registerFilesystemTools(): void {
   // Register filesystem tools
   registry.register(new ReadTool());
   registry.register(new EditTool());
+  registry.register(new MultiEditTool());
   registry.register(new WriteTool());
+  registry.register(new GlobTool());
 }
 
 /**
@@ -142,4 +148,74 @@ export function registerWriteTool(): void {
  */
 export function createWriteTool(): WriteTool {
   return new WriteTool();
+}
+
+/**
+ * Registers only the Glob tool with the global registry.
+ *
+ * @throws {DuplicateToolError} If the Glob tool is already registered
+ *
+ * @example
+ * ```typescript
+ * import { registerGlobTool } from '@apex/core/tools/filesystem/register';
+ *
+ * // Register only the Glob tool
+ * registerGlobTool();
+ * ```
+ */
+export function registerGlobTool(): void {
+  const registry = getToolRegistry();
+  registry.register(new GlobTool());
+}
+
+/**
+ * Registers only the MultiEdit tool with the global registry.
+ *
+ * @throws {DuplicateToolError} If the MultiEdit tool is already registered
+ *
+ * @example
+ * ```typescript
+ * import { registerMultiEditTool } from '@apex/core/tools/filesystem/register';
+ *
+ * // Register only the MultiEdit tool
+ * registerMultiEditTool();
+ * ```
+ */
+export function registerMultiEditTool(): void {
+  const registry = getToolRegistry();
+  registry.register(new MultiEditTool());
+}
+
+/**
+ * Creates a new MultiEdit tool instance.
+ *
+ * @returns A new MultiEditTool instance
+ *
+ * @example
+ * ```typescript
+ * import { createMultiEditTool } from '@apex/core/tools/filesystem/register';
+ *
+ * const multiEditTool = createMultiEditTool();
+ * // Use the tool instance directly or register it manually
+ * ```
+ */
+export function createMultiEditTool(): MultiEditTool {
+  return new MultiEditTool();
+}
+
+/**
+ * Creates a new Glob tool instance.
+ *
+ * @returns A new GlobTool instance
+ *
+ * @example
+ * ```typescript
+ * import { createGlobTool } from '@apex/core/tools/filesystem/register';
+ *
+ * const globTool = createGlobTool();
+ * // Use the tool instance directly or register it manually
+ * ```
+ */
+export function createGlobTool(): GlobTool {
+  return new GlobTool();
 }

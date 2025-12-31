@@ -23,6 +23,16 @@ export {
 } from './edit-tool.js';
 
 export {
+  MultiEditTool,
+  type MultiEditFileParams,
+  type MultiEditFileOutput,
+  type MultiEditOperation,
+  type EditOperationResult,
+  BatchEditError,
+  EditConflictError,
+} from './multi-edit-tool.js';
+
+export {
   WriteTool,
   type WriteFileParams,
   type WriteFileOutput,
@@ -31,11 +41,22 @@ export {
 } from './write-tool.js';
 
 export {
+  GlobTool,
+  type GlobToolInput,
+  type GlobToolOutput,
+  type GlobFileResult,
+} from './glob-tool.js';
+
+export {
   registerFilesystemTools,
   registerReadTool,
   createReadTool,
   registerEditTool,
   createEditTool,
+  registerMultiEditTool,
+  createMultiEditTool,
   registerWriteTool,
   createWriteTool,
+  registerGlobTool,
+  createGlobTool,
 } from './register.js';
