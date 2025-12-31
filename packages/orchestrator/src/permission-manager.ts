@@ -8,9 +8,8 @@ import {
   DirectoryAccessResult,
   ToolPermissionConfig,
   DirectoryAccessConfig,
-  DirectoryAccessValidator,
-  PathValidationResult,
 } from '@apexcli/core';
+import { DirectoryAccessValidator, PathValidationResult } from '@apexcli/core';
 import { PermissionStore } from './permission-store';
 
 /**
