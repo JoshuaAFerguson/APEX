@@ -657,7 +657,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } catch (error) {
         lastError = error as Error;
 
-        // Check if this is a pausable error (rate limit or usage limit)
+        // Check if this is a pausable error (rate limit, usage limit, or token limit)
         const pauseReason = this.isPausableError(lastError);
         if (pauseReason) {
           if (pauseReason === 'rate_limit') {
@@ -667,6 +667,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
             });
             await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+          } else if (pauseReason === 'token_limit') {
+            // Token/context limit - task needs to be resumed with context summarization
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Token/context limit reached. Task paused. Consider breaking into smaller subtasks or resume to continue with context summarization.`,
+            });
+            await this.pauseTask(taskId, 'token_limit');
           } else {
             // Usage limit - no auto-resume, user needs to add credits or wait for reset
             await this.store.addLog(taskId, {
@@ -766,15 +773,40 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
            message.includes('limit reached') ||
            (message.includes('resets') && message.includes('upgrade')) ||
            message.includes('/upgrade') ||
-           message.includes('extra-usage');
+           message.includes('extra-usage') ||
+           // Token/context limit errors - should pause, not fail
+           message.includes('token limit') ||
+           message.includes('context length') ||
+           message.includes('context window') ||
+           message.includes('max_tokens') ||
+           message.includes('maximum context') ||
+           message.includes('conversation too long') ||
+           message.includes('input too long');
   }
 
   /**
-   * Check if an error should pause the task (rate limit or usage limit)
+   * Check if an error is specifically a token/context limit error
    */
-  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | false {
+  private isTokenLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('token limit') ||
+           message.includes('context length') ||
+           message.includes('context window') ||
+           message.includes('max_tokens') ||
+           message.includes('maximum context') ||
+           message.includes('conversation too long') ||
+           message.includes('input too long');
+  }
+
+  /**
+   * Check if an error should pause the task (rate limit, usage limit, or token limit)
+   */
+  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | 'token_limit' | false {
     if (this.isRateLimitError(error)) {
       return 'rate_limit';
+    }
+    if (this.isTokenLimitError(error)) {
+      return 'token_limit';
     }
     if (this.isUsageLimitError(error)) {
       return 'usage_limit';
@@ -816,7 +848,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure' | 'token_limit',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
