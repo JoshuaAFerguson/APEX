@@ -1,5 +1,6 @@
 import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
+import { spawn, ChildProcess } from 'child_process';
 import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, TaskStatus, DaemonConfig, TaskSessionData } from '@apexcli/core';
@@ -149,6 +150,10 @@ export class DaemonRunner {
   // Logging
   private logStream: WriteStream | null = null;
 
+  // Integrated services (API and Web UI)
+  private apiProcess: ChildProcess | null = null;
+  private webuiProcess: ChildProcess | null = null;
+
   constructor(options: DaemonRunnerOptions) {
     // Store the raw options - we'll resolve defaults in start() after loading config
     this.options = {
@@ -253,6 +258,9 @@ export class DaemonRunner {
         this.capacityMonitor.start();
         this.log('info', 'Capacity monitoring started for auto-resume');
       }
+
+      // Start integrated services if configured
+      await this.startIntegratedServices(daemonConfig);
 
       // Detect and handle orphaned tasks from previous daemon instances
       await this.detectAndHandleOrphanedTasks();
@@ -763,6 +771,9 @@ export class DaemonRunner {
 
     // Get next tasks
     try {
+      // Check if we should only restart parent tasks (default: true)
+      const restartParentOnly = this.config?.daemon?.taskRestart?.restartParentOnly ?? true;
+
       for (let i = 0; i < availableSlots; i++) {
         const task = await this.store.getNextQueuedTask();
         if (!task) {
@@ -771,6 +782,13 @@ export class DaemonRunner {
 
         // Skip if already running
         if (this.runningTasks.has(task.id)) {
+          continue;
+        }
+
+        // Skip child tasks if restartParentOnly is enabled
+        // The orchestrator will manage child tasks when parent is executed
+        if (restartParentOnly && task.parentTaskId) {
+          this.log('debug', `Skipping child task ${task.id} (parent: ${task.parentTaskId}) - orchestrator will manage`, { taskId: task.id });
           continue;
         }
 
@@ -951,6 +969,20 @@ export class DaemonRunner {
         }
       }
 
+      // Get services information
+      const servicesInfo = running ? {
+        api: {
+          running: this.apiProcess !== null,
+          port: this.config?.daemon?.services?.api?.port ?? 4000,
+          host: this.config?.daemon?.services?.api?.host ?? 'localhost',
+        },
+        webui: {
+          running: this.webuiProcess !== null,
+          port: this.config?.daemon?.services?.webui?.port ?? 3000,
+          host: this.config?.daemon?.services?.webui?.host ?? 'localhost',
+        },
+      } : undefined;
+
       const stateData = {
         timestamp: new Date().toISOString(),
         pid: process.pid,
@@ -958,6 +990,7 @@ export class DaemonRunner {
         running,
         capacity: capacityInfo,
         health: healthInfo,
+        services: servicesInfo,
       };
 
       await fs.writeFile(stateFilePath, JSON.stringify(stateData, null, 2));
@@ -1015,9 +1048,134 @@ export class DaemonRunner {
   }
 
   /**
+   * Start integrated services (API and Web UI) based on daemon config
+   */
+  private async startIntegratedServices(daemonConfig: DaemonConfig): Promise<void> {
+    const servicesConfig = daemonConfig.services;
+    if (!servicesConfig) {
+      return;
+    }
+
+    // Start API server if enabled
+    if (servicesConfig.api?.enabled) {
+      const apiPort = servicesConfig.api.port ?? 4000;
+      const apiHost = servicesConfig.api.host ?? 'localhost';
+
+      try {
+        // Resolve API path relative to orchestrator package (../api/dist/index.js from packages/orchestrator/dist/)
+        // At runtime in CommonJS, __dirname is packages/orchestrator/dist
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - __dirname is available at runtime in CommonJS
+        const apiPath = join(__dirname, '..', '..', 'api', 'dist', 'index.js');
+
+        this.apiProcess = spawn('node', [apiPath], {
+          cwd: this.options.projectPath,
+          env: {
+            ...process.env,
+            PORT: String(apiPort),
+            HOST: apiHost,
+            APEX_PROJECT_PATH: this.options.projectPath,
+          },
+          detached: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        this.apiProcess.stdout?.on('data', (data) => {
+          this.log('debug', `[API] ${data.toString().trim()}`);
+        });
+
+        this.apiProcess.stderr?.on('data', (data) => {
+          this.log('warn', `[API] ${data.toString().trim()}`);
+        });
+
+        this.apiProcess.on('exit', (code) => {
+          this.log('info', `API server exited with code ${code}`);
+          this.apiProcess = null;
+        });
+
+        this.log('info', `API server started on ${apiHost}:${apiPort}`);
+      } catch (error) {
+        this.log('error', `Failed to start API server: ${(error as Error).message}`);
+      }
+    }
+
+    // Start Web UI if enabled
+    if (servicesConfig.webui?.enabled) {
+      const webuiPort = servicesConfig.webui.port ?? 3000;
+      const webuiHost = servicesConfig.webui.host ?? 'localhost';
+
+      try {
+        // Resolve Web UI path relative to orchestrator package (../web-ui from packages/orchestrator/dist/)
+        // At runtime in CommonJS, __dirname is packages/orchestrator/dist
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - __dirname is available at runtime in CommonJS
+        const webuiPath = join(__dirname, '..', '..', 'web-ui');
+
+        this.webuiProcess = spawn('npx', ['next', 'start', '-p', String(webuiPort), '-H', webuiHost], {
+          cwd: webuiPath,
+          env: {
+            ...process.env,
+            PORT: String(webuiPort),
+            NEXT_PUBLIC_API_URL: `http://${servicesConfig.api?.host ?? 'localhost'}:${servicesConfig.api?.port ?? 4000}`,
+          },
+          detached: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        this.webuiProcess.stdout?.on('data', (data) => {
+          this.log('debug', `[WebUI] ${data.toString().trim()}`);
+        });
+
+        this.webuiProcess.stderr?.on('data', (data) => {
+          this.log('warn', `[WebUI] ${data.toString().trim()}`);
+        });
+
+        this.webuiProcess.on('exit', (code) => {
+          this.log('info', `Web UI exited with code ${code}`);
+          this.webuiProcess = null;
+        });
+
+        this.log('info', `Web UI started on ${webuiHost}:${webuiPort}`);
+      } catch (error) {
+        this.log('error', `Failed to start Web UI: ${(error as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * Stop integrated services
+   */
+  private async stopIntegratedServices(): Promise<void> {
+    if (this.apiProcess) {
+      this.log('info', 'Stopping API server...');
+      this.apiProcess.kill('SIGTERM');
+      this.apiProcess = null;
+    }
+
+    if (this.webuiProcess) {
+      this.log('info', 'Stopping Web UI...');
+      this.webuiProcess.kill('SIGTERM');
+      this.webuiProcess = null;
+    }
+  }
+
+  /**
+   * Check if daemon has services running
+   */
+  public hasServicesRunning(): { api: boolean; webui: boolean } {
+    return {
+      api: this.apiProcess !== null,
+      webui: this.webuiProcess !== null,
+    };
+  }
+
+  /**
    * Cleanup resources
    */
   private async cleanup(): Promise<void> {
+    // Stop integrated services
+    await this.stopIntegratedServices();
+
     // Stop capacity monitor
     if (this.capacityMonitor) {
       this.capacityMonitor.stop();

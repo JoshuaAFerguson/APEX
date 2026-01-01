@@ -812,6 +812,24 @@ export const DaemonConfigSchema = z.object({
     periodicCheck: z.boolean().optional().default(false),
     periodicCheckInterval: z.number().optional().default(300000), // 5 minutes
   }).optional(),
+  // Integrated services - API and Web UI
+  services: z.object({
+    api: z.object({
+      enabled: z.boolean().optional().default(false),
+      port: z.number().optional().default(4000),
+      host: z.string().optional().default('localhost'),
+    }).optional(),
+    webui: z.object({
+      enabled: z.boolean().optional().default(false),
+      port: z.number().optional().default(3000),
+      host: z.string().optional().default('localhost'),
+    }).optional(),
+  }).optional(),
+  // Task restart behavior
+  taskRestart: z.object({
+    // Only restart root parent tasks, let orchestrator manage children
+    restartParentOnly: z.boolean().optional().default(true),
+  }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 

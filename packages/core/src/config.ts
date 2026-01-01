@@ -471,6 +471,9 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       timeBasedUsage: config.daemon?.timeBasedUsage,
       sessionRecovery: config.daemon?.sessionRecovery,
       idleProcessing: config.daemon?.idleProcessing,
+      orphanDetection: config.daemon?.orphanDetection,
+      services: config.daemon?.services,
+      taskRestart: config.daemon?.taskRestart,
     },
     documentation: {
       enabled: config.documentation?.enabled ?? true,
