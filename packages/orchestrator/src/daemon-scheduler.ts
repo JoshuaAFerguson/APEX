@@ -149,11 +149,12 @@ export class DaemonScheduler {
    */
   getCurrentTimeWindow(now: Date): TimeWindow {
     if (!this.config.timeBasedUsage?.enabled) {
+      // When time-based usage is disabled, always be active (no time-based pausing)
       return {
-        mode: 'off-hours',
+        mode: 'day', // Treat as always in day mode
         startHour: 0,
         endHour: 23,
-        isActive: false,
+        isActive: true, // Always active when time-based usage is disabled
         nextTransition: this.getNextMidnight(now),
       };
     }

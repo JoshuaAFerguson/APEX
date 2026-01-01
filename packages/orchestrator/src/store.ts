@@ -127,6 +127,53 @@ export class TaskStore {
       // Columns might already exist or table doesn't exist yet
     }
 
+    // Create permissions table if it doesn't exist (v0.5.0 permission store support)
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS permissions (
+          id TEXT PRIMARY KEY,
+          tool_name TEXT NOT NULL,
+          scope TEXT,
+          level TEXT NOT NULL CHECK (level IN ('allow-always', 'allow-once', 'deny')),
+          expires_at TEXT,
+          created_at TEXT NOT NULL,
+          config TEXT,
+          grant_reason TEXT,
+          granted_by TEXT,
+          tags TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_permissions_tool_scope ON permissions(tool_name, scope);
+        CREATE INDEX IF NOT EXISTS idx_permissions_level ON permissions(level);
+        CREATE INDEX IF NOT EXISTS idx_permissions_expires_at ON permissions(expires_at);
+      `);
+    } catch {
+      // Table might already exist
+    }
+
+    // Add extended permission columns to existing permissions table (v0.5.0 migration)
+    try {
+      const permColumns = this.db
+        .prepare("PRAGMA table_info(permissions)")
+        .all() as { name: string }[];
+      const permColumnNames = new Set(permColumns.map((c) => c.name));
+
+      const permMigrations: { column: string; definition: string }[] = [
+        { column: 'config', definition: 'TEXT' },
+        { column: 'grant_reason', definition: 'TEXT' },
+        { column: 'granted_by', definition: 'TEXT' },
+        { column: 'tags', definition: 'TEXT' },
+      ];
+
+      for (const { column, definition } of permMigrations) {
+        if (!permColumnNames.has(column)) {
+          this.db.exec(`ALTER TABLE permissions ADD COLUMN ${column} ${definition}`);
+        }
+      }
+    } catch {
+      // Columns might already exist or table doesn't exist yet
+    }
+
     for (const { column, definition } of migrations) {
       if (!columnNames.has(column)) {
         try {
