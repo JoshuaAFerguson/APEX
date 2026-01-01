@@ -1773,10 +1773,53 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Extract stage summary and outputs from the final messages
     const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
 
+    // Check if the output indicates the task was blocked by permission restrictions
+    const fullOutputLower = messages.join('\n').toLowerCase();
+    const permissionBlockedPatterns = [
+      'need user confirmation',
+      'tool access restrictions',
+      'blocked from using',
+      'cannot proceed without',
+      'requires user confirmation',
+      'need to get approval',
+      'encountering tool access',
+      'need explicit.*confirmation',
+      'i apologize.*cannot.*permission',
+      'i\'m unable to.*without.*confirmation',
+      'waiting for.*permission',
+      'permission denied',
+    ];
+
+    const isPermissionBlocked = permissionBlockedPatterns.some(pattern =>
+      fullOutputLower.includes(pattern) || new RegExp(pattern, 'i').test(fullOutputLower)
+    );
+
+    if (isPermissionBlocked) {
+      // Task was blocked by permission restrictions - mark as failed
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Stage "${stage.name}" failed: Task was blocked by permission restrictions and could not complete its work`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'failed',
+        outputs,
+        artifacts,
+        summary: `Failed: Permission restrictions prevented task completion. ${summary}`,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        error: 'Task was blocked by permission restrictions and could not complete its work',
+      };
+    }
+
     // For planning stages, check if the output contains a decomposition request
     let decompositionRequest: DecompositionRequest | undefined;
     if (isPlanner) {
-      const fullOutput = messages.join('\n');
       decompositionRequest = parseDecompositionRequest(fullOutput);
 
       if (decompositionRequest.shouldDecompose) {
