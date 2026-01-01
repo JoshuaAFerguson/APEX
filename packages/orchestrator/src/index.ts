@@ -771,7 +771,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
            message.includes('daily limit') ||
            // Claude Code specific patterns
            message.includes('limit reached') ||
-           (message.includes('resets') && message.includes('upgrade')) ||
+           message.includes('hit your limit') ||
+           message.includes("you've hit your limit") ||
+           (message.includes('resets') && (message.includes('limit') || message.includes('upgrade'))) ||
            message.includes('/upgrade') ||
            message.includes('extra-usage') ||
            // Token/context limit errors - should pause, not fail
@@ -1750,9 +1752,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       // This catches cases where "Limit reached" is logged before process exits
       const fullOutput = messages.join('\n').toLowerCase();
       const isLimitError = fullOutput.includes('limit reached') ||
+                          fullOutput.includes('hit your limit') ||
+                          fullOutput.includes("you've hit your limit") ||
                           fullOutput.includes('/upgrade') ||
                           fullOutput.includes('extra-usage') ||
-                          fullOutput.includes('resets') && fullOutput.includes('upgrade');
+                          fullOutput.includes('usage limit') ||
+                          fullOutput.includes('token limit') ||
+                          fullOutput.includes('context length') ||
+                          (fullOutput.includes('resets') && (fullOutput.includes('limit') || fullOutput.includes('upgrade')));
 
       if (isLimitError) {
         // Rethrow with limit-specific message so it can be detected and paused
