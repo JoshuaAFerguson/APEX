@@ -104,8 +104,8 @@ export class ApexWebSocketClient {
         }
       }
 
-      this.ws.onerror = (error) => {
-        console.error('[APEX WS] Error:', error)
+      this.ws.onerror = () => {
+        console.error('[APEX WS] Connection error - is the API server running? Start with: apex serve')
       }
 
       this.ws.onclose = () => {
