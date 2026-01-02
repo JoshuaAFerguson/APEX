@@ -525,7 +525,7 @@ export const commands: Command[] = [
       if (effective.project.framework) console.log(`  Framework: ${effective.project.framework}`);
 
       console.log(chalk.bold('\nAutonomy:'));
-      console.log(`  Default: ${effective.autonomy.default}`);
+      console.log(`  Level: ${effective.autonomy.level}`);
 
       console.log(chalk.bold('\nModels:'));
       console.log(`  Planning: ${effective.models.planning}`);

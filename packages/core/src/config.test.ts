@@ -74,7 +74,7 @@ describe('getEffectiveConfig', () => {
     };
 
     const effective = getEffectiveConfig(config);
-    expect(effective.autonomy.default).toBe('review-before-merge');
+    expect(effective.autonomy.level).toBe('review-before-commit');
     expect(effective.git.branchPrefix).toBe('apex/');
     expect(effective.limits.maxTokensPerTask).toBe(500000);
     expect(effective.api.port).toBe(3000);
@@ -90,7 +90,7 @@ describe('getEffectiveConfig', () => {
         buildCommand: 'npm run build',
       },
       autonomy: {
-        default: 'full',
+        level: 'full-auto',
       },
       limits: {
         maxCostPerTask: 5.0,
@@ -98,7 +98,7 @@ describe('getEffectiveConfig', () => {
     };
 
     const effective = getEffectiveConfig(config);
-    expect(effective.autonomy.default).toBe('full');
+    expect(effective.autonomy.level).toBe('full-auto');
     expect(effective.limits.maxCostPerTask).toBe(5.0);
   });
 
@@ -142,6 +142,85 @@ describe('getEffectiveConfig', () => {
     expect(effective.ui.previewConfidence).toBe(0.9);
     expect(effective.ui.autoExecuteHighConfidence).toBe(true);
     expect(effective.ui.previewTimeout).toBe(7500);
+  });
+
+  it('should apply policy defaults when policy section is missing', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy).toBeDefined();
+    expect(effective.policy.enforcement).toBe('warn');
+    expect(effective.policy.enabled).toBe(true);
+    expect(effective.policy.allowedPaths).toBeDefined();
+    expect(effective.policy.allowedPaths.mode).toBe('allowlist');
+    expect(effective.policy.allowedPaths.allow).toContain('src/**');
+    expect(effective.policy.allowedPaths.block).toContain('node_modules/**');
+    expect(effective.policy.allowedPaths.sensitivePatterns).toContain('.env*');
+  });
+
+  it('should preserve explicit policy values', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        name: 'Custom Policy',
+        description: 'Custom policy description',
+        enforcement: 'strict',
+        allowedPaths: {
+          mode: 'blocklist',
+          allow: ['custom/**'],
+          block: ['private/**'],
+          sensitivePatterns: ['*.secret'],
+        },
+        enabled: false,
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy.name).toBe('Custom Policy');
+    expect(effective.policy.description).toBe('Custom policy description');
+    expect(effective.policy.enforcement).toBe('strict');
+    expect(effective.policy.enabled).toBe(false);
+    expect(effective.policy.allowedPaths.mode).toBe('blocklist');
+    expect(effective.policy.allowedPaths.allow).toEqual(['custom/**']);
+    expect(effective.policy.allowedPaths.block).toEqual(['private/**']);
+    expect(effective.policy.allowedPaths.sensitivePatterns).toEqual(['*.secret']);
+  });
+
+  it('should handle partial policy configuration with defaults', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        enforcement: 'audit',
+        // Only set enforcement, other fields should get defaults
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy.enforcement).toBe('audit');
+    expect(effective.policy.enabled).toBe(true);
+    expect(effective.policy.allowedPaths.mode).toBe('allowlist');
+    expect(effective.policy.requiredTests).toBeDefined();
+    expect(effective.policy.approvalRules).toBeDefined();
   });
 });
 
@@ -210,6 +289,51 @@ describe('loadConfig and saveConfig', () => {
     await expect(loadConfig(emptyDir)).rejects.toThrow();
 
     await fs.rm(emptyDir, { recursive: true, force: true });
+  });
+
+  it('should save and load config with policy section', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'policy-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        name: 'Test Policy',
+        description: 'Policy for testing',
+        enforcement: 'warn',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**', 'tests/**'],
+          block: ['node_modules/**'],
+          sensitivePatterns: ['.env*', '*.secret'],
+        },
+        requiredTests: {
+          enforcement: 'warn',
+          rules: [{
+            name: 'Test rule',
+            description: 'Require tests for all source files',
+            sourcePatterns: ['src/**/*.ts'],
+            testPatterns: ['tests/**/*.test.ts'],
+          }],
+        },
+        enabled: true,
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.policy).toBeDefined();
+    expect(loaded.policy?.name).toBe('Test Policy');
+    expect(loaded.policy?.enforcement).toBe('warn');
+    expect(loaded.policy?.allowedPaths?.mode).toBe('allowlist');
+    expect(loaded.policy?.allowedPaths?.allow).toEqual(['src/**', 'tests/**']);
+    expect(loaded.policy?.requiredTests?.rules).toHaveLength(1);
+    expect(loaded.policy?.requiredTests?.rules?.[0]?.name).toBe('Test rule');
   });
 });
 
@@ -414,6 +538,19 @@ describe('initializeApex', () => {
     const config = await loadConfig(testDir);
     expect(config.project.language).toBe('typescript');
     expect(config.project.framework).toBe('nextjs');
+  });
+
+  it('should create config with policy section', async () => {
+    await initializeApex(testDir, { projectName: 'policy-project' });
+
+    const config = await loadConfig(testDir);
+    expect(config.policy).toBeDefined();
+    expect(config.policy?.enforcement).toBe('warn');
+    expect(config.policy?.enabled).toBe(true);
+    expect(config.policy?.allowedPaths?.mode).toBe('allowlist');
+    expect(config.policy?.allowedPaths?.allow).toContain('src/**');
+    expect(config.policy?.allowedPaths?.block).toContain('node_modules/**');
+    expect(config.policy?.allowedPaths?.sensitivePatterns).toContain('.env*');
   });
 });
 

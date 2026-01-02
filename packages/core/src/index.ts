@@ -40,6 +40,9 @@ export * from './dangerous-operation-detector';
 // Shell Utilities
 export * from './shell-utils';
 
+// Syntax Highlighting
+export * from './syntax-highlighter';
+
 // Tool Abstractions
 export * from './tools';
 

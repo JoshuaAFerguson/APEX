@@ -431,7 +431,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     const taskId = generateTaskId();
     const workflow = options.workflow || 'feature';
-    const autonomy = options.autonomy || this.effectiveConfig.autonomy.default;
+    const autonomy = options.autonomy || this.effectiveConfig.autonomy.level;
     const priority = options.priority || 'normal';
     const effort = options.effort || 'medium';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;

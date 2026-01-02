@@ -4,11 +4,13 @@ import * as yaml from 'yaml';
 import {
   ApexConfig,
   ApexConfigSchema,
+  AutonomyConfig,
   AgentDefinition,
   AgentDefinitionSchema,
   WorkflowDefinition,
   WorkflowDefinitionSchema,
   PermissionsConfig,
+  PolicyConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -409,6 +411,36 @@ export async function initializeApex(
     permissions: {
       preset: 'review-all',
     },
+    policy: {
+      enforcement: 'warn',
+      allowedPaths: {
+        mode: 'allowlist',
+        allow: [
+          'src/**',
+          'lib/**',
+          'tests/**',
+          '*.md',
+          '*.json',
+          '*.js',
+          '*.ts',
+          '*.jsx',
+          '*.tsx',
+          'package.json',
+          'tsconfig.json'
+        ],
+        block: [
+          'node_modules/**',
+          '.git/**',
+          '**/*.log'
+        ],
+        sensitivePatterns: [
+          '.env*',
+          '**/*.key',
+          '**/*.secret'
+        ]
+      },
+      enabled: true
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);
@@ -416,6 +448,10 @@ export async function initializeApex(
 
 /**
  * Get effective configuration by merging defaults with project config
+ *
+ * This function ensures all optional fields have default values, including:
+ * - Policy configuration with sensible defaults for file access, test requirements, and approval rules
+ * - Workspace, permissions, limits, and other configuration sections
  */
 export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
   return {
@@ -513,6 +549,85 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     permissions: {
       preset: config.permissions?.preset || 'review-all',
       customRules: config.permissions?.customRules || [],
+    },
+    policy: {
+      version: config.policy?.version || '1.0',
+      name: config.policy?.name,
+      description: config.policy?.description,
+      enforcement: config.policy?.enforcement || 'warn',
+      allowedPaths: {
+        mode: config.policy?.allowedPaths?.mode || 'allowlist',
+        allow: config.policy?.allowedPaths?.allow || [
+          'src/**',
+          'lib/**',
+          'tests/**',
+          '*.md',
+          '*.json',
+          '*.js',
+          '*.ts',
+          '*.jsx',
+          '*.tsx',
+          'package.json',
+          'tsconfig.json',
+          'jest.config.*',
+          'webpack.config.*',
+          'vite.config.*',
+          'rollup.config.*'
+        ],
+        block: config.policy?.allowedPaths?.block || [
+          'node_modules/**',
+          '.git/**',
+          '**/*.log',
+          '**/*.tmp',
+          'coverage/**',
+          'dist/**',
+          'build/**'
+        ],
+        sensitivePatterns: config.policy?.allowedPaths?.sensitivePatterns || [
+          '.env*',
+          '**/*.key',
+          '**/*.pem',
+          '**/*.p12',
+          '**/*.secret',
+          '**/secrets/**',
+          '**/.aws/**',
+          '**/.ssh/**'
+        ],
+        followSymlinks: config.policy?.allowedPaths?.followSymlinks ?? false,
+        maxDepth: config.policy?.allowedPaths?.maxDepth ?? 10,
+      },
+      requiredTests: {
+        enforcement: config.policy?.requiredTests?.enforcement || 'warn',
+        rules: config.policy?.requiredTests?.rules || [],
+        testCommand: config.policy?.requiredTests?.testCommand,
+        coverageCommand: config.policy?.requiredTests?.coverageCommand,
+        coverageReportPath: config.policy?.requiredTests?.coverageReportPath,
+        excludePatterns: config.policy?.requiredTests?.excludePatterns || [
+          '**/*.d.ts',
+          '**/*.config.*',
+          '**/index.ts',
+          '**/index.js'
+        ],
+        blockOnFailure: config.policy?.requiredTests?.blockOnFailure ?? true,
+      },
+      approvalRules: {
+        enabled: config.policy?.approvalRules?.enabled ?? true,
+        rules: config.policy?.approvalRules?.rules || [],
+        defaultTimeoutMinutes: config.policy?.approvalRules?.defaultTimeoutMinutes ?? 60,
+        defaultTimeoutAction: config.policy?.approvalRules?.defaultTimeoutAction || 'reject',
+        globalApprovers: config.policy?.approvalRules?.globalApprovers || [],
+        notificationsEnabled: config.policy?.approvalRules?.notificationsEnabled ?? true,
+        notificationChannels: {
+          slack: config.policy?.approvalRules?.notificationChannels?.slack,
+          email: config.policy?.approvalRules?.notificationChannels?.email,
+          webhook: config.policy?.approvalRules?.notificationChannels?.webhook,
+        },
+        auditLog: config.policy?.approvalRules?.auditLog ?? true,
+        auditLogPath: config.policy?.approvalRules?.auditLogPath || 'approval-audit.log',
+      },
+      enabled: config.policy?.enabled ?? true,
+      tags: config.policy?.tags || [],
+      metadata: config.policy?.metadata || {},
     },
   };
 }
