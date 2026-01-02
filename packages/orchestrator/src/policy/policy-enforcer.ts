@@ -16,6 +16,8 @@ import type {
   PolicyConfig,
   PolicyViolation,
   PolicyViolationEvent,
+  PolicyValidationResult,
+  PolicyEvaluationResult,
   AllowedPathsConfig,
   PolicyEnforcementMode,
   Task,
@@ -1003,6 +1005,293 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
 
     // For now, if we can't parse it, return false for safety
     return false;
+  }
+
+  // ============================================================================
+  // Task Start Policy Checking
+  // ============================================================================
+
+  /**
+   * Checks if a task can start based on policy evaluation.
+   *
+   * Evaluates all policy rules (path validation, approval requirements, etc.)
+   * against the task to determine if it should be allowed to start or if
+   * violations should block/warn about the task execution.
+   *
+   * @param task - The task to evaluate
+   * @param context - Optional context for evaluation
+   * @returns Policy evaluation result with violations and approval requirements
+   */
+  checkTaskStart(
+    task: Task,
+    context: {
+      /** File paths that the task will access */
+      projectPaths?: string[];
+      /** Estimated task operation type */
+      operationType?: string;
+      /** Additional context for rule evaluation */
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): PolicyEvaluationResult {
+    // If policy is disabled, allow task to start
+    if (!this.isEnabled) {
+      return {
+        passed: true,
+        passedCount: 0,
+        failedCount: 0,
+        warningCount: 0,
+        results: [],
+        requiresApproval: false,
+        triggeredApprovalRules: [],
+        evaluatedAt: new Date(),
+        policyName: this.config.name,
+      };
+    }
+
+    const results: PolicyValidationResult[] = [];
+    let passedCount = 0;
+    let failedCount = 0;
+    let warningCount = 0;
+    let requiresApproval = false;
+    const triggeredApprovalRules: string[] = [];
+
+    // 1. Evaluate path validation rules
+    if (context.projectPaths) {
+      for (const filePath of context.projectPaths) {
+        const pathViolations = this.validateFilePath(filePath, {
+          taskId: task.id,
+          workflowId: task.workflow,
+          metadata: context.metadata,
+        });
+
+        for (const violation of pathViolations) {
+          const result: PolicyValidationResult = {
+            passed: false,
+            ruleId: violation.ruleId,
+            ruleName: 'File Path Access',
+            ruleType: 'path',
+            message: violation.message,
+            severity: violation.severity,
+            details: {
+              filePath,
+              violationType: violation.policyType,
+              context: violation.context,
+            },
+          };
+
+          results.push(result);
+
+          if (result.severity === 'error') {
+            failedCount++;
+          } else if (result.severity === 'warning') {
+            warningCount++;
+          }
+
+          // Check if this is a sensitive path requiring approval
+          if (violation.context?.requiresApproval) {
+            requiresApproval = true;
+            triggeredApprovalRules.push(`sensitive-path-${violation.ruleId}`);
+          }
+        }
+      }
+    }
+
+    // 2. Evaluate approval requirements
+    const approvalReq = this.checkApprovalRequired(
+      task,
+      context.operationType || 'task-start',
+      {
+        filePaths: context.projectPaths,
+        operation: context.operationType as any,
+        estimatedCost: task.usage.estimatedCost,
+        tokenUsage: task.usage.totalTokens,
+        customContext: context.metadata,
+      }
+    );
+
+    if (approvalReq.required) {
+      requiresApproval = true;
+      triggeredApprovalRules.push(...approvalReq.triggeredRules.map(rule => rule.id));
+
+      const approvalResult: PolicyValidationResult = {
+        passed: false,
+        ruleId: 'approval-required',
+        ruleName: 'Human Approval Required',
+        ruleType: 'approval',
+        message: approvalReq.reason,
+        severity: this.getApprovalSeverity(approvalReq.urgency),
+        details: {
+          urgency: approvalReq.urgency,
+          timeoutMinutes: approvalReq.timeoutMinutes,
+          requiredApprovers: approvalReq.requiredApprovers,
+          minApprovals: approvalReq.minApprovals,
+          triggeredRules: approvalReq.triggeredRules.map(rule => ({
+            id: rule.id,
+            name: rule.name,
+            description: rule.description,
+          })),
+        },
+      };
+
+      results.push(approvalResult);
+
+      if (approvalResult.severity === 'error') {
+        failedCount++;
+      } else if (approvalResult.severity === 'warning') {
+        warningCount++;
+      }
+    }
+
+    // 3. Evaluate task-specific policy rules based on task properties
+    const taskPolicyResults = this.evaluateTaskPolicies(task, context);
+    results.push(...taskPolicyResults);
+
+    // Update counts for task policy results
+    for (const result of taskPolicyResults) {
+      if (result.passed) {
+        passedCount++;
+      } else if (result.severity === 'error') {
+        failedCount++;
+      } else if (result.severity === 'warning') {
+        warningCount++;
+      }
+    }
+
+    // Determine overall pass/fail based on enforcement mode
+    const hasErrors = failedCount > 0;
+    const hasWarnings = warningCount > 0;
+
+    let passed: boolean;
+    switch (this.enforcementMode) {
+      case 'strict':
+        passed = !hasErrors && !hasWarnings;
+        break;
+      case 'warn':
+        passed = !hasErrors;
+        break;
+      case 'audit':
+      case 'disabled':
+        passed = true;
+        break;
+      default:
+        passed = !hasErrors;
+    }
+
+    return {
+      passed,
+      passedCount,
+      failedCount,
+      warningCount,
+      results,
+      requiresApproval,
+      triggeredApprovalRules,
+      evaluatedAt: new Date(),
+      policyName: this.config.name,
+    };
+  }
+
+  /**
+   * Evaluates task-specific policies based on task properties.
+   *
+   * @param task - The task to evaluate
+   * @param context - Additional context for evaluation
+   * @returns Array of policy validation results
+   */
+  private evaluateTaskPolicies(
+    task: Task,
+    context: { metadata?: Record<string, unknown> } = {}
+  ): PolicyValidationResult[] {
+    const results: PolicyValidationResult[] = [];
+
+    // Check for high-risk task characteristics
+    if (task.priority === 'critical') {
+      results.push({
+        passed: false,
+        ruleId: 'critical-task-review',
+        ruleName: 'Critical Task Review',
+        ruleType: 'approval',
+        message: 'Critical priority tasks require additional oversight',
+        severity: 'warning',
+        details: {
+          taskPriority: task.priority,
+          taskWorkflow: task.workflow,
+          taskEffort: task.effort,
+        },
+      });
+    }
+
+    // Check for large effort tasks
+    if (task.effort === 'large' || task.effort === 'xlarge') {
+      results.push({
+        passed: false,
+        ruleId: 'large-effort-review',
+        ruleName: 'Large Effort Task Review',
+        ruleType: 'approval',
+        message: `Tasks with ${task.effort} effort require review due to potential impact`,
+        severity: 'info',
+        details: {
+          taskEffort: task.effort,
+          taskWorkflow: task.workflow,
+          estimatedCost: task.usage.estimatedCost,
+        },
+      });
+    }
+
+    // Check for high-cost tasks
+    if (task.usage.estimatedCost > 10.0) {
+      results.push({
+        passed: false,
+        ruleId: 'high-cost-review',
+        ruleName: 'High Cost Task Review',
+        ruleType: 'approval',
+        message: `Tasks with estimated cost over $10 require approval (current: $${task.usage.estimatedCost.toFixed(2)})`,
+        severity: 'warning',
+        details: {
+          estimatedCost: task.usage.estimatedCost,
+          costThreshold: 10.0,
+          taskId: task.id,
+        },
+      });
+    }
+
+    // Check for production-related workflows
+    const productionWorkflows = ['deploy', 'release', 'production'];
+    if (productionWorkflows.some(wf => task.workflow.toLowerCase().includes(wf))) {
+      results.push({
+        passed: false,
+        ruleId: 'production-deployment',
+        ruleName: 'Production Deployment Review',
+        ruleType: 'approval',
+        message: 'Production-related workflows require mandatory approval',
+        severity: 'error',
+        details: {
+          workflow: task.workflow,
+          detectedKeywords: productionWorkflows.filter(wf =>
+            task.workflow.toLowerCase().includes(wf)
+          ),
+        },
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Maps approval urgency to severity level.
+   */
+  private getApprovalSeverity(urgency: ApprovalUrgency): 'info' | 'warning' | 'error' {
+    switch (urgency) {
+      case 'critical':
+        return 'error';
+      case 'high':
+        return 'error';
+      case 'normal':
+        return 'warning';
+      case 'low':
+        return 'info';
+      default:
+        return 'warning';
+    }
   }
 }
 

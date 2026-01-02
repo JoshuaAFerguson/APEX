@@ -580,6 +580,79 @@ export const ToolRegistryEntrySchema = z.object({
 export type ToolRegistryEntry = z.infer<typeof ToolRegistryEntrySchema>;
 
 // ============================================================================
+// Tool Action Tracking Types (v0.5.0)
+// ============================================================================
+
+/**
+ * File snapshot captured before tool modification
+ * Stores the state of a file at a specific point in time for undo functionality
+ */
+export const FileSnapshotSchema = z.object({
+  /** Unique identifier for this snapshot */
+  id: z.string().min(1),
+  /** Absolute path to the file */
+  filePath: z.string().min(1),
+  /** Content of the file at the time of snapshot */
+  content: z.string(),
+  /** Checksum (hash) of the content for integrity verification */
+  checksum: z.string().min(1),
+  /** File size in bytes */
+  fileSize: z.number().min(0),
+  /** Last modified timestamp of the original file */
+  lastModified: z.date(),
+  /** Timestamp when this snapshot was created */
+  snapshotTime: z.date(),
+  /** Optional metadata about the snapshot */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type FileSnapshot = z.infer<typeof FileSnapshotSchema>;
+
+/**
+ * Tool action record for tracking tool executions with file changes
+ * Extends ToolExecution with file modification tracking and undo capability
+ */
+export const ToolActionSchema = z.object({
+  /** Unique identifier for this tool action */
+  id: z.string().min(1),
+  /** The underlying tool execution record */
+  execution: ToolExecutionSchema,
+  /** Files that were modified by this tool action */
+  modifiedFiles: z.array(z.string()).default([]),
+  /** File snapshots taken before modifications */
+  beforeSnapshots: z.array(FileSnapshotSchema).default([]),
+  /** File snapshots taken after modifications (for verification) */
+  afterSnapshots: z.array(FileSnapshotSchema).default([]),
+  /** Whether this action can be undone */
+  canUndo: z.boolean().default(true),
+  /** Whether this action has been undone */
+  wasUndone: z.boolean().default(false),
+  /** Timestamp when undo was performed (if applicable) */
+  undoneAt: z.date().optional(),
+  /** Error message if undo failed */
+  undoError: z.string().optional(),
+  /** Sequence number within the task for ordering */
+  sequenceNumber: z.number().min(0),
+  /** Optional grouping identifier for related actions */
+  actionGroup: z.string().optional(),
+});
+export type ToolAction = z.infer<typeof ToolActionSchema>;
+
+/**
+ * Configuration for tool action store retention policies
+ */
+export const ToolActionRetentionConfigSchema = z.object({
+  /** Maximum number of tool actions to keep per task */
+  maxActionsPerTask: z.number().min(1).default(1000),
+  /** Maximum age of tool actions in days before cleanup */
+  maxAgeDays: z.number().min(1).default(30),
+  /** Whether to keep snapshots for undone actions */
+  keepUndoneSnapshots: z.boolean().default(false),
+  /** Maximum total storage size for snapshots in MB */
+  maxSnapshotStorageMB: z.number().min(1).default(100),
+});
+export type ToolActionRetentionConfig = z.infer<typeof ToolActionRetentionConfigSchema>;
+
+// ============================================================================
 // Autonomy Control Types
 // ============================================================================
 

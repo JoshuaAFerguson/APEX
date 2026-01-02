@@ -410,6 +410,44 @@ export class TaskStore {
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
+      -- v0.5.0 Tool Action Tracking
+      CREATE TABLE IF NOT EXISTS file_snapshots (
+        id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        last_modified TEXT NOT NULL,
+        snapshot_time TEXT NOT NULL,
+        metadata TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS tool_actions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        execution_call_id TEXT NOT NULL,
+        execution_tool_name TEXT NOT NULL,
+        execution_input TEXT NOT NULL,
+        execution_agent_name TEXT,
+        execution_stage_name TEXT,
+        execution_start_time TEXT NOT NULL,
+        execution_end_time TEXT,
+        execution_duration INTEGER,
+        execution_result TEXT,
+        execution_error TEXT,
+        modified_files TEXT NOT NULL DEFAULT '[]',
+        before_snapshots TEXT NOT NULL DEFAULT '[]',
+        after_snapshots TEXT NOT NULL DEFAULT '[]',
+        can_undo INTEGER NOT NULL DEFAULT 1,
+        was_undone INTEGER NOT NULL DEFAULT 0,
+        undone_at TEXT,
+        undo_error TEXT,
+        sequence_number INTEGER NOT NULL,
+        action_group TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -435,6 +473,17 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_approval_states_status ON approval_states(status);
       CREATE INDEX IF NOT EXISTS idx_approval_states_gate_name ON approval_states(gate_name);
       CREATE INDEX IF NOT EXISTS idx_approval_states_requested_at ON approval_states(requested_at);
+
+      -- v0.5.0 Tool Action Tracking Indexes
+      CREATE INDEX IF NOT EXISTS idx_file_snapshots_path ON file_snapshots(file_path);
+      CREATE INDEX IF NOT EXISTS idx_file_snapshots_checksum ON file_snapshots(checksum);
+      CREATE INDEX IF NOT EXISTS idx_file_snapshots_time ON file_snapshots(snapshot_time);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_task_id ON tool_actions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_sequence ON tool_actions(task_id, sequence_number);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_tool_name ON tool_actions(execution_tool_name);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_can_undo ON tool_actions(can_undo);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_was_undone ON tool_actions(was_undone);
+      CREATE INDEX IF NOT EXISTS idx_tool_actions_created ON tool_actions(created_at);
     `);
   }
 

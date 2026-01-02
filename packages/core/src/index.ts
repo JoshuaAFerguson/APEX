@@ -43,6 +43,9 @@ export * from './shell-utils';
 // Syntax Highlighting
 export * from './syntax-highlighter';
 
+// Validation Infrastructure
+export * from './validation';
+
 // Tool Abstractions
 export * from './tools';
 

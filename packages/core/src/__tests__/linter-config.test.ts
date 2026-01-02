@@ -7,14 +7,14 @@ import {
   saveConfig,
   getEffectiveConfig,
   initializeApex,
-} from '../config';
+} from '../config.js';
 import {
   LinterConfigSchema,
   LinterGlobalConfigSchema,
   CustomLinterConfigSchema,
   ApexConfig,
   ApexConfigSchema,
-} from '../types';
+} from '../types.js';
 
 describe('Linter Configuration Schema Validation', () => {
   describe('CustomLinterConfigSchema', () => {

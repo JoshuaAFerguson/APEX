@@ -13,7 +13,42 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PolicyEnforcer, createPolicyEnforcer } from './policy-enforcer.js';
-import type { PolicyConfig, PolicyViolation, PolicyViolationEvent } from '@apexcli/core';
+import type { PolicyConfig, PolicyViolation, PolicyViolationEvent, Task } from '@apexcli/core';
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+/**
+ * Creates a mock Task object with default values and any overrides
+ */
+function createMockTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: 'test-task',
+    description: 'Test task description',
+    workflow: 'feature-development',
+    autonomy: 'autonomous',
+    status: 'pending',
+    priority: 'medium',
+    effort: 'medium',
+    projectPath: '/project',
+    branchName: 'feature/test',
+    retryCount: 0,
+    maxRetries: 3,
+    resumeAttempts: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    usage: {
+      inputTokens: 1000,
+      outputTokens: 500,
+      totalTokens: 1500,
+      estimatedCost: 0.05,
+    },
+    logs: [],
+    artifacts: [],
+    ...overrides,
+  } as Task;
+}
 
 describe('PolicyEnforcer', () => {
   // ============================================================================
@@ -1744,6 +1779,351 @@ describe('PolicyEnforcer', () => {
       expect(events1).toHaveLength(1);
       expect(events2).toHaveLength(1);
       expect(events1[0].id).toBe(events2[0].id); // Same event object
+    });
+  });
+
+  // ============================================================================
+  // checkTaskStart Tests
+  // ============================================================================
+
+  describe('checkTaskStart', () => {
+    describe('when policy is disabled', () => {
+      it('should allow task to start without evaluation', () => {
+        const config: PolicyConfig = {
+          enabled: false,
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+            block: ['**/*'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task-1',
+          workflow: 'production-deploy',
+          priority: 'critical',
+          effort: 'xlarge',
+          usage: { estimatedCost: 50.0, totalTokens: 10000 },
+        });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: ['/blocked/path.ts'],
+          operationType: 'deploy',
+        });
+
+        expect(result.passed).toBe(true);
+        expect(result.results).toHaveLength(0);
+        expect(result.requiresApproval).toBe(false);
+        expect(result.triggeredApprovalRules).toHaveLength(0);
+      });
+    });
+
+    describe('with no policy violations', () => {
+      it('should allow task to start', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task-1',
+          workflow: 'feature-development',
+          priority: 'medium',
+          effort: 'small',
+          usage: { estimatedCost: 2.0, totalTokens: 1000 },
+        });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: ['src/components/Button.tsx'],
+          operationType: 'code-review',
+        });
+
+        expect(result.passed).toBe(true);
+        expect(result.passedCount).toBe(0);
+        expect(result.failedCount).toBe(0);
+        expect(result.warningCount).toBe(0);
+        expect(result.results).toHaveLength(0);
+        expect(result.requiresApproval).toBe(false);
+      });
+    });
+
+    describe('with path violations', () => {
+      it('should detect blocked path violations', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+            block: ['src/secrets/**'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task-1',
+          workflow: 'feature-development',
+        });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: ['src/secrets/api-keys.ts'],
+        });
+
+        expect(result.passed).toBe(false);
+        expect(result.failedCount).toBe(0);
+        expect(result.warningCount).toBe(1);
+        expect(result.results).toHaveLength(1);
+
+        const violation = result.results[0];
+        expect(violation.ruleType).toBe('path');
+        expect(violation.severity).toBe('warning');
+        expect(violation.message).toContain('blocked by pattern');
+        expect(violation.details?.filePath).toBe('src/secrets/api-keys.ts');
+      });
+
+      it('should handle multiple path violations', () => {
+        const config: PolicyConfig = {
+          enforcement: 'strict',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+            block: ['node_modules/**'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({ id: 'test-task-1' });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: [
+            'node_modules/some-package/index.js',
+            'package-lock.json',
+          ],
+        });
+
+        expect(result.passed).toBe(false);
+        expect(result.results.length).toBeGreaterThanOrEqual(1);
+        expect(result.results.some(r => r.ruleType === 'path')).toBe(true);
+      });
+    });
+
+    describe('with task-specific policy rules', () => {
+      it('should flag critical priority tasks', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'critical-task',
+          priority: 'critical',
+          workflow: 'urgent-fix',
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].ruleId).toBe('critical-task-review');
+        expect(result.results[0].ruleName).toBe('Critical Task Review');
+        expect(result.results[0].severity).toBe('warning');
+        expect(result.results[0].details?.taskPriority).toBe('critical');
+      });
+
+      it('should flag large effort tasks', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'large-task',
+          effort: 'large',
+          workflow: 'refactoring',
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].ruleId).toBe('large-effort-review');
+        expect(result.results[0].severity).toBe('info');
+        expect(result.results[0].details?.taskEffort).toBe('large');
+      });
+
+      it('should flag high-cost tasks', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'expensive-task',
+          usage: { estimatedCost: 15.50, totalTokens: 50000 },
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].ruleId).toBe('high-cost-review');
+        expect(result.results[0].severity).toBe('warning');
+        expect(result.results[0].details?.estimatedCost).toBe(15.50);
+      });
+
+      it('should flag production-related workflows', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'prod-deploy',
+          workflow: 'production-deployment',
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].ruleId).toBe('production-deployment');
+        expect(result.results[0].severity).toBe('error');
+        expect(result.results[0].details?.workflow).toBe('production-deployment');
+      });
+    });
+
+    describe('enforcement mode behavior', () => {
+      it('should pass in audit mode even with violations', () => {
+        const config: PolicyConfig = {
+          enforcement: 'audit',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task',
+          priority: 'critical',
+          usage: { estimatedCost: 20.0, totalTokens: 10000 },
+        });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: ['blocked/path.ts'],
+        });
+
+        expect(result.passed).toBe(true); // Audit mode always passes
+        expect(result.results.length).toBeGreaterThan(0); // But violations are recorded
+      });
+
+      it('should fail in strict mode with warnings', () => {
+        const config: PolicyConfig = {
+          enforcement: 'strict',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task',
+          priority: 'critical', // This will generate a warning
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.passed).toBe(false); // Strict mode fails on warnings
+        expect(result.warningCount).toBeGreaterThan(0);
+      });
+
+      it('should fail in warn mode only with errors', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task',
+          priority: 'critical', // This generates a warning, not error
+        });
+
+        const result = enforcer.checkTaskStart(task);
+
+        expect(result.passed).toBe(true); // Warn mode passes with warnings
+        expect(result.warningCount).toBeGreaterThan(0);
+        expect(result.failedCount).toBe(0);
+      });
+    });
+
+    describe('approval requirements', () => {
+      it('should detect when approval is required', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+          approvalRules: {
+            enabled: true,
+            rules: [
+              {
+                id: 'production-approval',
+                name: 'Production Deployment',
+                description: 'Require approval for production deployments',
+                enabled: true,
+                conditions: [
+                  {
+                    type: 'operation',
+                    operations: ['deploy'],
+                  },
+                ],
+                approvers: ['ops-team'],
+                urgency: 'high',
+                timeoutMinutes: 30,
+                timeoutAction: 'reject',
+              },
+            ],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({ id: 'deploy-task' });
+
+        const result = enforcer.checkTaskStart(task, {
+          operationType: 'deploy',
+        });
+
+        expect(result.requiresApproval).toBe(true);
+        expect(result.triggeredApprovalRules).toContain('production-approval');
+
+        const approvalResult = result.results.find(r => r.ruleType === 'approval');
+        expect(approvalResult).toBeDefined();
+        expect(approvalResult?.severity).toBe('error'); // High urgency maps to error
+      });
+    });
+
+    describe('result aggregation', () => {
+      it('should correctly aggregate counts and results', () => {
+        const config: PolicyConfig = {
+          enforcement: 'warn',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const task = createMockTask({
+          id: 'test-task',
+          priority: 'critical', // warning
+          effort: 'large', // info
+          workflow: 'production-deploy', // error
+          usage: { estimatedCost: 15.0, totalTokens: 5000 }, // warning
+        });
+
+        const result = enforcer.checkTaskStart(task, {
+          projectPaths: ['blocked/path.ts'], // warning
+        });
+
+        expect(result.results.length).toBeGreaterThan(0);
+        expect(result.passedCount + result.failedCount + result.warningCount).toBeGreaterThan(0);
+        expect(result.evaluatedAt).toBeInstanceOf(Date);
+        expect(result.policyName).toBe(config.name);
+      });
     });
   });
 });

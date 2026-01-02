@@ -7,6 +7,7 @@ import {
   AgentDefinition,
   WorkflowDefinition,
   WorkflowStage,
+  ApprovalGate,
   Task,
   TaskStatus,
   TaskUsage,
@@ -25,6 +26,7 @@ import {
   ToolExecution,
   loadConfig,
   loadAgents,
+  loadWorkflows,
   loadWorkflow,
   getEffectiveConfig,
   generateTaskId,
@@ -404,6 +406,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private config!: ApexConfig;
   private effectiveConfig!: ReturnType<typeof getEffectiveConfig>;
   private agents: Record<string, AgentDefinition> = {};
+  private workflows: Record<string, WorkflowDefinition> = {};
+  private gates: Map<string, ApprovalGate> = new Map();
   private store!: TaskStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
   private interactionManager!: InteractionManager;
@@ -450,6 +454,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
+
+    // Load workflow definitions and gates
+    await this.loadGates();
 
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
@@ -502,6 +509,61 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.setupAutomaticWorkspaceCleanup();
 
     this.initialized = true;
+  }
+
+  /**
+   * Load workflow definitions and parse gates configuration
+   */
+  private async loadGates(): Promise<void> {
+    // Load all workflows
+    this.workflows = await loadWorkflows(this.projectPath);
+
+    // Clear existing gates
+    this.gates.clear();
+
+    // Extract gates from config
+    if (this.config.autonomy?.gates) {
+      for (const gate of this.config.autonomy.gates) {
+        this.gates.set(gate.id, gate);
+      }
+    }
+
+    // Extract gates from workflows
+    for (const [workflowName, workflow] of Object.entries(this.workflows)) {
+      if (workflow.gates) {
+        for (const workflowGate of workflow.gates) {
+          // Create an ApprovalGate from the WorkflowGate
+          const approvalGate: ApprovalGate = {
+            id: workflowGate.id,
+            name: workflowGate.name || workflowGate.id,
+            description: workflowGate.description || `Gate ${workflowGate.id} for workflow ${workflowName}`,
+            required: workflowGate.required !== false, // default to true
+            autoApprove: workflowGate.autoApprove || false,
+            timeout: workflowGate.timeout,
+            tags: workflowGate.tags || [],
+          };
+          this.gates.set(workflowGate.id, approvalGate);
+        }
+      }
+
+      // Parse stage.gate references
+      if (workflow.stages) {
+        for (const stage of workflow.stages) {
+          if (stage.gate && !this.gates.has(stage.gate)) {
+            // Create a default gate for stage references that don't exist
+            const defaultGate: ApprovalGate = {
+              id: stage.gate,
+              name: stage.gate,
+              description: `Approval gate for stage ${stage.role} in workflow ${workflowName}`,
+              required: true,
+              autoApprove: false,
+              tags: [`workflow:${workflowName}`, `stage:${stage.role}`],
+            };
+            this.gates.set(stage.gate, defaultGate);
+          }
+        }
+      }
+    }
   }
 
   /**
