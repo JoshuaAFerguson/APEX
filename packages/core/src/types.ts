@@ -3982,9 +3982,9 @@ export const PolicyConfigSchema = z.object({
 export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
 
 /**
- * Validation result for a single policy rule
+ * Legacy validation result for a single policy rule (for backward compatibility)
  */
-export interface PolicyValidationResult {
+export interface LegacyPolicyValidationResult {
   /** Whether the validation passed */
   passed: boolean;
   /** Rule ID that was evaluated */
@@ -4002,6 +4002,10 @@ export interface PolicyValidationResult {
 }
 
 /**
+ * Policy validation result with passed status and violations array (defined after PolicyViolationSchema)
+ */
+
+/**
  * Complete policy evaluation result
  */
 export interface PolicyEvaluationResult {
@@ -4014,7 +4018,7 @@ export interface PolicyEvaluationResult {
   /** Number of rules that generated warnings */
   warningCount: number;
   /** Individual rule results */
-  results: PolicyValidationResult[];
+  results: LegacyPolicyValidationResult[];
   /** Whether human approval is required */
   requiresApproval: boolean;
   /** IDs of approval rules that were triggered */
@@ -4096,14 +4100,51 @@ export const ApprovalPolicySchema = PolicyRuleSchema.extend({
 export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;
 
 /**
+ * Policy definition with id, name, rules, and severity levels
+ */
+export const PolicySchema = z.object({
+  /** Unique identifier for this policy */
+  id: z.string(),
+  /** Human-readable name for this policy */
+  name: z.string(),
+  /** Description of what this policy enforces */
+  description: z.string().optional(),
+  /** Array of policy rules that define the policy behavior */
+  rules: z.array(PolicyRuleSchema),
+  /** Severity levels configuration for this policy */
+  severityLevels: z.object({
+    /** Default severity for violations */
+    default: PolicySeveritySchema,
+    /** Override severity levels for specific rule types */
+    overrides: z.record(z.string(), PolicySeveritySchema).optional(),
+  }).optional(),
+  /** Whether this policy is enabled */
+  enabled: z.boolean().optional().default(true),
+  /** Global enforcement mode for this policy */
+  enforcement: PolicyEnforcementModeSchema.optional().default('warn'),
+  /** Version of this policy for change tracking */
+  version: z.string().optional(),
+  /** Tags for categorizing this policy */
+  tags: z.array(z.string()).optional().default([]),
+  /** Metadata for this policy */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Timestamp when policy was created */
+  createdAt: z.date().optional(),
+  /** Timestamp when policy was last updated */
+  updatedAt: z.date().optional(),
+});
+export type Policy = z.infer<typeof PolicySchema>;
+
+/**
+ * Legacy policy types for backward compatibility
  * Union type for all policy rule types
  */
-export const PolicySchema = z.discriminatedUnion('type', [
+export const LegacyPolicySchema = z.discriminatedUnion('type', [
   PathPolicySchema,
   TestPolicySchema,
   ApprovalPolicySchema,
 ]);
-export type Policy = z.infer<typeof PolicySchema>;
+export type LegacyPolicy = z.infer<typeof LegacyPolicySchema>;
 
 /**
  * Policy violation details
@@ -4137,6 +4178,21 @@ export const PolicyViolationSchema = z.object({
   resolution: z.string().optional(),
 });
 export type PolicyViolation = z.infer<typeof PolicyViolationSchema>;
+
+/**
+ * Policy validation result with passed status and violations array
+ */
+export const PolicyValidationResultSchema = z.object({
+  /** Whether the validation passed overall */
+  passed: z.boolean(),
+  /** Array of policy violations found during validation */
+  violations: z.array(PolicyViolationSchema),
+  /** Timestamp when validation was performed */
+  validatedAt: z.date().optional(),
+  /** Additional context about the validation */
+  context: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyValidationResult = z.infer<typeof PolicyValidationResultSchema>;
 
 /**
  * Policy violation event for real-time notifications
