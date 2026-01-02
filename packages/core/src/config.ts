@@ -11,6 +11,7 @@ import {
   WorkflowDefinitionSchema,
   PermissionsConfig,
   PolicyConfig,
+  LinterConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';

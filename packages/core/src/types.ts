@@ -523,6 +523,42 @@ export const ToolInvocationSchema = z.object({
 export type ToolInvocation = z.infer<typeof ToolInvocationSchema>;
 
 /**
+ * Complete tool execution record with timing information
+ * Tracks the full lifecycle of a tool execution from start to completion
+ */
+export const ToolExecutionSchema = z.object({
+  /** Unique identifier for this tool execution */
+  callId: z.string().min(1),
+  /** Name of the tool that was executed */
+  toolName: z.string().min(1),
+  /** Input parameters passed to the tool */
+  input: z.record(z.string(), z.unknown()),
+  /** The task ID that initiated this tool execution */
+  taskId: z.string().optional(),
+  /** Name of the agent that invoked the tool */
+  agentName: z.string().optional(),
+  /** Workflow stage name when tool was invoked */
+  stageName: z.string().optional(),
+  /** Timestamp when tool execution started */
+  startTime: z.date(),
+  /** Timestamp when tool execution completed (if finished) */
+  endTime: z.date().optional(),
+  /** Duration of execution in milliseconds (if completed) */
+  duration: z.number().min(0).optional(),
+  /** Result of the tool execution (if completed) */
+  result: z.object({
+    success: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }).optional(),
+  /** Current status of the tool execution */
+  status: z.enum(['running', 'completed', 'failed']),
+  /** Additional metadata about the execution */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type ToolExecution = z.infer<typeof ToolExecutionSchema>;
+
+/**
  * Tool registry entry combining definition with runtime state
  */
 export const ToolRegistryEntrySchema = z.object({
@@ -596,12 +632,14 @@ export function migrateLegacyAutonomyLevel(legacy: LegacyAutonomyLevel): Autonom
  * - before-commit: Requires approval before committing changes to version control
  * - before-deploy: Requires approval before deployment operations
  * - before-destructive: Requires approval before destructive operations (delete, overwrite)
+ * - deployment: Requires approval for deployment operations
  * - custom: User-defined checkpoint with custom trigger condition
  */
 export const ApprovalCheckpointTypeSchema = z.enum([
   'before-commit',
   'before-deploy',
   'before-destructive',
+  'deployment',
   'custom',
 ]);
 export type ApprovalCheckpointType = z.infer<typeof ApprovalCheckpointTypeSchema>;
@@ -853,6 +891,260 @@ export const UIConfigSchema = z.object({
 });
 export type UIConfig = z.infer<typeof UIConfigSchema>;
 
+// ============================================================================
+// Linter Configuration
+// ============================================================================
+
+/**
+ * ESLint-specific configuration options
+ */
+export const ESLintConfigSchema = z.object({
+  /** Enable ESLint linting */
+  enabled: z.boolean().optional().default(true),
+  /** Path to ESLint configuration file (relative to project root) */
+  configPath: z.string().optional(),
+  /** Array of file patterns to lint */
+  include: z.array(z.string()).optional().default([
+    'src/**/*.js',
+    'src/**/*.jsx',
+    'src/**/*.ts',
+    'src/**/*.tsx',
+    'lib/**/*.js',
+    'lib/**/*.jsx',
+    'lib/**/*.ts',
+    'lib/**/*.tsx',
+    '*.js',
+    '*.jsx',
+    '*.ts',
+    '*.tsx'
+  ]),
+  /** Array of file patterns to exclude from linting */
+  exclude: z.array(z.string()).optional().default([
+    'node_modules/**',
+    'dist/**',
+    'build/**',
+    'coverage/**',
+    '*.d.ts'
+  ]),
+  /** Enable auto-fix for fixable issues */
+  autoFix: z.boolean().optional().default(false),
+  /** Maximum number of warnings allowed before failing */
+  maxWarnings: z.number().optional().default(0),
+  /** Custom ESLint CLI options */
+  cliOptions: z.array(z.string()).optional().default([]),
+  /** Environment settings for ESLint */
+  environments: z.array(z.enum([
+    'browser',
+    'node',
+    'es6',
+    'es2017',
+    'es2018',
+    'es2020',
+    'es2021',
+    'es2022',
+    'worker',
+    'serviceworker'
+  ])).optional().default(['node', 'es2022']),
+  /** Parser options for ESLint */
+  parserOptions: z.object({
+    ecmaVersion: z.union([
+      z.number(),
+      z.enum(['latest'])
+    ]).optional().default('latest'),
+    sourceType: z.enum(['script', 'module']).optional().default('module'),
+    ecmaFeatures: z.object({
+      jsx: z.boolean().optional().default(false),
+      globalReturn: z.boolean().optional().default(false),
+      impliedStrict: z.boolean().optional().default(false)
+    }).optional()
+  }).optional(),
+  /** Severity level for linting violations */
+  severity: z.enum(['error', 'warn', 'off']).optional().default('warn'),
+});
+export type ESLintConfig = z.infer<typeof ESLintConfigSchema>;
+
+/**
+ * Prettier-specific configuration options
+ */
+export const PrettierConfigSchema = z.object({
+  /** Enable Prettier formatting */
+  enabled: z.boolean().optional().default(true),
+  /** Path to Prettier configuration file (relative to project root) */
+  configPath: z.string().optional(),
+  /** Array of file patterns to format */
+  include: z.array(z.string()).optional().default([
+    'src/**/*.js',
+    'src/**/*.jsx',
+    'src/**/*.ts',
+    'src/**/*.tsx',
+    'src/**/*.json',
+    'src/**/*.md',
+    'src/**/*.css',
+    'src/**/*.scss',
+    'src/**/*.less',
+    'src/**/*.html',
+    'lib/**/*.js',
+    'lib/**/*.jsx',
+    'lib/**/*.ts',
+    'lib/**/*.tsx',
+    '*.js',
+    '*.jsx',
+    '*.ts',
+    '*.tsx',
+    '*.json',
+    '*.md'
+  ]),
+  /** Array of file patterns to exclude from formatting */
+  exclude: z.array(z.string()).optional().default([
+    'node_modules/**',
+    'dist/**',
+    'build/**',
+    'coverage/**',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml'
+  ]),
+  /** Enable auto-fix for formatting issues */
+  autoFix: z.boolean().optional().default(false),
+  /** Prettier formatting options */
+  options: z.object({
+    /** Print width for line wrapping */
+    printWidth: z.number().optional().default(80),
+    /** Number of spaces per indentation level */
+    tabWidth: z.number().optional().default(2),
+    /** Use tabs instead of spaces */
+    useTabs: z.boolean().optional().default(false),
+    /** Add semicolons at the ends of statements */
+    semi: z.boolean().optional().default(true),
+    /** Use single quotes instead of double quotes */
+    singleQuote: z.boolean().optional().default(true),
+    /** Quote style for object properties */
+    quoteProps: z.enum(['as-needed', 'consistent', 'preserve']).optional().default('as-needed'),
+    /** Use single quotes in JSX */
+    jsxSingleQuote: z.boolean().optional().default(true),
+    /** Trailing commas */
+    trailingComma: z.enum(['all', 'es5', 'none']).optional().default('es5'),
+    /** Spaces between brackets in object literals */
+    bracketSpacing: z.boolean().optional().default(true),
+    /** Put > on the last line instead of at a new line */
+    bracketSameLine: z.boolean().optional().default(false),
+    /** Arrow function parentheses */
+    arrowParens: z.enum(['always', 'avoid']).optional().default('avoid'),
+    /** Line ending style */
+    endOfLine: z.enum(['lf', 'crlf', 'cr', 'auto']).optional().default('lf'),
+    /** Embedded language formatting */
+    embeddedLanguageFormatting: z.enum(['auto', 'off']).optional().default('auto')
+  }).optional(),
+  /** Severity level for formatting violations */
+  severity: z.enum(['error', 'warn', 'off']).optional().default('warn'),
+});
+export type PrettierConfig = z.infer<typeof PrettierConfigSchema>;
+
+/**
+ * Custom linter configuration for non-standard tools
+ */
+export const CustomLinterConfigSchema = z.object({
+  /** Unique name for the custom linter */
+  name: z.string(),
+  /** Enable this custom linter */
+  enabled: z.boolean().optional().default(true),
+  /** Command to run the linter */
+  command: z.string(),
+  /** Command-line arguments for the linter */
+  args: z.array(z.string()).optional().default([]),
+  /** Array of file patterns to lint */
+  include: z.array(z.string()).optional().default(['**/*']),
+  /** Array of file patterns to exclude from linting */
+  exclude: z.array(z.string()).optional().default(['node_modules/**']),
+  /** Enable auto-fix for this linter (if supported) */
+  autoFix: z.boolean().optional().default(false),
+  /** Working directory for the linter command */
+  workingDirectory: z.string().optional(),
+  /** Environment variables for the linter */
+  environment: z.record(z.string()).optional(),
+  /** Expected exit codes for success */
+  successExitCodes: z.array(z.number()).optional().default([0]),
+  /** Timeout for linter execution in milliseconds */
+  timeoutMs: z.number().optional().default(30000),
+  /** Severity level for linter violations */
+  severity: z.enum(['error', 'warn', 'off']).optional().default('warn'),
+  /** Description of what this linter does */
+  description: z.string().optional(),
+});
+export type CustomLinterConfig = z.infer<typeof CustomLinterConfigSchema>;
+
+/**
+ * Global linter configuration options
+ */
+export const LinterGlobalConfigSchema = z.object({
+  /** Enable linting globally */
+  enabled: z.boolean().optional().default(true),
+  /** Run linters before commits */
+  runOnCommit: z.boolean().optional().default(true),
+  /** Run linters before pushes */
+  runOnPush: z.boolean().optional().default(false),
+  /** Run linters on file save (if supported by IDE) */
+  runOnSave: z.boolean().optional().default(false),
+  /** Enable parallel execution of linters */
+  parallel: z.boolean().optional().default(true),
+  /** Maximum number of linters to run concurrently */
+  maxConcurrency: z.number().optional().default(4),
+  /** Fail fast on first linter error */
+  failFast: z.boolean().optional().default(false),
+  /** Cache linter results to improve performance */
+  cache: z.boolean().optional().default(true),
+  /** Cache directory (relative to project root) */
+  cacheDirectory: z.string().optional().default('.apex/cache/linters'),
+  /** Default working directory for all linters */
+  workingDirectory: z.string().optional(),
+  /** Global timeout for all linters in milliseconds */
+  timeoutMs: z.number().optional().default(60000),
+});
+export type LinterGlobalConfig = z.infer<typeof LinterGlobalConfigSchema>;
+
+/**
+ * Complete linter configuration schema supporting ESLint, Prettier, and custom linters
+ */
+export const LinterConfigSchema = z.object({
+  /** Global linter settings */
+  global: LinterGlobalConfigSchema.optional(),
+  /** ESLint configuration */
+  eslint: ESLintConfigSchema.optional(),
+  /** Prettier configuration */
+  prettier: PrettierConfigSchema.optional(),
+  /** Custom linter configurations */
+  custom: z.array(CustomLinterConfigSchema).optional().default([]),
+  /** Linter execution order (names of linters) */
+  order: z.array(z.string()).optional().default(['eslint', 'prettier']),
+  /** Integration settings */
+  integrations: z.object({
+    /** Pre-commit hook integration */
+    preCommit: z.object({
+      enabled: z.boolean().optional().default(true),
+      linters: z.array(z.string()).optional().default(['eslint', 'prettier']),
+      autoFix: z.boolean().optional().default(true),
+      failOnError: z.boolean().optional().default(true),
+    }).optional(),
+    /** CI/CD integration */
+    ci: z.object({
+      enabled: z.boolean().optional().default(true),
+      linters: z.array(z.string()).optional().default(['eslint', 'prettier']),
+      autoFix: z.boolean().optional().default(false),
+      failOnError: z.boolean().optional().default(true),
+      uploadReports: z.boolean().optional().default(false),
+      reportFormat: z.enum(['json', 'xml', 'sarif']).optional().default('json'),
+    }).optional(),
+    /** IDE integration */
+    ide: z.object({
+      enabled: z.boolean().optional().default(true),
+      autoFixOnSave: z.boolean().optional().default(false),
+      showInlineErrors: z.boolean().optional().default(true),
+      formatOnSave: z.boolean().optional().default(false),
+    }).optional(),
+  }).optional(),
+});
+export type LinterConfig = z.infer<typeof LinterConfigSchema>;
+
 export const ServiceConfigSchema = z.object({
   enableOnBoot: z.boolean().optional().default(false),
 });
@@ -1059,6 +1351,8 @@ export const ApexConfigSchema = z.object({
       autoStart: z.boolean().optional().default(false),
     })
     .optional(),
+  /** Linter configuration for code quality enforcement (v0.5.0) */
+  linter: LinterConfigSchema.optional(),
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),
@@ -1882,6 +2176,7 @@ export type ApexEventType =
   | 'tool:start'
   | 'tool:progress'
   | 'tool:complete'
+  | 'tool:timing'
   | 'gate:required'
   | 'gate:approved'
   | 'gate:rejected'

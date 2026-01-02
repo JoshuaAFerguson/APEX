@@ -22,6 +22,7 @@ import {
   SessionLimitStatus,
   PermissionLevel,
   PermissionPreset,
+  ToolExecution,
   loadConfig,
   loadAgents,
   loadWorkflow,
@@ -428,8 +429,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     lastCheckTimestamp: Date;
   }> = new Map();
 
-  // Tool call timing tracking
-  private toolCallTimings?: Map<string, { startTime: Date; toolName: string }> = new Map();
+  // Tool execution tracking with full timing information
+  private activeToolExecutions: Map<string, ToolExecution> = new Map();
 
   constructor(options: OrchestratorOptions) {
     super();
@@ -688,8 +689,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.updateTaskStatus(taskId, 'in-progress');
     this.emit('task:started', task);
 
-    // Initialize resource tracking
-    this.initializeResourceTracking(taskId, task.usage);
+    // Resource tracking is initialized via the task's usage object
+    // No separate initialization needed - usage is tracked incrementally
 
     const autoRetry = options?.autoRetry ?? true;
     const maxRetries = task.maxRetries;
@@ -1785,6 +1786,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                 const input = block.input || {};
                 const timestamp = new Date();
 
+                // Create a new ToolExecution record
+                const toolExecution: ToolExecution = {
+                  callId,
+                  toolName,
+                  input,
+                  taskId: task.id,
+                  agentName: stage.agent,
+                  stageName: stage.name,
+                  startTime: timestamp,
+                  status: 'running',
+                };
+
+                // Store the active tool execution
+                this.activeToolExecutions.set(callId, toolExecution);
+
                 this.emit('tool:start', {
                   taskId: task.id,
                   toolName,
@@ -1792,41 +1808,48 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                   timestamp,
                   callId,
                 });
-
-                // Store tool call start time for later duration calculation
-                if (!this.toolCallTimings) {
-                  this.toolCallTimings = new Map();
-                }
-                this.toolCallTimings.set(callId, { startTime: timestamp, toolName });
               } else if (block.type === 'tool_result' && block.tool_use_id) {
                 // Tool call completed
                 const callId = block.tool_use_id;
                 const endTime = new Date();
-                const callTiming = this.toolCallTimings?.get(callId);
+                const toolExecution = this.activeToolExecutions.get(callId);
 
-                if (callTiming) {
-                  const { startTime, toolName } = callTiming;
-                  const duration = endTime.getTime() - startTime.getTime();
+                if (toolExecution) {
+                  const duration = endTime.getTime() - toolExecution.startTime.getTime();
+                  const success = !block.is_error;
+
+                  // Update the tool execution record
+                  const completedExecution: ToolExecution = {
+                    ...toolExecution,
+                    endTime,
+                    duration,
+                    status: success ? 'completed' : 'failed',
+                    result: {
+                      success,
+                      output: block.content,
+                      error: block.is_error ? String(block.content) : undefined,
+                    },
+                  };
 
                   this.emit('tool:complete', {
                     taskId: task.id,
-                    toolName,
+                    toolName: toolExecution.toolName,
                     callId,
                     result: {
-                      success: !block.is_error,
+                      success,
                       output: block.content,
                       error: block.is_error ? String(block.content) : undefined,
                     },
                     timing: {
-                      startTime,
+                      startTime: toolExecution.startTime,
                       endTime,
                       duration,
                     },
                     timestamp: endTime,
                   });
 
-                  // Clean up timing data
-                  this.toolCallTimings.delete(callId);
+                  // Clean up active execution tracking
+                  this.activeToolExecutions.delete(callId);
                 }
               }
             }
@@ -4495,6 +4518,22 @@ Parent: ${parentTask.description}`;
       return;
     }
 
+    // If ALL subtasks are paused, pause the parent and return
+    // This ensures proper cascade of pause state up the hierarchy
+    if (pausedCount > 0 && pausedCount === subtasksToProcess.length) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: `All ${pausedCount} subtasks are paused - pausing parent task`,
+      });
+
+      // Find the first paused subtask to get the pause reason
+      const firstPausedSubtask = await this.store.getTask(subtasksToProcess[0].id);
+      const pauseReason = firstPausedSubtask?.pauseReason || 'all_subtasks_paused';
+
+      await this.pauseParentTask(parentTaskId, subtasksToProcess[0].id, pauseReason);
+      return;
+    }
+
     await this.store.addLog(parentTaskId, {
       level: 'info',
       message: `Continuing ${subtasksToProcess.length} subtasks in order: ${failedCount} failed, ${pausedCount} paused, ${pendingCount} pending`,
@@ -5680,6 +5719,40 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (this.store) {
       this.store.close();
     }
+  }
+
+  /**
+   * Get all currently active tool executions
+   * @returns Array of currently running tool executions
+   */
+  getActiveToolExecutions(): ToolExecution[] {
+    return Array.from(this.activeToolExecutions.values());
+  }
+
+  /**
+   * Get a specific tool execution by call ID
+   * @param callId The tool call ID
+   * @returns The tool execution if found, undefined otherwise
+   */
+  getToolExecution(callId: string): ToolExecution | undefined {
+    return this.activeToolExecutions.get(callId);
+  }
+
+  /**
+   * Get the count of currently active tool executions
+   * @returns Number of active tool executions
+   */
+  getActiveToolExecutionCount(): number {
+    return this.activeToolExecutions.size;
+  }
+
+  /**
+   * Check if a specific tool call is currently active
+   * @param callId The tool call ID
+   * @returns True if the tool execution is active, false otherwise
+   */
+  isToolExecutionActive(callId: string): boolean {
+    return this.activeToolExecutions.has(callId);
   }
 }
 

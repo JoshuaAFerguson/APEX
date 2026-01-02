@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PolicyEnforcer, createPolicyEnforcer } from './policy-enforcer.js';
-import type { PolicyConfig, PolicyViolation } from '@apexcli/core';
+import type { PolicyConfig, PolicyViolation, PolicyViolationEvent } from '@apexcli/core';
 
 describe('PolicyEnforcer', () => {
   // ============================================================================
@@ -665,6 +665,1085 @@ describe('PolicyEnforcer', () => {
 
       expect(violations[0].description).toContain('src/**');
       expect(violations[0].description).toContain('lib/**');
+    });
+  });
+
+  // ============================================================================
+  // checkApprovalRequired Tests
+  // ============================================================================
+
+  describe('checkApprovalRequired', () => {
+    let baseTask: Task;
+
+    beforeEach(() => {
+      baseTask = {
+        id: 'test-task-1',
+        description: 'Test task description',
+        workflow: 'feature',
+        autonomy: 'autonomous',
+        status: 'pending',
+        priority: 'normal',
+        effort: 'medium',
+        projectPath: '/project',
+        branchName: 'feature/test',
+        retryCount: 0,
+        maxRetries: 3,
+        resumeAttempts: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          estimatedCost: 0.05,
+        },
+        logs: [],
+        artifacts: [],
+      } as Task;
+    });
+
+    describe('when policy is disabled', () => {
+      it('should return no approval required', () => {
+        const config: PolicyConfig = {
+          enabled: false,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'test-rule',
+              name: 'Test Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(false);
+        expect(result.reason).toContain('policy disabled');
+      });
+    });
+
+    describe('when approval rules are disabled', () => {
+      it('should return no approval required', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: false,
+            rules: [{
+              id: 'test-rule',
+              name: 'Test Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(false);
+        expect(result.reason).toContain('approval rules');
+      });
+    });
+
+    describe('when no approval rules are configured', () => {
+      it('should return no approval required', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(false);
+        expect(result.reason).toContain('No approval rules');
+      });
+    });
+
+    describe('when no rules match', () => {
+      it('should return no approval required', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'test-rule',
+              name: 'Test Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'create');
+
+        expect(result.required).toBe(false);
+        expect(result.reason).toContain('No approval rules matched');
+      });
+    });
+
+    describe('file pattern conditions', () => {
+      it('should trigger approval for matching file patterns', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'sensitive-files',
+              name: 'Sensitive Files Rule',
+              description: 'Requires approval for sensitive files',
+              urgency: 'high',
+              conditions: [{
+                type: 'file-pattern',
+                patterns: ['**/*.env*', '**/secrets/**', '**/*.key'],
+              }],
+              approvers: ['security-team'],
+              minApprovals: 2,
+              timeoutMinutes: 30,
+              timeoutAction: 'reject',
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = {
+          filePaths: ['config/.env.production', 'src/utils/helper.ts'],
+        };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'modify', context);
+
+        expect(result.required).toBe(true);
+        expect(result.urgency).toBe('high');
+        expect(result.minApprovals).toBe(2);
+        expect(result.timeoutMinutes).toBe(30);
+        expect(result.timeoutAction).toBe('reject');
+        expect(result.requiredApprovers).toContain('security-team');
+        expect(result.reason).toContain('Sensitive Files Rule');
+      });
+
+      it('should not trigger for non-matching file patterns', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'sensitive-files',
+              name: 'Sensitive Files Rule',
+              conditions: [{
+                type: 'file-pattern',
+                patterns: ['**/*.env*', '**/secrets/**'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = {
+          filePaths: ['src/index.ts', 'tests/unit.test.ts'],
+        };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'modify', context);
+
+        expect(result.required).toBe(false);
+      });
+
+      it('should handle empty file paths gracefully', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'file-rule',
+              name: 'File Rule',
+              conditions: [{
+                type: 'file-pattern',
+                patterns: ['**/*.env*'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = { filePaths: [] };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'modify', context);
+
+        expect(result.required).toBe(false);
+      });
+    });
+
+    describe('content pattern conditions', () => {
+      it('should trigger approval for matching content patterns', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'api-key-rule',
+              name: 'API Key Detection',
+              urgency: 'critical',
+              conditions: [{
+                type: 'content-pattern',
+                patterns: ['API_KEY\\s*=', 'SECRET\\s*:', 'password\\s*='],
+              }],
+              approvers: ['security-admin'],
+              timeoutMinutes: 10,
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = {
+          fileContents: new Map([
+            ['config.js', 'const API_KEY = "secret123"'],
+            ['helper.ts', 'export function helper() { return true; }'],
+          ]),
+        };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'modify', context);
+
+        expect(result.required).toBe(true);
+        expect(result.urgency).toBe('critical');
+        expect(result.timeoutMinutes).toBe(10);
+        expect(result.requiredApprovers).toContain('security-admin');
+      });
+
+      it('should handle invalid regex patterns gracefully', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'invalid-regex',
+              name: 'Invalid Regex Rule',
+              conditions: [{
+                type: 'content-pattern',
+                patterns: ['[invalid regex('],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = {
+          fileContents: new Map([['test.js', 'some content']]),
+        };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'modify', context);
+
+        expect(result.required).toBe(false);
+      });
+    });
+
+    describe('operation conditions', () => {
+      it('should trigger approval for matching operations', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'deploy-rule',
+              name: 'Deployment Approval',
+              urgency: 'high',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy', 'publish', 'release'],
+              }],
+              approvers: ['devops-team', 'tech-lead'],
+              minApprovals: 2,
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+        expect(result.urgency).toBe('high');
+        expect(result.minApprovals).toBe(2);
+        expect(result.requiredApprovers).toEqual(expect.arrayContaining(['devops-team', 'tech-lead']));
+      });
+
+      it('should match operations case-insensitively', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'deploy-rule',
+              name: 'Deployment Approval',
+              conditions: [{
+                type: 'operation',
+                operations: ['DEPLOY'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+      });
+
+      it('should check context.operation as fallback', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'context-op-rule',
+              name: 'Context Operation Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['create'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const context = { operation: 'create' as const };
+
+        const result = enforcer.checkApprovalRequired(baseTask, 'other', context);
+
+        expect(result.required).toBe(true);
+      });
+    });
+
+    describe('cost threshold conditions', () => {
+      it('should trigger approval when cost exceeds threshold', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'cost-rule',
+              name: 'High Cost Approval',
+              urgency: 'normal',
+              conditions: [{
+                type: 'cost-threshold',
+                threshold: 0.10,
+              }],
+              approvers: ['finance-team'],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+
+        // Test with context cost
+        const contextWithCost = { estimatedCost: 0.15 };
+        let result = enforcer.checkApprovalRequired(baseTask, 'execute', contextWithCost);
+        expect(result.required).toBe(true);
+        expect(result.requiredApprovers).toContain('finance-team');
+
+        // Test with task cost when no context cost
+        const taskWithHighCost = { ...baseTask, usage: { ...baseTask.usage, estimatedCost: 0.20 } };
+        result = enforcer.checkApprovalRequired(taskWithHighCost, 'execute');
+        expect(result.required).toBe(true);
+      });
+
+      it('should not trigger when cost is below threshold', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'cost-rule',
+              name: 'High Cost Approval',
+              conditions: [{
+                type: 'cost-threshold',
+                threshold: 1.00,
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'execute');
+
+        expect(result.required).toBe(false);
+      });
+    });
+
+    describe('token threshold conditions', () => {
+      it('should trigger approval when tokens exceed threshold', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'token-rule',
+              name: 'High Token Usage Approval',
+              conditions: [{
+                type: 'token-threshold',
+                threshold: 1000,
+              }],
+              approvers: ['resource-team'],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+
+        // Test with context tokens
+        const contextWithTokens = { tokenUsage: 2000 };
+        let result = enforcer.checkApprovalRequired(baseTask, 'execute', contextWithTokens);
+        expect(result.required).toBe(true);
+        expect(result.requiredApprovers).toContain('resource-team');
+
+        // Test with task tokens when no context tokens
+        const taskWithHighTokens = { ...baseTask, usage: { ...baseTask.usage, totalTokens: 2500 } };
+        result = enforcer.checkApprovalRequired(taskWithHighTokens, 'execute');
+        expect(result.required).toBe(true);
+      });
+
+      it('should not trigger when tokens are below threshold', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'token-rule',
+              name: 'High Token Usage Approval',
+              conditions: [{
+                type: 'token-threshold',
+                threshold: 5000,
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'execute');
+
+        expect(result.required).toBe(false);
+      });
+    });
+
+    describe('custom conditions', () => {
+      it('should handle simple numeric expressions', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'custom-rule',
+              name: 'Custom Expression Rule',
+              conditions: [{
+                type: 'custom',
+                expression: '0.10 > 0.05',
+              }],
+              approvers: ['admin'],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'execute');
+
+        expect(result.required).toBe(true);
+      });
+
+      it('should handle variable interpolation', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'custom-rule',
+              name: 'Custom Expression Rule',
+              conditions: [{
+                type: 'custom',
+                expression: '{cost} > 0.03',
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'execute');
+
+        expect(result.required).toBe(true);
+      });
+
+      it('should handle invalid expressions gracefully', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'custom-rule',
+              name: 'Custom Expression Rule',
+              conditions: [{
+                type: 'custom',
+                expression: 'invalid expression syntax',
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'execute');
+
+        expect(result.required).toBe(false);
+      });
+    });
+
+    describe('rule logic modes', () => {
+      it('should handle AND logic (requireAllConditions: true)', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'and-rule',
+              name: 'AND Logic Rule',
+              requireAllConditions: true,
+              conditions: [
+                {
+                  type: 'operation',
+                  operations: ['deploy'],
+                },
+                {
+                  type: 'cost-threshold',
+                  threshold: 0.01,
+                },
+              ],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+
+        // Should trigger when both conditions match
+        let result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+        expect(result.required).toBe(true);
+
+        // Should not trigger when only one condition matches
+        result = enforcer.checkApprovalRequired(baseTask, 'create');
+        expect(result.required).toBe(false);
+      });
+
+      it('should handle OR logic (requireAllConditions: false)', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'or-rule',
+              name: 'OR Logic Rule',
+              requireAllConditions: false,
+              conditions: [
+                {
+                  type: 'operation',
+                  operations: ['deploy'],
+                },
+                {
+                  type: 'cost-threshold',
+                  threshold: 0.01,
+                },
+              ],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+
+        // Should trigger when operation matches (even if cost doesn't exceed threshold much)
+        let result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+        expect(result.required).toBe(true);
+
+        // Should trigger when cost matches (even if operation doesn't match)
+        result = enforcer.checkApprovalRequired(baseTask, 'create');
+        expect(result.required).toBe(true);
+      });
+    });
+
+    describe('multiple rule aggregation', () => {
+      it('should aggregate multiple triggered rules correctly', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [
+              {
+                id: 'rule-1',
+                name: 'High Priority Rule',
+                priority: 100,
+                urgency: 'critical',
+                timeoutMinutes: 5,
+                minApprovals: 2,
+                timeoutAction: 'reject',
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+                approvers: ['security-team'],
+              },
+              {
+                id: 'rule-2',
+                name: 'Medium Priority Rule',
+                priority: 50,
+                urgency: 'high',
+                timeoutMinutes: 15,
+                minApprovals: 1,
+                timeoutAction: 'escalate',
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+                approvers: ['devops-team'],
+              },
+            ],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+        expect(result.urgency).toBe('critical'); // Highest urgency
+        expect(result.timeoutMinutes).toBe(5); // Shortest timeout
+        expect(result.minApprovals).toBe(2); // Maximum approvals
+        expect(result.timeoutAction).toBe('reject'); // Most restrictive
+        expect(result.requiredApprovers).toEqual(expect.arrayContaining(['security-team', 'devops-team']));
+        expect(result.triggeredRules).toHaveLength(2);
+      });
+
+      it('should sort triggered rules by priority', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [
+              {
+                id: 'low-priority',
+                name: 'Low Priority Rule',
+                priority: 10,
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+              },
+              {
+                id: 'high-priority',
+                name: 'High Priority Rule',
+                priority: 100,
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+              },
+            ],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.triggeredRules[0].id).toBe('high-priority');
+        expect(result.triggeredRules[1].id).toBe('low-priority');
+      });
+    });
+
+    describe('rule enabled/disabled filtering', () => {
+      it('should only evaluate enabled rules', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [
+              {
+                id: 'enabled-rule',
+                name: 'Enabled Rule',
+                enabled: true,
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+                approvers: ['team-a'],
+              },
+              {
+                id: 'disabled-rule',
+                name: 'Disabled Rule',
+                enabled: false,
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+                approvers: ['team-b'],
+              },
+            ],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+        expect(result.triggeredRules).toHaveLength(1);
+        expect(result.triggeredRules[0].id).toBe('enabled-rule');
+        expect(result.requiredApprovers).toEqual(['team-a']);
+      });
+
+      it('should treat rules without enabled flag as enabled by default', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'default-enabled',
+              name: 'Default Enabled Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy'],
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+      });
+    });
+
+    describe('default values and edge cases', () => {
+      it('should use appropriate defaults for urgency levels', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'default-rule',
+              name: 'Default Rule',
+              conditions: [{
+                type: 'operation',
+                operations: ['deploy'],
+              }],
+              // No urgency specified - should default to 'normal'
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(true);
+        expect(result.urgency).toBe('normal');
+        expect(result.minApprovals).toBe(1);
+        expect(result.timeoutAction).toBe('reject');
+      });
+
+      it('should handle rules with empty conditions arrays', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'empty-conditions',
+              name: 'Empty Conditions Rule',
+              conditions: [],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(false);
+      });
+
+      it('should handle unknown condition types gracefully', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [{
+              id: 'unknown-condition',
+              name: 'Unknown Condition Rule',
+              conditions: [{
+                type: 'unknown-type' as any,
+              }],
+            }],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.required).toBe(false);
+      });
+
+      it('should build meaningful reasons for single and multiple rules', () => {
+        const config: PolicyConfig = {
+          enabled: true,
+          approvalRules: {
+            enabled: true,
+            rules: [
+              {
+                id: 'rule-1',
+                name: 'Security Rule',
+                description: 'Security approval required',
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+              },
+              {
+                id: 'rule-2',
+                name: 'Compliance Rule',
+                conditions: [{
+                  type: 'operation',
+                  operations: ['deploy'],
+                }],
+              },
+            ],
+          },
+        };
+
+        const enforcer = new PolicyEnforcer(config);
+        const result = enforcer.checkApprovalRequired(baseTask, 'deploy');
+
+        expect(result.reason).toContain('Security Rule, Compliance Rule');
+      });
+    });
+  });
+
+  // ============================================================================
+  // Event Emission Tests
+  // ============================================================================
+
+  describe('event emission', () => {
+    it('should emit policy:violation event when path is blocked', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'blocklist',
+          block: ['node_modules/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      const violations = enforcer.validateFilePath('node_modules/pkg/index.js');
+
+      expect(violations).toHaveLength(1);
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('policy_violation');
+      expect(events[0].violation.policyType).toBe('path');
+      expect(events[0].violation.message).toContain('blocked by pattern');
+      expect(events[0].violation.id).toBe(violations[0].id);
+    });
+
+    it('should emit policy:violation event for sensitive files', () => {
+      const config: PolicyConfig = {
+        enforcement: 'warn',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['**/*'],
+          sensitivePatterns: ['.env*'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      const violations = enforcer.validateFilePath('.env.local');
+
+      expect(violations).toHaveLength(1);
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('policy_violation');
+      expect(events[0].violation.ruleId).toBe('sensitive-path');
+      expect(events[0].violation.message).toContain('requires approval');
+    });
+
+    it('should emit multiple events for multiple violations', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      enforcer.validateFilePath('blocked/file1.ts');
+      enforcer.validateFilePath('blocked/file2.ts');
+
+      expect(events).toHaveLength(2);
+      expect(events[0].violation.resource).toBe('blocked/file1.ts');
+      expect(events[1].violation.resource).toBe('blocked/file2.ts');
+      expect(events[0].id).not.toBe(events[1].id); // Unique event IDs
+    });
+
+    it('should not emit events when path is allowed', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      const violations = enforcer.validateFilePath('src/index.ts');
+
+      expect(violations).toHaveLength(0);
+      expect(events).toHaveLength(0);
+    });
+
+    it('should not emit events when policy is disabled', () => {
+      const config: PolicyConfig = {
+        enabled: false,
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      const violations = enforcer.validateFilePath('blocked/file.ts');
+
+      expect(violations).toHaveLength(0);
+      expect(events).toHaveLength(0);
+    });
+
+    it('should include context information in events', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      const context = {
+        taskId: 'task-123',
+        agentId: 'agent-456',
+        workflowId: 'workflow-789',
+        metadata: { customField: 'value' },
+      };
+
+      enforcer.validateFilePath('blocked/file.ts', context);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].taskId).toBe('task-123');
+      expect(events[0].agentId).toBe('agent-456');
+      expect(events[0].workflowId).toBe('workflow-789');
+      expect(events[0].metadata?.customField).toBe('value');
+    });
+
+    it('should emit events conforming to PolicyViolationEventSchema structure', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+      enforcer.on('policy:violation', (event) => events.push(event));
+
+      enforcer.validateFilePath('blocked/file.ts');
+
+      expect(events).toHaveLength(1);
+      const event = events[0];
+
+      // Verify required fields
+      expect(event.type).toBe('policy_violation');
+      expect(typeof event.id).toBe('string');
+      expect(event.timestamp).toBeInstanceOf(Date);
+      expect(event.violation).toBeDefined();
+      expect(event.violation.id).toBeDefined();
+      expect(event.violation.policyType).toBe('path');
+
+      // Verify optional fields are handled correctly
+      expect(event.taskId).toBeUndefined();
+      expect(event.agentId).toBeUndefined();
+      expect(event.workflowId).toBeUndefined();
+      expect(event.metadata).toBeUndefined();
+    });
+
+    it('should handle event listener removal', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events: PolicyViolationEvent[] = [];
+
+      const listener = (event: PolicyViolationEvent) => events.push(event);
+      enforcer.on('policy:violation', listener);
+
+      // First violation should emit event
+      enforcer.validateFilePath('blocked/file1.ts');
+      expect(events).toHaveLength(1);
+
+      // Remove listener
+      enforcer.off('policy:violation', listener);
+
+      // Second violation should not emit event
+      enforcer.validateFilePath('blocked/file2.ts');
+      expect(events).toHaveLength(1); // Still 1, not 2
+    });
+
+    it('should support multiple event listeners', () => {
+      const config: PolicyConfig = {
+        enforcement: 'enforce',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**'],
+        },
+      };
+
+      const enforcer = new PolicyEnforcer(config);
+      const events1: PolicyViolationEvent[] = [];
+      const events2: PolicyViolationEvent[] = [];
+
+      enforcer.on('policy:violation', (event) => events1.push(event));
+      enforcer.on('policy:violation', (event) => events2.push(event));
+
+      enforcer.validateFilePath('blocked/file.ts');
+
+      expect(events1).toHaveLength(1);
+      expect(events2).toHaveLength(1);
+      expect(events1[0].id).toBe(events2[0].id); // Same event object
     });
   });
 });

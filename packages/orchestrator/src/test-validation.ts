@@ -40,7 +40,7 @@ function validateTestImplementation() {
       id: 'test-validation',
       description: 'Validation test task',
       workflow: 'feature',
-      autonomy: 'full',
+      autonomy: 'full-auto',
       status: 'in-progress',
       priority: 'normal',
       effort: 'medium',

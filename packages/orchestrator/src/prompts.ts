@@ -131,13 +131,11 @@ Begin by analyzing the task and creating a plan.`;
  */
 function getAutonomyInstructions(autonomy: Task['autonomy']): string {
   switch (autonomy) {
-    case 'full':
+    case 'full-auto':
       return 'You have full autonomy. Execute the entire workflow without waiting for approvals.';
     case 'review-before-commit':
       return 'Pause before each git commit to allow human review. Show the diff and wait for approval.';
-    case 'review-before-merge':
-      return 'Execute freely but create a PR for human review before merging. Do not auto-merge.';
-    case 'manual':
+    case 'review-all':
       return 'Pause at each major stage for human approval. Wait for explicit go-ahead before proceeding.';
     default:
       return 'Follow standard workflow with appropriate checkpoints.';

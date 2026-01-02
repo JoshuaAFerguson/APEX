@@ -33,6 +33,33 @@ import {
   SearchToolConfigSchema,
   ToolPermissionConfigSchema,
   ExtendedPermissionSchema,
+  // Approval-related schemas
+  ApprovalCheckpointTypeSchema,
+  ApprovalGateSchema,
+  ApprovalStateSchema,
+  ApprovalStatusSchema,
+  GateStatusSchema,
+  ApprovalRequiredEventDataSchema,
+  ApprovalResponseEventDataSchema,
+  ApprovalDecisionRequestSchema,
+  ApprovalDecisionResponseSchema,
+  ApprovalConditionTypeSchema,
+  ApprovalOperationTypeSchema,
+  ApprovalConditionSchema,
+  ApprovalUrgencySchema,
+  ApprovalRuleSchema,
+  ApprovalRulesConfigSchema,
+  ApprovalPolicySchema,
+  type ApprovalCheckpointType,
+  type ApprovalGate,
+  type ApprovalState,
+  type ApprovalStatus,
+  type GateStatus,
+  type ApprovalRequiredEventData,
+  type ApprovalResponseEventData,
+  type ApprovalDecisionRequest,
+  type ApprovalDecisionResponse,
+  type Gate
 } from './types';
 
 describe.skip('AgentModelSchema', () => {
@@ -3091,6 +3118,612 @@ describe('Permission Schema Edge Cases', () => {
       expect(complexPermission.scope).toContain('complex-scope-pattern');
       expect(complexPermission.config?.metadata?.nested?.deep?.value).toBe('deeply nested config');
       expect(complexPermission.tags).toHaveLength(4);
+    });
+  });
+});
+
+describe('Approval Gate Types', () => {
+  describe('ApprovalCheckpointTypeSchema', () => {
+    it('should accept valid checkpoint types', () => {
+      expect(ApprovalCheckpointTypeSchema.parse('code-review')).toBe('code-review');
+      expect(ApprovalCheckpointTypeSchema.parse('deployment')).toBe('deployment');
+      expect(ApprovalCheckpointTypeSchema.parse('architecture-review')).toBe('architecture-review');
+      expect(ApprovalCheckpointTypeSchema.parse('security-review')).toBe('security-review');
+      expect(ApprovalCheckpointTypeSchema.parse('business-approval')).toBe('business-approval');
+    });
+
+    it('should reject invalid checkpoint types', () => {
+      expect(() => ApprovalCheckpointTypeSchema.parse('invalid-type')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse(null)).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse(undefined)).toThrow();
+    });
+  });
+
+  describe('ApprovalGateSchema', () => {
+    it('should parse a minimal valid approval gate', () => {
+      const validGate = {
+        type: 'code-review',
+        name: 'Code Review Gate',
+        requiredApprovers: ['reviewer1'],
+        timeoutMinutes: 60
+      };
+
+      const parsed = ApprovalGateSchema.parse(validGate);
+      expect(parsed.type).toBe('code-review');
+      expect(parsed.name).toBe('Code Review Gate');
+      expect(parsed.requiredApprovers).toEqual(['reviewer1']);
+      expect(parsed.timeoutMinutes).toBe(60);
+    });
+
+    it('should parse a comprehensive approval gate with all properties', () => {
+      const validGate = {
+        type: 'deployment',
+        name: 'Production Deployment Gate',
+        description: 'Requires approval for production deployments',
+        requiredApprovers: ['devops-lead', 'security-team'],
+        timeoutMinutes: 120,
+        allowSelfApproval: false,
+        escalationChain: ['senior-dev', 'team-lead'],
+        metadata: {
+          environment: 'production',
+          riskLevel: 'high'
+        },
+        tags: ['production', 'critical']
+      };
+
+      const parsed = ApprovalGateSchema.parse(validGate);
+      expect(parsed.type).toBe('deployment');
+      expect(parsed.name).toBe('Production Deployment Gate');
+      expect(parsed.description).toBe('Requires approval for production deployments');
+      expect(parsed.requiredApprovers).toEqual(['devops-lead', 'security-team']);
+      expect(parsed.timeoutMinutes).toBe(120);
+      expect(parsed.allowSelfApproval).toBe(false);
+      expect(parsed.escalationChain).toEqual(['senior-dev', 'team-lead']);
+      expect(parsed.metadata?.environment).toBe('production');
+      expect(parsed.metadata?.riskLevel).toBe('high');
+      expect(parsed.tags).toEqual(['production', 'critical']);
+    });
+
+    it('should reject invalid approval gate configurations', () => {
+      // Missing required fields
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        // missing name, requiredApprovers, timeoutMinutes
+      })).toThrow();
+
+      // Invalid type
+      expect(() => ApprovalGateSchema.parse({
+        type: 'invalid-type',
+        name: 'Test Gate',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Empty name
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: '',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Empty requiredApprovers array
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: 'Test Gate',
+        requiredApprovers: [],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Invalid timeout (negative)
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: 'Test Gate',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: -1
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalStatusSchema', () => {
+    it('should accept valid approval statuses', () => {
+      expect(ApprovalStatusSchema.parse('pending')).toBe('pending');
+      expect(ApprovalStatusSchema.parse('approved')).toBe('approved');
+      expect(ApprovalStatusSchema.parse('denied')).toBe('denied');
+    });
+
+    it('should reject invalid approval statuses', () => {
+      expect(() => ApprovalStatusSchema.parse('rejected')).toThrow();
+      expect(() => ApprovalStatusSchema.parse('completed')).toThrow();
+      expect(() => ApprovalStatusSchema.parse('')).toThrow();
+      expect(() => ApprovalStatusSchema.parse(null)).toThrow();
+    });
+  });
+
+  describe('GateStatusSchema', () => {
+    it('should accept valid gate statuses', () => {
+      expect(GateStatusSchema.parse('pending')).toBe('pending');
+      expect(GateStatusSchema.parse('approved')).toBe('approved');
+      expect(GateStatusSchema.parse('rejected')).toBe('rejected');
+      expect(GateStatusSchema.parse('skipped')).toBe('skipped');
+      expect(GateStatusSchema.parse('timeout')).toBe('timeout');
+    });
+
+    it('should reject invalid gate statuses', () => {
+      expect(() => GateStatusSchema.parse('completed')).toThrow();
+      expect(() => GateStatusSchema.parse('failed')).toThrow();
+      expect(() => GateStatusSchema.parse('')).toThrow();
+    });
+  });
+
+  describe('ApprovalStateSchema', () => {
+    it('should parse a minimal valid approval state', () => {
+      const validState = {
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateType: 'code-review',
+        status: 'pending',
+        requiredApprovers: ['reviewer1'],
+        requestedAt: new Date('2024-01-15T10:00:00Z')
+      };
+
+      const parsed = ApprovalStateSchema.parse(validState);
+      expect(parsed.id).toBe('approval-123');
+      expect(parsed.taskId).toBe('task-456');
+      expect(parsed.gateType).toBe('code-review');
+      expect(parsed.status).toBe('pending');
+      expect(parsed.requiredApprovers).toEqual(['reviewer1']);
+      expect(parsed.requestedAt).toEqual(new Date('2024-01-15T10:00:00Z'));
+    });
+
+    it('should parse a comprehensive approval state with all properties', () => {
+      const requestedAt = new Date('2024-01-15T10:00:00Z');
+      const approvedAt = new Date('2024-01-15T10:30:00Z');
+      const expiresAt = new Date('2024-01-15T12:00:00Z');
+
+      const validState = {
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateType: 'deployment',
+        status: 'approved',
+        requiredApprovers: ['admin1', 'admin2'],
+        actualApprovers: ['admin1'],
+        requestedAt,
+        approvedAt,
+        approver: 'admin1',
+        decision: 'approved',
+        comments: 'Approved for production deployment',
+        metadata: {
+          urgency: 'high',
+          environment: 'production'
+        },
+        timeoutMinutes: 120,
+        expiresAt
+      };
+
+      const parsed = ApprovalStateSchema.parse(validState);
+      expect(parsed.id).toBe('approval-123');
+      expect(parsed.taskId).toBe('task-456');
+      expect(parsed.gateType).toBe('deployment');
+      expect(parsed.status).toBe('approved');
+      expect(parsed.requiredApprovers).toEqual(['admin1', 'admin2']);
+      expect(parsed.actualApprovers).toEqual(['admin1']);
+      expect(parsed.requestedAt).toEqual(requestedAt);
+      expect(parsed.approvedAt).toEqual(approvedAt);
+      expect(parsed.approver).toBe('admin1');
+      expect(parsed.decision).toBe('approved');
+      expect(parsed.comments).toBe('Approved for production deployment');
+      expect(parsed.metadata?.urgency).toBe('high');
+      expect(parsed.metadata?.environment).toBe('production');
+      expect(parsed.timeoutMinutes).toBe(120);
+      expect(parsed.expiresAt).toEqual(expiresAt);
+    });
+
+    it('should reject invalid approval state configurations', () => {
+      // Missing required fields
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        // missing taskId, gateType, status, requiredApprovers, requestedAt
+      })).toThrow();
+
+      // Empty id
+      expect(() => ApprovalStateSchema.parse({
+        id: '',
+        taskId: 'task-456',
+        gateType: 'code-review',
+        status: 'pending',
+        requiredApprovers: ['reviewer1'],
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Empty taskId
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: '',
+        gateType: 'code-review',
+        status: 'pending',
+        requiredApprovers: ['reviewer1'],
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Invalid gateType
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateType: 'invalid-type',
+        status: 'pending',
+        requiredApprovers: ['reviewer1'],
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Invalid status
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateType: 'code-review',
+        status: 'invalid-status',
+        requiredApprovers: ['reviewer1'],
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Empty requiredApprovers
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateType: 'code-review',
+        status: 'pending',
+        requiredApprovers: [],
+        requestedAt: new Date()
+      })).toThrow();
+    });
+  });
+
+  describe('TaskStatusSchema with awaiting-approval', () => {
+    it('should include awaiting-approval as a valid task status', () => {
+      expect(TaskStatusSchema.parse('awaiting-approval')).toBe('awaiting-approval');
+    });
+
+    it('should accept all other existing task statuses', () => {
+      expect(TaskStatusSchema.parse('pending')).toBe('pending');
+      expect(TaskStatusSchema.parse('planning')).toBe('planning');
+      expect(TaskStatusSchema.parse('in-progress')).toBe('in-progress');
+      expect(TaskStatusSchema.parse('waiting-approval')).toBe('waiting-approval');
+      expect(TaskStatusSchema.parse('paused')).toBe('paused');
+      expect(TaskStatusSchema.parse('completed')).toBe('completed');
+      expect(TaskStatusSchema.parse('failed')).toBe('failed');
+      expect(TaskStatusSchema.parse('cancelled')).toBe('cancelled');
+    });
+  });
+
+  describe('ApprovalRequiredEventDataSchema', () => {
+    it('should parse valid approval required event data', () => {
+      const validEventData = {
+        taskId: 'task-123',
+        approvalId: 'approval-456',
+        gateName: 'Code Review Gate',
+        gateType: 'code-review',
+        requiredApprovers: ['reviewer1', 'reviewer2'],
+        timeoutMinutes: 60,
+        requestedAt: new Date('2024-01-15T10:00:00Z'),
+        expiresAt: new Date('2024-01-15T11:00:00Z'),
+        description: 'Please review the code changes',
+        metadata: {
+          branch: 'feature/new-feature',
+          pr: 'https://github.com/repo/pull/123'
+        },
+        escalationChain: ['senior-dev']
+      };
+
+      const parsed = ApprovalRequiredEventDataSchema.parse(validEventData);
+      expect(parsed.taskId).toBe('task-123');
+      expect(parsed.approvalId).toBe('approval-456');
+      expect(parsed.gateName).toBe('Code Review Gate');
+      expect(parsed.gateType).toBe('code-review');
+      expect(parsed.requiredApprovers).toEqual(['reviewer1', 'reviewer2']);
+      expect(parsed.timeoutMinutes).toBe(60);
+      expect(parsed.requestedAt).toEqual(new Date('2024-01-15T10:00:00Z'));
+      expect(parsed.expiresAt).toEqual(new Date('2024-01-15T11:00:00Z'));
+      expect(parsed.description).toBe('Please review the code changes');
+      expect(parsed.metadata?.branch).toBe('feature/new-feature');
+      expect(parsed.escalationChain).toEqual(['senior-dev']);
+    });
+
+    it('should reject invalid approval required event data', () => {
+      // Missing required fields
+      expect(() => ApprovalRequiredEventDataSchema.parse({
+        taskId: 'task-123',
+        // missing approvalId, gateName, etc.
+      })).toThrow();
+
+      // Empty approvers array
+      expect(() => ApprovalRequiredEventDataSchema.parse({
+        taskId: 'task-123',
+        approvalId: 'approval-456',
+        gateName: 'Test Gate',
+        gateType: 'code-review',
+        requiredApprovers: [],
+        timeoutMinutes: 60,
+        requestedAt: new Date(),
+        expiresAt: new Date()
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalResponseEventDataSchema', () => {
+    it('should parse valid approval response event data', () => {
+      const validEventData = {
+        taskId: 'task-123',
+        approvalId: 'approval-456',
+        gateName: 'Code Review Gate',
+        gateType: 'code-review',
+        approver: 'reviewer1',
+        decision: 'approved',
+        decidedAt: new Date('2024-01-15T10:30:00Z'),
+        comments: 'Code looks good, approved',
+        success: true,
+        approvalState: {
+          id: 'approval-456',
+          taskId: 'task-123',
+          gateType: 'code-review',
+          status: 'approved',
+          requiredApprovers: ['reviewer1'],
+          requestedAt: new Date('2024-01-15T10:00:00Z'),
+          approvedAt: new Date('2024-01-15T10:30:00Z')
+        },
+        willProceed: true
+      };
+
+      const parsed = ApprovalResponseEventDataSchema.parse(validEventData);
+      expect(parsed.taskId).toBe('task-123');
+      expect(parsed.approvalId).toBe('approval-456');
+      expect(parsed.gateName).toBe('Code Review Gate');
+      expect(parsed.gateType).toBe('code-review');
+      expect(parsed.approver).toBe('reviewer1');
+      expect(parsed.decision).toBe('approved');
+      expect(parsed.decidedAt).toEqual(new Date('2024-01-15T10:30:00Z'));
+      expect(parsed.comments).toBe('Code looks good, approved');
+      expect(parsed.success).toBe(true);
+      expect(parsed.approvalState?.id).toBe('approval-456');
+      expect(parsed.willProceed).toBe(true);
+    });
+  });
+
+  describe('ApprovalDecisionRequestSchema', () => {
+    it('should parse valid approval decision request', () => {
+      const validRequest = {
+        approvalId: 'approval-123',
+        approver: 'reviewer1',
+        decision: 'approved',
+        comments: 'Code changes look good'
+      };
+
+      const parsed = ApprovalDecisionRequestSchema.parse(validRequest);
+      expect(parsed.approvalId).toBe('approval-123');
+      expect(parsed.approver).toBe('reviewer1');
+      expect(parsed.decision).toBe('approved');
+      expect(parsed.comments).toBe('Code changes look good');
+    });
+
+    it('should reject invalid approval decision request', () => {
+      // Invalid decision
+      expect(() => ApprovalDecisionRequestSchema.parse({
+        approvalId: 'approval-123',
+        approver: 'reviewer1',
+        decision: 'rejected', // should be 'denied'
+        comments: 'Not good'
+      })).toThrow();
+
+      // Missing required fields
+      expect(() => ApprovalDecisionRequestSchema.parse({
+        approvalId: 'approval-123',
+        // missing approver and decision
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalDecisionResponseSchema', () => {
+    it('should parse valid approval decision response', () => {
+      const validResponse = {
+        success: true,
+        approvalState: {
+          id: 'approval-123',
+          taskId: 'task-456',
+          gateType: 'code-review',
+          status: 'approved',
+          requiredApprovers: ['reviewer1'],
+          requestedAt: new Date('2024-01-15T10:00:00Z')
+        },
+        willProceed: true
+      };
+
+      const parsed = ApprovalDecisionResponseSchema.parse(validResponse);
+      expect(parsed.success).toBe(true);
+      expect(parsed.approvalState?.id).toBe('approval-123');
+      expect(parsed.willProceed).toBe(true);
+    });
+
+    it('should parse error response', () => {
+      const errorResponse = {
+        success: false,
+        error: 'Approval not found',
+        willProceed: false
+      };
+
+      const parsed = ApprovalDecisionResponseSchema.parse(errorResponse);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBe('Approval not found');
+      expect(parsed.willProceed).toBe(false);
+    });
+  });
+
+  describe('Advanced Approval Schemas', () => {
+    describe('ApprovalConditionTypeSchema', () => {
+      it('should accept valid condition types', () => {
+        expect(ApprovalConditionTypeSchema.parse('file_changed')).toBe('file_changed');
+        expect(ApprovalConditionTypeSchema.parse('branch_name')).toBe('branch_name');
+        expect(ApprovalConditionTypeSchema.parse('commit_message')).toBe('commit_message');
+        expect(ApprovalConditionTypeSchema.parse('author')).toBe('author');
+        expect(ApprovalConditionTypeSchema.parse('time_range')).toBe('time_range');
+        expect(ApprovalConditionTypeSchema.parse('approval_count')).toBe('approval_count');
+        expect(ApprovalConditionTypeSchema.parse('custom')).toBe('custom');
+      });
+    });
+
+    describe('ApprovalOperationTypeSchema', () => {
+      it('should accept valid operation types', () => {
+        expect(ApprovalOperationTypeSchema.parse('equals')).toBe('equals');
+        expect(ApprovalOperationTypeSchema.parse('not_equals')).toBe('not_equals');
+        expect(ApprovalOperationTypeSchema.parse('contains')).toBe('contains');
+        expect(ApprovalOperationTypeSchema.parse('not_contains')).toBe('not_contains');
+        expect(ApprovalOperationTypeSchema.parse('matches_regex')).toBe('matches_regex');
+        expect(ApprovalOperationTypeSchema.parse('greater_than')).toBe('greater_than');
+        expect(ApprovalOperationTypeSchema.parse('less_than')).toBe('less_than');
+        expect(ApprovalOperationTypeSchema.parse('in_range')).toBe('in_range');
+        expect(ApprovalOperationTypeSchema.parse('custom')).toBe('custom');
+      });
+    });
+
+    describe('ApprovalUrgencySchema', () => {
+      it('should accept valid urgency levels', () => {
+        expect(ApprovalUrgencySchema.parse('low')).toBe('low');
+        expect(ApprovalUrgencySchema.parse('normal')).toBe('normal');
+        expect(ApprovalUrgencySchema.parse('high')).toBe('high');
+        expect(ApprovalUrgencySchema.parse('critical')).toBe('critical');
+      });
+    });
+
+    describe('ApprovalConditionSchema', () => {
+      it('should parse valid approval condition', () => {
+        const validCondition = {
+          type: 'file_changed',
+          operation: 'contains',
+          value: 'src/critical/',
+          description: 'Critical file changes require additional approval'
+        };
+
+        const parsed = ApprovalConditionSchema.parse(validCondition);
+        expect(parsed.type).toBe('file_changed');
+        expect(parsed.operation).toBe('contains');
+        expect(parsed.value).toBe('src/critical/');
+        expect(parsed.description).toBe('Critical file changes require additional approval');
+      });
+    });
+
+    describe('ApprovalRuleSchema', () => {
+      it('should parse comprehensive approval rule', () => {
+        const validRule = {
+          id: 'rule-1',
+          name: 'Production Deployment Rule',
+          description: 'Rules for production deployments',
+          enabled: true,
+          conditions: [
+            {
+              type: 'branch_name',
+              operation: 'equals',
+              value: 'main'
+            }
+          ],
+          requiredApprovers: ['devops-lead'],
+          minimumApprovals: 2,
+          urgency: 'high',
+          timeoutMinutes: 60,
+          escalationChain: ['senior-dev', 'team-lead'],
+          allowSelfApproval: false,
+          requireAllApprovers: true,
+          tags: ['production', 'deployment'],
+          metadata: {
+            environment: 'production',
+            riskLevel: 'high'
+          }
+        };
+
+        const parsed = ApprovalRuleSchema.parse(validRule);
+        expect(parsed.id).toBe('rule-1');
+        expect(parsed.name).toBe('Production Deployment Rule');
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.conditions).toHaveLength(1);
+        expect(parsed.requiredApprovers).toEqual(['devops-lead']);
+        expect(parsed.minimumApprovals).toBe(2);
+        expect(parsed.urgency).toBe('high');
+        expect(parsed.timeoutMinutes).toBe(60);
+        expect(parsed.escalationChain).toEqual(['senior-dev', 'team-lead']);
+        expect(parsed.allowSelfApproval).toBe(false);
+        expect(parsed.requireAllApprovers).toBe(true);
+        expect(parsed.tags).toEqual(['production', 'deployment']);
+        expect(parsed.metadata?.environment).toBe('production');
+      });
+    });
+
+    describe('ApprovalRulesConfigSchema', () => {
+      it('should parse approval rules configuration', () => {
+        const validConfig = {
+          enabled: true,
+          rules: [
+            {
+              id: 'rule-1',
+              name: 'Code Review Rule',
+              conditions: [
+                {
+                  type: 'file_changed',
+                  operation: 'contains',
+                  value: 'src/'
+                }
+              ],
+              requiredApprovers: ['reviewer1']
+            }
+          ],
+          defaultTimeoutMinutes: 120,
+          escalationEnabled: true,
+          notificationChannels: ['slack', 'email']
+        };
+
+        const parsed = ApprovalRulesConfigSchema.parse(validConfig);
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.rules).toHaveLength(1);
+        expect(parsed.defaultTimeoutMinutes).toBe(120);
+        expect(parsed.escalationEnabled).toBe(true);
+        expect(parsed.notificationChannels).toEqual(['slack', 'email']);
+      });
+    });
+
+    describe('ApprovalPolicySchema', () => {
+      it('should parse approval policy', () => {
+        const validPolicy = {
+          id: 'policy-1',
+          name: 'Development Policy',
+          description: 'Approval policy for development workflows',
+          enabled: true,
+          priority: 100,
+          conditions: [
+            {
+              field: 'branch',
+              operator: 'equals',
+              value: 'main'
+            }
+          ],
+          action: {
+            type: 'require_approval',
+            config: {
+              approvers: ['team-lead'],
+              timeout: 60
+            }
+          },
+          metadata: {
+            version: '1.0',
+            author: 'devops-team'
+          }
+        };
+
+        const parsed = ApprovalPolicySchema.parse(validPolicy);
+        expect(parsed.id).toBe('policy-1');
+        expect(parsed.name).toBe('Development Policy');
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.priority).toBe(100);
+        expect(parsed.conditions).toHaveLength(1);
+        expect(parsed.action?.type).toBe('require_approval');
+        expect(parsed.metadata?.version).toBe('1.0');
+      });
     });
   });
 });

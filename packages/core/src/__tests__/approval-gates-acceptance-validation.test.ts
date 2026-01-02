@@ -492,7 +492,9 @@ describe('Approval Gates Feature - Complete Acceptance Criteria Validation', () 
 
       const requiredEvent: ApprovalRequiredEventData = {
         approvalId: 'export-required',
-        taskId: 'task-export-required'
+        taskId: 'task-export-required',
+        gateName: 'Export Required Gate',
+        gateType: 'custom'
       };
 
       const responseEvent: ApprovalResponseEventData = {

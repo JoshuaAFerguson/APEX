@@ -104,7 +104,7 @@ async function main() {
     console.log('\n🚀 AC3: Testing task promotion...');
     const taskRequest: Omit<CreateTaskRequest, 'description'> = {
       workflow: 'feature',
-      autonomy: 'review-before-merge',
+      autonomy: 'review-before-commit',
       projectPath: testDir
     };
 

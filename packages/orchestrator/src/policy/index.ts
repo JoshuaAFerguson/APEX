@@ -12,4 +12,6 @@ export {
   createPolicyEnforcer,
   type ViolationOptions,
   type PathValidationResult,
+  type ApprovalCheckContext,
+  type ApprovalRequirement,
 } from './policy-enforcer.js';

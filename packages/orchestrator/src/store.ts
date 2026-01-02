@@ -29,6 +29,8 @@ import {
   Todo,
   TodoItem,
   TodoStatus,
+  ApprovalState,
+  ApprovalStatus,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -388,6 +390,26 @@ export class TaskStore {
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
+      -- v0.5.0 Approval States
+      CREATE TABLE IF NOT EXISTS approval_states (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        gate_name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied')),
+        approver TEXT,
+        requested_at TEXT NOT NULL,
+        responded_at TEXT,
+        comment TEXT,
+        context TEXT,
+        stage TEXT,
+        agent TEXT,
+        approvals_received INTEGER DEFAULT 0,
+        approvals_required INTEGER DEFAULT 1,
+        timeout_minutes INTEGER,
+        expires_at TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -408,6 +430,11 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_todos_task_id ON todos(task_id);
       CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
       CREATE INDEX IF NOT EXISTS idx_todos_order ON todos(task_id, order_index);
+      -- v0.5.0 Approval States Indexes
+      CREATE INDEX IF NOT EXISTS idx_approval_states_task_id ON approval_states(task_id);
+      CREATE INDEX IF NOT EXISTS idx_approval_states_status ON approval_states(status);
+      CREATE INDEX IF NOT EXISTS idx_approval_states_gate_name ON approval_states(gate_name);
+      CREATE INDEX IF NOT EXISTS idx_approval_states_requested_at ON approval_states(requested_at);
     `);
   }
 
@@ -2540,6 +2567,113 @@ export class TaskStore {
     return result;
   }
 
+  // ============================================================================
+  // Approval State Methods (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Save an approval state to the database
+   */
+  async saveApprovalState(state: ApprovalState): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO approval_states (
+        id, task_id, gate_name, status, approver, requested_at, responded_at,
+        comment, context, stage, agent, approvals_received, approvals_required, timeout_minutes, expires_at
+      ) VALUES (
+        @id, @taskId, @gateName, @status, @approver, @requestedAt, @respondedAt,
+        @comment, @context, @stage, @agent, @approvalsReceived, @approvalsRequired, @timeoutMinutes, @expiresAt
+      )
+    `);
+
+    stmt.run({
+      id: state.id,
+      taskId: state.taskId,
+      gateName: state.gateName,
+      status: state.status,
+      approver: state.approver || null,
+      requestedAt: state.requestedAt.toISOString(),
+      respondedAt: state.respondedAt ? state.respondedAt.toISOString() : null,
+      comment: state.comment || null,
+      context: state.context ? JSON.stringify(state.context) : null,
+      stage: state.stage || null,
+      agent: state.agent || null,
+      approvalsReceived: state.approvalsReceived || 0,
+      approvalsRequired: state.approvalsRequired || 1,
+      timeoutMinutes: state.timeoutMinutes || null,
+      expiresAt: state.expiresAt ? state.expiresAt.toISOString() : null,
+    });
+  }
+
+  /**
+   * Get an approval state by task ID and approval ID
+   */
+  async getApprovalState(taskId: string, approvalId?: string): Promise<ApprovalState | null> {
+    let stmt: Database.Statement<unknown[]>;
+    let params: unknown[];
+
+    if (approvalId) {
+      stmt = this.db.prepare('SELECT * FROM approval_states WHERE task_id = ? AND id = ?');
+      params = [taskId, approvalId];
+    } else {
+      // If no approvalId, get the most recent approval for the task
+      stmt = this.db.prepare(`
+        SELECT * FROM approval_states
+        WHERE task_id = ?
+        ORDER BY requested_at DESC
+        LIMIT 1
+      `);
+      params = [taskId];
+    }
+
+    const row = stmt.get(...params) as ApprovalStateRow | undefined;
+    return row ? this.rowToApprovalState(row) : null;
+  }
+
+  /**
+   * Get all pending approval states
+   */
+  async getPendingApprovals(): Promise<ApprovalState[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM approval_states
+      WHERE status = 'pending'
+      ORDER BY requested_at ASC
+    `);
+    const rows = stmt.all() as ApprovalStateRow[];
+    return rows.map(row => this.rowToApprovalState(row));
+  }
+
+  /**
+   * Convert an approval state database row to an ApprovalState object
+   */
+  private rowToApprovalState(row: ApprovalStateRow): ApprovalState {
+    // Parse context from JSON string if present
+    let context: Record<string, unknown> | undefined;
+    if (row.context) {
+      try {
+        context = JSON.parse(row.context) as Record<string, unknown>;
+      } catch {
+        context = undefined;
+      }
+    }
+
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      gateName: row.gate_name,
+      status: row.status as ApprovalStatus,
+      approver: row.approver || undefined,
+      requestedAt: new Date(row.requested_at),
+      respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
+      comment: row.reason || undefined,
+      context,
+      stage: row.stage || undefined,
+      agent: row.agent || undefined,
+      approvalsReceived: row.approvals_received || 0,
+      approvalsRequired: row.approvals_required || 1,
+      expiresAt: row.timeout_at ? new Date(row.timeout_at) : undefined,
+    };
+  }
+
   /**
    * Convert a todo database row to a Todo object
    */
@@ -2696,4 +2830,22 @@ interface TodoRow {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+}
+
+interface ApprovalStateRow {
+  id: string;
+  task_id: string;
+  gate_name: string;
+  status: string;
+  approver: string | null;
+  requested_at: string;
+  responded_at: string | null;
+  comment: string | null;
+  context: string | null;
+  stage: string | null;
+  agent: string | null;
+  approvals_received: number;
+  approvals_required: number;
+  timeout_minutes: number | null;
+  expires_at: string | null;
 }

@@ -11,16 +11,31 @@
 import { minimatch } from 'minimatch';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { EventEmitter } from 'eventemitter3';
 import type {
   PolicyConfig,
   PolicyViolation,
+  PolicyViolationEvent,
   AllowedPathsConfig,
   PolicyEnforcementMode,
+  Task,
+  ApprovalRule,
+  ApprovalCondition,
+  ApprovalUrgency,
+  ApprovalOperationType,
 } from '@apexcli/core';
 
 // ============================================================================
 // Types and Interfaces
 // ============================================================================
+
+/**
+ * Events emitted by the PolicyEnforcer
+ */
+export interface PolicyEnforcerEvents {
+  /** Emitted when a policy violation is detected */
+  'policy:violation': (event: PolicyViolationEvent) => void;
+}
 
 /**
  * Options for creating a PolicyViolation
@@ -56,6 +71,46 @@ export interface PathValidationResult {
   isSensitive: boolean;
 }
 
+/**
+ * Context for approval requirement checking
+ */
+export interface ApprovalCheckContext {
+  /** File paths being accessed or modified */
+  filePaths?: string[];
+  /** Content of files (for content-pattern matching) */
+  fileContents?: Map<string, string>;
+  /** Current operation being performed */
+  operation?: ApprovalOperationType;
+  /** Estimated cost in USD */
+  estimatedCost?: number;
+  /** Token usage */
+  tokenUsage?: number;
+  /** Custom context variables for expression evaluation */
+  customContext?: Record<string, unknown>;
+}
+
+/**
+ * Result of approval requirement checking
+ */
+export interface ApprovalRequirement {
+  /** Whether approval is required */
+  required: boolean;
+  /** Rules that triggered the requirement (sorted by priority) */
+  triggeredRules: ApprovalRule[];
+  /** Urgency level (highest among triggered rules) */
+  urgency: ApprovalUrgency;
+  /** Timeout in minutes (shortest among triggered rules for safety) */
+  timeoutMinutes: number;
+  /** Required approvers (union of all triggered rules) */
+  requiredApprovers: string[];
+  /** Minimum approvals needed (maximum among triggered rules) */
+  minApprovals: number;
+  /** Timeout action (most restrictive among triggered rules) */
+  timeoutAction: 'reject' | 'approve' | 'escalate';
+  /** Human-readable summary of why approval is needed */
+  reason: string;
+}
+
 // ============================================================================
 // PolicyEnforcer Implementation
 // ============================================================================
@@ -70,6 +125,7 @@ export interface PathValidationResult {
  * - Allowlist and blocklist validation modes
  * - Sensitive file pattern detection
  * - PolicyViolation generation with full context
+ * - Real-time event emission for policy violations
  *
  * ## Usage Example
  *
@@ -85,6 +141,11 @@ export interface PathValidationResult {
  *
  * const enforcer = new PolicyEnforcer(config);
  *
+ * // Listen for policy violations
+ * enforcer.on('policy:violation', (event) => {
+ *   console.log('Policy violation detected:', event.violation.message);
+ * });
+ *
  * // Validate a file path
  * const violations = enforcer.validateFilePath('/project/src/main.ts');
  * if (violations.length === 0) {
@@ -94,7 +155,7 @@ export interface PathValidationResult {
  * }
  * ```
  */
-export class PolicyEnforcer {
+export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
   private readonly config: PolicyConfig;
 
   /**
@@ -103,6 +164,7 @@ export class PolicyEnforcer {
    * @param config - The policy configuration to enforce
    */
   constructor(config: PolicyConfig) {
+    super();
     this.config = config;
   }
 
@@ -136,10 +198,21 @@ export class PolicyEnforcer {
    * 3. If path matches sensitive patterns -> VIOLATION (requires approval)
    * 4. Otherwise -> ALLOWED (empty array)
    *
+   * Emits 'policy:violation' events for each violation detected.
+   *
    * @param filePath - The file path to validate
+   * @param context - Optional context for event emission
    * @returns Array of PolicyViolation objects (empty if path is allowed)
    */
-  validateFilePath(filePath: string): PolicyViolation[] {
+  validateFilePath(
+    filePath: string,
+    context: {
+      taskId?: string;
+      agentId?: string;
+      workflowId?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): PolicyViolation[] {
     // If policy is disabled, allow everything
     if (!this.isEnabled) {
       return [];
@@ -157,41 +230,112 @@ export class PolicyEnforcer {
     const validationResult = this.evaluatePath(normalizedPath, allowedPaths);
 
     if (!validationResult.allowed) {
-      violations.push(
-        this.createViolation({
-          message: validationResult.reason,
-          description: this.buildViolationDescription(validationResult, normalizedPath),
-          resource: normalizedPath,
-          ruleId: 'path-validation',
-          matchedPattern: validationResult.matchedPattern,
-          context: {
-            matchType: validationResult.matchType,
-            isSensitive: validationResult.isSensitive,
-            mode: allowedPaths.mode ?? 'allowlist',
-          },
-        })
-      );
+      const violation = this.createViolation({
+        message: validationResult.reason,
+        description: this.buildViolationDescription(validationResult, normalizedPath),
+        resource: normalizedPath,
+        ruleId: 'path-validation',
+        matchedPattern: validationResult.matchedPattern,
+        context: {
+          matchType: validationResult.matchType,
+          isSensitive: validationResult.isSensitive,
+          mode: allowedPaths.mode ?? 'allowlist',
+        },
+      });
+      violations.push(violation);
+
+      // Emit policy violation event
+      const violationEvent = this.createViolationEvent(violation, context);
+      this.emit('policy:violation', violationEvent);
     }
 
     // Also check for sensitive patterns (even if path is otherwise allowed)
     if (validationResult.allowed && validationResult.isSensitive) {
-      violations.push(
-        this.createViolation({
-          message: `Path '${normalizedPath}' matches sensitive file pattern and requires approval`,
-          description: `The path matches a sensitive pattern: ${validationResult.matchedPattern}. Access to sensitive files requires explicit human approval.`,
-          resource: normalizedPath,
-          ruleId: 'sensitive-path',
-          matchedPattern: validationResult.matchedPattern,
-          context: {
-            matchType: 'sensitive',
-            isSensitive: true,
-            requiresApproval: true,
-          },
-        })
-      );
+      const sensitiveViolation = this.createViolation({
+        message: `Path '${normalizedPath}' matches sensitive file pattern and requires approval`,
+        description: `The path matches a sensitive pattern: ${validationResult.matchedPattern}. Access to sensitive files requires explicit human approval.`,
+        resource: normalizedPath,
+        ruleId: 'sensitive-path',
+        matchedPattern: validationResult.matchedPattern,
+        context: {
+          matchType: 'sensitive',
+          isSensitive: true,
+          requiresApproval: true,
+        },
+      });
+      violations.push(sensitiveViolation);
+
+      // Emit policy violation event for sensitive file
+      const sensitiveViolationEvent = this.createViolationEvent(sensitiveViolation, context);
+      this.emit('policy:violation', sensitiveViolationEvent);
     }
 
     return violations;
+  }
+
+  /**
+   * Checks if human approval is required for a task/action combination.
+   *
+   * Evaluates all enabled approval rules against the task and context to determine
+   * if human intervention is needed before proceeding. Rules are evaluated in
+   * priority order, and results are aggregated using conservative defaults.
+   *
+   * @param task - The task being executed
+   * @param action - The action being performed (e.g., 'deploy', 'delete', 'create')
+   * @param context - Additional context for rule evaluation
+   * @returns Consolidated approval requirements from all triggered rules
+   */
+  checkApprovalRequired(
+    task: Task,
+    action: string,
+    context: ApprovalCheckContext = {}
+  ): ApprovalRequirement {
+    // If policy is disabled or no approval rules configured, no approval needed
+    if (!this.isEnabled || !this.config.approvalRules?.enabled) {
+      return {
+        required: false,
+        triggeredRules: [],
+        urgency: 'normal',
+        timeoutMinutes: 60,
+        requiredApprovers: [],
+        minApprovals: 1,
+        timeoutAction: 'reject',
+        reason: 'No approval rules configured or policy disabled',
+      };
+    }
+
+    const approvalRules = this.config.approvalRules.rules || [];
+
+    // Filter enabled rules and sort by priority (higher first)
+    const enabledRules = approvalRules
+      .filter(rule => rule.enabled !== false)
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+    // Evaluate rules to find which ones trigger
+    const triggeredRules: ApprovalRule[] = [];
+
+    for (const rule of enabledRules) {
+      if (this.evaluateRule(rule, task, action, context)) {
+        triggeredRules.push(rule);
+      }
+    }
+
+    // If no rules triggered, no approval needed
+    if (triggeredRules.length === 0) {
+      return {
+        required: false,
+        triggeredRules: [],
+        urgency: 'normal',
+        timeoutMinutes: 60,
+        requiredApprovers: [],
+        minApprovals: 1,
+        timeoutAction: 'reject',
+        reason: 'No approval rules matched',
+      };
+    }
+
+    // Aggregate results from all triggered rules
+    return this.aggregateApprovalRequirements(triggeredRules);
   }
 
   // ============================================================================
@@ -225,6 +369,34 @@ export class PolicyEnforcer {
   }
 
   /**
+   * Creates a PolicyViolationEvent for event emission.
+   *
+   * @param violation - The policy violation that triggered the event
+   * @param context - Optional context for task, agent, and workflow IDs
+   * @returns A fully populated PolicyViolationEvent object
+   */
+  protected createViolationEvent(
+    violation: PolicyViolation,
+    context: {
+      taskId?: string;
+      agentId?: string;
+      workflowId?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): PolicyViolationEvent {
+    return {
+      type: 'policy_violation',
+      id: randomUUID(),
+      timestamp: new Date(),
+      violation,
+      taskId: context.taskId,
+      agentId: context.agentId,
+      workflowId: context.workflowId,
+      metadata: context.metadata,
+    };
+  }
+
+  /**
    * Checks if a path matches any of the given glob patterns.
    *
    * @param filePath - The normalized file path to check
@@ -248,6 +420,91 @@ export class PolicyEnforcer {
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
+
+  /**
+   * Evaluates whether an approval rule should trigger based on task and context.
+   */
+  private evaluateRule(
+    rule: ApprovalRule,
+    task: Task,
+    action: string,
+    context: ApprovalCheckContext
+  ): boolean {
+    const conditions = rule.conditions;
+
+    if (rule.requireAllConditions) {
+      // AND logic: ALL conditions must match
+      return conditions.every(condition => this.evaluateCondition(condition, task, action, context));
+    } else {
+      // OR logic: ANY condition triggers (default)
+      return conditions.some(condition => this.evaluateCondition(condition, task, action, context));
+    }
+  }
+
+  /**
+   * Evaluates a single approval condition.
+   */
+  private evaluateCondition(
+    condition: ApprovalCondition,
+    task: Task,
+    action: string,
+    context: ApprovalCheckContext
+  ): boolean {
+    switch (condition.type) {
+      case 'file-pattern':
+        return this.evaluateFilePatternCondition(condition, context);
+      case 'content-pattern':
+        return this.evaluateContentPatternCondition(condition, context);
+      case 'operation':
+        return this.evaluateOperationCondition(condition, action, context);
+      case 'cost-threshold':
+        return this.evaluateCostThresholdCondition(condition, task, context);
+      case 'token-threshold':
+        return this.evaluateTokenThresholdCondition(condition, task, context);
+      case 'custom':
+        return this.evaluateCustomCondition(condition, task, action, context);
+      default:
+        // Unknown condition type - treat as non-matching for safety
+        return false;
+    }
+  }
+
+  /**
+   * Aggregates multiple triggered rules into a single requirement.
+   */
+  private aggregateApprovalRequirements(triggeredRules: ApprovalRule[]): ApprovalRequirement {
+    if (triggeredRules.length === 0) {
+      return {
+        required: false,
+        triggeredRules: [],
+        urgency: 'normal',
+        timeoutMinutes: 60,
+        requiredApprovers: [],
+        minApprovals: 1,
+        timeoutAction: 'reject',
+        reason: 'No rules triggered',
+      };
+    }
+
+    // Calculate aggregated values
+    const urgency = this.getHighestUrgency(triggeredRules);
+    const timeoutMinutes = this.getShortestTimeout(triggeredRules, urgency);
+    const requiredApprovers = this.getUnionOfApprovers(triggeredRules);
+    const minApprovals = this.getMaximumApprovals(triggeredRules);
+    const timeoutAction = this.getMostRestrictiveTimeoutAction(triggeredRules);
+    const reason = this.buildApprovalReason(triggeredRules);
+
+    return {
+      required: true,
+      triggeredRules,
+      urgency,
+      timeoutMinutes,
+      requiredApprovers,
+      minApprovals,
+      timeoutAction,
+      reason,
+    };
+  }
 
   /**
    * Evaluates a path against the allowedPaths configuration.
@@ -368,7 +625,7 @@ export class PolicyEnforcer {
    */
   private getSeverityFromEnforcement(): 'info' | 'warning' | 'error' {
     switch (this.enforcementMode) {
-      case 'enforce':
+      case 'strict':
         return 'error';
       case 'warn':
         return 'warning';
@@ -403,6 +660,350 @@ export class PolicyEnforcer {
 
     return `Path validation failed for '${normalizedPath}'`;
   }
+
+  // ============================================================================
+  // Approval Condition Evaluation Methods
+  // ============================================================================
+
+  /**
+   * Evaluates file pattern conditions against context file paths.
+   */
+  private evaluateFilePatternCondition(
+    condition: ApprovalCondition,
+    context: ApprovalCheckContext
+  ): boolean {
+    const patterns = condition.patterns || [];
+    const filePaths = context.filePaths || [];
+
+    // If no patterns defined or no files to check, condition doesn't match
+    if (patterns.length === 0 || filePaths.length === 0) {
+      return false;
+    }
+
+    // Check if any file matches any pattern
+    return filePaths.some(filePath => {
+      const normalizedPath = this.normalizePath(filePath);
+      return this.matchesPattern(normalizedPath, patterns) !== undefined;
+    });
+  }
+
+  /**
+   * Evaluates content pattern conditions against file contents.
+   */
+  private evaluateContentPatternCondition(
+    condition: ApprovalCondition,
+    context: ApprovalCheckContext
+  ): boolean {
+    const patterns = condition.patterns || [];
+    const fileContents = context.fileContents || new Map();
+
+    // If no patterns defined or no content to check, condition doesn't match
+    if (patterns.length === 0 || fileContents.size === 0) {
+      return false;
+    }
+
+    // Check if any file content matches any regex pattern
+    for (const [filePath, content] of fileContents.entries()) {
+      for (const pattern of patterns) {
+        try {
+          const regex = new RegExp(pattern, 'i'); // Case-insensitive by default
+          if (regex.test(content)) {
+            return true;
+          }
+        } catch {
+          // Invalid regex - skip this pattern for safety
+          continue;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Evaluates operation conditions against the action and context.
+   */
+  private evaluateOperationCondition(
+    condition: ApprovalCondition,
+    action: string,
+    context: ApprovalCheckContext
+  ): boolean {
+    const operations = condition.operations || [];
+
+    // If no operations defined, condition doesn't match
+    if (operations.length === 0) {
+      return false;
+    }
+
+    // Check action against operations list
+    const actionLower = action.toLowerCase();
+    const operationMatched = operations.some(op =>
+      op.toLowerCase() === actionLower
+    );
+
+    if (operationMatched) {
+      return true;
+    }
+
+    // Also check context.operation if provided
+    if (context.operation) {
+      return operations.includes(context.operation);
+    }
+
+    return false;
+  }
+
+  /**
+   * Evaluates cost threshold conditions.
+   */
+  private evaluateCostThresholdCondition(
+    condition: ApprovalCondition,
+    task: Task,
+    context: ApprovalCheckContext
+  ): boolean {
+    const threshold = condition.threshold;
+
+    // If no threshold defined, condition doesn't match
+    if (threshold === undefined || threshold <= 0) {
+      return false;
+    }
+
+    // Check context cost first, then task cost
+    const estimatedCost = context.estimatedCost ?? task.usage.estimatedCost;
+    return estimatedCost > threshold;
+  }
+
+  /**
+   * Evaluates token threshold conditions.
+   */
+  private evaluateTokenThresholdCondition(
+    condition: ApprovalCondition,
+    task: Task,
+    context: ApprovalCheckContext
+  ): boolean {
+    const threshold = condition.threshold;
+
+    // If no threshold defined, condition doesn't match
+    if (threshold === undefined || threshold <= 0) {
+      return false;
+    }
+
+    // Check context tokens first, then task tokens
+    const tokenUsage = context.tokenUsage ?? task.usage.totalTokens;
+    return tokenUsage > threshold;
+  }
+
+  /**
+   * Evaluates custom expression conditions.
+   * Note: This is a simplified implementation. A production system would
+   * use a sandboxed expression evaluator.
+   */
+  private evaluateCustomCondition(
+    condition: ApprovalCondition,
+    task: Task,
+    action: string,
+    context: ApprovalCheckContext
+  ): boolean {
+    const expression = condition.expression;
+
+    // If no expression defined, condition doesn't match
+    if (!expression) {
+      return false;
+    }
+
+    try {
+      // Create evaluation context with available variables
+      const evalContext = {
+        cost: context.estimatedCost ?? task.usage.estimatedCost,
+        tokens: context.tokenUsage ?? task.usage.totalTokens,
+        files: (context.filePaths || []).join(','),
+        operation: action,
+        task_priority: task.priority,
+        task_effort: task.effort,
+        task_workflow: task.workflow,
+        ...context.customContext,
+      };
+
+      // Simple string interpolation for basic expressions
+      // In production, use a proper expression evaluator
+      let evaluatedExpression = expression;
+      for (const [key, value] of Object.entries(evalContext)) {
+        const placeholder = `{${key}}`;
+        evaluatedExpression = evaluatedExpression.replace(
+          new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'),
+          String(value)
+        );
+      }
+
+      // For now, just check for basic numeric comparisons
+      // This is a very basic implementation - production would use a proper parser
+      return this.evaluateSimpleExpression(evaluatedExpression, evalContext);
+    } catch {
+      // If evaluation fails, condition doesn't match for safety
+      return false;
+    }
+  }
+
+  // ============================================================================
+  // Approval Aggregation Helper Methods
+  // ============================================================================
+
+  /**
+   * Gets the highest urgency level among triggered rules.
+   */
+  private getHighestUrgency(rules: ApprovalRule[]): ApprovalUrgency {
+    const urgencyOrder: Record<ApprovalUrgency, number> = {
+      low: 0,
+      normal: 1,
+      high: 2,
+      critical: 3,
+    };
+
+    let highestUrgency: ApprovalUrgency = 'normal';
+    let highestLevel = urgencyOrder[highestUrgency];
+
+    for (const rule of rules) {
+      const ruleUrgency = rule.urgency || 'normal';
+      const ruleLevel = urgencyOrder[ruleUrgency];
+      if (ruleLevel > highestLevel) {
+        highestUrgency = ruleUrgency;
+        highestLevel = ruleLevel;
+      }
+    }
+
+    return highestUrgency;
+  }
+
+  /**
+   * Gets the shortest timeout among triggered rules for safety.
+   */
+  private getShortestTimeout(rules: ApprovalRule[], urgency: ApprovalUrgency): number {
+    // Default timeouts by urgency
+    const defaultTimeouts: Record<ApprovalUrgency, number> = {
+      low: 1440,  // 24 hours
+      normal: 60, // 1 hour
+      high: 15,   // 15 minutes
+      critical: 5, // 5 minutes
+    };
+
+    let shortestTimeout = defaultTimeouts[urgency];
+
+    for (const rule of rules) {
+      const ruleTimeout = rule.timeoutMinutes || defaultTimeouts[rule.urgency || 'normal'];
+      if (ruleTimeout < shortestTimeout) {
+        shortestTimeout = ruleTimeout;
+      }
+    }
+
+    return shortestTimeout;
+  }
+
+  /**
+   * Gets the union of all required approvers from triggered rules.
+   */
+  private getUnionOfApprovers(rules: ApprovalRule[]): string[] {
+    const approvers = new Set<string>();
+
+    for (const rule of rules) {
+      if (rule.approvers) {
+        rule.approvers.forEach(approver => approvers.add(approver));
+      }
+    }
+
+    return Array.from(approvers);
+  }
+
+  /**
+   * Gets the maximum number of approvals required among triggered rules.
+   */
+  private getMaximumApprovals(rules: ApprovalRule[]): number {
+    let maxApprovals = 1;
+
+    for (const rule of rules) {
+      const ruleMinApprovals = rule.minApprovals || 1;
+      if (ruleMinApprovals > maxApprovals) {
+        maxApprovals = ruleMinApprovals;
+      }
+    }
+
+    return maxApprovals;
+  }
+
+  /**
+   * Gets the most restrictive timeout action among triggered rules.
+   */
+  private getMostRestrictiveTimeoutAction(rules: ApprovalRule[]): 'reject' | 'approve' | 'escalate' {
+    const actionOrder: Record<'reject' | 'approve' | 'escalate', number> = {
+      approve: 0,
+      escalate: 1,
+      reject: 2,
+    };
+
+    let mostRestrictiveAction: 'reject' | 'approve' | 'escalate' = 'reject';
+    let mostRestrictiveLevel = actionOrder[mostRestrictiveAction];
+
+    for (const rule of rules) {
+      const ruleAction = rule.timeoutAction || 'reject';
+      const ruleLevel = actionOrder[ruleAction];
+      if (ruleLevel > mostRestrictiveLevel) {
+        mostRestrictiveAction = ruleAction;
+        mostRestrictiveLevel = ruleLevel;
+      }
+    }
+
+    return mostRestrictiveAction;
+  }
+
+  /**
+   * Builds a human-readable reason for why approval is required.
+   */
+  private buildApprovalReason(rules: ApprovalRule[]): string {
+    if (rules.length === 0) {
+      return 'No approval rules triggered';
+    }
+
+    if (rules.length === 1) {
+      const rule = rules[0];
+      return rule.description || rule.name || `Rule '${rule.id}' requires approval`;
+    }
+
+    const ruleNames = rules.map(rule => rule.name || rule.id).join(', ');
+    return `Multiple approval rules triggered: ${ruleNames}`;
+  }
+
+  /**
+   * Evaluates a simple expression (basic implementation).
+   * This is a minimal implementation for demonstration.
+   * Production systems should use a proper expression evaluator.
+   */
+  private evaluateSimpleExpression(expression: string, context: Record<string, unknown>): boolean {
+    // Very basic implementation - just handle simple numeric comparisons
+    const numericComparison = /^(\d+(?:\.\d+)?)\s*([><=]+)\s*(\d+(?:\.\d+)?)$/.exec(expression.trim());
+    if (numericComparison) {
+      const [, left, operator, right] = numericComparison;
+      const leftValue = parseFloat(left);
+      const rightValue = parseFloat(right);
+
+      switch (operator) {
+        case '>':
+          return leftValue > rightValue;
+        case '>=':
+          return leftValue >= rightValue;
+        case '<':
+          return leftValue < rightValue;
+        case '<=':
+          return leftValue <= rightValue;
+        case '==':
+        case '=':
+          return leftValue === rightValue;
+        default:
+          return false;
+      }
+    }
+
+    // For now, if we can't parse it, return false for safety
+    return false;
+  }
 }
 
 // ============================================================================
@@ -420,6 +1021,7 @@ export function createPolicyEnforcer(config: Partial<PolicyConfig> = {}): Policy
     version: '1.0',
     enforcement: 'warn',
     enabled: true,
+    tags: [],
     ...config,
   };
 

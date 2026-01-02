@@ -24,6 +24,7 @@ const customScanner = new SecretScanner({
     regex: /TEST_PATTERN_\w{4}/g,
     secretType: 'test',
     confidence: 0.8,
+    severity: 'high',
     description: 'Test pattern'
   }],
   includeBuiltInPatterns: false
