@@ -1502,6 +1502,8 @@ export interface Task {
   sessionData?: TaskSessionData; // Session recovery data
   thoughtCaptures?: ThoughtCapture[]; // Quick ideas related to this task
   iterationHistory?: IterationHistory; // Iteration history for the task
+  // v0.5.0 policy check result
+  policyCheckResult?: TaskPolicyCheckResult; // Result of policy evaluation for this task
 }
 
 /**
@@ -4089,3 +4091,25 @@ export const PolicyViolationEventSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type PolicyViolationEvent = z.infer<typeof PolicyViolationEventSchema>;
+
+/**
+ * Task-level policy check result
+ * Captures the outcome of policy evaluation for a task
+ */
+export const TaskPolicyCheckResultSchema = z.object({
+  /** Whether the policy check passed overall */
+  passed: z.boolean(),
+  /** Whether the task was blocked due to policy violations */
+  blocked: z.boolean(),
+  /** Number of violations found */
+  violationCount: z.number().int().min(0),
+  /** List of policy violations */
+  violations: z.array(PolicyViolationSchema),
+  /** Timestamp when the policy check was performed */
+  checkedAt: z.date(),
+  /** Policy name/configuration used */
+  policyName: z.string().optional(),
+  /** Enforcement mode that was applied */
+  enforcementMode: PolicyEnforcementModeSchema.optional(),
+});
+export type TaskPolicyCheckResult = z.infer<typeof TaskPolicyCheckResultSchema>;

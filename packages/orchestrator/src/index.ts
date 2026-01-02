@@ -5821,9 +5821,16 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   isToolExecutionActive(callId: string): boolean {
     return this.activeToolExecutions.has(callId);
   }
+
+  /**
+   * Get the tool action store instance
+   */
+  getToolActionStore(): ToolActionStore {
+    return this.toolActionStore;
+  }
 }
 
-export { TaskStore } from './store';
+export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
