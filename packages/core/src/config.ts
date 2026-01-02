@@ -356,7 +356,22 @@ export async function initializeApex(
       framework: options.framework,
     },
     autonomy: {
-      default: 'review-before-merge',
+      level: 'review-before-commit',
+      gates: [
+        {
+          type: 'before-commit',
+          name: 'Code Review Gate',
+          description: 'Requires approval before committing code changes',
+          required: true,
+        },
+      ],
+      limits: {
+        maxCost: 10.0,
+        maxTokens: 500000,
+        maxTurns: 100,
+        dailyBudget: 100.0,
+        maxConcurrentTasks: 3,
+      },
     },
     agents: {
       enabled: ['planner', 'architect', 'developer', 'reviewer', 'tester'],
@@ -407,8 +422,11 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     version: config.version,
     project: config.project,
     autonomy: {
-      default: config.autonomy?.default || 'review-before-merge',
-      overrides: config.autonomy?.overrides || {},
+      level: config.autonomy?.level || 'review-before-commit',
+      gates: config.autonomy?.gates || [],
+      limits: config.autonomy?.limits,
+      stageOverrides: config.autonomy?.stageOverrides || {},
+      agentOverrides: config.autonomy?.agentOverrides || {},
     },
     agents: {
       enabled: config.agents?.enabled || [],

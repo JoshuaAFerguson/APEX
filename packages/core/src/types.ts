@@ -1034,12 +1034,7 @@ export interface HealthMetrics {
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
-  autonomy: z
-    .object({
-      default: AutonomyLevelSchema.default('review-before-merge'),
-      overrides: z.record(z.string(), AutonomyLevelSchema).optional(),
-    })
-    .optional(),
+  autonomy: AutonomyConfigSchema.optional(),
   agents: z
     .object({
       enabled: z.array(z.string()).optional(),
