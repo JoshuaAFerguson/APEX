@@ -444,7 +444,7 @@ describe('Trash Operations Edge Cases', () => {
         expect(typeof task.id).toBe('string');
         expect(typeof task.description).toBe('string');
         expect(typeof task.workflow).toBe('string');
-        expect(['pending', 'queued', 'planning', 'running', 'completed', 'failed', 'cancelled'])
+        expect(['pending', 'queued', 'planning', 'in-progress', 'waiting-approval', 'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'])
           .toContain(task.status);
         expect(['full', 'review-before-commit', 'review-before-merge', 'manual'])
           .toContain(task.autonomy);

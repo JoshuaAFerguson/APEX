@@ -16,7 +16,14 @@ import {
   TaskTemplate,
   HealthMetrics,
 } from '@apexcli/core';
-import { ApexOrchestrator, DaemonManager, HealthMonitor } from '@apexcli/orchestrator';
+import {
+  ApexOrchestrator,
+  DaemonManager,
+  HealthMonitor,
+  ToolCallStartEvent,
+  ToolCallProgressEvent,
+  ToolCallCompleteEvent
+} from '@apexcli/orchestrator';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -45,8 +52,13 @@ interface UpdateTemplateRequest {
   tags?: string[];
 }
 
-// WebSocket client tracking
-const clients = new Map<string, Set<WebSocket>>();
+// WebSocket client tracking with event filtering
+interface WebSocketClient {
+  socket: WebSocket;
+  eventFilters?: Set<string>; // Set of event types to filter for (if empty, receives all events)
+}
+
+const clients = new Map<string, Set<WebSocketClient>>();
 
 export interface ServerOptions {
   port?: number;
@@ -1036,19 +1048,34 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // WebSocket for real-time streaming
   // ============================================================================
 
-  app.get<{ Params: { taskId: string } }>(
+  app.get<{
+    Params: { taskId: string };
+    Querystring: { events?: string; }; // Comma-separated list of event types to subscribe to
+  }>(
     '/stream/:taskId',
     { websocket: true },
     (socket, request) => {
       const { taskId } = request.params;
+      const { events } = request.query;
 
-      // Register client
+      // Parse event filters from query parameter
+      let eventFilters: Set<string> | undefined;
+      if (events) {
+        eventFilters = new Set(events.split(',').map(e => e.trim()).filter(e => e.length > 0));
+      }
+
+      // Register client with filtering capability
+      const client: WebSocketClient = {
+        socket,
+        eventFilters
+      };
+
       if (!clients.has(taskId)) {
         clients.set(taskId, new Set());
       }
-      clients.get(taskId)!.add(socket);
+      clients.get(taskId)!.add(client);
 
-      app.log.info(`WebSocket client connected for task ${taskId}`);
+      app.log.info(`WebSocket client connected for task ${taskId}${eventFilters ? ` with filters: ${Array.from(eventFilters).join(',')}` : ''}`);
 
       // Send current task state
       orchestrator.getTask(taskId).then((task: Task | null) => {
@@ -1066,7 +1093,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
       // Handle disconnect
       socket.on('close', () => {
-        clients.get(taskId)?.delete(socket);
+        clients.get(taskId)?.delete(client);
         if (clients.get(taskId)?.size === 0) {
           clients.delete(taskId);
         }
@@ -1160,7 +1187,7 @@ function assessDaemonHealth(metrics: HealthMetrics): boolean {
 }
 
 /**
- * Broadcast an event to all connected clients for a task
+ * Broadcast an event to all connected clients for a task with event filtering
  */
 function broadcast(taskId: string, event: ApexEvent): void {
   const taskClients = clients.get(taskId);
@@ -1168,8 +1195,14 @@ function broadcast(taskId: string, event: ApexEvent): void {
 
   const message = JSON.stringify(event);
   for (const client of taskClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
+    // Check if client has event filters and if this event should be sent
+    if (client.eventFilters && !client.eventFilters.has(event.type)) {
+      continue; // Skip this client - event type not in their filter list
+    }
+
+    // Send message if socket is open
+    if (client.socket.readyState === WebSocket.OPEN) {
+      client.socket.send(message);
     }
   }
 }
@@ -1261,6 +1294,47 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       taskId,
       timestamp: new Date(),
       data: { ...usage },
+    });
+  });
+
+  // Tool call events (v0.5.0)
+  orchestrator.on('tool:start', (event: ToolCallStartEvent) => {
+    broadcast(event.taskId, {
+      type: 'tool:start',
+      taskId: event.taskId,
+      timestamp: new Date(),
+      data: {
+        toolName: event.toolName,
+        input: event.input,
+        callId: event.callId,
+      },
+    });
+  });
+
+  orchestrator.on('tool:progress', (event: ToolCallProgressEvent) => {
+    broadcast(event.taskId, {
+      type: 'tool:progress',
+      taskId: event.taskId,
+      timestamp: new Date(),
+      data: {
+        toolName: event.toolName,
+        callId: event.callId,
+        progress: event.progress,
+      },
+    });
+  });
+
+  orchestrator.on('tool:complete', (event: ToolCallCompleteEvent) => {
+    broadcast(event.taskId, {
+      type: 'tool:complete',
+      taskId: event.taskId,
+      timestamp: new Date(),
+      data: {
+        toolName: event.toolName,
+        callId: event.callId,
+        result: event.result,
+        timing: event.timing,
+      },
     });
   });
 
@@ -1436,7 +1510,13 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log('');
       console.log('WebSocket Streaming:');
       console.log(`  WS     /stream/:taskId           - Real-time task updates`);
+      console.log(`  WS     /stream/:taskId?events=... - Real-time task updates with event filtering`);
       console.log(`  WS     /stream/health            - Real-time health updates`);
+      console.log('');
+      console.log('Event Filtering Examples:');
+      console.log(`  /stream/task123?events=tool:start,tool:complete - Only tool call events`);
+      console.log(`  /stream/task123?events=agent:thinking - Only thinking events`);
+      console.log(`  /stream/task123 - All events (no filtering)`);
       console.log('');
       console.log('WebSocket Events (broadcasted via /stream/:taskId):');
       console.log(`    • task:trashed              - Task moved to trash`);
@@ -1446,6 +1526,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • trash:emptied             - Trash permanently emptied`);
       console.log(`    • task:created/started/completed/failed - Standard lifecycle`);
       console.log(`    • agent:message/thinking/tool-use - Agent activity`);
+      console.log(`    • tool:start/progress/complete - Tool call lifecycle events (v0.5.0)`);
       console.log(`    • subtask:created/completed/failed - Subtask events`);
       console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }

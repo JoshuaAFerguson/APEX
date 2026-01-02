@@ -26,6 +26,7 @@ describe('SecretScanner', () => {
         regex: /test-\w+-\d+/g,
         secretType: 'test-type',
         confidence: 0.8,
+        severity: 'medium',
         description: 'Test pattern for unit testing',
       };
 
@@ -59,6 +60,7 @@ describe('SecretScanner', () => {
           regex: /special-test-value-999/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -78,6 +80,7 @@ describe('SecretScanner', () => {
           regex: /special-test-value-999/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -100,6 +103,7 @@ Line 3: more content`;
           regex: /special-test-value-999/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -122,6 +126,7 @@ Line 3: more content`;
           regex: /special-test-value-123456789/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -143,6 +148,7 @@ Line 3: more content`;
           regex: /special-test-value-123456789/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -165,6 +171,7 @@ Line 3: more content`;
           regex: /test/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -184,6 +191,7 @@ Line 3: more content`;
           regex: /MATCH/g,
           secretType: 'test',
           confidence: 0.9,
+          severity: 'medium',
           description: 'Test pattern',
         }],
         includeBuiltInPatterns: false,
@@ -207,6 +215,7 @@ Line 3: more content`;
         regex: /dynamic-\w+/g,
         secretType: 'dynamic',
         confidence: 0.7,
+        severity: 'low',
         description: 'Dynamically added pattern',
       };
 
@@ -221,6 +230,7 @@ Line 3: more content`;
         regex: /removable-\w+/g,
         secretType: 'removable',
         confidence: 0.7,
+        severity: 'low',
         description: 'Pattern to be removed',
       };
 
@@ -244,6 +254,7 @@ Line 3: more content`;
         expect(pattern.secretType).toBeDefined();
         expect(pattern.confidence).toBeGreaterThan(0);
         expect(pattern.confidence).toBeLessThanOrEqual(1);
+        expect(pattern.severity).toMatch(/^(critical|high|medium|low)$/);
         expect(pattern.description).toBeDefined();
       });
     });
@@ -275,6 +286,7 @@ Line 3: more content`;
           regex: /TESTPATTERN123/g,
           secretType: 'test-secret',
           confidence: 0.85,
+          severity: 'high',
           description: 'Test pattern for structure validation',
         }],
         includeBuiltInPatterns: false,
@@ -294,6 +306,7 @@ Line 3: more content`;
       expect(finding).toHaveProperty('match');
       expect(finding).toHaveProperty('confidence', 0.85);
       expect(finding).toHaveProperty('patternName', 'structure-test');
+      expect(finding).toHaveProperty('severity', 'high');
       expect(finding).toHaveProperty('context');
 
       expect(typeof finding.column).toBe('number');

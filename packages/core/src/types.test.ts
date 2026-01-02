@@ -503,6 +503,7 @@ describe.skip('TaskStatusSchema', () => {
       'planning',
       'in-progress',
       'waiting-approval',
+      'awaiting-approval',
       'paused',
       'completed',
       'failed',

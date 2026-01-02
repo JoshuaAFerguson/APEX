@@ -245,7 +245,7 @@ describe('TaskLifecycleStatus Implementation Validation', () => {
       // 2. Task lifecycle (metadata) - optional timestamp fields
 
       // Status represents the business state
-      const businessStates = ['pending', 'in-progress', 'completed', 'failed', 'cancelled'];
+      const businessStates = ['pending', 'queued', 'planning', 'in-progress', 'waiting-approval', 'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'];
 
       // Lifecycle represents metadata about the task
       interface LifecycleMetadata {

@@ -638,7 +638,7 @@ describe('Queue State Consistency During Capacity Threshold Changes', () => {
       expect(finalTasks.length).toBeGreaterThanOrEqual(initialTaskCount);
 
       // Verify task status integrity
-      const validStatuses = ['pending', 'paused', 'in-progress', 'completed', 'failed'];
+      const validStatuses = ['pending', 'queued', 'planning', 'in-progress', 'waiting-approval', 'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'];
       for (const task of finalTasks.filter(t => initialTaskIds.has(t.id))) {
         expect(validStatuses).toContain(task.status);
       }

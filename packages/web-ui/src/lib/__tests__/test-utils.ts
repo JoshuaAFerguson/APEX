@@ -160,6 +160,7 @@ export function createMockTasks(count: number = 5): Task[] {
     'completed',
     'failed',
     'waiting-approval',
+    'awaiting-approval',
   ];
 
   return Array.from({ length: count }, (_, i) => {

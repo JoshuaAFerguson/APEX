@@ -5824,3 +5824,11 @@ export {
   type SecretPattern,
   type SecretScannerConfig,
 } from './scanner';
+
+// Policy
+export {
+  PolicyEnforcer,
+  createPolicyEnforcer,
+  type ViolationOptions,
+  type PathValidationResult,
+} from './policy';

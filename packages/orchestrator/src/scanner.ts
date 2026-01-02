@@ -1,4 +1,4 @@
-import { SecretFinding } from '@apexcli/core';
+import { SecretFinding, SecretSeverity } from '@apexcli/core';
 
 /**
  * Configuration for secret scanning patterns
@@ -12,6 +12,8 @@ export interface SecretPattern {
   secretType: string;
   /** Confidence level of this pattern (0-1) */
   confidence: number;
+  /** Severity level of this pattern */
+  severity: SecretSeverity;
   /** Description of what this pattern detects */
   description: string;
 }
@@ -93,6 +95,7 @@ export class SecretScanner {
             match: this.config.maskSecrets ? this.maskSecret(match.value) : match.value,
             confidence: pattern.confidence,
             patternName: pattern.name,
+            severity: pattern.severity,
             context: this.extractContext(line, match.startIndex, match.endIndex),
           };
 
@@ -184,6 +187,7 @@ export class SecretScanner {
         regex: /(?:api[_-]?key|apikey)["\s]*[:=]["\s]*([a-zA-Z0-9_\-]{16,})/gi,
         secretType: 'api-key',
         confidence: 0.8,
+        severity: 'medium',
         description: 'Generic API key pattern',
       },
 
@@ -193,6 +197,7 @@ export class SecretScanner {
         regex: /AKIA[0-9A-Z]{16}/g,
         secretType: 'aws-access-key',
         confidence: 0.95,
+        severity: 'high',
         description: 'AWS Access Key ID',
       },
       {
@@ -200,6 +205,7 @@ export class SecretScanner {
         regex: /(?:aws[_-]?secret[_-]?access[_-]?key|aws[_-]?secret)["\s]*[:=]["\s]*([a-zA-Z0-9/+=]{40})/gi,
         secretType: 'aws-secret-key',
         confidence: 0.85,
+        severity: 'high',
         description: 'AWS Secret Access Key',
       },
 
@@ -209,6 +215,7 @@ export class SecretScanner {
         regex: /gh[pousr]_[A-Za-z0-9_]{36}/g,
         secretType: 'github-token',
         confidence: 0.95,
+        severity: 'high',
         description: 'GitHub Personal Access Token',
       },
       {
@@ -216,6 +223,7 @@ export class SecretScanner {
         regex: /(?:github[_-]?token|gh[_-]?token)["\s]*[:=]["\s]*([a-f0-9]{40})/gi,
         secretType: 'github-token',
         confidence: 0.8,
+        severity: 'high',
         description: 'GitHub Classic Token',
       },
 
@@ -225,16 +233,18 @@ export class SecretScanner {
         regex: /eyJ[a-zA-Z0-9_=-]+\.eyJ[a-zA-Z0-9_=-]+\.[a-zA-Z0-9_=-]+/g,
         secretType: 'jwt-token',
         confidence: 0.9,
+        severity: 'medium',
         description: 'JSON Web Token (JWT)',
       },
 
-      // Database URLs
+      // Database URLs and Connection Strings
       {
         name: 'database-url',
-        regex: /(?:database[_-]?url|db[_-]?url)["\s]*[:=]["\s]*["']?(?:postgres|mysql|mongodb):\/\/[^"'\s]+/gi,
-        secretType: 'database-url',
+        regex: /(?:database[_-]?url|db[_-]?url|connection[_-]?string)["\s]*[:=]["\s]*["']?(?:postgres|mysql|mongodb|redis|sqlite):\/\/[^"'\s]+/gi,
+        secretType: 'connection-string',
         confidence: 0.85,
-        description: 'Database connection URL',
+        severity: 'high',
+        description: 'Database connection URL or connection string',
       },
 
       // Private Keys
@@ -243,16 +253,18 @@ export class SecretScanner {
         regex: /-----BEGIN[A-Z\s]+PRIVATE KEY-----[\s\S]*?-----END[A-Z\s]+PRIVATE KEY-----/g,
         secretType: 'private-key',
         confidence: 0.95,
+        severity: 'critical',
         description: 'Private key (PEM format)',
       },
 
-      // Passwords
+      // Passwords in config
       {
         name: 'password-field',
         regex: /(?:password|passwd|pwd)["\s]*[:=]["\s]*["']([^"'\s]{8,})["']/gi,
         secretType: 'password',
         confidence: 0.7,
-        description: 'Password field',
+        severity: 'high',
+        description: 'Password field in configuration',
       },
 
       // Slack Tokens
@@ -261,6 +273,7 @@ export class SecretScanner {
         regex: /xox[baprs]-[0-9a-zA-Z\-]{10,}/g,
         secretType: 'slack-token',
         confidence: 0.9,
+        severity: 'medium',
         description: 'Slack token',
       },
 
@@ -270,6 +283,7 @@ export class SecretScanner {
         regex: /(?:secret|token|key)["\s]*[:=]["\s]*["']([a-zA-Z0-9_\-+/=]{32,})["']/gi,
         secretType: 'generic-secret',
         confidence: 0.6,
+        severity: 'medium',
         description: 'High entropy string that might be a secret',
       },
 
@@ -279,6 +293,7 @@ export class SecretScanner {
         regex: /(?:secret|token|key)["\s]*[:=]["\s]*["']([A-Za-z0-9+/]{32,}={0,2})["']/gi,
         secretType: 'base64-secret',
         confidence: 0.7,
+        severity: 'medium',
         description: 'Base64 encoded secret',
       },
     ];

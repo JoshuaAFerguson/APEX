@@ -1879,6 +1879,9 @@ export type ApexEventType =
   | 'agent:thinking'
   | 'agent:tool-use'
   | 'agent:tool-result'
+  | 'tool:start'
+  | 'tool:progress'
+  | 'tool:complete'
   | 'gate:required'
   | 'gate:approved'
   | 'gate:rejected'
@@ -2408,6 +2411,11 @@ export interface StaleCommentFinding {
 /**
  * Secret finding specific structure
  */
+/**
+ * Severity levels for secret findings
+ */
+export type SecretSeverity = 'critical' | 'high' | 'medium' | 'low';
+
 export interface SecretFinding {
   /** File path where the secret was found */
   file: string;
@@ -2425,6 +2433,8 @@ export interface SecretFinding {
   confidence: number;
   /** Name of the pattern that matched */
   patternName: string;
+  /** Severity level of the finding */
+  severity: SecretSeverity;
   /** Additional context around the finding */
   context?: string;
 }
