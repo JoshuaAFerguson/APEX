@@ -47,6 +47,7 @@ vi.mock('path', async () => {
 // Create mock approval state data
 const createMockApprovalState = (overrides: Partial<ApprovalState> = {}): ApprovalState => ({
   id: 'approval-123',
+  taskId: 'task-123',
   gateName: 'test-gate',
   status: 'pending' as ApprovalStatus,
   requestedAt: new Date('2023-01-01T10:00:00Z'),
@@ -71,19 +72,19 @@ describe('TaskStore - Approval State Persistence', () => {
 
   describe('saveApprovalState', () => {
     it('should save an approval state to the database', async () => {
-      const taskId = 'task-123';
       const approvalState = createMockApprovalState({
         id: 'approval-456',
+        taskId: 'task-123',
         gateName: 'before-deploy',
         status: 'pending',
         approver: 'admin@example.com',
-        reason: 'Review required for deployment',
-        context: 'Production deployment context',
+        comment: 'Review required for deployment',
+        context: { deployment: 'Production deployment context' },
         stage: 'deployment',
         agent: 'devops-agent',
         approvalsReceived: 0,
         approvalsRequired: 1,
-        timeoutAt: new Date('2023-01-01T11:00:00Z'),
+        expiresAt: new Date('2023-01-01T11:00:00Z'),
       });
 
       mockRun.mockReturnValue({ changes: 1 });
@@ -101,20 +102,21 @@ describe('TaskStore - Approval State Persistence', () => {
         approver: 'admin@example.com',
         requestedAt: '2023-01-01T10:00:00.000Z',
         respondedAt: null,
-        reason: 'Review required for deployment',
-        context: 'Production deployment context',
+        comment: 'Review required for deployment',
+        context: JSON.stringify({ deployment: 'Production deployment context' }),
         stage: 'deployment',
         agent: 'devops-agent',
         approvalsReceived: 0,
         approvalsRequired: 1,
-        timeoutAt: '2023-01-01T11:00:00.000Z',
+        timeoutMinutes: null,
+        expiresAt: '2023-01-01T11:00:00.000Z',
       });
     });
 
     it('should handle approval state with minimal required fields', async () => {
-      const taskId = 'task-minimal';
       const approvalState = createMockApprovalState({
         id: 'minimal-approval',
+        taskId: 'task-minimal',
         gateName: 'basic-gate',
         status: 'approved',
         requestedAt: new Date('2023-01-01T10:00:00Z'),
@@ -132,13 +134,14 @@ describe('TaskStore - Approval State Persistence', () => {
         approver: null,
         requestedAt: '2023-01-01T10:00:00.000Z',
         respondedAt: null,
-        reason: null,
+        comment: null,
         context: null,
         stage: null,
         agent: null,
         approvalsReceived: 0,
         approvalsRequired: 1,
-        timeoutAt: null,
+        timeoutMinutes: null,
+        expiresAt: null,
       });
     });
   });
@@ -155,13 +158,14 @@ describe('TaskStore - Approval State Persistence', () => {
         approver: 'admin@example.com',
         requested_at: '2023-01-01T10:00:00.000Z',
         responded_at: '2023-01-01T10:30:00.000Z',
-        reason: 'Approved after review',
-        context: 'Deployment context',
+        comment: 'Approved after review',
+        context: '{"environment":"production"}',
         stage: 'deployment',
         agent: 'devops-agent',
         approvals_received: 1,
         approvals_required: 1,
-        timeout_at: '2023-01-01T11:00:00.000Z',
+        timeout_minutes: 60,
+        expires_at: '2023-01-01T11:00:00.000Z',
       };
 
       mockGet.mockReturnValue(mockRow);
@@ -174,18 +178,20 @@ describe('TaskStore - Approval State Persistence', () => {
       expect(mockGet).toHaveBeenCalledWith(taskId, approvalId);
       expect(result).toEqual({
         id: 'approval-456',
+        taskId: 'task-123',
         gateName: 'before-deploy',
         status: 'approved',
         approver: 'admin@example.com',
         requestedAt: new Date('2023-01-01T10:00:00.000Z'),
         respondedAt: new Date('2023-01-01T10:30:00.000Z'),
-        reason: 'Approved after review',
-        context: 'Deployment context',
+        comment: 'Approved after review',
+        context: { environment: 'production' },
         stage: 'deployment',
         agent: 'devops-agent',
         approvalsReceived: 1,
         approvalsRequired: 1,
-        timeoutAt: new Date('2023-01-01T11:00:00.000Z'),
+        timeoutMinutes: 60,
+        expiresAt: new Date('2023-01-01T11:00:00.000Z'),
       });
     });
 
@@ -199,13 +205,14 @@ describe('TaskStore - Approval State Persistence', () => {
         approver: null,
         requested_at: '2023-01-01T12:00:00.000Z',
         responded_at: null,
-        reason: null,
+        comment: null,
         context: null,
         stage: 'planning',
         agent: 'planning-agent',
         approvals_received: 0,
         approvals_required: 1,
-        timeout_at: null,
+        timeout_minutes: null,
+        expires_at: null,
       };
 
       mockGet.mockReturnValue(mockRow);
@@ -218,18 +225,20 @@ describe('TaskStore - Approval State Persistence', () => {
       expect(mockGet).toHaveBeenCalledWith(taskId);
       expect(result).toEqual({
         id: 'latest-approval',
+        taskId: 'task-123',
         gateName: 'latest-gate',
         status: 'pending',
         approver: undefined,
         requestedAt: new Date('2023-01-01T12:00:00.000Z'),
         respondedAt: undefined,
-        reason: undefined,
+        comment: undefined,
         context: undefined,
         stage: 'planning',
         agent: 'planning-agent',
         approvalsReceived: 0,
         approvalsRequired: 1,
-        timeoutAt: undefined,
+        timeoutMinutes: undefined,
+        expiresAt: undefined,
       });
     });
 
@@ -253,13 +262,14 @@ describe('TaskStore - Approval State Persistence', () => {
           approver: null,
           requested_at: '2023-01-01T10:00:00.000Z',
           responded_at: null,
-          reason: null,
-          context: 'Context 1',
+          comment: null,
+          context: '{"name":"Context 1"}',
           stage: 'planning',
           agent: 'agent-1',
           approvals_received: 0,
           approvals_required: 1,
-          timeout_at: '2023-01-01T11:00:00.000Z',
+          timeout_minutes: 60,
+          expires_at: '2023-01-01T11:00:00.000Z',
         },
         {
           id: 'pending-2',
@@ -269,13 +279,14 @@ describe('TaskStore - Approval State Persistence', () => {
           approver: null,
           requested_at: '2023-01-01T10:30:00.000Z',
           responded_at: null,
-          reason: null,
+          comment: null,
           context: null,
           stage: 'development',
           agent: 'agent-2',
           approvals_received: 0,
           approvals_required: 2,
-          timeout_at: null,
+          timeout_minutes: null,
+          expires_at: null,
         },
       ];
 
@@ -289,33 +300,37 @@ describe('TaskStore - Approval State Persistence', () => {
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
         id: 'pending-1',
+        taskId: 'task-1',
         gateName: 'gate-1',
         status: 'pending',
         approver: undefined,
         requestedAt: new Date('2023-01-01T10:00:00.000Z'),
         respondedAt: undefined,
-        reason: undefined,
-        context: 'Context 1',
+        comment: undefined,
+        context: { name: 'Context 1' },
         stage: 'planning',
         agent: 'agent-1',
         approvalsReceived: 0,
         approvalsRequired: 1,
-        timeoutAt: new Date('2023-01-01T11:00:00.000Z'),
+        timeoutMinutes: 60,
+        expiresAt: new Date('2023-01-01T11:00:00.000Z'),
       });
       expect(result[1]).toEqual({
         id: 'pending-2',
+        taskId: 'task-2',
         gateName: 'gate-2',
         status: 'pending',
         approver: undefined,
         requestedAt: new Date('2023-01-01T10:30:00.000Z'),
         respondedAt: undefined,
-        reason: undefined,
+        comment: undefined,
         context: undefined,
         stage: 'development',
         agent: 'agent-2',
         approvalsReceived: 0,
         approvalsRequired: 2,
-        timeoutAt: undefined,
+        timeoutMinutes: undefined,
+        expiresAt: undefined,
       });
     });
 
@@ -333,6 +348,7 @@ describe('TaskStore - Approval State Persistence', () => {
       const taskId = 'persistence-test-task';
       const approvalState = createMockApprovalState({
         id: 'persistent-approval',
+        taskId: 'persistence-test-task',
         gateName: 'critical-gate',
         status: 'pending',
         requestedAt: new Date('2023-01-01T10:00:00Z'),
@@ -359,13 +375,14 @@ describe('TaskStore - Approval State Persistence', () => {
         approver: null,
         requested_at: '2023-01-01T10:00:00.000Z',
         responded_at: null,
-        reason: null,
+        comment: null,
         context: null,
         stage: null,
         agent: null,
         approvals_received: 0,
         approvals_required: 1,
-        timeout_at: null,
+        timeout_minutes: null,
+        expires_at: null,
       };
       mockGet.mockReturnValue(mockRow);
 

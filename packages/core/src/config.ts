@@ -442,6 +442,45 @@ export async function initializeApex(
       },
       enabled: true
     },
+    linter: {
+      global: {
+        enabled: true,
+        runOnCommit: true,
+        runOnPush: false,
+        parallel: true,
+        cache: true,
+      },
+      eslint: {
+        enabled: true,
+        autoFix: false,
+        severity: 'warn',
+      },
+      prettier: {
+        enabled: true,
+        autoFix: false,
+        severity: 'warn',
+      },
+      integrations: {
+        preCommit: {
+          enabled: true,
+          linters: ['eslint', 'prettier'],
+          autoFix: true,
+          failOnError: true,
+        },
+        ci: {
+          enabled: true,
+          linters: ['eslint', 'prettier'],
+          autoFix: false,
+          failOnError: true,
+        },
+        ide: {
+          enabled: true,
+          autoFixOnSave: false,
+          showInlineErrors: true,
+          formatOnSave: false,
+        },
+      },
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);
@@ -629,6 +668,114 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       enabled: config.policy?.enabled ?? true,
       tags: config.policy?.tags || [],
       metadata: config.policy?.metadata || {},
+    },
+    linter: {
+      global: {
+        enabled: config.linter?.global?.enabled ?? true,
+        runOnCommit: config.linter?.global?.runOnCommit ?? true,
+        runOnPush: config.linter?.global?.runOnPush ?? false,
+        runOnSave: config.linter?.global?.runOnSave ?? false,
+        parallel: config.linter?.global?.parallel ?? true,
+        maxConcurrency: config.linter?.global?.maxConcurrency ?? 4,
+        failFast: config.linter?.global?.failFast ?? false,
+        cache: config.linter?.global?.cache ?? true,
+        cacheDirectory: config.linter?.global?.cacheDirectory || '.apex/cache/linters',
+        workingDirectory: config.linter?.global?.workingDirectory,
+        timeoutMs: config.linter?.global?.timeoutMs ?? 60000,
+      },
+      eslint: {
+        enabled: config.linter?.eslint?.enabled ?? true,
+        configPath: config.linter?.eslint?.configPath,
+        include: config.linter?.eslint?.include || [
+          'src/**/*.js',
+          'src/**/*.jsx',
+          'src/**/*.ts',
+          'src/**/*.tsx',
+          'lib/**/*.js',
+          'lib/**/*.jsx',
+          'lib/**/*.ts',
+          'lib/**/*.tsx',
+          '*.js',
+          '*.jsx',
+          '*.ts',
+          '*.tsx'
+        ],
+        exclude: config.linter?.eslint?.exclude || [
+          'node_modules/**',
+          'dist/**',
+          'build/**',
+          'coverage/**',
+          '*.d.ts'
+        ],
+        autoFix: config.linter?.eslint?.autoFix ?? false,
+        maxWarnings: config.linter?.eslint?.maxWarnings ?? 0,
+        cliOptions: config.linter?.eslint?.cliOptions || [],
+        environments: config.linter?.eslint?.environments || ['node', 'es2022'],
+        parserOptions: config.linter?.eslint?.parserOptions,
+        severity: config.linter?.eslint?.severity || 'warn',
+      },
+      prettier: {
+        enabled: config.linter?.prettier?.enabled ?? true,
+        configPath: config.linter?.prettier?.configPath,
+        include: config.linter?.prettier?.include || [
+          'src/**/*.js',
+          'src/**/*.jsx',
+          'src/**/*.ts',
+          'src/**/*.tsx',
+          'src/**/*.json',
+          'src/**/*.md',
+          'src/**/*.css',
+          'src/**/*.scss',
+          'src/**/*.less',
+          'src/**/*.html',
+          'lib/**/*.js',
+          'lib/**/*.jsx',
+          'lib/**/*.ts',
+          'lib/**/*.tsx',
+          '*.js',
+          '*.jsx',
+          '*.ts',
+          '*.tsx',
+          '*.json',
+          '*.md'
+        ],
+        exclude: config.linter?.prettier?.exclude || [
+          'node_modules/**',
+          'dist/**',
+          'build/**',
+          'coverage/**',
+          'package-lock.json',
+          'yarn.lock',
+          'pnpm-lock.yaml'
+        ],
+        autoFix: config.linter?.prettier?.autoFix ?? false,
+        options: config.linter?.prettier?.options,
+        severity: config.linter?.prettier?.severity || 'warn',
+      },
+      custom: config.linter?.custom || [],
+      order: config.linter?.order || ['eslint', 'prettier'],
+      integrations: {
+        preCommit: {
+          enabled: config.linter?.integrations?.preCommit?.enabled ?? true,
+          linters: config.linter?.integrations?.preCommit?.linters || ['eslint', 'prettier'],
+          autoFix: config.linter?.integrations?.preCommit?.autoFix ?? true,
+          failOnError: config.linter?.integrations?.preCommit?.failOnError ?? true,
+        },
+        ci: {
+          enabled: config.linter?.integrations?.ci?.enabled ?? true,
+          linters: config.linter?.integrations?.ci?.linters || ['eslint', 'prettier'],
+          autoFix: config.linter?.integrations?.ci?.autoFix ?? false,
+          failOnError: config.linter?.integrations?.ci?.failOnError ?? true,
+          uploadReports: config.linter?.integrations?.ci?.uploadReports ?? false,
+          reportFormat: config.linter?.integrations?.ci?.reportFormat || 'json',
+        },
+        ide: {
+          enabled: config.linter?.integrations?.ide?.enabled ?? true,
+          autoFixOnSave: config.linter?.integrations?.ide?.autoFixOnSave ?? false,
+          showInlineErrors: config.linter?.integrations?.ide?.showInlineErrors ?? true,
+          formatOnSave: config.linter?.integrations?.ide?.formatOnSave ?? false,
+        },
+      },
     },
   };
 }
