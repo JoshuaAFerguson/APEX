@@ -2194,7 +2194,8 @@ export type DetectorType =
   | 'undocumented-export'
   | 'missing-readme-section'
   | 'security-vulnerability'
-  | 'deprecated-dependency';
+  | 'deprecated-dependency'
+  | 'secret-leak';
 
 /**
  * Generic detector finding event payload
@@ -2236,6 +2237,30 @@ export interface StaleCommentFinding {
   author?: string;
   date?: Date;
   daysSinceAdded: number;
+}
+
+/**
+ * Secret finding specific structure
+ */
+export interface SecretFinding {
+  /** File path where the secret was found */
+  file: string;
+  /** Line number where the secret was found */
+  line: number;
+  /** Column where the secret starts */
+  column: number;
+  /** Column where the secret ends */
+  endColumn: number;
+  /** Type of secret detected */
+  secretType: string;
+  /** Matched content (may be partially masked for security) */
+  match: string;
+  /** Confidence level of the match (0-1) */
+  confidence: number;
+  /** Name of the pattern that matched */
+  patternName: string;
+  /** Additional context around the finding */
+  context?: string;
 }
 
 // ============================================================================
@@ -3396,3 +3421,125 @@ export interface PolicyEvaluationResult {
   /** Policy configuration that was used */
   policyName?: string;
 }
+
+// ============================================================================
+// Policy Types - Core Domain Types
+// ============================================================================
+
+/**
+ * Base policy rule definition
+ */
+export const PolicyRuleSchema = z.object({
+  /** Unique identifier for this rule */
+  id: z.string(),
+  /** Human-readable name for this rule */
+  name: z.string(),
+  /** Description of what this rule enforces */
+  description: z.string().optional(),
+  /** Whether this rule is enabled */
+  enabled: z.boolean().optional().default(true),
+  /** Enforcement mode for this specific rule */
+  enforcement: PolicyEnforcementModeSchema.optional(),
+  /** Tags for categorizing this rule */
+  tags: z.array(z.string()).optional().default([]),
+  /** Custom metadata for this rule */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyRule = z.infer<typeof PolicyRuleSchema>;
+
+/**
+ * Path policy rule for filesystem access control
+ */
+export const PathPolicySchema = PolicyRuleSchema.extend({
+  /** Type discriminator */
+  type: z.literal('path'),
+  /** Path configuration for this rule */
+  config: AllowedPathsConfigSchema,
+});
+export type PathPolicy = z.infer<typeof PathPolicySchema>;
+
+/**
+ * Test policy rule for test requirements
+ */
+export const TestPolicySchema = PolicyRuleSchema.extend({
+  /** Type discriminator */
+  type: z.literal('test'),
+  /** Test configuration for this rule */
+  config: RequiredTestsConfigSchema,
+});
+export type TestPolicy = z.infer<typeof TestPolicySchema>;
+
+/**
+ * Approval policy rule for human approval requirements
+ */
+export const ApprovalPolicySchema = PolicyRuleSchema.extend({
+  /** Type discriminator */
+  type: z.literal('approval'),
+  /** Approval configuration for this rule */
+  config: ApprovalRulesConfigSchema,
+});
+export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;
+
+/**
+ * Union type for all policy rule types
+ */
+export const PolicySchema = z.discriminatedUnion('type', [
+  PathPolicySchema,
+  TestPolicySchema,
+  ApprovalPolicySchema,
+]);
+export type Policy = z.infer<typeof PolicySchema>;
+
+/**
+ * Policy violation details
+ */
+export const PolicyViolationSchema = z.object({
+  /** Unique identifier for this violation */
+  id: z.string(),
+  /** ID of the policy rule that was violated */
+  ruleId: z.string(),
+  /** Type of policy that was violated */
+  policyType: z.enum(['path', 'test', 'approval']),
+  /** Severity of the violation */
+  severity: z.enum(['info', 'warning', 'error']),
+  /** Human-readable message describing the violation */
+  message: z.string(),
+  /** Detailed description of the violation */
+  description: z.string().optional(),
+  /** Resource or context that triggered the violation */
+  resource: z.string().optional(),
+  /** Additional context about the violation */
+  context: z.record(z.string(), z.unknown()).optional(),
+  /** Timestamp when the violation occurred */
+  timestamp: z.date(),
+  /** Whether this violation was resolved */
+  resolved: z.boolean().optional().default(false),
+  /** Timestamp when the violation was resolved */
+  resolvedAt: z.date().optional(),
+  /** How the violation was resolved */
+  resolution: z.string().optional(),
+});
+export type PolicyViolation = z.infer<typeof PolicyViolationSchema>;
+
+/**
+ * Policy violation event for real-time notifications
+ */
+export const PolicyViolationEventSchema = z.object({
+  /** Event type */
+  type: z.literal('policy_violation'),
+  /** Event ID */
+  id: z.string(),
+  /** Timestamp when the event occurred */
+  timestamp: z.date(),
+  /** The policy violation that triggered this event */
+  violation: PolicyViolationSchema,
+  /** Task ID associated with this violation */
+  taskId: z.string().optional(),
+  /** Agent ID that triggered this violation */
+  agentId: z.string().optional(),
+  /** Workflow ID associated with this violation */
+  workflowId: z.string().optional(),
+  /** Additional event metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyViolationEvent = z.infer<typeof PolicyViolationEventSchema>;

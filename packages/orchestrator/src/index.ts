@@ -142,6 +142,15 @@ export interface OrchestratorEvents {
   // Template events
   'template:created': (template: TaskTemplate) => void;
   'template:updated': (template: TaskTemplate) => void;
+
+  // Resource limit events
+  'limit:warning': (event: LimitWarningEvent) => void;
+  'limit:exceeded': (event: LimitExceededEvent) => void;
+
+  // Tool call events (v0.5.0)
+  'tool:start': (event: ToolCallStartEvent) => void;
+  'tool:progress': (event: ToolCallProgressEvent) => void;
+  'tool:complete': (event: ToolCallCompleteEvent) => void;
 }
 
 /**
@@ -305,6 +314,77 @@ export interface DangerousOperationBlockedEventData {
   reason: string;
 }
 
+/**
+ * Event payload for limit warning events
+ */
+export interface LimitWarningEvent {
+  taskId: string;
+  limitType: 'tokens' | 'cost' | 'time' | 'files';
+  currentValue: number;
+  limitValue: number;
+  utilizationPercent: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for limit exceeded events
+ */
+export interface LimitExceededEvent {
+  taskId: string;
+  limitType: 'tokens' | 'cost' | 'time' | 'files';
+  currentValue: number;
+  limitValue: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for tool:start event (v0.5.0)
+ * Emitted when a tool call begins
+ */
+export interface ToolCallStartEvent {
+  taskId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  timestamp: Date;
+  callId: string;
+}
+
+/**
+ * Event payload for tool:progress event (v0.5.0)
+ * Emitted during long-running tool operations
+ */
+export interface ToolCallProgressEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  progress: {
+    message: string;
+    percentage?: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for tool:complete event (v0.5.0)
+ * Emitted when a tool call completes
+ */
+export interface ToolCallCompleteEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  result: {
+    success: boolean;
+    output?: unknown;
+    error?: string;
+  };
+  timing: {
+    startTime: Date;
+    endTime: Date;
+    duration: number; // milliseconds
+  };
+  timestamp: Date;
+}
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -339,6 +419,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private runningTasks: Map<string, Promise<void>> = new Map();
   private taskRunnerInterval: ReturnType<typeof setInterval> | null = null;
   private isRunnerActive = false;
+
+  // Resource tracking state
+  private taskResourceTracker: Map<string, {
+    startTime: Date;
+    fileChangeCount: number;
+    initialUsage: TaskUsage;
+    lastCheckTimestamp: Date;
+  }> = new Map();
+
+  // Tool call timing tracking
+  private toolCallTimings?: Map<string, { startTime: Date; toolName: string }> = new Map();
 
   constructor(options: OrchestratorOptions) {
     super();
@@ -596,6 +687,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Update status
     await this.updateTaskStatus(taskId, 'in-progress');
     this.emit('task:started', task);
+
+    // Initialize resource tracking
+    this.initializeResourceTracking(taskId, task.usage);
 
     const autoRetry = options?.autoRetry ?? true;
     const maxRetries = task.maxRetries;
@@ -1666,6 +1760,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               type: string;
               text?: string;
               thinking?: string;
+              // Tool call fields
+              id?: string;
+              name?: string;
+              input?: Record<string, unknown>;
+              tool_use_id?: string;
+              content?: unknown;
+              is_error?: boolean;
             }>;
             thinking?: string;
           };
@@ -1677,6 +1778,56 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
                 // Extract thinking content from content blocks
                 thinkingContent += block.thinking;
+              } else if (block.type === 'tool_use' && block.name && block.id) {
+                // Tool call started
+                const callId = block.id;
+                const toolName = block.name;
+                const input = block.input || {};
+                const timestamp = new Date();
+
+                this.emit('tool:start', {
+                  taskId: task.id,
+                  toolName,
+                  input,
+                  timestamp,
+                  callId,
+                });
+
+                // Store tool call start time for later duration calculation
+                if (!this.toolCallTimings) {
+                  this.toolCallTimings = new Map();
+                }
+                this.toolCallTimings.set(callId, { startTime: timestamp, toolName });
+              } else if (block.type === 'tool_result' && block.tool_use_id) {
+                // Tool call completed
+                const callId = block.tool_use_id;
+                const endTime = new Date();
+                const callTiming = this.toolCallTimings?.get(callId);
+
+                if (callTiming) {
+                  const { startTime, toolName } = callTiming;
+                  const duration = endTime.getTime() - startTime.getTime();
+
+                  this.emit('tool:complete', {
+                    taskId: task.id,
+                    toolName,
+                    callId,
+                    result: {
+                      success: !block.is_error,
+                      output: block.content,
+                      error: block.is_error ? String(block.content) : undefined,
+                    },
+                    timing: {
+                      startTime,
+                      endTime,
+                      duration,
+                    },
+                    timestamp: endTime,
+                  });
+
+                  // Clean up timing data
+                  this.toolCallTimings.delete(callId);
+                }
               }
             }
           }
@@ -5666,3 +5817,10 @@ export {
   type BrowserHoverParams,
   type BrowserToolConfig,
 } from './tools';
+
+// Scanner
+export {
+  SecretScanner,
+  type SecretPattern,
+  type SecretScannerConfig,
+} from './scanner';
