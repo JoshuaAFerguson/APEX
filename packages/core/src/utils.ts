@@ -946,3 +946,252 @@ export function suggestCommitType(files: string[]): CommitType {
 
   return suggestedType;
 }
+
+// ============================================================================
+// Tool Output Truncation
+// ============================================================================
+
+/**
+ * Options for truncating tool output
+ */
+export interface TruncateOptions {
+  /** Maximum number of characters before truncation (default: 10000) */
+  maxLength?: number;
+  /** Suffix to append when content is truncated (default: '... [truncated]') */
+  suffix?: string;
+  /** Whether to preserve JSON structure when truncating JSON strings (default: true) */
+  preserveJson?: boolean;
+  /** Whether to try to truncate at word boundaries when possible (default: true) */
+  wordBoundary?: boolean;
+}
+
+/**
+ * Result of tool output truncation
+ */
+export interface TruncateResult {
+  /** The truncated output */
+  output: string;
+  /** Whether the output was truncated */
+  truncated: boolean;
+  /** Original length before truncation */
+  originalLength: number;
+  /** Final length after truncation */
+  truncatedLength: number;
+}
+
+/**
+ * Check if a string is valid JSON
+ */
+function isValidJson(str: string): boolean {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Truncate JSON content while preserving structure
+ */
+function truncateJsonContent(content: string, maxLength: number, suffix: string): TruncateResult {
+  try {
+    const parsed = JSON.parse(content);
+
+    // If the original JSON is already short enough, return it
+    if (content.length <= maxLength) {
+      return {
+        output: content,
+        truncated: false,
+        originalLength: content.length,
+        truncatedLength: content.length,
+      };
+    }
+
+    // Try to create a truncated version while preserving structure
+    let truncated: any;
+
+    if (Array.isArray(parsed)) {
+      // For arrays, keep some elements and indicate truncation
+      const availableLength = maxLength - suffix.length - 20; // Reserve space for structure
+      let truncatedArray = [];
+      let currentLength = 2; // Account for []
+
+      for (let i = 0; i < parsed.length; i++) {
+        const itemJson = JSON.stringify(parsed[i]);
+        const itemLength = itemJson.length + (i > 0 ? 1 : 0); // +1 for comma
+
+        if (currentLength + itemLength > availableLength) {
+          // Add truncation indicator
+          truncatedArray.push(`... ${parsed.length - i} more items`);
+          break;
+        }
+
+        truncatedArray.push(parsed[i]);
+        currentLength += itemLength;
+      }
+
+      truncated = truncatedArray;
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      // For objects, keep some properties and indicate truncation
+      const availableLength = maxLength - suffix.length - 20; // Reserve space for structure
+      let truncatedObj: any = {};
+      let currentLength = 2; // Account for {}
+      const keys = Object.keys(parsed);
+      let truncatedKeys = 0;
+
+      for (const key of keys) {
+        const value = parsed[key];
+        const propJson = JSON.stringify({ [key]: value });
+        const propLength = propJson.length - 2 + (truncatedKeys > 0 ? 1 : 0); // -2 for {}, +1 for comma
+
+        if (currentLength + propLength > availableLength) {
+          // Add truncation indicator
+          const remaining = keys.length - truncatedKeys;
+          truncatedObj[`... ${remaining} more properties`] = '...';
+          break;
+        }
+
+        truncatedObj[key] = value;
+        currentLength += propLength;
+        truncatedKeys++;
+      }
+
+      truncated = truncatedObj;
+    } else {
+      // For primitives, just truncate the string representation
+      const stringified = JSON.stringify(parsed);
+      const truncateLength = maxLength - suffix.length;
+
+      return {
+        output: stringified.substring(0, truncateLength) + suffix,
+        truncated: true,
+        originalLength: content.length,
+        truncatedLength: truncateLength + suffix.length,
+      };
+    }
+
+    const truncatedJson = JSON.stringify(truncated, null, 2);
+
+    // If the truncated JSON is still too long, fall back to simple truncation
+    if (truncatedJson.length > maxLength) {
+      const truncateLength = maxLength - suffix.length;
+      return {
+        output: content.substring(0, truncateLength) + suffix,
+        truncated: true,
+        originalLength: content.length,
+        truncatedLength: truncateLength + suffix.length,
+      };
+    }
+
+    return {
+      output: truncatedJson + (truncatedJson !== content ? suffix : ''),
+      truncated: truncatedJson !== content,
+      originalLength: content.length,
+      truncatedLength: truncatedJson.length + (truncatedJson !== content ? suffix.length : 0),
+    };
+
+  } catch {
+    // If JSON parsing fails, fall back to regular truncation
+    const truncateLength = maxLength - suffix.length;
+    return {
+      output: content.substring(0, truncateLength) + suffix,
+      truncated: true,
+      originalLength: content.length,
+      truncatedLength: truncateLength + suffix.length,
+    };
+  }
+}
+
+/**
+ * Truncate text content at word boundaries when possible
+ */
+function truncateAtWordBoundary(content: string, maxLength: number, suffix: string): string {
+  const truncateLength = maxLength - suffix.length;
+
+  if (content.length <= maxLength) {
+    return content;
+  }
+
+  const truncated = content.substring(0, truncateLength);
+  const lastSpaceIndex = truncated.lastIndexOf(' ');
+  const lastNewlineIndex = truncated.lastIndexOf('\n');
+
+  // Find the best boundary (prefer newlines over spaces)
+  const boundaryIndex = Math.max(lastNewlineIndex, lastSpaceIndex);
+
+  // Only use word boundary if it's not too far back (within 10% of target length)
+  const minBoundary = truncateLength * 0.9;
+
+  if (boundaryIndex > minBoundary) {
+    return truncated.substring(0, boundaryIndex);
+  }
+
+  return truncated;
+}
+
+/**
+ * Truncate tool output to a maximum length while preserving readability
+ *
+ * @param output - The tool output to truncate
+ * @param options - Truncation options
+ * @returns Result containing the truncated output and metadata
+ */
+export function truncateToolOutput(output: string, options: TruncateOptions = {}): TruncateResult {
+  const {
+    maxLength = 10000,
+    suffix = '... [truncated]',
+    preserveJson = true,
+    wordBoundary = true,
+  } = options;
+
+  // Handle null/undefined input
+  if (!output) {
+    return {
+      output: output || '',
+      truncated: false,
+      originalLength: 0,
+      truncatedLength: 0,
+    };
+  }
+
+  const originalLength = output.length;
+
+  // If content is within limits, return as-is
+  if (originalLength <= maxLength) {
+    return {
+      output,
+      truncated: false,
+      originalLength,
+      truncatedLength: originalLength,
+    };
+  }
+
+  // Try JSON-aware truncation if enabled and content appears to be JSON
+  if (preserveJson && isValidJson(output.trim())) {
+    return truncateJsonContent(output.trim(), maxLength, suffix);
+  }
+
+  // Regular text truncation
+  let truncated: string;
+  const truncateLength = maxLength - suffix.length;
+
+  if (wordBoundary) {
+    truncated = truncateAtWordBoundary(output, maxLength, suffix);
+    // If word boundary truncation didn't work well, fall back to character truncation
+    if (truncated.length < truncateLength * 0.8) {
+      truncated = output.substring(0, truncateLength);
+    }
+  } else {
+    truncated = output.substring(0, truncateLength);
+  }
+
+  const finalOutput = truncated + suffix;
+
+  return {
+    output: finalOutput,
+    truncated: true,
+    originalLength,
+    truncatedLength: finalOutput.length,
+  };
+}

@@ -79,7 +79,7 @@ export function Sidebar() {
         <div className="border-t border-border p-4">
           <div className="flex items-center justify-between">
             <div className="text-xs text-foreground-tertiary">
-              <p>APEX v0.3.0</p>
+              <p>APEX v0.5.0</p>
               <p className="mt-1">Autonomous Engineering</p>
             </div>
             <ThemeToggle />

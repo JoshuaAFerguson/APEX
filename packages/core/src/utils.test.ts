@@ -16,6 +16,7 @@ import {
   safeJsonParse,
   deepMerge,
   truncate,
+  truncateToolOutput,
   extractCodeBlocks,
   retry,
   createDeferred,
@@ -29,6 +30,8 @@ import {
   formatConflictReport,
   type SemVer,
   type UpdateType,
+  type TruncateOptions,
+  type TruncateResult,
 } from './utils';
 
 describe.skip('generateTaskId', () => {
@@ -1222,5 +1225,25 @@ describe.skip('formatConflictReport', () => {
     expect(report).toContain('main');
     expect(report).toContain('feature');
     expect(report).toContain('lines 10-15');
+  });
+});
+
+describe.skip('truncateToolOutput', () => {
+  it('should truncate long output', () => {
+    const longOutput = 'A'.repeat(15000);
+    const result = truncateToolOutput(longOutput, { maxLength: 1000 });
+
+    expect(result.truncated).toBe(true);
+    expect(result.originalLength).toBe(15000);
+    expect(result.truncatedLength).toBeLessThanOrEqual(1000);
+    expect(result.output).toMatch(/\[truncated\]$/);
+  });
+
+  it('should preserve short output', () => {
+    const shortOutput = 'Short text';
+    const result = truncateToolOutput(shortOutput);
+
+    expect(result.truncated).toBe(false);
+    expect(result.output).toBe(shortOutput);
   });
 });

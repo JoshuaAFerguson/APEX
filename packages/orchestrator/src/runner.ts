@@ -262,7 +262,11 @@ export class DaemonRunner {
       // Start integrated services if configured
       await this.startIntegratedServices(daemonConfig);
 
-      // Detect and handle orphaned tasks from previous daemon instances
+      // Reset any in-progress tasks immediately on startup
+      // A fresh daemon can't have any legitimately running tasks
+      await this.resetInterruptedTasksOnStartup();
+
+      // Detect and handle orphaned tasks from previous daemon instances (staleness-based)
       await this.detectAndHandleOrphanedTasks();
 
       // Setup periodic orphan detection if enabled
@@ -1192,6 +1196,46 @@ export class DaemonRunner {
     // Close store
     if (this.store) {
       this.store.close();
+    }
+  }
+
+  /**
+   * Reset all in-progress tasks to pending on daemon startup.
+   * A fresh daemon can't have any legitimately running tasks, so any in-progress
+   * tasks must be from a previous daemon instance that was interrupted.
+   */
+  private async resetInterruptedTasksOnStartup(): Promise<void> {
+    if (!this.store) {
+      return;
+    }
+
+    try {
+      // Get all in-progress tasks
+      const inProgressTasks = await this.store.listTasks({ status: 'in-progress' });
+
+      if (inProgressTasks.length === 0) {
+        this.log('debug', 'No interrupted tasks to reset on startup');
+        return;
+      }
+
+      this.log('info', `Resetting ${inProgressTasks.length} interrupted task(s) to pending`);
+
+      // Reset each task to pending
+      for (const task of inProgressTasks) {
+        await this.store.updateTask(task.id, {
+          status: 'pending',
+          updatedAt: new Date(),
+        });
+
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: 'Task reset to pending: daemon restarted while task was in-progress',
+        });
+
+        this.log('info', `Reset interrupted task ${task.id} to pending`);
+      }
+    } catch (error) {
+      this.log('error', `Failed to reset interrupted tasks: ${(error as Error).message}`);
     }
   }
 

@@ -239,16 +239,41 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // Get task by ID
-  app.get<{ Params: { id: string } }>('/tasks/:id', async (request, reply) => {
-    const { id } = request.params;
-    const task = await orchestrator.getTask(id);
+  app.get<{ Params: { id: string }; Querystring: { logLimit?: string; logOffset?: string } }>(
+    '/tasks/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+      const { logLimit, logOffset } = request.query;
+      const task = await orchestrator.getTask(id);
 
-    if (!task) {
-      return reply.status(404).send({ error: 'Task not found' });
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      // Apply log pagination if requested (default: limit to 50 most recent logs)
+      const limit = logLimit ? parseInt(logLimit, 10) : 50;
+      const offset = logOffset ? parseInt(logOffset, 10) : 0;
+
+      if (task.logs && task.logs.length > 0) {
+        const totalLogs = task.logs.length;
+        // Logs are typically in reverse chronological order, so slice from the end
+        const paginatedLogs = task.logs.slice(offset, offset + limit);
+
+        return {
+          ...task,
+          logs: paginatedLogs,
+          logPagination: {
+            total: totalLogs,
+            limit,
+            offset,
+            hasMore: offset + limit < totalLogs,
+          },
+        };
+      }
+
+      return task;
     }
-
-    return task;
-  });
+  );
 
   // List tasks
   app.get<{ Querystring: { status?: TaskStatus; limit?: string } }>(

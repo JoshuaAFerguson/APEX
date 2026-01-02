@@ -1820,6 +1820,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // For planning stages, check if the output contains a decomposition request
     let decompositionRequest: DecompositionRequest | undefined;
     if (isPlanner) {
+      const fullOutput = messages.join('\n');
       decompositionRequest = parseDecompositionRequest(fullOutput);
 
       if (decompositionRequest.shouldDecompose) {

@@ -544,16 +544,145 @@ export const ToolRegistryEntrySchema = z.object({
 export type ToolRegistryEntry = z.infer<typeof ToolRegistryEntrySchema>;
 
 // ============================================================================
-// Workflow Definitions
+// Autonomy Control Types
 // ============================================================================
 
+/**
+ * Autonomy levels that control how much human oversight is required
+ * - full-auto: Agent operates autonomously with no approval checkpoints
+ * - review-before-commit: Agent pauses for human review before committing changes
+ * - review-all: Agent pauses for human review at all major decision points
+ */
 export const AutonomyLevelSchema = z.enum([
+  'full-auto',
+  'review-before-commit',
+  'review-all',
+]);
+export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>;
+
+/**
+ * @deprecated Use AutonomyLevelSchema instead. This is kept for backward compatibility.
+ * Maps legacy values to new autonomy levels:
+ * - 'full' -> 'full-auto'
+ * - 'review-before-commit' -> 'review-before-commit'
+ * - 'review-before-merge' -> 'review-before-commit'
+ * - 'manual' -> 'review-all'
+ */
+export const LegacyAutonomyLevelSchema = z.enum([
   'full',
   'review-before-commit',
   'review-before-merge',
   'manual',
 ]);
-export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>;
+export type LegacyAutonomyLevel = z.infer<typeof LegacyAutonomyLevelSchema>;
+
+/**
+ * Converts a legacy autonomy level to the new format
+ */
+export function migrateLegacyAutonomyLevel(legacy: LegacyAutonomyLevel): AutonomyLevel {
+  switch (legacy) {
+    case 'full':
+      return 'full-auto';
+    case 'review-before-commit':
+    case 'review-before-merge':
+      return 'review-before-commit';
+    case 'manual':
+      return 'review-all';
+  }
+}
+
+/**
+ * Types of approval checkpoints that can be configured
+ * - before-commit: Requires approval before committing changes to version control
+ * - before-deploy: Requires approval before deployment operations
+ * - before-destructive: Requires approval before destructive operations (delete, overwrite)
+ * - custom: User-defined checkpoint with custom trigger condition
+ */
+export const ApprovalCheckpointTypeSchema = z.enum([
+  'before-commit',
+  'before-deploy',
+  'before-destructive',
+  'custom',
+]);
+export type ApprovalCheckpointType = z.infer<typeof ApprovalCheckpointTypeSchema>;
+
+/**
+ * Configuration for an approval gate (checkpoint)
+ * Defines when and how approval is required during task execution
+ */
+export const ApprovalGateSchema = z.object({
+  /** Type of checkpoint */
+  type: ApprovalCheckpointTypeSchema,
+  /** Human-readable name for this gate */
+  name: z.string().optional(),
+  /** Description of what this gate protects */
+  description: z.string().optional(),
+  /** Whether this gate is required or can be skipped */
+  required: z.boolean().default(true),
+  /** Custom trigger condition (for 'custom' type) - evaluated as expression */
+  trigger: z.string().optional(),
+  /** List of approver identifiers (usernames, roles, or emails) */
+  approvers: z.array(z.string()).optional(),
+  /** Timeout in minutes before the gate auto-rejects (undefined = no timeout) */
+  timeout: z.number().min(1).optional(),
+  /** Whether to auto-approve if timeout is reached (default: false = auto-reject) */
+  autoApproveOnTimeout: z.boolean().default(false),
+  /** Minimum number of approvals required (default: 1) */
+  minApprovals: z.number().min(1).default(1),
+  /** Tags/labels for categorizing this gate */
+  tags: z.array(z.string()).optional(),
+});
+export type ApprovalGate = z.infer<typeof ApprovalGateSchema>;
+
+/**
+ * Resource limits for task execution
+ * Controls budget, token usage, time, and change scope
+ */
+export const TaskResourceLimitsSchema = z.object({
+  /** Maximum cost in USD for this task (e.g., 10.0 for $10) */
+  maxCost: z.number().min(0).optional(),
+  /** Maximum tokens that can be consumed (input + output) */
+  maxTokens: z.number().min(0).optional(),
+  /** Maximum execution time in milliseconds */
+  maxTimeMs: z.number().min(0).optional(),
+  /** Maximum number of files that can be created */
+  maxFilesCreated: z.number().min(0).optional(),
+  /** Maximum number of files that can be modified */
+  maxFilesModified: z.number().min(0).optional(),
+  /** Maximum number of files that can be deleted */
+  maxFilesDeleted: z.number().min(0).optional(),
+  /** Maximum total lines of code that can be changed (added + removed) */
+  maxLinesChanged: z.number().min(0).optional(),
+  /** Maximum number of API/agent turns */
+  maxTurns: z.number().min(1).optional(),
+  /** Daily budget limit in USD (shared across all tasks) */
+  dailyBudget: z.number().min(0).optional(),
+  /** Maximum concurrent tasks allowed */
+  maxConcurrentTasks: z.number().min(1).optional(),
+});
+export type TaskResourceLimits = z.infer<typeof TaskResourceLimitsSchema>;
+
+/**
+ * Autonomy configuration for a workflow or task
+ * Combines autonomy level with approval gates and resource limits
+ */
+export const AutonomyConfigSchema = z.object({
+  /** Base autonomy level */
+  level: AutonomyLevelSchema.default('review-before-commit'),
+  /** Approval gates/checkpoints for this configuration */
+  gates: z.array(ApprovalGateSchema).optional(),
+  /** Resource limits for task execution */
+  limits: TaskResourceLimitsSchema.optional(),
+  /** Per-stage autonomy overrides (stage name -> autonomy level) */
+  stageOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
+  /** Per-agent autonomy overrides (agent name -> autonomy level) */
+  agentOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
+});
+export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
+
+// ============================================================================
+// Workflow Definitions
+// ============================================================================
 
 export const WorkflowGateSchema = z.object({
   name: z.string(),
@@ -940,6 +1069,8 @@ export const ApexConfigSchema = z.object({
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),
   /** Permission preset configuration for tool access control (v0.5.0) */
   permissions: z.lazy(() => PermissionsConfigSchema).optional(),
+  /** Policy-as-code configuration for governance and compliance (v0.5.0) */
+  policy: z.lazy(() => PolicyConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -2748,3 +2879,525 @@ export const PermissionsConfigSchema = z.object({
   customRules: z.array(ToolPermissionRuleSchema).optional().default([]),
 });
 export type PermissionsConfig = z.infer<typeof PermissionsConfigSchema>;
+
+// ============================================================================
+// Policy-as-Code Configuration (v0.5.0)
+// ============================================================================
+
+/**
+ * Path access mode for policy enforcement
+ * - 'allowlist': Only paths matching the patterns are allowed (deny by default)
+ * - 'blocklist': Paths matching the patterns are blocked (allow by default)
+ */
+export const PathAccessModeSchema = z.enum(['allowlist', 'blocklist']);
+export type PathAccessMode = z.infer<typeof PathAccessModeSchema>;
+
+/**
+ * Configuration for allowed filesystem paths in policy-as-code
+ * Uses glob patterns to define which paths agents can access
+ */
+export const AllowedPathsConfigSchema = z.object({
+  /**
+   * Access control mode
+   * - 'allowlist': Only explicitly allowed paths are accessible (default)
+   * - 'blocklist': All paths are accessible except explicitly blocked ones
+   */
+  mode: PathAccessModeSchema.optional().default('allowlist'),
+
+  /**
+   * Glob patterns for paths that are allowed
+   * Examples: ['src/**', 'tests/**', '*.md', 'package.json']
+   * When mode is 'allowlist', only these paths are accessible
+   * When mode is 'blocklist', these patterns are ignored
+   */
+  allow: z.array(z.string()).optional().default([]),
+
+  /**
+   * Glob patterns for paths that are blocked
+   * Examples: ['node_modules/**', '.env*', '**\/*.key', 'secrets/**']
+   * These take precedence over allow patterns in allowlist mode
+   * When mode is 'blocklist', these paths are blocked
+   */
+  block: z.array(z.string()).optional().default([]),
+
+  /**
+   * Sensitive file patterns that always require confirmation
+   * Examples: ['.env*', '**\/config.json', '**\/*.secret']
+   * Access to these files will prompt for human approval even if otherwise allowed
+   */
+  sensitivePatterns: z.array(z.string()).optional().default([]),
+
+  /**
+   * Whether to follow symlinks when validating paths (default: false for security)
+   */
+  followSymlinks: z.boolean().optional().default(false),
+
+  /**
+   * Maximum depth for recursive operations (0 = unlimited, default: 10)
+   */
+  maxDepth: z.number().int().min(0).optional().default(10),
+});
+export type AllowedPathsConfig = z.infer<typeof AllowedPathsConfigSchema>;
+
+/**
+ * Test requirement enforcement level
+ * - 'none': No test requirements enforced
+ * - 'warn': Warn when test requirements are not met but allow proceeding
+ * - 'require': Block operations when test requirements are not met
+ */
+export const TestEnforcementLevelSchema = z.enum(['none', 'warn', 'require']);
+export type TestEnforcementLevel = z.infer<typeof TestEnforcementLevelSchema>;
+
+/**
+ * A single test requirement rule
+ * Defines when tests are required and what tests should exist
+ */
+export const TestRequirementRuleSchema = z.object({
+  /**
+   * Name/identifier for this rule
+   */
+  name: z.string().min(1, 'Rule name is required'),
+
+  /**
+   * Description of what this rule enforces
+   */
+  description: z.string().optional(),
+
+  /**
+   * Glob patterns for source files that trigger this rule
+   * Examples: ['src/**\/*.ts', 'lib/**\/*.js']
+   * When any of these files are modified, the rule is evaluated
+   */
+  sourcePatterns: z.array(z.string()).min(1, 'At least one source pattern is required'),
+
+  /**
+   * Glob patterns for test files that satisfy this rule
+   * Examples: ['tests/**\/*.test.ts', '**\/*.spec.js']
+   * At least one matching test file must exist for modified source files
+   */
+  testPatterns: z.array(z.string()).min(1, 'At least one test pattern is required'),
+
+  /**
+   * Naming convention for mapping source files to test files
+   * Variables: {filename}, {basename}, {ext}, {dir}
+   * Example: '{dir}/__tests__/{basename}.test.ts' means src/utils.ts -> src/__tests__/utils.test.ts
+   */
+  testNamingConvention: z.string().optional(),
+
+  /**
+   * Minimum test coverage percentage required (0-100)
+   * Set to 0 to disable coverage requirement
+   */
+  minCoverage: z.number().min(0).max(100).optional().default(0),
+
+  /**
+   * Enforcement level for this specific rule (overrides global setting)
+   */
+  enforcement: TestEnforcementLevelSchema.optional(),
+
+  /**
+   * Whether tests must pass before changes can be committed
+   */
+  mustPass: z.boolean().optional().default(true),
+
+  /**
+   * Whether this rule is enabled (default: true)
+   */
+  enabled: z.boolean().optional().default(true),
+
+  /**
+   * Tags for categorizing rules (e.g., 'unit', 'integration', 'e2e')
+   */
+  tags: z.array(z.string()).optional().default([]),
+});
+export type TestRequirementRule = z.infer<typeof TestRequirementRuleSchema>;
+
+/**
+ * Configuration for required tests in policy-as-code
+ * Defines rules for when and what tests are required
+ */
+export const RequiredTestsConfigSchema = z.object({
+  /**
+   * Global enforcement level for test requirements
+   * Can be overridden per-rule
+   */
+  enforcement: TestEnforcementLevelSchema.optional().default('warn'),
+
+  /**
+   * Individual test requirement rules
+   */
+  rules: z.array(TestRequirementRuleSchema).optional().default([]),
+
+  /**
+   * Command to run tests (defaults to project.testCommand or 'npm test')
+   */
+  testCommand: z.string().optional(),
+
+  /**
+   * Command to generate coverage report
+   */
+  coverageCommand: z.string().optional(),
+
+  /**
+   * Path to coverage report file (for parsing coverage data)
+   */
+  coverageReportPath: z.string().optional(),
+
+  /**
+   * File patterns to exclude from test requirements
+   * Examples: ['**\/*.d.ts', '**\/index.ts', 'types/**']
+   */
+  excludePatterns: z.array(z.string()).optional().default([]),
+
+  /**
+   * Whether to block commits when test requirements are not met
+   * Only applies when enforcement is 'require'
+   */
+  blockOnFailure: z.boolean().optional().default(true),
+});
+export type RequiredTestsConfig = z.infer<typeof RequiredTestsConfigSchema>;
+
+/**
+ * Condition type for approval rules
+ * - 'file-pattern': Triggered by file path patterns
+ * - 'content-pattern': Triggered by content/code patterns (regex)
+ * - 'operation': Triggered by specific operations (e.g., 'delete', 'create')
+ * - 'cost-threshold': Triggered when estimated cost exceeds threshold
+ * - 'token-threshold': Triggered when token usage exceeds threshold
+ * - 'custom': Custom expression-based condition
+ */
+export const ApprovalConditionTypeSchema = z.enum([
+  'file-pattern',
+  'content-pattern',
+  'operation',
+  'cost-threshold',
+  'token-threshold',
+  'custom',
+]);
+export type ApprovalConditionType = z.infer<typeof ApprovalConditionTypeSchema>;
+
+/**
+ * Operation types that can trigger approval
+ */
+export const ApprovalOperationTypeSchema = z.enum([
+  'create',
+  'modify',
+  'delete',
+  'execute',
+  'deploy',
+  'commit',
+  'push',
+  'merge',
+]);
+export type ApprovalOperationType = z.infer<typeof ApprovalOperationTypeSchema>;
+
+/**
+ * A single approval condition that triggers human review
+ */
+export const ApprovalConditionSchema = z.object({
+  /**
+   * Type of condition
+   */
+  type: ApprovalConditionTypeSchema,
+
+  /**
+   * Description of what this condition checks for
+   */
+  description: z.string().optional(),
+
+  /**
+   * Patterns to match (interpretation depends on type)
+   * - file-pattern: Glob patterns for file paths
+   * - content-pattern: Regex patterns for file content
+   * - operation: Not used (use 'operations' field instead)
+   * - cost-threshold: Not used (use 'threshold' field instead)
+   * - token-threshold: Not used (use 'threshold' field instead)
+   * - custom: Not used (use 'expression' field instead)
+   */
+  patterns: z.array(z.string()).optional(),
+
+  /**
+   * Operations that trigger this condition (for 'operation' type)
+   */
+  operations: z.array(ApprovalOperationTypeSchema).optional(),
+
+  /**
+   * Numeric threshold value (for threshold-based conditions)
+   * - cost-threshold: Maximum cost in USD before requiring approval
+   * - token-threshold: Maximum tokens before requiring approval
+   */
+  threshold: z.number().min(0).optional(),
+
+  /**
+   * Custom expression for evaluation (for 'custom' type)
+   * Can reference variables like: {cost}, {tokens}, {files}, {operation}
+   */
+  expression: z.string().optional(),
+});
+export type ApprovalCondition = z.infer<typeof ApprovalConditionSchema>;
+
+/**
+ * Approval urgency level affecting timeout behavior
+ * - 'low': Long timeout (24h), can be auto-approved
+ * - 'normal': Standard timeout (1h)
+ * - 'high': Short timeout (15m), must be reviewed promptly
+ * - 'critical': Very short timeout (5m), blocks everything until resolved
+ */
+export const ApprovalUrgencySchema = z.enum(['low', 'normal', 'high', 'critical']);
+export type ApprovalUrgency = z.infer<typeof ApprovalUrgencySchema>;
+
+/**
+ * A single approval rule defining when human approval is required
+ */
+export const ApprovalRuleSchema = z.object({
+  /**
+   * Unique identifier for this rule
+   */
+  id: z.string().min(1, 'Rule ID is required'),
+
+  /**
+   * Human-readable name for this rule
+   */
+  name: z.string().min(1, 'Rule name is required'),
+
+  /**
+   * Description of what this rule protects and why approval is needed
+   */
+  description: z.string().optional(),
+
+  /**
+   * Whether this rule is enabled (default: true)
+   */
+  enabled: z.boolean().optional().default(true),
+
+  /**
+   * Conditions that trigger this approval rule (ANY match triggers)
+   * Use multiple conditions to create OR logic
+   */
+  conditions: z.array(ApprovalConditionSchema).min(1, 'At least one condition is required'),
+
+  /**
+   * Whether ALL conditions must match (default: false = ANY condition triggers)
+   */
+  requireAllConditions: z.boolean().optional().default(false),
+
+  /**
+   * Urgency level affecting timeout and notification behavior
+   */
+  urgency: ApprovalUrgencySchema.optional().default('normal'),
+
+  /**
+   * Specific approvers required (usernames, emails, or roles)
+   * If empty, any authorized user can approve
+   */
+  approvers: z.array(z.string()).optional().default([]),
+
+  /**
+   * Minimum number of approvals required (default: 1)
+   */
+  minApprovals: z.number().int().min(1).optional().default(1),
+
+  /**
+   * Timeout in minutes before the request expires
+   * Default varies by urgency: low=1440, normal=60, high=15, critical=5
+   */
+  timeoutMinutes: z.number().int().min(1).optional(),
+
+  /**
+   * Action to take on timeout
+   * - 'reject': Reject the operation (default for high/critical)
+   * - 'approve': Auto-approve (only for 'low' urgency)
+   * - 'escalate': Escalate to higher authority
+   */
+  timeoutAction: z.enum(['reject', 'approve', 'escalate']).optional().default('reject'),
+
+  /**
+   * Message template shown to approvers
+   * Can use variables: {operation}, {files}, {cost}, {agent}, {task}
+   */
+  messageTemplate: z.string().optional(),
+
+  /**
+   * Tags for categorizing and filtering rules
+   */
+  tags: z.array(z.string()).optional().default([]),
+
+  /**
+   * Priority when multiple rules match (higher = evaluated first)
+   */
+  priority: z.number().int().min(0).optional().default(0),
+});
+export type ApprovalRule = z.infer<typeof ApprovalRuleSchema>;
+
+/**
+ * Configuration for approval rules in policy-as-code
+ * Defines conditions that require human approval before proceeding
+ */
+export const ApprovalRulesConfigSchema = z.object({
+  /**
+   * Whether approval rules are enabled (default: true)
+   */
+  enabled: z.boolean().optional().default(true),
+
+  /**
+   * Individual approval rules
+   */
+  rules: z.array(ApprovalRuleSchema).optional().default([]),
+
+  /**
+   * Default timeout in minutes for rules without explicit timeout
+   */
+  defaultTimeoutMinutes: z.number().int().min(1).optional().default(60),
+
+  /**
+   * Default action when approval request times out
+   */
+  defaultTimeoutAction: z.enum(['reject', 'approve', 'escalate']).optional().default('reject'),
+
+  /**
+   * Global approvers who can approve any request
+   */
+  globalApprovers: z.array(z.string()).optional().default([]),
+
+  /**
+   * Whether to send notifications for approval requests
+   */
+  notificationsEnabled: z.boolean().optional().default(true),
+
+  /**
+   * Notification channels configuration
+   */
+  notificationChannels: z.object({
+    /** Slack webhook URL for notifications */
+    slack: z.string().optional(),
+    /** Email addresses for notifications */
+    email: z.array(z.string()).optional(),
+    /** Custom webhook URL for notifications */
+    webhook: z.string().optional(),
+  }).optional(),
+
+  /**
+   * Whether to log all approval decisions for audit
+   */
+  auditLog: z.boolean().optional().default(true),
+
+  /**
+   * Path to store audit logs (relative to .apex directory)
+   */
+  auditLogPath: z.string().optional().default('approval-audit.log'),
+});
+export type ApprovalRulesConfig = z.infer<typeof ApprovalRulesConfigSchema>;
+
+/**
+ * Policy enforcement mode
+ * - 'strict': All policy violations block operations
+ * - 'warn': Policy violations generate warnings but don't block
+ * - 'audit': Policy violations are logged but operations proceed silently
+ * - 'disabled': Policy checks are disabled
+ */
+export const PolicyEnforcementModeSchema = z.enum(['strict', 'warn', 'audit', 'disabled']);
+export type PolicyEnforcementMode = z.infer<typeof PolicyEnforcementModeSchema>;
+
+/**
+ * Complete policy-as-code configuration
+ * Combines allowed paths, required tests, and approval rules for comprehensive policy control
+ */
+export const PolicyConfigSchema = z.object({
+  /**
+   * Schema version for policy configuration (for migration support)
+   */
+  version: z.string().optional().default('1.0'),
+
+  /**
+   * Human-readable name for this policy
+   */
+  name: z.string().optional(),
+
+  /**
+   * Description of what this policy enforces
+   */
+  description: z.string().optional(),
+
+  /**
+   * Global enforcement mode for all policy rules
+   */
+  enforcement: PolicyEnforcementModeSchema.optional().default('warn'),
+
+  /**
+   * Filesystem path access control configuration
+   * Controls which paths agents can read from and write to
+   */
+  allowedPaths: AllowedPathsConfigSchema.optional(),
+
+  /**
+   * Required tests configuration
+   * Ensures code changes have corresponding tests
+   */
+  requiredTests: RequiredTestsConfigSchema.optional(),
+
+  /**
+   * Approval rules configuration
+   * Defines conditions that require human approval
+   */
+  approvalRules: ApprovalRulesConfigSchema.optional(),
+
+  /**
+   * Whether this policy is enabled (default: true)
+   */
+  enabled: z.boolean().optional().default(true),
+
+  /**
+   * Tags for categorizing policies
+   */
+  tags: z.array(z.string()).optional().default([]),
+
+  /**
+   * Custom metadata for extensibility
+   */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
+
+/**
+ * Validation result for a single policy rule
+ */
+export interface PolicyValidationResult {
+  /** Whether the validation passed */
+  passed: boolean;
+  /** Rule ID that was evaluated */
+  ruleId: string;
+  /** Rule name for display */
+  ruleName: string;
+  /** Type of rule (path, test, approval) */
+  ruleType: 'path' | 'test' | 'approval';
+  /** Detailed message about the result */
+  message: string;
+  /** Severity level */
+  severity: 'info' | 'warning' | 'error';
+  /** Additional context/details */
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Complete policy evaluation result
+ */
+export interface PolicyEvaluationResult {
+  /** Overall policy evaluation passed */
+  passed: boolean;
+  /** Number of rules that passed */
+  passedCount: number;
+  /** Number of rules that failed */
+  failedCount: number;
+  /** Number of rules that generated warnings */
+  warningCount: number;
+  /** Individual rule results */
+  results: PolicyValidationResult[];
+  /** Whether human approval is required */
+  requiresApproval: boolean;
+  /** IDs of approval rules that were triggered */
+  triggeredApprovalRules: string[];
+  /** Timestamp of evaluation */
+  evaluatedAt: Date;
+  /** Policy configuration that was used */
+  policyName?: string;
+}
