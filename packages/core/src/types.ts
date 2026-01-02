@@ -4030,7 +4030,13 @@ export interface PolicyEvaluationResult {
 // ============================================================================
 
 /**
- * Base policy rule definition
+ * Severity level schema for policy rules and violations
+ */
+export const PolicySeveritySchema = z.enum(['low', 'medium', 'high', 'critical']);
+export type PolicySeverity = z.infer<typeof PolicySeveritySchema>;
+
+/**
+ * Base policy rule definition with condition, action, and severity
  */
 export const PolicyRuleSchema = z.object({
   /** Unique identifier for this rule */
@@ -4039,6 +4045,12 @@ export const PolicyRuleSchema = z.object({
   name: z.string(),
   /** Description of what this rule enforces */
   description: z.string().optional(),
+  /** Condition that triggers this rule (as a string expression or pattern) */
+  condition: z.string(),
+  /** Action to take when condition is met */
+  action: z.enum(['allow', 'deny', 'warn', 'require_approval']),
+  /** Severity level of this rule */
+  severity: PolicySeveritySchema,
   /** Whether this rule is enabled */
   enabled: z.boolean().optional().default(true),
   /** Enforcement mode for this specific rule */
@@ -4099,14 +4111,16 @@ export type Policy = z.infer<typeof PolicySchema>;
 export const PolicyViolationSchema = z.object({
   /** Unique identifier for this violation */
   id: z.string(),
-  /** ID of the policy rule that was violated */
-  ruleId: z.string(),
-  /** Type of policy that was violated */
-  policyType: z.enum(['path', 'test', 'approval']),
-  /** Severity of the violation */
-  severity: z.enum(['info', 'warning', 'error']),
+  /** The policy rule that was violated */
+  rule: z.string(),
   /** Human-readable message describing the violation */
   message: z.string(),
+  /** Severity of the violation */
+  severity: PolicySeveritySchema,
+  /** Whether this violation blocks further execution */
+  blocking: z.boolean(),
+  /** Type of policy that was violated */
+  policyType: z.enum(['path', 'test', 'approval']).optional(),
   /** Detailed description of the violation */
   description: z.string().optional(),
   /** Resource or context that triggered the violation */
