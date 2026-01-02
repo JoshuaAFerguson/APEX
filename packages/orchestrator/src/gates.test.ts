@@ -673,5 +673,232 @@ You are a planning agent.`;
       expect(completeGate.timeout).toBe(120);
       expect(completeGate.tags).toEqual(['complete', 'test']);
     });
+
+    it('should handle malformed gate configurations gracefully', async () => {
+      // Create a workflow with gates that have missing required fields
+      const workflowContent = `
+name: malformed-workflow
+description: Workflow with malformed gates (for error testing)
+gates:
+  - id: valid-gate
+    name: Valid Gate
+    description: This gate is properly formed
+  - id: incomplete-gate
+    # Missing name and description - should still work with defaults
+
+stages:
+  - name: planning
+    agent: planner
+    description: Create implementation plan
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'malformed-workflow.yaml'),
+        workflowContent
+      );
+
+      const plannerContent = `---
+name: planner
+description: Plans implementation tasks
+tools: Read, Glob, Grep
+model: sonnet
+---
+You are a planning agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'planner.md'),
+        plannerContent
+      );
+
+      // Should not throw errors during initialization
+      await expect(orchestrator.initialize()).resolves.not.toThrow();
+
+      const gates = (orchestrator as any).gates as Map<string, any>;
+
+      // Only the valid gate should be loaded (assuming YAML validation rejects malformed entries)
+      expect(gates.size).toBe(1);
+      expect(gates.has('valid-gate')).toBe(true);
+    });
+  });
+
+  describe('multiple workflow handling', () => {
+    it('should load gates from multiple workflows without conflicts', async () => {
+      // Create first workflow
+      const workflow1Content = `
+name: workflow-1
+description: First workflow
+gates:
+  - id: workflow-1-gate
+    name: Workflow 1 Gate
+    description: Gate from first workflow
+    tags: [workflow1]
+
+stages:
+  - name: step1
+    agent: planner
+    description: Step 1
+    gate: workflow-1-stage-gate
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'workflow-1.yaml'),
+        workflow1Content
+      );
+
+      // Create second workflow
+      const workflow2Content = `
+name: workflow-2
+description: Second workflow
+gates:
+  - id: workflow-2-gate
+    name: Workflow 2 Gate
+    description: Gate from second workflow
+    tags: [workflow2]
+
+stages:
+  - name: step1
+    agent: developer
+    description: Step 1 in workflow 2
+    gate: workflow-2-stage-gate
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'workflow-2.yaml'),
+        workflow2Content
+      );
+
+      // Create agent files
+      const plannerContent = `---
+name: planner
+description: Planning agent
+tools: Read, Glob, Grep
+model: sonnet
+---
+You are a planning agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'planner.md'),
+        plannerContent
+      );
+
+      const developerContent = `---
+name: developer
+description: Developer agent
+tools: Read, Write, Edit, Bash
+model: sonnet
+---
+You are a developer agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'developer.md'),
+        developerContent
+      );
+
+      await orchestrator.initialize();
+
+      const gates = (orchestrator as any).gates as Map<string, any>;
+
+      // Should have 4 gates total: 2 from workflow definitions + 2 from stage references
+      expect(gates.size).toBe(4);
+
+      // Check workflow gates
+      expect(gates.has('workflow-1-gate')).toBe(true);
+      expect(gates.has('workflow-2-gate')).toBe(true);
+
+      // Check stage gates
+      expect(gates.has('workflow-1-stage-gate')).toBe(true);
+      expect(gates.has('workflow-2-stage-gate')).toBe(true);
+
+      // Verify workflow-specific tagging for stage gates
+      const workflow1StageGate = gates.get('workflow-1-stage-gate');
+      expect(workflow1StageGate.tags).toEqual(['workflow:workflow-1', 'stage:planner']);
+
+      const workflow2StageGate = gates.get('workflow-2-stage-gate');
+      expect(workflow2StageGate.tags).toEqual(['workflow:workflow-2', 'stage:developer']);
+    });
+
+    it('should handle gate ID conflicts between workflows gracefully', async () => {
+      // Create workflows with conflicting gate IDs
+      const workflow1Content = `
+name: conflict-workflow-1
+description: First workflow with conflicting gate ID
+gates:
+  - id: shared-gate-id
+    name: Gate from Workflow 1
+    description: This gate is from workflow 1
+    tags: [workflow1]
+
+stages:
+  - name: step1
+    agent: planner
+    description: Step 1
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'conflict-workflow-1.yaml'),
+        workflow1Content
+      );
+
+      const workflow2Content = `
+name: conflict-workflow-2
+description: Second workflow with conflicting gate ID
+gates:
+  - id: shared-gate-id
+    name: Gate from Workflow 2
+    description: This gate is from workflow 2
+    tags: [workflow2]
+
+stages:
+  - name: step1
+    agent: developer
+    description: Step 1
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'conflict-workflow-2.yaml'),
+        workflow2Content
+      );
+
+      // Create agent files
+      const plannerContent = `---
+name: planner
+description: Planning agent
+tools: Read, Glob, Grep
+model: sonnet
+---
+You are a planning agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'planner.md'),
+        plannerContent
+      );
+
+      const developerContent = `---
+name: developer
+description: Developer agent
+tools: Read, Write, Edit, Bash
+model: sonnet
+---
+You are a developer agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'developer.md'),
+        developerContent
+      );
+
+      await orchestrator.initialize();
+
+      const gates = (orchestrator as any).gates as Map<string, any>;
+
+      // Should have only 1 gate (the conflicting ID gets overwritten)
+      expect(gates.size).toBe(1);
+      expect(gates.has('shared-gate-id')).toBe(true);
+
+      // The last loaded gate should win (depends on file system order, but ensure one exists)
+      const gate = gates.get('shared-gate-id');
+      expect(gate).toBeDefined();
+      expect(gate.id).toBe('shared-gate-id');
+      expect(['Gate from Workflow 1', 'Gate from Workflow 2']).toContain(gate.name);
+    });
   });
 });
