@@ -7,6 +7,7 @@ import {
   AgentDefinition,
   WorkflowDefinition,
   WorkflowStage,
+  WorkflowGate,
   ApprovalGate,
   Task,
   TaskStatus,
@@ -42,7 +43,7 @@ import {
   TaskTemplate,
   WorktreeInfo,
 } from '@apexcli/core';
-import { TaskStore } from './store';
+import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
@@ -409,6 +410,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private workflows: Record<string, WorkflowDefinition> = {};
   private gates: Map<string, ApprovalGate> = new Map();
   private store!: TaskStore;
+  private toolActionStore!: ToolActionStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
   private interactionManager!: InteractionManager;
   private worktreeManager?: WorktreeManager;
@@ -461,6 +463,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize tool action store
+    this.toolActionStore = new ToolActionStore(this.store, this.config.toolActionRetention);
 
     // Initialize thought capture manager
     this.thoughtCaptureManager = new ThoughtCaptureManager(this.projectPath, this.store);

@@ -1433,6 +1433,8 @@ export const ApexConfigSchema = z.object({
   permissions: z.lazy(() => PermissionsConfigSchema).optional(),
   /** Policy-as-code configuration for governance and compliance (v0.5.0) */
   policy: z.lazy(() => PolicyConfigSchema).optional(),
+  /** Tool action tracking and retention configuration (v0.5.0) */
+  toolActionRetention: ToolActionRetentionConfigSchema.optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 

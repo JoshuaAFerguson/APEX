@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import {
   Task,
   TaskStatus,
@@ -31,6 +32,9 @@ import {
   TodoStatus,
   ApprovalState,
   ApprovalStatus,
+  ToolAction,
+  FileSnapshot,
+  ToolActionRetentionConfig,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -2897,4 +2901,455 @@ interface ApprovalStateRow {
   approvals_required: number;
   timeout_minutes: number | null;
   expires_at: string | null;
+}
+
+interface FileSnapshotRow {
+  id: string;
+  file_path: string;
+  content: string;
+  checksum: string;
+  file_size: number;
+  last_modified: string;
+  snapshot_time: string;
+  metadata: string | null;
+}
+
+interface ToolActionRow {
+  id: string;
+  task_id: string;
+  execution_call_id: string;
+  execution_tool_name: string;
+  execution_input: string;
+  execution_agent_name: string | null;
+  execution_stage_name: string | null;
+  execution_start_time: string;
+  execution_end_time: string | null;
+  execution_duration: number | null;
+  execution_result: string | null;
+  execution_error: string | null;
+  modified_files: string;
+  before_snapshots: string;
+  after_snapshots: string;
+  can_undo: number;
+  was_undone: number;
+  undone_at: string | null;
+  undo_error: string | null;
+  sequence_number: number;
+  action_group: string | null;
+  created_at: string;
+}
+
+/**
+ * ToolActionStore extends TaskStore with functionality for tracking tool actions and file snapshots
+ * Provides undo capabilities and file versioning
+ */
+export class ToolActionStore {
+  private taskStore: TaskStore;
+  private retentionConfig: ToolActionRetentionConfig;
+
+  constructor(taskStore: TaskStore, retentionConfig: Partial<ToolActionRetentionConfig> = {}) {
+    this.taskStore = taskStore;
+    this.retentionConfig = {
+      maxActionsPerTask: retentionConfig.maxActionsPerTask ?? 1000,
+      maxAgeDays: retentionConfig.maxAgeDays ?? 30,
+      keepUndoneSnapshots: retentionConfig.keepUndoneSnapshots ?? false,
+      maxSnapshotStorageMB: retentionConfig.maxSnapshotStorageMB ?? 100,
+    };
+  }
+
+  /**
+   * Create a file snapshot before modification
+   */
+  async createFileSnapshot(filePath: string, metadata?: Record<string, unknown>): Promise<FileSnapshot> {
+    const absolutePath = path.resolve(filePath);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`File not found: ${absolutePath}`);
+    }
+
+    const content = fs.readFileSync(absolutePath, 'utf8');
+    const stats = fs.statSync(absolutePath);
+    const checksum = crypto.createHash('sha256').update(content).digest('hex');
+
+    const snapshot: FileSnapshot = {
+      id: crypto.randomUUID(),
+      filePath: absolutePath,
+      content,
+      checksum,
+      fileSize: stats.size,
+      lastModified: stats.mtime,
+      snapshotTime: new Date(),
+      metadata,
+    };
+
+    return snapshot;
+  }
+
+  /**
+   * Store a file snapshot in the database
+   */
+  private async storeFileSnapshot(snapshot: FileSnapshot): Promise<void> {
+    const stmt = this.taskStore['db'].prepare(`
+      INSERT INTO file_snapshots (
+        id, file_path, content, checksum, file_size,
+        last_modified, snapshot_time, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      snapshot.id,
+      snapshot.filePath,
+      snapshot.content,
+      snapshot.checksum,
+      snapshot.fileSize,
+      snapshot.lastModified.toISOString(),
+      snapshot.snapshotTime.toISOString(),
+      snapshot.metadata ? JSON.stringify(snapshot.metadata) : null
+    );
+  }
+
+  /**
+   * Record a tool action with file tracking
+   */
+  async recordToolAction(
+    taskId: string,
+    execution: any, // ToolExecution type
+    modifiedFiles: string[] = [],
+    beforeSnapshots: FileSnapshot[] = [],
+    afterSnapshots: FileSnapshot[] = [],
+    actionGroup?: string
+  ): Promise<ToolAction> {
+    // Get next sequence number for this task
+    const sequenceResult = this.taskStore['db'].prepare(`
+      SELECT COALESCE(MAX(sequence_number), -1) + 1 as next_seq
+      FROM tool_actions
+      WHERE task_id = ?
+    `).get(taskId) as { next_seq: number };
+
+    const toolAction: ToolAction = {
+      id: crypto.randomUUID(),
+      execution,
+      modifiedFiles,
+      beforeSnapshots,
+      afterSnapshots,
+      canUndo: modifiedFiles.length > 0,
+      wasUndone: false,
+      sequenceNumber: sequenceResult.next_seq,
+      actionGroup,
+    };
+
+    // Store file snapshots first
+    for (const snapshot of beforeSnapshots) {
+      await this.storeFileSnapshot(snapshot);
+    }
+    for (const snapshot of afterSnapshots) {
+      await this.storeFileSnapshot(snapshot);
+    }
+
+    // Store tool action
+    const stmt = this.taskStore['db'].prepare(`
+      INSERT INTO tool_actions (
+        id, task_id, execution_call_id, execution_tool_name, execution_input,
+        execution_agent_name, execution_stage_name, execution_start_time,
+        execution_end_time, execution_duration, execution_result, execution_error,
+        modified_files, before_snapshots, after_snapshots, can_undo, was_undone,
+        sequence_number, action_group, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      toolAction.id,
+      taskId,
+      execution.callId,
+      execution.toolName,
+      JSON.stringify(execution.input),
+      execution.agentName || null,
+      execution.stageName || null,
+      execution.startTime.toISOString(),
+      execution.endTime?.toISOString() || null,
+      execution.duration || null,
+      execution.result ? JSON.stringify(execution.result) : null,
+      execution.error || null,
+      JSON.stringify(modifiedFiles),
+      JSON.stringify(beforeSnapshots.map(s => s.id)),
+      JSON.stringify(afterSnapshots.map(s => s.id)),
+      toolAction.canUndo ? 1 : 0,
+      toolAction.wasUndone ? 1 : 0,
+      toolAction.sequenceNumber,
+      actionGroup || null,
+      new Date().toISOString()
+    );
+
+    return toolAction;
+  }
+
+  /**
+   * Get tool actions for a task
+   */
+  async getToolActions(taskId: string, limit?: number, offset?: number): Promise<ToolAction[]> {
+    let query = `
+      SELECT * FROM tool_actions
+      WHERE task_id = ?
+      ORDER BY sequence_number DESC
+    `;
+
+    const params: any[] = [taskId];
+
+    if (limit) {
+      query += ` LIMIT ?`;
+      params.push(limit);
+
+      if (offset) {
+        query += ` OFFSET ?`;
+        params.push(offset);
+      }
+    }
+
+    const rows = this.taskStore['db'].prepare(query).all(...params) as ToolActionRow[];
+
+    return Promise.all(rows.map(row => this.rowToToolAction(row)));
+  }
+
+  /**
+   * Get undoable actions for a task (in reverse order)
+   */
+  async getUndoableActions(taskId: string): Promise<ToolAction[]> {
+    const rows = this.taskStore['db'].prepare(`
+      SELECT * FROM tool_actions
+      WHERE task_id = ? AND can_undo = 1 AND was_undone = 0
+      ORDER BY sequence_number DESC
+    `).all(taskId) as ToolActionRow[];
+
+    return Promise.all(rows.map(row => this.rowToToolAction(row)));
+  }
+
+  /**
+   * Undo the last action(s) for a task
+   */
+  async undoLastAction(taskId: string): Promise<void> {
+    const undoableActions = await this.getUndoableActions(taskId);
+
+    if (undoableActions.length === 0) {
+      throw new Error('No undoable actions found for task');
+    }
+
+    const lastAction = undoableActions[0];
+    await this.undoAction(taskId, lastAction.id);
+  }
+
+  /**
+   * Undo a specific action by ID
+   */
+  async undoAction(taskId: string, actionId: string): Promise<void> {
+    const action = await this.getToolActionById(actionId);
+
+    if (!action) {
+      throw new Error('Tool action not found');
+    }
+
+    if (action.execution.taskId !== taskId) {
+      throw new Error('Action does not belong to specified task');
+    }
+
+    if (!action.canUndo) {
+      throw new Error('Action cannot be undone');
+    }
+
+    if (action.wasUndone) {
+      throw new Error('Action has already been undone');
+    }
+
+    try {
+      // Restore files from before snapshots
+      for (const snapshot of action.beforeSnapshots) {
+        fs.writeFileSync(snapshot.filePath, snapshot.content, 'utf8');
+      }
+
+      // Mark action as undone
+      this.taskStore['db'].prepare(`
+        UPDATE tool_actions
+        SET was_undone = 1, undone_at = ?
+        WHERE id = ?
+      `).run(new Date().toISOString(), actionId);
+
+    } catch (error) {
+      // Record undo error
+      this.taskStore['db'].prepare(`
+        UPDATE tool_actions
+        SET undo_error = ?
+        WHERE id = ?
+      `).run(error instanceof Error ? error.message : String(error), actionId);
+
+      throw error;
+    }
+  }
+
+  /**
+   * Get tool action by ID
+   */
+  private async getToolActionById(actionId: string): Promise<ToolAction | null> {
+    const row = this.taskStore['db'].prepare(`
+      SELECT * FROM tool_actions WHERE id = ?
+    `).get(actionId) as ToolActionRow | undefined;
+
+    if (!row) return null;
+
+    return this.rowToToolAction(row);
+  }
+
+  /**
+   * Convert database row to ToolAction object
+   */
+  private async rowToToolAction(row: ToolActionRow): Promise<ToolAction> {
+    // Get snapshot data for before and after snapshots
+    const beforeSnapshotIds = JSON.parse(row.before_snapshots) as string[];
+    const afterSnapshotIds = JSON.parse(row.after_snapshots) as string[];
+
+    const beforeSnapshots = await this.getSnapshotsByIds(beforeSnapshotIds);
+    const afterSnapshots = await this.getSnapshotsByIds(afterSnapshotIds);
+
+    return {
+      id: row.id,
+      execution: {
+        callId: row.execution_call_id,
+        toolName: row.execution_tool_name,
+        input: JSON.parse(row.execution_input),
+        taskId: row.task_id,
+        agentName: row.execution_agent_name || undefined,
+        stageName: row.execution_stage_name || undefined,
+        startTime: new Date(row.execution_start_time),
+        endTime: row.execution_end_time ? new Date(row.execution_end_time) : undefined,
+        duration: row.execution_duration || undefined,
+        result: row.execution_result ? JSON.parse(row.execution_result) : undefined,
+        error: row.execution_error || undefined,
+      },
+      modifiedFiles: JSON.parse(row.modified_files),
+      beforeSnapshots,
+      afterSnapshots,
+      canUndo: Boolean(row.can_undo),
+      wasUndone: Boolean(row.was_undone),
+      undoneAt: row.undone_at ? new Date(row.undone_at) : undefined,
+      undoError: row.undo_error || undefined,
+      sequenceNumber: row.sequence_number,
+      actionGroup: row.action_group || undefined,
+    };
+  }
+
+  /**
+   * Get snapshots by IDs
+   */
+  private async getSnapshotsByIds(ids: string[]): Promise<FileSnapshot[]> {
+    if (ids.length === 0) return [];
+
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.taskStore['db'].prepare(`
+      SELECT * FROM file_snapshots WHERE id IN (${placeholders})
+    `).all(...ids) as FileSnapshotRow[];
+
+    return rows.map(row => ({
+      id: row.id,
+      filePath: row.file_path,
+      content: row.content,
+      checksum: row.checksum,
+      fileSize: row.file_size,
+      lastModified: new Date(row.last_modified),
+      snapshotTime: new Date(row.snapshot_time),
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    }));
+  }
+
+  /**
+   * Clean up old tool actions and snapshots based on retention policy
+   */
+  async cleanup(taskId?: string): Promise<void> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - this.retentionConfig.maxAgeDays);
+
+    let deleteQuery = `
+      DELETE FROM tool_actions
+      WHERE created_at < ?
+    `;
+    const params: any[] = [cutoffDate.toISOString()];
+
+    if (taskId) {
+      deleteQuery += ` AND task_id = ?`;
+      params.push(taskId);
+    }
+
+    // Delete old actions
+    this.taskStore['db'].prepare(deleteQuery).run(...params);
+
+    // Clean up orphaned snapshots
+    this.taskStore['db'].prepare(`
+      DELETE FROM file_snapshots
+      WHERE id NOT IN (
+        SELECT DISTINCT snapshot_id
+        FROM (
+          SELECT json_each.value as snapshot_id
+          FROM tool_actions, json_each(tool_actions.before_snapshots)
+          UNION
+          SELECT json_each.value as snapshot_id
+          FROM tool_actions, json_each(tool_actions.after_snapshots)
+        )
+      )
+    `).run();
+
+    // Limit actions per task
+    if (this.retentionConfig.maxActionsPerTask > 0) {
+      const tasks = taskId ? [taskId] : this.taskStore['db'].prepare(`
+        SELECT DISTINCT task_id FROM tool_actions
+      `).all().map((row: any) => row.task_id);
+
+      for (const tid of tasks) {
+        const actionCount = this.taskStore['db'].prepare(`
+          SELECT COUNT(*) as count FROM tool_actions WHERE task_id = ?
+        `).get(tid) as { count: number };
+
+        if (actionCount.count > this.retentionConfig.maxActionsPerTask) {
+          const excessCount = actionCount.count - this.retentionConfig.maxActionsPerTask;
+
+          const oldestActions = this.taskStore['db'].prepare(`
+            SELECT id FROM tool_actions
+            WHERE task_id = ?
+            ORDER BY sequence_number ASC
+            LIMIT ?
+          `).all(tid, excessCount) as { id: string }[];
+
+          for (const action of oldestActions) {
+            this.taskStore['db'].prepare(`DELETE FROM tool_actions WHERE id = ?`).run(action.id);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get storage usage statistics
+   */
+  async getStorageStats(taskId?: string): Promise<{
+    totalActions: number;
+    totalSnapshots: number;
+    storageUsageMB: number;
+  }> {
+    let query = 'SELECT COUNT(*) as count FROM tool_actions';
+    let params: any[] = [];
+
+    if (taskId) {
+      query += ' WHERE task_id = ?';
+      params.push(taskId);
+    }
+
+    const actionCount = this.taskStore['db'].prepare(query).get(...params) as { count: number };
+
+    const snapshotStats = this.taskStore['db'].prepare(`
+      SELECT COUNT(*) as count, SUM(file_size) as total_size
+      FROM file_snapshots
+    `).get() as { count: number; total_size: number | null };
+
+    return {
+      totalActions: actionCount.count,
+      totalSnapshots: snapshotStats.count,
+      storageUsageMB: (snapshotStats.total_size || 0) / (1024 * 1024),
+    };
+  }
 }
