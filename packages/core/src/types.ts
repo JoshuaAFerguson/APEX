@@ -1637,6 +1637,171 @@ export interface Gate {
 }
 
 // ============================================================================
+// Approval State Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Status values for approval state
+ * - pending: Awaiting approval decision
+ * - approved: Approval granted
+ * - denied: Approval denied/rejected
+ */
+export const ApprovalStatusSchema = z.enum(['pending', 'approved', 'denied']);
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+
+/**
+ * Approval state representing the current state of an approval request
+ * Tracks the decision, who made it, when, and additional context
+ */
+export const ApprovalStateSchema = z.object({
+  /** Unique identifier for this approval request */
+  id: z.string().min(1, 'Approval ID is required'),
+  /** ID of the associated task */
+  taskId: z.string().min(1, 'Task ID is required'),
+  /** Name of the gate/checkpoint this approval is for */
+  gateName: z.string().min(1, 'Gate name is required'),
+  /** Current status of the approval */
+  status: ApprovalStatusSchema,
+  /** Who provided the approval/denial decision (username, email, or identifier) */
+  approver: z.string().optional(),
+  /** When the approval was requested */
+  requestedAt: z.date(),
+  /** When the approval was responded to (approved or denied) */
+  respondedAt: z.date().optional(),
+  /** Comment or reason provided with the decision */
+  comment: z.string().optional(),
+  /** Additional context about the approval request */
+  context: z.record(z.string(), z.unknown()).optional(),
+  /** Stage in the workflow where approval was requested */
+  stage: z.string().optional(),
+  /** Agent that triggered the approval request */
+  agent: z.string().optional(),
+  /** Number of approvals received (for multi-approval gates) */
+  approvalsReceived: z.number().int().min(0).optional().default(0),
+  /** Number of approvals required */
+  approvalsRequired: z.number().int().min(1).optional().default(1),
+  /** Timeout configuration (in minutes, undefined = no timeout) */
+  timeoutMinutes: z.number().min(1).optional(),
+  /** When the approval will timeout (calculated from requestedAt + timeoutMinutes) */
+  expiresAt: z.date().optional(),
+});
+export type ApprovalState = z.infer<typeof ApprovalStateSchema>;
+
+/**
+ * Event data for 'gate:required' event
+ * Emitted when a task reaches an approval gate and requires human approval
+ */
+export const ApprovalRequiredEventDataSchema = z.object({
+  /** Unique identifier for this approval request */
+  approvalId: z.string().min(1),
+  /** ID of the task requiring approval */
+  taskId: z.string().min(1),
+  /** Name of the gate/checkpoint requiring approval */
+  gateName: z.string().min(1),
+  /** Type of approval checkpoint */
+  gateType: ApprovalCheckpointTypeSchema,
+  /** Description of what this approval is for */
+  description: z.string().optional(),
+  /** Who can approve this request (list of usernames, emails, or roles) */
+  approvers: z.array(z.string()).optional(),
+  /** Minimum number of approvals required */
+  minApprovals: z.number().int().min(1).optional().default(1),
+  /** Timeout in minutes (undefined = no timeout) */
+  timeoutMinutes: z.number().min(1).optional(),
+  /** When the approval will expire */
+  expiresAt: z.date().optional(),
+  /** Current workflow stage */
+  stage: z.string().optional(),
+  /** Agent that triggered the approval request */
+  agent: z.string().optional(),
+  /** Timestamp when approval was requested */
+  timestamp: z.date(),
+  /** Additional context about what is being approved */
+  context: z.record(z.string(), z.unknown()).optional(),
+  /** Summary of changes or actions pending approval */
+  changesSummary: z.string().optional(),
+  /** Files affected by the pending changes */
+  affectedFiles: z.array(z.string()).optional(),
+  /** Whether this is a blocking gate (task cannot proceed without approval) */
+  blocking: z.boolean().optional().default(true),
+});
+export type ApprovalRequiredEventData = z.infer<typeof ApprovalRequiredEventDataSchema>;
+
+/**
+ * Event data for 'gate:approved' and 'gate:rejected' events
+ * Emitted when an approval request receives a response
+ */
+export const ApprovalResponseEventDataSchema = z.object({
+  /** Unique identifier for this approval request */
+  approvalId: z.string().min(1),
+  /** ID of the task that received the approval response */
+  taskId: z.string().min(1),
+  /** Name of the gate/checkpoint */
+  gateName: z.string().min(1),
+  /** Type of approval checkpoint */
+  gateType: ApprovalCheckpointTypeSchema,
+  /** Whether the request was approved or denied */
+  approved: z.boolean(),
+  /** Who provided the approval/denial decision */
+  approver: z.string().min(1, 'Approver is required'),
+  /** Comment or reason for the decision */
+  comment: z.string().optional(),
+  /** Timestamp when the response was provided */
+  timestamp: z.date(),
+  /** Timestamp when the approval was originally requested */
+  requestedAt: z.date(),
+  /** Duration in milliseconds between request and response */
+  responseTimeMs: z.number().int().min(0).optional(),
+  /** Current workflow stage */
+  stage: z.string().optional(),
+  /** Number of approvals received so far */
+  approvalsReceived: z.number().int().min(0).optional(),
+  /** Number of approvals required */
+  approvalsRequired: z.number().int().min(1).optional(),
+  /** Whether all required approvals have been received */
+  allApprovalsReceived: z.boolean().optional(),
+  /** Additional context about the approval response */
+  context: z.record(z.string(), z.unknown()).optional(),
+});
+export type ApprovalResponseEventData = z.infer<typeof ApprovalResponseEventDataSchema>;
+
+/**
+ * Combined approval event type for gate events
+ * Used for type discrimination in event handlers
+ */
+export type ApprovalEventData = ApprovalRequiredEventData | ApprovalResponseEventData;
+
+/**
+ * Request to submit an approval decision
+ */
+export const ApprovalDecisionRequestSchema = z.object({
+  /** ID of the approval request to respond to */
+  approvalId: z.string().min(1, 'Approval ID is required'),
+  /** Whether to approve (true) or deny (false) */
+  approved: z.boolean(),
+  /** Who is making the decision */
+  approver: z.string().min(1, 'Approver is required'),
+  /** Optional comment explaining the decision */
+  comment: z.string().optional(),
+});
+export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequestSchema>;
+
+/**
+ * Response after submitting an approval decision
+ */
+export const ApprovalDecisionResponseSchema = z.object({
+  /** Whether the decision was successfully recorded */
+  success: z.boolean(),
+  /** Updated approval state after the decision */
+  approvalState: ApprovalStateSchema.optional(),
+  /** Error message if the decision failed */
+  error: z.string().optional(),
+  /** Whether the task will now proceed (all approvals received) */
+  taskWillProceed: z.boolean().optional(),
+});
+export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponseSchema>;
+
+// ============================================================================
 // Checkpoint Management
 // ============================================================================
 

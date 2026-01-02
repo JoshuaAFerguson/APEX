@@ -1,5 +1,6 @@
-import { SecretScanner, SecretPattern } from './scanner';
-import { SecretFinding } from '@apexcli/core';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { SecretScanner, type SecretPattern } from './scanner';
+import type { SecretFinding } from '@apexcli/core';
 
 describe('SecretScanner', () => {
   let scanner: SecretScanner;
