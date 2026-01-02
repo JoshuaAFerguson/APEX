@@ -2076,7 +2076,7 @@ export const ApprovalStateSchema = z.object({
 export type ApprovalState = z.infer<typeof ApprovalStateSchema>;
 
 /**
- * Event data for 'gate:required' event
+ * Event data for 'approval-required' event
  * Emitted when a task reaches an approval gate and requires human approval
  */
 export const ApprovalRequiredEventDataSchema = z.object({
@@ -2112,6 +2112,8 @@ export const ApprovalRequiredEventDataSchema = z.object({
   affectedFiles: z.array(z.string()).optional(),
   /** Whether this is a blocking gate (task cannot proceed without approval) */
   blocking: z.boolean().optional().default(true),
+  /** URL for the approval interface (generated from apiUrl config) */
+  approvalUrl: z.string().url().optional(),
 });
 export type ApprovalRequiredEventData = z.infer<typeof ApprovalRequiredEventDataSchema>;
 
@@ -2305,6 +2307,7 @@ export type ApexEventType =
   | 'tool:complete'
   | 'tool:timing'
   | 'gate:required'
+  | 'approval-required'
   | 'gate:approved'
   | 'gate:rejected'
   | 'approval:granted'

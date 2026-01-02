@@ -1646,7 +1646,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             updatedAt: new Date(),
           });
 
-          // Emit gate:required event
+          // Generate approval URL from apiUrl config
+          const approvalUrl = this.options.apiUrl
+            ? `${this.options.apiUrl}/approvals/${approvalState.id}`
+            : undefined;
+
+          // Emit approval-required event
           const eventData: ApprovalRequiredEventData = {
             approvalId: approvalState.id,
             taskId: task.id,
@@ -1663,9 +1668,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             context: approvalState.context,
             changesSummary: this.summarizeCompletedStages(stageResults),
             blocking: gateCheck.gate.required ?? true,
+            approvalUrl,
           };
 
-          this.emit('gate:required', eventData);
+          this.emit('approval-required', eventData);
 
           await this.store.addLog(task.id, {
             level: 'info',
