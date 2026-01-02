@@ -648,6 +648,7 @@ export class TaskStore {
       trashedAt: Date | undefined;
       archivedAt: Date | undefined;
       workspace: WorkspaceConfig | undefined;
+      policyCheckResult: TaskPolicyCheckResult | undefined;
     }>
   ): Promise<void> {
     const setClauses: string[] = [];
@@ -776,6 +777,11 @@ export class TaskStore {
     if ('workspace' in updates) {
       setClauses.push('workspace_config = @workspaceConfig');
       params.workspaceConfig = updates.workspace ? JSON.stringify(updates.workspace) : null;
+    }
+
+    if ('policyCheckResult' in updates) {
+      setClauses.push('policy_check_result = @policyCheckResult');
+      params.policyCheckResult = updates.policyCheckResult ? JSON.stringify(updates.policyCheckResult) : null;
     }
 
     if (setClauses.length === 0) return;
@@ -2717,13 +2723,13 @@ export class TaskStore {
       approver: row.approver || undefined,
       requestedAt: new Date(row.requested_at),
       respondedAt: row.responded_at ? new Date(row.responded_at) : undefined,
-      comment: row.reason || undefined,
+      comment: row.comment || undefined,
       context,
       stage: row.stage || undefined,
       agent: row.agent || undefined,
       approvalsReceived: row.approvals_received || 0,
       approvalsRequired: row.approvals_required || 1,
-      expiresAt: row.timeout_at ? new Date(row.timeout_at) : undefined,
+      expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
     };
   }
 
@@ -2927,6 +2933,7 @@ interface ToolActionRow {
   execution_duration: number | null;
   execution_result: string | null;
   execution_error: string | null;
+  execution_status: string;
   modified_files: string;
   before_snapshots: string;
   after_snapshots: string;
@@ -3222,6 +3229,7 @@ export class ToolActionStore {
         duration: row.execution_duration || undefined,
         result: row.execution_result ? JSON.parse(row.execution_result) : undefined,
         error: row.execution_error || undefined,
+        status: (row.execution_status as 'running' | 'completed' | 'failed') || 'completed',
       },
       modifiedFiles: JSON.parse(row.modified_files),
       beforeSnapshots,

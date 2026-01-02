@@ -551,6 +551,8 @@ export const ToolExecutionSchema = z.object({
     output: z.unknown().optional(),
     error: z.string().optional(),
   }).optional(),
+  /** Error message if execution failed (top-level for easier access) */
+  error: z.string().optional(),
   /** Current status of the tool execution */
   status: z.enum(['running', 'completed', 'failed']),
   /** Additional metadata about the execution */
@@ -722,6 +724,8 @@ export type ApprovalCheckpointType = z.infer<typeof ApprovalCheckpointTypeSchema
  * Defines when and how approval is required during task execution
  */
 export const ApprovalGateSchema = z.object({
+  /** Unique identifier for this gate */
+  id: z.string().optional(),
   /** Type of checkpoint */
   type: ApprovalCheckpointTypeSchema,
   /** Human-readable name for this gate */
@@ -736,6 +740,8 @@ export const ApprovalGateSchema = z.object({
   approvers: z.array(z.string()).optional(),
   /** Timeout in minutes before the gate auto-rejects (undefined = no timeout) */
   timeout: z.number().min(1).optional(),
+  /** Whether to auto-approve always (shortcut for simple gates) */
+  autoApprove: z.boolean().default(false),
   /** Whether to auto-approve if timeout is reached (default: false = auto-reject) */
   autoApproveOnTimeout: z.boolean().default(false),
   /** Minimum number of approvals required (default: 1) */
@@ -796,11 +802,15 @@ export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
 // ============================================================================
 
 export const WorkflowGateSchema = z.object({
-  name: z.string(),
+  id: z.string(),
+  name: z.string().optional(),
+  description: z.string().optional(),
   trigger: z.string(),
   required: z.boolean().default(true),
+  autoApprove: z.boolean().default(false),
   approvers: z.array(z.string()).optional(),
   timeout: z.number().optional(), // Minutes
+  tags: z.array(z.string()).optional(),
 });
 export type WorkflowGate = z.infer<typeof WorkflowGateSchema>;
 
@@ -840,6 +850,8 @@ export const WorkflowDefinitionSchema = z.object({
   description: z.string(),
   trigger: z.array(z.string()).optional(),
   stages: z.array(WorkflowStageSchema),
+  /** Approval gates for this workflow (optional) */
+  gates: z.array(WorkflowGateSchema).optional(),
   /** Task isolation configuration for this workflow (optional) */
   isolation: IsolationConfigSchema.optional(),
 });
@@ -1435,6 +1447,8 @@ export const ApexConfigSchema = z.object({
   policy: z.lazy(() => PolicyConfigSchema).optional(),
   /** Tool action tracking and retention configuration (v0.5.0) */
   toolActionRetention: ToolActionRetentionConfigSchema.optional(),
+  /** Hook configuration for custom lifecycle events (v0.5.0) */
+  hooks: z.lazy(() => z.array(HookConfigSchema)).optional().default([]),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -1504,6 +1518,8 @@ export interface Task {
   iterationHistory?: IterationHistory; // Iteration history for the task
   // v0.5.0 policy check result
   policyCheckResult?: TaskPolicyCheckResult; // Result of policy evaluation for this task
+  // v0.5.0 approval state
+  approvalState?: ApprovalState; // Current approval state if task is awaiting approval
 }
 
 /**
@@ -2138,10 +2154,44 @@ export const ApprovalResponseEventDataSchema = z.object({
 export type ApprovalResponseEventData = z.infer<typeof ApprovalResponseEventDataSchema>;
 
 /**
+ * Event data for when an approval has been granted
+ */
+export const ApprovalGrantedEventDataSchema = z.object({
+  /** Unique identifier for the approval request that was granted */
+  approvalId: z.string().min(1),
+  /** ID of the task associated with the approval */
+  taskId: z.string().min(1),
+  /** Who granted the approval */
+  approver: z.string().min(1),
+  /** Optional comment from the approver */
+  comment: z.string().optional(),
+  /** Timestamp when the approval was granted */
+  timestamp: z.date(),
+});
+export type ApprovalGrantedEventData = z.infer<typeof ApprovalGrantedEventDataSchema>;
+
+/**
+ * Event data for when an approval has been denied
+ */
+export const ApprovalDeniedEventDataSchema = z.object({
+  /** Unique identifier for the approval request that was denied */
+  approvalId: z.string().min(1),
+  /** ID of the task associated with the approval */
+  taskId: z.string().min(1),
+  /** Who denied the approval */
+  approver: z.string().min(1),
+  /** Reason for denying the approval */
+  reason: z.string().min(1, 'Reason is required for denial'),
+  /** Timestamp when the approval was denied */
+  timestamp: z.date(),
+});
+export type ApprovalDeniedEventData = z.infer<typeof ApprovalDeniedEventDataSchema>;
+
+/**
  * Combined approval event type for gate events
  * Used for type discrimination in event handlers
  */
-export type ApprovalEventData = ApprovalRequiredEventData | ApprovalResponseEventData;
+export type ApprovalEventData = ApprovalRequiredEventData | ApprovalResponseEventData | ApprovalGrantedEventData | ApprovalDeniedEventData;
 
 /**
  * Request to submit an approval decision
@@ -2257,6 +2307,8 @@ export type ApexEventType =
   | 'gate:required'
   | 'gate:approved'
   | 'gate:rejected'
+  | 'approval:granted'
+  | 'approval:denied'
   | 'usage:updated'
   | 'log:entry'
   | 'worktree:merge-cleaned'
@@ -4113,3 +4165,79 @@ export const TaskPolicyCheckResultSchema = z.object({
   enforcementMode: PolicyEnforcementModeSchema.optional(),
 });
 export type TaskPolicyCheckResult = z.infer<typeof TaskPolicyCheckResultSchema>;
+
+// ============================================================================
+// Hook Configuration
+// ============================================================================
+
+/**
+ * Hook types that define when hooks are triggered
+ */
+export const HookTypeSchema = z.enum([
+  'before-task',     // Triggered before a task starts
+  'after-task',      // Triggered after a task completes
+  'before-stage',    // Triggered before a workflow stage starts
+  'after-stage',     // Triggered after a workflow stage completes
+  'before-commit',   // Triggered before code is committed
+  'after-commit',    // Triggered after code is committed
+  'before-push',     // Triggered before code is pushed
+  'after-push',      // Triggered after code is pushed
+  'on-error',        // Triggered when an error occurs
+  'on-success',      // Triggered on successful completion
+]);
+export type HookType = z.infer<typeof HookTypeSchema>;
+
+/**
+ * Hook handler configuration
+ * Can be either a file path or inline code
+ */
+export const HookHandlerSchema = z.union([
+  // File path to script
+  z.object({
+    type: z.literal('file'),
+    path: z.string().min(1, 'Handler file path is required'),
+    args: z.array(z.string()).optional(),
+  }),
+  // Inline script content
+  z.object({
+    type: z.literal('inline'),
+    code: z.string().min(1, 'Handler code is required'),
+    language: z.enum(['bash', 'javascript', 'typescript']).optional().default('bash'),
+  }),
+]);
+export type HookHandler = z.infer<typeof HookHandlerSchema>;
+
+/**
+ * Hook configuration schema
+ * Defines when and how hooks are executed
+ */
+export const HookConfigSchema = z.object({
+  /** Unique name for the hook */
+  name: z.string().min(1, 'Hook name is required'),
+  /** Hook type defining when it's triggered */
+  type: HookTypeSchema,
+  /** Hook handler configuration */
+  handler: HookHandlerSchema,
+  /** Priority for hook execution order (higher = earlier) */
+  priority: z.number().int().optional().default(100),
+  /** Whether this hook is enabled */
+  enabled: z.boolean().optional().default(true),
+  /** Optional description of what this hook does */
+  description: z.string().optional(),
+  /** Optional conditions for hook execution */
+  conditions: z.object({
+    /** Only run for specific workflow stages */
+    stages: z.array(z.string()).optional(),
+    /** Only run for specific agents */
+    agents: z.array(z.string()).optional(),
+    /** Only run for specific file patterns */
+    filePatterns: z.array(z.string()).optional(),
+    /** Environment variables that must be set */
+    env: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+  /** Hook timeout in milliseconds */
+  timeoutMs: z.number().int().min(1000).optional().default(30000),
+  /** Whether hook failure should fail the operation */
+  failOnError: z.boolean().optional().default(true),
+});
+export type HookConfig = z.infer<typeof HookConfigSchema>;

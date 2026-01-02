@@ -569,6 +569,71 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }
     };
 
+    // Tool timing event handlers (v0.5.0)
+    const handleToolStart = (event: { taskId: string; toolName: string; callId: string; timestamp: Date; input: Record<string, unknown> }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Tool start', { taskId: event.taskId, tool: event.toolName, callId: event.callId });
+
+      // Track individual tool call start time using callId for precise timing
+      toolStartTimeRef.current.set(event.callId, event.timestamp);
+    };
+
+    const handleToolComplete = (event: {
+      taskId: string;
+      toolName: string;
+      callId: string;
+      result: { success: boolean; output?: unknown; error?: string };
+      timing: { startTime: Date; endTime: Date; duration: number };
+      timestamp: Date
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Tool complete', {
+        taskId: event.taskId,
+        tool: event.toolName,
+        callId: event.callId,
+        duration: event.timing.duration,
+        success: event.result.success
+      });
+
+      const currentAgentName = stateRef.current.currentAgent;
+
+      // Update per-tool timing accumulation for existing statistics
+      setVerboseData((prev: VerboseDebugData) => ({
+        ...prev,
+        timing: {
+          ...prev.timing,
+          toolUsageTimes: {
+            ...prev.timing.toolUsageTimes,
+            [event.toolName]: (prev.timing.toolUsageTimes[event.toolName] || 0) + event.timing.duration,
+          },
+        },
+      }));
+
+      // Update agent debugInfo with latest tool completion
+      if (currentAgentName) {
+        setState((prev: OrchestratorEventState) => ({
+          ...prev,
+          agents: updateAgentDebugInfo(
+            prev.agents,
+            currentAgentName,
+            (debugInfo) => ({
+              ...debugInfo,
+              lastToolCall: event.toolName,
+              lastToolDuration: event.timing.duration,
+              lastToolSuccess: event.result.success,
+            }),
+            derivedAgentsByName.get(currentAgentName),
+            Boolean(derivedAgentsByName.get(currentAgentName))
+          ),
+        }));
+      }
+
+      // Clean up the call tracking
+      toolStartTimeRef.current.delete(event.callId);
+    };
+
     const handleAgentThinking = (eventTaskId: string, agentName: string, thinking: string) => {
       if (taskId && eventTaskId !== taskId) return;
 
@@ -681,6 +746,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     // Register debug event listeners
     orchestrator.on('usage:updated', handleUsageUpdated);
     orchestrator.on('agent:tool-use', handleToolUse);
+    orchestrator.on('tool:start', handleToolStart);
+    orchestrator.on('tool:complete', handleToolComplete);
     orchestrator.on('agent:message', handleAgentMessage);
     orchestrator.on('agent:thinking', handleAgentThinking);
     orchestrator.on('agent:turn', handleAgentTurn);
@@ -703,6 +770,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       // Cleanup debug event listeners
       orchestrator.off('usage:updated', handleUsageUpdated);
       orchestrator.off('agent:tool-use', handleToolUse);
+      orchestrator.off('tool:start', handleToolStart);
+      orchestrator.off('tool:complete', handleToolComplete);
       orchestrator.off('agent:message', handleAgentMessage);
       orchestrator.off('agent:thinking', handleAgentThinking);
       orchestrator.off('agent:turn', handleAgentTurn);

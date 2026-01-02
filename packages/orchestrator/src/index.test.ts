@@ -4252,4 +4252,227 @@ You are a developer agent that implements code changes.
       });
     });
   });
+
+  // ============================================================================
+  // Approval Operations (v0.5.0)
+  // ============================================================================
+
+  describe('Approval Operations', () => {
+    let taskId: string;
+    let approvalId: string;
+
+    beforeEach(async () => {
+      // Create a test task
+      taskId = await orchestrator.createTask('Test approval task', 'feature');
+      approvalId = `approval-${taskId}-gate-${Date.now()}`;
+
+      // Create a checkpoint for the task so it can be resumed
+      await orchestrator.createCheckpoint(taskId, 'test-checkpoint', {
+        stageName: 'planning',
+        status: 'awaiting_approval',
+        stageOutputs: { plan: 'test plan' },
+        conversationState: [
+          { type: 'text', text: 'Planning completed, awaiting approval' }
+        ],
+        metadata: { test: true }
+      });
+    });
+
+    describe('grantApproval', () => {
+      it('should grant approval and resume task successfully', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-granted', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user', 'Looks good to proceed');
+
+        // Verify event was emitted
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          comment: 'Looks good to proceed',
+          timestamp: expect.any(Date)
+        });
+
+        // Verify task status was updated to running (from resumeTask)
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('in-progress');
+
+        // Verify logs were created
+        const logs = await orchestrator.getTaskLogs(taskId);
+        const resumeLog = logs.find(log =>
+          log.message.includes('Task resumed successfully after approval grant')
+        );
+        expect(resumeLog).toBeDefined();
+        expect(resumeLog?.metadata).toMatchObject({
+          approvalId,
+          approver: 'test-user',
+          comment: 'Looks good to proceed'
+        });
+      });
+
+      it('should handle approval grant without comment', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-granted', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user');
+
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          comment: undefined,
+          timestamp: expect.any(Date)
+        });
+      });
+
+      it('should throw error for invalid approval ID format', async () => {
+        await expect(orchestrator.grantApproval('invalid-id', 'test-user'))
+          .rejects.toThrow('Invalid approval ID format: invalid-id');
+      });
+
+      it('should throw error for non-existent task', async () => {
+        const invalidApprovalId = 'approval-nonexistent-gate-123';
+
+        await expect(orchestrator.grantApproval(invalidApprovalId, 'test-user'))
+          .rejects.toThrow('Task not found for approval: nonexistent');
+      });
+
+      it('should handle case when task has no checkpoint to resume from', async () => {
+        // Create a task without a checkpoint
+        const noCheckpointTaskId = await orchestrator.createTask('No checkpoint task', 'feature');
+        const noCheckpointApprovalId = `approval-${noCheckpointTaskId}-gate-${Date.now()}`;
+
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-granted', eventSpy);
+
+        await orchestrator.grantApproval(noCheckpointApprovalId, 'test-user', 'Approve anyway');
+
+        // Verify event was still emitted
+        expect(eventSpy).toHaveBeenCalled();
+
+        // Verify warning log was created
+        const logs = await orchestrator.getTaskLogs(noCheckpointTaskId);
+        const warningLog = logs.find(log =>
+          log.message.includes('Failed to resume task after approval grant: no checkpoint available')
+        );
+        expect(warningLog).toBeDefined();
+      });
+    });
+
+    describe('denyApproval', () => {
+      it('should deny approval and fail task with reason', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-denied', eventSpy);
+
+        await orchestrator.denyApproval(approvalId, 'test-user', 'Plan needs more detail');
+
+        // Verify event was emitted
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          reason: 'Plan needs more detail',
+          timestamp: expect.any(Date)
+        });
+
+        // Verify task was marked as failed
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('failed');
+        expect(task?.result).toBe('Approval denied by test-user: Plan needs more detail');
+
+        // Verify logs were created
+        const logs = await orchestrator.getTaskLogs(taskId);
+        const denialLog = logs.find(log =>
+          log.message.includes('Task failed due to approval denial')
+        );
+        expect(denialLog).toBeDefined();
+        expect(denialLog?.metadata).toMatchObject({
+          approvalId,
+          approver: 'test-user',
+          reason: 'Plan needs more detail'
+        });
+      });
+
+      it('should throw error when reason is empty', async () => {
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', ''))
+          .rejects.toThrow('Reason is required when denying an approval');
+
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', '   '))
+          .rejects.toThrow('Reason is required when denying an approval');
+      });
+
+      it('should throw error for invalid approval ID format', async () => {
+        await expect(orchestrator.denyApproval('invalid-id', 'test-user', 'Invalid format'))
+          .rejects.toThrow('Invalid approval ID format: invalid-id');
+      });
+
+      it('should throw error for non-existent task', async () => {
+        const invalidApprovalId = 'approval-nonexistent-gate-123';
+
+        await expect(orchestrator.denyApproval(invalidApprovalId, 'test-user', 'Task not found'))
+          .rejects.toThrow('Task not found for approval: nonexistent');
+      });
+    });
+
+    describe('Event emission', () => {
+      it('should emit approval-granted event with correct type', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-granted', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user', 'Approved');
+
+        const emittedEvent = eventSpy.mock.calls[0][0];
+        expect(emittedEvent).toMatchObject({
+          approvalId: expect.stringContaining(taskId),
+          taskId,
+          approver: 'test-user',
+          comment: 'Approved',
+          timestamp: expect.any(Date)
+        });
+      });
+
+      it('should emit approval-denied event with correct type', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval-denied', eventSpy);
+
+        await orchestrator.denyApproval(approvalId, 'test-user', 'Rejected for testing');
+
+        const emittedEvent = eventSpy.mock.calls[0][0];
+        expect(emittedEvent).toMatchObject({
+          approvalId: expect.stringContaining(taskId),
+          taskId,
+          approver: 'test-user',
+          reason: 'Rejected for testing',
+          timestamp: expect.any(Date)
+        });
+      });
+    });
+
+    describe('Integration with task lifecycle', () => {
+      it('should handle approval grant after task was already resumed', async () => {
+        // Resume the task first
+        await orchestrator.resumeTask(taskId);
+
+        // Then grant approval (should still work)
+        await expect(orchestrator.grantApproval(approvalId, 'test-user', 'Late approval'))
+          .resolves.not.toThrow();
+
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('in-progress');
+      });
+
+      it('should handle approval denial after task completed', async () => {
+        // Complete the task first
+        await orchestrator.updateTaskStatus(taskId, 'completed', 'Task completed');
+
+        // Then deny approval (should still work for audit purposes)
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', 'Too late to deny'))
+          .resolves.not.toThrow();
+
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('failed'); // Should override to failed
+      });
+    });
+  });
 });

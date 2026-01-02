@@ -43,6 +43,9 @@ export * from './shell-utils';
 // Syntax Highlighting
 export * from './syntax-highlighter';
 
+// Error Formatting
+export * from './error-formatter';
+
 // Validation Infrastructure
 export * from './validation';
 

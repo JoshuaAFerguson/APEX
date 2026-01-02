@@ -1204,13 +1204,13 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
     const results: PolicyValidationResult[] = [];
 
     // Check for high-risk task characteristics
-    if (task.priority === 'critical') {
+    if (task.priority === 'urgent') {
       results.push({
         passed: false,
-        ruleId: 'critical-task-review',
-        ruleName: 'Critical Task Review',
+        ruleId: 'urgent-task-review',
+        ruleName: 'Urgent Task Review',
         ruleType: 'approval',
-        message: 'Critical priority tasks require additional oversight',
+        message: 'Urgent priority tasks require additional oversight',
         severity: 'warning',
         details: {
           taskPriority: task.priority,
@@ -1221,7 +1221,7 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
     }
 
     // Check for large effort tasks
-    if (task.effort === 'large' || task.effort === 'xlarge') {
+    if (task.effort === 'large' || task.effort === 'xl') {
       results.push({
         passed: false,
         ruleId: 'large-effort-review',

@@ -28,6 +28,15 @@ export function generateTaskTemplateId(): string {
 }
 
 /**
+ * Generate a unique approval ID
+ */
+export function generateApprovalId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = crypto.randomBytes(4).toString('hex');
+  return `apr_${timestamp}_${random}`;
+}
+
+/**
  * Generate a slug from a string
  */
 export function slugify(text: string): string {

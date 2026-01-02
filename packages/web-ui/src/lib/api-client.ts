@@ -57,17 +57,33 @@ interface IsSubtaskResponse {
 }
 
 export class ApexApiClient {
-  private baseUrl: string
+  private _baseUrl: string | null = null
+  private _explicitUrl: string | null = null
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || getApiUrl()
+    // Store explicit URL if provided, otherwise evaluate lazily
+    this._explicitUrl = baseUrl || null
+  }
+
+  /**
+   * Get the base URL, evaluating lazily for client-side rendering
+   */
+  private get baseUrl(): string {
+    if (this._explicitUrl) {
+      return this._explicitUrl
+    }
+    // Lazy evaluation - only get URL when actually needed (on client)
+    if (this._baseUrl === null || typeof window !== 'undefined') {
+      this._baseUrl = getApiUrl()
+    }
+    return this._baseUrl
   }
 
   /**
    * Update the base URL (useful for runtime configuration)
    */
   setBaseUrl(url: string): void {
-    this.baseUrl = url
+    this._explicitUrl = url
   }
 
   /**

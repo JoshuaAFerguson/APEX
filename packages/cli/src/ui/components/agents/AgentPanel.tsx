@@ -21,6 +21,8 @@ export interface AgentInfo {
     tokensUsed?: { input: number; output: number };
     stageStartedAt?: Date;
     lastToolCall?: string;
+    lastToolDuration?: number;
+    lastToolSuccess?: boolean;
     turnCount?: number;
     errorCount?: number;
     thinking?: string;

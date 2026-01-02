@@ -9,6 +9,10 @@ import {
   WorkflowStage,
   WorkflowGate,
   ApprovalGate,
+  ApprovalState,
+  ApprovalRequiredEventData,
+  ApprovalGrantedEventData,
+  ApprovalDeniedEventData,
   Task,
   TaskStatus,
   TaskUsage,
@@ -33,6 +37,7 @@ import {
   generateTaskId,
   generateBranchName,
   generateTaskTemplateId,
+  generateApprovalId,
   calculateCost,
   OutdatedDocumentation,
   MissingReadmeSection,
@@ -142,6 +147,11 @@ export interface OrchestratorEvents {
   'dangerous:detected': (event: DangerousOperationDetectedEventData) => void;
   'dangerous:confirmed': (event: DangerousOperationConfirmedEventData) => void;
   'dangerous:blocked': (event: DangerousOperationBlockedEventData) => void;
+
+  // Approval gate events
+  'approval-required': (event: ApprovalRequiredEventData) => void;
+  'approval-granted': (event: ApprovalGrantedEventData) => void;
+  'approval-denied': (event: ApprovalDeniedEventData) => void;
 
   // Template events
   'template:created': (template: TaskTemplate) => void;
@@ -418,6 +428,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionStore!: PermissionStore;
   private permissionManager!: PermissionManager;
   private permissionPresetManager!: PermissionPresetManager;
+  private policyEnforcer!: PolicyEnforcer;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -504,6 +515,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       this.effectiveConfig.permissions.preset
     );
 
+    // Initialize policy enforcer
+    this.policyEnforcer = createPolicyEnforcer(this.config.policy);
+
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
 
@@ -529,7 +543,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Extract gates from config
     if (this.config.autonomy?.gates) {
       for (const gate of this.config.autonomy.gates) {
-        this.gates.set(gate.id, gate);
+        const gateId = gate.id || gate.name || `gate-${this.gates.size}`;
+        this.gates.set(gateId, { ...gate, id: gateId });
       }
     }
 
@@ -540,10 +555,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Create an ApprovalGate from the WorkflowGate
           const approvalGate: ApprovalGate = {
             id: workflowGate.id,
+            type: 'custom',
             name: workflowGate.name || workflowGate.id,
             description: workflowGate.description || `Gate ${workflowGate.id} for workflow ${workflowName}`,
             required: workflowGate.required !== false, // default to true
             autoApprove: workflowGate.autoApprove || false,
+            autoApproveOnTimeout: false,
+            minApprovals: 1,
             timeout: workflowGate.timeout,
             tags: workflowGate.tags || [],
           };
@@ -558,11 +576,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             // Create a default gate for stage references that don't exist
             const defaultGate: ApprovalGate = {
               id: stage.gate,
+              type: 'custom',
               name: stage.gate,
-              description: `Approval gate for stage ${stage.role} in workflow ${workflowName}`,
+              description: `Approval gate for stage ${stage.name} in workflow ${workflowName}`,
               required: true,
               autoApprove: false,
-              tags: [`workflow:${workflowName}`, `stage:${stage.role}`],
+              autoApproveOnTimeout: false,
+              minApprovals: 1,
+              tags: [`workflow:${workflowName}`, `stage:${stage.name}`],
             };
             this.gates.set(stage.gate, defaultGate);
           }
@@ -750,6 +771,44 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         level: 'info',
         message: `Created feature branch: ${task.branchName}`,
       });
+    }
+
+    // Check policy before task starts execution
+    const policyCheckResult = this.policyEnforcer.checkTaskStart(task);
+
+    // Log policy check results
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Policy check completed: ${policyCheckResult.passed ? 'passed' : 'failed'} (${policyCheckResult.failedCount} errors, ${policyCheckResult.warningCount} warnings)`,
+    });
+
+    // Update task with policy check results
+    await this.store.updateTask(taskId, {
+      policyCheckResult: {
+        passed: policyCheckResult.passed,
+        violations: policyCheckResult.results.map(result => ({
+          ruleId: result.ruleId,
+          policyType: result.ruleType as 'path' | 'test' | 'approval',
+          severity: result.severity as 'info' | 'warning' | 'error',
+          message: result.message,
+          filePath: result.details?.filePath,
+          context: result.details?.context,
+        })),
+        checkedAt: policyCheckResult.evaluatedAt,
+        policyName: policyCheckResult.policyName,
+        enforcementMode: this.policyEnforcer.enforcementMode,
+      },
+      updatedAt: new Date(),
+    });
+
+    // If policy check failed with error-level violations, block the task
+    if (!policyCheckResult.passed && policyCheckResult.failedCount > 0) {
+      await this.updateTaskStatus(taskId, 'failed', 'Task blocked by policy violations');
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`,
+      });
+      throw new Error(`Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`);
     }
 
     // Update status
@@ -1012,7 +1071,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure' | 'token_limit',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure' | 'token_limit' | 'approval_gate',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
@@ -1187,6 +1246,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   /**
    * Check if a parent task should resume (all subtasks are no longer paused)
+   * Recursively cascades up the parent chain
    */
   private async checkAndResumeParent(parentTaskId: string): Promise<void> {
     const parentTask = await this.store.getTask(parentTaskId);
@@ -1217,6 +1277,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         level: 'info',
         message: 'Parent task resumed - all subtasks unpaused',
       });
+
+      // Recursively check if this parent's parent should also resume
+      if (parentTask.parentTaskId) {
+        await this.checkAndResumeParent(parentTask.parentTaskId);
+      }
     }
   }
 
@@ -1311,6 +1376,52 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Check if a stage should pause for approval gate
+   */
+  private shouldPauseForGate(stage: WorkflowStage): { pause: boolean; gate?: ApprovalGate } {
+    // No gate configured
+    if (!stage.gate) {
+      return { pause: false };
+    }
+
+    // Lookup gate definition
+    const gate = this.gates.get(stage.gate);
+    if (!gate) {
+      // Log warning but don't block execution
+      console.warn(`Gate "${stage.gate}" referenced by stage "${stage.name}" not found`);
+      return { pause: false };
+    }
+
+    // Auto-approve gates don't pause
+    if (gate.autoApprove) {
+      return { pause: false };
+    }
+
+    // Non-required gates can be skipped (optional behavior)
+    if (!gate.required) {
+      // Could emit advisory event but not pause
+      return { pause: false };
+    }
+
+    return { pause: true, gate };
+  }
+
+  /**
+   * Summarize completed stages for approval context
+   */
+  private summarizeCompletedStages(stageResults: Map<string, StageResult>): string {
+    if (stageResults.size === 0) {
+      return 'No stages completed yet.';
+    }
+
+    const summaries = Array.from(stageResults.entries()).map(([stageName, result]) => {
+      return `${stageName}: ${result.status} - ${result.summary.substring(0, 100)}`;
+    });
+
+    return summaries.join('\n');
   }
 
   /**
@@ -1466,6 +1577,105 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       // Mark stages as in progress
       for (const stage of readyStages) {
         inProgressStages.add(stage.name);
+      }
+
+      // Check for approval gates before executing stages
+      for (const stage of readyStages) {
+        const gateCheck = this.shouldPauseForGate(stage);
+        if (gateCheck.pause && gateCheck.gate) {
+          // Stage has a required gate - pause task for approval
+          const agent = this.agents[stage.agent];
+          if (!agent) {
+            throw new Error(`Agent "${stage.agent}" not found for stage "${stage.name}"`);
+          }
+
+          // Create ApprovalState
+          const approvalState: ApprovalState = {
+            id: generateApprovalId(),
+            taskId: task.id,
+            gateName: stage.gate!,
+            status: 'pending',
+            requestedAt: new Date(),
+            stage: stage.name,
+            agent: stage.agent,
+            approvalsReceived: 0,
+            approvalsRequired: gateCheck.gate.minApprovals || 1,
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: gateCheck.gate.timeout ? new Date(Date.now() + gateCheck.gate.timeout * 60000) : undefined,
+            context: {
+              workflowName: workflow.name,
+              stageDescription: stage.description,
+              gateDescription: gateCheck.gate.description,
+            },
+          };
+
+          // Get current conversation state for checkpoint
+          const currentTask = await this.store.getTask(task.id);
+          const conversationState = currentTask?.conversation || [];
+
+          // Save checkpoint with gate context
+          const checkpointId = await this.saveCheckpoint(task.id, {
+            stage: stage.name,
+            stageIndex: workflow.stages.findIndex(s => s.name === stage.name),
+            conversationState,
+            metadata: {
+              pauseReason: 'approval_gate',
+              gateName: stage.gate,
+              gateId: gateCheck.gate.id,
+              approvalId: approvalState.id,
+              resumePoint: 'pre_stage_gate',
+              completedStages: Array.from(completedStages),
+              inProgressStages: [], // Stage hasn't started yet
+              stageResults: Object.fromEntries(stageResults),
+            },
+          });
+
+          // Create Gate record in store
+          await this.store.setGate(task.id, {
+            name: stage.gate!,
+            status: 'pending',
+            requiredAt: approvalState.requestedAt,
+          });
+
+          // Update task status to awaiting-approval
+          await this.store.updateTask(task.id, {
+            status: 'awaiting-approval',
+            pausedAt: new Date(),
+            pauseReason: 'approval_gate',
+            approvalState,
+            updatedAt: new Date(),
+          });
+
+          // Emit gate:required event
+          const eventData: ApprovalRequiredEventData = {
+            approvalId: approvalState.id,
+            taskId: task.id,
+            gateName: stage.gate!,
+            gateType: gateCheck.gate.type,
+            description: gateCheck.gate.description,
+            approvers: gateCheck.gate.approvers,
+            minApprovals: gateCheck.gate.minApprovals || 1,
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: approvalState.expiresAt,
+            stage: stage.name,
+            agent: stage.agent,
+            timestamp: new Date(),
+            context: approvalState.context,
+            changesSummary: this.summarizeCompletedStages(stageResults),
+            blocking: gateCheck.gate.required ?? true,
+          };
+
+          this.emit('gate:required', eventData);
+
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `Task paused at stage "${stage.name}" for approval gate "${stage.gate}". Checkpoint ${checkpointId} saved.`,
+            stage: stage.name,
+            agent: stage.agent,
+          });
+
+          return false; // Workflow incomplete - task is paused
+        }
       }
 
       // Execute ready stages in parallel
@@ -2863,6 +3073,145 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     };
 
     this.emit('dangerous:blocked', eventData);
+  }
+
+  // ============================================================================
+  // Approval Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Grant an approval request and resume the task from checkpoint
+   * @param approvalId The approval request ID to grant
+   * @param approver Who is granting the approval
+   * @param comment Optional comment from the approver
+   */
+  async grantApproval(
+    approvalId: string,
+    approver: string,
+    comment?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Find the approval request to validate it exists
+    // Note: This would need proper approval storage, but for now we'll emit the event
+    // In a full implementation, we'd retrieve the approval request from storage
+
+    const timestamp = new Date();
+
+    // For now, we need to derive the taskId from the approvalId
+    // In a real implementation, this would be stored with the approval request
+    // The approvalId format might be: `approval-${taskId}-${gateName}-${timestamp}`
+    const parts = approvalId.split('-');
+    if (parts.length < 3 || parts[0] !== 'approval') {
+      throw new Error(`Invalid approval ID format: ${approvalId}`);
+    }
+
+    const taskId = parts[1];
+
+    // Verify task exists
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found for approval: ${taskId}`);
+    }
+
+    // Create and emit the approval-granted event
+    const eventData: import('@apexcli/core').ApprovalGrantedEventData = {
+      approvalId,
+      taskId,
+      approver,
+      comment,
+      timestamp,
+    };
+
+    this.emit('approval-granted', eventData);
+
+    // Resume the task from its checkpoint
+    try {
+      const resumed = await this.resumeTask(taskId);
+      if (!resumed) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Failed to resume task after approval grant: no checkpoint available`,
+          metadata: { approvalId, approver },
+        });
+      } else {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Task resumed successfully after approval grant`,
+          metadata: { approvalId, approver, comment },
+        });
+      }
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error resuming task after approval grant: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: { approvalId, approver },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Deny an approval request and mark the task as failed
+   * @param approvalId The approval request ID to deny
+   * @param approver Who is denying the approval
+   * @param reason Reason for denying the approval
+   */
+  async denyApproval(
+    approvalId: string,
+    approver: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    if (!reason || reason.trim().length === 0) {
+      throw new Error('Reason is required when denying an approval');
+    }
+
+    const timestamp = new Date();
+
+    // Extract taskId from approvalId (same logic as grantApproval)
+    const parts = approvalId.split('-');
+    if (parts.length < 3 || parts[0] !== 'approval') {
+      throw new Error(`Invalid approval ID format: ${approvalId}`);
+    }
+
+    const taskId = parts[1];
+
+    // Verify task exists
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found for approval: ${taskId}`);
+    }
+
+    // Create and emit the approval-denied event
+    const eventData: import('@apexcli/core').ApprovalDeniedEventData = {
+      approvalId,
+      taskId,
+      approver,
+      reason,
+      timestamp,
+    };
+
+    this.emit('approval-denied', eventData);
+
+    // Mark the task as failed with the denial reason
+    try {
+      await this.updateTaskStatus(taskId, 'failed', `Approval denied by ${approver}: ${reason}`);
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Task failed due to approval denial`,
+        metadata: { approvalId, approver, reason },
+      });
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error updating task status after approval denial: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: { approvalId, approver },
+      });
+      throw error;
+    }
   }
 
   // ============================================================================
@@ -5834,6 +6183,19 @@ export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
+export {
+  BrowserManager,
+  createBrowserManager,
+  browserManager,
+  type BrowserManagerOptions,
+  type BrowserLaunchConfig,
+  type BrowserContextConfig,
+  type BrowserInfo,
+  type BrowserContextInfo,
+  type BrowserEngine,
+  type CleanupOptions,
+  type BrowserManagerEvents,
+} from './browser-manager';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
 export {

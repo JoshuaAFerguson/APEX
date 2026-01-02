@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import type { DisplayMode } from '@apexcli/core';
+import { formatDuration } from '@apexcli/core';
 
 export interface ToolCallProps {
   toolName: string;
@@ -93,7 +94,7 @@ export function ToolCall({
         )}
         {duration !== undefined && status !== 'running' && (
           <Text color="gray" dimColor>
-            {duration}ms
+            {formatDuration(duration)}
           </Text>
         )}
         {output && status === 'error' && (
@@ -121,7 +122,7 @@ export function ToolCall({
         )}
         {duration !== undefined && status !== 'running' && (
           <Text color="gray" dimColor>
-            ({duration}ms)
+            ({formatDuration(duration)})
           </Text>
         )}
         {displayMode === 'verbose' && status && (

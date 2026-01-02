@@ -12,6 +12,8 @@ import {
   PermissionsConfig,
   PolicyConfig,
   LinterConfig,
+  HookConfig,
+  HookConfigSchema,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -777,5 +779,12 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
         },
       },
     },
+    toolActionRetention: {
+      maxActionsPerTask: config.toolActionRetention?.maxActionsPerTask ?? 1000,
+      maxAgeDays: config.toolActionRetention?.maxAgeDays ?? 30,
+      keepUndoneSnapshots: config.toolActionRetention?.keepUndoneSnapshots ?? false,
+      maxSnapshotStorageMB: config.toolActionRetention?.maxSnapshotStorageMB ?? 100,
+    },
+    hooks: config.hooks || [],
   };
 }

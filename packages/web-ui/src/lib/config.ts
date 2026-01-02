@@ -20,7 +20,7 @@ declare global {
   }
 }
 
-const DEFAULT_API_URL = 'http://localhost:3000'
+const DEFAULT_API_URL = 'http://localhost:4000'
 
 /**
  * Get the runtime configuration

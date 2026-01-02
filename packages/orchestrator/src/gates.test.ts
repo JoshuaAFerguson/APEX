@@ -902,3 +902,382 @@ You are a developer agent.`;
     });
   });
 });
+
+describe('ApexOrchestrator - Gate Trigger Logic', () => {
+  let testDir: string;
+  let orchestrator: ApexOrchestrator;
+
+  beforeEach(async () => {
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-gate-trigger-test-'));
+
+    // Initialize APEX in the test directory
+    await initializeApex(testDir, {
+      projectName: 'test-project',
+      language: 'typescript',
+      framework: 'node',
+    });
+
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
+  });
+
+  afterEach(async () => {
+    await fs.rm(testDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  describe('shouldPauseForGate() method', () => {
+    beforeEach(async () => {
+      // Create config with gates for testing
+      const configContent = `
+project:
+  name: test-project
+  language: typescript
+  framework: node
+  description: Test project
+
+autonomy:
+  level: review-before-commit
+  gates:
+    - id: required-gate
+      type: pre-stage
+      name: Required Gate
+      description: A required gate for testing
+      required: true
+      autoApprove: false
+    - id: auto-approve-gate
+      type: pre-stage
+      name: Auto Approve Gate
+      description: An auto-approve gate for testing
+      required: true
+      autoApprove: true
+    - id: optional-gate
+      type: pre-stage
+      name: Optional Gate
+      description: An optional gate for testing
+      required: false
+      autoApprove: false
+
+limits:
+  budget:
+    max: 100.0
+    currency: USD
+  tokens:
+    input: 1000000
+    output: 100000
+  changes:
+    files: 50
+    lines: 5000
+  time:
+    max: 3600
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'config.yaml'),
+        configContent
+      );
+
+      // Create test agent
+      const agentContent = `---
+name: test-agent
+description: Test agent for gate testing
+tools: Read, Write, Edit, Bash
+model: sonnet
+---
+You are a test agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'test-agent.md'),
+        agentContent
+      );
+
+      await orchestrator.initialize();
+    });
+
+    it('should return pause: false for stage without gate', () => {
+      const stage = {
+        name: 'test-stage',
+        agent: 'test-agent',
+        description: 'Test stage without gate',
+      };
+
+      const result = (orchestrator as any).shouldPauseForGate(stage);
+      expect(result.pause).toBe(false);
+      expect(result.gate).toBeUndefined();
+    });
+
+    it('should return pause: false for stage with non-existent gate', () => {
+      const stage = {
+        name: 'test-stage',
+        agent: 'test-agent',
+        description: 'Test stage with non-existent gate',
+        gate: 'non-existent-gate',
+      };
+
+      // Mock console.warn to verify warning is logged
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const result = (orchestrator as any).shouldPauseForGate(stage);
+      expect(result.pause).toBe(false);
+      expect(result.gate).toBeUndefined();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Gate "non-existent-gate" referenced by stage "test-stage" not found'
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should return pause: false for stage with auto-approve gate', () => {
+      const stage = {
+        name: 'test-stage',
+        agent: 'test-agent',
+        description: 'Test stage with auto-approve gate',
+        gate: 'auto-approve-gate',
+      };
+
+      const result = (orchestrator as any).shouldPauseForGate(stage);
+      expect(result.pause).toBe(false);
+      expect(result.gate).toBeUndefined();
+    });
+
+    it('should return pause: false for stage with optional gate', () => {
+      const stage = {
+        name: 'test-stage',
+        agent: 'test-agent',
+        description: 'Test stage with optional gate',
+        gate: 'optional-gate',
+      };
+
+      const result = (orchestrator as any).shouldPauseForGate(stage);
+      expect(result.pause).toBe(false);
+      expect(result.gate).toBeUndefined();
+    });
+
+    it('should return pause: true for stage with required gate', () => {
+      const stage = {
+        name: 'test-stage',
+        agent: 'test-agent',
+        description: 'Test stage with required gate',
+        gate: 'required-gate',
+      };
+
+      const result = (orchestrator as any).shouldPauseForGate(stage);
+      expect(result.pause).toBe(true);
+      expect(result.gate).toBeDefined();
+      expect(result.gate?.id).toBe('required-gate');
+      expect(result.gate?.required).toBe(true);
+      expect(result.gate?.autoApprove).toBe(false);
+    });
+  });
+
+  describe('runWorkflow() gate triggering', () => {
+    beforeEach(async () => {
+      // Create workflow with gated stage
+      const workflowContent = `
+name: gated-workflow
+description: Workflow with approval gate
+gates:
+  - id: implementation-gate
+    name: Implementation Approval
+    description: Requires approval before implementation
+    required: true
+    autoApprove: false
+    timeout: 60
+    minApprovals: 1
+
+stages:
+  - name: planning
+    agent: test-agent
+    description: Planning stage
+  - name: implementation
+    agent: test-agent
+    description: Implementation stage
+    gate: implementation-gate
+    dependsOn:
+      - planning
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'gated-workflow.yaml'),
+        workflowContent
+      );
+
+      // Create test agent
+      const agentContent = `---
+name: test-agent
+description: Test agent for gate testing
+tools: Read, Write, Edit, Bash
+model: sonnet
+---
+You are a test agent.`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'agents', 'test-agent.md'),
+        agentContent
+      );
+
+      await orchestrator.initialize();
+    });
+
+    it('should pause task when hitting approval gate', async () => {
+      // Mock the executeWorkflowStage method to simulate planning stage completion
+      const originalExecuteStage = (orchestrator as any).executeWorkflowStage;
+      (orchestrator as any).executeWorkflowStage = vi.fn().mockResolvedValue({
+        stageName: 'planning',
+        agent: 'test-agent',
+        status: 'completed',
+        outputs: {},
+        artifacts: [],
+        summary: 'Planning completed successfully',
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, estimatedCost: 0.001 },
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      // Create a task
+      const task = await orchestrator.createTask({
+        title: 'Test Task with Gate',
+        description: 'Testing gate trigger functionality',
+        workflow: 'gated-workflow',
+      });
+
+      // Mock the store methods to track calls
+      const updateTaskSpy = vi.spyOn((orchestrator as any).store, 'updateTask');
+      const setGateSpy = vi.spyOn((orchestrator as any).store, 'setGate');
+      const saveCheckpointSpy = vi.spyOn(orchestrator as any, 'saveCheckpoint');
+
+      // Mock event emission
+      const emitSpy = vi.spyOn(orchestrator, 'emit');
+
+      // Start the task
+      await orchestrator.startTask(task.id);
+
+      // Wait a bit for async operations to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check that task was paused with awaiting-approval status
+      expect(updateTaskSpy).toHaveBeenCalledWith(
+        task.id,
+        expect.objectContaining({
+          status: 'awaiting-approval',
+          pauseReason: 'approval_gate',
+          approvalState: expect.objectContaining({
+            gateName: 'implementation-gate',
+            status: 'pending',
+            stage: 'implementation',
+            agent: 'test-agent',
+          }),
+        })
+      );
+
+      // Check that gate was created in store
+      expect(setGateSpy).toHaveBeenCalledWith(
+        task.id,
+        expect.objectContaining({
+          gateName: 'implementation-gate',
+          status: 'pending',
+        })
+      );
+
+      // Check that checkpoint was saved
+      expect(saveCheckpointSpy).toHaveBeenCalledWith(
+        task.id,
+        expect.objectContaining({
+          stage: 'implementation',
+          metadata: expect.objectContaining({
+            pauseReason: 'approval_gate',
+            gateName: 'implementation-gate',
+          }),
+        })
+      );
+
+      // Check that gate:required event was emitted
+      expect(emitSpy).toHaveBeenCalledWith(
+        'gate:required',
+        expect.objectContaining({
+          gateName: 'implementation-gate',
+          taskId: task.id,
+          stage: 'implementation',
+          agent: 'test-agent',
+          blocking: true,
+        })
+      );
+
+      // Restore original method
+      (orchestrator as any).executeWorkflowStage = originalExecuteStage;
+    });
+
+    it('should proceed without pause for auto-approve gate', async () => {
+      // Create workflow with auto-approve gate
+      const workflowContent = `
+name: auto-approve-workflow
+description: Workflow with auto-approve gate
+gates:
+  - id: auto-gate
+    name: Auto Approval Gate
+    description: Auto-approve gate for testing
+    required: true
+    autoApprove: true
+
+stages:
+  - name: implementation
+    agent: test-agent
+    description: Implementation stage
+    gate: auto-gate
+`;
+
+      await fs.writeFile(
+        path.join(testDir, '.apex', 'workflows', 'auto-approve-workflow.yaml'),
+        workflowContent
+      );
+
+      await orchestrator.initialize();
+
+      // Mock the executeWorkflowStage method
+      const executeStagespy = vi.fn().mockResolvedValue({
+        stageName: 'implementation',
+        agent: 'test-agent',
+        status: 'completed',
+        outputs: {},
+        artifacts: [],
+        summary: 'Implementation completed successfully',
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150, estimatedCost: 0.001 },
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+      (orchestrator as any).executeWorkflowStage = executeStagespy;
+
+      // Create a task
+      const task = await orchestrator.createTask({
+        title: 'Test Task with Auto-Approve Gate',
+        description: 'Testing auto-approve gate behavior',
+        workflow: 'auto-approve-workflow',
+      });
+
+      // Mock the store methods
+      const updateTaskSpy = vi.spyOn((orchestrator as any).store, 'updateTask');
+
+      // Start the task
+      await orchestrator.startTask(task.id);
+
+      // Wait for async operations
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check that executeWorkflowStage was called (stage should proceed)
+      expect(executeStagespy).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: 'implementation' }),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+
+      // Task should not be paused with approval_gate reason
+      const pauseCalls = updateTaskSpy.mock.calls.filter(call =>
+        call[1] && typeof call[1] === 'object' && 'pauseReason' in call[1] &&
+        call[1].pauseReason === 'approval_gate'
+      );
+      expect(pauseCalls).toHaveLength(0);
+    });
+  });
+});

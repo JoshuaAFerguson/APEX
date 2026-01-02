@@ -104,7 +104,7 @@ export function shouldShowConfirmation(
   const config = OPERATION_CONFIGS[operation];
 
   switch (autonomyLevel) {
-    case 'full':
+    case 'full-auto':
       // In full autonomy mode, only show confirmation for irreversible high-consequence operations
       return config.irreversible && config.consequenceLevel === 'high';
 
@@ -112,12 +112,8 @@ export function shouldShowConfirmation(
       // Show confirmation for medium and high consequence operations
       return config.consequenceLevel === 'medium' || config.consequenceLevel === 'high';
 
-    case 'review-before-merge':
-      // Show confirmation for high consequence operations and merges
-      return config.consequenceLevel === 'high' || operation === DangerousOperation.MERGE_TASK;
-
-    case 'manual':
-      // Always show confirmation in manual mode
+    case 'review-all':
+      // Always show confirmation in review-all mode
       return true;
 
     default:

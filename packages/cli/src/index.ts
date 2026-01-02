@@ -616,7 +616,7 @@ export const commands: Command[] = [
       }
 
       // Get autonomy level from config
-      const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+      const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
 
       // Request confirmation based on autonomy level
       const shouldProceed = await requestConfirmation(
@@ -2226,7 +2226,7 @@ export const commands: Command[] = [
         }
 
         // Get autonomy level from config
-        const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+        const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
 
         // Request confirmation based on autonomy level
         const shouldProceed = await requestConfirmation(
@@ -3020,7 +3020,7 @@ async function handleTrashTask(ctx: ApexContext, args: string[]): Promise<void> 
     }
 
     // Get autonomy level from config
-    const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+    const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
 
     // Request confirmation based on autonomy level
     const shouldProceed = await requestConfirmation(
@@ -3128,7 +3128,7 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
     }
 
     // Get autonomy level from config
-    const autonomyLevel = ctx.config?.autonomy?.default || 'review-before-merge';
+    const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
 
     // Request confirmation based on autonomy level - always force confirmation for this dangerous operation
     const shouldProceed = await requestConfirmation(

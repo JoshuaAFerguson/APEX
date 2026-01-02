@@ -138,6 +138,7 @@ export class DaemonRunner {
   private runningTasks: Map<string, Promise<void>> = new Map();
   private stateUpdateInterval: NodeJS.Timeout | null = null;
   private orphanCheckInterval: NodeJS.Timeout | null = null;
+  private pausedTaskCheckInterval: NodeJS.Timeout | null = null;
 
   // Metrics
   private startedAt: Date | null = null;
@@ -272,6 +273,12 @@ export class DaemonRunner {
       // Setup periodic orphan detection if enabled
       this.setupPeriodicOrphanDetection();
 
+      // Setup periodic check for paused tasks that can be resumed
+      this.setupPeriodicPausedTaskCheck();
+
+      // Initial check for paused tasks on startup
+      await this.checkAndResumePausedTasks();
+
       // Write initial state file
       await this.writeStateFile();
 
@@ -329,6 +336,11 @@ export class DaemonRunner {
     if (this.orphanCheckInterval) {
       clearInterval(this.orphanCheckInterval);
       this.orphanCheckInterval = null;
+    }
+
+    if (this.pausedTaskCheckInterval) {
+      clearInterval(this.pausedTaskCheckInterval);
+      this.pausedTaskCheckInterval = null;
     }
 
     // Write final state file with running: false
@@ -1390,5 +1402,123 @@ export class DaemonRunner {
     }, interval);
 
     this.log('info', `Periodic orphan detection enabled (interval: ${interval}ms)`);
+  }
+
+  /**
+   * Check for paused tasks that can be resumed and resume them.
+   *
+   * IMPORTANT: Only resumes the HIGHEST parent tasks (root of paused hierarchies).
+   * The orchestrator will handle resuming subtasks through normal execution flow.
+   * This prevents overwhelming the system by starting many tasks in parallel.
+   */
+  private async checkAndResumePausedTasks(): Promise<void> {
+    if (!this.store || !this.orchestrator) {
+      return;
+    }
+
+    try {
+      // Get all paused tasks
+      const allTasks = await this.store.getAllTasks();
+      const pausedTasks = allTasks.filter(t => t.status === 'paused');
+
+      if (pausedTasks.length === 0) {
+        return;
+      }
+
+      const pausedTaskIds = new Set(pausedTasks.map(t => t.id));
+      const rateLimitResetMs = 3600000; // 1 hour
+      const now = Date.now();
+
+      // Find root paused tasks - tasks whose parent is NOT paused (or have no parent)
+      // These are the tasks we should resume; orchestrator will handle their subtasks
+      const rootPausedTasks = pausedTasks.filter(task => {
+        // If task has no parent, it's a root
+        if (!task.parentTaskId) {
+          return true;
+        }
+        // If task's parent is not in the paused set, this task is a root of its paused hierarchy
+        return !pausedTaskIds.has(task.parentTaskId);
+      });
+
+      if (rootPausedTasks.length === 0) {
+        this.log('debug', `Found ${pausedTasks.length} paused task(s), but no root paused tasks to resume`);
+        return;
+      }
+
+      this.log('debug', `Found ${rootPausedTasks.length} root paused task(s) out of ${pausedTasks.length} total`);
+
+      let resumedCount = 0;
+
+      // Only resume root paused tasks that meet the criteria
+      for (const task of rootPausedTasks) {
+        // Check if this task can be resumed based on pause reason
+        let shouldResume = false;
+        let resumeReason = '';
+
+        if (task.pauseReason === 'usage_limit' && task.pausedAt) {
+          const pausedDuration = now - new Date(task.pausedAt).getTime();
+          if (pausedDuration >= rateLimitResetMs) {
+            shouldResume = true;
+            resumeReason = `usage_limit expired (${Math.round(pausedDuration / 60000)} minutes)`;
+          }
+        } else if (task.pauseReason?.startsWith('subtask_paused:')) {
+          // For subtask_paused, check if this is a root and all its subtasks in the pause chain
+          // have a resolvable pause reason (usage_limit past reset window)
+          // Since this is a root paused task, we should try to resume it
+          // The orchestrator will handle checking/resuming subtasks
+          if (task.pausedAt) {
+            const pausedDuration = now - new Date(task.pausedAt).getTime();
+            if (pausedDuration >= rateLimitResetMs) {
+              shouldResume = true;
+              resumeReason = `subtask_paused hierarchy may be resumable (${Math.round(pausedDuration / 60000)} minutes)`;
+            }
+          }
+        }
+
+        if (shouldResume) {
+          this.log('info', `Attempting to resume root task ${task.id}: ${resumeReason}`, { taskId: task.id });
+
+          try {
+            const resumed = await this.orchestrator.resumePausedTask(task.id);
+            if (resumed) {
+              resumedCount++;
+              this.log('info', `Auto-resumed root task ${task.id}`, { taskId: task.id });
+              // Only resume one task at a time to avoid overwhelming the system
+              break;
+            }
+          } catch (error) {
+            this.log('warn', `Failed to resume task ${task.id}: ${(error as Error).message}`, { taskId: task.id });
+          }
+        }
+      }
+
+      if (resumedCount > 0) {
+        this.log('info', `Auto-resumed ${resumedCount} root paused task(s)`);
+      }
+    } catch (error) {
+      this.log('error', `Failed to check paused tasks: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Setup periodic check for paused tasks that can be resumed
+   */
+  private setupPeriodicPausedTaskCheck(): void {
+    // Check every 60 seconds
+    const interval = 60000;
+
+    this.pausedTaskCheckInterval = setInterval(async () => {
+      if (!this.isRunning || this.isShuttingDown) {
+        return;
+      }
+
+      try {
+        await this.checkAndResumePausedTasks();
+      } catch (error) {
+        this.log('error', `Periodic paused task check failed: ${(error as Error).message}`);
+      }
+    }, interval);
+
+    this.log('info', `Periodic paused task check enabled (interval: ${interval}ms)`);
   }
 }
