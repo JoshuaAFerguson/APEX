@@ -46,6 +46,9 @@ export * from './syntax-highlighter';
 // Error Formatting
 export * from './error-formatter';
 
+// APEX Error Handling
+export * from './apex-error';
+
 // Validation Infrastructure
 export * from './validation';
 
