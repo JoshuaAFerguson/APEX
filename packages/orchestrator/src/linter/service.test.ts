@@ -361,7 +361,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 0,
             endOffset: 10,
-            newText: 'fixed text'
+            text: 'fixed text'
           }]
         }
       };
@@ -390,7 +390,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 0,
             endOffset: 10,
-            newText: 'fix1'
+            text: 'fix1'
           }]
         }
       };
@@ -406,7 +406,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 5,
             endOffset: 15,
-            newText: 'fix2'
+            text: 'fix2'
           }]
         }
       };
@@ -439,7 +439,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 0,
             endOffset: 1,
-            newText: 'x'
+            text: 'x'
           }]
         }
       };
@@ -466,7 +466,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 0,
             endOffset: 1,
-            newText: 'x'
+            text: 'x'
           }]
         }
       };
@@ -753,7 +753,7 @@ describe('LinterService', () => {
           replacements: [{
             startOffset: 0,
             endOffset: 1,
-            newText: 'x'
+            text: 'x'
           }]
         }
       };
