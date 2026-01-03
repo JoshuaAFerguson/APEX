@@ -6393,5 +6393,13 @@ export {
   type PathValidationResult,
 } from './policy';
 
+// Error Suggestion Matching
+export {
+  SuggestionMatcher,
+  type ErrorPattern,
+  type ErrorPatternCategory,
+  type SuggestionResult
+} from './suggestion-matcher';
+
 // Linter Plugin System
 export * from './linter';
