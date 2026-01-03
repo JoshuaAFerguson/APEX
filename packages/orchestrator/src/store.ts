@@ -439,6 +439,7 @@ export class TaskStore {
         execution_duration INTEGER,
         execution_result TEXT,
         execution_error TEXT,
+        execution_status TEXT NOT NULL DEFAULT 'completed',
         modified_files TEXT NOT NULL DEFAULT '[]',
         before_snapshots TEXT NOT NULL DEFAULT '[]',
         after_snapshots TEXT NOT NULL DEFAULT '[]',
@@ -2702,6 +2703,121 @@ export class TaskStore {
   }
 
   /**
+   * Get all approval states for a specific task
+   */
+  async getApprovalStatesByTask(taskId: string): Promise<ApprovalState[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM approval_states
+      WHERE task_id = ?
+      ORDER BY requested_at ASC
+    `);
+    const rows = stmt.all(taskId) as ApprovalStateRow[];
+    return rows.map(row => this.rowToApprovalState(row));
+  }
+
+  /**
+   * Update an existing approval state
+   */
+  async updateApprovalState(approvalId: string, updates: Partial<ApprovalState>): Promise<void> {
+    const fields: string[] = [];
+    const values: Record<string, unknown> = { id: approvalId };
+
+    if (updates.status !== undefined) {
+      fields.push('status = @status');
+      values.status = updates.status;
+    }
+    if (updates.approver !== undefined) {
+      fields.push('approver = @approver');
+      values.approver = updates.approver;
+    }
+    if (updates.respondedAt !== undefined) {
+      fields.push('responded_at = @respondedAt');
+      values.respondedAt = updates.respondedAt ? updates.respondedAt.toISOString() : null;
+    }
+    if (updates.comment !== undefined) {
+      fields.push('comment = @comment');
+      values.comment = updates.comment;
+    }
+    if (updates.approvalsReceived !== undefined) {
+      fields.push('approvals_received = @approvalsReceived');
+      values.approvalsReceived = updates.approvalsReceived;
+    }
+    if (updates.expiresAt !== undefined) {
+      fields.push('expires_at = @expiresAt');
+      values.expiresAt = updates.expiresAt ? updates.expiresAt.toISOString() : null;
+    }
+
+    if (fields.length === 0) return; // No updates to perform
+
+    const stmt = this.db.prepare(`
+      UPDATE approval_states
+      SET ${fields.join(', ')}
+      WHERE id = @id
+    `);
+    stmt.run(values);
+  }
+
+  /**
+   * Delete an approval state
+   */
+  async deleteApprovalState(approvalId: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM approval_states WHERE id = ?');
+    stmt.run(approvalId);
+  }
+
+  /**
+   * Get approval states by gate name
+   */
+  async getApprovalStatesByGate(gateName: string, taskId?: string): Promise<ApprovalState[]> {
+    let stmt: Database.Statement<unknown[]>;
+    let params: unknown[];
+
+    if (taskId) {
+      stmt = this.db.prepare(`
+        SELECT * FROM approval_states
+        WHERE gate_name = ? AND task_id = ?
+        ORDER BY requested_at DESC
+      `);
+      params = [gateName, taskId];
+    } else {
+      stmt = this.db.prepare(`
+        SELECT * FROM approval_states
+        WHERE gate_name = ?
+        ORDER BY requested_at DESC
+      `);
+      params = [gateName];
+    }
+
+    const rows = stmt.all(...params) as ApprovalStateRow[];
+    return rows.map(row => this.rowToApprovalState(row));
+  }
+
+  /**
+   * Get expired approval states (past their expiration time)
+   */
+  async getExpiredApprovals(): Promise<ApprovalState[]> {
+    const now = new Date().toISOString();
+    const stmt = this.db.prepare(`
+      SELECT * FROM approval_states
+      WHERE expires_at IS NOT NULL
+        AND expires_at < ?
+        AND status = 'pending'
+      ORDER BY expires_at ASC
+    `);
+    const rows = stmt.all(now) as ApprovalStateRow[];
+    return rows.map(row => this.rowToApprovalState(row));
+  }
+
+  /**
+   * Get an approval state by approval ID only
+   */
+  async getApprovalStateById(approvalId: string): Promise<ApprovalState | null> {
+    const stmt = this.db.prepare('SELECT * FROM approval_states WHERE id = ?');
+    const row = stmt.get(approvalId) as ApprovalStateRow | undefined;
+    return row ? this.rowToApprovalState(row) : null;
+  }
+
+  /**
    * Convert an approval state database row to an ApprovalState object
    */
   private rowToApprovalState(row: ApprovalStateRow): ApprovalState {
@@ -3020,7 +3136,7 @@ export class ToolActionStore {
    */
   async recordToolAction(
     taskId: string,
-    execution: any, // ToolExecution type
+    execution: ToolExecution,
     modifiedFiles: string[] = [],
     beforeSnapshots: FileSnapshot[] = [],
     afterSnapshots: FileSnapshot[] = [],
@@ -3059,9 +3175,9 @@ export class ToolActionStore {
         id, task_id, execution_call_id, execution_tool_name, execution_input,
         execution_agent_name, execution_stage_name, execution_start_time,
         execution_end_time, execution_duration, execution_result, execution_error,
-        modified_files, before_snapshots, after_snapshots, can_undo, was_undone,
-        sequence_number, action_group, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        execution_status, modified_files, before_snapshots, after_snapshots,
+        can_undo, was_undone, sequence_number, action_group, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -3077,6 +3193,7 @@ export class ToolActionStore {
       execution.duration || null,
       execution.result ? JSON.stringify(execution.result) : null,
       execution.error || null,
+      execution.status || 'completed',
       JSON.stringify(modifiedFiles),
       JSON.stringify(beforeSnapshots.map(s => s.id)),
       JSON.stringify(afterSnapshots.map(s => s.id)),

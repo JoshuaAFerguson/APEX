@@ -58,6 +58,7 @@ describe('ToolActionStore', () => {
     duration: 100,
     result: { success: true },
     error: undefined,
+    status: 'completed' as const,
   });
 
   beforeEach(async () => {

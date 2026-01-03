@@ -149,9 +149,9 @@ export interface OrchestratorEvents {
   'dangerous:blocked': (event: DangerousOperationBlockedEventData) => void;
 
   // Approval gate events
-  'approval-required': (event: ApprovalRequiredEventData) => void;
-  'approval-granted': (event: ApprovalGrantedEventData) => void;
-  'approval-denied': (event: ApprovalDeniedEventData) => void;
+  'approval:required': (event: ApprovalRequiredEventData) => void;
+  'approval:approved': (event: ApprovalGrantedEventData) => void;
+  'approval:denied': (event: ApprovalDeniedEventData) => void;
 
   // Template events
   'template:created': (template: TaskTemplate) => void;
@@ -1609,6 +1609,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             },
           };
 
+          // Save approval state to database
+          await this.store.saveApprovalState(approvalState);
+
           // Get current conversation state for checkpoint
           const currentTask = await this.store.getTask(task.id);
           const conversationState = currentTask?.conversation || [];
@@ -1671,7 +1674,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             approvalUrl,
           };
 
-          this.emit('approval-required', eventData);
+          this.emit('approval:required', eventData);
 
           await this.store.addLog(task.id, {
             level: 'info',
@@ -3098,21 +3101,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   ): Promise<void> {
     await this.ensureInitialized();
 
-    // Find the approval request to validate it exists
-    // Note: This would need proper approval storage, but for now we'll emit the event
-    // In a full implementation, we'd retrieve the approval request from storage
-
-    const timestamp = new Date();
-
-    // For now, we need to derive the taskId from the approvalId
-    // In a real implementation, this would be stored with the approval request
-    // The approvalId format might be: `approval-${taskId}-${gateName}-${timestamp}`
-    const parts = approvalId.split('-');
-    if (parts.length < 3 || parts[0] !== 'approval') {
-      throw new Error(`Invalid approval ID format: ${approvalId}`);
+    // Get the approval request from storage to validate it exists
+    const approvalState = await this.store.getApprovalStateById(approvalId);
+    if (!approvalState) {
+      throw new Error(`Approval request not found: ${approvalId}`);
     }
 
-    const taskId = parts[1];
+    if (approvalState.status !== 'pending') {
+      throw new Error(`Approval request ${approvalId} is not pending (status: ${approvalState.status})`);
+    }
+
+    const timestamp = new Date();
+    const taskId = approvalState.taskId;
 
     // Verify task exists
     const task = await this.store.getTask(taskId);
@@ -3120,8 +3120,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task not found for approval: ${taskId}`);
     }
 
-    // Create and emit the approval-granted event
-    const eventData: import('@apexcli/core').ApprovalGrantedEventData = {
+    // Update approval state in database
+    await this.store.updateApprovalState(approvalId, {
+      status: 'approved',
+      approver,
+      respondedAt: timestamp,
+      comment,
+      approvalsReceived: (approvalState.approvalsReceived || 0) + 1
+    });
+
+    // Create and emit the approval:approved event
+    const eventData: ApprovalGrantedEventData = {
       approvalId,
       taskId,
       approver,
@@ -3129,7 +3138,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       timestamp,
     };
 
-    this.emit('approval-granted', eventData);
+    this.emit('approval:approved', eventData);
 
     // Resume the task from its checkpoint
     try {
@@ -3176,13 +3185,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     const timestamp = new Date();
 
-    // Extract taskId from approvalId (same logic as grantApproval)
-    const parts = approvalId.split('-');
-    if (parts.length < 3 || parts[0] !== 'approval') {
-      throw new Error(`Invalid approval ID format: ${approvalId}`);
+    // Get the approval request from storage to validate it exists
+    const approvalState = await this.store.getApprovalStateById(approvalId);
+    if (!approvalState) {
+      throw new Error(`Approval request not found: ${approvalId}`);
     }
 
-    const taskId = parts[1];
+    if (approvalState.status !== 'pending') {
+      throw new Error(`Approval request ${approvalId} is not pending (status: ${approvalState.status})`);
+    }
+
+    const taskId = approvalState.taskId;
 
     // Verify task exists
     const task = await this.store.getTask(taskId);
@@ -3190,8 +3203,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task not found for approval: ${taskId}`);
     }
 
-    // Create and emit the approval-denied event
-    const eventData: import('@apexcli/core').ApprovalDeniedEventData = {
+    // Update approval state in database
+    await this.store.updateApprovalState(approvalId, {
+      status: 'denied',
+      approver,
+      respondedAt: timestamp,
+      comment: reason
+    });
+
+    // Create and emit the approval:denied event
+    const eventData: ApprovalDeniedEventData = {
       approvalId,
       taskId,
       approver,
@@ -3199,7 +3220,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       timestamp,
     };
 
-    this.emit('approval-denied', eventData);
+    this.emit('approval:denied', eventData);
 
     // Mark the task as failed with the denial reason
     try {
@@ -6347,3 +6368,6 @@ export {
   type ViolationOptions,
   type PathValidationResult,
 } from './policy';
+
+// Linter Plugin System
+export * from './linter';

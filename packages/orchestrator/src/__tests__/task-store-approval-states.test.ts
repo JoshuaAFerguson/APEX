@@ -397,4 +397,214 @@ describe('TaskStore - Approval State Persistence', () => {
       newStore.close();
     });
   });
+
+  describe('getApprovalStatesByTask', () => {
+    it('should retrieve all approval states for a specific task', async () => {
+      const taskId = 'task-with-multiple-approvals';
+      const approvalStates = [
+        createMockApprovalState('approval-1', taskId, 'gate-1', 'pending'),
+        createMockApprovalState('approval-2', taskId, 'gate-2', 'approved'),
+        createMockApprovalState('approval-3', taskId, 'gate-3', 'denied')
+      ];
+
+      // Save all approval states
+      for (const state of approvalStates) {
+        await store.saveApprovalState(state);
+      }
+
+      const results = await store.getApprovalStatesByTask(taskId);
+
+      expect(results).toHaveLength(3);
+      expect(results.map(r => r.id).sort()).toEqual(['approval-1', 'approval-2', 'approval-3']);
+      expect(results.map(r => r.status)).toEqual(['pending', 'approved', 'denied']);
+    });
+
+    it('should return empty array for task with no approval states', async () => {
+      const results = await store.getApprovalStatesByTask('non-existent-task');
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('updateApprovalState', () => {
+    it('should update specific fields of an approval state', async () => {
+      const originalState = createMockApprovalState('update-test', 'task-update', 'test-gate', 'pending');
+      await store.saveApprovalState(originalState);
+
+      // Update status and add approver
+      const respondedAt = new Date();
+      await store.updateApprovalState('update-test', {
+        status: 'approved',
+        approver: 'john.doe',
+        respondedAt,
+        comment: 'Looks good!'
+      });
+
+      const updatedState = await store.getApprovalState('task-update', 'update-test');
+      expect(updatedState).toBeDefined();
+      expect(updatedState!.status).toBe('approved');
+      expect(updatedState!.approver).toBe('john.doe');
+      expect(updatedState!.respondedAt).toEqual(respondedAt);
+      expect(updatedState!.comment).toBe('Looks good!');
+      // Original fields should remain unchanged
+      expect(updatedState!.gateName).toBe('test-gate');
+      expect(updatedState!.taskId).toBe('task-update');
+    });
+
+    it('should handle partial updates', async () => {
+      const originalState = createMockApprovalState('partial-update', 'task-partial', 'test-gate', 'pending');
+      await store.saveApprovalState(originalState);
+
+      // Update only status
+      await store.updateApprovalState('partial-update', {
+        status: 'denied'
+      });
+
+      const updatedState = await store.getApprovalState('task-partial', 'partial-update');
+      expect(updatedState!.status).toBe('denied');
+      // Other fields should remain unchanged
+      expect(updatedState!.approver).toBeUndefined();
+      expect(updatedState!.comment).toBeUndefined();
+    });
+
+    it('should handle empty updates gracefully', async () => {
+      const originalState = createMockApprovalState('empty-update', 'task-empty', 'test-gate', 'pending');
+      await store.saveApprovalState(originalState);
+
+      // Empty update should not throw
+      await expect(store.updateApprovalState('empty-update', {})).resolves.not.toThrow();
+
+      const unchangedState = await store.getApprovalState('task-empty', 'empty-update');
+      expect(unchangedState!.status).toBe('pending');
+    });
+  });
+
+  describe('deleteApprovalState', () => {
+    it('should delete an approval state', async () => {
+      const state = createMockApprovalState('delete-test', 'task-delete', 'test-gate', 'pending');
+      await store.saveApprovalState(state);
+
+      // Verify it exists
+      let retrieved = await store.getApprovalState('task-delete', 'delete-test');
+      expect(retrieved).toBeDefined();
+
+      // Delete it
+      await store.deleteApprovalState('delete-test');
+
+      // Verify it's gone
+      retrieved = await store.getApprovalState('task-delete', 'delete-test');
+      expect(retrieved).toBeNull();
+    });
+
+    it('should handle deletion of non-existent approval state gracefully', async () => {
+      await expect(store.deleteApprovalState('non-existent')).resolves.not.toThrow();
+    });
+  });
+
+  describe('getApprovalStatesByGate', () => {
+    it('should retrieve approval states by gate name', async () => {
+      const gateName = 'deployment-gate';
+      const states = [
+        createMockApprovalState('gate-1', 'task-1', gateName, 'pending'),
+        createMockApprovalState('gate-2', 'task-2', gateName, 'approved'),
+        createMockApprovalState('gate-3', 'task-3', 'other-gate', 'pending') // Different gate
+      ];
+
+      for (const state of states) {
+        await store.saveApprovalState(state);
+      }
+
+      const results = await store.getApprovalStatesByGate(gateName);
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.id).sort()).toEqual(['gate-1', 'gate-2']);
+    });
+
+    it('should filter by both gate name and task ID', async () => {
+      const gateName = 'review-gate';
+      const taskId = 'specific-task';
+      const states = [
+        createMockApprovalState('gate-1', taskId, gateName, 'pending'),
+        createMockApprovalState('gate-2', 'other-task', gateName, 'approved'), // Different task
+        createMockApprovalState('gate-3', taskId, 'other-gate', 'pending') // Different gate
+      ];
+
+      for (const state of states) {
+        await store.saveApprovalState(state);
+      }
+
+      const results = await store.getApprovalStatesByGate(gateName, taskId);
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe('gate-1');
+      expect(results[0].taskId).toBe(taskId);
+    });
+  });
+
+  describe('getExpiredApprovals', () => {
+    it('should retrieve expired pending approvals', async () => {
+      const now = new Date();
+      const expiredTime = new Date(now.getTime() - 60000); // 1 minute ago
+      const futureTime = new Date(now.getTime() + 60000); // 1 minute from now
+
+      const states = [
+        {
+          ...createMockApprovalState('expired-1', 'task-1', 'gate-1', 'pending'),
+          expiresAt: expiredTime
+        },
+        {
+          ...createMockApprovalState('expired-2', 'task-2', 'gate-2', 'pending'),
+          expiresAt: expiredTime
+        },
+        {
+          ...createMockApprovalState('not-expired', 'task-3', 'gate-3', 'pending'),
+          expiresAt: futureTime
+        },
+        {
+          ...createMockApprovalState('expired-but-approved', 'task-4', 'gate-4', 'approved'),
+          expiresAt: expiredTime
+        }
+      ];
+
+      for (const state of states) {
+        await store.saveApprovalState(state);
+      }
+
+      const results = await store.getExpiredApprovals();
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.id).sort()).toEqual(['expired-1', 'expired-2']);
+      expect(results.every(r => r.status === 'pending')).toBe(true);
+      expect(results.every(r => r.expiresAt && r.expiresAt < now)).toBe(true);
+    });
+
+    it('should return empty array when no approvals are expired', async () => {
+      const futureTime = new Date(Date.now() + 60000);
+      const state = {
+        ...createMockApprovalState('future-approval', 'task-future', 'gate-future', 'pending'),
+        expiresAt: futureTime
+      };
+
+      await store.saveApprovalState(state);
+
+      const results = await store.getExpiredApprovals();
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('getApprovalStateById', () => {
+    it('should retrieve approval state by ID only', async () => {
+      const approvalState = createMockApprovalState('direct-id-test', 'task-direct', 'test-gate', 'pending');
+      await store.saveApprovalState(approvalState);
+
+      const retrieved = await store.getApprovalStateById('direct-id-test');
+
+      expect(retrieved).toBeDefined();
+      expect(retrieved!.id).toBe('direct-id-test');
+      expect(retrieved!.taskId).toBe('task-direct');
+      expect(retrieved!.gateName).toBe('test-gate');
+      expect(retrieved!.status).toBe('pending');
+    });
+
+    it('should return null for non-existent approval ID', async () => {
+      const result = await store.getApprovalStateById('non-existent-approval');
+      expect(result).toBeNull();
+    });
+  });
 });

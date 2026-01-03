@@ -10,6 +10,8 @@ import {
   CreateTaskResponse,
   UpdateTaskStatusRequest,
   ApproveGateRequest,
+  ApprovalDecisionRequest,
+  ApprovalDecisionResponse,
   ApexEvent,
   SubtaskStrategy,
   SubtaskDefinition,
@@ -844,6 +846,121 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   );
 
   // ============================================================================
+  // Approvals API (v0.5.0)
+  // ============================================================================
+
+  // List pending approvals
+  app.get('/api/approvals', async (request, reply) => {
+    try {
+      const pendingApprovals = await orchestrator.store.getPendingApprovals();
+
+      return {
+        approvals: pendingApprovals,
+        count: pendingApprovals.length,
+        message: pendingApprovals.length > 0
+          ? `${pendingApprovals.length} pending approval(s) found`
+          : 'No pending approvals found'
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to list pending approvals'
+      });
+    }
+  });
+
+  // Approve an approval request
+  app.post<{ Params: { id: string }; Body: ApprovalDecisionRequest }>(
+    '/api/approvals/:id/approve',
+    async (request, reply) => {
+      const { id: approvalId } = request.params;
+      const { approver, comment } = request.body;
+
+      if (!approver) {
+        return reply.status(400).send({ error: 'Approver is required' });
+      }
+
+      try {
+        // Grant the approval using the orchestrator
+        await orchestrator.grantApproval(approvalId, approver, comment);
+
+        // Get updated approval state
+        const parts = approvalId.split('-');
+        if (parts.length >= 3 && parts[0] === 'approval') {
+          const taskId = parts[1];
+          const updatedState = await orchestrator.store.getApprovalState(taskId, approvalId);
+
+          const response: ApprovalDecisionResponse = {
+            success: true,
+            approvalState: updatedState || undefined,
+            message: 'Approval granted successfully',
+            willProceed: true
+          };
+
+          return response;
+        } else {
+          return {
+            success: true,
+            message: 'Approval granted successfully',
+            willProceed: true
+          };
+        }
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : 'Failed to grant approval'
+        });
+      }
+    }
+  );
+
+  // Deny an approval request
+  app.post<{ Params: { id: string }; Body: ApprovalDecisionRequest }>(
+    '/api/approvals/:id/deny',
+    async (request, reply) => {
+      const { id: approvalId } = request.params;
+      const { approver, comment } = request.body;
+
+      if (!approver) {
+        return reply.status(400).send({ error: 'Approver is required' });
+      }
+
+      if (!comment) {
+        return reply.status(400).send({ error: 'Reason/comment is required when denying approval' });
+      }
+
+      try {
+        // Deny the approval using the orchestrator
+        await orchestrator.denyApproval(approvalId, approver, comment);
+
+        // Get updated approval state
+        const parts = approvalId.split('-');
+        if (parts.length >= 3 && parts[0] === 'approval') {
+          const taskId = parts[1];
+          const updatedState = await orchestrator.store.getApprovalState(taskId, approvalId);
+
+          const response: ApprovalDecisionResponse = {
+            success: true,
+            approvalState: updatedState || undefined,
+            message: 'Approval denied successfully',
+            willProceed: false
+          };
+
+          return response;
+        } else {
+          return {
+            success: true,
+            message: 'Approval denied successfully',
+            willProceed: false
+          };
+        }
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : 'Failed to deny approval'
+        });
+      }
+    }
+  );
+
+  // ============================================================================
   // Agents API
   // ============================================================================
 
@@ -1501,6 +1618,11 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /templates/:id            - Get template by ID`);
       console.log(`  PUT    /templates/:id            - Update template by ID`);
       console.log(`  DELETE /templates/:id            - Delete template by ID`);
+      console.log('');
+      console.log('Approval Endpoints:');
+      console.log(`  GET    /api/approvals            - List pending approvals`);
+      console.log(`  POST   /api/approvals/:id/approve - Approve an approval request`);
+      console.log(`  POST   /api/approvals/:id/deny  - Deny an approval request`);
       console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /health                   - Basic health check`);
