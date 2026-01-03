@@ -4281,7 +4281,7 @@ You are a developer agent that implements code changes.
     describe('grantApproval', () => {
       it('should grant approval and resume task successfully', async () => {
         const eventSpy = vi.fn();
-        orchestrator.on('approval-granted', eventSpy);
+        orchestrator.on('approval:approved', eventSpy);
 
         await orchestrator.grantApproval(approvalId, 'test-user', 'Looks good to proceed');
 
@@ -4313,7 +4313,7 @@ You are a developer agent that implements code changes.
 
       it('should handle approval grant without comment', async () => {
         const eventSpy = vi.fn();
-        orchestrator.on('approval-granted', eventSpy);
+        orchestrator.on('approval:approved', eventSpy);
 
         await orchestrator.grantApproval(approvalId, 'test-user');
 
@@ -4344,7 +4344,7 @@ You are a developer agent that implements code changes.
         const noCheckpointApprovalId = `approval-${noCheckpointTaskId}-gate-${Date.now()}`;
 
         const eventSpy = vi.fn();
-        orchestrator.on('approval-granted', eventSpy);
+        orchestrator.on('approval:approved', eventSpy);
 
         await orchestrator.grantApproval(noCheckpointApprovalId, 'test-user', 'Approve anyway');
 
@@ -4363,7 +4363,7 @@ You are a developer agent that implements code changes.
     describe('denyApproval', () => {
       it('should deny approval and fail task with reason', async () => {
         const eventSpy = vi.fn();
-        orchestrator.on('approval-denied', eventSpy);
+        orchestrator.on('approval:denied', eventSpy);
 
         await orchestrator.denyApproval(approvalId, 'test-user', 'Plan needs more detail');
 
@@ -4418,7 +4418,7 @@ You are a developer agent that implements code changes.
     describe('Event emission', () => {
       it('should emit approval-granted event with correct type', async () => {
         const eventSpy = vi.fn();
-        orchestrator.on('approval-granted', eventSpy);
+        orchestrator.on('approval:approved', eventSpy);
 
         await orchestrator.grantApproval(approvalId, 'test-user', 'Approved');
 
@@ -4434,7 +4434,7 @@ You are a developer agent that implements code changes.
 
       it('should emit approval-denied event with correct type', async () => {
         const eventSpy = vi.fn();
-        orchestrator.on('approval-denied', eventSpy);
+        orchestrator.on('approval:denied', eventSpy);
 
         await orchestrator.denyApproval(approvalId, 'test-user', 'Rejected for testing');
 

@@ -33,6 +33,7 @@ import {
   ApprovalState,
   ApprovalStatus,
   ToolAction,
+  ToolExecution,
   FileSnapshot,
   ToolActionRetentionConfig,
 } from '@apexcli/core';

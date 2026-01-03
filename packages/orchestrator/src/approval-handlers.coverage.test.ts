@@ -74,7 +74,7 @@ describe('Approval Handlers - Coverage Tests', () => {
       });
 
       const eventSpy = vi.fn();
-      orchestrator.on('approval-granted', eventSpy);
+      orchestrator.on('approval:approved', eventSpy);
 
       // Test path: Successful grant with comment
       await orchestrator.grantApproval(approvalId, 'test-approver', 'Test comment');
@@ -101,7 +101,7 @@ describe('Approval Handlers - Coverage Tests', () => {
       });
 
       const eventSpy = vi.fn();
-      orchestrator.on('approval-granted', eventSpy);
+      orchestrator.on('approval:approved', eventSpy);
 
       // Test path: Successful grant without comment (undefined comment)
       await orchestrator.grantApproval(approvalId, 'test-approver');
@@ -201,7 +201,7 @@ describe('Approval Handlers - Coverage Tests', () => {
       });
 
       const eventSpy = vi.fn();
-      orchestrator.on('approval-denied', eventSpy);
+      orchestrator.on('approval:denied', eventSpy);
 
       const denialReason = 'Test denial reason';
 
@@ -294,7 +294,7 @@ describe('Approval Handlers - Coverage Tests', () => {
       const eventSpy = vi.fn().mockImplementation((data) => {
         capturedTimestamp = data.timestamp;
       });
-      orchestrator.on('approval-granted', eventSpy);
+      orchestrator.on('approval:approved', eventSpy);
 
       const beforeApproval = new Date();
       await orchestrator.grantApproval(approvalId, 'timestamp-tester', 'timestamp test');

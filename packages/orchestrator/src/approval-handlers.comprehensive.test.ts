@@ -202,8 +202,8 @@ describe('Approval Handlers - Comprehensive Test Suite', () => {
       });
     });
 
-    describe('AC5: Events approval-granted and approval-denied emitted', () => {
-      it('should emit approval-granted event with correct structure', async () => {
+    describe('AC5: Events approval:approved and approval:denied emitted', () => {
+      it('should emit approval:approved event with correct structure', async () => {
         const taskId = await orchestrator.createTask('AC5 Grant Event Task', 'feature');
         const approvalId = `approval-${taskId}-gate-${Date.now()}`;
 
@@ -216,7 +216,7 @@ describe('Approval Handlers - Comprehensive Test Suite', () => {
         });
 
         const eventSpy = vi.fn();
-        orchestrator.on('approval-granted', eventSpy);
+        orchestrator.on('approval:approved', eventSpy);
 
         const approver = 'test-approver';
         const comment = 'Event test approval';
@@ -236,7 +236,7 @@ describe('Approval Handlers - Comprehensive Test Suite', () => {
         });
       });
 
-      it('should emit approval-denied event with correct structure', async () => {
+      it('should emit approval:denied event with correct structure', async () => {
         const taskId = await orchestrator.createTask('AC5 Deny Event Task', 'feature');
         const approvalId = `approval-${taskId}-gate-${Date.now()}`;
 
@@ -249,7 +249,7 @@ describe('Approval Handlers - Comprehensive Test Suite', () => {
         });
 
         const eventSpy = vi.fn();
-        orchestrator.on('approval-denied', eventSpy);
+        orchestrator.on('approval:denied', eventSpy);
 
         const approver = 'test-approver';
         const reason = 'Event test denial';

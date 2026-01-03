@@ -884,10 +884,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         await orchestrator.grantApproval(approvalId, approver, comment);
 
         // Get updated approval state
-        const parts = approvalId.split('-');
-        if (parts.length >= 3 && parts[0] === 'approval') {
-          const taskId = parts[1];
-          const updatedState = await orchestrator.store.getApprovalState(taskId, approvalId);
+        const updatedState = await orchestrator.store.getApprovalStateById(approvalId);
 
           const response: ApprovalDecisionResponse = {
             success: true,
@@ -932,10 +929,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         await orchestrator.denyApproval(approvalId, approver, comment);
 
         // Get updated approval state
-        const parts = approvalId.split('-');
-        if (parts.length >= 3 && parts[0] === 'approval') {
-          const taskId = parts[1];
-          const updatedState = await orchestrator.store.getApprovalState(taskId, approvalId);
+        const updatedState = await orchestrator.store.getApprovalStateById(approvalId);
 
           const response: ApprovalDecisionResponse = {
             success: true,

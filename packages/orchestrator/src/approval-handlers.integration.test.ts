@@ -57,8 +57,8 @@ describe('Approval Handlers Integration Tests', () => {
       const grantedEvents: any[] = [];
       const deniedEvents: any[] = [];
 
-      orchestrator.on('approval-granted', (data) => grantedEvents.push(data));
-      orchestrator.on('approval-denied', (data) => deniedEvents.push(data));
+      orchestrator.on('approval:approved', (data) => grantedEvents.push(data));
+      orchestrator.on('approval:denied', (data) => deniedEvents.push(data));
 
       // Perform concurrent operations
       await Promise.all([
@@ -119,7 +119,7 @@ describe('Approval Handlers Integration Tests', () => {
         eventOrder.push(`${eventName}:${data.taskId}`);
       };
 
-      orchestrator.on('approval-granted', eventListener('granted'));
+      orchestrator.on('approval:approved', eventListener('granted'));
       orchestrator.on('task-status-updated', eventListener('status'));
       orchestrator.on('task-log-added', eventListener('log'));
 

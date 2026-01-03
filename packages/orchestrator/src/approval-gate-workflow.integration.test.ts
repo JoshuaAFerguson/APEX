@@ -112,7 +112,7 @@ You are a ${agent.name} agent.`;
       const eventTypes = [
         'task:started', 'task:stage-changed', 'task:paused',
         'task:resumed', 'task:completed', 'task:failed',
-        'gate:required', 'approval-granted', 'approval-denied'
+        'gate:required', 'approval:approved', 'approval:denied'
       ];
 
       eventTypes.forEach(eventType => {
@@ -191,8 +191,8 @@ You are a ${agent.name} agent.`;
       expect(completedTask!.pauseReason).toBeNull();
       expect(completedTask!.approvalState).toBeNull();
 
-      // Verify approval-granted event was emitted
-      const approvalEvents = events.filter(e => e.event === 'approval-granted');
+      // Verify approval:approved event was emitted
+      const approvalEvents = events.filter(e => e.event === 'approval:approved');
       expect(approvalEvents).toHaveLength(1);
       expect(approvalEvents[0].data.approvalId).toBe(approvalId);
       expect(approvalEvents[0].data.approver).toBe('test-approver');
@@ -288,7 +288,7 @@ You are a ${agent.name} agent.`;
 
       // Track workflow events
       const events: Array<{ event: string; data: any }> = [];
-      const eventTypes = ['task:paused', 'task:failed', 'gate:required', 'approval-denied'];
+      const eventTypes = ['task:paused', 'task:failed', 'gate:required', 'approval:denied'];
 
       eventTypes.forEach(eventType => {
         orchestrator.on(eventType as any, (data: any) => {
@@ -338,8 +338,8 @@ You are a ${agent.name} agent.`;
       expect(failedTask!.pauseReason).toBeNull();
       expect(failedTask!.approvalState).toBeNull();
 
-      // Verify approval-denied event was emitted
-      const denialEvents = events.filter(e => e.event === 'approval-denied');
+      // Verify approval:denied event was emitted
+      const denialEvents = events.filter(e => e.event === 'approval:denied');
       expect(denialEvents).toHaveLength(1);
       expect(denialEvents[0].data.approvalId).toBe(approvalId);
       expect(denialEvents[0].data.approver).toBe('security-reviewer');
@@ -547,8 +547,8 @@ You are a ${agent.name} agent.`;
 
       // Track approval events
       const events: Array<{ event: string; data: any }> = [];
-      orchestrator.on('approval-granted', (data: any) => {
-        events.push({ event: 'approval-granted', data });
+      orchestrator.on('approval:approved', (data: any) => {
+        events.push({ event: 'approval:approved', data });
       });
 
       // Mock Claude SDK
@@ -611,7 +611,7 @@ You are a ${agent.name} agent.`;
       expect(completedTask!.completedStages).toContain('verification');
 
       // Verify all approval events were emitted
-      const approvalEvents = events.filter(e => e.event === 'approval-granted');
+      const approvalEvents = events.filter(e => e.event === 'approval:approved');
       expect(approvalEvents).toHaveLength(3);
 
       // Verify all approvers are recorded
@@ -787,7 +787,7 @@ You are a ${agent.name} agent.`;
       const events: Array<{ event: string; data: any }> = [];
       const eventTypes = [
         'task:paused', 'task:resumed', 'task:completed',
-        'gate:required', 'approval-granted'
+        'gate:required', 'approval:approved'
       ];
 
       eventTypes.forEach(eventType => {
@@ -854,7 +854,7 @@ You are a ${agent.name} agent.`;
       const pauseEvents = events.filter(e => e.event === 'task:paused');
       const resumeEvents = events.filter(e => e.event === 'task:resumed');
       const gateEvents = events.filter(e => e.event === 'gate:required');
-      const approvalEvents = events.filter(e => e.event === 'approval-granted');
+      const approvalEvents = events.filter(e => e.event === 'approval:approved');
       const completedEvents = events.filter(e => e.event === 'task:completed');
 
       expect(pauseEvents).toHaveLength(2); // Two gates

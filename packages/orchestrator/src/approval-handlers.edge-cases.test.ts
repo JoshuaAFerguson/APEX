@@ -77,7 +77,7 @@ describe('Approval Handlers - Edge Cases', () => {
       const errorListener = vi.fn().mockImplementation(() => {
         throw new Error('Event handler failed');
       });
-      orchestrator.on('approval-granted', errorListener);
+      orchestrator.on('approval:approved', errorListener);
 
       // The approval should still complete despite listener error
       await expect(orchestrator.grantApproval(approvalId, 'tester', 'event error test'))
@@ -222,7 +222,7 @@ describe('Approval Handlers - Edge Cases', () => {
       });
 
       const eventSpy = vi.fn();
-      orchestrator.on('approval-granted', eventSpy);
+      orchestrator.on('approval:approved', eventSpy);
 
       const beforeApproval = new Date();
       await orchestrator.grantApproval(approvalId, 'timezone-tester', 'Timezone test');
@@ -252,7 +252,7 @@ describe('Approval Handlers - Edge Cases', () => {
       // Add multiple listeners
       const listeners = Array.from({ length: 5 }, () => vi.fn());
       listeners.forEach((listener, index) => {
-        orchestrator.on('approval-granted', (data) => {
+        orchestrator.on('approval:approved', (data) => {
           listener(data, index);
         });
       });
@@ -407,19 +407,19 @@ describe('Approval Handlers - Edge Cases', () => {
       const listeners = Array.from({ length: 50 }, () => vi.fn());
 
       listeners.forEach(listener => {
-        orchestrator.on('approval-granted', listener);
+        orchestrator.on('approval:approved', listener);
       });
 
       // Check listener count (if accessible)
-      const initialListenerCount = orchestrator.listenerCount('approval-granted');
+      const initialListenerCount = orchestrator.listenerCount('approval:approved');
       expect(initialListenerCount).toBe(listeners.length);
 
       // Remove all listeners
       listeners.forEach(listener => {
-        orchestrator.off('approval-granted', listener);
+        orchestrator.off('approval:approved', listener);
       });
 
-      const finalListenerCount = orchestrator.listenerCount('approval-granted');
+      const finalListenerCount = orchestrator.listenerCount('approval:approved');
       expect(finalListenerCount).toBe(0);
 
       // Verify no listeners are called after removal

@@ -1,8 +1,8 @@
 /**
- * Test suite for approval-required event emission functionality
+ * Test suite for approval:required event emission functionality
  *
  * Covers acceptance criteria:
- * 1. 'approval-required' event defined in OrchestratorEvents
+ * 1. 'approval:required' event defined in OrchestratorEvents
  * 2. Event emitted when gate is hit with ApprovalRequiredEventData
  * 3. Event includes task context, gate info, approval ID/URL
  * 4. Approval URL generated using apiUrl config
@@ -145,33 +145,33 @@ You are a devops agent.`
   });
 
   describe('OrchestratorEvents Interface', () => {
-    it('should define approval-required event in OrchestratorEvents', () => {
+    it('should define approval:required event in OrchestratorEvents', () => {
       // Test that the event can be listened to (compile-time verification)
       const handler = vi.fn();
 
       // This should compile without errors if the event is properly defined
-      orchestrator.on('approval-required', handler);
+      orchestrator.on('approval:required', handler);
 
       expect(handler).toBeDefined();
       expect(typeof handler).toBe('function');
 
       // Clean up
-      orchestrator.off('approval-required', handler);
+      orchestrator.off('approval:required', handler);
     });
 
-    it('should allow removal of approval-required event listeners', () => {
+    it('should allow removal of approval:required event listeners', () => {
       const handler = vi.fn();
 
-      orchestrator.on('approval-required', handler);
-      orchestrator.off('approval-required', handler);
+      orchestrator.on('approval:required', handler);
+      orchestrator.off('approval:required', handler);
 
       // Verify event listener was removed (no error should occur)
-      expect(() => orchestrator.off('approval-required', handler)).not.toThrow();
+      expect(() => orchestrator.off('approval:required', handler)).not.toThrow();
     });
   });
 
   describe('Event Emission on Gate Hit', () => {
-    it('should emit approval-required event when reaching a gate during stage execution', async () => {
+    it('should emit approval:required event when reaching a gate during stage execution', async () => {
       // Set up mock query response for planning stage
       mockQuery.mockResolvedValueOnce({
         requestId: 'test-request-1',
@@ -213,7 +213,7 @@ You are a devops agent.`
       });
 
       const approvalRequiredEvents: ApprovalRequiredEventData[] = [];
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         approvalRequiredEvents.push(event);
       });
 
@@ -225,7 +225,7 @@ You are a devops agent.`
 
       await orchestrator.runTask(task.id);
 
-      // Verify that approval-required event was emitted
+      // Verify that approval:required event was emitted
       expect(approvalRequiredEvents).toHaveLength(1);
 
       const event = approvalRequiredEvents[0];
@@ -237,7 +237,7 @@ You are a devops agent.`
       expect(event.gateType).toBe('before-commit');
     });
 
-    it('should emit multiple approval-required events for multiple gates', async () => {
+    it('should emit multiple approval:required events for multiple gates', async () => {
       // Mock all stage completions
       mockQuery
         .mockResolvedValueOnce({ // planning
@@ -266,7 +266,7 @@ You are a devops agent.`
         });
 
       const approvalRequiredEvents: ApprovalRequiredEventData[] = [];
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         approvalRequiredEvents.push(event);
       });
 
@@ -291,7 +291,7 @@ You are a devops agent.`
       expect(secondEvent.gateType).toBe('before-deploy');
     });
 
-    it('should not emit approval-required event for stages without gates', async () => {
+    it('should not emit approval:required event for stages without gates', async () => {
       // Create a workflow without any gates
       const simpleWorkflowContent = `
 name: simple-feature
@@ -330,7 +330,7 @@ stages:
         });
 
       const approvalRequiredEvents: ApprovalRequiredEventData[] = [];
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         approvalRequiredEvents.push(event);
       });
 
@@ -365,7 +365,7 @@ stages:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -430,7 +430,7 @@ stages:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -495,7 +495,7 @@ stages:
         });
 
         let emittedEvent: ApprovalRequiredEventData | undefined;
-        orchestrator.on('approval-required', (event) => {
+        orchestrator.on('approval:required', (event) => {
           if (event.gateName === testCase.gateName) {
             emittedEvent = event;
           }
@@ -535,7 +535,7 @@ stages:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -632,7 +632,7 @@ stages:
         });
 
         let emittedEvent: ApprovalRequiredEventData | undefined;
-        defaultOrchestrator.on('approval-required', (event) => {
+        defaultOrchestrator.on('approval:required', (event) => {
           emittedEvent = event;
         });
 
@@ -695,7 +695,7 @@ gates:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      newOrchestrator.on('approval-required', (event) => {
+      newOrchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -736,7 +736,7 @@ gates:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -775,7 +775,7 @@ gates:
       });
 
       let emittedEvent: ApprovalRequiredEventData | undefined;
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         emittedEvent = event;
       });
 
@@ -844,7 +844,7 @@ stages:
       });
 
       const approvalRequiredEvents: ApprovalRequiredEventData[] = [];
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         approvalRequiredEvents.push(event);
       });
 
@@ -864,7 +864,7 @@ stages:
       }
     });
 
-    it('should continue workflow execution after emitting approval-required event', async () => {
+    it('should continue workflow execution after emitting approval:required event', async () => {
       mockQuery.mockResolvedValueOnce({
         requestId: 'test-request-1',
         output: {
@@ -884,7 +884,7 @@ stages:
       const approvalRequiredEvents: ApprovalRequiredEventData[] = [];
       const taskUpdates: any[] = [];
 
-      orchestrator.on('approval-required', (event) => {
+      orchestrator.on('approval:required', (event) => {
         approvalRequiredEvents.push(event);
       });
 
