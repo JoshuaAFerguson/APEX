@@ -17,6 +17,7 @@ import type {
   TaskTemplate,
   IterationEntry,
   IterationHistory,
+  FileSnapshot,
 } from '@apexcli/core';
 import { generateIdleTaskId, generateTaskTemplateId } from '@apexcli/core';
 
@@ -2856,6 +2857,520 @@ describe('TaskStore', () => {
         const results = await store.searchTemplates('quotes');
         expect(results).toHaveLength(1);
         expect(results[0].id).toBe(template.id);
+      });
+    });
+  });
+
+  describe('Snapshot Persistence', () => {
+    const createTestSnapshot = (taskId: string, actionId: string, toolName = 'edit') => {
+      return {
+        taskId,
+        actionId,
+        toolName,
+        fileSnapshots: [
+          {
+            id: `snap_${Date.now()}`,
+            filePath: '/test/file.ts',
+            content: 'const test = "hello world";',
+            checksum: 'abc123def456',
+            fileSize: 25,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true,
+            metadata: { type: 'typescript' }
+          }
+        ],
+        description: `Snapshot for ${toolName} operation`
+      };
+    };
+
+    describe('saveSnapshot', () => {
+      it('should save a snapshot successfully', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const { taskId, actionId, toolName, fileSnapshots, description } = createTestSnapshot(task.id, 'action_1');
+
+        await expect(store.saveSnapshot(taskId, actionId, toolName, fileSnapshots, description)).resolves.not.toThrow();
+      });
+
+      it('should save snapshot with minimal data', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'minimal_snap',
+          filePath: '/test/minimal.js',
+          content: '',
+          checksum: 'empty',
+          fileSize: 0,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: false
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'action_minimal', 'write', fileSnapshots)).resolves.not.toThrow();
+      });
+
+      it('should handle multiple file snapshots in single operation', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [
+          {
+            id: 'file1_snap',
+            filePath: '/test/file1.ts',
+            content: 'file 1 content',
+            checksum: 'hash1',
+            fileSize: 14,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          },
+          {
+            id: 'file2_snap',
+            filePath: '/test/file2.js',
+            content: 'file 2 content',
+            checksum: 'hash2',
+            fileSize: 14,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          }
+        ];
+
+        await expect(store.saveSnapshot(task.id, 'multi_action', 'edit', fileSnapshots, 'Multiple file edit')).resolves.not.toThrow();
+      });
+
+      it('should fail when saving snapshot for non-existent task', async () => {
+        const fileSnapshots = [{
+          id: 'test_snap',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await expect(store.saveSnapshot('non_existent_task', 'action_1', 'edit', fileSnapshots)).rejects.toThrow();
+      });
+
+      it('should enforce unique constraint on task_id and action_id', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'test_snap',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        // First save should succeed
+        await expect(store.saveSnapshot(task.id, 'duplicate_action', 'edit', fileSnapshots)).resolves.not.toThrow();
+
+        // Second save with same task_id and action_id should fail
+        await expect(store.saveSnapshot(task.id, 'duplicate_action', 'edit', fileSnapshots)).rejects.toThrow();
+      });
+    });
+
+    describe('getSnapshots', () => {
+      beforeEach(async () => {
+        // Setup test data
+        const task = createTestTask();
+        task.id = 'snapshot_test_task';
+        await store.createTask(task);
+
+        // Create multiple snapshots
+        const snapshots = [
+          createTestSnapshot('snapshot_test_task', 'action_1', 'edit'),
+          createTestSnapshot('snapshot_test_task', 'action_2', 'write'),
+          createTestSnapshot('snapshot_test_task', 'action_3', 'delete'),
+          createTestSnapshot('snapshot_test_task', 'action_1', 'read'), // Different tool for same action
+        ];
+
+        for (const snapshot of snapshots) {
+          try {
+            await store.saveSnapshot(
+              snapshot.taskId,
+              snapshot.actionId,
+              snapshot.toolName,
+              snapshot.fileSnapshots,
+              snapshot.description
+            );
+          } catch (error) {
+            // Skip duplicate constraint errors for testing
+            if (!(error as Error).message.includes('UNIQUE constraint')) {
+              throw error;
+            }
+          }
+        }
+      });
+
+      it('should retrieve all snapshots for a task', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task');
+        expect(snapshots.length).toBeGreaterThan(0);
+        expect(snapshots.every(s => s.taskId === 'snapshot_test_task')).toBe(true);
+      });
+
+      it('should filter snapshots by action ID', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task', 'action_2');
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0].actionId).toBe('action_2');
+        expect(snapshots[0].toolName).toBe('write');
+      });
+
+      it('should return empty array for task with no snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'no_snapshots_task';
+        await store.createTask(task);
+
+        const snapshots = await store.getSnapshots('no_snapshots_task');
+        expect(snapshots).toEqual([]);
+      });
+
+      it('should return empty array for non-existent task', async () => {
+        const snapshots = await store.getSnapshots('non_existent_task');
+        expect(snapshots).toEqual([]);
+      });
+
+      it('should include all snapshot properties', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task', 'action_1');
+        expect(snapshots.length).toBeGreaterThan(0);
+
+        const snapshot = snapshots[0];
+        expect(snapshot).toHaveProperty('id');
+        expect(snapshot).toHaveProperty('taskId');
+        expect(snapshot).toHaveProperty('actionId');
+        expect(snapshot).toHaveProperty('toolName');
+        expect(snapshot).toHaveProperty('fileSnapshots');
+        expect(snapshot).toHaveProperty('timestamp');
+        expect(snapshot).toHaveProperty('description');
+        expect(snapshot).toHaveProperty('canUndo');
+
+        // Verify fileSnapshots is properly parsed
+        expect(Array.isArray(snapshot.fileSnapshots)).toBe(true);
+        if (snapshot.fileSnapshots.length > 0) {
+          const fileSnapshot = snapshot.fileSnapshots[0];
+          expect(fileSnapshot).toHaveProperty('id');
+          expect(fileSnapshot).toHaveProperty('filePath');
+          expect(fileSnapshot).toHaveProperty('content');
+          expect(fileSnapshot).toHaveProperty('checksum');
+        }
+      });
+
+      it('should order snapshots by timestamp (newest first)', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task');
+        expect(snapshots.length).toBeGreaterThanOrEqual(2);
+
+        // Check that timestamps are in descending order
+        for (let i = 1; i < snapshots.length; i++) {
+          expect(snapshots[i-1].timestamp.getTime()).toBeGreaterThanOrEqual(snapshots[i].timestamp.getTime());
+        }
+      });
+    });
+
+    describe('getLatestSnapshot', () => {
+      beforeEach(async () => {
+        const task = createTestTask();
+        task.id = 'latest_snapshot_task';
+        await store.createTask(task);
+
+        // Create snapshots with slight delays to ensure different timestamps
+        const snapshot1 = createTestSnapshot('latest_snapshot_task', 'action_latest', 'edit');
+        await store.saveSnapshot(snapshot1.taskId, snapshot1.actionId, snapshot1.toolName, snapshot1.fileSnapshots, 'First snapshot');
+
+        // Small delay to ensure different timestamp
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const snapshot2 = createTestSnapshot('latest_snapshot_task', 'action_latest_2', 'write');
+        await store.saveSnapshot(snapshot2.taskId, snapshot2.actionId, snapshot2.toolName, snapshot2.fileSnapshots, 'Second snapshot');
+      });
+
+      it('should return the most recent snapshot for a task', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task');
+        expect(snapshot).not.toBeNull();
+        expect(snapshot!.taskId).toBe('latest_snapshot_task');
+        expect(snapshot!.description).toBe('Second snapshot');
+      });
+
+      it('should return the most recent snapshot for a specific action', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task', 'action_latest');
+        expect(snapshot).not.toBeNull();
+        expect(snapshot!.actionId).toBe('action_latest');
+        expect(snapshot!.description).toBe('First snapshot');
+      });
+
+      it('should return null for task with no snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'no_latest_snapshots';
+        await store.createTask(task);
+
+        const snapshot = await store.getLatestSnapshot('no_latest_snapshots');
+        expect(snapshot).toBeNull();
+      });
+
+      it('should return null for non-existent action', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task', 'non_existent_action');
+        expect(snapshot).toBeNull();
+      });
+    });
+
+    describe('deleteSnapshots', () => {
+      beforeEach(async () => {
+        const task = createTestTask();
+        task.id = 'delete_snapshot_task';
+        await store.createTask(task);
+
+        // Create test snapshots
+        const snapshots = [
+          createTestSnapshot('delete_snapshot_task', 'delete_action_1', 'edit'),
+          createTestSnapshot('delete_snapshot_task', 'delete_action_2', 'write'),
+          createTestSnapshot('delete_snapshot_task', 'delete_action_3', 'delete'),
+        ];
+
+        for (const snapshot of snapshots) {
+          await store.saveSnapshot(
+            snapshot.taskId,
+            snapshot.actionId,
+            snapshot.toolName,
+            snapshot.fileSnapshots,
+            snapshot.description
+          );
+        }
+      });
+
+      it('should delete all snapshots for a task', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task');
+        expect(deletedCount).toBe(3);
+
+        const remaining = await store.getSnapshots('delete_snapshot_task');
+        expect(remaining).toEqual([]);
+      });
+
+      it('should delete snapshots for a specific action', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task', 'delete_action_2');
+        expect(deletedCount).toBe(1);
+
+        const remaining = await store.getSnapshots('delete_snapshot_task');
+        expect(remaining).toHaveLength(2);
+        expect(remaining.every(s => s.actionId !== 'delete_action_2')).toBe(true);
+      });
+
+      it('should return 0 when deleting non-existent snapshots', async () => {
+        const deletedCount = await store.deleteSnapshots('non_existent_task');
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should return 0 when deleting non-existent action', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task', 'non_existent_action');
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should properly clean up after deletion', async () => {
+        // Verify initial state
+        const initialSnapshots = await store.getSnapshots('delete_snapshot_task');
+        expect(initialSnapshots).toHaveLength(3);
+
+        // Delete specific action
+        await store.deleteSnapshots('delete_snapshot_task', 'delete_action_1');
+
+        // Verify state after partial deletion
+        const afterPartial = await store.getSnapshots('delete_snapshot_task');
+        expect(afterPartial).toHaveLength(2);
+
+        // Delete all remaining
+        const remainingCount = await store.deleteSnapshots('delete_snapshot_task');
+        expect(remainingCount).toBe(2);
+
+        // Verify complete cleanup
+        const final = await store.getSnapshots('delete_snapshot_task');
+        expect(final).toEqual([]);
+      });
+    });
+
+    describe('Database Schema and Migration', () => {
+      it('should create snapshots table with correct schema', async () => {
+        // The snapshots table should be created during store initialization
+        // We can verify by attempting to query its structure
+        const tableInfo = store['db'].prepare("PRAGMA table_info(snapshots)").all() as Array<{name: string, type: string, pk: boolean}>;
+
+        const expectedColumns = [
+          'id', 'task_id', 'action_id', 'tool_name',
+          'file_snapshots', 'timestamp', 'description', 'can_undo'
+        ];
+
+        const actualColumns = tableInfo.map(col => col.name);
+        expectedColumns.forEach(col => {
+          expect(actualColumns).toContain(col);
+        });
+
+        // Verify primary key
+        const primaryKeys = tableInfo.filter(col => col.pk).map(col => col.name);
+        expect(primaryKeys).toEqual(['id']);
+      });
+
+      it('should create proper indexes on snapshots table', async () => {
+        const indexes = store['db'].prepare("PRAGMA index_list(snapshots)").all() as Array<{name: string}>;
+        const indexNames = indexes.map(idx => idx.name);
+
+        expect(indexNames).toContain('idx_snapshots_task_id');
+        expect(indexNames).toContain('idx_snapshots_action_id');
+        expect(indexNames).toContain('idx_snapshots_tool_name');
+      });
+
+      it('should enforce foreign key constraint on task_id', async () => {
+        const fileSnapshots = [{
+          id: 'constraint_test',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        // Should fail due to foreign key constraint
+        await expect(store.saveSnapshot('non_existent_task_fk', 'action_1', 'edit', fileSnapshots))
+          .rejects.toThrow();
+      });
+    });
+
+    describe('Edge Cases and Error Handling', () => {
+      it('should handle large file snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'large_snapshot_task';
+        await store.createTask(task);
+
+        const largeContent = 'x'.repeat(1000000); // 1MB of content
+        const fileSnapshots = [{
+          id: 'large_snap',
+          filePath: '/test/large_file.txt',
+          content: largeContent,
+          checksum: 'large_hash',
+          fileSize: largeContent.length,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'large_action', 'write', fileSnapshots, 'Large file snapshot'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        expect(retrieved[0].fileSnapshots[0].content).toBe(largeContent);
+      });
+
+      it('should handle special characters in file paths and content', async () => {
+        const task = createTestTask();
+        task.id = 'special_chars_task';
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'special_snap',
+          filePath: '/test/файл with émojis 🚀 and "quotes".ts',
+          content: 'const message = "Hello, 世界! 🌍";\n/* Special chars: éñ */\nlet π = 3.14159;',
+          checksum: 'special_hash',
+          fileSize: 50,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true,
+          metadata: { encoding: 'utf-8', language: 'typescript' }
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'special_action', 'edit', fileSnapshots, 'Special chars test'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        const snap = retrieved[0].fileSnapshots[0];
+        expect(snap.filePath).toBe('/test/файл with émojis 🚀 and "quotes".ts');
+        expect(snap.content).toContain('世界! 🌍');
+        expect(snap.metadata).toEqual({ encoding: 'utf-8', language: 'typescript' });
+      });
+
+      it('should handle empty fileSnapshots array', async () => {
+        const task = createTestTask();
+        task.id = 'empty_snapshots_task';
+        await store.createTask(task);
+
+        await expect(store.saveSnapshot(task.id, 'empty_action', 'cleanup', [], 'No files changed'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        expect(retrieved[0].fileSnapshots).toEqual([]);
+      });
+
+      it('should handle concurrent snapshot operations', async () => {
+        const task = createTestTask();
+        task.id = 'concurrent_task';
+        await store.createTask(task);
+
+        const createSnapshot = (actionId: string) => {
+          const fileSnapshots = [{
+            id: `snap_${actionId}`,
+            filePath: `/test/${actionId}.ts`,
+            content: `content for ${actionId}`,
+            checksum: `hash_${actionId}`,
+            fileSize: 20,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          }];
+          return store.saveSnapshot(task.id, actionId, 'edit', fileSnapshots, `Snapshot ${actionId}`);
+        };
+
+        // Run multiple snapshot operations concurrently
+        const operations = [
+          createSnapshot('concurrent_1'),
+          createSnapshot('concurrent_2'),
+          createSnapshot('concurrent_3'),
+          createSnapshot('concurrent_4'),
+          createSnapshot('concurrent_5')
+        ];
+
+        await expect(Promise.all(operations)).resolves.not.toThrow();
+
+        const allSnapshots = await store.getSnapshots(task.id);
+        expect(allSnapshots).toHaveLength(5);
+      });
+
+      it('should handle invalid JSON in fileSnapshots gracefully', async () => {
+        const task = createTestTask();
+        task.id = 'json_test_task';
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'json_snap',
+          filePath: '/test/file.ts',
+          content: 'test content',
+          checksum: 'test_hash',
+          fileSize: 12,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await store.saveSnapshot(task.id, 'json_action', 'edit', fileSnapshots);
+
+        // Manually corrupt the JSON in the database to test error handling
+        store['db'].prepare(`
+          UPDATE snapshots
+          SET file_snapshots = 'invalid json'
+          WHERE task_id = ? AND action_id = ?
+        `).run(task.id, 'json_action');
+
+        // Should handle corrupted JSON gracefully
+        await expect(store.getSnapshots(task.id, 'json_action')).rejects.toThrow();
       });
     });
   });

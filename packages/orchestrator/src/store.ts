@@ -191,6 +191,31 @@ export class TaskStore {
         }
       }
     }
+
+    // Create snapshots table if it doesn't exist (v0.5.0 snapshot persistence support)
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS snapshots (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          action_id TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          file_snapshots TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          description TEXT,
+          can_undo INTEGER NOT NULL DEFAULT 1,
+          FOREIGN KEY (task_id) REFERENCES tasks(id),
+          UNIQUE(task_id, action_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_snapshots_task_id ON snapshots(task_id);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_action_id ON snapshots(action_id);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_tool_name ON snapshots(tool_name);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
+      `);
+    } catch {
+      // Table might already exist
+    }
   }
 
   /**
@@ -455,6 +480,19 @@ export class TaskStore {
         FOREIGN KEY (task_id) REFERENCES tasks(id)
       );
 
+      CREATE TABLE IF NOT EXISTS snapshots (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        action_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        file_snapshots TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        description TEXT,
+        can_undo INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        UNIQUE(task_id, action_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
       CREATE INDEX IF NOT EXISTS idx_task_artifacts_task_id ON task_artifacts(task_id);
@@ -491,6 +529,11 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_tool_actions_can_undo ON tool_actions(can_undo);
       CREATE INDEX IF NOT EXISTS idx_tool_actions_was_undone ON tool_actions(was_undone);
       CREATE INDEX IF NOT EXISTS idx_tool_actions_created ON tool_actions(created_at);
+      -- v0.5.0 Snapshots Indexes
+      CREATE INDEX IF NOT EXISTS idx_snapshots_task_id ON snapshots(task_id);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_action_id ON snapshots(action_id);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_tool_name ON snapshots(tool_name);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
     `);
   }
 
@@ -2866,6 +2909,133 @@ export class TaskStore {
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
     };
+  }
+
+  /**
+   * Save a snapshot to the database
+   */
+  async saveSnapshot(taskId: string, actionId: string, toolName: string, fileSnapshots: FileSnapshot[], description?: string): Promise<void> {
+    const id = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO snapshots (
+        id, task_id, action_id, tool_name, file_snapshots, timestamp, description, can_undo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      taskId,
+      actionId,
+      toolName,
+      JSON.stringify(fileSnapshots),
+      timestamp,
+      description || null,
+      1 // can_undo defaults to true
+    );
+  }
+
+  /**
+   * Get all snapshots for a task, optionally filtered by action ID
+   */
+  async getSnapshots(taskId: string, actionId?: string): Promise<{ id: string; taskId: string; actionId: string; toolName: string; fileSnapshots: FileSnapshot[]; timestamp: Date; description?: string; canUndo: boolean }[]> {
+    let query = `
+      SELECT id, task_id, action_id, tool_name, file_snapshots, timestamp, description, can_undo
+      FROM snapshots
+      WHERE task_id = ?
+    `;
+    const params: any[] = [taskId];
+
+    if (actionId) {
+      query += ` AND action_id = ?`;
+      params.push(actionId);
+    }
+
+    query += ` ORDER BY timestamp DESC`;
+
+    const rows = this.db.prepare(query).all(...params) as {
+      id: string;
+      task_id: string;
+      action_id: string;
+      tool_name: string;
+      file_snapshots: string;
+      timestamp: string;
+      description: string | null;
+      can_undo: number;
+    }[];
+
+    return rows.map(row => ({
+      id: row.id,
+      taskId: row.task_id,
+      actionId: row.action_id,
+      toolName: row.tool_name,
+      fileSnapshots: JSON.parse(row.file_snapshots),
+      timestamp: new Date(row.timestamp),
+      description: row.description || undefined,
+      canUndo: Boolean(row.can_undo)
+    }));
+  }
+
+  /**
+   * Get the latest snapshot for a task or action
+   */
+  async getLatestSnapshot(taskId: string, actionId?: string): Promise<{ id: string; taskId: string; actionId: string; toolName: string; fileSnapshots: FileSnapshot[]; timestamp: Date; description?: string; canUndo: boolean } | null> {
+    let query = `
+      SELECT id, task_id, action_id, tool_name, file_snapshots, timestamp, description, can_undo
+      FROM snapshots
+      WHERE task_id = ?
+    `;
+    const params: any[] = [taskId];
+
+    if (actionId) {
+      query += ` AND action_id = ?`;
+      params.push(actionId);
+    }
+
+    query += ` ORDER BY timestamp DESC LIMIT 1`;
+
+    const row = this.db.prepare(query).get(...params) as {
+      id: string;
+      task_id: string;
+      action_id: string;
+      tool_name: string;
+      file_snapshots: string;
+      timestamp: string;
+      description: string | null;
+      can_undo: number;
+    } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      actionId: row.action_id,
+      toolName: row.tool_name,
+      fileSnapshots: JSON.parse(row.file_snapshots),
+      timestamp: new Date(row.timestamp),
+      description: row.description || undefined,
+      canUndo: Boolean(row.can_undo)
+    };
+  }
+
+  /**
+   * Delete snapshots for a task, optionally filtered by action ID
+   */
+  async deleteSnapshots(taskId: string, actionId?: string): Promise<number> {
+    let query = `DELETE FROM snapshots WHERE task_id = ?`;
+    const params: any[] = [taskId];
+
+    if (actionId) {
+      query += ` AND action_id = ?`;
+      params.push(actionId);
+    }
+
+    const result = this.db.prepare(query).run(...params);
+    return result.changes;
   }
 
   /**
