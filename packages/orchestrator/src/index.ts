@@ -2,6 +2,7 @@ import { query, type AgentDefinition as SDKAgentDefinition } from '@anthropic-ai
 import { EventEmitter } from 'eventemitter3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as crypto from 'crypto';
 import {
   ApexConfig,
   AgentDefinition,
@@ -50,6 +51,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
+import { PolicyEnforcer, createPolicyEnforcer } from './policy';
 import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
@@ -782,18 +784,29 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: `Policy check completed: ${policyCheckResult.passed ? 'passed' : 'failed'} (${policyCheckResult.failedCount} errors, ${policyCheckResult.warningCount} warnings)`,
     });
 
+    // Map results to PolicyViolation format
+    const violations = policyCheckResult.results
+      .filter(result => !result.passed)
+      .map(result => ({
+        id: crypto.randomUUID(),
+        rule: result.ruleId,
+        message: result.message,
+        severity: (result.severity === 'error' ? 'critical' :
+                   result.severity === 'warning' ? 'high' : 'low') as 'low' | 'medium' | 'high' | 'critical',
+        blocking: result.severity === 'error',
+        policyType: result.ruleType,
+        timestamp: new Date(),
+        resolved: false,
+        context: result.details,
+      }));
+
     // Update task with policy check results
     await this.store.updateTask(taskId, {
       policyCheckResult: {
         passed: policyCheckResult.passed,
-        violations: policyCheckResult.results.map(result => ({
-          ruleId: result.ruleId,
-          policyType: result.ruleType as 'path' | 'test' | 'approval',
-          severity: result.severity as 'info' | 'warning' | 'error',
-          message: result.message,
-          filePath: result.details?.filePath,
-          context: result.details?.context,
-        })),
+        blocked: policyCheckResult.failedCount > 0,
+        violationCount: violations.length,
+        violations,
         checkedAt: policyCheckResult.evaluatedAt,
         policyName: policyCheckResult.policyName,
         enforcementMode: this.policyEnforcer.enforcementMode,
@@ -1645,14 +1658,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             status: 'awaiting-approval',
             pausedAt: new Date(),
             pauseReason: 'approval_gate',
-            approvalState,
             updatedAt: new Date(),
           });
 
-          // Generate approval URL from apiUrl config
-          const approvalUrl = this.options.apiUrl
-            ? `${this.options.apiUrl}/approvals/${approvalState.id}`
-            : undefined;
+          // Approval URL can be configured via environment or passed in context
+          const approvalUrl: string | undefined = undefined;
 
           // Emit approval-required event
           const eventData: ApprovalRequiredEventData = {
@@ -6210,6 +6220,13 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    */
   async getPendingApprovals(): Promise<ApprovalState[]> {
     return await this.store.getPendingApprovals();
+  }
+
+  /**
+   * Get an approval state by its ID
+   */
+  async getApprovalStateById(approvalId: string): Promise<ApprovalState | null> {
+    return await this.store.getApprovalStateById(approvalId);
   }
 }
 

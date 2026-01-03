@@ -134,9 +134,11 @@ export function LimitWarning({
         </Box>
 
         <Box flexDirection="column" alignItems="center">
-          <Text color="white" bold marginBottom={1}>
-            {warning.message}
-          </Text>
+          <Box marginBottom={1}>
+            <Text color="white" bold>
+              {warning.message}
+            </Text>
+          </Box>
 
           <Box gap={2} marginBottom={1}>
             <Text color="white">Current:</Text>
@@ -223,9 +225,11 @@ export function LimitExceeded({
 
       {/* Limit details */}
       <Box flexDirection="column" alignItems="center" marginBottom={1}>
-        <Text color="white" bold marginBottom={1}>
-          {exceeded.message}
-        </Text>
+        <Box marginBottom={1}>
+          <Text color="white" bold>
+            {exceeded.message}
+          </Text>
+        </Box>
 
         <Box gap={2} marginBottom={1}>
           <Text color={limitInfo.color}>{limitInfo.icon}</Text>

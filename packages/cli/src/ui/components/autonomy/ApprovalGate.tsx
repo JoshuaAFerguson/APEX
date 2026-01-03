@@ -215,7 +215,7 @@ export function ApprovalGate({
 
           {request.metadata && Object.keys(request.metadata).length > 0 && (
             <>
-              <Text color="white" bold marginTop={1}>Details:</Text>
+              <Box marginTop={1}><Text color="white" bold>Details:</Text></Box>
               {Object.entries(request.metadata).map(([key, value]) => (
                 <Box key={key} gap={2} marginLeft={2}>
                   <Text color="gray">{key}:</Text>
@@ -240,7 +240,7 @@ export function ApprovalGate({
 
       {/* Options */}
       <Box flexDirection="column" marginBottom={1}>
-        <Text color="white" bold marginBottom={1}>Choose your decision:</Text>
+        <Box marginBottom={1}><Text color="white" bold>Choose your decision:</Text></Box>
         {options.map((option, index) => (
           <Box key={option.value.toString()} gap={1} marginLeft={1}>
             <Text color={selectedOption === index ? 'white' : 'gray'}>
@@ -329,9 +329,11 @@ export function ApprovalQueue({
           ))}
 
           {requests.length > maxRequests && (
-            <Text color="gray" dimColor marginTop={1}>
-              ... and {requests.length - maxRequests} more pending
-            </Text>
+            <Box marginTop={1}>
+              <Text color="gray" dimColor>
+                ... and {requests.length - maxRequests} more pending
+              </Text>
+            </Box>
           )}
         </Box>
       </Box>

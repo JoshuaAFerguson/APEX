@@ -171,17 +171,21 @@ export function ToolExecutionPanel({
         <Box flexDirection="column" paddingX={1}>
           {activeToolCallsArray.length > 0 ? (
             <>
-              <Text bold color="yellow" marginBottom={1}>
-                Active Tool Calls ({activeToolCallsArray.length})
-              </Text>
+              <Box marginBottom={1}>
+                <Text bold color="yellow">
+                  Active Tool Calls ({activeToolCallsArray.length})
+                </Text>
+              </Box>
               {activeToolCallsArray.map((toolProps, index) => (
                 <ToolCall key={index} {...toolProps} displayMode={displayMode} />
               ))}
             </>
           ) : (
-            <Text color="gray" dimColor marginY={1}>
-              No active tool calls
-            </Text>
+            <Box marginY={1}>
+              <Text color="gray" dimColor>
+                No active tool calls
+              </Text>
+            </Box>
           )}
         </Box>
       )}
@@ -202,14 +206,16 @@ export function ToolExecutionPanel({
             />
           ) : (
             <Box flexDirection="column" paddingX={1}>
-              <Text bold color="blue" marginBottom={1}>
-                Recent Activity ({recentToolLogs.length})
-              </Text>
+              <Box marginBottom={1}>
+                <Text bold color="blue">
+                  Recent Activity ({recentToolLogs.length})
+                </Text>
+              </Box>
               <CompactLog
                 entries={recentToolLogs}
                 maxLines={maxRecentLogs}
                 showIcons={true}
-                showTimestamps={displayMode !== 'compact'}
+                showTimestamps={displayMode === 'normal'}
               />
             </Box>
           )}

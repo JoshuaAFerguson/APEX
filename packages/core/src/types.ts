@@ -1546,7 +1546,7 @@ export const ApexConfigSchema = z.object({
   /** Policy-as-code configuration for governance and compliance (v0.5.0) */
   policy: z.lazy(() => PolicyConfigSchema).optional(),
   /** Array of policy definitions for enhanced governance (v0.5.0) */
-  policies: z.array(PolicySchema).optional().default([]),
+  policies: z.lazy(() => z.array(PolicySchema)).optional().default([]),
   /** Tool action tracking and retention configuration (v0.5.0) */
   toolActionRetention: ToolActionRetentionConfigSchema.optional(),
   /** Hook configuration for custom lifecycle events (v0.5.0) */

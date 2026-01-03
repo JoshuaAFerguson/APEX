@@ -36,6 +36,7 @@ import {
   ToolExecution,
   FileSnapshot,
   ToolActionRetentionConfig,
+  TaskPolicyCheckResult,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -3103,6 +3104,7 @@ export class ToolActionStore {
       fileSize: stats.size,
       lastModified: stats.mtime,
       snapshotTime: new Date(),
+      existed: true,
       metadata,
     };
 
@@ -3380,6 +3382,7 @@ export class ToolActionStore {
       fileSize: row.file_size,
       lastModified: new Date(row.last_modified),
       snapshotTime: new Date(row.snapshot_time),
+      existed: (row as { existed?: number }).existed !== 0,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     }));
   }

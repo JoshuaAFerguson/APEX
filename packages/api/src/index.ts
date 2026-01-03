@@ -855,7 +855,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // List pending approvals
   app.get('/api/approvals', async (request, reply) => {
     try {
-      const pendingApprovals = await orchestrator.store.getPendingApprovals();
+      const pendingApprovals = await orchestrator.getPendingApprovals();
 
       return {
         approvals: pendingApprovals,
@@ -887,22 +887,20 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         await orchestrator.grantApproval(approvalId, approver, comment);
 
         // Get updated approval state
-        const updatedState = await orchestrator.store.getApprovalStateById(approvalId);
+        const updatedState = await orchestrator.getApprovalStateById(approvalId);
 
         if (updatedState) {
           const response: ApprovalDecisionResponse = {
             success: true,
             approvalState: updatedState,
-            message: 'Approval granted successfully',
-            willProceed: true
+            taskWillProceed: true
           };
 
           return response;
         } else {
           return {
             success: true,
-            message: 'Approval granted successfully',
-            willProceed: true
+            taskWillProceed: true
           };
         }
       } catch (error) {
@@ -933,22 +931,20 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         await orchestrator.denyApproval(approvalId, approver, comment);
 
         // Get updated approval state
-        const updatedState = await orchestrator.store.getApprovalStateById(approvalId);
+        const updatedState = await orchestrator.getApprovalStateById(approvalId);
 
         if (updatedState) {
           const response: ApprovalDecisionResponse = {
             success: true,
             approvalState: updatedState,
-            message: 'Approval denied successfully',
-            willProceed: false
+            taskWillProceed: false
           };
 
           return response;
         } else {
           return {
             success: true,
-            message: 'Approval denied successfully',
-            willProceed: false
+            taskWillProceed: false
           };
         }
       } catch (error) {
@@ -1569,7 +1565,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   // Approval events (v0.5.0)
   orchestrator.on('approval:required', (eventData: ApprovalRequiredEventData) => {
     broadcast(eventData.taskId, {
-      type: 'approval:required',
+      type: 'approval-required',
       taskId: eventData.taskId,
       timestamp: new Date(),
       data: {

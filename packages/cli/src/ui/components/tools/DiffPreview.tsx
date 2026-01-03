@@ -225,9 +225,11 @@ export function DiffPreview({
         )}
 
         {diffLines.length >= maxLines && (
-          <Text color="gray" dimColor marginTop={1}>
-            ... (showing first {maxLines} lines)
-          </Text>
+          <Box marginTop={1}>
+            <Text color="gray" dimColor>
+              ... (showing first {maxLines} lines)
+            </Text>
+          </Box>
         )}
       </Box>
 

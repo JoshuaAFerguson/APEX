@@ -144,7 +144,7 @@ interface ESLintSuggestion {
  *
  * // Run ESLint on files
  * const result = await eslintPlugin.execute({
- *   files: ['src/**/*.js', 'src/**/*.ts'],
+ *   files: ['src/example.js', 'src/example.ts'],
  *   fix: false
  * });
  *

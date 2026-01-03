@@ -16,7 +16,7 @@ import type {
   PolicyConfig,
   PolicyViolation,
   PolicyViolationEvent,
-  PolicyValidationResult,
+  PolicyValidationResult as CorePolicyValidationResult,
   PolicyEvaluationResult,
   AllowedPathsConfig,
   PolicyEnforcementMode,
@@ -30,6 +30,27 @@ import type {
 // ============================================================================
 // Types and Interfaces
 // ============================================================================
+
+/**
+ * Policy validation result with rule details
+ * Matches LegacyPolicyValidationResult from core for PolicyEvaluationResult
+ */
+export interface PolicyValidationResult {
+  /** Whether the validation passed */
+  passed: boolean;
+  /** Rule identifier */
+  ruleId: string;
+  /** Human-readable rule name */
+  ruleName: string;
+  /** Type of rule */
+  ruleType: 'path' | 'test' | 'approval';
+  /** Validation message */
+  message: string;
+  /** Severity level */
+  severity: 'info' | 'warning' | 'error';
+  /** Additional details about the validation */
+  details?: Record<string, unknown>;
+}
 
 /**
  * Events emitted by the PolicyEnforcer
@@ -355,10 +376,11 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
 
     return {
       id: randomUUID(),
-      ruleId: opts.ruleId ?? 'path-validation',
+      rule: opts.ruleId ?? 'path-validation',
       policyType: 'path',
       severity,
       message: opts.message,
+      blocking: this.enforcementMode === 'strict',
       description: opts.description,
       resource: opts.resource,
       context: {
@@ -624,17 +646,18 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
 
   /**
    * Gets the severity level based on enforcement mode.
+   * Returns PolicySeverity: 'low' | 'medium' | 'high' | 'critical'
    */
-  private getSeverityFromEnforcement(): 'info' | 'warning' | 'error' {
+  private getSeverityFromEnforcement(): 'low' | 'medium' | 'high' | 'critical' {
     switch (this.enforcementMode) {
       case 'strict':
-        return 'error';
+        return 'critical';
       case 'warn':
-        return 'warning';
+        return 'high';
       case 'audit':
-        return 'info';
+        return 'low';
       default:
-        return 'warning';
+        return 'medium';
     }
   }
 
@@ -1065,13 +1088,18 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
         });
 
         for (const violation of pathViolations) {
+          // Map policy severity to result severity
+          const mappedSeverity: 'info' | 'warning' | 'error' =
+            violation.severity === 'critical' ? 'error' :
+            violation.severity === 'high' ? 'warning' : 'info';
+
           const result: PolicyValidationResult = {
             passed: false,
-            ruleId: violation.ruleId,
+            ruleId: violation.rule,
             ruleName: 'File Path Access',
             ruleType: 'path',
             message: violation.message,
-            severity: violation.severity,
+            severity: mappedSeverity,
             details: {
               filePath,
               violationType: violation.policyType,
@@ -1090,7 +1118,7 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
           // Check if this is a sensitive path requiring approval
           if (violation.context?.requiresApproval) {
             requiresApproval = true;
-            triggeredApprovalRules.push(`sensitive-path-${violation.ruleId}`);
+            triggeredApprovalRules.push(`sensitive-path-${violation.rule}`);
           }
         }
       }

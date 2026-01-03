@@ -178,18 +178,12 @@ stages:
 
     expect(createResponse.ok).toBe(true);
     const createResult = await createResponse.json();
-    taskId = createResult.task.id;
+    taskId = createResult.taskId; // API returns taskId, not task.id
     expect(taskId).toBeDefined();
-    expect(createResult.task.status).toBe('pending');
+    expect(createResult.status).toBe('pending');
+    // Task execution starts automatically
 
-    // Step 2: Start task execution (should pause at approval gate)
-    const startResponse = await fetch(`${serverUrl}/api/tasks/${taskId}/start`, {
-      method: 'POST',
-    });
-
-    expect(startResponse.ok).toBe(true);
-
-    // Wait a bit for workflow to execute and hit the gate
+    // Step 2: Wait a bit for workflow to execute and hit the gate
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Step 3: Verify task is paused at approval gate

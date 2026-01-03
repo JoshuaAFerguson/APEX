@@ -122,6 +122,7 @@ export function PermissionPrompt({
       const timer = setTimeout(() => setIsActive(true), 100);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [autoFocus]);
 
   useInput((input, key) => {
@@ -227,7 +228,7 @@ export function PermissionPrompt({
 
       {/* Options */}
       <Box flexDirection="column" marginBottom={1}>
-        <Text color="white" bold marginBottom={1}>Choose an option:</Text>
+        <Box marginBottom={1}><Text color="white" bold>Choose an option:</Text></Box>
         {options.map((option, index) => (
           <Box key={option.value} gap={1} marginLeft={1}>
             <Text color={selectedOption === index ? 'white' : 'gray'}>

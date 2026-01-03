@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('Snapshot and Undo Types Exports', () => {
   it('should export FileSnapshot types from core package', async () => {
-    const coreModule = await import('../index');
+    const coreModule = await import('../index.js');
 
     // Check that the schemas are exported
     expect(coreModule.FileSnapshotSchema).toBeDefined();
@@ -22,7 +22,7 @@ describe('Snapshot and Undo Types Exports', () => {
   });
 
   it('should export ToolActionSnapshot types from core package', async () => {
-    const coreModule = await import('../index');
+    const coreModule = await import('../index.js');
 
     // Check that the schemas are exported
     expect(coreModule.ToolActionSnapshotSchema).toBeDefined();
@@ -48,7 +48,7 @@ describe('Snapshot and Undo Types Exports', () => {
   });
 
   it('should export UndoEvent types from core package', async () => {
-    const coreModule = await import('../index');
+    const coreModule = await import('../index.js');
 
     // Check that the schemas are exported
     expect(coreModule.UndoEventTypeSchema).toBeDefined();
