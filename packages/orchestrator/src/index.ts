@@ -50,6 +50,7 @@ import {
   CreateTaskRequest,
   TaskTemplate,
   WorktreeInfo,
+  UndoOperationResult,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -170,6 +171,17 @@ export interface OrchestratorEvents {
   'tool:start': (event: ToolCallStartEvent) => void;
   'tool:progress': (event: ToolCallProgressEvent) => void;
   'tool:complete': (event: ToolCallCompleteEvent) => void;
+
+  // Lint events (v0.5.0)
+  'lint:started': (event: LintStartedEventData) => void;
+  'lint:completed': (event: LintCompletedEventData) => void;
+  'lint:issue': (event: LintIssueEventData) => void;
+  'lint:fix-applied': (event: LintFixAppliedEventData) => void;
+
+  // Undo events (v0.5.0)
+  'undo:start': (taskId: string) => void;
+  'undo:complete': (taskId: string, actionId: string, restoredFiles: string[]) => void;
+  'undo:error': (taskId: string, actionId: string | null, error: string) => void;
 }
 
 /**
@@ -404,6 +416,76 @@ export interface ToolCallCompleteEvent {
   timestamp: Date;
 }
 
+/**
+ * Event payload for lint:started event (v0.5.0)
+ * Emitted when a linter starts execution
+ */
+export interface LintStartedEventData {
+  taskId: string;
+  linterId: string;
+  files: string[];
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:completed event (v0.5.0)
+ * Emitted when a linter completes execution
+ */
+export interface LintCompletedEventData {
+  taskId: string;
+  linterId: string;
+  result: {
+    success: boolean;
+    issues: unknown[];
+    filesChecked: number;
+    filesWithIssues: number;
+    duration: number; // milliseconds
+    error?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:issue event (v0.5.0)
+ * Emitted when a linter finds an issue
+ */
+export interface LintIssueEventData {
+  taskId: string;
+  linterId: string;
+  issue: {
+    filePath: string;
+    line: number;
+    column: number;
+    severity: 'error' | 'warning' | 'info' | 'hint';
+    ruleId: string;
+    message: string;
+    fix?: {
+      range: [number, number];
+      text: string;
+    };
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:fix-applied event (v0.5.0)
+ * Emitted when a lint fix is successfully applied
+ */
+export interface LintFixAppliedEventData {
+  taskId: string;
+  linterId: string;
+  filePath: string;
+  issuesFixed: number;
+  fixDetails: {
+    ruleId: string;
+    line: number;
+    column: number;
+    originalText: string;
+    fixedText: string;
+  }[];
+  timestamp: Date;
+}
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -438,6 +520,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
+
+  // Task execution tracking
+  private currentTaskId: string | null = null;
 
   // Concurrent execution state
   private runningTasks: Map<string, Promise<void>> = new Map();
@@ -537,6 +622,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
     await this.linterService.initialize();
+
+    // Forward linter events from linter service
+    this.setupLinterEventForwarding();
 
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
@@ -846,6 +934,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.updateTaskStatus(taskId, 'in-progress');
     this.emit('task:started', task);
 
+    // Set current task for event tracking
+    this.currentTaskId = taskId;
+
     // Resource tracking is initialized via the task's usage object
     // No separate initialization needed - usage is tracked incrementally
 
@@ -882,6 +973,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           await this.updateTaskStatus(taskId, 'completed');
           const completedTask = await this.store.getTask(taskId);
           this.emit('task:completed', completedTask!);
+
+          // Clear current task tracking if this was the current task
+          if (this.currentTaskId === taskId) {
+            this.currentTaskId = null;
+          }
 
           // Handle git operations (push and PR creation) for parent tasks only
           if (!task.parentTaskId && completedTask) {
@@ -946,6 +1042,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           await this.updateTaskStatus(taskId, 'failed', enhancedError);
           const failedTask = await this.store.getTask(taskId);
           this.emit('task:failed', failedTask!, lastError);
+
+          // Clear current task tracking if this was the current task
+          if (this.currentTaskId === taskId) {
+            this.currentTaskId = null;
+          }
           throw lastError;
         }
 
@@ -2848,6 +2949,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Get current task ID being executed (for event tracking)
+   */
+  private getCurrentTaskId(): string | null {
+    return this.currentTaskId;
+  }
+
+  /**
    * Get configuration
    */
   async getConfig(): Promise<ApexConfig> {
@@ -2918,6 +3026,151 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
+  }
+
+  // ============================================================================
+  // Undo Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Undo the last action for a task
+   * Restores files from snapshot based on operation type:
+   * - write: restore content
+   * - create: delete file
+   * - delete: restore file
+   * Emits undo lifecycle events and removes used snapshot from store
+   *
+   * @param taskId The task ID to undo the last action for
+   * @returns UndoOperationResult containing details about the undo operation
+   */
+  async undoLastAction(taskId: string): Promise<UndoOperationResult> {
+    await this.ensureInitialized();
+
+    this.emit('undo:start', taskId);
+
+    try {
+      // Get undoable actions for the task
+      const undoableActions = await this.toolActionStore.getUndoableActions(taskId);
+
+      if (undoableActions.length === 0) {
+        throw new Error('No undoable actions found for task');
+      }
+
+      const lastAction = undoableActions[0];
+      const restoredFiles: string[] = [];
+      const failedFiles: { path: string; error: string; }[] = [];
+
+      // Process each file based on operation type
+      for (const snapshot of lastAction.beforeSnapshots) {
+        try {
+          // Determine operation type based on tool name and file state
+          const toolName = lastAction.execution.toolName;
+          const filePath = snapshot.filePath;
+          const fileExists = fs.existsSync(filePath);
+
+          if (toolName === 'Write' || toolName === 'Edit') {
+            // Write/Edit: restore content from snapshot
+            if (snapshot.existed) {
+              fs.writeFileSync(filePath, snapshot.content, 'utf8');
+              restoredFiles.push(filePath);
+            } else if (fileExists) {
+              // File was created, so delete it
+              fs.unlinkSync(filePath);
+              restoredFiles.push(filePath);
+            }
+          } else if (toolName === 'Bash' && snapshot.existed && !fileExists) {
+            // File was deleted by bash command, restore it
+            fs.writeFileSync(filePath, snapshot.content, 'utf8');
+            restoredFiles.push(filePath);
+          } else if (!snapshot.existed && fileExists) {
+            // File was created, delete it
+            fs.unlinkSync(filePath);
+            restoredFiles.push(filePath);
+          } else if (snapshot.existed) {
+            // File was modified, restore original content
+            fs.writeFileSync(filePath, snapshot.content, 'utf8');
+            restoredFiles.push(filePath);
+          }
+        } catch (error) {
+          failedFiles.push({
+            path: snapshot.filePath,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+      // Mark action as undone in the database
+      await this.markActionAsUndone(lastAction.id);
+
+      // Remove used snapshots from store (clean up)
+      await this.removeActionSnapshots(lastAction.id);
+
+      const result: UndoOperationResult = {
+        success: failedFiles.length === 0,
+        actionId: lastAction.id,
+        restoredFiles,
+        failedFiles,
+        completedAt: new Date(),
+        error: failedFiles.length > 0 ? `Failed to restore ${failedFiles.length} files` : undefined
+      };
+
+      if (result.success) {
+        this.emit('undo:complete', taskId, lastAction.id, restoredFiles);
+      } else {
+        this.emit('undo:error', taskId, lastAction.id, result.error!);
+      }
+
+      return result;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.emit('undo:error', taskId, null, errorMessage);
+
+      return {
+        success: false,
+        actionId: '',
+        restoredFiles: [],
+        failedFiles: [],
+        completedAt: new Date(),
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Mark a tool action as undone in the database
+   */
+  private async markActionAsUndone(actionId: string): Promise<void> {
+    const db = this.toolActionStore['taskStore']['db'];
+    db.prepare(`
+      UPDATE tool_actions
+      SET was_undone = 1, undone_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), actionId);
+  }
+
+  /**
+   * Remove snapshots associated with an action from the store
+   */
+  private async removeActionSnapshots(actionId: string): Promise<void> {
+    const db = this.toolActionStore['taskStore']['db'];
+
+    // Get snapshot IDs from the action
+    const action = db.prepare(`
+      SELECT before_snapshots, after_snapshots FROM tool_actions WHERE id = ?
+    `).get(actionId) as { before_snapshots: string; after_snapshots: string } | undefined;
+
+    if (!action) return;
+
+    const beforeSnapshotIds = JSON.parse(action.before_snapshots) as string[];
+    const afterSnapshotIds = JSON.parse(action.after_snapshots) as string[];
+    const allSnapshotIds = [...beforeSnapshotIds, ...afterSnapshotIds];
+
+    // Remove snapshots from file_snapshots table
+    if (allSnapshotIds.length > 0) {
+      const placeholders = allSnapshotIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM file_snapshots WHERE id IN (${placeholders})`).run(...allSnapshotIds);
+    }
   }
 
   // ============================================================================
@@ -5638,6 +5891,89 @@ Parent: ${parentTask.description}`;
 
     this.workspaceManager.on('dependency-install-completed', (event) => {
       this.emit('dependency:install-completed', event);
+    });
+  }
+
+  /**
+   * Set up event forwarding from LinterService events to orchestrator lint events (v0.5.0)
+   */
+  private setupLinterEventForwarding(): void {
+    // Forward linter:started events as lint:started
+    this.linterService.on('linter:started', (event) => {
+      const lintEvent: LintStartedEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        files: event.files,
+        timestamp: event.timestamp,
+      };
+      this.emit('lint:started', lintEvent);
+    });
+
+    // Forward linter:completed events as lint:completed
+    this.linterService.on('linter:completed', (event) => {
+      const lintEvent: LintCompletedEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        result: {
+          success: event.result.success,
+          issuesFound: event.result.issues.length,
+          issuesFixed: event.result.issues.filter(issue => issue.fix).length,
+          duration: event.result.duration
+        },
+        timestamp: event.timestamp,
+      };
+      this.emit('lint:completed', lintEvent);
+    });
+
+    // Forward linter:issue events as lint:issue
+    this.linterService.on('linter:issue', (event) => {
+      const lintEvent: LintIssueEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        issue: {
+          ruleId: event.issue.ruleId,
+          severity: event.issue.severity,
+          message: event.issue.message,
+          filePath: event.issue.filePath,
+          line: event.issue.line,
+          column: event.issue.column,
+          endLine: event.issue.endLine,
+          endColumn: event.issue.endColumn
+        },
+        timestamp: new Date(),
+      };
+      this.emit('lint:issue', lintEvent);
+    });
+
+    // Forward fix:completed events as lint:fix-applied
+    this.linterService.on('fix:completed', (event) => {
+      // Process each fix result to create separate fix-applied events
+      for (const [linterId, fixResult] of event.result.fixResultsByLinter) {
+        // Group fixes by file
+        const fixesByFile = new Map<string, any[]>();
+
+        // Since LinterService doesn't expose individual fix details,
+        // we'll emit a summary event per file that was fixed
+        for (const filePath of fixResult.fixedFiles || []) {
+          const fixEvent: LintFixAppliedEventData = {
+            taskId: this.getCurrentTaskId() || 'unknown',
+            linterId: linterId,
+            filePath: filePath,
+            issuesFixed: fixResult.issuesFixed,
+            fixDetails: [
+              {
+                ruleId: 'auto-fix',
+                line: 1,
+                column: 1,
+                originalText: 'Multiple issues',
+                fixedText: 'Fixed automatically'
+              }
+            ],
+            timestamp: event.timestamp,
+          };
+          this.emit('lint:fix-applied', fixEvent);
+        }
+      }
     });
   }
 
