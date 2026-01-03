@@ -1562,6 +1562,58 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       },
     });
   });
+
+  // Approval events (v0.5.0)
+  orchestrator.on('approval:required', (eventData: import('@apexcli/core').ApprovalRequiredEventData) => {
+    broadcast(eventData.taskId, {
+      type: 'approval:required',
+      taskId: eventData.taskId,
+      timestamp: new Date(),
+      data: {
+        approvalId: eventData.approvalId,
+        gateName: eventData.gateName,
+        gateType: eventData.gateType,
+        description: eventData.description,
+        approvers: eventData.approvers,
+        minApprovals: eventData.minApprovals,
+        timeoutMinutes: eventData.timeoutMinutes,
+        expiresAt: eventData.expiresAt,
+        stage: eventData.stage,
+        agent: eventData.agent,
+        context: eventData.context,
+        changesSummary: eventData.changesSummary,
+        affectedFiles: eventData.affectedFiles,
+        blocking: eventData.blocking,
+        approvalUrl: eventData.approvalUrl,
+      },
+    });
+  });
+
+  orchestrator.on('approval:approved', (eventData: import('@apexcli/core').ApprovalGrantedEventData) => {
+    broadcast(eventData.taskId, {
+      type: 'approval:granted',
+      taskId: eventData.taskId,
+      timestamp: new Date(),
+      data: {
+        approvalId: eventData.approvalId,
+        approver: eventData.approver,
+        comment: eventData.comment,
+      },
+    });
+  });
+
+  orchestrator.on('approval:denied', (eventData: import('@apexcli/core').ApprovalDeniedEventData) => {
+    broadcast(eventData.taskId, {
+      type: 'approval:denied',
+      taskId: eventData.taskId,
+      timestamp: new Date(),
+      data: {
+        approvalId: eventData.approvalId,
+        approver: eventData.approver,
+        reason: eventData.reason,
+      },
+    });
+  });
 }
 
 /**

@@ -604,6 +604,12 @@ export const FileSnapshotSchema = z.object({
   lastModified: z.date(),
   /** Timestamp when this snapshot was created */
   snapshotTime: z.date(),
+  /**
+   * Whether the file existed before the snapshot was taken
+   * Used for undo operations to know if a file should be deleted (if it didn't exist)
+   * or restored to its previous content (if it did exist)
+   */
+  existed: z.boolean().default(true),
   /** Optional metadata about the snapshot */
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -653,6 +659,100 @@ export const ToolActionRetentionConfigSchema = z.object({
   maxSnapshotStorageMB: z.number().min(1).default(100),
 });
 export type ToolActionRetentionConfig = z.infer<typeof ToolActionRetentionConfigSchema>;
+
+// ============================================================================
+// Tool Action Snapshot Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Represents a collection of file snapshots for a single tool action
+ * Enables grouped undo operations by tracking all files modified by a tool
+ */
+export const ToolActionSnapshotSchema = z.object({
+  /** Unique identifier for this action snapshot (typically same as the tool action ID) */
+  actionId: z.string().min(1),
+  /** Name of the tool that performed the action (e.g., 'Write', 'Edit', 'Bash') */
+  toolName: z.string().min(1),
+  /** File snapshots taken before the tool action was executed */
+  snapshots: z.array(FileSnapshotSchema),
+  /** Timestamp when this action snapshot was created */
+  timestamp: z.date(),
+  /** Optional human-readable description of what the tool action did */
+  description: z.string().optional(),
+  /** Whether this action snapshot can be used for undo operations */
+  canUndo: z.boolean().default(true),
+});
+export type ToolActionSnapshot = z.infer<typeof ToolActionSnapshotSchema>;
+
+// ============================================================================
+// Undo Event Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Types of undo/redo events that can occur in the system
+ */
+export const UndoEventTypeSchema = z.enum([
+  'undo:requested',    // User or system requested an undo operation
+  'undo:started',      // Undo operation has begun executing
+  'undo:completed',    // Undo operation completed successfully
+  'undo:failed',       // Undo operation failed
+  'redo:requested',    // User or system requested a redo operation
+  'redo:started',      // Redo operation has begun executing
+  'redo:completed',    // Redo operation completed successfully
+  'redo:failed',       // Redo operation failed
+]);
+export type UndoEventType = z.infer<typeof UndoEventTypeSchema>;
+
+/**
+ * Event record for undo/redo operations
+ * Tracks the lifecycle of undo operations for auditing and debugging
+ */
+export const UndoEventSchema = z.object({
+  /** Unique identifier for this undo event */
+  id: z.string().min(1),
+  /** Type of undo event */
+  type: UndoEventTypeSchema,
+  /** ID of the task this undo event belongs to */
+  taskId: z.string().min(1),
+  /** ID of the tool action being undone or redone */
+  actionId: z.string().min(1),
+  /** ID of the tool action snapshot used for the operation (if applicable) */
+  snapshotId: z.string().optional(),
+  /** Timestamp when this event occurred */
+  timestamp: z.date(),
+  /** Absolute paths of files affected by the undo/redo operation */
+  affectedFiles: z.array(z.string()).default([]),
+  /** Error message if the operation failed */
+  error: z.string().optional(),
+  /** Additional metadata about the operation */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type UndoEvent = z.infer<typeof UndoEventSchema>;
+
+/**
+ * Result of an undo or redo operation
+ * Contains details about which files were restored and any failures
+ */
+export const UndoOperationResultSchema = z.object({
+  /** Whether the overall undo operation succeeded */
+  success: z.boolean(),
+  /** ID of the tool action that was undone */
+  actionId: z.string().min(1),
+  /** Absolute paths of files that were successfully restored */
+  restoredFiles: z.array(z.string()).default([]),
+  /** Files that failed to restore with error details */
+  failedFiles: z.array(z.object({
+    /** Absolute path to the file that failed to restore */
+    path: z.string(),
+    /** Error message describing why the restore failed */
+    error: z.string(),
+  })).default([]),
+  /** Timestamp when the undo operation completed */
+  completedAt: z.date(),
+  /** Error message if the overall operation failed */
+  error: z.string().optional(),
+});
+export type UndoOperationResult = z.infer<typeof UndoOperationResultSchema>;
 
 // ============================================================================
 // Autonomy Control Types
@@ -2328,7 +2428,16 @@ export type ApexEventType =
   | 'permission:denied'
   | 'dangerous:detected'
   | 'dangerous:confirmed'
-  | 'dangerous:blocked';
+  | 'dangerous:blocked'
+  // Undo/Redo events (v0.5.0)
+  | 'undo:requested'
+  | 'undo:started'
+  | 'undo:completed'
+  | 'undo:failed'
+  | 'redo:requested'
+  | 'redo:started'
+  | 'redo:completed'
+  | 'redo:failed';
 
 export interface ApexEvent {
   type: ApexEventType;
