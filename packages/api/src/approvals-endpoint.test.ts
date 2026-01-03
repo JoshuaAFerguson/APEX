@@ -602,7 +602,7 @@ workflows:
       });
 
       // Should handle URL encoding properly
-      expect(response.statusCode).toBeOneOf([200, 400]);
+      expect([200, 400]).toContain(response.statusCode);
     });
   });
 

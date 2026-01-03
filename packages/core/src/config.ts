@@ -11,6 +11,7 @@ import {
   WorkflowDefinitionSchema,
   PermissionsConfig,
   PolicyConfig,
+  Policy,
   LinterConfig,
   HookConfig,
   HookConfigSchema,
@@ -785,6 +786,7 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       keepUndoneSnapshots: config.toolActionRetention?.keepUndoneSnapshots ?? false,
       maxSnapshotStorageMB: config.toolActionRetention?.maxSnapshotStorageMB ?? 100,
     },
+    policies: config.policies || [],
     hooks: config.hooks || [],
   };
 }
