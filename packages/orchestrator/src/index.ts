@@ -6403,3 +6403,11 @@ export {
 
 // Linter Plugin System
 export * from './linter';
+
+// Approval Gate Controller
+export {
+  ApprovalGateController,
+  type ApprovalGateOptions,
+  type ApprovalResult,
+  type ApprovalGateEvents,
+} from './approval-gate-controller';
