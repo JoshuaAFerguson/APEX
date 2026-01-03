@@ -7,10 +7,12 @@ import type {
   PreToolUseHookInput,
   PostToolUseHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
-import { TaskStore } from './store';
+import { TaskStore, ToolActionStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
+import type { ToolExecution, FileSnapshot } from '@apexcli/core';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 
 export type { HookInput };
 
@@ -23,6 +25,11 @@ export interface HookContext {
     emit: (event: string, data: unknown) => void;
   };
   fileSnapshots?: Map<string, string>;
+  // New fields for tool action tracking
+  toolActionStore?: ToolActionStore;
+  currentAgent?: string;
+  currentStage?: string;
+  toolStartTimes?: Map<string, Date>; // toolUseId -> start time
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -796,6 +803,177 @@ function summarizeInput(input: Record<string, unknown>): Record<string, unknown>
   }
 
   return summary;
+}
+
+/**
+ * Record tool start time for duration calculation
+ */
+async function recordToolStartTime(
+  input: HookInput,
+  toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  if (!context.toolStartTimes) {
+    context.toolStartTimes = new Map();
+  }
+
+  if (toolUseId) {
+    context.toolStartTimes.set(toolUseId, new Date());
+  }
+
+  return {};
+}
+
+/**
+ * Create a FileSnapshot object with checksum
+ */
+function createFileSnapshot(
+  filePath: string,
+  content: string,
+  timestamp: Date,
+  metadata: Record<string, unknown> = {}
+): FileSnapshot {
+  const checksum = crypto.createHash('md5').update(content, 'utf8').digest('hex');
+
+  return {
+    id: crypto.randomUUID(),
+    filePath,
+    content,
+    checksum,
+    fileSize: Buffer.byteLength(content, 'utf8'),
+    lastModified: timestamp,
+    snapshotTime: timestamp,
+    existed: metadata.isNewFile !== true,
+    metadata,
+  };
+}
+
+/**
+ * Extract file path from tool input based on tool type
+ */
+function extractFilePath(toolInput: Record<string, unknown>, toolName: string): string | undefined {
+  if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
+    return toolInput.file_path;
+  } else if ('notebook_path' in toolInput && typeof toolInput.notebook_path === 'string') {
+    return toolInput.notebook_path;
+  } else if ('path' in toolInput && typeof toolInput.path === 'string') {
+    return toolInput.path;
+  }
+  return undefined;
+}
+
+/**
+ * Record completed file-modifying tool action with snapshots
+ */
+async function recordFileModifyingToolAction(
+  input: HookInput,
+  toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+
+  // Only process file-modifying tools
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  // Skip if no toolActionStore available
+  if (!context.toolActionStore) {
+    return {};
+  }
+
+  const toolInput = getToolInput(input);
+  const filePath = extractFilePath(toolInput, toolName);
+
+  if (!filePath) {
+    return {};
+  }
+
+  try {
+    // Get before-snapshot content from context
+    const beforeContent = context.fileSnapshots?.get(filePath);
+
+    // Capture after-snapshot
+    let afterContent: string | null = null;
+    let afterExists = true;
+    try {
+      afterContent = fs.readFileSync(filePath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // File was deleted
+        afterContent = '';
+        afterExists = false;
+      } else {
+        throw err;
+      }
+    }
+
+    // Create FileSnapshot objects
+    const now = new Date();
+    const beforeSnapshot = createFileSnapshot(filePath, beforeContent ?? '', now, {
+      isNewFile: beforeContent === '',
+      capturedAt: 'before',
+    });
+
+    const afterSnapshot = createFileSnapshot(filePath, afterContent ?? '', now, {
+      exists: afterExists,
+      capturedAt: 'after',
+    });
+
+    // Build ToolExecution
+    const startTime = context.toolStartTimes?.get(toolUseId ?? '') ?? now;
+    const endTime = now;
+
+    const execution: ToolExecution = {
+      callId: toolUseId ?? crypto.randomUUID(),
+      toolName,
+      input: toolInput,
+      taskId: context.taskId,
+      agentName: context.currentAgent,
+      stageName: context.currentStage,
+      startTime,
+      endTime,
+      duration: endTime.getTime() - startTime.getTime(),
+      status: 'completed',
+    };
+
+    // Record the action
+    await context.toolActionStore.recordToolAction(
+      context.taskId,
+      execution,
+      [filePath],
+      [beforeSnapshot],
+      [afterSnapshot]
+    );
+
+    // Clean up context
+    context.fileSnapshots?.delete(filePath);
+    context.toolStartTimes?.delete(toolUseId ?? '');
+
+    // Log success
+    await context.store.addLog(context.taskId, {
+      level: 'debug',
+      message: `Tool action recorded: ${toolName} on ${filePath}`,
+      metadata: {
+        tool: toolName,
+        filePath,
+        actionId: execution.callId,
+      },
+    });
+  } catch (error) {
+    // Log error but don't fail the hook
+    await context.store.addLog(context.taskId, {
+      level: 'warn',
+      message: `Failed to record tool action: ${toolName} on ${filePath} - ${String(error)}`,
+      metadata: {
+        tool: toolName,
+        filePath,
+        error: String(error),
+      },
+    });
+  }
+
+  return {};
 }
 
 /**
