@@ -10,6 +10,7 @@ import type {
 import { TaskStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
+import * as fs from 'fs';
 
 export type { HookInput };
 
@@ -21,6 +22,7 @@ export interface HookContext {
   eventEmitter?: {
     emit: (event: string, data: unknown) => void;
   };
+  fileSnapshots?: Map<string, string>;
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -75,6 +77,12 @@ const SENSITIVE_PATHS = [
   '.npmrc',
   '.pypirc',
 ];
+
+// Tools that modify files and require snapshot capture
+const FILE_MODIFYING_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+// Export for use in other modules
+export { FILE_MODIFYING_TOOLS };
 
 /**
  * Create a hook callback that wraps our internal function with context
@@ -341,6 +349,12 @@ export function createHooks(context: HookContext): HooksConfig {
         hooks: [createHookCallback(context, detectDangerousOperation)],
         timeout: 10,
       },
+      // Capture file snapshots for file-modifying tools
+      {
+        matcher: FILE_MODIFYING_TOOLS,
+        hooks: [createHookCallback(context, captureFileSnapshot)],
+        timeout: 5,
+      },
       // Audit all bash commands
       {
         matcher: 'Bash',
@@ -411,6 +425,89 @@ function getToolName(input: HookInput): string {
     return input.tool_name;
   }
   return 'unknown';
+}
+
+/**
+ * Capture file snapshots for file-modifying tools
+ */
+async function captureFileSnapshot(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+
+  // Only capture snapshots for file-modifying tools
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  const toolInput = getToolInput(input);
+  let filePath: string | undefined;
+
+  // Extract file path based on tool type
+  if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
+    filePath = toolInput.file_path;
+  } else if ('notebook_path' in toolInput && typeof toolInput.notebook_path === 'string') {
+    filePath = toolInput.notebook_path;
+  } else if ('path' in toolInput && typeof toolInput.path === 'string') {
+    filePath = toolInput.path;
+  }
+
+  if (!filePath) {
+    return {};
+  }
+
+  // Initialize fileSnapshots map if not exists
+  if (!context.fileSnapshots) {
+    context.fileSnapshots = new Map();
+  }
+
+  try {
+    // Read and store file content snapshot
+    const content = fs.readFileSync(filePath, 'utf8');
+    context.fileSnapshots.set(filePath, content);
+
+    // Log the snapshot capture
+    await context.store.addLog(context.taskId, {
+      level: 'debug',
+      message: `File snapshot captured: ${filePath}`,
+      metadata: {
+        tool: toolName,
+        filePath,
+        contentLength: content.length,
+      },
+    });
+  } catch (error) {
+    // Handle non-existent files gracefully
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // Store empty string for non-existent files
+      context.fileSnapshots.set(filePath, '');
+
+      await context.store.addLog(context.taskId, {
+        level: 'debug',
+        message: `File snapshot captured (new file): ${filePath}`,
+        metadata: {
+          tool: toolName,
+          filePath,
+          isNewFile: true,
+        },
+      });
+    } else {
+      // Log other filesystem errors
+      await context.store.addLog(context.taskId, {
+        level: 'warn',
+        message: `Failed to capture file snapshot: ${filePath} - ${String(error)}`,
+        metadata: {
+          tool: toolName,
+          filePath,
+          error: String(error),
+        },
+      });
+    }
+  }
+
+  return {};
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { createHooks, createCustomHooks, HookContext, HooksConfig } from './hooks';
+import { createHooks, createCustomHooks, HookContext, HooksConfig, FILE_MODIFYING_TOOLS } from './hooks';
 import { TaskStore } from './store';
 import type { Task } from '@apexcli/core';
 
@@ -101,6 +101,43 @@ describe('Hooks', () => {
       // Find the general logging hook (no matcher)
       const logHook = hooks.PreToolUse?.find(m => !m.matcher);
       expect(logHook).toBeDefined();
+    });
+  });
+
+  describe('FILE_MODIFYING_TOOLS', () => {
+    it('should export FILE_MODIFYING_TOOLS constant with correct tools', () => {
+      expect(FILE_MODIFYING_TOOLS).toBeDefined();
+      expect(Array.isArray(FILE_MODIFYING_TOOLS)).toBe(true);
+      expect(FILE_MODIFYING_TOOLS).toEqual(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+    });
+
+    it('should contain all file-modifying tools', () => {
+      expect(FILE_MODIFYING_TOOLS).toContain('Write');
+      expect(FILE_MODIFYING_TOOLS).toContain('Edit');
+      expect(FILE_MODIFYING_TOOLS).toContain('MultiEdit');
+      expect(FILE_MODIFYING_TOOLS).toContain('NotebookEdit');
+    });
+
+    it('should be used in hook matchers', () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) &&
+        h.matcher.length === FILE_MODIFYING_TOOLS.length &&
+        h.matcher.every(tool => FILE_MODIFYING_TOOLS.includes(tool))
+      );
+
+      expect(fileSnapshotHook).toBeDefined();
+      expect(fileSnapshotHook?.matcher).toEqual(FILE_MODIFYING_TOOLS);
+    });
+
+    it('should not include non-file-modifying tools', () => {
+      const nonFileTools = ['Bash', 'Read', 'Glob', 'Grep', 'WebFetch', 'LSP'];
+
+      for (const tool of nonFileTools) {
+        expect(FILE_MODIFYING_TOOLS).not.toContain(tool);
+      }
     });
   });
 
@@ -704,6 +741,500 @@ describe('Hooks', () => {
 
       const result = await callback?.(input, 'tool-1', { signal: new AbortController().signal });
       expect(result).toEqual({});
+    });
+  });
+
+  describe('File snapshot capture', () => {
+    beforeEach(() => {
+      // Clean up any previous fileSnapshots
+      vi.clearAllMocks();
+    });
+
+    it('should capture file snapshots for Write tool', async () => {
+      // Create a test file
+      const testFilePath = path.join(testDir, 'test-file.txt');
+      await fs.writeFile(testFilePath, 'original content');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      // Find the file snapshot hook
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      expect(fileSnapshotHook).toBeDefined();
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content' },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      // Check that the snapshot was captured
+      expect(context.fileSnapshots).toBeDefined();
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('original content');
+    });
+
+    it('should capture file snapshots for Edit tool', async () => {
+      const testFilePath = path.join(testDir, 'edit-test.txt');
+      await fs.writeFile(testFilePath, 'content to edit');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Edit')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: testFilePath,
+          old_string: 'content',
+          new_string: 'modified content'
+        },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('content to edit');
+    });
+
+    it('should capture file snapshots for MultiEdit tool', async () => {
+      const testFilePath = path.join(testDir, 'multiedit-test.txt');
+      await fs.writeFile(testFilePath, 'multi edit content');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('MultiEdit')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'MultiEdit',
+        tool_input: {
+          file_path: testFilePath,
+          edits: [{ old_string: 'multi', new_string: 'multiple' }]
+        },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('multi edit content');
+    });
+
+    it('should capture file snapshots for NotebookEdit tool', async () => {
+      const testFilePath = path.join(testDir, 'notebook-test.ipynb');
+      const notebookContent = JSON.stringify({ cells: [{ source: ['print("hello")'] }] });
+      await fs.writeFile(testFilePath, notebookContent);
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('NotebookEdit')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'NotebookEdit',
+        tool_input: {
+          notebook_path: testFilePath,
+          cell_number: 0,
+          new_source: 'print("world")'
+        },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots?.get(testFilePath)).toBe(notebookContent);
+    });
+
+    it('should handle non-existent files gracefully', async () => {
+      const nonExistentFile = path.join(testDir, 'does-not-exist.txt');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: nonExistentFile, content: 'new file content' },
+      };
+
+      // Should not throw
+      await expect(callback?.(input, 'tool-1', { signal: new AbortController().signal }))
+        .resolves.toBeDefined();
+
+      // Should capture empty string for non-existent file
+      expect(context.fileSnapshots?.get(nonExistentFile)).toBe('');
+    });
+
+    it('should not capture snapshots for non-file-modifying tools', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      // Find any bash hook
+      const bashHook = hooks.PreToolUse?.find(h => h.matcher === 'Bash');
+      const callback = bashHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls -la' },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      // Should not create fileSnapshots for non-file-modifying tools
+      expect(context.fileSnapshots).toBeUndefined();
+    });
+
+    it('should log snapshot capture events', async () => {
+      const testFilePath = path.join(testDir, 'log-test.txt');
+      await fs.writeFile(testFilePath, 'test content');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content' },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      // Check that a log entry was created
+      const task = await store.getTask(taskId);
+      const debugLogs = task?.logs.filter(l => l.level === 'debug' && l.message.includes('File snapshot captured'));
+      expect(debugLogs?.length).toBeGreaterThan(0);
+    });
+
+    it('should handle permission errors gracefully', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      // Use a path that would cause a permission error (if it existed)
+      const restrictedPath = '/root/restricted-file.txt';
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: restrictedPath, content: 'test' },
+      };
+
+      // Should not throw
+      await expect(callback?.(input, 'tool-1', { signal: new AbortController().signal }))
+        .resolves.toBeDefined();
+
+      // Should log warning for permission error
+      const task = await store.getTask(taskId);
+      const warnLogs = task?.logs.filter(l => l.level === 'warn' && l.message.includes('Failed to capture file snapshot'));
+      expect(warnLogs?.length).toBeGreaterThan(0);
+    });
+
+    it('should handle missing file_path input gracefully', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      // Input without file_path
+      const input = {
+        tool_name: 'Write',
+        tool_input: { content: 'test without path' },
+      };
+
+      const result = await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(result).toEqual({});
+      expect(context.fileSnapshots).toBeUndefined(); // Should not create empty map
+    });
+
+    it('should extract file path from different input fields', async () => {
+      const testFilePath = path.join(testDir, 'path-test.txt');
+      await fs.writeFile(testFilePath, 'path field test');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Edit')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      // Test with 'path' field instead of 'file_path'
+      const input = {
+        tool_name: 'Edit',
+        tool_input: { path: testFilePath, old_string: 'old', new_string: 'new' },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('path field test');
+    });
+
+    it('should capture snapshots for multiple files in same context', async () => {
+      const file1 = path.join(testDir, 'multi1.txt');
+      const file2 = path.join(testDir, 'multi2.txt');
+
+      await fs.writeFile(file1, 'content1');
+      await fs.writeFile(file2, 'content2');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      // Capture first file
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: file1, content: 'new1' },
+      }, 'tool-1', { signal: new AbortController().signal });
+
+      // Capture second file
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: file2, content: 'new2' },
+      }, 'tool-2', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots?.get(file1)).toBe('content1');
+      expect(context.fileSnapshots?.get(file2)).toBe('content2');
+      expect(context.fileSnapshots?.size).toBe(2);
+    });
+
+    it('should initialize fileSnapshots map only when needed', async () => {
+      const context: HookContext = { taskId, store };
+
+      expect(context.fileSnapshots).toBeUndefined();
+
+      const hooks = createHooks(context);
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const testFilePath = path.join(testDir, 'init-test.txt');
+      await fs.writeFile(testFilePath, 'init test');
+
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new' },
+      }, 'tool-1', { signal: new AbortController().signal });
+
+      expect(context.fileSnapshots).toBeDefined();
+      expect(context.fileSnapshots).toBeInstanceOf(Map);
+      expect(context.fileSnapshots?.size).toBe(1);
+    });
+
+    it('should log new file creation with proper metadata', async () => {
+      const newFilePath = path.join(testDir, 'brand-new-file.txt');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: newFilePath, content: 'brand new content' },
+      };
+
+      await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+
+      // Check that snapshot was captured as empty string
+      expect(context.fileSnapshots?.get(newFilePath)).toBe('');
+
+      // Check that proper log entry was created with isNewFile metadata
+      const task = await store.getTask(taskId);
+      const debugLogs = task?.logs.filter(l =>
+        l.level === 'debug' &&
+        l.message.includes('File snapshot captured (new file)') &&
+        l.metadata?.isNewFile === true
+      );
+      expect(debugLogs?.length).toBeGreaterThan(0);
+    });
+
+    it('should include file content length in metadata for existing files', async () => {
+      const testFilePath = path.join(testDir, 'metadata-test.txt');
+      const testContent = 'test content for metadata validation';
+      await fs.writeFile(testFilePath, testContent);
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content' },
+      }, 'tool-1', { signal: new AbortController().signal });
+
+      const task = await store.getTask(taskId);
+      const debugLogs = task?.logs.filter(l =>
+        l.level === 'debug' &&
+        l.message.includes('File snapshot captured') &&
+        !l.message.includes('(new file)')
+      );
+
+      expect(debugLogs?.length).toBeGreaterThan(0);
+      const logWithMetadata = debugLogs?.[0];
+      expect(logWithMetadata?.metadata?.contentLength).toBe(testContent.length);
+      expect(logWithMetadata?.metadata?.tool).toBe('Write');
+      expect(logWithMetadata?.metadata?.filePath).toBe(testFilePath);
+    });
+  });
+
+  describe('File snapshot capture integration', () => {
+    it('should capture snapshots in the correct hook execution order', async () => {
+      const testFilePath = path.join(testDir, 'order-test.txt');
+      await fs.writeFile(testFilePath, 'original for order test');
+
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      // Find all pre-tool-use hooks that would match Write
+      const preHooks = hooks.PreToolUse || [];
+      const writeHooks = preHooks.filter(h =>
+        h.matcher === 'Write' || (Array.isArray(h.matcher) && h.matcher.includes('Write'))
+      );
+
+      expect(writeHooks.length).toBeGreaterThan(0);
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content for order test' },
+      };
+
+      // Execute hooks in order
+      for (const hookMatcher of writeHooks) {
+        for (const hookCallback of hookMatcher.hooks) {
+          await hookCallback(input, 'tool-1', { signal: new AbortController().signal });
+        }
+      }
+
+      // Verify snapshot was captured
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('original for order test');
+
+      // Verify logs were created by different hooks
+      const task = await store.getTask(taskId);
+      const allLogs = task?.logs || [];
+      expect(allLogs.length).toBeGreaterThan(1); // Should have multiple log entries
+    });
+
+    it('should work correctly with permission preset manager', async () => {
+      const testFilePath = path.join(testDir, 'permission-test.txt');
+      await fs.writeFile(testFilePath, 'permission test content');
+
+      // Mock permission preset manager
+      const mockPermissionManager = {
+        getCurrentPreset: () => 'testing',
+        isToolDenied: vi.fn().mockResolvedValue(false),
+        isToolAllowed: vi.fn().mockResolvedValue(true),
+        isConfirmationRequired: vi.fn().mockResolvedValue(false),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        permissionPresetManager: mockPermissionManager,
+      };
+
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content' },
+      }, 'tool-1', { signal: new AbortController().signal });
+
+      // Verify snapshot was captured despite permission manager presence
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('permission test content');
+    });
+
+    it('should work with event emitter context', async () => {
+      const testFilePath = path.join(testDir, 'event-test.txt');
+      await fs.writeFile(testFilePath, 'event test content');
+
+      const mockEventEmitter = {
+        emit: vi.fn(),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        eventEmitter: mockEventEmitter,
+      };
+
+      const hooks = createHooks(context);
+
+      const fileSnapshotHook = hooks.PreToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+
+      const callback = fileSnapshotHook?.hooks[0];
+
+      await callback?.({
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new content' },
+      }, 'tool-1', { signal: new AbortController().signal });
+
+      // Verify snapshot was captured
+      expect(context.fileSnapshots?.get(testFilePath)).toBe('event test content');
+
+      // Event emitter should not be called by file snapshot hook
+      // (it's used by other hooks like dangerous operation detection)
+      const fileSnapshotEvents = mockEventEmitter.emit.mock.calls.filter(
+        call => call[1]?.tool === 'Write'
+      );
+      expect(fileSnapshotEvents.length).toBe(0);
     });
   });
 });
