@@ -1237,4 +1237,399 @@ describe('Hooks', () => {
       expect(fileSnapshotEvents.length).toBe(0);
     });
   });
+
+  describe('recordToolStartTime', () => {
+    it('should initialize toolStartTimes map when needed', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      // Find hooks without matcher (general hooks - recordToolStartTime and logToolUsage)
+      const generalHooks = hooks.PreToolUse?.filter(h => !h.matcher) || [];
+      expect(generalHooks.length).toBe(2); // recordToolStartTime and logToolUsage
+      const startTimeHook = generalHooks[0]; // recordToolStartTime should be first
+      const callback = startTimeHook?.hooks[0];
+
+      expect(context.toolStartTimes).toBeUndefined();
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: 'test.txt', content: 'test' },
+      };
+
+      await callback?.(input, 'tool-123', { signal: new AbortController().signal });
+
+      expect(context.toolStartTimes).toBeDefined();
+      expect(context.toolStartTimes).toBeInstanceOf(Map);
+    });
+
+    it('should record start time for given toolUseId', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const generalHooks = hooks.PreToolUse?.filter(h => !h.matcher) || [];
+      const startTimeHook = generalHooks[0]; // recordToolStartTime should be first
+      const callback = startTimeHook?.hooks[0];
+
+      const beforeTime = new Date();
+
+      const input = {
+        tool_name: 'Edit',
+        tool_input: { file_path: 'test.txt', old_string: 'old', new_string: 'new' },
+      };
+
+      await callback?.(input, 'tool-456', { signal: new AbortController().signal });
+
+      const afterTime = new Date();
+
+      expect(context.toolStartTimes?.has('tool-456')).toBe(true);
+      const recordedTime = context.toolStartTimes?.get('tool-456');
+      expect(recordedTime).toBeDefined();
+      expect(recordedTime!.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
+      expect(recordedTime!.getTime()).toBeLessThanOrEqual(afterTime.getTime());
+    });
+
+    it('should handle missing toolUseId gracefully', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const startTimeHook = hooks.PreToolUse?.find(h =>
+        !h.matcher && h.hooks.some(hook => hook.toString().includes('recordToolStartTime'))
+      );
+      const callback = startTimeHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: 'test.txt', content: 'test' },
+      };
+
+      // Should not throw
+      await expect(callback?.(input, undefined, { signal: new AbortController().signal }))
+        .resolves.toEqual({});
+
+      expect(context.toolStartTimes?.size).toBe(0);
+    });
+  });
+
+  describe('recordFileModifyingToolAction', () => {
+    it('should only process file-modifying tools', async () => {
+      const context: HookContext = { taskId, store };
+      const hooks = createHooks(context);
+
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      // Test with non-file-modifying tool
+      const bashInput = {
+        tool_name: 'Bash',
+        tool_input: { command: 'echo hello' },
+      };
+
+      const result = await callback?.(bashInput, 'tool-1', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+    });
+
+    it('should skip when no toolActionStore provided', async () => {
+      const context: HookContext = { taskId, store }; // No toolActionStore
+      const hooks = createHooks(context);
+
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: 'test.txt', content: 'test' },
+      };
+
+      const result = await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+    });
+
+    it('should skip when no file path provided', async () => {
+      // Mock toolActionStore
+      const mockToolActionStore = {
+        recordToolAction: vi.fn(),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+      };
+      const hooks = createHooks(context);
+
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { content: 'test without path' }, // Missing file_path
+      };
+
+      const result = await callback?.(input, 'tool-1', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+      expect(mockToolActionStore.recordToolAction).not.toHaveBeenCalled();
+    });
+
+    it('should record tool action with before and after snapshots', async () => {
+      const testFilePath = path.join(testDir, 'record-test.txt');
+      const originalContent = 'original content for recording';
+      const newContent = 'new content for recording';
+
+      // Create test file
+      await fs.writeFile(testFilePath, originalContent);
+
+      // Mock toolActionStore
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockResolvedValue({ id: 'action-123' }),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        currentAgent: 'testAgent',
+        currentStage: 'testStage',
+        fileSnapshots: new Map([[testFilePath, originalContent]]),
+        toolStartTimes: new Map([['tool-record', new Date(Date.now() - 1000)]]),
+      };
+
+      // Simulate file change after tool execution
+      await fs.writeFile(testFilePath, newContent);
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: newContent },
+      };
+
+      await callback?.(input, 'tool-record', { signal: new AbortController().signal });
+
+      // Verify recordToolAction was called
+      expect(mockToolActionStore.recordToolAction).toHaveBeenCalledTimes(1);
+
+      const callArgs = mockToolActionStore.recordToolAction.mock.calls[0];
+      const [recordedTaskId, execution, modifiedFiles, beforeSnapshots, afterSnapshots] = callArgs;
+
+      expect(recordedTaskId).toBe(taskId);
+      expect(execution.toolName).toBe('Write');
+      expect(execution.agentName).toBe('testAgent');
+      expect(execution.stageName).toBe('testStage');
+      expect(execution.callId).toBe('tool-record');
+      expect(modifiedFiles).toEqual([testFilePath]);
+      expect(beforeSnapshots).toHaveLength(1);
+      expect(afterSnapshots).toHaveLength(1);
+
+      // Check snapshot contents
+      expect(beforeSnapshots[0].content).toBe(originalContent);
+      expect(afterSnapshots[0].content).toBe(newContent);
+      expect(beforeSnapshots[0].filePath).toBe(testFilePath);
+      expect(afterSnapshots[0].filePath).toBe(testFilePath);
+    });
+
+    it('should handle file deletion (after-snapshot)', async () => {
+      const testFilePath = path.join(testDir, 'delete-test.txt');
+      const originalContent = 'content to be deleted';
+
+      // Create test file
+      await fs.writeFile(testFilePath, originalContent);
+
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockResolvedValue({ id: 'action-delete' }),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        fileSnapshots: new Map([[testFilePath, originalContent]]),
+        toolStartTimes: new Map([['tool-delete', new Date()]]),
+      };
+
+      // Delete the file to simulate tool execution result
+      await fs.unlink(testFilePath);
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Edit')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Edit',
+        tool_input: { file_path: testFilePath, old_string: 'content', new_string: '' },
+      };
+
+      await callback?.(input, 'tool-delete', { signal: new AbortController().signal });
+
+      expect(mockToolActionStore.recordToolAction).toHaveBeenCalled();
+      const [, , , beforeSnapshots, afterSnapshots] = mockToolActionStore.recordToolAction.mock.calls[0];
+
+      expect(beforeSnapshots[0].content).toBe(originalContent);
+      expect(afterSnapshots[0].content).toBe('');
+      expect(afterSnapshots[0].metadata?.exists).toBe(false);
+    });
+
+    it('should handle new file creation (before-snapshot)', async () => {
+      const testFilePath = path.join(testDir, 'new-file-test.txt');
+      const newContent = 'new file content';
+
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockResolvedValue({ id: 'action-new' }),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        fileSnapshots: new Map([[testFilePath, '']]), // Empty string for new file
+        toolStartTimes: new Map([['tool-new', new Date()]]),
+      };
+
+      // Create the file to simulate tool execution
+      await fs.writeFile(testFilePath, newContent);
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: newContent },
+      };
+
+      await callback?.(input, 'tool-new', { signal: new AbortController().signal });
+
+      expect(mockToolActionStore.recordToolAction).toHaveBeenCalled();
+      const [, , , beforeSnapshots, afterSnapshots] = mockToolActionStore.recordToolAction.mock.calls[0];
+
+      expect(beforeSnapshots[0].content).toBe('');
+      expect(beforeSnapshots[0].existed).toBe(false); // New file
+      expect(afterSnapshots[0].content).toBe(newContent);
+      expect(afterSnapshots[0].metadata?.exists).toBe(true);
+    });
+
+    it('should clean up context after recording', async () => {
+      const testFilePath = path.join(testDir, 'cleanup-test.txt');
+      await fs.writeFile(testFilePath, 'cleanup content');
+
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockResolvedValue({ id: 'action-cleanup' }),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        fileSnapshots: new Map([[testFilePath, 'cleanup content']]),
+        toolStartTimes: new Map([['tool-cleanup', new Date()]]),
+      };
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('Write')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'Write',
+        tool_input: { file_path: testFilePath, content: 'new cleanup content' },
+      };
+
+      await callback?.(input, 'tool-cleanup', { signal: new AbortController().signal });
+
+      // Verify context was cleaned up
+      expect(context.fileSnapshots?.has(testFilePath)).toBe(false);
+      expect(context.toolStartTimes?.has('tool-cleanup')).toBe(false);
+    });
+
+    it('should log success message after recording', async () => {
+      const testFilePath = path.join(testDir, 'log-success.txt');
+      await fs.writeFile(testFilePath, 'log success content');
+
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockResolvedValue({ id: 'action-log' }),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        fileSnapshots: new Map([[testFilePath, 'log success content']]),
+        toolStartTimes: new Map([['tool-log', new Date()]]),
+      };
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('MultiEdit')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'MultiEdit',
+        tool_input: { file_path: testFilePath, edits: [] },
+      };
+
+      await callback?.(input, 'tool-log', { signal: new AbortController().signal });
+
+      // Check that success was logged
+      const task = await store.getTask(taskId);
+      const debugLogs = task?.logs.filter(l =>
+        l.level === 'debug' && l.message.includes('Tool action recorded: MultiEdit')
+      );
+      expect(debugLogs?.length).toBeGreaterThan(0);
+    });
+
+    it('should handle errors gracefully and log warnings', async () => {
+      const testFilePath = path.join(testDir, 'error-test.txt');
+
+      const mockToolActionStore = {
+        recordToolAction: vi.fn().mockRejectedValue(new Error('Database error')),
+      };
+
+      const context: HookContext = {
+        taskId,
+        store,
+        toolActionStore: mockToolActionStore as any,
+        fileSnapshots: new Map([[testFilePath, 'error content']]),
+        toolStartTimes: new Map([['tool-error', new Date()]]),
+      };
+
+      await fs.writeFile(testFilePath, 'error content');
+
+      const hooks = createHooks(context);
+      const recordHook = hooks.PostToolUse?.find(h =>
+        Array.isArray(h.matcher) && h.matcher.includes('NotebookEdit')
+      );
+      const callback = recordHook?.hooks[0];
+
+      const input = {
+        tool_name: 'NotebookEdit',
+        tool_input: { notebook_path: testFilePath, cell_number: 0, new_source: 'test' },
+      };
+
+      // Should not throw
+      const result = await callback?.(input, 'tool-error', { signal: new AbortController().signal });
+      expect(result).toEqual({});
+
+      // Check that error was logged
+      const task = await store.getTask(taskId);
+      const warnLogs = task?.logs.filter(l =>
+        l.level === 'warn' && l.message.includes('Failed to record tool action')
+      );
+      expect(warnLogs?.length).toBeGreaterThan(0);
+    });
+  });
 });

@@ -396,6 +396,11 @@ export function createHooks(context: HookContext): HooksConfig {
         ],
         timeout: 5,
       },
+      // Record tool start time for duration tracking
+      {
+        hooks: [createHookCallback(context, recordToolStartTime)],
+        timeout: 1,
+      },
       // Log all tool usage
       {
         hooks: [createHookCallback(context, logToolUsage)],
@@ -403,6 +408,12 @@ export function createHooks(context: HookContext): HooksConfig {
       },
     ],
     PostToolUse: [
+      // Record file-modifying tool actions with snapshots
+      {
+        matcher: FILE_MODIFYING_TOOLS,
+        hooks: [createHookCallback(context, recordFileModifyingToolAction)],
+        timeout: 10,
+      },
       // Log results
       {
         hooks: [createHookCallback(context, logToolResult)],
