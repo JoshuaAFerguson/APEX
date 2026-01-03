@@ -379,6 +379,37 @@ export const commands: Command[] = [
           );
         }
         console.log();
+
+        // Show pending approvals
+        const pendingApprovals = await ctx.orchestrator.getPendingApprovals();
+        if (pendingApprovals.length > 0) {
+          console.log(chalk.cyan('Pending Approvals:\n'));
+
+          for (const approval of pendingApprovals) {
+            // Get the task to display its description/name
+            const approvalTask = await ctx.orchestrator.getTask(approval.taskId);
+            const taskName = approvalTask?.description || `Task ${approval.taskId.substring(0, 8)}`;
+
+            // Calculate time waiting
+            const timeWaiting = Math.floor((Date.now() - approval.requestedAt.getTime()) / (1000 * 60)); // minutes
+            let timeDisplay: string;
+            if (timeWaiting < 60) {
+              timeDisplay = `${timeWaiting}m`;
+            } else {
+              const hours = Math.floor(timeWaiting / 60);
+              const mins = timeWaiting % 60;
+              timeDisplay = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h ${mins}m`;
+            }
+
+            console.log(
+              `  ${chalk.yellow('⏳')} ${chalk.bold(approval.gateName)} - ${taskName}`
+            );
+            console.log(
+              `    ${chalk.gray(`Waiting: ${timeDisplay} • Task: ${approval.taskId.substring(0, 16)}`)}`
+            );
+            console.log();
+          }
+        }
       }
     },
   },

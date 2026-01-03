@@ -355,39 +355,12 @@ describe('ResourceUsageDashboard', () => {
   });
 
   const createMockDashboardProps = (): ResourceUsageDashboardProps => ({
-    warnings: [
-      {
-        type: 'tokens',
-        threshold: 80,
-        currentValue: 8500,
-        limitValue: 10000,
-        percentage: 85,
-        message: 'Token usage high',
-      },
-      {
-        type: 'cost',
-        threshold: 75,
-        currentValue: 18.75,
-        limitValue: 25.00,
-        percentage: 75,
-        message: 'Cost approaching limit',
-      },
-    ],
-    exceeded: [
-      {
-        type: 'time',
-        currentValue: 420000, // 7 minutes
-        limitValue: 300000,   // 5 minutes
-        message: 'Time limit exceeded',
-      },
-    ],
-    currentUsage: {
+    usage: {
       tokens: 8500,
       cost: 18.75,
       time: 420000,
       files: 25,
       lines: 2500,
-      turns: 15,
     },
     limits: {
       tokens: 10000,
@@ -395,8 +368,8 @@ describe('ResourceUsageDashboard', () => {
       time: 300000,
       files: 50,
       lines: 5000,
-      turns: 20,
     },
+    taskDescription: 'Test task',
   });
 
   it('renders dashboard with warnings and exceeded limits', () => {

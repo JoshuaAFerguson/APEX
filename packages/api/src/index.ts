@@ -17,6 +17,9 @@ import {
   SubtaskDefinition,
   TaskTemplate,
   HealthMetrics,
+  ApprovalRequiredEventData,
+  ApprovalGrantedEventData,
+  ApprovalDeniedEventData,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -1564,7 +1567,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   // Approval events (v0.5.0)
-  orchestrator.on('approval:required', (eventData: import('@apexcli/core').ApprovalRequiredEventData) => {
+  orchestrator.on('approval:required', (eventData: ApprovalRequiredEventData) => {
     broadcast(eventData.taskId, {
       type: 'approval:required',
       taskId: eventData.taskId,
@@ -1589,7 +1592,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('approval:approved', (eventData: import('@apexcli/core').ApprovalGrantedEventData) => {
+  orchestrator.on('approval:approved', (eventData: ApprovalGrantedEventData) => {
     broadcast(eventData.taskId, {
       type: 'approval:granted',
       taskId: eventData.taskId,
@@ -1602,7 +1605,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  orchestrator.on('approval:denied', (eventData: import('@apexcli/core').ApprovalDeniedEventData) => {
+  orchestrator.on('approval:denied', (eventData: ApprovalDeniedEventData) => {
     broadcast(eventData.taskId, {
       type: 'approval:denied',
       taskId: eventData.taskId,
@@ -1698,6 +1701,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • agent:message/thinking/tool-use - Agent activity`);
       console.log(`    • tool:start/progress/complete - Tool call lifecycle events (v0.5.0)`);
       console.log(`    • subtask:created/completed/failed - Subtask events`);
+      console.log(`    • approval:required         - Approval gate reached (v0.5.0)`);
+      console.log(`    • approval:granted          - Approval request granted (v0.5.0)`);
+      console.log(`    • approval:denied           - Approval request denied (v0.5.0)`);
       console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }
   } catch (error) {

@@ -6204,6 +6204,13 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   getToolActionStore(): ToolActionStore {
     return this.toolActionStore;
   }
+
+  /**
+   * Get all pending approvals from the task store
+   */
+  async getPendingApprovals(): Promise<ApprovalState[]> {
+    return await this.store.getPendingApprovals();
+  }
 }
 
 export { TaskStore, ToolActionStore } from './store';
