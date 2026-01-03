@@ -2168,6 +2168,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                     timestamp: endTime,
                   });
 
+                  // Record tool action for file-modifying tools
+                  try {
+                    await this.recordFileModifyingToolAction(task.id, completedExecution);
+                  } catch (error) {
+                    await this.store.addLog(task.id, {
+                      level: 'error',
+                      message: `Failed to record tool action for ${toolExecution.toolName}: ${String(error)}`,
+                      metadata: {
+                        toolName: toolExecution.toolName,
+                        callId,
+                        error: String(error),
+                      },
+                    });
+                  }
+
                   // Clean up active execution tracking
                   this.activeToolExecutions.delete(callId);
                 }
@@ -6314,6 +6329,137 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     }
 
     return filePaths;
+  }
+
+  /**
+   * Record tool action for file-modifying tools with before/after snapshots
+   * @param taskId Task ID
+   * @param toolExecution Completed tool execution
+   */
+  private async recordFileModifyingToolAction(taskId: string, toolExecution: ToolExecution): Promise<void> {
+    // Only record for file-modifying tools
+    if (!FILE_MODIFYING_TOOLS.includes(toolExecution.toolName)) {
+      return;
+    }
+
+    // Only record for successful tool executions
+    if (toolExecution.status !== 'completed' || !toolExecution.result?.success) {
+      return;
+    }
+
+    const modifiedFiles: string[] = [];
+    const beforeSnapshots: FileSnapshot[] = [];
+    const afterSnapshots: FileSnapshot[] = [];
+
+    try {
+      // Get file paths from tool input
+      const filePaths = this.extractFilePathsFromToolInput(toolExecution.toolName, toolExecution.input);
+
+      // Get before snapshots from hooks context if available
+      const hookContext = this.currentHookContext;
+      if (hookContext?.fileSnapshots) {
+        for (const filePath of filePaths) {
+          const beforeContent = hookContext.fileSnapshots.get(filePath);
+          if (beforeContent !== undefined) {
+            // Create before snapshot from hooks data
+            const beforeSnapshot = await this.createFileSnapshotFromContent(
+              filePath,
+              beforeContent,
+              true // existed before
+            );
+            if (beforeSnapshot) {
+              beforeSnapshots.push(beforeSnapshot);
+            }
+          }
+        }
+      }
+
+      // Create after snapshots for all modified files
+      for (const filePath of filePaths) {
+        try {
+          const afterSnapshot = await this.createFileSnapshot(filePath, true);
+          if (afterSnapshot) {
+            afterSnapshots.push(afterSnapshot);
+            modifiedFiles.push(filePath);
+          }
+        } catch (error) {
+          // Log but continue with other files
+          await this.store.addLog(taskId, {
+            level: 'warn',
+            message: `Failed to create after snapshot for ${filePath}: ${String(error)}`,
+            metadata: { filePath, error: String(error) },
+          });
+        }
+      }
+
+      // Only record if we have modified files
+      if (modifiedFiles.length > 0) {
+        await this.store.recordToolAction(
+          taskId,
+          toolExecution,
+          modifiedFiles,
+          beforeSnapshots,
+          afterSnapshots
+        );
+
+        await this.store.addLog(taskId, {
+          level: 'debug',
+          message: `Recorded tool action for ${toolExecution.toolName} with ${modifiedFiles.length} file(s)`,
+          metadata: {
+            toolName: toolExecution.toolName,
+            modifiedFiles,
+            beforeSnapshotsCount: beforeSnapshots.length,
+            afterSnapshotsCount: afterSnapshots.length,
+          },
+        });
+      }
+    } catch (error) {
+      throw new Error(`Failed to record tool action: ${String(error)}`);
+    }
+  }
+
+  /**
+   * Create a FileSnapshot object from existing content (for before snapshots)
+   * @param filePath Absolute path to the file
+   * @param content File content
+   * @param existed Whether the file existed
+   * @returns FileSnapshot object
+   */
+  private async createFileSnapshotFromContent(
+    filePath: string,
+    content: string,
+    existed: boolean = true
+  ): Promise<FileSnapshot | null> {
+    try {
+      const checksum = crypto.createHash('sha256').update(content).digest('hex');
+      const now = new Date();
+
+      // Try to get actual file stats if file exists
+      let fileStats: fs.Stats | null = null;
+      try {
+        fileStats = fs.statSync(filePath);
+      } catch {
+        // File doesn't exist or can't be accessed
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        filePath,
+        content,
+        checksum,
+        fileSize: content.length,
+        lastModified: fileStats?.mtime || now,
+        snapshotTime: now,
+        existed,
+      };
+    } catch (error) {
+      await this.store.addLog(this.currentHookContext?.taskId || '', {
+        level: 'warn',
+        message: `Failed to create file snapshot from content for ${filePath}: ${String(error)}`,
+        metadata: { filePath, error: String(error) },
+      });
+      return null;
+    }
   }
 
   /**
