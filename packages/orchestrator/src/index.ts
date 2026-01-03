@@ -3,6 +3,8 @@ import { EventEmitter } from 'eventemitter3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   ApexConfig,
   AgentDefinition,
@@ -63,7 +65,7 @@ import {
   isPlanningStage,
   type DecompositionRequest,
 } from './prompts';
-import { createHooks } from './hooks';
+import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
 import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
@@ -71,6 +73,7 @@ import { InteractionManager } from './interaction-manager';
 import { PermissionStore } from './permission-store';
 import { PermissionManager } from './permission-manager';
 import { PermissionPresetManager } from './permission-preset-manager';
+import { LinterService } from './linter';
 
 const execAsync = promisify(exec);
 
@@ -431,6 +434,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionManager!: PermissionManager;
   private permissionPresetManager!: PermissionPresetManager;
   private policyEnforcer!: PolicyEnforcer;
+  private linterService!: LinterService;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -450,6 +454,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   // Tool execution tracking with full timing information
   private activeToolExecutions: Map<string, ToolExecution> = new Map();
+
+  // Store hooks context for accessing file snapshots during tool completion
+  private currentHookContext: HookContext | null = null;
 
   constructor(options: OrchestratorOptions) {
     super();
@@ -519,6 +526,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Initialize policy enforcer
     this.policyEnforcer = createPolicyEnforcer(this.config.policy);
+
+    // Initialize linter service
+    this.linterService = new LinterService({
+      projectPath: this.projectPath,
+      defaultTimeout: this.config.linter?.global?.timeoutMs,
+      maxConcurrency: this.config.linter?.global?.maxConcurrency,
+      autoFix: {
+        enabled: this.config.linter?.global?.enabled ?? false,
+      },
+    });
+    await this.linterService.initialize();
 
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
@@ -1901,8 +1919,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       stagePrompt = `${resumeContext}\n\n${stagePrompt}`;
     }
 
-    // Create hooks for this stage
-    const hooks = createHooks({
+    // Create hooks context for this stage
+    const hookContext: HookContext = {
       taskId: task.id,
       store: this.store,
       permissionPresetManager: this.permissionPresetManager,
@@ -1914,7 +1932,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           this.emit(event as any, data);
         },
       },
-    });
+    };
+
+    // Store the context for access during tool completion
+    this.currentHookContext = hookContext;
+
+    // Create hooks for this stage
+    const hooks = createHooks(hookContext);
 
     // Track usage for this stage
     let stageUsage: TaskUsage = {
@@ -2796,6 +2820,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getAgents(): Promise<Record<string, AgentDefinition>> {
     await this.ensureInitialized();
     return this.agents;
+  }
+
+  /**
+   * Get linter service instance
+   */
+  getLinterService(): LinterService {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized before accessing LinterService');
+    }
+    return this.linterService;
   }
 
   /**
@@ -6206,6 +6240,80 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    */
   isToolExecutionActive(callId: string): boolean {
     return this.activeToolExecutions.has(callId);
+  }
+
+  /**
+   * Create a FileSnapshot object for a given file path
+   * @param filePath Absolute path to the file
+   * @param existed Whether the file existed before the operation
+   * @returns FileSnapshot object or null if file cannot be read
+   */
+  private async createFileSnapshot(filePath: string, existed: boolean = true): Promise<FileSnapshot | null> {
+    try {
+      let content = '';
+      let fileStats: fs.Stats | null = null;
+
+      if (existed) {
+        try {
+          content = fs.readFileSync(filePath, 'utf8');
+          fileStats = fs.statSync(filePath);
+        } catch (error) {
+          // File doesn't exist, treat as non-existent
+          existed = false;
+        }
+      }
+
+      const checksum = crypto.createHash('sha256').update(content).digest('hex');
+      const now = new Date();
+
+      return {
+        id: crypto.randomUUID(),
+        filePath,
+        content,
+        checksum,
+        fileSize: content.length,
+        lastModified: fileStats?.mtime || now,
+        snapshotTime: now,
+        existed,
+      };
+    } catch (error) {
+      await this.store.addLog(this.currentHookContext?.taskId || '', {
+        level: 'warn',
+        message: `Failed to create file snapshot for ${filePath}: ${String(error)}`,
+        metadata: { filePath, error: String(error) },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Extract file paths from tool input for file-modifying tools
+   * @param toolName Name of the tool
+   * @param toolInput Input parameters for the tool
+   * @returns Array of file paths that might be modified
+   */
+  private extractFilePathsFromToolInput(toolName: string, toolInput: Record<string, unknown>): string[] {
+    const filePaths: string[] = [];
+
+    // Extract file path based on tool type
+    if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
+      filePaths.push(toolInput.file_path);
+    } else if ('notebook_path' in toolInput && typeof toolInput.notebook_path === 'string') {
+      filePaths.push(toolInput.notebook_path);
+    } else if ('path' in toolInput && typeof toolInput.path === 'string') {
+      filePaths.push(toolInput.path);
+    }
+
+    // For MultiEdit, extract all file paths
+    if (toolName === 'MultiEdit' && 'edits' in toolInput && Array.isArray(toolInput.edits)) {
+      for (const edit of toolInput.edits) {
+        if (typeof edit === 'object' && edit && 'file_path' in edit && typeof edit.file_path === 'string') {
+          filePaths.push(edit.file_path);
+        }
+      }
+    }
+
+    return filePaths;
   }
 
   /**
