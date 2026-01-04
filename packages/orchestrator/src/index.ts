@@ -75,6 +75,7 @@ import { PermissionStore } from './permission-store';
 import { PermissionManager } from './permission-manager';
 import { PermissionPresetManager } from './permission-preset-manager';
 import { LinterService } from './linter';
+import { generateFileDiff, type DiffResult } from './utils/diff';
 
 const execAsync = promisify(exec);
 
@@ -171,6 +172,9 @@ export interface OrchestratorEvents {
   'tool:start': (event: ToolCallStartEvent) => void;
   'tool:progress': (event: ToolCallProgressEvent) => void;
   'tool:complete': (event: ToolCallCompleteEvent) => void;
+
+  // Diff preview events (v0.5.0)
+  'diff:preview': (event: DiffPreviewEvent) => void;
 
   // Lint events (v0.5.0)
   'lint:started': (event: LintStartedEventData) => void;
@@ -413,6 +417,21 @@ export interface ToolCallCompleteEvent {
     endTime: Date;
     duration: number; // milliseconds
   };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for diff:preview event (v0.5.0)
+ * Emitted when a file edit is about to be applied and diff preview is enabled
+ */
+export interface DiffPreviewEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  filePath: string;
+  diff: string;
+  addedLines: number;
+  removedLines: number;
   timestamp: Date;
 }
 

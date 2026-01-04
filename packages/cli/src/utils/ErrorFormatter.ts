@@ -479,3 +479,10 @@ export const formatError = {
   application: (message: string, context?: ErrorContext, suggestions?: ErrorSuggestion[]) =>
     defaultErrorFormatter.format({ type: ErrorType.APPLICATION, message, context, suggestions }),
 };
+
+/**
+ * Convenience function to parse TypeScript compiler errors from tsc output
+ */
+export const parseTypeScriptErrors = (tscOutput: string): FormattedError[] => {
+  return defaultErrorFormatter.parseTypeScriptErrors(tscOutput);
+};

@@ -12,6 +12,7 @@ import {
   ErrorContext,
   ErrorSuggestion,
   formatError,
+  parseTypeScriptErrors,
 } from '../ErrorFormatter.js';
 
 console.log('='.repeat(60));
@@ -191,6 +192,25 @@ console.log();
 
 console.log('Verbose verbosity:');
 console.log(verboseFormatter.format(complexError));
+console.log();
+
+// Demo 8: TypeScript Error Parsing
+console.log('8. TypeScript Error Parsing:');
+console.log('');
+
+const tscOutput = `src/types/User.ts(42,15): error TS2339: Property 'username' does not exist on type 'UserData'.
+src/utils/helper.ts:25:8 - error TS2304: Cannot find name 'UnknownInterface'.
+src/components/App.tsx(10,5): error TS2322: Type 'string' is not assignable to type 'number'.`;
+
+console.log('Raw tsc output:');
+console.log(tscOutput);
+console.log();
+
+const parsedErrors = parseTypeScriptErrors(tscOutput);
+console.log(`Parsed ${parsedErrors.length} TypeScript errors:`);
+console.log();
+
+console.log(normalFormatter.formatMultiple(parsedErrors));
 console.log();
 
 console.log('='.repeat(60));

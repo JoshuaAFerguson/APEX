@@ -8,6 +8,7 @@ import {
   FormattedError,
   defaultErrorFormatter,
   formatError,
+  parseTypeScriptErrors,
 } from '../ErrorFormatter.js';
 
 describe('ErrorFormatter', () => {
@@ -386,6 +387,21 @@ describe('ErrorFormatter', () => {
       expect(errors[0].context?.file).toBe('src/test.ts');
       expect(errors[0].context?.line).toBe(1);
       expect(errors[0].context?.column).toBe(1);
+    });
+  });
+
+  describe('parseTypeScriptErrors convenience function', () => {
+    it('should be available as standalone function', () => {
+      expect(typeof parseTypeScriptErrors).toBe('function');
+    });
+
+    it('should work the same as instance method', () => {
+      const tscOutput = `src/test.ts(1,1): error TS2339: Property 'test' does not exist on type 'object'.`;
+
+      const instanceErrors = formatter.parseTypeScriptErrors(tscOutput);
+      const standaloneErrors = parseTypeScriptErrors(tscOutput);
+
+      expect(instanceErrors).toEqual(standaloneErrors);
     });
   });
 });
