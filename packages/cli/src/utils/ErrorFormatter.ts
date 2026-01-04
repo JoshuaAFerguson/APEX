@@ -280,6 +280,176 @@ export class ErrorFormatter {
 
     return sections.join('\n');
   }
+
+  /**
+   * Parse TypeScript compiler errors from tsc output
+   * Supports both single-line and multi-line formats:
+   * - src/file.ts(42,15): error TS2339: Property 'foo' does not exist on type 'Bar'.
+   * - src/file.ts:42:15 - error TS2339: Property 'foo' does not exist on type 'Bar'.
+   */
+  parseTypeScriptErrors(tscOutput: string): FormattedError[] {
+    const errors: FormattedError[] = [];
+
+    // Regex patterns for TypeScript compiler errors
+    // Pattern 1: file.ts(line,col): error TSxxxx: message
+    const singleLinePattern = /^(.+?)\((\d+),(\d+)\):\s*error\s+(TS\d+):\s*(.+)$/gm;
+
+    // Pattern 2: file.ts:line:col - error TSxxxx: message
+    const colonFormatPattern = /^(.+?):(\d+):(\d+)\s*-\s*error\s+(TS\d+):\s*(.+)$/gm;
+
+    // Extract errors using single-line pattern
+    let match;
+    while ((match = singleLinePattern.exec(tscOutput)) !== null) {
+      const [, filePath, line, column, errorCode, message] = match;
+
+      errors.push({
+        type: ErrorType.CONFIG, // TypeScript errors are typically configuration/compilation issues
+        message: `${errorCode}: ${message.trim()}`,
+        context: {
+          file: filePath.trim(),
+          line: parseInt(line, 10),
+          column: parseInt(column, 10),
+          description: `TypeScript compilation error`
+        },
+        suggestions: this.generateTypeScriptSuggestions(errorCode, message.trim())
+      });
+    }
+
+    // Extract errors using colon format pattern
+    while ((match = colonFormatPattern.exec(tscOutput)) !== null) {
+      const [, filePath, line, column, errorCode, message] = match;
+
+      // Avoid duplicates if both patterns match the same error
+      const isDuplicate = errors.some(error =>
+        error.context?.file === filePath.trim() &&
+        error.context?.line === parseInt(line, 10) &&
+        error.context?.column === parseInt(column, 10)
+      );
+
+      if (!isDuplicate) {
+        errors.push({
+          type: ErrorType.CONFIG,
+          message: `${errorCode}: ${message.trim()}`,
+          context: {
+            file: filePath.trim(),
+            line: parseInt(line, 10),
+            column: parseInt(column, 10),
+            description: `TypeScript compilation error`
+          },
+          suggestions: this.generateTypeScriptSuggestions(errorCode, message.trim())
+        });
+      }
+    }
+
+    return errors;
+  }
+
+  /**
+   * Generate helpful suggestions for common TypeScript errors
+   */
+  private generateTypeScriptSuggestions(errorCode: string, message: string): ErrorSuggestion[] {
+    const suggestions: ErrorSuggestion[] = [];
+
+    switch (errorCode) {
+      case 'TS2339': // Property does not exist on type
+        if (message.includes('does not exist on type')) {
+          const propertyMatch = message.match(/Property '([^']+)'/);
+          const typeMatch = message.match(/on type '([^']+)'/);
+
+          if (propertyMatch && typeMatch) {
+            const property = propertyMatch[1];
+            const type = typeMatch[1];
+
+            suggestions.push({
+              title: 'Add missing property to type definition',
+              description: `Add the "${property}" property to the ${type} interface or type`,
+              command: `// Add to ${type} definition:\n${property}: any; // or appropriate type`
+            });
+
+            suggestions.push({
+              title: 'Use optional chaining',
+              description: 'Access the property safely using optional chaining operator',
+              command: `obj.${property}?.value`
+            });
+
+            suggestions.push({
+              title: 'Check property name spelling',
+              description: 'Verify the property name is spelled correctly and exists'
+            });
+          }
+        }
+        break;
+
+      case 'TS2304': // Cannot find name
+        const nameMatch = message.match(/Cannot find name '([^']+)'/);
+        if (nameMatch) {
+          const name = nameMatch[1];
+          suggestions.push({
+            title: 'Import missing module or type',
+            description: `Import the "${name}" from the appropriate module`,
+            command: `import { ${name} } from 'module-name';`
+          });
+
+          suggestions.push({
+            title: 'Install type definitions',
+            description: 'Install TypeScript definitions for the library',
+            command: `npm install --save-dev @types/${name.toLowerCase()}`
+          });
+        }
+        break;
+
+      case 'TS2322': // Type is not assignable to type
+        suggestions.push({
+          title: 'Check type compatibility',
+          description: 'Ensure the assigned value matches the expected type'
+        });
+
+        suggestions.push({
+          title: 'Add type assertion',
+          description: 'Use type assertion if you know the type is correct',
+          command: 'value as ExpectedType'
+        });
+        break;
+
+      case 'TS2345': // Argument of type is not assignable to parameter of type
+        suggestions.push({
+          title: 'Check function parameters',
+          description: 'Verify the argument types match the function signature'
+        });
+
+        suggestions.push({
+          title: 'Convert argument type',
+          description: 'Convert the argument to the expected type'
+        });
+        break;
+
+      case 'TS2307': // Cannot find module
+        const moduleMatch = message.match(/Cannot find module '([^']+)'/);
+        if (moduleMatch) {
+          const moduleName = moduleMatch[1];
+          suggestions.push({
+            title: 'Install missing package',
+            description: `Install the "${moduleName}" package`,
+            command: `npm install ${moduleName}`
+          });
+
+          suggestions.push({
+            title: 'Check import path',
+            description: 'Verify the import path is correct relative to current file'
+          });
+        }
+        break;
+
+      default:
+        suggestions.push({
+          title: 'Check TypeScript documentation',
+          description: `Look up error ${errorCode} in TypeScript documentation`,
+          command: `https://www.typescriptlang.org/docs/`
+        });
+    }
+
+    return suggestions;
+  }
 }
 
 /**

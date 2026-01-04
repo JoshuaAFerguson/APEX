@@ -11,13 +11,15 @@ export default defineConfig({
       ['**/packages/cli/src/__tests__/**', 'node'],
       ['**/packages/cli/src/services/**', 'node'],
     ],
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.integration.test.ts', 'packages/*/src/**/*.e2e.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
+    include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.stress.test.ts', 'packages/*/src/**/*.edge.test.ts', 'packages/*/src/**/*.integration.test.ts', 'packages/*/src/**/*.e2e.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['packages/*/src/**/*.ts'],
       exclude: [
         '**/*.test.ts',
+        '**/*.stress.test.ts',
+        '**/*.edge.test.ts',
         '**/*.d.ts',
         // CLI is mostly wiring code that calls into core/orchestrator/api
         // It's tested via integration tests and manual testing

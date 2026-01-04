@@ -370,4 +370,22 @@ describe('ErrorFormatter', () => {
       expect(defaultErrorFormatter['verbosity']).toBe(ErrorVerbosity.NORMAL);
     });
   });
+
+  describe('parseTypeScriptErrors method', () => {
+    it('should have parseTypeScriptErrors method', () => {
+      expect(typeof formatter.parseTypeScriptErrors).toBe('function');
+    });
+
+    it('should parse a simple TypeScript error', () => {
+      const tscOutput = `src/test.ts(1,1): error TS2339: Property 'test' does not exist on type 'object'.`;
+      const errors = formatter.parseTypeScriptErrors(tscOutput);
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type).toBe(ErrorType.CONFIG);
+      expect(errors[0].message).toContain('TS2339');
+      expect(errors[0].context?.file).toBe('src/test.ts');
+      expect(errors[0].context?.line).toBe(1);
+      expect(errors[0].context?.column).toBe(1);
+    });
+  });
 });
