@@ -67,6 +67,7 @@ import {
   type DecompositionRequest,
 } from './prompts';
 import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
+import { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
 import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
@@ -186,6 +187,12 @@ export interface OrchestratorEvents {
   'undo:start': (taskId: string) => void;
   'undo:complete': (taskId: string, actionId: string, restoredFiles: string[]) => void;
   'undo:error': (taskId: string, actionId: string | null, error: string) => void;
+
+  // Hook events (v0.5.0)
+  'hook:pre:start': (event: HookExecutionStartEvent) => void;
+  'hook:pre:complete': (event: HookExecutionCompleteEvent) => void;
+  'hook:post:start': (event: HookExecutionStartEvent) => void;
+  'hook:post:complete': (event: HookExecutionCompleteEvent) => void;
 }
 
 /**
@@ -536,6 +543,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionPresetManager!: PermissionPresetManager;
   private policyEnforcer!: PolicyEnforcer;
   private linterService!: LinterService;
+  private hookManager!: HookManager;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -641,6 +649,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
     await this.linterService.initialize();
+
+    // Initialize hook manager
+    this.hookManager = new HookManager(
+      this.projectPath,
+      this.store,
+      this.config.hooks || [],
+      this.config.toolHooks || { pre: [], post: [], enabled: true, defaultTimeoutMs: 30000 }
+    );
+
+    // Forward hook events from hook manager
+    this.setupHookEventForwarding();
 
     // Forward linter events from linter service
     this.setupLinterEventForwarding();
@@ -2052,13 +2071,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           this.emit(event as any, data);
         },
       },
+      toolActionStore: this.toolActionStore,
+      currentAgent: agent.name,
+      currentStage: stage.name,
+      toolStartTimes: new Map(),
     };
 
     // Store the context for access during tool completion
     this.currentHookContext = hookContext;
 
     // Create hooks for this stage
-    const hooks = createHooks(hookContext);
+    const hooks = this.createHooksWithManager(hookContext, agent.name, stage.name);
 
     // Track usage for this stage
     let stageUsage: TaskUsage = {
@@ -5997,6 +6020,153 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Set up hook event forwarding
+   * Forwards hook events from hook manager to orchestrator events
+   */
+  private setupHookEventForwarding(): void {
+    // Forward hook:pre:start events
+    this.hookManager.on('hook:pre:start', (event) => {
+      this.emit('hook:pre:start', event);
+    });
+
+    // Forward hook:pre:complete events
+    this.hookManager.on('hook:pre:complete', (event) => {
+      this.emit('hook:pre:complete', event);
+    });
+
+    // Forward hook:post:start events
+    this.hookManager.on('hook:post:start', (event) => {
+      this.emit('hook:post:start', event);
+    });
+
+    // Forward hook:post:complete events
+    this.hookManager.on('hook:post:complete', (event) => {
+      this.emit('hook:post:complete', event);
+    });
+  }
+
+  /**
+   * Create hooks that integrate both the existing hook system and the HookManager
+   */
+  private createHooksWithManager(hookContext: HookContext, agentName: string, stageName: string) {
+    // Get the base hooks from the existing system
+    const baseHooks = createHooks(hookContext);
+
+    // Create additional hooks that integrate with HookManager
+    const hookManagerIntegration = {
+      PreToolUse: [
+        // Add HookManager pre-hook execution at the beginning
+        {
+          hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
+            try {
+              // Create PreHookContext for the HookManager
+              const preHookContext = {
+                toolName: input.tool_name || 'unknown',
+                arguments: input.tool_input || {},
+                taskId: hookContext.taskId,
+                agentName,
+                stageName,
+                timestamp: new Date(),
+              };
+
+              // Execute pre-hooks via HookManager
+              const result = await this.hookManager.executePreHooks(preHookContext);
+
+              // Handle hook manager results
+              if (!result.success) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse',
+                    permissionDecision: 'deny',
+                    permissionDecisionReason: result.cancelReason || 'Pre-hook failed',
+                  },
+                };
+              }
+
+              if (result.cancelled) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse',
+                    permissionDecision: 'deny',
+                    permissionDecisionReason: result.cancelReason || 'Operation cancelled by hook',
+                  },
+                };
+              }
+
+              if (result.modifiedArgs) {
+                // Modify the tool input with the modified arguments
+                return {
+                  modifiedInput: {
+                    ...input,
+                    tool_input: result.modifiedArgs,
+                  },
+                };
+              }
+
+              return {};
+            } catch (error) {
+              // Log error and allow execution to continue
+              await hookContext.store.addLog(hookContext.taskId, {
+                level: 'error',
+                message: `HookManager pre-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { tool: input.tool_name, error: String(error) },
+              });
+              return {};
+            }
+          }],
+          timeout: 30,
+          priority: 1000, // High priority to run before other hooks
+        },
+        // Include existing pre-hooks
+        ...(baseHooks.PreToolUse || []),
+      ],
+      PostToolUse: [
+        // Include existing post-hooks first
+        ...(baseHooks.PostToolUse || []),
+        // Add HookManager post-hook execution at the end
+        {
+          hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
+            try {
+              // Create PostHookContext for the HookManager
+              const postHookContext = {
+                toolName: input.tool_name || 'unknown',
+                arguments: input.tool_input || {},
+                taskId: hookContext.taskId,
+                agentName,
+                stageName,
+                timestamp: new Date(),
+                result: {
+                  success: true, // Assume success if we reach post-hooks
+                  output: input.output || null,
+                  error: input.error || undefined,
+                  duration: undefined, // Would be calculated elsewhere
+                },
+              };
+
+              // Execute post-hooks via HookManager
+              await this.hookManager.executePostHooks(postHookContext);
+
+              return {};
+            } catch (error) {
+              // Log error but don't fail the operation
+              await hookContext.store.addLog(hookContext.taskId, {
+                level: 'error',
+                message: `HookManager post-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { tool: input.tool_name, error: String(error) },
+              });
+              return {};
+            }
+          }],
+          timeout: 30,
+          priority: -1000, // Low priority to run after other hooks
+        },
+      ],
+    };
+
+    return hookManagerIntegration;
+  }
+
+  /**
    * Set up interaction event handlers
    * Handles iteration events emitted by the interaction manager
    */
@@ -6858,6 +7028,7 @@ export {
 } from './browser-manager';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
+export { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
 export {
   estimateTokens,
   estimateMessageTokens,

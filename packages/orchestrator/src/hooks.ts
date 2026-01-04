@@ -30,6 +30,11 @@ export interface HookContext {
   currentAgent?: string;
   currentStage?: string;
   toolStartTimes?: Map<string, Date>; // toolUseId -> start time
+  config?: {
+    ui?: {
+      diffPreview?: boolean;
+    };
+  };
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -362,6 +367,12 @@ export function createHooks(context: HookContext): HooksConfig {
         hooks: [createHookCallback(context, captureFileSnapshot)],
         timeout: 5,
       },
+      // Generate diff preview for file-modifying tools (v0.5.0)
+      {
+        matcher: FILE_MODIFYING_TOOLS,
+        hooks: [createHookCallback(context, generateDiffPreview)],
+        timeout: 5,
+      },
       // Audit all bash commands
       {
         matcher: 'Bash',
@@ -523,6 +534,121 @@ async function captureFileSnapshot(
         },
       });
     }
+  }
+
+  return {};
+}
+
+/**
+ * Generate and emit diff preview for file edits when enabled
+ * This hook runs after snapshot capture to show what changes will be made
+ */
+async function generateDiffPreview(
+  input: HookInput,
+  toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+
+  // Only generate diff preview for file-modifying tools
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  // Skip if no event emitter available
+  if (!context.eventEmitter) {
+    return {};
+  }
+
+  // Skip if diff preview is disabled in config (default is enabled)
+  if (context.config?.ui?.diffPreview === false) {
+    return {};
+  }
+
+  const toolInput = getToolInput(input);
+  let filePath: string | undefined;
+  let newContent: string | undefined;
+
+  // Extract file path and new content based on tool type
+  if (toolName === 'Write' && 'file_path' in toolInput && 'content' in toolInput) {
+    filePath = typeof toolInput.file_path === 'string' ? toolInput.file_path : undefined;
+    newContent = typeof toolInput.content === 'string' ? toolInput.content : undefined;
+  } else if (toolName === 'Edit' && 'file_path' in toolInput && 'new_string' in toolInput && 'old_string' in toolInput) {
+    filePath = typeof toolInput.file_path === 'string' ? toolInput.file_path : undefined;
+
+    // For Edit tool, we need to apply the edit to get the new content
+    if (filePath) {
+      try {
+        const currentContent = context.fileSnapshots?.get(filePath) || '';
+        const oldString = typeof toolInput.old_string === 'string' ? toolInput.old_string : '';
+        const newString = typeof toolInput.new_string === 'string' ? toolInput.new_string : '';
+
+        if ('replace_all' in toolInput && toolInput.replace_all) {
+          newContent = currentContent.replaceAll(oldString, newString);
+        } else {
+          newContent = currentContent.replace(oldString, newString);
+        }
+      } catch (error) {
+        // If we can't generate the new content, skip diff preview
+        return {};
+      }
+    }
+  } else if (toolName === 'NotebookEdit' && 'notebook_path' in toolInput && 'new_source' in toolInput) {
+    filePath = typeof toolInput.notebook_path === 'string' ? toolInput.notebook_path : undefined;
+    // For notebook edits, we'd need more complex logic to handle cell modifications
+    // For now, skip diff preview for notebook edits
+    return {};
+  }
+
+  if (!filePath || !newContent || !toolUseId) {
+    return {};
+  }
+
+  try {
+    // Import the diff utility (dynamic import to avoid circular dependencies)
+    const { generateFileDiff } = await import('./utils/diff');
+
+    // Generate the diff
+    const diffResult = generateFileDiff(filePath, newContent);
+
+    // Only emit if there are differences
+    if (diffResult.hasDifferences) {
+      context.eventEmitter.emit('diff:preview', {
+        taskId: context.taskId,
+        toolName,
+        callId: toolUseId,
+        filePath,
+        diff: diffResult.diff,
+        addedLines: diffResult.addedLines,
+        removedLines: diffResult.removedLines,
+        timestamp: new Date(),
+      });
+
+      // Log the diff preview generation
+      await context.store.addLog(context.taskId, {
+        level: 'debug',
+        message: `Diff preview generated for: ${filePath}`,
+        metadata: {
+          tool: toolName,
+          filePath,
+          addedLines: diffResult.addedLines,
+          removedLines: diffResult.removedLines,
+          callId: toolUseId,
+        },
+      });
+    }
+  } catch (error) {
+    // Log diff generation errors but don't fail the tool execution
+    await context.store.addLog(context.taskId, {
+      level: 'warn',
+      message: `Failed to generate diff preview: ${filePath} - ${String(error)}`,
+      metadata: {
+        tool: toolName,
+        filePath,
+        error: String(error),
+        callId: toolUseId,
+      },
+    });
   }
 
   return {};

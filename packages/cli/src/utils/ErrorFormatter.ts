@@ -345,6 +345,268 @@ export class ErrorFormatter {
   }
 
   /**
+   * Parse ESLint errors from ESLint output
+   * Supports both default and stylish formatter outputs:
+   * Default format:
+   *   /path/to/file.js
+   *     10:5   error  'x' is defined but never used  no-unused-vars
+   *     15:3   warning  Unexpected console statement  no-console
+   *
+   * Stylish format:
+   *   /path/to/file.js
+   *     10:5   error    'x' is defined but never used   no-unused-vars
+   *     15:3   warning  Unexpected console statement    no-console
+   */
+  parseESLintErrors(eslintOutput: string): FormattedError[] {
+    const errors: FormattedError[] = [];
+    const lines = eslintOutput.split('\n');
+    let currentFile: string | null = null;
+
+    for (const line of lines) {
+      // Skip empty lines and summary lines
+      if (!line.trim() || this.isESLintSummaryLine(line)) {
+        continue;
+      }
+
+      // Check if this line is a file path (non-indented, looks like a path)
+      if (!line.startsWith(' ') && !line.startsWith('\t')) {
+        // This looks like a file path
+        if (this.isValidFilePath(line.trim())) {
+          currentFile = line.trim();
+        }
+        continue;
+      }
+
+      // Parse error/warning line if we have a current file
+      if (currentFile) {
+        const issueMatch = this.parseESLintIssueLine(line);
+        if (issueMatch) {
+          const { lineNumber, column, severity, message, ruleId } = issueMatch;
+
+          // Check for duplicates before adding
+          const isDuplicate = errors.some(error =>
+            error.context?.file === currentFile &&
+            error.context?.line === lineNumber &&
+            error.context?.column === column &&
+            error.message.includes(ruleId)
+          );
+
+          if (!isDuplicate) {
+            errors.push({
+              type: severity === 'error' ? ErrorType.CONFIG : ErrorType.VALIDATION,
+              message: `${message} (${ruleId})`,
+              context: {
+                file: currentFile,
+                line: lineNumber,
+                column: column,
+                description: `ESLint ${severity}`
+              },
+              suggestions: this.generateESLintSuggestions(ruleId, message)
+            });
+          }
+        }
+      }
+    }
+
+    return errors;
+  }
+
+  /**
+   * Check if a line is an ESLint summary line that should be skipped
+   */
+  private isESLintSummaryLine(line: string): boolean {
+    // Pattern matches lines like:
+    // "✖ 3 problems (2 errors, 1 warning)"
+    // "2 problems (2 errors, 0 warnings)"
+    // "  2 problems (2 errors, 0 warnings)"
+    const summaryPattern = /^\s*[✖×X]?\s*\d+\s+problems?\s*\(/i;
+    return summaryPattern.test(line);
+  }
+
+  /**
+   * Check if a string looks like a valid file path
+   */
+  private isValidFilePath(path: string): boolean {
+    // Basic file path validation - should contain file extension and no spaces at start/end
+    return (
+      path.trim() === path && // No leading/trailing spaces
+      (path.includes('.') || path.includes('/') || path.includes('\\')) && // Has extension or path separator
+      !path.includes(':') || // Doesn't contain colons (except Windows drive letters)
+      /^[A-Za-z]:/.test(path) // Windows drive letter format
+    );
+  }
+
+  /**
+   * Parse an ESLint issue line into components
+   */
+  private parseESLintIssueLine(line: string): {
+    lineNumber: number;
+    column: number;
+    severity: 'error' | 'warning';
+    message: string;
+    ruleId: string;
+  } | null {
+    // Pattern for ESLint issue lines:
+    // "  10:5   error    'x' is defined but never used   no-unused-vars"
+    // "  15:3   warning  Unexpected console statement    no-console"
+    // Also handles extra whitespace in stylish format
+    const issuePattern = /^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s{2,}([\w\/@-]+)\s*$/;
+
+    const match = line.match(issuePattern);
+    if (!match) {
+      return null;
+    }
+
+    const [, lineNumber, column, severity, message, ruleId] = match;
+
+    return {
+      lineNumber: parseInt(lineNumber, 10),
+      column: parseInt(column, 10),
+      severity: severity as 'error' | 'warning',
+      message: message.trim(),
+      ruleId: ruleId.trim()
+    };
+  }
+
+  /**
+   * Generate helpful suggestions for common ESLint rules
+   */
+  private generateESLintSuggestions(ruleId: string, message: string): ErrorSuggestion[] {
+    const suggestions: ErrorSuggestion[] = [];
+
+    switch (ruleId) {
+      case 'no-unused-vars':
+        suggestions.push({
+          title: 'Remove unused variable',
+          description: 'Delete the unused variable declaration',
+          command: '// Remove: const unusedVar = value;'
+        });
+        suggestions.push({
+          title: 'Prefix with underscore',
+          description: 'Prefix variable name with underscore to indicate intentional non-use',
+          command: '// Change: const var = value; → const _var = value;'
+        });
+        break;
+
+      case 'no-console':
+        suggestions.push({
+          title: 'Remove console statement',
+          description: 'Remove the console.log statement for production code',
+          command: '// Remove: console.log(...);'
+        });
+        suggestions.push({
+          title: 'Use proper logging',
+          description: 'Replace with proper logging library',
+          command: 'logger.info(...); // or logger.debug(...);'
+        });
+        break;
+
+      case 'prefer-const':
+        suggestions.push({
+          title: 'Use const instead of let',
+          description: 'Change let to const for variables that are never reassigned',
+          command: '// Change: let variable = value; → const variable = value;'
+        });
+        break;
+
+      case 'eqeqeq':
+        suggestions.push({
+          title: 'Use strict equality',
+          description: 'Use === or !== instead of == or !=',
+          command: '// Change: a == b → a === b'
+        });
+        break;
+
+      case 'no-undef':
+        const nameMatch = message.match(/'([^']+)' is not defined/);
+        if (nameMatch) {
+          const name = nameMatch[1];
+          suggestions.push({
+            title: 'Import the variable',
+            description: `Import ${name} from the appropriate module`,
+            command: `import { ${name} } from 'module-name';`
+          });
+          suggestions.push({
+            title: 'Define the variable',
+            description: `Define ${name} in the current scope`,
+            command: `const ${name} = /* appropriate value */;`
+          });
+        }
+        break;
+
+      case '@typescript-eslint/no-explicit-any':
+        suggestions.push({
+          title: 'Use specific type',
+          description: 'Replace any with a more specific type',
+          command: '// Change: any → string | number | CustomType'
+        });
+        suggestions.push({
+          title: 'Use unknown for truly unknown types',
+          description: 'Use unknown instead of any for better type safety',
+          command: '// Change: any → unknown'
+        });
+        break;
+
+      case 'import/first':
+        suggestions.push({
+          title: 'Move imports to top',
+          description: 'Move all import statements to the top of the file',
+          command: '// Move import statements above other code'
+        });
+        break;
+
+      case 'import/order':
+        suggestions.push({
+          title: 'Reorder imports',
+          description: 'Group and order imports according to ESLint configuration',
+          command: '// Group: 1) external libraries, 2) internal modules, 3) relative imports'
+        });
+        break;
+
+      case 'no-var':
+        suggestions.push({
+          title: 'Use let or const',
+          description: 'Replace var with let or const',
+          command: '// Change: var variable → let variable or const variable'
+        });
+        break;
+
+      case 'semi':
+        suggestions.push({
+          title: 'Add missing semicolon',
+          description: 'Add semicolon at the end of the statement',
+          command: '// Add semicolon: statement;'
+        });
+        break;
+
+      case 'quotes':
+        if (message.includes('single')) {
+          suggestions.push({
+            title: 'Use single quotes',
+            description: 'Change double quotes to single quotes',
+            command: `// Change: "string" → 'string'`
+          });
+        } else if (message.includes('double')) {
+          suggestions.push({
+            title: 'Use double quotes',
+            description: 'Change single quotes to double quotes',
+            command: `// Change: 'string' → "string"`
+          });
+        }
+        break;
+
+      default:
+        suggestions.push({
+          title: 'Check ESLint documentation',
+          description: `Look up the ${ruleId} rule in ESLint documentation`,
+          command: `https://eslint.org/docs/rules/${ruleId.replace('@typescript-eslint/', '')}`
+        });
+    }
+
+    return suggestions;
+  }
+
+  /**
    * Generate helpful suggestions for common TypeScript errors
    */
   private generateTypeScriptSuggestions(errorCode: string, message: string): ErrorSuggestion[] {
@@ -485,4 +747,11 @@ export const formatError = {
  */
 export const parseTypeScriptErrors = (tscOutput: string): FormattedError[] => {
   return defaultErrorFormatter.parseTypeScriptErrors(tscOutput);
+};
+
+/**
+ * Convenience function to parse ESLint errors from ESLint output
+ */
+export const parseESLintErrors = (eslintOutput: string): FormattedError[] => {
+  return defaultErrorFormatter.parseESLintErrors(eslintOutput);
 };
