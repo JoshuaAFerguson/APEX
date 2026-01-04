@@ -3839,6 +3839,37 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Scan staged files for secrets before committing
+   * @returns Promise that resolves to secret findings from all staged files
+   */
+  async scanStagedFilesForSecrets(): Promise<SecretFinding[]> {
+    if (!this.secretScanner) {
+      return [];
+    }
+
+    try {
+      // Get list of staged files
+      const { stdout } = await execAsync('git diff --cached --name-only', { cwd: this.projectPath });
+      const stagedFiles = stdout.trim().split('\n').filter(line => line.length > 0);
+
+      if (stagedFiles.length === 0) {
+        return [];
+      }
+
+      // Convert relative paths to absolute paths
+      const absolutePaths = stagedFiles.map(file =>
+        path.resolve(this.projectPath, file)
+      );
+
+      // Use the new scanFiles method to scan all staged files
+      return await this.secretScanner.scanFiles(absolutePaths);
+    } catch (error) {
+      console.warn('Error scanning staged files for secrets:', error);
+      return [];
+    }
+  }
+
+  /**
    * Commit changes after a subtask completes
    */
   async gitCommitSubtask(subtask: Task, parentTask: Task): Promise<boolean> {

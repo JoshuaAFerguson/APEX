@@ -891,6 +891,24 @@ export const RejectionBehaviorSchema = z.enum([
 export type RejectionBehavior = z.infer<typeof RejectionBehaviorSchema>;
 
 /**
+ * Per-agent autonomy override settings
+ * Allows configuring autonomy behavior for specific agents with more granular control
+ * than just the autonomy level. Useful for giving different agents different
+ * approval requirements, timeouts, and rejection behaviors.
+ */
+export const AgentAutonomyOverrideSchema = z.object({
+  /** Autonomy level for this agent (overrides the global level) */
+  level: AutonomyLevelSchema.optional(),
+  /** Approval timeout in minutes for this agent (overrides global approvalTimeout) */
+  approvalTimeout: z.number().min(1).optional(),
+  /** Rejection behavior for this agent (overrides global rejectionBehavior) */
+  rejectionBehavior: RejectionBehaviorSchema.optional(),
+  /** Approval gates specific to this agent (merged with global gates) */
+  gates: z.array(ApprovalGateSchema).optional(),
+});
+export type AgentAutonomyOverride = z.infer<typeof AgentAutonomyOverrideSchema>;
+
+/**
  * Autonomy configuration for a workflow or task
  * Combines autonomy level with approval gates and resource limits
  */
@@ -903,10 +921,26 @@ export const AutonomyConfigSchema = z.object({
   limits: TaskResourceLimitsSchema.optional(),
   /** Per-stage autonomy overrides (stage name -> autonomy level) */
   stageOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
-  /** Per-agent autonomy overrides (agent name -> autonomy level) */
-  agentOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
+  /**
+   * Per-agent autonomy overrides
+   * Can be either a simple autonomy level string or a full AgentAutonomyOverrideSchema
+   * for more granular control. Examples:
+   *   agentOverrides: { developer: 'supervised' }  // Simple level override
+   *   agentOverrides: { developer: { level: 'supervised', approvalTimeout: 30 } }  // Full override
+   */
+  agentOverrides: z.record(
+    z.string(),
+    z.union([AutonomyLevelSchema, AgentAutonomyOverrideSchema])
+  ).optional(),
   /** Behavior to take when an approval is rejected/denied */
   rejectionBehavior: RejectionBehaviorSchema.default('abort'),
+  /**
+   * Global approval timeout in minutes
+   * Default timeout for approval requests across all gates and agents.
+   * Individual gates and agent overrides can specify their own timeouts.
+   * If undefined, no global timeout is enforced (individual gate timeouts still apply).
+   */
+  approvalTimeout: z.number().min(1).optional(),
 });
 export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
 

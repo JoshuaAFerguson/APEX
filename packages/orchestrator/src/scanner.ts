@@ -319,4 +319,61 @@ export class SecretScanner {
   public removePattern(name: string): void {
     this.patterns = this.patterns.filter(p => p.name !== name);
   }
+
+  /**
+   * Scan a single file for secrets by reading its content
+   * @param filePath - Path to the file to scan
+   * @returns Promise that resolves to array of SecretFinding objects
+   */
+  public async scanFile(filePath: string): Promise<SecretFinding[]> {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+
+    try {
+      // Check if file exists and is readable
+      await fs.access(filePath, fs.constants.R_OK);
+
+      // Read file content
+      const content = await fs.readFile(filePath, 'utf-8');
+
+      // Use the existing scan method with normalized path
+      return this.scan(content, path.resolve(filePath));
+    } catch (error) {
+      // If file cannot be read, return empty findings array
+      // This allows the scanner to gracefully handle missing or unreadable files
+      if (error instanceof Error) {
+        console.warn(`Unable to read file ${filePath}: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Scan multiple files for secrets in batch
+   * @param filePaths - Array of file paths to scan
+   * @returns Promise that resolves to aggregated array of SecretFinding objects from all files
+   */
+  public async scanFiles(filePaths: string[]): Promise<SecretFinding[]> {
+    const allFindings: SecretFinding[] = [];
+
+    // Process files in parallel for better performance
+    const scanPromises = filePaths.map(filePath => this.scanFile(filePath));
+
+    try {
+      const results = await Promise.allSettled(scanPromises);
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          allFindings.push(...result.value);
+        } else {
+          // Log the error but continue processing other files
+          console.warn('Error scanning file:', result.reason);
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error during batch file scanning:', error);
+    }
+
+    return allFindings;
+  }
 }
