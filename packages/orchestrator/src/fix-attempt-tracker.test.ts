@@ -51,6 +51,71 @@ describe('FixAttemptTracker', () => {
     await tracker.initialize();
   });
 
+  describe('Configuration Validation and Defaults', () => {
+    it('should apply default configuration when none provided', async () => {
+      const minimumOptions: FixAttemptTrackerOptions = {
+        taskId: 'minimal-test',
+        store: mockTaskStore,
+      };
+
+      const minimalTracker = new FixAttemptTracker(minimumOptions);
+      await minimalTracker.initialize();
+
+      const history = minimalTracker.getHistory();
+      expect(history.totalAttempts).toBe(0);
+
+      // Test that defaults are working by checking decision for first attempt
+      const error = minimalTracker.createErrorFingerprint('test', 'test');
+      const decision = minimalTracker.shouldAttemptFix(error);
+
+      expect(decision.shouldAttempt).toBe(true);
+      expect(decision.maxAttempts).toBe(3); // Default maxAttemptsPerError
+    });
+
+    it('should override default config with partial config', async () => {
+      const partialConfigOptions: FixAttemptTrackerOptions = {
+        taskId: 'partial-config-test',
+        store: mockTaskStore,
+        config: {
+          maxAttemptsPerError: 5, // Override default
+          backoffStrategy: 'linear', // Override default
+          // Other values should use defaults
+        },
+      };
+
+      const partialTracker = new FixAttemptTracker(partialConfigOptions);
+      await partialTracker.initialize();
+
+      const error = partialTracker.createErrorFingerprint('test', 'test');
+      const decision = partialTracker.shouldAttemptFix(error);
+
+      expect(decision.maxAttempts).toBe(5); // Custom value
+    });
+
+    it('should validate config boundaries', async () => {
+      const extremeConfigOptions: FixAttemptTrackerOptions = {
+        taskId: 'extreme-config-test',
+        store: mockTaskStore,
+        config: {
+          maxAttemptsPerError: 1, // Minimum
+          maxTotalAttempts: 2, // Low total
+          baseDelayMs: 0, // No base delay
+          maxDelayMs: 0, // No max delay
+          similarityThreshold: 1.0, // Perfect match required
+        },
+      };
+
+      const extremeTracker = new FixAttemptTracker(extremeConfigOptions);
+      await extremeTracker.initialize();
+
+      const error = extremeTracker.createErrorFingerprint('test', 'test');
+      const decision = extremeTracker.shouldAttemptFix(error);
+
+      expect(decision.shouldAttempt).toBe(true);
+      expect(decision.maxAttempts).toBe(1);
+    });
+  });
+
   describe('Error Fingerprinting', () => {
     it('should create consistent fingerprints for same error', () => {
       const error1 = tracker.createErrorFingerprint(
