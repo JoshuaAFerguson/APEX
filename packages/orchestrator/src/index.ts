@@ -51,10 +51,12 @@ import {
   TaskTemplate,
   WorktreeInfo,
   UndoOperationResult,
+  SecretScannerConfig,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { PolicyEnforcer, createPolicyEnforcer } from './policy';
+import { AutonomyEnforcer, type AutonomyEnforcerConfig } from './autonomy-enforcer';
 import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
@@ -76,6 +78,7 @@ import { PermissionStore } from './permission-store';
 import { PermissionManager } from './permission-manager';
 import { PermissionPresetManager } from './permission-preset-manager';
 import { LinterService } from './linter';
+import { SecretScanner } from './scanner';
 import { generateFileDiff, type DiffResult } from './utils/diff';
 
 const execAsync = promisify(exec);
@@ -83,6 +86,7 @@ const execAsync = promisify(exec);
 export interface OrchestratorOptions {
   projectPath: string;
   apiUrl?: string;
+  autonomyEnforcer?: AutonomyEnforcer;  // Optional injection
 }
 
 export interface OrchestratorEvents {
@@ -542,7 +546,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionManager!: PermissionManager;
   private permissionPresetManager!: PermissionPresetManager;
   private policyEnforcer!: PolicyEnforcer;
+  private autonomyEnforcer!: AutonomyEnforcer;
   private linterService!: LinterService;
+  private secretScanner?: SecretScanner;
   private hookManager!: HookManager;
   private projectPath: string;
   private apiUrl: string;
@@ -570,7 +576,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   // Store hooks context for accessing file snapshots during tool completion
   private currentHookContext: HookContext | null = null;
 
-  constructor(options: OrchestratorOptions) {
+  constructor(private options: OrchestratorOptions) {
     super();
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
@@ -639,6 +645,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize policy enforcer
     this.policyEnforcer = createPolicyEnforcer(this.config.policy);
 
+    // Initialize autonomy enforcer
+    if (this.options.autonomyEnforcer) {
+      this.autonomyEnforcer = this.options.autonomyEnforcer;
+    } else {
+      this.autonomyEnforcer = new AutonomyEnforcer(
+        this.buildAutonomyEnforcerConfig(),
+        this
+      );
+    }
+    this.setupAutonomyEnforcerEvents();
+
     // Initialize linter service
     this.linterService = new LinterService({
       projectPath: this.projectPath,
@@ -649,6 +666,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
     await this.linterService.initialize();
+
+    // Initialize secret scanner if configured
+    if (this.config.scanner) {
+      this.secretScanner = new SecretScanner(this.config.scanner);
+      console.log('SecretScanner initialized with configuration');
+    } else {
+      console.log('SecretScanner not configured - scanner will be disabled');
+    }
 
     // Initialize hook manager
     this.hookManager = new HookManager(

@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
-import * as path from 'os';
+import * as path from 'path';
+import * as os from 'os';
 import { loadConfig, saveConfig, getEffectiveConfig, initializeApex } from '../config';
 import { ApexConfig } from '../types';
 
-describe.skip('Config Preview Settings Integration', () => {
+describe('Config Preview Settings Integration', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(path.tmpdir(), 'apex-config-preview-test-'));
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-config-preview-test-'));
     await fs.mkdir(path.join(testDir, '.apex'), { recursive: true });
   });
 
@@ -32,6 +33,7 @@ describe.skip('Config Preview Settings Integration', () => {
           previewConfidence: 0.85,
           autoExecuteHighConfidence: true,
           previewTimeout: 12000,
+          diffPreview: true,
         },
       };
 
@@ -42,6 +44,7 @@ describe.skip('Config Preview Settings Integration', () => {
       expect(loadedConfig.ui?.previewConfidence).toBe(0.85);
       expect(loadedConfig.ui?.autoExecuteHighConfidence).toBe(true);
       expect(loadedConfig.ui?.previewTimeout).toBe(12000);
+      expect(loadedConfig.ui?.diffPreview).toBe(true);
     });
 
     it('should save and load config with partial preview settings', async () => {
@@ -110,6 +113,7 @@ describe.skip('Config Preview Settings Integration', () => {
       expect(effectiveConfig.ui.previewConfidence).toBe(0.7);
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(false);
       expect(effectiveConfig.ui.previewTimeout).toBe(5000);
+      expect(effectiveConfig.ui.diffPreview).toBe(true);
     });
 
     it('should preserve explicit UI values and fill in defaults', async () => {
@@ -156,6 +160,7 @@ describe.skip('Config Preview Settings Integration', () => {
           previewConfidence: 0.75,
           autoExecuteHighConfidence: true,
           previewTimeout: 8000,
+          diffPreview: false,
         },
         autonomy: {
           default: 'review-before-merge',
@@ -185,6 +190,7 @@ describe.skip('Config Preview Settings Integration', () => {
       expect(finalEffectiveConfig.ui.previewConfidence).toBe(0.75);
       expect(finalEffectiveConfig.ui.autoExecuteHighConfidence).toBe(true);
       expect(finalEffectiveConfig.ui.previewTimeout).toBe(8000);
+      expect(finalEffectiveConfig.ui.diffPreview).toBe(false);
 
       // Other settings should also be preserved
       expect(finalEffectiveConfig.project.name).toBe('round-trip-test');
@@ -209,6 +215,7 @@ describe.skip('Config Preview Settings Integration', () => {
       expect(effectiveConfig.ui.previewConfidence).toBe(0.7);
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(false);
       expect(effectiveConfig.ui.previewTimeout).toBe(5000);
+      expect(effectiveConfig.ui.diffPreview).toBe(true);
 
       // Project info should be set correctly
       expect(config.project.name).toBe('init-test');
@@ -232,6 +239,7 @@ ui:
   previewConfidence: 1.5
   autoExecuteHighConfidence: 'true'
   previewTimeout: 500
+  diffPreview: 'invalid-value'
 `;
 
       await fs.writeFile(
@@ -259,6 +267,7 @@ ui:
   previewConfidence: 0.8
   autoExecuteHighConfidence: true
   previewTimeout: 10000
+  diffPreview: true
 `;
 
       await fs.writeFile(
@@ -299,6 +308,7 @@ limits:
       expect(effectiveConfig.ui.previewConfidence).toBe(0.7);
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(false);
       expect(effectiveConfig.ui.previewTimeout).toBe(5000);
+      expect(effectiveConfig.ui.diffPreview).toBe(true);
 
       // Original settings should be preserved
       expect(effectiveConfig.autonomy.default).toBe('full');
@@ -332,6 +342,7 @@ limits:
       expect(upgradedConfig.ui?.previewConfidence).toBe(0.7);
       expect(upgradedConfig.ui?.autoExecuteHighConfidence).toBe(false);
       expect(upgradedConfig.ui?.previewTimeout).toBe(5000);
+      expect(upgradedConfig.ui?.diffPreview).toBe(true);
     });
   });
 

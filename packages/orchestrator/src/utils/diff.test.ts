@@ -384,5 +384,415 @@ describe('Diff Utility Functions', () => {
       expect(result.addedLines).toBeGreaterThan(0);
       expect(result.removedLines).toBeGreaterThan(0);
     });
+
+    it('should handle zero context lines', () => {
+      const options: DiffOptions = {
+        filePath: '/test/zero-context.txt',
+        originalContent: 'line 1\nline 2\nline 3\nline 4\nline 5',
+        newContent: 'line 1\nmodified line 2\nline 3\nline 4\nline 5',
+        contextLines: 0,
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.diff).toContain('-line 2');
+      expect(result.diff).toContain('+modified line 2');
+      // With 0 context, should only show the changed lines
+      expect(result.diff.split('\n').filter(line => line.startsWith(' ')).length).toBe(0);
+    });
+
+    it('should handle very large context lines parameter', () => {
+      const options: DiffOptions = {
+        filePath: '/test/large-context.txt',
+        originalContent: 'line 1\nline 2\nline 3\nline 4\nline 5',
+        newContent: 'line 1\nmodified line 2\nline 3\nline 4\nline 5',
+        contextLines: 100, // Much larger than file length
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      // Should include all available context lines
+      expect(result.diff).toContain(' line 1');
+      expect(result.diff).toContain(' line 3');
+      expect(result.diff).toContain(' line 4');
+      expect(result.diff).toContain(' line 5');
+    });
+
+    it('should handle binary-like content with null bytes', () => {
+      const options: DiffOptions = {
+        filePath: '/test/binary.bin',
+        originalContent: 'text\x00binary\x00content',
+        newContent: 'text\x00modified\x00content',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.diff).toContain('-text\x00binary\x00content');
+      expect(result.diff).toContain('+text\x00modified\x00content');
+    });
+
+    it('should handle multiple non-contiguous changes', () => {
+      const options: DiffOptions = {
+        filePath: '/test/multiple-changes.txt',
+        originalContent: 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10',
+        newContent: 'modified 1\nline 2\nline 3\nmodified 4\nline 5\nline 6\nline 7\nmodified 8\nline 9\nline 10',
+        contextLines: 1,
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(3);
+      expect(result.removedLines).toBe(3);
+      // Should generate multiple hunks for non-contiguous changes
+      expect(result.diff.split('@@').length).toBeGreaterThan(3); // Multiple hunk markers
+    });
+
+    it('should handle insertions at beginning and end of file', () => {
+      const options: DiffOptions = {
+        filePath: '/test/begin-end.txt',
+        originalContent: 'middle line 1\nmiddle line 2',
+        newContent: 'start line\nmiddle line 1\nmiddle line 2\nend line',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(2);
+      expect(result.removedLines).toBe(0);
+      expect(result.diff).toContain('+start line');
+      expect(result.diff).toContain('+end line');
+    });
+
+    it('should handle alternating line changes', () => {
+      const options: DiffOptions = {
+        filePath: '/test/alternating.txt',
+        originalContent: 'keep 1\nchange 1\nkeep 2\nchange 2\nkeep 3',
+        newContent: 'keep 1\nmodified 1\nkeep 2\nmodified 2\nkeep 3',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(2);
+      expect(result.removedLines).toBe(2);
+      expect(result.diff).toContain('-change 1');
+      expect(result.diff).toContain('+modified 1');
+      expect(result.diff).toContain('-change 2');
+      expect(result.diff).toContain('+modified 2');
+    });
+
+    it('should handle content with special regex characters', () => {
+      const options: DiffOptions = {
+        filePath: '/test/regex-chars.txt',
+        originalContent: 'function test() { return /.*[a-z]+$/; }',
+        newContent: 'function test() { return /.*[A-Z]+$/; }',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.diff).toContain('-function test() { return /.*[a-z]+$/; }');
+      expect(result.diff).toContain('+function test() { return /.*[A-Z]+$/; }');
+    });
+
+    it('should handle very short files with changes', () => {
+      const options: DiffOptions = {
+        filePath: '/test/short.txt',
+        originalContent: 'a',
+        newContent: 'b',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(1);
+      expect(result.removedLines).toBe(1);
+      expect(result.diff).toContain('-a');
+      expect(result.diff).toContain('+b');
+    });
+  });
+
+  describe('Advanced Diff Algorithm Edge Cases', () => {
+    it('should handle interleaved additions and deletions', () => {
+      const options: DiffOptions = {
+        filePath: '/test/interleaved.txt',
+        originalContent: 'A\nB\nC\nD\nE',
+        newContent: 'A\nX\nB\nY\nC\nZ\nD\nE',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(3);
+      expect(result.removedLines).toBe(0);
+      expect(result.diff).toContain('+X');
+      expect(result.diff).toContain('+Y');
+      expect(result.diff).toContain('+Z');
+    });
+
+    it('should handle block moves (lines moving position)', () => {
+      const options: DiffOptions = {
+        filePath: '/test/moves.txt',
+        originalContent: 'line 1\nline 2\nline 3\nline 4',
+        newContent: 'line 3\nline 4\nline 1\nline 2',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      // The algorithm should detect this as additions and deletions
+      expect(result.addedLines).toBeGreaterThan(0);
+      expect(result.removedLines).toBeGreaterThan(0);
+    });
+
+    it('should handle duplicate lines with changes', () => {
+      const options: DiffOptions = {
+        filePath: '/test/duplicates.txt',
+        originalContent: 'line A\nline A\nline B\nline A',
+        newContent: 'line A\nline A\nmodified B\nline A',
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(1);
+      expect(result.removedLines).toBe(1);
+      expect(result.diff).toContain('-line B');
+      expect(result.diff).toContain('+modified B');
+    });
+
+    it('should handle complex hunking scenarios', () => {
+      const options: DiffOptions = {
+        filePath: '/test/complex-hunks.txt',
+        originalContent: Array.from({length: 20}, (_, i) => `line ${i + 1}`).join('\n'),
+        newContent: Array.from({length: 20}, (_, i) => {
+          if (i === 2) return `modified line ${i + 1}`;
+          if (i === 15) return `modified line ${i + 1}`;
+          return `line ${i + 1}`;
+        }).join('\n'),
+        contextLines: 2,
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(2);
+      expect(result.removedLines).toBe(2);
+      // Should create separate hunks for distant changes
+      const hunkCount = (result.diff.match(/@@/g) || []).length;
+      expect(hunkCount).toBe(4); // 2 hunk starts + 2 hunk ends
+    });
+  });
+
+  describe('Internal Algorithm Stress Tests', () => {
+    it('should handle pathological diff scenarios efficiently', () => {
+      // Test case that stresses the lookahead algorithm
+      const originalLines = Array.from({length: 50}, (_, i) => `line ${i % 5}`);
+      const newLines = Array.from({length: 50}, (_, i) => `modified ${i % 5}`);
+
+      const options: DiffOptions = {
+        filePath: '/test/pathological.txt',
+        originalContent: originalLines.join('\n'),
+        newContent: newLines.join('\n'),
+        contextLines: 3,
+      };
+
+      const start = Date.now();
+      const result = generateDiff(options);
+      const duration = Date.now() - start;
+
+      expect(result.hasDifferences).toBe(true);
+      expect(duration).toBeLessThan(1000); // Should complete within 1 second
+      expect(result.addedLines).toBe(50);
+      expect(result.removedLines).toBe(50);
+    });
+
+    it('should handle edge case in hunk grouping with exact context boundary', () => {
+      // Create content where changes are exactly at context boundary distances
+      const originalLines = Array.from({length: 15}, (_, i) => `line ${i + 1}`);
+      const newLines = [...originalLines];
+      newLines[2] = 'modified 3'; // Change at line 3
+      newLines[8] = 'modified 9'; // Change at line 9 (5 lines apart)
+
+      const options: DiffOptions = {
+        filePath: '/test/hunk-boundary.txt',
+        originalContent: originalLines.join('\n'),
+        newContent: newLines.join('\n'),
+        contextLines: 2, // 2 context lines means 4 lines between changes creates separate hunks
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(2);
+      expect(result.removedLines).toBe(2);
+
+      // Should create separate hunks since changes are 5 lines apart with contextLines=2
+      const hunkHeaders = result.diff.match(/@@ .* @@/g);
+      expect(hunkHeaders).toBeTruthy();
+      expect(hunkHeaders!.length).toBe(2); // Two separate hunks
+    });
+
+    it('should handle uniform diff header path normalization edge cases', () => {
+      const testCases = [
+        { path: '/unix/path/file.txt', expected: '/unix/path/file.txt' },
+        { path: 'C:\\Windows\\Path\\file.txt', expected: 'C:/Windows/Path/file.txt' },
+        { path: '\\\\network\\share\\file.txt', expected: '//network/share/file.txt' },
+        { path: 'relative/path/file.txt', expected: 'relative/path/file.txt' },
+        { path: './relative/file.txt', expected: './relative/file.txt' },
+        { path: '../parent/file.txt', expected: '../parent/file.txt' },
+      ];
+
+      testCases.forEach(({ path, expected }) => {
+        const options: DiffOptions = {
+          filePath: path,
+          originalContent: 'old content',
+          newContent: 'new content',
+        };
+
+        const result = generateDiff(options);
+
+        expect(result.diff).toContain(`--- a/${expected}`);
+        expect(result.diff).toContain(`+++ b/${expected}`);
+      });
+    });
+
+    it('should handle diff statistics edge cases', () => {
+      const testCases = [
+        {
+          name: 'only additions',
+          original: '',
+          new: 'line 1\nline 2',
+          expectedStats: { added: 2, removed: 0, modified: 2 }
+        },
+        {
+          name: 'only deletions',
+          original: 'line 1\nline 2',
+          new: '',
+          expectedStats: { added: 0, removed: 2, modified: 2 }
+        },
+        {
+          name: 'equal additions and deletions',
+          original: 'old 1\nold 2',
+          new: 'new 1\nnew 2',
+          expectedStats: { added: 2, removed: 2, modified: 4 }
+        },
+        {
+          name: 'mixed operations',
+          original: 'keep\nreplace\ndelete',
+          new: 'keep\nreplaced\nadd',
+          expectedStats: { added: 2, removed: 2, modified: 4 }
+        },
+      ];
+
+      testCases.forEach(({ name, original, new: newContent, expectedStats }) => {
+        const options: DiffOptions = {
+          filePath: `/test/${name.replace(/\s+/g, '-')}.txt`,
+          originalContent: original,
+          newContent: newContent,
+        };
+
+        const result = generateDiff(options);
+
+        expect(result.addedLines).toBe(expectedStats.added);
+        expect(result.removedLines).toBe(expectedStats.removed);
+        expect(result.modifiedLines).toBe(expectedStats.modified);
+      });
+    });
+
+    it('should handle lookahead algorithm limits', () => {
+      // Test the 10-line lookahead limit in computeDiff
+      const originalLines = ['A', 'B', ...Array.from({length: 12}, (_, i) => `diff${i}`), 'C'];
+      const newLines = ['A', 'B', ...Array.from({length: 12}, (_, i) => `modified${i}`), 'C'];
+
+      const options: DiffOptions = {
+        filePath: '/test/lookahead-limit.txt',
+        originalContent: originalLines.join('\n'),
+        newContent: newLines.join('\n'),
+      };
+
+      const result = generateDiff(options);
+
+      expect(result.hasDifferences).toBe(true);
+      expect(result.addedLines).toBe(12);
+      expect(result.removedLines).toBe(12);
+      // Should still produce valid diff despite lookahead limits
+      expect(result.diff).toContain('-diff0');
+      expect(result.diff).toContain('+modified0');
+    });
+
+    it('should validate unified diff format compliance', () => {
+      const options: DiffOptions = {
+        filePath: '/test/format-validation.txt',
+        originalContent: 'line 1\nline 2\nline 3',
+        newContent: 'line 1\nmodified line 2\nline 3',
+      };
+
+      const result = generateDiff(options);
+      const diffLines = result.diff.split('\n');
+
+      // Validate diff format structure
+      expect(diffLines[0]).toMatch(/^--- a\//);
+      expect(diffLines[1]).toMatch(/^\+\+\+ b\//);
+      expect(diffLines[2]).toMatch(/^@@ -\d+,\d+ \+\d+,\d+ @@$/);
+
+      // Validate that all content lines start with proper prefixes
+      const contentLines = diffLines.slice(3);
+      contentLines.forEach(line => {
+        if (line.length > 0) {
+          expect(line).toMatch(/^[- +]/);
+        }
+      });
+
+      // Validate specific content markers
+      expect(result.diff).toContain(' line 1');
+      expect(result.diff).toContain('-line 2');
+      expect(result.diff).toContain('+modified line 2');
+      expect(result.diff).toContain(' line 3');
+    });
+
+    it('should handle empty line edge cases in diff generation', () => {
+      const testCases = [
+        {
+          name: 'empty lines in middle',
+          original: 'line 1\n\nline 3',
+          new: 'line 1\n\nmodified line 3',
+        },
+        {
+          name: 'multiple consecutive empty lines',
+          original: 'line 1\n\n\n\nline 5',
+          new: 'line 1\n\n\nline 5',
+        },
+        {
+          name: 'trailing empty lines',
+          original: 'content\n\n',
+          new: 'content\n',
+        },
+        {
+          name: 'leading empty lines',
+          original: '\n\ncontent',
+          new: '\ncontent',
+        },
+      ];
+
+      testCases.forEach(({ name, original, new: newContent }) => {
+        const options: DiffOptions = {
+          filePath: `/test/${name.replace(/\s+/g, '-')}.txt`,
+          originalContent: original,
+          newContent: newContent,
+        };
+
+        const result = generateDiff(options);
+
+        expect(result.hasDifferences).toBe(true);
+        // Verify that empty lines are properly handled in the diff
+        expect(result.diff).toBeTruthy();
+        expect(result.diff.length).toBeGreaterThan(0);
+      });
+    });
   });
 });

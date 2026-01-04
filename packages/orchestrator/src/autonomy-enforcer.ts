@@ -8,7 +8,7 @@ import type {
   ApexOrchestrator
 } from '@apexcli/core';
 
-export interface AutonomyControllerConfig {
+export interface AutonomyEnforcerConfig {
   /** Autonomy level setting */
   level: AutonomyLevel;
   /** Approval gates configuration */
@@ -47,36 +47,36 @@ export interface WarningResult {
   message: string;
 }
 
-export interface AutonomyControllerEvents {
+export interface AutonomyEnforcerEvents {
   'limit:warning': (warning: WarningResult) => void;
   'limit:exceeded': (result: LimitCheckResult, task: Task) => void;
   'approval:required': (gateName: string, context: TaskContext) => void;
   'approval:bypass': (gateName: string, reason: string) => void;
 }
 
-declare interface AutonomyController {
-  on<U extends keyof AutonomyControllerEvents>(
+declare interface AutonomyEnforcer {
+  on<U extends keyof AutonomyEnforcerEvents>(
     event: U,
-    listener: AutonomyControllerEvents[U]
+    listener: AutonomyEnforcerEvents[U]
   ): this;
 
-  emit<U extends keyof AutonomyControllerEvents>(
+  emit<U extends keyof AutonomyEnforcerEvents>(
     event: U,
-    ...args: Parameters<AutonomyControllerEvents[U]>
+    ...args: Parameters<AutonomyEnforcerEvents[U]>
   ): boolean;
 }
 
 /**
- * AutonomyController manages resource limits, approval gates, and safety controls
+ * AutonomyEnforcer manages resource limits, approval gates, and safety controls
  * Implements the policy enforcement and resource tracking for autonomous operation
  */
-class AutonomyController extends EventEmitter {
-  private config: AutonomyControllerConfig;
+class AutonomyEnforcer extends EventEmitter {
+  private config: AutonomyEnforcerConfig;
   private orchestrator: ApexOrchestrator;
   private taskUsageMap = new Map<string, TaskUsage>();
   private taskStartTimes = new Map<string, Date>();
 
-  constructor(config: AutonomyControllerConfig, orchestrator: ApexOrchestrator) {
+  constructor(config: AutonomyEnforcerConfig, orchestrator: ApexOrchestrator) {
     super();
     this.config = config;
     this.orchestrator = orchestrator;
@@ -342,7 +342,7 @@ class AutonomyController extends EventEmitter {
   /**
    * Update autonomy configuration
    */
-  updateConfig(newConfig: Partial<AutonomyControllerConfig>): void {
+  updateConfig(newConfig: Partial<AutonomyEnforcerConfig>): void {
     this.config = { ...this.config, ...newConfig };
   }
 
@@ -368,4 +368,4 @@ class AutonomyController extends EventEmitter {
   }
 }
 
-export { AutonomyController };
+export { AutonomyEnforcer };

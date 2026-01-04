@@ -1331,6 +1331,42 @@ export const LinterConfigSchema = z.object({
 });
 export type LinterConfig = z.infer<typeof LinterConfigSchema>;
 
+// ============================================================================
+// Secret Scanner Configuration
+// ============================================================================
+
+/**
+ * Secret pattern definition for the scanner
+ */
+export const SecretPatternSchema = z.object({
+  /** Human-readable name for the pattern */
+  name: z.string(),
+  /** Regular expression pattern to match */
+  pattern: z.string(),
+  /** Severity level of the finding */
+  severity: z.enum(['critical', 'high', 'medium', 'low']).optional().default('medium'),
+  /** Description of what this pattern detects */
+  description: z.string().optional(),
+});
+export type SecretPattern = z.infer<typeof SecretPatternSchema>;
+
+/**
+ * Configuration options for the SecretScanner
+ */
+export const SecretScannerConfigSchema = z.object({
+  /** Custom patterns to scan for in addition to built-in patterns */
+  customPatterns: z.array(SecretPatternSchema).optional().default([]),
+  /** Whether to include built-in patterns (default: true) */
+  includeBuiltInPatterns: z.boolean().optional().default(true),
+  /** Maximum line length to scan (default: 10000) */
+  maxLineLength: z.number().optional().default(10000),
+  /** Whether to mask sensitive content in findings (default: true) */
+  maskSecrets: z.boolean().optional().default(true),
+  /** Number of characters to show before/after match for context (default: 20) */
+  contextLength: z.number().optional().default(20),
+});
+export type SecretScannerConfig = z.infer<typeof SecretScannerConfigSchema>;
+
 export const ServiceConfigSchema = z.object({
   enableOnBoot: z.boolean().optional().default(false),
 });
@@ -1539,6 +1575,8 @@ export const ApexConfigSchema = z.object({
     .optional(),
   /** Linter configuration for code quality enforcement (v0.5.0) */
   linter: LinterConfigSchema.optional(),
+  /** Secret scanner configuration for detecting sensitive information (v0.5.0) */
+  scanner: SecretScannerConfigSchema.optional(),
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),

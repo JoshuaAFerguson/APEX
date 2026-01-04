@@ -22,6 +22,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
+    "test": "vitest run src/__tests__/**/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
