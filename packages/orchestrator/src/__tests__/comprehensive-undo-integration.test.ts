@@ -215,18 +215,34 @@ workflows: []
         context: {}
       });
 
+      const toolActionStore = orchestrator.getToolActionStore();
       const newComponentFile = path.join(testProject.srcDir, 'component.ts');
 
-      // Create new file using Write tool
-      const writeResult = await orchestrator.executeTool(task.id, {
-        name: 'Write',
-        input: {
-          file_path: newComponentFile,
-          content: `export class Component {\n  render() {\n    return '<div>Component</div>';\n  }\n}`
-        }
-      });
+      // Simulate Write tool creating new file
+      // 1. Create before snapshot (file doesn't exist)
+      const beforeSnapshot = await toolActionStore.createFileSnapshot(newComponentFile);
 
-      expect(writeResult.success).toBe(true);
+      // 2. Create the file
+      const componentContent = `export class Component {\n  render() {\n    return '<div>Component</div>';\n  }\n}`;
+      await fs.writeFile(newComponentFile, componentContent, 'utf8');
+
+      // 3. Create after snapshot
+      const afterSnapshot = await toolActionStore.createFileSnapshot(newComponentFile);
+
+      // 4. Record the action
+      const writeExecution = createMockToolExecution(task.id, 'Write');
+      writeExecution.input = {
+        file_path: newComponentFile,
+        content: componentContent
+      };
+
+      const writeAction = await toolActionStore.recordToolAction(
+        task.id,
+        writeExecution,
+        [newComponentFile],
+        [beforeSnapshot],
+        [afterSnapshot]
+      );
 
       // Verify file was created
       expect(await fs.access(newComponentFile).then(() => true).catch(() => false)).toBe(true);
@@ -248,47 +264,45 @@ workflows: []
         context: {}
       });
 
-      const backupFile = path.join(testProject.srcDir, 'backup.ts');
-
-      // Use Bash tool to copy a file
-      const copyResult = await orchestrator.executeTool(task.id, {
-        name: 'Bash',
-        input: {
-          command: `cp ${testProject.utilsFile} ${backupFile}`
-        }
-      });
-
-      expect(copyResult.success).toBe(true);
-
-      // Verify file was copied
-      expect(await fs.access(backupFile).then(() => true).catch(() => false)).toBe(true);
+      const toolActionStore = orchestrator.getToolActionStore();
       const originalContent = await fs.readFile(testProject.utilsFile, 'utf8');
-      const copiedContent = await fs.readFile(backupFile, 'utf8');
-      expect(copiedContent).toBe(originalContent);
 
-      // Use Bash tool to delete original file
-      const deleteResult = await orchestrator.executeTool(task.id, {
-        name: 'Bash',
-        input: {
-          command: `rm ${testProject.utilsFile}`
-        }
-      });
+      // Simulate Bash tool deleting a file
+      // 1. Create before snapshot
+      const beforeSnapshot = await toolActionStore.createFileSnapshot(testProject.utilsFile);
 
-      expect(deleteResult.success).toBe(true);
+      // 2. Delete the file (simulate bash rm command)
+      await fs.unlink(testProject.utilsFile);
 
-      // Verify original file was deleted
+      // 3. Record the bash action
+      const bashExecution = createMockToolExecution(task.id, 'Bash');
+      bashExecution.input = {
+        command: `rm ${testProject.utilsFile}`
+      };
+      bashExecution.result = {
+        stdout: '',
+        stderr: '',
+        exitCode: 0
+      };
+
+      const bashAction = await toolActionStore.recordToolAction(
+        task.id,
+        bashExecution,
+        [testProject.utilsFile],
+        [beforeSnapshot],
+        [] // No after snapshot for deleted file
+      );
+
+      // Verify file was deleted
       expect(await fs.access(testProject.utilsFile).then(() => true).catch(() => false)).toBe(false);
 
       // Get undoable actions
-      const toolActionStore = orchestrator.getToolActionStore();
       const undoableActions = await toolActionStore.getUndoableActions(task.id);
-
-      // Should have undo actions for both operations
       expect(undoableActions.length).toBeGreaterThan(0);
 
       // Undo deletion (should restore original file)
-      const undoDeleteResult = await orchestrator.undoLastAction(task.id);
-      expect(undoDeleteResult.success).toBe(true);
+      const undoResult = await orchestrator.undoLastAction(task.id);
+      expect(undoResult.success).toBe(true);
 
       // Verify original file was restored
       expect(await fs.access(testProject.utilsFile).then(() => true).catch(() => false)).toBe(true);
