@@ -3294,24 +3294,36 @@ export class ToolActionStore {
    */
   async createFileSnapshot(filePath: string, metadata?: Record<string, unknown>): Promise<FileSnapshot> {
     const absolutePath = path.resolve(filePath);
+    let content = '';
+    let existed = true;
+    let stats: fs.Stats | null = null;
 
-    if (!fs.existsSync(absolutePath)) {
-      throw new Error(`File not found: ${absolutePath}`);
+    try {
+      if (fs.existsSync(absolutePath)) {
+        content = fs.readFileSync(absolutePath, 'utf8');
+        stats = fs.statSync(absolutePath);
+      } else {
+        existed = false;
+        content = '';
+      }
+    } catch (error) {
+      // If we can't read the file for any reason, treat as non-existent
+      existed = false;
+      content = '';
     }
 
-    const content = fs.readFileSync(absolutePath, 'utf8');
-    const stats = fs.statSync(absolutePath);
     const checksum = crypto.createHash('sha256').update(content).digest('hex');
+    const now = new Date();
 
     const snapshot: FileSnapshot = {
       id: crypto.randomUUID(),
       filePath: absolutePath,
       content,
       checksum,
-      fileSize: stats.size,
-      lastModified: stats.mtime,
-      snapshotTime: new Date(),
-      existed: true,
+      fileSize: stats?.size || content.length,
+      lastModified: stats?.mtime || now,
+      snapshotTime: now,
+      existed,
       metadata,
     };
 

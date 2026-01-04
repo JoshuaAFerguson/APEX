@@ -1706,6 +1706,8 @@ export const ApexConfigSchema = z.object({
   hooks: z.lazy(() => z.array(HookConfigSchema)).optional().default([]),
   /** Tool hook configuration for pre/post tool execution hooks (v0.5.0) */
   toolHooks: z.lazy(() => ToolHookConfigSchema).optional(),
+  /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */
+  guardrails: z.lazy(() => GuardrailConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -4506,6 +4508,248 @@ export const TaskPolicyCheckResultSchema = z.object({
 export type TaskPolicyCheckResult = z.infer<typeof TaskPolicyCheckResultSchema>;
 
 // ============================================================================
+// Guardrails System Types
+// ============================================================================
+
+/**
+ * Enforcement mode for guardrails (simplified from PolicyEnforcementMode).
+ * - 'warn': Violations generate warnings but don't block operations
+ * - 'block': Violations block operations immediately
+ * - 'audit': Violations are logged for analysis but operations proceed
+ *
+ * @remarks
+ * This is the recommended enforcement mode schema for guardrails.
+ * For backward compatibility, PolicyEnforcementModeSchema is also available.
+ */
+export const EnforcementModeSchema = z.enum(['warn', 'block', 'audit']);
+export type EnforcementMode = z.infer<typeof EnforcementModeSchema>;
+
+/**
+ * Individual secret detection result.
+ * Represents a single detected secret in content.
+ *
+ * @remarks
+ * This schema captures the result of scanning content for secrets.
+ * It includes information about what was detected, where it was found,
+ * and the severity of the finding.
+ */
+export const SecretDetectionSchema = z.object({
+  /** Unique identifier for this detection */
+  id: z.string(),
+  /** The pattern that matched (from SecretPattern) */
+  patternName: z.string(),
+  /** Type of secret detected (e.g., 'api_key', 'password', 'token') */
+  secretType: z.string(),
+  /** Severity of the finding */
+  severity: z.enum(['critical', 'high', 'medium', 'low']),
+  /** File path where the secret was detected (if applicable) */
+  filePath: z.string().optional(),
+  /** Line number where the secret was found (1-based) */
+  lineNumber: z.number().int().positive().optional(),
+  /** Column number where the secret starts (1-based) */
+  columnNumber: z.number().int().positive().optional(),
+  /** The matched content (masked for security) */
+  maskedMatch: z.string(),
+  /** Context around the detection (with secret masked) */
+  context: z.string().optional(),
+  /** Timestamp when the detection occurred */
+  detectedAt: z.date(),
+  /** Whether this detection has been acknowledged/resolved */
+  acknowledged: z.boolean().optional().default(false),
+  /** Reason for acknowledgment (if acknowledged) */
+  acknowledgmentReason: z.string().optional(),
+});
+export type SecretDetection = z.infer<typeof SecretDetectionSchema>;
+
+/**
+ * Result of a secret scan operation.
+ * Aggregates all detections from scanning content.
+ */
+export const SecretScanResultSchema = z.object({
+  /** Whether any secrets were detected */
+  hasSecrets: z.boolean(),
+  /** Number of secrets detected */
+  count: z.number().int().min(0),
+  /** List of individual detections */
+  detections: z.array(SecretDetectionSchema),
+  /** Content that was scanned (identifier or description) */
+  scannedContent: z.string().optional(),
+  /** Timestamp when the scan was performed */
+  scannedAt: z.date(),
+  /** Duration of the scan in milliseconds */
+  scanDurationMs: z.number().optional(),
+});
+export type SecretScanResult = z.infer<typeof SecretScanResultSchema>;
+
+/**
+ * Unified guardrails configuration schema.
+ * Brings together all guardrail-related settings including policies,
+ * secret scanning, and enforcement modes.
+ *
+ * @remarks
+ * This is the top-level configuration for the guardrails system.
+ * It can be included in the main ApexConfig to enable guardrails.
+ *
+ * @example
+ * ```yaml
+ * # .apex/config.yaml
+ * guardrails:
+ *   enabled: true
+ *   enforcement: warn
+ *   policies:
+ *     enabled: true
+ *     enforcement: warn
+ *   secrets:
+ *     enabled: true
+ *     enforcement: block
+ *     onDetection: mask
+ *   reporting:
+ *     enabled: true
+ *     format: json
+ * ```
+ */
+export const GuardrailConfigSchema = z.object({
+  /** Whether guardrails are enabled globally */
+  enabled: z.boolean().optional().default(true),
+
+  /** Global enforcement mode for all guardrails */
+  enforcement: EnforcementModeSchema.optional().default('warn'),
+
+  /**
+   * Policy enforcement configuration
+   */
+  policies: z.object({
+    /** Whether policy enforcement is enabled */
+    enabled: z.boolean().optional().default(true),
+    /** Enforcement mode for policy violations */
+    enforcement: EnforcementModeSchema.optional(),
+    /** Path to policy files or directory */
+    policyPath: z.string().optional(),
+    /** Inline policy rules */
+    rules: z.array(PolicyRuleSchema).optional().default([]),
+  }).optional(),
+
+  /**
+   * Secret detection configuration
+   */
+  secrets: z.object({
+    /** Whether secret detection is enabled */
+    enabled: z.boolean().optional().default(true),
+    /** Enforcement mode for secret detections */
+    enforcement: EnforcementModeSchema.optional(),
+    /** Behavior when secrets are detected */
+    onDetection: SecretDetectionBehaviorSchema.optional().default('warn'),
+    /** Include built-in secret patterns */
+    includeBuiltInPatterns: z.boolean().optional().default(true),
+    /** Custom secret patterns to detect */
+    customPatterns: z.array(SecretPatternSchema).optional().default([]),
+    /** Paths to exclude from secret scanning */
+    excludePaths: z.array(z.string()).optional().default([]),
+    /** File patterns to exclude from scanning */
+    excludePatterns: z.array(z.string()).optional().default([]),
+  }).optional(),
+
+  /**
+   * Reporting configuration for guardrail violations
+   */
+  reporting: z.object({
+    /** Whether reporting is enabled */
+    enabled: z.boolean().optional().default(true),
+    /** Report format */
+    format: z.enum(['json', 'text', 'sarif']).optional().default('json'),
+    /** Output path for reports */
+    outputPath: z.string().optional(),
+    /** Whether to include context in reports */
+    includeContext: z.boolean().optional().default(true),
+    /** Maximum violations to include in report */
+    maxViolations: z.number().int().positive().optional(),
+  }).optional(),
+
+  /**
+   * Path access control configuration
+   */
+  pathAccess: z.object({
+    /** Whether path access control is enabled */
+    enabled: z.boolean().optional().default(true),
+    /** Enforcement mode for path access violations */
+    enforcement: EnforcementModeSchema.optional(),
+    /** Allowed paths configuration */
+    config: AllowedPathsConfigSchema.optional(),
+  }).optional(),
+
+  /**
+   * Custom metadata for guardrails
+   */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type GuardrailConfig = z.infer<typeof GuardrailConfigSchema>;
+
+/**
+ * Guardrail violation event (extends policy violation with guardrail context)
+ */
+export const GuardrailViolationSchema = z.object({
+  /** Unique identifier for this violation */
+  id: z.string(),
+  /** Type of guardrail that was violated */
+  guardrailType: z.enum(['policy', 'secret', 'path', 'custom']),
+  /** The specific rule or pattern that was violated */
+  rule: z.string(),
+  /** Human-readable message describing the violation */
+  message: z.string(),
+  /** Severity of the violation */
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
+  /** Enforcement mode that applies to this violation */
+  enforcement: EnforcementModeSchema,
+  /** Whether this violation blocks further execution */
+  blocking: z.boolean(),
+  /** Resource or context that triggered the violation */
+  resource: z.string().optional(),
+  /** File path associated with the violation */
+  filePath: z.string().optional(),
+  /** Line number where the violation occurred */
+  lineNumber: z.number().int().positive().optional(),
+  /** Additional context about the violation */
+  context: z.record(z.string(), z.unknown()).optional(),
+  /** Timestamp when the violation occurred */
+  timestamp: z.date(),
+  /** Task ID associated with this violation */
+  taskId: z.string().optional(),
+  /** Agent ID that triggered this violation */
+  agentId: z.string().optional(),
+});
+export type GuardrailViolation = z.infer<typeof GuardrailViolationSchema>;
+
+/**
+ * Result of guardrail evaluation
+ */
+export const GuardrailEvaluationResultSchema = z.object({
+  /** Whether the evaluation passed (no blocking violations) */
+  passed: z.boolean(),
+  /** Whether execution was blocked */
+  blocked: z.boolean(),
+  /** Total number of violations */
+  violationCount: z.number().int().min(0),
+  /** Violations by severity */
+  violationsBySeverity: z.object({
+    critical: z.number().int().min(0),
+    high: z.number().int().min(0),
+    medium: z.number().int().min(0),
+    low: z.number().int().min(0),
+  }),
+  /** List of all violations */
+  violations: z.array(GuardrailViolationSchema),
+  /** Secret scan results (if applicable) */
+  secretScanResult: SecretScanResultSchema.optional(),
+  /** Policy check result (if applicable) */
+  policyCheckResult: TaskPolicyCheckResultSchema.optional(),
+  /** Timestamp when evaluation was performed */
+  evaluatedAt: z.date(),
+  /** Duration of evaluation in milliseconds */
+  evaluationDurationMs: z.number().optional(),
+});
+export type GuardrailEvaluationResult = z.infer<typeof GuardrailEvaluationResultSchema>;
+
+// ============================================================================
 // Hook Configuration
 // ============================================================================
 
@@ -4967,3 +5211,114 @@ export interface LoopDetectionResult {
   /** Suggested action to break the loop */
   suggestedAction?: string;
 }
+
+// ============================================================================
+// Audit Log Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Audit log event types for tracking significant system events
+ */
+export const AuditEventTypeSchema = z.enum([
+  // Task lifecycle events
+  'task.created',
+  'task.started',
+  'task.completed',
+  'task.failed',
+  'task.cancelled',
+  'task.paused',
+  'task.resumed',
+  'task.trashed',
+  'task.restored',
+  'task.archived',
+
+  // Agent events
+  'agent.started',
+  'agent.completed',
+  'agent.failed',
+  'agent.handoff',
+
+  // Approval events
+  'approval.requested',
+  'approval.granted',
+  'approval.denied',
+  'approval.timeout',
+
+  // Configuration events
+  'config.updated',
+  'permission.granted',
+  'permission.revoked',
+
+  // Tool events
+  'tool.executed',
+  'tool.undone',
+
+  // Security events
+  'security.policy_violation',
+  'security.rate_limited',
+]);
+export type AuditEventType = z.infer<typeof AuditEventTypeSchema>;
+
+/**
+ * Severity levels for audit log entries
+ */
+export const AuditSeveritySchema = z.enum(['debug', 'info', 'warn', 'error', 'critical']);
+export type AuditSeverity = z.infer<typeof AuditSeveritySchema>;
+
+/**
+ * Audit log entry schema for tracking significant system events
+ * Provides comprehensive context for compliance, debugging, and security monitoring
+ */
+export const AuditLogEntrySchema = z.object({
+  /** Unique identifier for the audit log entry */
+  id: z.string().min(1),
+
+  /** Associated task ID (optional - some events are system-wide) */
+  taskId: z.string().optional(),
+
+  /** Type of event being logged */
+  eventType: AuditEventTypeSchema,
+
+  /** Severity level of the event */
+  severity: AuditSeveritySchema,
+
+  /** ISO 8601 timestamp when the event occurred */
+  timestamp: z.date(),
+
+  /** Actor that triggered the event (user, agent, system) */
+  actor: z.string(),
+
+  /** Human-readable description of the event */
+  message: z.string(),
+
+  /** Stage during which the event occurred (if applicable) */
+  stage: z.string().optional(),
+
+  /** Agent that was active when the event occurred (if applicable) */
+  agent: z.string().optional(),
+
+  /** Structured metadata about the event (JSON serialized in DB) */
+  metadata: z.record(z.unknown()).optional(),
+
+  /** Previous state before the event (for state changes) */
+  previousState: z.string().optional(),
+
+  /** New state after the event (for state changes) */
+  newState: z.string().optional(),
+
+  /** Duration of the operation in milliseconds (if applicable) */
+  durationMs: z.number().optional(),
+
+  /** Whether the event was successful */
+  success: z.boolean().default(true),
+
+  /** Error details if the event represents a failure */
+  error: z.string().optional(),
+
+  /** Correlation ID for linking related events */
+  correlationId: z.string().optional(),
+
+  /** Session ID for grouping events within a session */
+  sessionId: z.string().optional(),
+});
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
