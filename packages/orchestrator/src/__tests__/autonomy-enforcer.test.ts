@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AutonomyEnforcer, type AutonomyEnforcerConfig, type TaskContext, type LimitCheckResult, type WarningResult } from '../autonomy-enforcer.js';
+import { AutonomyEnforcer, type AutonomyEnforcerConfig, type TaskContext, type ActionMetadata, type LimitCheckResult, type WarningResult } from '../autonomy-enforcer.js';
 import { Task, TaskStatus, AutonomyLevel, AutonomyLimits, TaskUsage } from '@apexcli/core';
 
 // Mock ApexOrchestrator
@@ -594,6 +594,138 @@ describe('AutonomyEnforcer', () => {
 
       const result = await autonomyEnforcer.checkApprovalRequired('delete-everything', context);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('checkAction', () => {
+    const createActionMetadata = (overrides: Partial<ActionMetadata> = {}): ActionMetadata => ({
+      agentType: 'test-agent',
+      actionType: 'test-action',
+      toolName: 'Write',
+      operationType: 'write',
+      ...overrides,
+    });
+
+    describe('full-auto level', () => {
+      beforeEach(() => {
+        autonomyEnforcer.updateConfig({ level: 'full-auto' });
+      });
+
+      it('should not require approval for standard operations', async () => {
+        const actionMetadata = createActionMetadata({ operationType: 'write' });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(false);
+      });
+
+      it('should require approval for dangerous operations with gates', async () => {
+        autonomyEnforcer.updateConfig({
+          level: 'full-auto',
+          gates: [{ type: 'before-destructive', enabled: true }],
+        });
+
+        const actionMetadata = createActionMetadata({ operationType: 'dangerous' });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+    });
+
+    describe('review-before-commit level', () => {
+      beforeEach(() => {
+        autonomyEnforcer.updateConfig({ level: 'review-before-commit' });
+      });
+
+      it('should require approval for commit operations', async () => {
+        const actionMetadata = createActionMetadata({
+          actionType: 'git-commit',
+          toolName: 'Bash'
+        });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+
+      it('should not require approval for non-commit operations', async () => {
+        const actionMetadata = createActionMetadata({
+          actionType: 'edit-file',
+          toolName: 'Edit'
+        });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(false);
+      });
+
+      it('should emit approval:required event for commit operations', async () => {
+        const emitSpy = vi.spyOn(autonomyEnforcer, 'emit');
+        const actionMetadata = createActionMetadata({
+          actionType: 'git-push',
+          toolName: 'Bash'
+        });
+
+        await autonomyEnforcer.checkAction(actionMetadata);
+        expect(emitSpy).toHaveBeenCalledWith('approval:required', 'before-commit', expect.any(Object));
+      });
+    });
+
+    describe('review-all level', () => {
+      beforeEach(() => {
+        autonomyEnforcer.updateConfig({ level: 'review-all' });
+      });
+
+      it('should allow read operations without approval', async () => {
+        const actionMetadata = createActionMetadata({ operationType: 'read' });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(false);
+      });
+
+      it('should require approval for write operations', async () => {
+        const actionMetadata = createActionMetadata({ operationType: 'write' });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+
+      it('should require approval for execute operations', async () => {
+        const actionMetadata = createActionMetadata({ operationType: 'execute' });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+    });
+
+    describe('gate matching for action metadata', () => {
+      beforeEach(() => {
+        autonomyEnforcer.updateConfig({
+          level: 'full-auto',
+          gates: [
+            { type: 'before-destructive', enabled: true },
+            { type: 'before-network', enabled: true },
+            { type: 'before-file-write', enabled: true },
+          ],
+        });
+      });
+
+      it('should match before-destructive gate for dangerous operations', async () => {
+        const actionMetadata = createActionMetadata({
+          operationType: 'dangerous',
+          actionType: 'delete-database'
+        });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+
+      it('should match before-network gate for network operations', async () => {
+        const actionMetadata = createActionMetadata({
+          operationType: 'network',
+          toolName: 'WebFetch'
+        });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
+
+      it('should match before-file-write gate for write operations', async () => {
+        const actionMetadata = createActionMetadata({
+          operationType: 'write',
+          toolName: 'Write'
+        });
+        const result = await autonomyEnforcer.checkAction(actionMetadata);
+        expect(result).toBe(true);
+      });
     });
   });
 });

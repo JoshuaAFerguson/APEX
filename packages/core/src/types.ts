@@ -1351,6 +1351,12 @@ export const SecretPatternSchema = z.object({
 export type SecretPattern = z.infer<typeof SecretPatternSchema>;
 
 /**
+ * Behavior when secrets are detected in tool outputs
+ */
+export const SecretDetectionBehaviorSchema = z.enum(['log', 'warn', 'mask', 'block']);
+export type SecretDetectionBehavior = z.infer<typeof SecretDetectionBehaviorSchema>;
+
+/**
  * Configuration options for the SecretScanner
  */
 export const SecretScannerConfigSchema = z.object({
@@ -1364,6 +1370,8 @@ export const SecretScannerConfigSchema = z.object({
   maskSecrets: z.boolean().optional().default(true),
   /** Number of characters to show before/after match for context (default: 20) */
   contextLength: z.number().optional().default(20),
+  /** Behavior when secrets are detected in tool outputs (default: 'warn') */
+  onSecretDetected: SecretDetectionBehaviorSchema.optional().default('warn'),
 });
 export type SecretScannerConfig = z.infer<typeof SecretScannerConfigSchema>;
 

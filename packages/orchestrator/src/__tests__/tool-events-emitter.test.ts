@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'events';
-import type { ToolCallStartEvent, ToolCallCompleteEvent, ToolCallProgressEvent } from '../index';
+import type { ToolCallStartEvent, ToolCallCompleteEvent, ToolCallProgressEvent, SecretDetectedEvent } from '../index';
 
 // Simple test emitter class that extends EventEmitter like ApexOrchestrator
 class MockToolEventEmitter extends EventEmitter {
@@ -21,6 +21,10 @@ class MockToolEventEmitter extends EventEmitter {
 
   emitToolProgress(event: ToolCallProgressEvent) {
     this.emit('tool:progress', event);
+  }
+
+  emitSecretDetected(event: SecretDetectedEvent) {
+    this.emit('secret:detected', event);
   }
 }
 

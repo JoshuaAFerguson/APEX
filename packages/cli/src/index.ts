@@ -934,7 +934,7 @@ export const commands: Command[] = [
     name: 'run',
     aliases: ['r'],
     description: 'Run a task with specific options',
-    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>]',
+    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>] [--diff-preview]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -946,6 +946,7 @@ export const commands: Command[] = [
       let workflow = 'feature';
       let autonomy: string | undefined;
       let priority: string | undefined;
+      let diffPreview: boolean | undefined;
 
       let i = 0;
       // Check if first arg is a quoted string
@@ -972,6 +973,10 @@ export const commands: Command[] = [
           autonomy = args[++i];
         } else if (args[i] === '--priority' || args[i] === '-p') {
           priority = args[++i];
+        } else if (args[i] === '--diff-preview') {
+          diffPreview = true;
+        } else if (args[i] === '--no-diff-preview') {
+          diffPreview = false;
         } else if (!description) {
           description = args[i];
         }
@@ -983,7 +988,7 @@ export const commands: Command[] = [
         return;
       }
 
-      await executeTask(ctx, description, { workflow, autonomy, priority });
+      await executeTask(ctx, description, { workflow, autonomy, priority }, { diffPreview });
     },
   },
 
@@ -3191,7 +3196,8 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
 async function executeTask(
   ctx: ApexContext,
   description: string,
-  options: { workflow?: string; autonomy?: string; priority?: string } = {}
+  options: { workflow?: string; autonomy?: string; priority?: string } = {},
+  cliFlags?: { diffPreview?: boolean }
 ): Promise<void> {
   if (!ctx.orchestrator) return;
 
@@ -3208,7 +3214,7 @@ async function executeTask(
   console.log(chalk.gray(`Branch: ${task.branchName}`));
   console.log(chalk.gray(`Workflow: ${task.workflow}\n`));
 
-  await executeTaskWithOutput(ctx, task.id);
+  await executeTaskWithOutput(ctx, task.id, cliFlags);
 }
 
 async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<void> {

@@ -52,11 +52,13 @@ import {
   WorktreeInfo,
   UndoOperationResult,
   SecretScannerConfig,
+  SecretFinding,
+  SecretDetectionBehavior,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { PolicyEnforcer, createPolicyEnforcer } from './policy';
-import { AutonomyEnforcer, type AutonomyEnforcerConfig } from './autonomy-enforcer';
+import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
 import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
@@ -177,6 +179,7 @@ export interface OrchestratorEvents {
   'tool:start': (event: ToolCallStartEvent) => void;
   'tool:progress': (event: ToolCallProgressEvent) => void;
   'tool:complete': (event: ToolCallCompleteEvent) => void;
+  'secret:detected': (event: SecretDetectedEvent) => void;
 
   // Diff preview events (v0.5.0)
   'diff:preview': (event: DiffPreviewEvent) => void;
@@ -432,6 +435,26 @@ export interface ToolCallCompleteEvent {
 }
 
 /**
+ * Event payload for secret:detected event (v0.5.0)
+ * Emitted when secrets are detected in tool outputs
+ */
+export interface SecretDetectedEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  findings: SecretFinding[];
+  count: number;
+  severityCounts: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  behavior: SecretDetectionBehavior;
+  timestamp: Date;
+}
+
+/**
  * Event payload for diff:preview event (v0.5.0)
  * Emitted when a file edit is about to be applied and diff preview is enabled
  */
@@ -556,6 +579,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   // Task execution tracking
   private currentTaskId: string | null = null;
+
+  // CLI flags for current task
+  private currentTaskCliFlags: { diffPreview?: boolean } | undefined = undefined;
 
   // Concurrent execution state
   private runningTasks: Map<string, Promise<void>> = new Map();
@@ -886,8 +912,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   /**
    * Execute a task with automatic retries
    */
-  async executeTask(taskId: string, options?: { autoRetry?: boolean }): Promise<void> {
+  async executeTask(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     await this.ensureInitialized();
+
+    // Store CLI flags for current task
+    this.currentTaskCliFlags = options?.cliFlags;
 
     const task = await this.store.getTask(taskId);
     if (!task) {
@@ -2100,6 +2129,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       currentAgent: agent.name,
       currentStage: stage.name,
       toolStartTimes: new Map(),
+      config: this.config,
+      cliFlags: this.currentTaskCliFlags,
     };
 
     // Store the context for access during tool completion
@@ -2318,6 +2349,67 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                       error: block.is_error ? String(block.content) : undefined,
                     },
                   };
+
+                  // Scan tool output for secrets if scanner is configured
+                  if (this.secretScanner && success && block.content) {
+                    try {
+                      // Convert output to string for scanning
+                      const outputContent = typeof block.content === 'string'
+                        ? block.content
+                        : JSON.stringify(block.content);
+
+                      // Scan for secrets in the tool output
+                      const findings = this.secretScanner.scan(
+                        outputContent,
+                        `tool:${toolExecution.toolName}:${callId}`
+                      );
+
+                      // If secrets detected, emit secret:detected event
+                      if (findings.length > 0) {
+                        const severityCounts = {
+                          critical: findings.filter(f => f.severity === 'critical').length,
+                          high: findings.filter(f => f.severity === 'high').length,
+                          medium: findings.filter(f => f.severity === 'medium').length,
+                          low: findings.filter(f => f.severity === 'low').length,
+                        };
+
+                        this.emit('secret:detected', {
+                          taskId: task.id,
+                          toolName: toolExecution.toolName,
+                          callId,
+                          findings,
+                          count: findings.length,
+                          severityCounts,
+                          behavior: this.config.scanner?.onSecretDetected ?? 'warn',
+                          timestamp: new Date(),
+                        });
+
+                        // Log the detection
+                        await this.store.addLog(task.id, {
+                          level: 'warn',
+                          message: `Secrets detected in tool output: ${toolExecution.toolName} (${findings.length} findings)`,
+                          metadata: {
+                            toolName: toolExecution.toolName,
+                            callId,
+                            secretCount: findings.length,
+                            severityCounts,
+                            behavior: this.config.scanner?.onSecretDetected ?? 'warn',
+                          },
+                        });
+                      }
+                    } catch (scanError) {
+                      // Log scanner errors but don't fail the tool execution
+                      await this.store.addLog(task.id, {
+                        level: 'error',
+                        message: `Secret scanner error for tool ${toolExecution.toolName}: ${String(scanError)}`,
+                        metadata: {
+                          toolName: toolExecution.toolName,
+                          callId,
+                          scanError: String(scanError),
+                        },
+                      });
+                    }
+                  }
 
                   this.emit('tool:complete', {
                     taskId: task.id,
@@ -6071,6 +6163,42 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Determine operation type based on tool name and input
+   */
+  private determineOperationType(toolName: string, toolInput: any): 'read' | 'write' | 'execute' | 'network' | 'dangerous' {
+    const tool = toolName.toLowerCase();
+
+    // Read operations
+    if (['read', 'grep', 'glob'].includes(tool)) {
+      return 'read';
+    }
+
+    // Write operations
+    if (['write', 'edit', 'multiedit', 'notebookedit'].includes(tool)) {
+      return 'write';
+    }
+
+    // Network operations
+    if (['webfetch', 'websearch'].includes(tool)) {
+      return 'network';
+    }
+
+    // Execute operations (potentially dangerous)
+    if (tool === 'bash') {
+      const command = toolInput?.command || '';
+      // Check for dangerous commands
+      const dangerousKeywords = ['rm', 'delete', 'drop', 'truncate', 'format', 'sudo'];
+      if (dangerousKeywords.some(keyword => command.includes(keyword))) {
+        return 'dangerous';
+      }
+      return 'execute';
+    }
+
+    // Default to read for unknown tools
+    return 'read';
+  }
+
+  /**
    * Create hooks that integrate both the existing hook system and the HookManager
    */
   private createHooksWithManager(hookContext: HookContext, agentName: string, stageName: string) {
@@ -6084,6 +6212,27 @@ Parent: ${parentTask.description}`;
         {
           hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
             try {
+              // Create action metadata for autonomy check
+              const actionMetadata: ActionMetadata = {
+                agentType: agentName,
+                actionType: input.tool_name || 'unknown',
+                scope: input.tool_input?.file_path || input.tool_input?.path || undefined,
+                toolName: input.tool_name || 'unknown',
+                operationType: this.determineOperationType(input.tool_name || 'unknown', input.tool_input),
+              };
+
+              // Check autonomy requirements first
+              const requiresApproval = await this.autonomyEnforcer.checkAction(actionMetadata);
+              if (requiresApproval) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse',
+                    permissionDecision: 'deny',
+                    permissionDecisionReason: 'Autonomy enforcer requires approval for this action',
+                  },
+                };
+              }
+
               // Create PreHookContext for the HookManager
               const preHookContext = {
                 toolName: input.tool_name || 'unknown',

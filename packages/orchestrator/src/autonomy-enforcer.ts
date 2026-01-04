@@ -31,6 +31,14 @@ export interface TaskContext {
   operationType?: 'read' | 'write' | 'execute' | 'network' | 'dangerous';
 }
 
+export interface ActionMetadata {
+  agentType: string;
+  actionType: string;
+  scope?: string;
+  toolName?: string;
+  operationType?: 'read' | 'write' | 'execute' | 'network' | 'dangerous';
+}
+
 export interface LimitCheckResult {
   exceeded: boolean;
   limitType?: 'tokens' | 'cost' | 'time' | 'files' | 'lines' | 'turns';
@@ -86,6 +94,52 @@ class AutonomyEnforcer extends EventEmitter {
   }
 
   /**
+   * Check if an action requires approval based on metadata
+   * @param actionMetadata - Metadata about the action including agent type, action type, and scope
+   * @returns boolean indicating if approval is required
+   */
+  async checkAction(actionMetadata: ActionMetadata): Promise<boolean> {
+    const { level, gates } = this.config;
+
+    // Create a legacy context for compatibility with existing gate checking
+    const context: TaskContext = {
+      task: { id: 'current-task' } as Task, // Minimal task object for context
+      currentStage: 'execution',
+      agent: actionMetadata.agentType,
+      operationType: actionMetadata.operationType,
+    };
+
+    // Full autonomy - no approvals needed unless specifically gated
+    if (level === 'full-auto') {
+      return this.checkSpecificGatesForAction(actionMetadata, gates);
+    }
+
+    // Review before commit - requires approval for commit operations
+    if (level === 'review-before-commit') {
+      const commitActions = ['git-commit', 'git-push', 'deploy', 'publish'];
+      if (commitActions.some(commitAction =>
+        actionMetadata.actionType.includes(commitAction) ||
+        (actionMetadata.toolName && actionMetadata.toolName.includes(commitAction))
+      )) {
+        this.emit('approval:required', 'before-commit', context);
+        return true;
+      }
+      return this.checkSpecificGatesForAction(actionMetadata, gates);
+    }
+
+    // Review all - requires approval for everything except reads
+    if (level === 'review-all') {
+      if (actionMetadata.operationType === 'read') {
+        return false; // Allow read operations without approval
+      }
+      this.emit('approval:required', 'review-all', context);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Check if an action requires approval based on autonomy level and gates
    */
   async checkApprovalRequired(action: string, context: TaskContext): Promise<boolean> {
@@ -119,6 +173,27 @@ class AutonomyEnforcer extends EventEmitter {
   }
 
   /**
+   * Check specific approval gates for action metadata
+   */
+  private checkSpecificGatesForAction(actionMetadata: ActionMetadata, gates: ApprovalGate[]): boolean {
+    // Create a legacy context for compatibility
+    const context: TaskContext = {
+      task: { id: 'current-task' } as Task,
+      currentStage: 'execution',
+      agent: actionMetadata.agentType,
+      operationType: actionMetadata.operationType,
+    };
+
+    for (const gate of gates) {
+      if (this.matchesGateConditionForAction(actionMetadata, gate)) {
+        this.emit('approval:required', gate.type, context);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Check specific approval gates
    */
   private checkSpecificGates(action: string, context: TaskContext, gates: ApprovalGate[]): boolean {
@@ -129,6 +204,43 @@ class AutonomyEnforcer extends EventEmitter {
       }
     }
     return false;
+  }
+
+  /**
+   * Check if action metadata matches gate condition
+   */
+  private matchesGateConditionForAction(actionMetadata: ActionMetadata, gate: ApprovalGate): boolean {
+    switch (gate.type) {
+      case 'before-commit':
+        return ['git-commit', 'git-push', 'Bash'].some(keyword =>
+          actionMetadata.actionType.includes(keyword) ||
+          (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+        );
+
+      case 'before-destructive':
+        return actionMetadata.operationType === 'dangerous' ||
+               ['delete', 'remove', 'rm', 'drop'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.scope && actionMetadata.scope.includes(keyword))
+               );
+
+      case 'before-network':
+        return actionMetadata.operationType === 'network' ||
+               ['http', 'fetch', 'download', 'upload', 'WebFetch', 'WebSearch'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+               );
+
+      case 'before-file-write':
+        return actionMetadata.operationType === 'write' ||
+               ['write', 'edit', 'create', 'save', 'Write', 'Edit'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+               );
+
+      default:
+        return false;
+    }
   }
 
   /**
@@ -369,3 +481,4 @@ class AutonomyEnforcer extends EventEmitter {
 }
 
 export { AutonomyEnforcer };
+export type { ActionMetadata };

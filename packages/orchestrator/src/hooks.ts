@@ -35,6 +35,9 @@ export interface HookContext {
       diffPreview?: boolean;
     };
   };
+  cliFlags?: {
+    diffPreview?: boolean;
+  };
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -560,8 +563,17 @@ async function generateDiffPreview(
     return {};
   }
 
-  // Skip if diff preview is disabled in config (default is enabled)
-  if (context.config?.ui?.diffPreview === false) {
+  // Check CLI flag override first, then fallback to config (default is enabled)
+  let shouldGeneratePreview = true;
+  if (context.cliFlags?.diffPreview !== undefined) {
+    // CLI flag overrides config
+    shouldGeneratePreview = context.cliFlags.diffPreview;
+  } else {
+    // Use config setting (default enabled if not specified)
+    shouldGeneratePreview = context.config?.ui?.diffPreview !== false;
+  }
+
+  if (!shouldGeneratePreview) {
     return {};
   }
 
@@ -593,6 +605,82 @@ async function generateDiffPreview(
         return {};
       }
     }
+  } else if (toolName === 'MultiEdit' && 'edits' in toolInput && Array.isArray(toolInput.edits)) {
+    // For MultiEdit, process each edit separately and emit events for each file
+    const edits = toolInput.edits as Array<{
+      file_path: string;
+      old_string: string;
+      new_string: string;
+      replace_all?: boolean;
+    }>;
+
+    for (const edit of edits) {
+      if (typeof edit.file_path !== 'string' || typeof edit.old_string !== 'string' || typeof edit.new_string !== 'string') {
+        continue; // Skip invalid edits
+      }
+
+      try {
+        const editFilePath = edit.file_path;
+        const currentContent = context.fileSnapshots?.get(editFilePath) || '';
+        const oldString = edit.old_string;
+        const newString = edit.new_string;
+
+        let editNewContent: string;
+        if (edit.replace_all) {
+          editNewContent = currentContent.replaceAll(oldString, newString);
+        } else {
+          editNewContent = currentContent.replace(oldString, newString);
+        }
+
+        // Import the diff utility
+        const { generateFileDiff } = await import('./utils/diff');
+
+        // Generate the diff for this file
+        const diffResult = generateFileDiff(editFilePath, editNewContent);
+
+        // Only emit if there are differences
+        if (diffResult.hasDifferences) {
+          context.eventEmitter.emit('diff:preview', {
+            taskId: context.taskId,
+            toolName,
+            callId: toolUseId || `multiedit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            filePath: editFilePath,
+            diff: diffResult.diff,
+            addedLines: diffResult.addedLines,
+            removedLines: diffResult.removedLines,
+            timestamp: new Date(),
+          });
+
+          // Log the diff preview generation
+          await context.store.addLog(context.taskId, {
+            level: 'debug',
+            message: `Diff preview generated for: ${editFilePath}`,
+            metadata: {
+              tool: toolName,
+              filePath: editFilePath,
+              addedLines: diffResult.addedLines,
+              removedLines: diffResult.removedLines,
+              callId: toolUseId,
+            },
+          });
+        }
+      } catch (error) {
+        // Log diff generation errors but don't fail the tool execution
+        await context.store.addLog(context.taskId, {
+          level: 'warn',
+          message: `Failed to generate diff preview for MultiEdit: ${edit.file_path} - ${String(error)}`,
+          metadata: {
+            tool: toolName,
+            filePath: edit.file_path,
+            error: String(error),
+            callId: toolUseId,
+          },
+        });
+      }
+    }
+
+    // Return early since we've handled all the edits
+    return {};
   } else if (toolName === 'NotebookEdit' && 'notebook_path' in toolInput && 'new_source' in toolInput) {
     filePath = typeof toolInput.notebook_path === 'string' ? toolInput.notebook_path : undefined;
     // For notebook edits, we'd need more complex logic to handle cell modifications
