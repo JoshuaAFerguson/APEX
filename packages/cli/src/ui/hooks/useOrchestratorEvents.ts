@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
 import type { VerboseDebugData } from '@apexcli/core';
+import { renderColoredDiff } from '../../diff-renderer.js';
+import chalk from 'chalk';
 
 export interface OrchestratorEventState {
   /** Current active agent */
