@@ -37,6 +37,9 @@ import {
   FileSnapshot,
   ToolActionRetentionConfig,
   TaskPolicyCheckResult,
+  FixAttempt,
+  FixAttemptHistory,
+  ErrorFingerprint,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -534,6 +537,40 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_snapshots_action_id ON snapshots(action_id);
       CREATE INDEX IF NOT EXISTS idx_snapshots_tool_name ON snapshots(tool_name);
       CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
+
+      -- v0.5.0 Fix Attempts Tracking
+      CREATE TABLE IF NOT EXISTS fix_attempts (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        error_hash TEXT NOT NULL,
+        error_message TEXT NOT NULL,
+        error_category TEXT NOT NULL,
+        error_file_path TEXT,
+        error_line INTEGER,
+        error_column INTEGER,
+        error_code TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        approach TEXT NOT NULL,
+        agent TEXT,
+        stage TEXT,
+        before_state TEXT,
+        after_state TEXT,
+        result_success INTEGER NOT NULL DEFAULT 0,
+        result_resolved INTEGER NOT NULL DEFAULT 0,
+        result_reason TEXT,
+        result_new_errors TEXT,
+        delay_applied_ms INTEGER,
+        metadata TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+
+      -- v0.5.0 Fix Attempts Indexes
+      CREATE INDEX IF NOT EXISTS idx_fix_attempts_task_id ON fix_attempts(task_id);
+      CREATE INDEX IF NOT EXISTS idx_fix_attempts_error_hash ON fix_attempts(error_hash);
+      CREATE INDEX IF NOT EXISTS idx_fix_attempts_started_at ON fix_attempts(started_at);
+      CREATE INDEX IF NOT EXISTS idx_fix_attempts_error_category ON fix_attempts(error_category);
     `);
   }
 
@@ -3651,4 +3688,154 @@ export class ToolActionStore {
       storageUsageMB: (snapshotStats.total_size || 0) / (1024 * 1024),
     };
   }
+
+  // ============================================================================
+  // Fix Attempt Tracking Methods (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Add a fix attempt record to the database
+   */
+  async addFixAttempt(taskId: string, attempt: FixAttempt): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO fix_attempts (
+        id, task_id, attempt_number, error_hash, error_message, error_category,
+        error_file_path, error_line, error_column, error_code,
+        started_at, completed_at, approach, agent, stage,
+        before_state, after_state, result_success, result_resolved,
+        result_reason, result_new_errors, delay_applied_ms, metadata
+      ) VALUES (
+        @id, @taskId, @attemptNumber, @errorHash, @errorMessage, @errorCategory,
+        @errorFilePath, @errorLine, @errorColumn, @errorCode,
+        @startedAt, @completedAt, @approach, @agent, @stage,
+        @beforeState, @afterState, @resultSuccess, @resultResolved,
+        @resultReason, @resultNewErrors, @delayAppliedMs, @metadata
+      )
+    `);
+
+    stmt.run({
+      id: attempt.id,
+      taskId: attempt.taskId,
+      attemptNumber: attempt.attemptNumber,
+      errorHash: attempt.error.hash,
+      errorMessage: attempt.error.message,
+      errorCategory: attempt.error.category,
+      errorFilePath: attempt.error.filePath ?? null,
+      errorLine: attempt.error.line ?? null,
+      errorColumn: attempt.error.column ?? null,
+      errorCode: attempt.error.code ?? null,
+      startedAt: attempt.startedAt.toISOString(),
+      completedAt: attempt.completedAt?.toISOString() ?? null,
+      approach: attempt.approach,
+      agent: attempt.agent ?? null,
+      stage: attempt.stage ?? null,
+      beforeState: attempt.beforeState ? JSON.stringify(attempt.beforeState) : null,
+      afterState: attempt.afterState ? JSON.stringify(attempt.afterState) : null,
+      resultSuccess: attempt.result.success ? 1 : 0,
+      resultResolved: attempt.result.resolved ? 1 : 0,
+      resultReason: attempt.result.reason ?? null,
+      resultNewErrors: attempt.result.newErrors ? JSON.stringify(attempt.result.newErrors) : null,
+      delayAppliedMs: attempt.delayAppliedMs ?? null,
+      metadata: attempt.metadata ? JSON.stringify(attempt.metadata) : null,
+    });
+  }
+
+  /**
+   * Get fix attempt history for a task
+   */
+  async getFixAttemptHistory(taskId: string): Promise<FixAttemptHistory> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM fix_attempts
+      WHERE task_id = ?
+      ORDER BY started_at ASC
+    `);
+    const rows = stmt.all(taskId) as FixAttemptRow[];
+
+    const entries: FixAttempt[] = rows.map(row => this.rowToFixAttempt(row));
+
+    // Build error attempt counts
+    const errorAttemptCounts: Record<string, number> = {};
+    for (const entry of entries) {
+      errorAttemptCounts[entry.error.hash] =
+        (errorAttemptCounts[entry.error.hash] ?? 0) + 1;
+    }
+
+    return {
+      entries,
+      totalAttempts: entries.length,
+      resolvedCount: entries.filter(e => e.result.resolved).length,
+      failedCount: entries.filter(e => !e.result.resolved).length,
+      lastAttemptAt: entries.length > 0 ? entries[entries.length - 1].startedAt : undefined,
+      errorAttemptCounts,
+    };
+  }
+
+  /**
+   * Clear all fix attempts for a task
+   */
+  async clearFixAttempts(taskId: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM fix_attempts WHERE task_id = ?');
+    stmt.run(taskId);
+  }
+
+  private rowToFixAttempt(row: FixAttemptRow): FixAttempt {
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      attemptNumber: row.attempt_number,
+      error: {
+        hash: row.error_hash,
+        message: row.error_message,
+        category: row.error_category,
+        filePath: row.error_file_path ?? undefined,
+        line: row.error_line ?? undefined,
+        column: row.error_column ?? undefined,
+        code: row.error_code ?? undefined,
+      },
+      startedAt: new Date(row.started_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      approach: row.approach,
+      agent: row.agent ?? undefined,
+      stage: row.stage ?? undefined,
+      beforeState: row.before_state ? JSON.parse(row.before_state) : undefined,
+      afterState: row.after_state ? JSON.parse(row.after_state) : undefined,
+      result: {
+        success: row.result_success === 1,
+        resolved: row.result_resolved === 1,
+        reason: row.result_reason ?? undefined,
+        newErrors: row.result_new_errors ? JSON.parse(row.result_new_errors) : undefined,
+      },
+      delayAppliedMs: row.delay_applied_ms ?? undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    };
+  }
+}
+
+/**
+ * Database row interface for fix attempts
+ */
+interface FixAttemptRow {
+  id: string;
+  task_id: string;
+  attempt_number: number;
+  error_hash: string;
+  error_message: string;
+  error_category: string;
+  error_file_path: string | null;
+  error_line: number | null;
+  error_column: number | null;
+  error_code: string | null;
+  started_at: string;
+  completed_at: string | null;
+  approach: string;
+  agent: string | null;
+  stage: string | null;
+  before_state: string | null;
+  after_state: string | null;
+  result_success: number;
+  result_resolved: number;
+  result_reason: string | null;
+  result_new_errors: string | null;
+  delay_applied_ms: number | null;
+  metadata: string | null;
 }

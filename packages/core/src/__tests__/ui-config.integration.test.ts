@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { UIConfigSchema, ApexConfigSchema } from '../types';
 import { getEffectiveConfig } from '../config';
 
-describe.skip('UI Config Integration Tests', () => {
+describe('UI Config Integration Tests', () => {
   describe('UIConfigSchema with edge cases', () => {
     it('should validate previewConfidence edge values correctly', () => {
       // Test boundary values
@@ -38,6 +38,7 @@ describe.skip('UI Config Integration Tests', () => {
         previewConfidence: 0.85,
         autoExecuteHighConfidence: true,
         previewTimeout: 15000,
+        diffPreview: false,
       });
 
       expect(config).toEqual({
@@ -45,6 +46,7 @@ describe.skip('UI Config Integration Tests', () => {
         previewConfidence: 0.85,
         autoExecuteHighConfidence: true,
         previewTimeout: 15000,
+        diffPreview: false,
       });
     });
 
@@ -118,6 +120,7 @@ describe.skip('UI Config Integration Tests', () => {
       expect(minimalConfig.ui.previewConfidence).toBe(0.7); // default
       expect(minimalConfig.ui.autoExecuteHighConfidence).toBe(false); // default
       expect(minimalConfig.ui.previewTimeout).toBe(5000); // default
+      expect(minimalConfig.ui.diffPreview).toBe(true); // default
     });
   });
 
@@ -144,6 +147,7 @@ describe.skip('UI Config Integration Tests', () => {
       expect(effectiveConfig.ui.previewConfidence).toBe(0.9);
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(false); // default
       expect(effectiveConfig.ui.previewTimeout).toBe(5000); // default
+      expect(effectiveConfig.ui.diffPreview).toBe(true); // default
     });
 
     it('should preserve all explicitly set UI config values', () => {
@@ -160,6 +164,7 @@ describe.skip('UI Config Integration Tests', () => {
           previewConfidence: 0.95,
           autoExecuteHighConfidence: true,
           previewTimeout: 12000,
+          diffPreview: false,
         },
       };
 
@@ -169,6 +174,7 @@ describe.skip('UI Config Integration Tests', () => {
       expect(effectiveConfig.ui.previewConfidence).toBe(0.95);
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(true);
       expect(effectiveConfig.ui.previewTimeout).toBe(12000);
+      expect(effectiveConfig.ui.diffPreview).toBe(false);
     });
 
     it('should handle empty UI config with all defaults', () => {
@@ -188,6 +194,7 @@ describe.skip('UI Config Integration Tests', () => {
       expect(effectiveConfig.ui.previewConfidence).toBe(0.7); // default
       expect(effectiveConfig.ui.autoExecuteHighConfidence).toBe(false); // default
       expect(effectiveConfig.ui.previewTimeout).toBe(5000); // default
+      expect(effectiveConfig.ui.diffPreview).toBe(true); // default
     });
   });
 
@@ -226,12 +233,69 @@ describe.skip('UI Config Integration Tests', () => {
       expect(() => UIConfigSchema.parse({ previewMode: false })).not.toThrow();
       expect(() => UIConfigSchema.parse({ autoExecuteHighConfidence: true })).not.toThrow();
       expect(() => UIConfigSchema.parse({ autoExecuteHighConfidence: false })).not.toThrow();
+      expect(() => UIConfigSchema.parse({ diffPreview: true })).not.toThrow();
+      expect(() => UIConfigSchema.parse({ diffPreview: false })).not.toThrow();
 
       // Invalid non-boolean values should be coerced or rejected
       expect(() => UIConfigSchema.parse({ previewMode: 1 })).toThrow();
       expect(() => UIConfigSchema.parse({ previewMode: 'true' })).toThrow();
       expect(() => UIConfigSchema.parse({ autoExecuteHighConfidence: 0 })).toThrow();
       expect(() => UIConfigSchema.parse({ autoExecuteHighConfidence: 'false' })).toThrow();
+      expect(() => UIConfigSchema.parse({ diffPreview: 1 })).toThrow();
+      expect(() => UIConfigSchema.parse({ diffPreview: 'true' })).toThrow();
+    });
+  });
+
+  describe('DiffPreview Configuration', () => {
+    it('should parse diffPreview option correctly with default value', () => {
+      const config = UIConfigSchema.parse({});
+      expect(config.diffPreview).toBe(true); // default value
+    });
+
+    it('should parse diffPreview option when explicitly set to false', () => {
+      const config = UIConfigSchema.parse({
+        diffPreview: false,
+      });
+      expect(config.diffPreview).toBe(false);
+    });
+
+    it('should parse diffPreview option when explicitly set to true', () => {
+      const config = UIConfigSchema.parse({
+        diffPreview: true,
+      });
+      expect(config.diffPreview).toBe(true);
+    });
+
+    it('should handle diffPreview in combination with other UI options', () => {
+      const config = UIConfigSchema.parse({
+        previewMode: false,
+        diffPreview: true,
+        previewConfidence: 0.8,
+        autoExecuteHighConfidence: false,
+      });
+      expect(config.diffPreview).toBe(true);
+      expect(config.previewMode).toBe(false);
+    });
+
+    it('should ensure diffPreview works with getEffectiveConfig', () => {
+      const partialConfig = {
+        version: '1.0' as const,
+        project: {
+          name: 'test-project',
+          testCommand: 'npm test',
+          lintCommand: 'npm run lint',
+          buildCommand: 'npm run build',
+        },
+        ui: {
+          diffPreview: false,
+        },
+      };
+
+      const effectiveConfig = getEffectiveConfig(partialConfig);
+      expect(effectiveConfig.ui.diffPreview).toBe(false);
+      // Other defaults should still apply
+      expect(effectiveConfig.ui.previewMode).toBe(true);
+      expect(effectiveConfig.ui.previewConfidence).toBe(0.7);
     });
   });
 

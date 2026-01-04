@@ -7001,3 +7001,20 @@ export {
   type ApprovalResult,
   type ApprovalGateEvents,
 } from './approval-gate-controller';
+
+// Error Feedback Loop
+export {
+  ErrorFeedbackLoop,
+  type CompilerError,
+  type ErrorReceivedEvent,
+  type ErrorResolvedEvent,
+  type ErrorsClearedEvent,
+  type ErrorFeedbackLoopEvents,
+} from './error-feedback';
+
+// Fix Attempt Tracker
+export {
+  FixAttemptTracker,
+  type FixAttemptTrackerOptions,
+  type FixAttemptTrackerEvents,
+} from './fix-attempt-tracker';

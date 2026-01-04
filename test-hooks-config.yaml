@@ -1,0 +1,22 @@
+version: "1.0"
+project:
+  name: "Test Project"
+hooks:
+  - name: "pre-commit-lint"
+    type: "before-commit"
+    handler:
+      type: "file"
+      path: "./scripts/pre-commit-lint.sh"
+      args: ["--fix", "--quiet"]
+    priority: 200
+    enabled: true
+    description: "Run linting before commit"
+  - name: "post-task-notification"
+    type: "after-task"
+    handler:
+      type: "inline"
+      code: "echo 'Task completed successfully'"
+      language: "bash"
+    priority: 100
+    enabled: true
+    description: "Send notification after task completion"

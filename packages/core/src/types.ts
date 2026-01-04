@@ -1073,6 +1073,7 @@ export const UIConfigSchema = z.object({
   previewConfidence: z.number().min(0).max(1).optional().default(0.7),
   autoExecuteHighConfidence: z.boolean().optional().default(false),
   previewTimeout: z.number().min(1000).optional().default(5000),
+  diffPreview: z.boolean().optional().default(true),
 });
 export type UIConfig = z.infer<typeof UIConfigSchema>;
 
@@ -4594,3 +4595,182 @@ export const PostHookResultSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type PostHookResult = z.infer<typeof PostHookResultSchema>;
+
+// ============================================================================
+// Error Tracking and Fix Attempts (v0.5.0)
+// ============================================================================
+
+/**
+ * Backoff strategy for retry delays
+ */
+export const BackoffStrategySchema = z.enum([
+  'none',           // No delay between attempts
+  'constant',       // Fixed delay (e.g., 5s every time)
+  'linear',         // Linearly increasing delay (e.g., 5s, 10s, 15s)
+  'exponential',    // Exponentially increasing delay (e.g., 5s, 10s, 20s, 40s)
+]);
+export type BackoffStrategy = z.infer<typeof BackoffStrategySchema>;
+
+/**
+ * Configuration for fix attempt tracking
+ */
+export const FixAttemptConfigSchema = z.object({
+  /** Maximum attempts per unique error (default: 3) */
+  maxAttemptsPerError: z.number().min(1).max(20).default(3),
+  /** Maximum total fix attempts per task (default: 10) */
+  maxTotalAttempts: z.number().min(1).max(100).default(10),
+  /** Backoff strategy for retries (default: 'exponential') */
+  backoffStrategy: BackoffStrategySchema.default('exponential'),
+  /** Base delay in milliseconds for backoff (default: 1000) */
+  baseDelayMs: z.number().min(0).max(60000).default(1000),
+  /** Maximum delay in milliseconds (default: 30000) */
+  maxDelayMs: z.number().min(0).max(300000).default(30000),
+  /** Whether to consider similar errors as the same (default: true) */
+  groupSimilarErrors: z.boolean().default(true),
+  /** Similarity threshold for error grouping (0-1, default: 0.8) */
+  similarityThreshold: z.number().min(0).max(1).default(0.8),
+});
+export type FixAttemptConfig = z.infer<typeof FixAttemptConfigSchema>;
+
+/**
+ * Unique identifier for an error instance
+ */
+export interface ErrorFingerprint {
+  /** Hash of error message and context for deduplication */
+  hash: string;
+  /** Original error message */
+  message: string;
+  /** Error category */
+  category: string;
+  /** Optional file path where error occurred */
+  filePath?: string;
+  /** Optional line number */
+  line?: number;
+  /** Optional column number */
+  column?: number;
+  /** Error code if available (e.g., TS2322, ESLint rule) */
+  code?: string;
+}
+
+/**
+ * Snapshot of task state at time of fix attempt
+ */
+export interface FixAttemptSnapshot {
+  /** Timestamp when snapshot was taken */
+  timestamp: Date;
+  /** Current stage of the task */
+  stage?: string;
+  /** Current status of the task */
+  status: TaskStatus;
+  /** Files created or modified */
+  files: {
+    created: string[];
+    modified: string[];
+  };
+  /** Usage statistics at this point */
+  usage: TaskUsage;
+  /** Number of active errors */
+  errorCount: number;
+}
+
+/**
+ * Record of a single fix attempt
+ */
+export interface FixAttempt {
+  /** Unique identifier for this fix attempt */
+  id: string;
+  /** ID of the task this attempt belongs to */
+  taskId: string;
+  /** Sequential number within the task (1-based) */
+  attemptNumber: number;
+  /** Error being fixed */
+  error: ErrorFingerprint;
+  /** Timestamp when fix attempt started */
+  startedAt: Date;
+  /** Timestamp when fix attempt completed */
+  completedAt?: Date;
+  /** Description of the fix approach taken */
+  approach: string;
+  /** Agent that performed the fix */
+  agent?: string;
+  /** Stage where the fix was attempted */
+  stage?: string;
+  /** State before the fix */
+  beforeState?: FixAttemptSnapshot;
+  /** State after the fix */
+  afterState?: FixAttemptSnapshot;
+  /** Result of the fix attempt */
+  result: {
+    /** Whether the fix was applied successfully (no errors during fix) */
+    success: boolean;
+    /** Whether the original error was resolved */
+    resolved: boolean;
+    /** Reason if not resolved */
+    reason?: string;
+    /** New errors introduced by the fix (if any) */
+    newErrors?: ErrorFingerprint[];
+  };
+  /** Delay applied before this attempt (backoff) */
+  delayAppliedMs?: number;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Aggregated history of fix attempts for a task
+ */
+export interface FixAttemptHistory {
+  /** All fix attempt entries */
+  entries: FixAttempt[];
+  /** Total number of fix attempts */
+  totalAttempts: number;
+  /** Number of successful resolutions */
+  resolvedCount: number;
+  /** Number of failed attempts */
+  failedCount: number;
+  /** Timestamp of the most recent attempt */
+  lastAttemptAt?: Date;
+  /** Current error being worked on (if any) */
+  currentError?: {
+    fingerprint: ErrorFingerprint;
+    attemptCount: number;
+    firstSeenAt: Date;
+    lastAttemptAt: Date;
+  };
+  /** Map of error fingerprint hashes to attempt counts */
+  errorAttemptCounts: Record<string, number>;
+}
+
+/**
+ * Result of checking if a fix should be attempted
+ */
+export interface FixAttemptDecision {
+  /** Whether to proceed with the fix */
+  shouldAttempt: boolean;
+  /** If not attempting, the reason why */
+  reason?: 'max_per_error' | 'max_total' | 'backoff_active' | 'loop_detected';
+  /** If backoff is active, when the next attempt can be made */
+  retryAfter?: Date;
+  /** Current attempt count for this error */
+  attemptCount: number;
+  /** Maximum attempts allowed for this error */
+  maxAttempts: number;
+  /** Delay to apply before this attempt (if proceeding) */
+  suggestedDelayMs?: number;
+}
+
+/**
+ * Loop detection result
+ */
+export interface LoopDetectionResult {
+  /** Whether a loop was detected */
+  loopDetected: boolean;
+  /** Type of loop if detected */
+  loopType?: 'same_error' | 'circular_fixes' | 'oscillating_state';
+  /** Detailed description of the loop */
+  description?: string;
+  /** Errors involved in the loop pattern */
+  involvedErrors?: ErrorFingerprint[];
+  /** Suggested action to break the loop */
+  suggestedAction?: string;
+}

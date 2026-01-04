@@ -118,6 +118,7 @@ describe('getEffectiveConfig', () => {
     expect(effective.ui.previewConfidence).toBe(0.7);
     expect(effective.ui.autoExecuteHighConfidence).toBe(false);
     expect(effective.ui.previewTimeout).toBe(5000);
+    expect(effective.ui.diffPreview).toBe(true);
   });
 
   it('should preserve explicit UI config values', () => {
@@ -134,6 +135,7 @@ describe('getEffectiveConfig', () => {
         previewConfidence: 0.9,
         autoExecuteHighConfidence: true,
         previewTimeout: 7500,
+        diffPreview: false,
       },
     };
 
@@ -142,6 +144,57 @@ describe('getEffectiveConfig', () => {
     expect(effective.ui.previewConfidence).toBe(0.9);
     expect(effective.ui.autoExecuteHighConfidence).toBe(true);
     expect(effective.ui.previewTimeout).toBe(7500);
+    expect(effective.ui.diffPreview).toBe(false);
+  });
+
+  it('should handle diffPreview configuration option correctly', () => {
+    // Test default value
+    const configWithoutDiffPreview: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effectiveDefault = getEffectiveConfig(configWithoutDiffPreview);
+    expect(effectiveDefault.ui.diffPreview).toBe(true);
+
+    // Test explicit true
+    const configWithDiffPreviewTrue: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        diffPreview: true,
+      },
+    };
+
+    const effectiveTrue = getEffectiveConfig(configWithDiffPreviewTrue);
+    expect(effectiveTrue.ui.diffPreview).toBe(true);
+
+    // Test explicit false
+    const configWithDiffPreviewFalse: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        diffPreview: false,
+      },
+    };
+
+    const effectiveFalse = getEffectiveConfig(configWithDiffPreviewFalse);
+    expect(effectiveFalse.ui.diffPreview).toBe(false);
   });
 
   it('should apply policy defaults when policy section is missing', () => {
@@ -334,6 +387,61 @@ describe('loadConfig and saveConfig', () => {
     expect(loaded.policy?.allowedPaths?.allow).toEqual(['src/**', 'tests/**']);
     expect(loaded.policy?.requiredTests?.rules).toHaveLength(1);
     expect(loaded.policy?.requiredTests?.rules?.[0]?.name).toBe('Test rule');
+  });
+
+  it('should save and load config with UI section including diffPreview', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'ui-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        previewMode: false,
+        previewConfidence: 0.85,
+        autoExecuteHighConfidence: true,
+        previewTimeout: 8000,
+        diffPreview: false,
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.ui).toBeDefined();
+    expect(loaded.ui?.previewMode).toBe(false);
+    expect(loaded.ui?.previewConfidence).toBe(0.85);
+    expect(loaded.ui?.autoExecuteHighConfidence).toBe(true);
+    expect(loaded.ui?.previewTimeout).toBe(8000);
+    expect(loaded.ui?.diffPreview).toBe(false);
+  });
+
+  it('should save and load config with partial UI section and preserve diffPreview default', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'partial-ui-test-project',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        previewMode: true,
+        // diffPreview should get default value when parsed
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+    const effective = getEffectiveConfig(loaded);
+
+    expect(loaded.ui).toBeDefined();
+    expect(loaded.ui?.previewMode).toBe(true);
+    expect(loaded.ui?.diffPreview).toBe(true); // default value from schema
+    expect(effective.ui.diffPreview).toBe(true);
   });
 });
 

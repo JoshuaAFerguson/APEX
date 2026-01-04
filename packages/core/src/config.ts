@@ -551,6 +551,7 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       previewConfidence: config.ui?.previewConfidence ?? 0.7,
       autoExecuteHighConfidence: config.ui?.autoExecuteHighConfidence ?? false,
       previewTimeout: config.ui?.previewTimeout ?? 5000,
+      diffPreview: config.ui?.diffPreview ?? true,
     },
     webUI: {
       port: config.webUI?.port || 3001,
