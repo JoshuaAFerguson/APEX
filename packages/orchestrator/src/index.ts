@@ -166,6 +166,13 @@ export interface OrchestratorEvents {
   'approval:required': (event: ApprovalRequiredEventData) => void;
   'approval:approved': (event: ApprovalGrantedEventData) => void;
   'approval:denied': (event: ApprovalDeniedEventData) => void;
+  'approval:decision': (event: {
+    approvalId: string;
+    decision: 'approved' | 'denied';
+    approver: string;
+    comment?: string;
+    reason?: string;
+  }) => void;
 
   // Template events
   'template:created': (template: TaskTemplate) => void;
@@ -681,6 +688,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       );
     }
     this.setupAutonomyEnforcerEvents();
+
+    // Setup approval event handlers for external approval resolution
+    this.setupApprovalEventHandlers();
 
     // Initialize linter service
     this.linterService = new LinterService({
@@ -6353,6 +6363,91 @@ Parent: ${parentTask.description}`;
         await this.interactionManager.completeIteration(taskId, iterationId);
       } catch (error) {
         console.error(`Failed to complete iteration for task ${taskId}:`, error);
+      }
+    });
+  }
+
+  /**
+   * Set up autonomy enforcer event handlers
+   * Handles approval:required events from autonomy enforcer for task pausing
+   */
+  private setupAutonomyEnforcerEvents(): void {
+    // Handle approval:required events from autonomy enforcer
+    this.autonomyEnforcer.on('approval:required', async (gateName: string, context: any) => {
+      try {
+        // Extract task ID from context
+        const taskId = context?.task?.id || context?.taskId;
+        if (!taskId) {
+          console.warn('Autonomy enforcer approval:required event missing task context');
+          return;
+        }
+
+        // Get the task to check current status
+        const task = await this.store.getTask(taskId);
+        if (!task) {
+          console.warn(`Task ${taskId} not found for autonomy enforcer approval`);
+          return;
+        }
+
+        // Only pause if task is currently running
+        if (task.status === 'in-progress') {
+          await this.pauseTask(taskId, 'approval_gate');
+
+          await this.store.addLog(taskId, {
+            level: 'info',
+            message: `Task paused by autonomy enforcer for approval gate: ${gateName}`,
+            timestamp: new Date(),
+            metadata: { gateName, component: 'autonomy-enforcer' }
+          });
+        }
+      } catch (error) {
+        console.error('Error handling autonomy enforcer approval:required event:', error);
+      }
+    });
+  }
+
+  /**
+   * Set up event-based approval resolution mechanism
+   * Allows external systems to resolve approvals via events in addition to direct method calls
+   */
+  private setupApprovalEventHandlers(): void {
+    // Listen for external approval decisions via events
+    this.on('approval:decision', async (event: {
+      approvalId: string;
+      decision: 'approved' | 'denied';
+      approver: string;
+      comment?: string;
+      reason?: string;
+    }) => {
+      try {
+        if (event.decision === 'approved') {
+          await this.grantApproval(event.approvalId, event.approver, event.comment);
+        } else if (event.decision === 'denied') {
+          const reason = event.reason || event.comment || 'No reason provided';
+          await this.denyApproval(event.approvalId, event.approver, reason);
+        }
+      } catch (error) {
+        console.error(`Error processing approval decision event for ${event.approvalId}:`, error);
+
+        // Try to log the error to the associated task if possible
+        try {
+          const approvalState = await this.store.getApprovalStateById(event.approvalId);
+          if (approvalState) {
+            await this.store.addLog(approvalState.taskId, {
+              level: 'error',
+              message: `Failed to process approval decision event: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              timestamp: new Date(),
+              metadata: {
+                approvalId: event.approvalId,
+                decision: event.decision,
+                approver: event.approver,
+                component: 'approval-event-handler'
+              }
+            });
+          }
+        } catch (logError) {
+          console.error('Failed to log approval event error:', logError);
+        }
       }
     });
   }

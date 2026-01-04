@@ -4625,6 +4625,43 @@ export const PreHookResultSchema = z.object({
 export type PreHookResult = z.infer<typeof PreHookResultSchema>;
 
 /**
+ * Behavior mode for configurable tool hook actions
+ * - 'warn': Emit event and pass output through unchanged
+ * - 'block': Emit event and block/return error
+ * - 'redact': Replace sensitive content with [REDACTED] placeholders
+ */
+export const BehaviorModeSchema = z.enum([
+  'warn',   // Emit event, pass through unchanged
+  'block',  // Emit event, block output with error
+  'redact', // Replace secrets with [REDACTED]
+]);
+export type BehaviorMode = z.infer<typeof BehaviorModeSchema>;
+
+/**
+ * Event data for behavior mode actions
+ * Emitted when warn, block, or redact behaviors are triggered
+ */
+export const BehaviorEventDataSchema = z.object({
+  /** Type of behavior that was triggered */
+  behaviorMode: BehaviorModeSchema,
+  /** Tool name that triggered the behavior */
+  toolName: z.string(),
+  /** Reason why the behavior was triggered */
+  reason: z.string(),
+  /** Original tool output (may be redacted for security) */
+  originalOutput: z.unknown().optional(),
+  /** Modified output (for redact mode) */
+  modifiedOutput: z.unknown().optional(),
+  /** Timestamp when behavior was triggered */
+  timestamp: z.date(),
+  /** Task ID associated with this behavior */
+  taskId: z.string().optional(),
+  /** Additional context or metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type BehaviorEventData = z.infer<typeof BehaviorEventDataSchema>;
+
+/**
  * Result returned from a post-execution hook
  * Can optionally modify the result before it's returned
  */
@@ -4637,6 +4674,10 @@ export const PostHookResultSchema = z.object({
     output: z.unknown().optional(),
     error: z.string().optional(),
   }).optional(),
+  /** Behavior mode to apply to the result */
+  behaviorMode: BehaviorModeSchema.optional(),
+  /** Reason for applying behavior mode */
+  behaviorReason: z.string().optional(),
   /** Additional metadata from the hook */
   metadata: z.record(z.string(), z.unknown()).optional(),
 });

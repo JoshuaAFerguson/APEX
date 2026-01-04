@@ -12,6 +12,8 @@ import {
   PreHookResult,
   PostHookResult,
   PreHookAction,
+  BehaviorMode,
+  BehaviorEventData,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 
@@ -22,6 +24,7 @@ export interface HookManagerEvents {
   'hook:pre:complete': (event: HookExecutionCompleteEvent) => void;
   'hook:post:start': (event: HookExecutionStartEvent) => void;
   'hook:post:complete': (event: HookExecutionCompleteEvent) => void;
+  'hook:behavior:triggered': (event: BehaviorEventData) => void;
 }
 
 export interface HookExecutionStartEvent {
@@ -51,6 +54,9 @@ export interface HookExecutionResult {
   cancelReason?: string;
   cancelResult?: any;
   metadata?: Record<string, unknown>;
+  behaviorMode?: BehaviorMode;
+  modifiedResult?: any;
+  blocked?: boolean;
 }
 
 /**
@@ -188,7 +194,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   /**
    * Execute post-hooks after tool execution
    * @param context Post-hook context with tool and result information
-   * @returns Hook execution result
+   * @returns Hook execution result with behavior mode handling
    */
   async executePostHooks(context: PostHookContext): Promise<HookExecutionResult> {
     if (!this.toolHookConfig.enabled) {
@@ -196,6 +202,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
     }
 
     const applicableHooks = this.getApplicablePostHooks(context.toolName);
+    let finalResult: HookExecutionResult = { success: true };
 
     for (const hook of applicableHooks) {
       const startTime = new Date();
@@ -225,6 +232,28 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           result,
           timestamp: endTime,
         });
+
+        // Handle behavior modes if specified in the hook result
+        if (result?.behaviorMode) {
+          const behaviorHandlingResult = await this.handleBehaviorMode(
+            result.behaviorMode,
+            context,
+            hook,
+            result.behaviorReason || 'Hook triggered behavior mode',
+            result.modifiedResult || context.result
+          );
+
+          // Merge behavior handling results
+          finalResult = {
+            ...finalResult,
+            ...behaviorHandlingResult,
+          };
+
+          // If behavior is blocking, short-circuit and return immediately
+          if (behaviorHandlingResult.blocked) {
+            return finalResult;
+          }
+        }
 
         await this.store.addLog(context.taskId, {
           level: 'debug',
@@ -263,7 +292,168 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
       }
     }
 
-    return { success: true };
+    return finalResult;
+  }
+
+  /**
+   * Handle behavior mode processing
+   * @param behaviorMode The behavior mode to apply
+   * @param context Post-hook context
+   * @param hook The hook that triggered the behavior
+   * @param reason Reason for the behavior trigger
+   * @param toolResult The original tool result
+   * @returns Hook execution result with behavior applied
+   */
+  private async handleBehaviorMode(
+    behaviorMode: BehaviorMode,
+    context: PostHookContext,
+    hook: ToolHookDefinition,
+    reason: string,
+    toolResult: any
+  ): Promise<HookExecutionResult> {
+    const eventData: BehaviorEventData = {
+      behaviorMode,
+      toolName: context.toolName,
+      reason,
+      originalOutput: toolResult,
+      timestamp: new Date(),
+      taskId: context.taskId,
+      metadata: { hook: hook.name },
+    };
+
+    switch (behaviorMode) {
+      case 'warn':
+        // Emit event and pass through unchanged
+        eventData.modifiedOutput = toolResult;
+        this.emit('hook:behavior:triggered', eventData);
+
+        await this.store.addLog(context.taskId, {
+          level: 'warn',
+          message: `Behavior mode 'warn' triggered by hook "${hook.name}": ${reason}`,
+          metadata: {
+            hook: hook.name,
+            tool: context.toolName,
+            behaviorMode: 'warn',
+            reason
+          },
+        });
+
+        return {
+          success: true,
+          behaviorMode: 'warn',
+          modifiedResult: toolResult
+        };
+
+      case 'block':
+        // Emit event and block output with error
+        this.emit('hook:behavior:triggered', eventData);
+
+        await this.store.addLog(context.taskId, {
+          level: 'error',
+          message: `Behavior mode 'block' triggered by hook "${hook.name}": ${reason}`,
+          metadata: {
+            hook: hook.name,
+            tool: context.toolName,
+            behaviorMode: 'block',
+            reason
+          },
+        });
+
+        return {
+          success: false,
+          blocked: true,
+          behaviorMode: 'block',
+          cancelReason: `Tool execution blocked: ${reason}`,
+          cancelResult: {
+            success: false,
+            error: `Tool execution blocked by security hook: ${reason}`,
+            output: null
+          }
+        };
+
+      case 'redact':
+        // Replace sensitive content with [REDACTED]
+        const redactedOutput = this.redactSensitiveContent(toolResult);
+        eventData.modifiedOutput = redactedOutput;
+        this.emit('hook:behavior:triggered', eventData);
+
+        await this.store.addLog(context.taskId, {
+          level: 'info',
+          message: `Behavior mode 'redact' triggered by hook "${hook.name}": ${reason}`,
+          metadata: {
+            hook: hook.name,
+            tool: context.toolName,
+            behaviorMode: 'redact',
+            reason
+          },
+        });
+
+        return {
+          success: true,
+          behaviorMode: 'redact',
+          modifiedResult: redactedOutput
+        };
+
+      default:
+        throw new Error(`Unknown behavior mode: ${behaviorMode}`);
+    }
+  }
+
+  /**
+   * Redact sensitive content from tool output
+   * @param output The original output to redact
+   * @returns Output with sensitive content replaced with [REDACTED]
+   */
+  private redactSensitiveContent(output: any): any {
+    if (typeof output === 'string') {
+      return this.redactSensitiveString(output);
+    }
+
+    if (Array.isArray(output)) {
+      return output.map(item => this.redactSensitiveContent(item));
+    }
+
+    if (output && typeof output === 'object') {
+      const redacted: any = {};
+      for (const [key, value] of Object.entries(output)) {
+        redacted[key] = this.redactSensitiveContent(value);
+      }
+      return redacted;
+    }
+
+    return output;
+  }
+
+  /**
+   * Redact sensitive patterns from a string
+   * @param text The text to redact
+   * @returns Text with sensitive patterns replaced with [REDACTED]
+   */
+  private redactSensitiveString(text: string): string {
+    const sensitivePatterns = [
+      // API keys, tokens, secrets
+      /\b[A-Za-z0-9_-]{20,}\b/g, // Generic tokens
+      /(?:api[_-]?key|token|secret|password|pwd|auth)[=:\s]+[A-Za-z0-9_-]+/gi,
+      // Credit card numbers
+      /\b(?:\d{4}[-\s]?){3}\d{4}\b/g,
+      // Email addresses (optional - might be too aggressive)
+      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+      // Phone numbers
+      /\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,
+      // SSH private keys
+      /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g,
+      // AWS credentials
+      /(?:AKIA|ASIA)[A-Z0-9]{16}/g,
+      // Generic secrets in environment variable format
+      /([A-Z_]+(?:SECRET|TOKEN|KEY|PASSWORD)[A-Z_]*)\s*=\s*([^\s\n]+)/gi,
+    ];
+
+    let redacted = text;
+    for (const pattern of sensitivePatterns) {
+      redacted = redacted.replace(pattern, '[REDACTED]');
+    }
+
+    return redacted;
   }
 
   /**
