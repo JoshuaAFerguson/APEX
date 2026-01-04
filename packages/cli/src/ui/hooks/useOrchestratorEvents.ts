@@ -734,6 +734,35 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    // Diff preview event handler
+    const handleDiffPreview = (event: {
+      taskId: string;
+      toolName: string;
+      callId: string;
+      filePath: string;
+      diff: string;
+      addedLines: number;
+      removedLines: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Diff preview', {
+        taskId: event.taskId,
+        tool: event.toolName,
+        file: event.filePath,
+        added: event.addedLines,
+        removed: event.removedLines
+      });
+
+      // Display the colored diff with file path header
+      console.log(chalk.bold.blue(`\n📝 ${event.toolName} - ${event.filePath}`));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log(renderColoredDiff(event.diff));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log(chalk.gray(`+${event.addedLines} -${event.removedLines} lines\n`));
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -754,6 +783,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('agent:thinking', handleAgentThinking);
     orchestrator.on('agent:turn', handleAgentTurn);
     orchestrator.on('agent:error', handleError);
+    orchestrator.on('diff:preview', handleDiffPreview);
 
     log('Event listeners registered');
 
@@ -778,6 +808,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('agent:thinking', handleAgentThinking);
       orchestrator.off('agent:turn', handleAgentTurn);
       orchestrator.off('agent:error', handleError);
+      orchestrator.off('diff:preview', handleDiffPreview);
 
       log('Event listeners cleaned up');
     };
