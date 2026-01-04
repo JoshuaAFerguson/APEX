@@ -1551,6 +1551,8 @@ export const ApexConfigSchema = z.object({
   toolActionRetention: ToolActionRetentionConfigSchema.optional(),
   /** Hook configuration for custom lifecycle events (v0.5.0) */
   hooks: z.lazy(() => z.array(HookConfigSchema)).optional().default([]),
+  /** Tool hook configuration for pre/post tool execution hooks (v0.5.0) */
+  toolHooks: z.lazy(() => ToolHookConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -4425,3 +4427,170 @@ export const HookConfigSchema = z.object({
   failOnError: z.boolean().optional().default(true),
 });
 export type HookConfig = z.infer<typeof HookConfigSchema>;
+
+// ============================================================================
+// Tool Hook Configuration (v0.5.0)
+// ============================================================================
+// Tool hooks are triggered before (pre) and after (post) tool executions,
+// allowing interception, modification, or cancellation of tool calls.
+
+/**
+ * Tool hook type enum - defines when the hook is triggered relative to tool execution
+ * - 'pre': Triggered before a tool executes, can modify arguments or cancel
+ * - 'post': Triggered after a tool executes, receives the result
+ */
+export const ToolHookTypeSchema = z.enum([
+  'pre',   // Before tool execution - can modify args or cancel
+  'post',  // After tool execution - receives result
+]);
+export type ToolHookType = z.infer<typeof ToolHookTypeSchema>;
+
+/**
+ * Tool hook definition schema
+ * Defines a hook that runs before or after tool execution
+ */
+export const ToolHookDefinitionSchema = z.object({
+  /** Unique name for this hook */
+  name: z.string().min(1, 'Hook name is required'),
+  /** Whether this is a pre or post execution hook */
+  type: ToolHookTypeSchema,
+  /** Path to the handler module/script */
+  handlerPath: z.string().min(1, 'Handler path is required'),
+  /** Priority for hook execution order (higher = earlier, default: 100) */
+  priority: z.number().int().optional().default(100),
+  /** Whether this hook is enabled (default: true) */
+  enabled: z.boolean().optional().default(true),
+  /** Optional description of what this hook does */
+  description: z.string().optional(),
+  /** Tool names this hook applies to (empty = all tools) */
+  tools: z.array(z.string()).optional().default([]),
+  /** Hook timeout in milliseconds (default: 30000) */
+  timeoutMs: z.number().int().min(100).optional().default(30000),
+  /** Whether hook failure should fail the tool execution (default: true for pre, false for post) */
+  failOnError: z.boolean().optional(),
+});
+export type ToolHookDefinition = z.infer<typeof ToolHookDefinitionSchema>;
+
+/**
+ * Tool hook configuration for config.yaml
+ * Contains arrays of pre and post tool hooks
+ */
+export const ToolHookConfigSchema = z.object({
+  /** Pre-execution hooks that run before tools */
+  pre: z.array(ToolHookDefinitionSchema).optional().default([]),
+  /** Post-execution hooks that run after tools */
+  post: z.array(ToolHookDefinitionSchema).optional().default([]),
+  /** Global setting to enable/disable all tool hooks */
+  enabled: z.boolean().optional().default(true),
+  /** Default timeout for all hooks in milliseconds */
+  defaultTimeoutMs: z.number().int().min(100).optional().default(30000),
+});
+export type ToolHookConfig = z.infer<typeof ToolHookConfigSchema>;
+
+/**
+ * Context provided to pre-execution hooks
+ * Contains information available before tool execution
+ */
+export const PreHookContextSchema = z.object({
+  /** Name of the tool being invoked */
+  toolName: z.string(),
+  /** Arguments being passed to the tool */
+  arguments: z.record(z.string(), z.unknown()),
+  /** Unique identifier for this tool invocation */
+  invocationId: z.string(),
+  /** Task ID that initiated this tool call (if any) */
+  taskId: z.string().optional(),
+  /** Agent name that is invoking the tool (if any) */
+  agentName: z.string().optional(),
+  /** Workflow stage when tool was invoked (if any) */
+  stageName: z.string().optional(),
+  /** Timestamp when the tool invocation was requested */
+  timestamp: z.date(),
+});
+export type PreHookContext = z.infer<typeof PreHookContextSchema>;
+
+/**
+ * Context provided to post-execution hooks
+ * Contains information available after tool execution including the result
+ */
+export const PostHookContextSchema = z.object({
+  /** Name of the tool that was invoked */
+  toolName: z.string(),
+  /** Arguments that were passed to the tool */
+  arguments: z.record(z.string(), z.unknown()),
+  /** Unique identifier for this tool invocation */
+  invocationId: z.string(),
+  /** Task ID that initiated this tool call (if any) */
+  taskId: z.string().optional(),
+  /** Agent name that invoked the tool (if any) */
+  agentName: z.string().optional(),
+  /** Workflow stage when tool was invoked (if any) */
+  stageName: z.string().optional(),
+  /** Timestamp when the tool invocation was requested */
+  timestamp: z.date(),
+  /** Result from the tool execution */
+  result: z.object({
+    /** Whether the tool execution was successful */
+    success: z.boolean(),
+    /** Output data from the tool (if successful) */
+    output: z.unknown().optional(),
+    /** Error message (if failed) */
+    error: z.string().optional(),
+    /** Execution duration in milliseconds */
+    duration: z.number().optional(),
+  }),
+});
+export type PostHookContext = z.infer<typeof PostHookContextSchema>;
+
+/**
+ * Pre-hook action type - what action the hook wants to take
+ * - 'continue': Proceed with tool execution using original or modified arguments
+ * - 'modify': Proceed with tool execution using modified arguments (requires modifiedArguments)
+ * - 'cancel': Cancel the tool execution entirely
+ */
+export const PreHookActionSchema = z.enum([
+  'continue',  // Proceed with original arguments
+  'modify',    // Proceed with modified arguments
+  'cancel',    // Cancel tool execution
+]);
+export type PreHookAction = z.infer<typeof PreHookActionSchema>;
+
+/**
+ * Result returned from a pre-execution hook
+ * Determines whether and how tool execution should proceed
+ */
+export const PreHookResultSchema = z.object({
+  /** Action to take after hook execution */
+  action: PreHookActionSchema,
+  /** Modified arguments when action is 'modify' */
+  modifiedArguments: z.record(z.string(), z.unknown()).optional(),
+  /** Reason for the action (especially useful for 'cancel') */
+  reason: z.string().optional(),
+  /** Custom result to return when action is 'cancel' */
+  cancelResult: z.object({
+    success: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }).optional(),
+  /** Additional metadata from the hook */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PreHookResult = z.infer<typeof PreHookResultSchema>;
+
+/**
+ * Result returned from a post-execution hook
+ * Can optionally modify the result before it's returned
+ */
+export const PostHookResultSchema = z.object({
+  /** Whether to modify the original result */
+  modifyResult: z.boolean().optional().default(false),
+  /** Modified result (if modifyResult is true) */
+  modifiedResult: z.object({
+    success: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }).optional(),
+  /** Additional metadata from the hook */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PostHookResult = z.infer<typeof PostHookResultSchema>;
