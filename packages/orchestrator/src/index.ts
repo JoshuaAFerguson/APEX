@@ -54,6 +54,7 @@ import {
   SecretScannerConfig,
   SecretFinding,
   SecretDetectionBehavior,
+  RejectionBehavior,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';

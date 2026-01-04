@@ -15,6 +15,7 @@ import {
   LinterConfig,
   HookConfig,
   HookConfigSchema,
+  SecretScannerConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -780,6 +781,19 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
           formatOnSave: config.linter?.integrations?.ide?.formatOnSave ?? false,
         },
       },
+    },
+    /**
+     * Secret scanner configuration for detecting sensitive information in tool outputs.
+     * The scanner can detect API keys, passwords, tokens, and other secrets.
+     * Default behavior is 'warn' which logs warnings but doesn't block execution.
+     */
+    scanner: {
+      customPatterns: config.scanner?.customPatterns || [],
+      includeBuiltInPatterns: config.scanner?.includeBuiltInPatterns ?? true,
+      maxLineLength: config.scanner?.maxLineLength ?? 10000,
+      maskSecrets: config.scanner?.maskSecrets ?? true,
+      contextLength: config.scanner?.contextLength ?? 20,
+      onSecretDetected: config.scanner?.onSecretDetected || 'warn',
     },
     toolActionRetention: {
       maxActionsPerTask: config.toolActionRetention?.maxActionsPerTask ?? 1000,

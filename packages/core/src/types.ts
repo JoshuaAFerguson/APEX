@@ -880,6 +880,17 @@ export const TaskResourceLimitsSchema = z.object({
 export type TaskResourceLimits = z.infer<typeof TaskResourceLimitsSchema>;
 
 /**
+ * Behavior to take when an approval is rejected/denied
+ * - 'skip': Skip the current action and continue to the next one
+ * - 'abort': Terminate the entire task with 'rejected' status
+ */
+export const RejectionBehaviorSchema = z.enum([
+  'skip',
+  'abort',
+]);
+export type RejectionBehavior = z.infer<typeof RejectionBehaviorSchema>;
+
+/**
  * Autonomy configuration for a workflow or task
  * Combines autonomy level with approval gates and resource limits
  */
@@ -894,6 +905,8 @@ export const AutonomyConfigSchema = z.object({
   stageOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
   /** Per-agent autonomy overrides (agent name -> autonomy level) */
   agentOverrides: z.record(z.string(), AutonomyLevelSchema).optional(),
+  /** Behavior to take when an approval is rejected/denied */
+  rejectionBehavior: RejectionBehaviorSchema.default('abort'),
 });
 export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
 
@@ -1351,26 +1364,85 @@ export const SecretPatternSchema = z.object({
 export type SecretPattern = z.infer<typeof SecretPatternSchema>;
 
 /**
- * Behavior when secrets are detected in tool outputs
+ * Behavior when secrets are detected in tool outputs.
+ *
+ * @remarks
+ * Available behaviors:
+ * - `'log'` - Log the finding without any user-visible warning
+ * - `'warn'` - Display a warning to the user (default behavior)
+ * - `'mask'` - Replace the detected secret with asterisks in output
+ * - `'block'` - Block the operation and prevent output containing secrets
+ *
+ * @example
+ * ```yaml
+ * scanner:
+ *   onSecretDetected: warn  # Default - shows warning but continues
+ * ```
  */
 export const SecretDetectionBehaviorSchema = z.enum(['log', 'warn', 'mask', 'block']);
 export type SecretDetectionBehavior = z.infer<typeof SecretDetectionBehaviorSchema>;
 
 /**
- * Configuration options for the SecretScanner
+ * Configuration options for the SecretScanner.
+ *
+ * The SecretScanner detects sensitive information like API keys, passwords,
+ * tokens, and other secrets in tool outputs. It can be configured to warn,
+ * mask, or block operations when secrets are detected.
+ *
+ * @remarks
+ * The scanner includes built-in patterns for common secret formats:
+ * - AWS access keys and secret keys
+ * - GitHub tokens
+ * - Generic API keys
+ * - Private keys (RSA, DSA, EC)
+ * - Connection strings
+ *
+ * @example
+ * ```yaml
+ * # .apex/config.yaml
+ * scanner:
+ *   onSecretDetected: warn        # 'log' | 'warn' | 'mask' | 'block'
+ *   maskSecrets: true             # Mask secrets in output
+ *   includeBuiltInPatterns: true  # Use built-in detection patterns
+ *   customPatterns:
+ *     - name: "Internal API Key"
+ *       pattern: "INTERNAL_[A-Z0-9]{32}"
+ *       severity: high
+ * ```
  */
 export const SecretScannerConfigSchema = z.object({
-  /** Custom patterns to scan for in addition to built-in patterns */
+  /**
+   * Custom patterns to scan for in addition to built-in patterns.
+   * Each pattern should have a name, regex pattern, and optional severity.
+   */
   customPatterns: z.array(SecretPatternSchema).optional().default([]),
-  /** Whether to include built-in patterns (default: true) */
+  /**
+   * Whether to include built-in patterns for common secrets (default: true).
+   * Set to false to only use custom patterns.
+   */
   includeBuiltInPatterns: z.boolean().optional().default(true),
-  /** Maximum line length to scan (default: 10000) */
+  /**
+   * Maximum line length to scan (default: 10000).
+   * Lines longer than this are truncated to prevent performance issues.
+   */
   maxLineLength: z.number().optional().default(10000),
-  /** Whether to mask sensitive content in findings (default: true) */
+  /**
+   * Whether to mask sensitive content in findings (default: true).
+   * When true, detected secrets are replaced with asterisks in logs.
+   */
   maskSecrets: z.boolean().optional().default(true),
-  /** Number of characters to show before/after match for context (default: 20) */
+  /**
+   * Number of characters to show before/after match for context (default: 20).
+   * Helps identify the location of secrets without revealing full content.
+   */
   contextLength: z.number().optional().default(20),
-  /** Behavior when secrets are detected in tool outputs (default: 'warn') */
+  /**
+   * Behavior when secrets are detected in tool outputs (default: 'warn').
+   * - 'log': Silent logging only
+   * - 'warn': Display warning to user (recommended default)
+   * - 'mask': Replace secrets with asterisks in output
+   * - 'block': Prevent operation from completing
+   */
   onSecretDetected: SecretDetectionBehaviorSchema.optional().default('warn'),
 });
 export type SecretScannerConfig = z.infer<typeof SecretScannerConfigSchema>;

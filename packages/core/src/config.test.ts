@@ -275,6 +275,88 @@ describe('getEffectiveConfig', () => {
     expect(effective.policy.requiredTests).toBeDefined();
     expect(effective.policy.approvalRules).toBeDefined();
   });
+
+  it('should apply scanner defaults when scanner section is missing', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner).toBeDefined();
+    expect(effective.scanner.onSecretDetected).toBe('warn');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
+    expect(effective.scanner.maxLineLength).toBe(10000);
+    expect(effective.scanner.maskSecrets).toBe(true);
+    expect(effective.scanner.contextLength).toBe(20);
+    expect(effective.scanner.customPatterns).toEqual([]);
+  });
+
+  it('should preserve explicit scanner values', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'block',
+        includeBuiltInPatterns: false,
+        maxLineLength: 5000,
+        maskSecrets: false,
+        contextLength: 10,
+        customPatterns: [
+          {
+            name: 'Custom API Key',
+            pattern: 'CUSTOM_[A-Z0-9]{32}',
+            severity: 'high',
+            description: 'Custom API key pattern',
+          },
+        ],
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner.onSecretDetected).toBe('block');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(false);
+    expect(effective.scanner.maxLineLength).toBe(5000);
+    expect(effective.scanner.maskSecrets).toBe(false);
+    expect(effective.scanner.contextLength).toBe(10);
+    expect(effective.scanner.customPatterns).toHaveLength(1);
+    expect(effective.scanner.customPatterns[0].name).toBe('Custom API Key');
+    expect(effective.scanner.customPatterns[0].severity).toBe('high');
+  });
+
+  it('should handle partial scanner configuration with defaults', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'mask',
+        // Other fields should get defaults
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner.onSecretDetected).toBe('mask');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
+    expect(effective.scanner.maxLineLength).toBe(10000);
+    expect(effective.scanner.maskSecrets).toBe(true);
+    expect(effective.scanner.contextLength).toBe(20);
+    expect(effective.scanner.customPatterns).toEqual([]);
+  });
 });
 
 describe('isApexInitialized', () => {
@@ -442,6 +524,75 @@ describe('loadConfig and saveConfig', () => {
     expect(loaded.ui?.previewMode).toBe(true);
     expect(loaded.ui?.diffPreview).toBe(true); // default value from schema
     expect(effective.ui.diffPreview).toBe(true);
+  });
+
+  it('should save and load config with scanner section', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'scanner-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'block',
+        includeBuiltInPatterns: false,
+        maxLineLength: 8000,
+        maskSecrets: false,
+        contextLength: 15,
+        customPatterns: [
+          {
+            name: 'Test API Key',
+            pattern: 'TEST_[A-Z0-9]{24}',
+            severity: 'critical',
+            description: 'Test API key pattern',
+          },
+        ],
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.scanner).toBeDefined();
+    expect(loaded.scanner?.onSecretDetected).toBe('block');
+    expect(loaded.scanner?.includeBuiltInPatterns).toBe(false);
+    expect(loaded.scanner?.maxLineLength).toBe(8000);
+    expect(loaded.scanner?.maskSecrets).toBe(false);
+    expect(loaded.scanner?.contextLength).toBe(15);
+    expect(loaded.scanner?.customPatterns).toHaveLength(1);
+    expect(loaded.scanner?.customPatterns?.[0]?.name).toBe('Test API Key');
+    expect(loaded.scanner?.customPatterns?.[0]?.pattern).toBe('TEST_[A-Z0-9]{24}');
+    expect(loaded.scanner?.customPatterns?.[0]?.severity).toBe('critical');
+  });
+
+  it('should save and load config with partial scanner section and preserve defaults', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'partial-scanner-test-project',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'mask',
+        // Other fields should get default values when parsed
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+    const effective = getEffectiveConfig(loaded);
+
+    expect(loaded.scanner).toBeDefined();
+    expect(loaded.scanner?.onSecretDetected).toBe('mask');
+    expect(loaded.scanner?.includeBuiltInPatterns).toBe(true); // default value from schema
+    expect(loaded.scanner?.maxLineLength).toBe(10000); // default value from schema
+    expect(effective.scanner.onSecretDetected).toBe('mask');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
   });
 });
 
@@ -659,6 +810,96 @@ describe('initializeApex', () => {
     expect(config.policy?.allowedPaths?.allow).toContain('src/**');
     expect(config.policy?.allowedPaths?.block).toContain('node_modules/**');
     expect(config.policy?.allowedPaths?.sensitivePatterns).toContain('.env*');
+  });
+
+  it('should initialize project with scanner defaults via getEffectiveConfig', async () => {
+    await initializeApex(testDir, { projectName: 'scanner-init-test' });
+    const config = await loadConfig(testDir);
+    const effective = getEffectiveConfig(config);
+
+    // initializeApex doesn't explicitly set scanner config, so it should use defaults from getEffectiveConfig
+    expect(config.scanner).toBeUndefined();
+    expect(effective.scanner).toEqual({
+      customPatterns: [],
+      includeBuiltInPatterns: true,
+      maxLineLength: 10000,
+      maskSecrets: true,
+      contextLength: 20,
+      onSecretDetected: 'warn',
+    });
+  });
+});
+
+describe('Scanner Configuration Validation', () => {
+  it('should validate all valid onSecretDetected enum values', () => {
+    const validBehaviors = ['log', 'warn', 'mask', 'block'];
+
+    for (const behavior of validBehaviors) {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        scanner: {
+          onSecretDetected: behavior,
+        },
+      });
+
+      expect(config.scanner!.onSecretDetected).toBe(behavior);
+    }
+  });
+
+  it('should reject invalid onSecretDetected values', () => {
+    expect(() => {
+      ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        scanner: {
+          onSecretDetected: 'invalid',
+        },
+      });
+    }).toThrow();
+  });
+
+  it('should validate custom pattern schema', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      scanner: {
+        customPatterns: [
+          {
+            name: 'Valid Pattern',
+            pattern: '[A-Z0-9]+',
+            severity: 'high',
+            description: 'A valid pattern',
+          },
+        ],
+      },
+    });
+
+    expect(config.scanner!.customPatterns[0]).toEqual({
+      name: 'Valid Pattern',
+      pattern: '[A-Z0-9]+',
+      severity: 'high',
+      description: 'A valid pattern',
+    });
+  });
+
+  it('should apply defaults for missing custom pattern fields', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      scanner: {
+        customPatterns: [
+          {
+            name: 'Minimal Pattern',
+            pattern: '[A-Z]+',
+            // severity and description missing, should get defaults
+          },
+        ],
+      },
+    });
+
+    expect(config.scanner!.customPatterns[0]).toEqual({
+      name: 'Minimal Pattern',
+      pattern: '[A-Z]+',
+      severity: 'medium', // default value from schema
+      description: undefined, // optional field
+    });
   });
 });
 
