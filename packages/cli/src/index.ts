@@ -3205,6 +3205,199 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
 }
 
 // ============================================================================
+// Undo Command Handler
+// ============================================================================
+
+async function handleUndoCommand(ctx: ApexContext, args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    console.log(chalk.red('APEX not initialized. Run /init first.'));
+    return;
+  }
+
+  try {
+    // Parse arguments
+    let taskId: string | null = null;
+    let count = 1;
+    let showUsage = false;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+
+      if (arg === '--help' || arg === '-h') {
+        showUsage = true;
+        break;
+      } else if (arg === '--task-id') {
+        if (i + 1 >= args.length) {
+          console.log(chalk.red('❌ --task-id requires a task ID'));
+          return;
+        }
+        taskId = args[i + 1];
+        i++; // Skip next arg since we consumed it
+      } else if (arg === '--count') {
+        if (i + 1 >= args.length) {
+          console.log(chalk.red('❌ --count requires a number'));
+          return;
+        }
+        const countValue = parseInt(args[i + 1], 10);
+        if (isNaN(countValue) || countValue <= 0) {
+          console.log(chalk.red('❌ Count must be a positive number'));
+          return;
+        }
+        if (countValue > 50) {
+          console.log(chalk.red('❌ Count cannot exceed 50 actions'));
+          return;
+        }
+        count = countValue;
+        i++; // Skip next arg since we consumed it
+      }
+    }
+
+    // Show usage if requested or no args
+    if (showUsage || args.length === 0) {
+      console.log(chalk.cyan('Usage: /undo [--task-id <taskId>] [--count <number>]'));
+      console.log();
+      console.log(chalk.yellow('Options:'));
+      console.log(chalk.gray('  --task-id <taskId>   Specific task to undo actions for (default: current task)'));
+      console.log(chalk.gray('  --count <number>     Number of actions to undo (default: 1, max: 50)'));
+      console.log();
+      console.log(chalk.yellow('Examples:'));
+      console.log(chalk.gray('  /undo                      # Undo last action for current task'));
+      console.log(chalk.gray('  /undo --count 3            # Undo last 3 actions for current task'));
+      console.log(chalk.gray('  /undo --task-id abc123     # Undo last action for specific task'));
+      console.log(chalk.gray('  /undo --task-id abc123 --count 2  # Undo last 2 actions for specific task'));
+      return;
+    }
+
+    // Get the task to undo actions for
+    let task;
+    if (taskId) {
+      task = await ctx.orchestrator.getTask(taskId);
+      if (!task) {
+        console.log(chalk.red(`❌ Task not found: ${taskId}`));
+        return;
+      }
+    } else {
+      task = await ctx.orchestrator.getCurrentTask();
+      if (!task) {
+        console.log(chalk.yellow('⚠️  No current task found. Use --task-id to specify a task.'));
+        return;
+      }
+      taskId = task.id;
+    }
+
+    // Get undoable actions for preview
+    const undoableActions = await ctx.orchestrator['toolActionStore'].getUndoableActions(taskId);
+
+    if (undoableActions.length === 0) {
+      console.log(chalk.yellow('⚠️  No undoable actions found for this task.'));
+      return;
+    }
+
+    // Limit count to available actions
+    const actualCount = Math.min(count, undoableActions.length);
+    const actionsToUndo = undoableActions.slice(0, actualCount);
+
+    // Show preview of what will be undone
+    console.log(chalk.cyan(`\n📋 The following ${actualCount} action${actualCount === 1 ? '' : 's'} will be undone:`));
+    console.log();
+
+    for (let i = 0; i < actionsToUndo.length; i++) {
+      const action = actionsToUndo[i];
+      const actionNumber = i + 1;
+      console.log(chalk.yellow(`${actionNumber}. ${action.toolName} operation on ${action.filePath || 'unknown file'}`));
+      console.log(chalk.gray(`   Action ID: ${action.id}`));
+      console.log(chalk.gray(`   Time: ${action.timestamp.toLocaleString()}`));
+      console.log();
+    }
+
+    // Request confirmation
+    const { createInterface } = await import('readline');
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const confirmation = await new Promise<string>((resolve) => {
+      rl.question(chalk.yellow('Do you want to proceed? [y/N]: '), resolve);
+    });
+    rl.close();
+
+    if (confirmation.toLowerCase() !== 'y' && confirmation.toLowerCase() !== 'yes') {
+      console.log(chalk.gray('Undo cancelled.'));
+      return;
+    }
+
+    // Perform the undo operations
+    console.log(chalk.cyan('\n🔄 Undoing actions...\n'));
+
+    let successCount = 0;
+    let failedActions: Array<{ actionId: string; error: string }> = [];
+
+    for (let i = 0; i < actualCount; i++) {
+      try {
+        const result = await ctx.orchestrator.undoLastAction(taskId);
+
+        if (result.success) {
+          successCount++;
+          console.log(chalk.green(`✓ Undid action ${i + 1}/${actualCount}: ${result.actionId}`));
+
+          if (result.restoredFiles.length > 0) {
+            console.log(chalk.gray(`  Restored: ${result.restoredFiles.join(', ')}`));
+          }
+        } else {
+          failedActions.push({
+            actionId: result.actionId,
+            error: result.error || 'Unknown error'
+          });
+          console.log(chalk.red(`✗ Failed to undo action ${i + 1}/${actualCount}: ${result.error}`));
+
+          // Stop on failure
+          console.log(chalk.yellow('Stopping due to failure.'));
+          break;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        failedActions.push({
+          actionId: 'unknown',
+          error: errorMessage
+        });
+        console.log(chalk.red(`✗ Failed to undo action ${i + 1}/${actualCount}: ${errorMessage}`));
+
+        // Stop on failure
+        console.log(chalk.yellow('Stopping due to failure.'));
+        break;
+      }
+    }
+
+    // Show summary
+    console.log();
+    if (successCount === actualCount) {
+      console.log(chalk.green(`✓ Successfully undid ${successCount} action${successCount === 1 ? '' : 's'}`));
+    } else if (successCount > 0) {
+      console.log(chalk.yellow(`⚠️  Completed ${successCount} of ${actualCount} undo operations`));
+
+      for (const failed of failedActions) {
+        console.log(chalk.red(`   Failed to undo ${failed.actionId}: ${failed.error}`));
+      }
+    } else {
+      console.log(chalk.red(`❌ Failed to undo any actions`));
+
+      for (const failed of failedActions) {
+        console.log(chalk.red(`   ${failed.actionId}: ${failed.error}`));
+      }
+    }
+
+    if (successCount > 0) {
+      console.log(chalk.gray('\n💡 Tip: Use /diff to see the current state of your files'));
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.log(chalk.red(`❌ Failed to undo: ${errorMessage}`));
+  }
+}
+
+// ============================================================================
 // Task Execution
 // ============================================================================
 

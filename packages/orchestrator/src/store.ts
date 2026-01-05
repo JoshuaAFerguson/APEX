@@ -4184,6 +4184,99 @@ export class ToolActionStore {
       sessionId: row.session_id || undefined,
     };
   }
+
+  /**
+   * Log an audit entry (wrapper around addAuditLog for backward compatibility)
+   */
+  async logAuditEntry(entry: AuditLogEntry): Promise<void> {
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log autonomy mode change
+   */
+  async logModeChange(
+    taskId: string,
+    previousMode: string,
+    newMode: string,
+    reason: string
+  ): Promise<void> {
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType: 'mode.changed',
+      severity: 'info',
+      timestamp: new Date(),
+      actor: 'system',
+      message: `Autonomy mode changed from ${previousMode} to ${newMode}: ${reason}`,
+      metadata: {
+        previousMode,
+        newMode,
+        reason,
+      },
+      previousState: previousMode,
+      newState: newMode,
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log approval request
+   */
+  async logApprovalRequest(taskId: string, context: string): Promise<void> {
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType: 'approval.requested',
+      severity: 'info',
+      timestamp: new Date(),
+      actor: 'system',
+      message: `Approval requested: ${context}`,
+      metadata: {
+        context,
+        requestedAt: new Date().toISOString(),
+      },
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log approval response
+   */
+  async logApprovalResponse(
+    taskId: string,
+    approver: string,
+    approved: boolean,
+    context: string
+  ): Promise<void> {
+    const eventType = approved ? 'approval.granted' : 'approval.denied';
+    const message = approved
+      ? `Approval granted by ${approver}: ${context}`
+      : `Approval denied by ${approver}: ${context}`;
+
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType,
+      severity: 'info',
+      timestamp: new Date(),
+      actor: approver,
+      message,
+      metadata: {
+        context,
+        approved,
+        approver,
+        respondedAt: new Date().toISOString(),
+      },
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
 }
 
 /**
