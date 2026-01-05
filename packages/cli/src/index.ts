@@ -2554,6 +2554,21 @@ export const commands: Command[] = [
       }
     },
   },
+
+  {
+    name: 'undo',
+    aliases: ['u'],
+    description: 'Undo the last tool action(s) for a task',
+    usage: '/undo [--task-id <taskId>] [--count <number>]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      await handleUndoCommand(ctx, args);
+    },
+  },
 ];
 
 // ============================================================================

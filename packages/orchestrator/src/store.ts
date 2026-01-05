@@ -40,6 +40,9 @@ import {
   FixAttempt,
   FixAttemptHistory,
   ErrorFingerprint,
+  AuditLogEntry,
+  AuditEventType,
+  AuditSeverity,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -215,6 +218,43 @@ export class TaskStore {
         CREATE INDEX IF NOT EXISTS idx_snapshots_action_id ON snapshots(action_id);
         CREATE INDEX IF NOT EXISTS idx_snapshots_tool_name ON snapshots(tool_name);
         CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
+      `);
+    } catch {
+      // Table might already exist
+    }
+
+    // Create audit_logs table if it doesn't exist (v0.5.0 audit logging support)
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id TEXT PRIMARY KEY,
+          task_id TEXT,
+          event_type TEXT NOT NULL,
+          severity TEXT NOT NULL CHECK (severity IN ('debug', 'info', 'warn', 'error', 'critical')),
+          timestamp TEXT NOT NULL,
+          actor TEXT NOT NULL,
+          message TEXT NOT NULL,
+          stage TEXT,
+          agent TEXT,
+          metadata TEXT,
+          previous_state TEXT,
+          new_state TEXT,
+          duration_ms INTEGER,
+          success INTEGER NOT NULL DEFAULT 1,
+          error TEXT,
+          correlation_id TEXT,
+          session_id TEXT,
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_task_id ON audit_logs(task_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_severity ON audit_logs(severity);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation_id ON audit_logs(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_success ON audit_logs(success);
       `);
     } catch {
       // Table might already exist
@@ -571,6 +611,38 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_fix_attempts_error_hash ON fix_attempts(error_hash);
       CREATE INDEX IF NOT EXISTS idx_fix_attempts_started_at ON fix_attempts(started_at);
       CREATE INDEX IF NOT EXISTS idx_fix_attempts_error_category ON fix_attempts(error_category);
+
+      -- v0.5.0 Audit Logs
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        event_type TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('debug', 'info', 'warn', 'error', 'critical')),
+        timestamp TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        message TEXT NOT NULL,
+        stage TEXT,
+        agent TEXT,
+        metadata TEXT,
+        previous_state TEXT,
+        new_state TEXT,
+        duration_ms INTEGER,
+        success INTEGER NOT NULL DEFAULT 1,
+        error TEXT,
+        correlation_id TEXT,
+        session_id TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      -- v0.5.0 Audit Logs Indexes
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_task_id ON audit_logs(task_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_severity ON audit_logs(severity);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation_id ON audit_logs(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_success ON audit_logs(success);
     `);
   }
 
@@ -3821,6 +3893,297 @@ export class ToolActionStore {
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     };
   }
+
+  /**
+   * Add an audit log entry
+   */
+  async addAuditLog(entry: AuditLogEntry): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO audit_logs (
+        id, task_id, event_type, severity, timestamp, actor, message,
+        stage, agent, metadata, previous_state, new_state, duration_ms,
+        success, error, correlation_id, session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      entry.id,
+      entry.taskId || null,
+      entry.eventType,
+      entry.severity,
+      entry.timestamp.toISOString(),
+      entry.actor,
+      entry.message,
+      entry.stage || null,
+      entry.agent || null,
+      entry.metadata ? JSON.stringify(entry.metadata) : null,
+      entry.previousState || null,
+      entry.newState || null,
+      entry.durationMs || null,
+      entry.success ? 1 : 0,
+      entry.error || null,
+      entry.correlationId || null,
+      entry.sessionId || null
+    );
+  }
+
+  /**
+   * Get audit logs for a task
+   */
+  async getAuditLogs(taskId: string, options?: {
+    eventType?: AuditEventType;
+    severity?: AuditSeverity;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE task_id = ?';
+    const params: any[] = [taskId];
+
+    if (options?.eventType) {
+      query += ' AND event_type = ?';
+      params.push(options.eventType);
+    }
+
+    if (options?.severity) {
+      query += ' AND severity = ?';
+      params.push(options.severity);
+    }
+
+    if (options?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Get all audit logs with optional filters
+   */
+  async queryAuditLogs(options?: {
+    taskId?: string;
+    eventType?: AuditEventType | AuditEventType[];
+    severity?: AuditSeverity | AuditSeverity[];
+    actor?: string;
+    correlationId?: string;
+    sessionId?: string;
+    success?: boolean;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE 1 = 1';
+    const params: any[] = [];
+
+    if (options?.taskId) {
+      query += ' AND task_id = ?';
+      params.push(options.taskId);
+    }
+
+    if (options?.eventType) {
+      if (Array.isArray(options.eventType)) {
+        query += ` AND event_type IN (${options.eventType.map(() => '?').join(', ')})`;
+        params.push(...options.eventType);
+      } else {
+        query += ' AND event_type = ?';
+        params.push(options.eventType);
+      }
+    }
+
+    if (options?.severity) {
+      if (Array.isArray(options.severity)) {
+        query += ` AND severity IN (${options.severity.map(() => '?').join(', ')})`;
+        params.push(...options.severity);
+      } else {
+        query += ' AND severity = ?';
+        params.push(options.severity);
+      }
+    }
+
+    if (options?.actor) {
+      query += ' AND actor = ?';
+      params.push(options.actor);
+    }
+
+    if (options?.correlationId) {
+      query += ' AND correlation_id = ?';
+      params.push(options.correlationId);
+    }
+
+    if (options?.sessionId) {
+      query += ' AND session_id = ?';
+      params.push(options.sessionId);
+    }
+
+    if (options?.success !== undefined) {
+      query += ' AND success = ?';
+      params.push(options.success ? 1 : 0);
+    }
+
+    if (options?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Delete old audit logs based on retention policy
+   */
+  async cleanupAuditLogs(maxAgeDays: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
+
+    const stmt = this.db.prepare(`
+      DELETE FROM audit_logs
+      WHERE timestamp < ?
+    `);
+
+    const result = stmt.run(cutoffDate.toISOString());
+    return result.changes;
+  }
+
+  /**
+   * Get audit log statistics
+   */
+  async getAuditLogStats(options?: {
+    taskId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    byEventType: Record<string, number>;
+    bySeverity: Record<string, number>;
+    successRate: number;
+  }> {
+    let whereClause = '1 = 1';
+    const params: any[] = [];
+
+    if (options?.taskId) {
+      whereClause += ' AND task_id = ?';
+      params.push(options.taskId);
+    }
+
+    if (options?.startDate) {
+      whereClause += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      whereClause += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    // Get total count
+    const totalResult = this.db.prepare(`SELECT COUNT(*) as count FROM audit_logs WHERE ${whereClause}`).get(params) as { count: number };
+    const total = totalResult.count;
+
+    // Get event type breakdown
+    const eventTypeResults = this.db.prepare(`
+      SELECT event_type, COUNT(*) as count
+      FROM audit_logs
+      WHERE ${whereClause}
+      GROUP BY event_type
+    `).all(params) as { event_type: string; count: number }[];
+    const byEventType = eventTypeResults.reduce((acc, row) => {
+      acc[row.event_type] = row.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Get severity breakdown
+    const severityResults = this.db.prepare(`
+      SELECT severity, COUNT(*) as count
+      FROM audit_logs
+      WHERE ${whereClause}
+      GROUP BY severity
+    `).all(params) as { severity: string; count: number }[];
+    const bySeverity = severityResults.reduce((acc, row) => {
+      acc[row.severity] = row.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Get success rate
+    const successResult = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+        COUNT(*) as total
+      FROM audit_logs
+      WHERE ${whereClause}
+    `).get(params) as { successes: number; total: number };
+    const successRate = successResult.total > 0 ? (successResult.successes / successResult.total) * 100 : 0;
+
+    return {
+      total,
+      byEventType,
+      bySeverity,
+      successRate
+    };
+  }
+
+  /**
+   * Convert row to AuditLogEntry
+   */
+  private rowToAuditLogEntry(row: AuditLogRow): AuditLogEntry {
+    return {
+      id: row.id,
+      taskId: row.task_id || undefined,
+      eventType: row.event_type as AuditEventType,
+      severity: row.severity as AuditSeverity,
+      timestamp: new Date(row.timestamp),
+      actor: row.actor,
+      message: row.message,
+      stage: row.stage || undefined,
+      agent: row.agent || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      previousState: row.previous_state || undefined,
+      newState: row.new_state || undefined,
+      durationMs: row.duration_ms || undefined,
+      success: Boolean(row.success),
+      error: row.error || undefined,
+      correlationId: row.correlation_id || undefined,
+      sessionId: row.session_id || undefined,
+    };
+  }
 }
 
 /**
@@ -3850,4 +4213,24 @@ interface FixAttemptRow {
   result_new_errors: string | null;
   delay_applied_ms: number | null;
   metadata: string | null;
+}
+
+interface AuditLogRow {
+  id: string;
+  task_id: string | null;
+  event_type: string;
+  severity: string;
+  timestamp: string;
+  actor: string;
+  message: string;
+  stage: string | null;
+  agent: string | null;
+  metadata: string | null;
+  previous_state: string | null;
+  new_state: string | null;
+  duration_ms: number | null;
+  success: number;
+  error: string | null;
+  correlation_id: string | null;
+  session_id: string | null;
 }
