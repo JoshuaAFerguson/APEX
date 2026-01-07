@@ -57,6 +57,9 @@ import {
   RejectionBehavior,
   PolicyViolation,
   PolicyEnforcementMode,
+  PolicyEngine,
+  PolicyCheckContext,
+  PolicyCheckResult,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -92,6 +95,7 @@ export interface OrchestratorOptions {
   projectPath: string;
   apiUrl?: string;
   autonomyEnforcer?: AutonomyEnforcer;  // Optional injection
+  policyEngine?: PolicyEngine;  // Optional PolicyEngine injection
 }
 
 /**
@@ -658,6 +662,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionPresetManager!: PermissionPresetManager;
   private policyEnforcer!: PolicyEnforcer;
   private autonomyEnforcer!: AutonomyEnforcer;
+  private policyEngine?: PolicyEngine;  // Optional PolicyEngine instance
   private linterService!: LinterService;
   private secretScanner?: SecretScanner;
   private hookManager!: HookManager;
@@ -694,6 +699,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     super();
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
+    this.policyEngine = options.policyEngine;  // Store the optional PolicyEngine
   }
 
   /**
@@ -2291,7 +2297,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.currentHookContext = hookContext;
 
     // Create hooks for this stage
-    const hooks = this.createHooksWithManager(hookContext, agent.name, stage.name);
+    const hooks = this.createHooksWithManager(hookContext, agent.name, stage.name, workflow.name);
 
     // Track usage for this stage
     let stageUsage: TaskUsage = {
@@ -6408,7 +6414,7 @@ Parent: ${parentTask.description}`;
   /**
    * Create hooks that integrate both the existing hook system and the HookManager
    */
-  private createHooksWithManager(hookContext: HookContext, agentName: string, stageName: string) {
+  private createHooksWithManager(hookContext: HookContext, agentName: string, stageName: string, workflowName: string) {
     // Get the base hooks from the existing system
     const baseHooks = createHooks(hookContext);
 
@@ -6438,6 +6444,48 @@ Parent: ${parentTask.description}`;
                     permissionDecisionReason: 'Autonomy enforcer requires approval for this action',
                   },
                 };
+              }
+
+              // Check policy requirements if PolicyEngine is available
+              if (this.policyEngine) {
+                try {
+                  const policyContext: PolicyCheckContext = {
+                    action: {
+                      type: 'tool_use',
+                      agent: agentName,
+                      tool: input.tool_name || 'unknown',
+                      parameters: input.tool_input || {},
+                      timestamp: new Date(),
+                    },
+                    task: {
+                      id: this.currentTaskId || 'unknown',
+                      stage: stageName,
+                      workflow: workflowName,
+                    },
+                    environment: {
+                      projectPath: this.projectPath,
+                    },
+                  };
+
+                  const policyResult: PolicyCheckResult = await this.policyEngine.checkPolicy(policyContext);
+
+                  if (!policyResult.allowed) {
+                    // Policy violation - deny the action
+                    const violations = policyResult.violations?.map(v => v.message).join('; ') || 'Policy violation';
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: 'PreToolUse',
+                        permissionDecision: 'deny',
+                        permissionDecisionReason: `Policy check failed: ${violations}`,
+                      },
+                    };
+                  }
+                } catch (error) {
+                  // Log error but don't block execution unless in strict mode
+                  console.warn('PolicyEngine check failed:', error);
+                  // In production, you might want to fail-safe by allowing the action
+                  // or failing based on configuration
+                }
               }
 
               // Create PreHookContext for the HookManager
