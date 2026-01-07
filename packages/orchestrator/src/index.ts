@@ -6469,9 +6469,20 @@ Parent: ${parentTask.description}`;
 
                   const policyResult: PolicyCheckResult = await this.policyEngine.checkPolicy(policyContext);
 
-                  if (!policyResult.allowed) {
-                    // Policy violation - deny the action
+                  if (policyResult.status === 'deny') {
+                    // Policy violation - deny the action and emit policy:blocked event
                     const violations = policyResult.violations?.map(v => v.message).join('; ') || 'Policy violation';
+
+                    // Emit policy:blocked event when action is blocked by policy
+                    const blockedEventData: PolicyBlockedEventData = {
+                      taskId: this.currentTaskId || 'unknown',
+                      agent: agentName,
+                      action: input.tool_name || 'unknown',
+                      violations: policyResult.violations,
+                      enforcementMode: policyResult.enforcementMode,
+                    };
+                    this.emit('policy:blocked', blockedEventData);
+
                     return {
                       hookSpecificOutput: {
                         hookEventName: 'PreToolUse',
