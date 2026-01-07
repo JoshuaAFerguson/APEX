@@ -4233,6 +4233,33 @@ export class ToolActionStore {
   }
 
   /**
+   * Get audit log statistics in array format (for compatibility with existing tests)
+   */
+  async getAuditLogStatistics(options?: {
+    taskId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    byEventType: Array<{eventType: string, count: number}>;
+    bySeverity: Array<{severity: string, count: number}>;
+  }> {
+    const stats = await this.getAuditLogStats(options);
+
+    return {
+      total: stats.total,
+      byEventType: Object.entries(stats.byEventType).map(([eventType, count]) => ({
+        eventType,
+        count
+      })),
+      bySeverity: Object.entries(stats.bySeverity).map(([severity, count]) => ({
+        severity,
+        count
+      }))
+    };
+  }
+
+  /**
    * Convert row to AuditLogEntry
    */
   private rowToAuditLogEntry(row: AuditLogRow): AuditLogEntry {

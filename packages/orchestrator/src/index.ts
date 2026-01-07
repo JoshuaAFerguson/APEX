@@ -55,6 +55,8 @@ import {
   SecretFinding,
   SecretDetectionBehavior,
   RejectionBehavior,
+  PolicyViolation,
+  PolicyEnforcementMode,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -90,6 +92,78 @@ export interface OrchestratorOptions {
   projectPath: string;
   apiUrl?: string;
   autonomyEnforcer?: AutonomyEnforcer;  // Optional injection
+}
+
+/**
+ * Policy violation event payload data
+ */
+export interface PolicyViolationEventData {
+  /** Task ID where the violation occurred */
+  taskId: string;
+  /** Agent that triggered the violation */
+  agent: string;
+  /** Action that caused the violation */
+  action: string;
+  /** Details about the violation */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the violation occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy blocked event payload data
+ */
+export interface PolicyBlockedEventData {
+  /** Task ID that was blocked */
+  taskId: string;
+  /** Agent that was blocked */
+  agent: string;
+  /** Action that was blocked */
+  action: string;
+  /** Details about the violations that caused the block */
+  violations: PolicyViolation[];
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the block occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy warning event payload data
+ */
+export interface PolicyWarnedEventData {
+  /** Task ID where the warning occurred */
+  taskId: string;
+  /** Agent that triggered the warning */
+  agent: string;
+  /** Action that caused the warning */
+  action: string;
+  /** Details about the violation that caused the warning */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the warning occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy audited event payload data
+ */
+export interface PolicyAuditedEventData {
+  /** Task ID where the audit event occurred */
+  taskId: string;
+  /** Agent that triggered the audit */
+  agent: string;
+  /** Action that was audited */
+  action: string;
+  /** Details about the violation that was audited */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the audit occurred */
+  timestamp: Date;
 }
 
 export interface OrchestratorEvents {
@@ -174,6 +248,12 @@ export interface OrchestratorEvents {
     comment?: string;
     reason?: string;
   }) => void;
+
+  // Policy violation events (v0.5.0)
+  'policy:violation': (event: PolicyViolationEventData) => void;
+  'policy:blocked': (event: PolicyBlockedEventData) => void;
+  'policy:warned': (event: PolicyWarnedEventData) => void;
+  'policy:audited': (event: PolicyAuditedEventData) => void;
 
   // Template events
   'template:created': (template: TaskTemplate) => void;
