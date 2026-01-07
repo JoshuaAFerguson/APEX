@@ -60,6 +60,8 @@ import {
   PolicyEngine,
   PolicyCheckContext,
   PolicyCheckResult,
+  ApprovalCheckpointType,
+  AutonomyLevel,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -6490,6 +6492,33 @@ Parent: ${parentTask.description}`;
                         permissionDecisionReason: `Policy check failed: ${violations}`,
                       },
                     };
+                  } else if (policyResult.status === 'allow' && policyResult.violations && policyResult.violations.length > 0) {
+                    // Policy violations exist but action is allowed (warn mode behavior)
+                    // Log warnings for each violation
+                    for (const violation of policyResult.violations) {
+                      console.warn(
+                        `Policy warning [${violation.severity}]: ${violation.message}`,
+                        {
+                          taskId: this.currentTaskId,
+                          agent: agentName,
+                          tool: input.tool_name,
+                          resource: violation.resource,
+                          enforcementMode: policyResult.enforcementMode,
+                          violationId: violation.id,
+                        }
+                      );
+
+                      // Emit policy:warned event for each violation
+                      const warnedEventData: PolicyWarnedEventData = {
+                        taskId: this.currentTaskId || 'unknown',
+                        agent: agentName,
+                        action: input.tool_name || 'unknown',
+                        violation,
+                        enforcementMode: policyResult.enforcementMode,
+                      };
+                      this.emit('policy:warned', warnedEventData);
+                    }
+                    // Continue with normal execution - action is allowed despite warnings
                   }
                 } catch (error) {
                   // Log error but don't block execution unless in strict mode
@@ -6663,6 +6692,51 @@ Parent: ${parentTask.description}`;
             'supervised',
             `Autonomy enforcer triggered approval gate: ${gateName}`
           );
+
+          // Create approval state and emit approval:required event
+          const approvalId = `approval_${taskId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const approvalUrl = this.generateApprovalUrl(approvalId);
+          const timestamp = new Date();
+
+          // Create approval state in store
+          await this.store.createApprovalState({
+            id: approvalId,
+            taskId,
+            gateName,
+            status: 'pending',
+            requestedAt: timestamp,
+            context: {
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              gateType: this.mapGateNameToType(gateName),
+              ...context
+            },
+            stage: context?.currentStage,
+            agent: context?.agent,
+          });
+
+          // Emit approval:required event with proper event data structure
+          const eventData: ApprovalRequiredEventData = {
+            approvalId,
+            taskId,
+            gateName,
+            gateType: this.mapGateNameToType(gateName),
+            description: this.generateGateDescription(gateName, task.autonomy),
+            minApprovals: 1,
+            timestamp,
+            stage: context?.currentStage,
+            agent: context?.agent,
+            context: {
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              operationType: context?.operationType,
+              ...context
+            },
+            blocking: true,
+            approvalUrl,
+          };
+
+          this.emit('approval:required', eventData);
         }
       } catch (error) {
         console.error('Error handling autonomy enforcer approval:required event:', error);
@@ -7598,6 +7672,51 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (completedTask) {
       this.emit('task:completed', completedTask);
     }
+  }
+
+  /**
+   * Maps gate names to approval checkpoint types
+   */
+  private mapGateNameToType(gateName: string): ApprovalCheckpointType {
+    const gateMap: Record<string, ApprovalCheckpointType> = {
+      'before-commit': 'before-commit',
+      'before-deploy': 'before-deploy',
+      'before-destructive': 'before-destructive',
+      'review-all': 'before-deploy', // Default for review-all autonomy
+      'before-merge': 'before-deploy',
+      'before-network': 'before-network',
+    };
+
+    return gateMap[gateName] || 'before-destructive'; // Default to safest option
+  }
+
+  /**
+   * Generates a description for the approval gate based on gate name and autonomy level
+   */
+  private generateGateDescription(gateName: string, autonomyLevel: AutonomyLevel): string {
+    const descriptions: Record<string, string> = {
+      'before-commit': 'Approval required before committing changes to version control',
+      'before-deploy': 'Approval required before deployment operations',
+      'before-destructive': 'Approval required before destructive operations (delete, overwrite)',
+      'before-network': 'Approval required before network operations',
+      'review-all': `Manual review required (autonomy level: ${autonomyLevel})`,
+      'before-merge': 'Approval required before merging changes',
+    };
+
+    return descriptions[gateName] || `Approval required for ${gateName} (autonomy level: ${autonomyLevel})`;
+  }
+
+  /**
+   * Generates approval URL from the configured API URL and approval ID
+   */
+  private generateApprovalUrl(approvalId: string): string | undefined {
+    if (!this.apiUrl) {
+      return undefined;
+    }
+
+    // Ensure the URL ends with a slash for proper concatenation
+    const baseUrl = this.apiUrl.endsWith('/') ? this.apiUrl : `${this.apiUrl}/`;
+    return `${baseUrl}approvals/${approvalId}`;
   }
 }
 
