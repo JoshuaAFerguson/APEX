@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, MockedFunction } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { ApexOrchestrator } from '../index.js';
+import { ApexOrchestrator, type OrchestratorOptions } from '../index.js';
 import { PolicyEngine } from '../policy-engine.js';
 import type {
   ApexConfig,
@@ -29,7 +29,6 @@ import type {
   PolicyBlockedEventData,
   PolicyWarnedEventData,
   PolicyAuditedEventData,
-  ApexOrchestratorOptions,
 } from '@apexcli/core';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -221,7 +220,7 @@ describe('ApexOrchestrator - Policy Lifecycle Hooks Integration', () => {
     mockPolicyEngine = createMockPolicyEngine();
     eventCollector = new EventCollector();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: mockPolicyEngine,
     };
 
@@ -426,7 +425,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
 
     const strictPolicyEngine = createMockPolicyEngine(blockResponse);
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: strictPolicyEngine,
     };
 
@@ -538,7 +537,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
 
     const warnPolicyEngine = createMockPolicyEngine(warnResponse);
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: warnPolicyEngine,
     };
 
@@ -655,7 +654,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
 
     const auditPolicyEngine = createMockPolicyEngine(auditResponse);
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: auditPolicyEngine,
     };
 
@@ -764,7 +763,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
 
     const multiViolationEngine = createMockPolicyEngine(multiViolationResponse);
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: multiViolationEngine,
     };
 
@@ -887,7 +886,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
 
     const disabledPolicyEngine = createMockPolicyEngine(disabledResponse);
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: disabledPolicyEngine,
     };
 
@@ -951,7 +950,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
   });
 
   it('should work correctly when PolicyEngine is not provided', async () => {
-    const options: ApexOrchestratorOptions = {};
+    const options: OrchestratorOptions = {};
 
     const orchestrator = new ApexOrchestrator(testProjectPath, options);
     (orchestrator as any).eventEmitter = eventCollector;

@@ -23,6 +23,7 @@ import {
   type VerboseDebugData,
   type Task,
   type TaskUsage,
+  type ApprovalRequiredEventData,
   getPlatformShell,
   isWindows,
   resolveExecutable,
@@ -36,6 +37,7 @@ import {
   handleSession as handleSessionCommand,
   type SessionContext
 } from './handlers/session-handlers.js';
+import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 
 // ============================================================================
 // Context
@@ -1707,6 +1709,90 @@ export async function startInkREPL(): Promise<void> {
             (currentVerboseData.agentDebug.errorCounts[agent] || 0) + 1;
           updatePerformanceMetrics();
           ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Handle approval required events
+      ctx.orchestrator.on('approval:required', async (eventData: ApprovalRequiredEventData) => {
+        try {
+          // Pause the UI rendering to show the approval prompt
+          ctx.app?.updateState({ showUI: false });
+
+          // Show system message about approval requirement
+          ctx.app?.addMessage({
+            type: 'system',
+            content: `Approval required for ${eventData.gateName} (Task: ${eventData.taskId.slice(0, 12)}...)`,
+          });
+
+          // Show the interactive approval prompt
+          await showApprovalPrompt({
+            eventData,
+            onSelection: async (response) => {
+              try {
+                // Call the orchestrator's respondToApproval method
+                await ctx.orchestrator?.respondToApproval(eventData.approvalId, response);
+
+                // Show response confirmation
+                const actionText = response.response === 'approved' ? 'approved' :
+                                  response.response === 'denied' ? 'denied' :
+                                  'requested more info for';
+                ctx.app?.addMessage({
+                  type: 'system',
+                  content: `Approval ${actionText} for ${eventData.gateName}`,
+                });
+
+                // Handle info-requested follow-up
+                if (response.response === 'info-requested') {
+                  // Listen for info-requested events and prompt for additional information
+                  const handleInfoRequested = async (infoData: any) => {
+                    if (infoData.requestId === eventData.approvalId) {
+                      try {
+                        const additionalInfo = await promptForAdditionalInfo(
+                          eventData,
+                          response.message || 'Additional information requested'
+                        );
+
+                        // Send the additional information back through the orchestrator
+                        // Note: This would need a corresponding method in the orchestrator
+                        ctx.app?.addMessage({
+                          type: 'system',
+                          content: `Additional information provided: ${additionalInfo.substring(0, 100)}${additionalInfo.length > 100 ? '...' : ''}`,
+                        });
+
+                        // Remove the one-time listener
+                        ctx.orchestrator?.off('info:requested', handleInfoRequested);
+                      } catch (infoError) {
+                        console.error('Error handling info request:', infoError);
+                        ctx.app?.addMessage({
+                          type: 'error',
+                          content: `Error handling info request: ${infoError instanceof Error ? infoError.message : String(infoError)}`,
+                        });
+                        ctx.orchestrator?.off('info:requested', handleInfoRequested);
+                      }
+                    }
+                  };
+
+                  // Set up temporary listener for info requests
+                  ctx.orchestrator?.on('info:requested', handleInfoRequested);
+                }
+              } catch (responseError) {
+                console.error('Error responding to approval:', responseError);
+                ctx.app?.addMessage({
+                  type: 'error',
+                  content: `Error responding to approval: ${responseError instanceof Error ? responseError.message : String(responseError)}`,
+                });
+              }
+            }
+          });
+        } catch (approvalError) {
+          console.error('Error handling approval prompt:', approvalError);
+          ctx.app?.addMessage({
+            type: 'error',
+            content: `Error handling approval prompt: ${approvalError instanceof Error ? approvalError.message : String(approvalError)}`,
+          });
+        } finally {
+          // Resume UI rendering
+          ctx.app?.updateState({ showUI: true });
         }
       });
 
