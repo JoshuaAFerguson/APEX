@@ -20,7 +20,13 @@ import type {
   ApprovalOperationType,
   ToolAction,
   AgentDefinition,
-  ApexConfig
+  ApexConfig,
+  PolicyEngine as IPolicyEngine,
+  Policy,
+  PolicyCheckContext,
+  PolicyCheckOptions,
+  PolicyCheckResult,
+  PolicyEnforcementMode
 } from '@apexcli/core';
 
 // ============================================================================
@@ -152,10 +158,12 @@ export interface RuleLoadingConfig {
  * }
  * ```
  */
-export class PolicyEngine {
+export class PolicyEngine implements IPolicyEngine {
   private readonly config: ApexConfig;
   private readonly policyConfig: PolicyConfig;
   private readonly rules: PolicyRule[];
+  private enforcementMode: PolicyEnforcementMode;
+  private readonly policies: Map<string, Policy> = new Map();
 
   /**
    * Creates a new PolicyEngine instance.
@@ -174,7 +182,157 @@ export class PolicyEngine {
   ) {
     this.config = config;
     this.policyConfig = config.policy || { enabled: false, enforcement: 'warn' };
+    this.enforcementMode = this.policyConfig.enforcement || 'warn';
     this.rules = this.loadRulesFromConfig(ruleLoadingConfig);
+  }
+
+  /**
+   * Check policies against the given context.
+   *
+   * @param context - The context describing the action to check
+   * @param options - Optional configuration for this check
+   * @returns A promise resolving to the policy check result
+   */
+  async checkPolicy(
+    context: PolicyCheckContext,
+    options?: PolicyCheckOptions
+  ): Promise<PolicyCheckResult> {
+    const startTime = Date.now();
+    const enforcementMode = options?.enforcementMode || this.enforcementMode;
+
+    // Convert new context format to legacy format for evaluation
+    const agentActionContext: AgentActionContext = {
+      agentId: context.agentId || 'unknown',
+      actionType: context.action,
+      toolName: context.toolName || context.action,
+      resource: context.resource,
+      parameters: context.toolArguments,
+      taskId: context.taskId,
+      workflowId: context.metadata?.workflowId as string,
+      metadata: context.metadata,
+    };
+
+    // Use existing evaluation logic
+    const legacyResult = this.evaluateAction(agentActionContext);
+
+    // Convert legacy result to new format
+    const violations: PolicyViolation[] = legacyResult.violations.map(violation => ({
+      id: violation.id,
+      rule: violation.ruleId,
+      message: violation.message,
+      severity: violation.severity,
+      blocking: violation.severity === 'error' || violation.severity === 'critical',
+      policyType: violation.ruleType === 'path' ? 'path' :
+                  violation.ruleType === 'approval' ? 'approval' :
+                  violation.ruleType === 'tool' ? 'test' : 'path',
+      description: violation.description,
+      resource: violation.resource,
+      context: violation.context,
+      timestamp: violation.timestamp,
+    }));
+
+    // Apply enforcement mode logic
+    let status: 'allow' | 'deny';
+    switch (enforcementMode) {
+      case 'strict':
+        // Block on any violations
+        status = violations.length > 0 ? 'deny' : 'allow';
+        break;
+      case 'warn':
+        // Only block on critical/error violations
+        status = violations.some(v => v.blocking) ? 'deny' : 'allow';
+        break;
+      case 'audit':
+        // Log but don't block
+        status = 'allow';
+        break;
+      case 'disabled':
+        // Always allow
+        return {
+          status: 'allow',
+          violations: [],
+          enforcementMode,
+          checkedAt: new Date(),
+          rulesEvaluated: 0,
+          rulesPassed: 0,
+          rulesFailed: 0,
+          durationMs: Date.now() - startTime,
+        };
+      default:
+        status = legacyResult.allowed ? 'allow' : 'deny';
+    }
+
+    // Apply maxViolations limit if specified
+    const limitedViolations = options?.maxViolations && options.maxViolations > 0
+      ? violations.slice(0, options.maxViolations)
+      : violations;
+
+    return {
+      status,
+      violations: limitedViolations,
+      enforcementMode,
+      checkedAt: new Date(),
+      rulesEvaluated: legacyResult.evaluatedRules.length,
+      rulesPassed: legacyResult.evaluatedRules.length - legacyResult.matchedRules.length,
+      rulesFailed: legacyResult.matchedRules.filter(rule => rule.action === 'deny').length,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  /**
+   * Get the current enforcement mode.
+   */
+  getEnforcementMode(): PolicyEnforcementMode {
+    return this.enforcementMode;
+  }
+
+  /**
+   * Set the default enforcement mode.
+   */
+  setEnforcementMode(mode: PolicyEnforcementMode): void {
+    this.enforcementMode = mode;
+  }
+
+  /**
+   * Register a policy for evaluation.
+   */
+  registerPolicy(policy: Policy): void {
+    this.policies.set(policy.id, policy);
+  }
+
+  /**
+   * Unregister a policy.
+   */
+  unregisterPolicy(policyId: string): boolean {
+    return this.policies.delete(policyId);
+  }
+
+  /**
+   * Get all registered policies.
+   */
+  getPolicies(): Policy[] {
+    return Array.from(this.policies.values());
+  }
+
+  /**
+   * Get a specific policy by ID.
+   */
+  getPolicy(policyId: string): Policy | undefined {
+    return this.policies.get(policyId);
+  }
+
+  /**
+   * Check if a specific policy is registered.
+   */
+  hasPolicy(policyId: string): boolean {
+    return this.policies.has(policyId);
+  }
+
+  /**
+   * Clear all registered policies.
+   */
+  clearPolicies(): void {
+    this.policies.clear();
   }
 
   /**

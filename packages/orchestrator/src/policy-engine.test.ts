@@ -7,7 +7,7 @@
 
 import { describe, beforeEach, it, expect } from 'vitest';
 import { PolicyEngine, createPolicyEngine, type AgentActionContext, type PolicyRule } from './policy-engine.js';
-import type { ApexConfig, PolicyConfig } from '@apexcli/core';
+import type { ApexConfig, PolicyConfig, PolicyCheckContext, PolicyCheckOptions, Policy } from '@apexcli/core';
 
 describe('PolicyEngine', () => {
   describe('Constructor and Basic Properties', () => {
@@ -652,6 +652,215 @@ describe('PolicyEngine', () => {
       });
 
       expect(engine.policyRules).toHaveLength(0);
+    });
+  });
+
+  describe('PolicyEngine Interface Implementation', () => {
+    let engine: PolicyEngine;
+
+    beforeEach(() => {
+      const config: ApexConfig = {
+        agents: [],
+        workflows: [],
+        policy: {
+          enabled: true,
+          enforcement: 'warn',
+          allowedPaths: {
+            mode: 'allowlist',
+            allow: ['src/**'],
+            block: ['secrets/**'],
+          },
+        },
+      };
+      engine = new PolicyEngine(config);
+    });
+
+    describe('checkPolicy method', () => {
+      it('should evaluate policy with new context format', async () => {
+        const context: PolicyCheckContext = {
+          action: 'file_write',
+          resource: 'src/index.ts',
+          agentId: 'developer',
+          taskId: 'task-123',
+        };
+
+        const result = await engine.checkPolicy(context);
+
+        expect(result.status).toBe('allow');
+        expect(result.enforcementMode).toBe('warn');
+        expect(result.checkedAt).toBeInstanceOf(Date);
+        expect(typeof result.rulesEvaluated).toBe('number');
+        expect(typeof result.durationMs).toBe('number');
+      });
+
+      it('should deny access to blocked paths', async () => {
+        const context: PolicyCheckContext = {
+          action: 'file_read',
+          resource: 'secrets/api-key.txt',
+          agentId: 'developer',
+        };
+
+        const result = await engine.checkPolicy(context);
+
+        expect(result.status).toBe('deny');
+        expect(result.violations.length).toBeGreaterThan(0);
+        expect(result.violations[0].blocking).toBe(true);
+      });
+
+      it('should respect enforcement mode options', async () => {
+        const context: PolicyCheckContext = {
+          action: 'file_read',
+          resource: 'secrets/api-key.txt',
+          agentId: 'developer',
+        };
+
+        // Test audit mode - should allow even with violations
+        const auditResult = await engine.checkPolicy(context, {
+          enforcementMode: 'audit',
+        });
+        expect(auditResult.status).toBe('allow');
+        expect(auditResult.enforcementMode).toBe('audit');
+
+        // Test strict mode - should block on any violation
+        const strictResult = await engine.checkPolicy(context, {
+          enforcementMode: 'strict',
+        });
+        expect(strictResult.status).toBe('deny');
+        expect(strictResult.enforcementMode).toBe('strict');
+      });
+
+      it('should limit violations based on maxViolations option', async () => {
+        const context: PolicyCheckContext = {
+          action: 'file_read',
+          resource: 'secrets/api-key.txt',
+          agentId: 'developer',
+        };
+
+        const result = await engine.checkPolicy(context, {
+          maxViolations: 1,
+        });
+
+        expect(result.violations.length).toBeLessThanOrEqual(1);
+      });
+
+      it('should handle disabled enforcement mode', async () => {
+        const context: PolicyCheckContext = {
+          action: 'file_read',
+          resource: 'secrets/api-key.txt',
+          agentId: 'developer',
+        };
+
+        const result = await engine.checkPolicy(context, {
+          enforcementMode: 'disabled',
+        });
+
+        expect(result.status).toBe('allow');
+        expect(result.violations).toHaveLength(0);
+        expect(result.enforcementMode).toBe('disabled');
+      });
+    });
+
+    describe('enforcement mode management', () => {
+      it('should get and set enforcement mode', () => {
+        expect(engine.getEnforcementMode()).toBe('warn');
+
+        engine.setEnforcementMode('strict');
+        expect(engine.getEnforcementMode()).toBe('strict');
+
+        engine.setEnforcementMode('audit');
+        expect(engine.getEnforcementMode()).toBe('audit');
+      });
+    });
+
+    describe('policy management', () => {
+      const samplePolicy: Policy = {
+        id: 'test-policy-1',
+        name: 'Test Path Policy',
+        description: 'A test path policy',
+        enabled: true,
+        enforcement: 'strict',
+        type: 'path',
+        rules: [
+          {
+            id: 'rule-1',
+            name: 'Block secrets',
+            condition: 'path.includes("secret")',
+            action: 'deny',
+            severity: 'critical',
+          }
+        ],
+        config: {
+          mode: 'allowlist',
+          allowedPaths: ['src/**/*.ts'],
+          blockedPaths: ['node_modules/**/*']
+        },
+        tags: ['test', 'path'],
+        metadata: { testPolicy: true }
+      };
+
+      it('should register and retrieve policies', () => {
+        expect(engine.getPolicies()).toHaveLength(0);
+
+        engine.registerPolicy(samplePolicy);
+
+        expect(engine.getPolicies()).toHaveLength(1);
+        expect(engine.getPolicy('test-policy-1')).toEqual(samplePolicy);
+        expect(engine.hasPolicy('test-policy-1')).toBe(true);
+      });
+
+      it('should unregister policies correctly', () => {
+        engine.registerPolicy(samplePolicy);
+        expect(engine.hasPolicy('test-policy-1')).toBe(true);
+
+        const removed = engine.unregisterPolicy('test-policy-1');
+
+        expect(removed).toBe(true);
+        expect(engine.hasPolicy('test-policy-1')).toBe(false);
+        expect(engine.getPolicy('test-policy-1')).toBeUndefined();
+      });
+
+      it('should return false when trying to unregister non-existent policy', () => {
+        const removed = engine.unregisterPolicy('non-existent-policy');
+        expect(removed).toBe(false);
+      });
+
+      it('should clear all policies', () => {
+        engine.registerPolicy(samplePolicy);
+        engine.registerPolicy({
+          ...samplePolicy,
+          id: 'test-policy-2',
+          name: 'Test Policy 2'
+        });
+
+        expect(engine.getPolicies()).toHaveLength(2);
+
+        engine.clearPolicies();
+
+        expect(engine.getPolicies()).toHaveLength(0);
+      });
+
+      it('should handle multiple policies', () => {
+        const policies = [
+          { ...samplePolicy, id: 'policy-1' },
+          { ...samplePolicy, id: 'policy-2', type: 'test' as const, config: {
+            enforcement: 'strict' as const,
+            coverage: { minimum: 80 },
+            rules: []
+          }},
+          { ...samplePolicy, id: 'policy-3', type: 'approval' as const, config: {
+            conditions: [],
+            timeoutMs: 300000,
+            timeoutAction: 'deny' as const
+          }}
+        ];
+
+        policies.forEach(policy => engine.registerPolicy(policy));
+
+        expect(engine.getPolicies()).toHaveLength(3);
+        expect(engine.hasPolicy('policy-1')).toBe(true);
+        expect(engine.hasPolicy('policy-2')).toBe(true);
+        expect(engine.hasPolicy('policy-3')).toBe(true);
+      });
     });
   });
 });

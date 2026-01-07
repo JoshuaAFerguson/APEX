@@ -934,7 +934,7 @@ export const commands: Command[] = [
     name: 'run',
     aliases: ['r'],
     description: 'Run a task with specific options',
-    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>] [--diff-preview]',
+    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>] [--diff-preview] [--dry-run]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -947,6 +947,7 @@ export const commands: Command[] = [
       let autonomy: string | undefined;
       let priority: string | undefined;
       let diffPreview: boolean | undefined;
+      let dryRun = false;
 
       let i = 0;
       // Check if first arg is a quoted string
@@ -977,6 +978,8 @@ export const commands: Command[] = [
           diffPreview = true;
         } else if (args[i] === '--no-diff-preview') {
           diffPreview = false;
+        } else if (args[i] === '--dry-run' || args[i] === '-d') {
+          dryRun = true;
         } else if (!description) {
           description = args[i];
         }
@@ -984,11 +987,11 @@ export const commands: Command[] = [
       }
 
       if (!description) {
-        console.log(chalk.red('Usage: /run "<description>" [--workflow <name>]'));
+        console.log(chalk.red('Usage: /run "<description>" [--workflow <name>] [--dry-run]'));
         return;
       }
 
-      await executeTask(ctx, description, { workflow, autonomy, priority }, { diffPreview });
+      await executeTask(ctx, description, { workflow, autonomy, priority }, { diffPreview, dryRun });
     },
   },
 
@@ -3405,39 +3408,71 @@ async function executeTask(
   ctx: ApexContext,
   description: string,
   options: { workflow?: string; autonomy?: string; priority?: string } = {},
-  cliFlags?: { diffPreview?: boolean }
+  cliFlags?: { diffPreview?: boolean; dryRun?: boolean }
 ): Promise<void> {
   if (!ctx.orchestrator) return;
 
-  console.log(chalk.cyan('\n🚀 Starting task...\n'));
+  // Display dry-run mode indicator if enabled
+  if (cliFlags?.dryRun) {
+    console.log(chalk.yellow('🔍 DRY RUN MODE') + ' - Simulating execution without making changes');
+    console.log(chalk.yellow('⚠️ No actual changes will be made to your files or system'));
+    console.log('');
+  }
+
+  const startMessage = cliFlags?.dryRun
+    ? chalk.cyan('\n🚀 Starting task (DRY RUN)...\n')
+    : chalk.cyan('\n🚀 Starting task...\n');
+  console.log(startMessage);
 
   const task = await ctx.orchestrator.createTask({
     description,
     workflow: options.workflow || 'feature',
     autonomy: options.autonomy as any,
     priority: options.priority as any,
+    dryRun: cliFlags?.dryRun || false,
   });
 
-  console.log(chalk.green(`Task created: ${task.id}`));
-  console.log(chalk.gray(`Branch: ${task.branchName}`));
-  console.log(chalk.gray(`Workflow: ${task.workflow}\n`));
+  // Format task creation output for dry-run mode
+  if (cliFlags?.dryRun) {
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.green(`Task created: ${task.id}`));
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.gray(`Branch: ${task.branchName} (simulated)`));
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.gray(`Workflow: ${task.workflow} (dry-run mode)\n`));
+  } else {
+    console.log(chalk.green(`Task created: ${task.id}`));
+    console.log(chalk.gray(`Branch: ${task.branchName}`));
+    console.log(chalk.gray(`Workflow: ${task.workflow}\n`));
+  }
 
   await executeTaskWithOutput(ctx, task.id, cliFlags);
 }
 
-async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<void> {
+async function executeTaskWithOutput(
+  ctx: ApexContext,
+  taskId: string,
+  cliFlags?: { diffPreview?: boolean; dryRun?: boolean }
+): Promise<void> {
   if (!ctx.orchestrator) return;
+
+  // Get task to check dry-run status
+  const task = await ctx.orchestrator.getTask(taskId);
+  const isDryRun = task?.dryRun || cliFlags?.dryRun || false;
 
   // Set up event handlers
   const stageHandler = (task: any, stage: string) => {
     if (task.id === taskId) {
-      console.log(chalk.blue(`\n📍 Stage: ${stage}`));
+      const stageMessage = isDryRun
+        ? chalk.yellow('[DRY-RUN] ') + chalk.blue(`📍 Stage: ${stage} (simulated)`)
+        : chalk.blue(`\n📍 Stage: ${stage}`);
+      console.log(stageMessage);
     }
   };
 
   const toolHandler = (tId: string, tool: string) => {
     if (tId === taskId) {
-      console.log(chalk.gray(`  🔧 ${tool}`));
+      const toolMessage = isDryRun
+        ? chalk.yellow('[DRY-RUN] ') + chalk.gray(`🔧 ${tool} (simulated)`)
+        : chalk.gray(`  🔧 ${tool}`);
+      console.log(toolMessage);
     }
   };
 
@@ -3449,18 +3484,45 @@ async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<
 
     const completedTask = await ctx.orchestrator.getTask(taskId);
     if (completedTask) {
-      console.log(
-        boxen(
-          `${chalk.green('✅ Task Completed')}\n\n` +
-            `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
-            `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
-            `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
-          { padding: 1, borderColor: 'green', borderStyle: 'round' }
-        )
-      );
+      // Format completion message based on dry-run status
+      if (isDryRun) {
+        console.log(
+          boxen(
+            `${chalk.green('✅ DRY RUN COMPLETED')} ${chalk.yellow('(SIMULATION)')}\n\n` +
+              `${chalk.cyan('Simulation Summary:')}\n` +
+              `${chalk.gray('• Task execution was simulated successfully')}\n` +
+              `${chalk.gray('• No actual changes were made to your files')}\n` +
+              `${chalk.gray('• No git operations were performed')}\n` +
+              `${chalk.gray('• No API costs were incurred')}\n\n` +
+              `${chalk.blue('Estimated Impact:')}\n` +
+              `${chalk.gray(`• Tokens that would be used: ${formatTokens(completedTask.usage.totalTokens)}`)}\n` +
+              `${chalk.gray(`• Estimated cost: ${formatCost(completedTask.usage.estimatedCost)}`)}\n` +
+              `${chalk.gray('• Actual cost: $0.00 (dry-run mode)')}\n` +
+              `${chalk.gray(`• Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())} (simulation time)`)}\n\n` +
+              `${chalk.yellow('Next Steps:')}\n` +
+              `${chalk.gray('• Review the changes above')}\n` +
+              `${chalk.gray('• Run without --dry-run flag to apply changes')}\n` +
+              `${chalk.gray('• Use /iterate to refine the approach')}`,
+            { padding: 1, borderColor: 'yellow', borderStyle: 'round' }
+          )
+        );
+      } else {
+        console.log(
+          boxen(
+            `${chalk.green('✅ Task Completed')}\n\n` +
+              `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
+              `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
+              `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
+            { padding: 1, borderColor: 'green', borderStyle: 'round' }
+          )
+        );
+      }
     }
   } catch (error) {
-    console.error(chalk.red(`\n❌ Task failed: ${(error as Error).message}\n`));
+    const errorMessage = isDryRun
+      ? chalk.red(`\n❌ Dry-run simulation failed: ${(error as Error).message}\n`)
+      : chalk.red(`\n❌ Task failed: ${(error as Error).message}\n`);
+    console.error(errorMessage);
   } finally {
     ctx.orchestrator.off('task:stage-changed', stageHandler);
     ctx.orchestrator.off('agent:tool-use', toolHandler);
