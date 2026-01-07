@@ -132,11 +132,23 @@ describe('Policy Audit Enforcement Mode', () => {
       expect(result.status).toBe('allow');
       expect(result.violations).toHaveLength(1);
       expect(result.enforcementMode).toBe('audit');
+      expect(result.violations[0].id).toBe('test-violation-1');
+      expect(result.violations[0].rule).toBe('test-rule');
+      expect(result.violations[0].severity).toBe('warning');
+      expect(result.violations[0].blocking).toBe(false);
 
-      // The actual test for the orchestrator implementation would require
-      // triggering the policy check through the orchestrator's tool execution path
-      // For now, we verify the event structure is correct
-      expect(mockViolation).toBeDefined();
+      // Verify the violation structure matches PolicyViolation interface
+      const violation = result.violations[0];
+      expect(violation).toHaveProperty('id');
+      expect(violation).toHaveProperty('rule');
+      expect(violation).toHaveProperty('message');
+      expect(violation).toHaveProperty('severity');
+      expect(violation).toHaveProperty('blocking');
+      expect(violation).toHaveProperty('policyType');
+      expect(violation).toHaveProperty('description');
+      expect(violation).toHaveProperty('resource');
+      expect(violation).toHaveProperty('context');
+      expect(violation).toHaveProperty('timestamp');
     });
 
     it('should not log to console in audit mode', async () => {
