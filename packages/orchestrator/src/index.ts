@@ -16,6 +16,7 @@ import {
   ApprovalRequiredEventData,
   ApprovalGrantedEventData,
   ApprovalDeniedEventData,
+  ApprovalResponse,
   Task,
   TaskStatus,
   TaskUsage,
@@ -247,6 +248,13 @@ export interface OrchestratorEvents {
   'approval:required': (event: ApprovalRequiredEventData) => void;
   'approval:approved': (event: ApprovalGrantedEventData) => void;
   'approval:denied': (event: ApprovalDeniedEventData) => void;
+  'approval:info-requested': (event: {
+    approvalId: string;
+    taskId: string;
+    requester: string;
+    message?: string;
+    timestamp: Date;
+  }) => void;
   'approval:decision': (event: {
     approvalId: string;
     decision: 'approved' | 'denied';
@@ -696,6 +704,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   // Store hooks context for accessing file snapshots during tool completion
   private currentHookContext: HookContext | null = null;
+
+  // Approval promise management for respondToApproval API
+  private pendingApprovalPromises: Map<string, {
+    resolve: (response: ApprovalResponse) => void;
+    reject: (error: Error) => void;
+  }> = new Map();
 
   constructor(private options: OrchestratorOptions) {
     super();
@@ -3892,6 +3906,114 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         message: `Error updating task status after approval denial: ${error instanceof Error ? error.message : 'Unknown error'}`,
         metadata: { approvalId, approver },
       });
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for an approval response for a specific request
+   * This creates a promise that will be resolved when respondToApproval is called
+   * @param requestId The approval request ID to wait for
+   * @param timeoutMs Optional timeout in milliseconds (default: 30 minutes)
+   * @returns Promise<ApprovalResponse> that resolves when the approval is responded to
+   */
+  waitForApproval(requestId: string, timeoutMs: number = 30 * 60 * 1000): Promise<ApprovalResponse> {
+    if (!requestId || requestId.trim().length === 0) {
+      throw new Error('Request ID is required');
+    }
+
+    // If there's already a pending promise for this request, return it
+    const existing = this.pendingApprovalPromises.get(requestId);
+    if (existing) {
+      throw new Error(`Already waiting for approval response to request: ${requestId}`);
+    }
+
+    return new Promise<ApprovalResponse>((resolve, reject) => {
+      // Store the promise resolvers
+      this.pendingApprovalPromises.set(requestId, { resolve, reject });
+
+      // Set up timeout if specified
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          const pendingPromise = this.pendingApprovalPromises.get(requestId);
+          if (pendingPromise) {
+            this.pendingApprovalPromises.delete(requestId);
+            pendingPromise.reject(new Error(`Approval request ${requestId} timed out after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+      }
+    });
+  }
+
+  /**
+   * Respond to an approval request with a decision and resolve pending promises
+   * This provides a unified interface that delegates to grantApproval or denyApproval
+   * while also resolving any pending approval promises for the request
+   * @param requestId The approval request ID to respond to
+   * @param response The approval response containing decision and context
+   * @returns Promise<void> that resolves when the approval is processed
+   */
+  async respondToApproval(
+    requestId: string,
+    response: ApprovalResponse
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Validate required fields
+    if (!requestId || requestId.trim().length === 0) {
+      throw new Error('Request ID is required');
+    }
+
+    if (!response.response) {
+      throw new Error('Approval decision is required');
+    }
+
+    try {
+      // Delegate to appropriate method based on response type
+      if (response.response === 'approved') {
+        await this.grantApproval(requestId, response.approver || 'Unknown', response.message);
+      } else if (response.response === 'denied') {
+        const reason = response.message || 'No reason provided';
+        await this.denyApproval(requestId, response.approver || 'Unknown', reason);
+      } else if (response.response === 'info-requested') {
+        // For info requests, we don't change the approval state but emit an event
+        // This allows external systems to handle information requests as needed
+        await this.store.addLog(response.taskId, {
+          level: 'info',
+          message: `Information requested for approval ${requestId}: ${response.message || 'No message provided'}`,
+          metadata: {
+            approvalId: requestId,
+            requester: response.approver || 'Unknown',
+            infoRequest: true
+          },
+        });
+
+        // Emit a custom event for info requests
+        this.emit('approval:info-requested', {
+          approvalId: requestId,
+          taskId: response.taskId,
+          requester: response.approver || 'Unknown',
+          message: response.message,
+          timestamp: new Date(),
+        });
+      } else {
+        throw new Error(`Invalid approval response: ${response.response}`);
+      }
+
+      // Resolve any pending approval promises for this request
+      const pendingPromise = this.pendingApprovalPromises.get(requestId);
+      if (pendingPromise) {
+        this.pendingApprovalPromises.delete(requestId);
+        pendingPromise.resolve(response);
+      }
+
+    } catch (error) {
+      // If there's a pending promise, reject it with the error
+      const pendingPromise = this.pendingApprovalPromises.get(requestId);
+      if (pendingPromise) {
+        this.pendingApprovalPromises.delete(requestId);
+        pendingPromise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
       throw error;
     }
   }

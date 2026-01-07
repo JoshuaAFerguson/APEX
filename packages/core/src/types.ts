@@ -2718,6 +2718,10 @@ export type ApexEventType =
   | 'dangerous:detected'
   | 'dangerous:confirmed'
   | 'dangerous:blocked'
+  // Policy events (v0.5.0)
+  | 'policy:blocked'
+  | 'policy:warned'
+  | 'policy:audited'
   // Undo/Redo events (v0.5.0)
   | 'undo:requested'
   | 'undo:started'
@@ -3010,6 +3014,79 @@ export interface DangerousOperationBlockedEventData {
   reason: string;
 }
 
+// ============================================================================
+// Policy Event Data Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event data for 'policy:blocked' event
+ * Emitted when an action is blocked by policy enforcement
+ */
+export interface PolicyBlockedEventData {
+  /** Task ID where the policy block occurred */
+  taskId: string;
+  /** Agent that attempted the action */
+  agent: string;
+  /** Action that was blocked */
+  action: string;
+  /** Tool name that was blocked */
+  toolName?: string;
+  /** Policy violations that caused the block */
+  violations: PolicyViolation[];
+  /** Policy enforcement mode at time of block */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the action was blocked */
+  timestamp: Date;
+  /** Additional context about the block */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Event data for 'policy:warned' event
+ * Emitted when an action triggers a policy warning but continues
+ */
+export interface PolicyWarnedEventData {
+  /** Task ID where the policy warning occurred */
+  taskId: string;
+  /** Agent that performed the action */
+  agent: string;
+  /** Action that triggered the warning */
+  action: string;
+  /** Tool name that triggered the warning */
+  toolName?: string;
+  /** Policy violation that caused the warning */
+  violation: PolicyViolation;
+  /** Policy enforcement mode at time of warning */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the warning was issued */
+  timestamp: Date;
+  /** Additional context about the warning */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Event data for 'policy:audited' event
+ * Emitted when an action is logged for audit purposes
+ */
+export interface PolicyAuditedEventData {
+  /** Task ID where the policy audit occurred */
+  taskId: string;
+  /** Agent that performed the action */
+  agent: string;
+  /** Action that was audited */
+  action: string;
+  /** Tool name that was audited */
+  toolName?: string;
+  /** Policy violations found during audit (if any) */
+  violations: PolicyViolation[];
+  /** Policy enforcement mode at time of audit */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the action was audited */
+  timestamp: Date;
+  /** Additional context about the audit */
+  context?: Record<string, unknown>;
+}
+
 /**
  * Union type for all permission-related event data
  */
@@ -3019,14 +3096,17 @@ export type PermissionEventData =
   | PermissionDeniedEventData
   | DangerousOperationDetectedEventData
   | DangerousOperationConfirmedEventData
-  | DangerousOperationBlockedEventData;
+  | DangerousOperationBlockedEventData
+  | PolicyBlockedEventData
+  | PolicyWarnedEventData
+  | PolicyAuditedEventData;
 
 /**
  * Type-safe permission event interface
  * Provides strong typing for permission-related events
  */
 export interface PermissionEvent<T extends PermissionEventData = PermissionEventData> {
-  type: Extract<ApexEventType, `permission:${string}` | `dangerous:${string}`>;
+  type: Extract<ApexEventType, `permission:${string}` | `dangerous:${string}` | `policy:${string}`>;
   taskId: string;
   timestamp: Date;
   data: T;
@@ -3042,6 +3122,9 @@ export type PermissionEventDataFor<T extends ApexEventType> =
   T extends 'dangerous:detected' ? DangerousOperationDetectedEventData :
   T extends 'dangerous:confirmed' ? DangerousOperationConfirmedEventData :
   T extends 'dangerous:blocked' ? DangerousOperationBlockedEventData :
+  T extends 'policy:blocked' ? PolicyBlockedEventData :
+  T extends 'policy:warned' ? PolicyWarnedEventData :
+  T extends 'policy:audited' ? PolicyAuditedEventData :
   never;
 
 // ============================================================================
