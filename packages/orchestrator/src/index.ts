@@ -1899,6 +1899,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Save approval state to database
           await this.store.saveApprovalState(approvalState);
 
+          // Log approval request for audit
+          await this.store.logApprovalRequest(task.id, `Approval gate: ${stage.gate} - ${gateCheck.gate.description || 'No description'}`);
+
+          // Log autonomy mode change for audit (transitioning to approval-required state)
+          await this.store.logModeChange(
+            task.id,
+            task.autonomy,
+            'supervised',
+            `Approval gate triggered: ${stage.gate} - requiring manual oversight`
+          );
+
           // Get current conversation state for checkpoint
           const currentTask = await this.store.getTask(task.id);
           const conversationState = currentTask?.conversation || [];
@@ -3674,6 +3685,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     this.emit('approval:approved', eventData);
 
+    // Log approval response for audit
+    await this.store.logApprovalResponse(taskId, approver, true, comment || 'No comment provided');
+
+    // Log autonomy mode change for audit (resuming from supervised back to original autonomy)
+    await this.store.logModeChange(
+      taskId,
+      'supervised',
+      task.autonomy,
+      `Approval granted by ${approver} - resuming with original autonomy level`
+    );
+
     // Resume the task from its checkpoint
     try {
       const resumed = await this.resumeTask(taskId);
@@ -3755,6 +3777,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     };
 
     this.emit('approval:denied', eventData);
+
+    // Log approval response for audit
+    await this.store.logApprovalResponse(taskId, approver, false, reason);
+
+    // Log autonomy mode change for audit (transitioning to manual due to denial)
+    await this.store.logModeChange(
+      taskId,
+      'supervised',
+      'manual',
+      `Approval denied by ${approver} - requiring manual intervention: ${reason}`
+    );
 
     // Mark the task as failed with the denial reason
     try {
@@ -6483,6 +6516,14 @@ Parent: ${parentTask.description}`;
             timestamp: new Date(),
             metadata: { gateName, component: 'autonomy-enforcer' }
           });
+
+          // Log autonomy mode change for audit (autonomy enforcer triggered supervision)
+          await this.store.logModeChange(
+            taskId,
+            task.autonomy,
+            'supervised',
+            `Autonomy enforcer triggered approval gate: ${gateName}`
+          );
         }
       } catch (error) {
         console.error('Error handling autonomy enforcer approval:required event:', error);
