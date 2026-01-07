@@ -6493,32 +6493,50 @@ Parent: ${parentTask.description}`;
                       },
                     };
                   } else if (policyResult.status === 'allow' && policyResult.violations && policyResult.violations.length > 0) {
-                    // Policy violations exist but action is allowed (warn mode behavior)
-                    // Log warnings for each violation
-                    for (const violation of policyResult.violations) {
-                      console.warn(
-                        `Policy warning [${violation.severity}]: ${violation.message}`,
-                        {
-                          taskId: this.currentTaskId,
+                    // Policy violations exist but action is allowed
+                    if (policyResult.enforcementMode === 'audit') {
+                      // Audit mode behavior - emit policy:audited events without logging
+                      for (const violation of policyResult.violations) {
+                        // Emit policy:audited event for each violation
+                        const auditedEventData: PolicyAuditedEventData = {
+                          taskId: this.currentTaskId || 'unknown',
                           agent: agentName,
-                          tool: input.tool_name,
-                          resource: violation.resource,
+                          action: input.tool_name || 'unknown',
+                          violation,
                           enforcementMode: policyResult.enforcementMode,
-                          violationId: violation.id,
-                        }
-                      );
+                          timestamp: new Date(),
+                        };
+                        this.emit('policy:audited', auditedEventData);
+                      }
+                      // Continue execution silently - no console logging in audit mode
+                    } else {
+                      // Warn mode behavior - log warnings and emit policy:warned events
+                      for (const violation of policyResult.violations) {
+                        console.warn(
+                          `Policy warning [${violation.severity}]: ${violation.message}`,
+                          {
+                            taskId: this.currentTaskId,
+                            agent: agentName,
+                            tool: input.tool_name,
+                            resource: violation.resource,
+                            enforcementMode: policyResult.enforcementMode,
+                            violationId: violation.id,
+                          }
+                        );
 
-                      // Emit policy:warned event for each violation
-                      const warnedEventData: PolicyWarnedEventData = {
-                        taskId: this.currentTaskId || 'unknown',
-                        agent: agentName,
-                        action: input.tool_name || 'unknown',
-                        violation,
-                        enforcementMode: policyResult.enforcementMode,
-                      };
-                      this.emit('policy:warned', warnedEventData);
+                        // Emit policy:warned event for each violation
+                        const warnedEventData: PolicyWarnedEventData = {
+                          taskId: this.currentTaskId || 'unknown',
+                          agent: agentName,
+                          action: input.tool_name || 'unknown',
+                          violation,
+                          enforcementMode: policyResult.enforcementMode,
+                          timestamp: new Date(),
+                        };
+                        this.emit('policy:warned', warnedEventData);
+                      }
                     }
-                    // Continue with normal execution - action is allowed despite warnings
+                    // Continue with normal execution - action is allowed despite violations
                   }
                 } catch (error) {
                   // Log error but don't block execution unless in strict mode

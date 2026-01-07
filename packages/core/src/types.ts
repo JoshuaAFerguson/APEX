@@ -2314,16 +2314,24 @@ export type ApprovalAction = z.infer<typeof ApprovalActionSchema>;
  * Represents a request for approval with all necessary context
  */
 export const ApprovalRequestSchema = z.object({
-  /** Unique identifier for this approval request */
-  id: z.string().min(1, 'Approval ID is required'),
+  /** Unique identifier for this approval request (new field) */
+  requestId: z.string().min(1, 'Request ID is required'),
   /** ID of the task requiring approval */
   taskId: z.string().min(1, 'Task ID is required'),
+  /** Description of what this approval is for */
+  description: z.string().min(1, 'Description is required'),
+  /** Impact on resources (e.g., high, medium, low) */
+  resourceImpact: z.string().optional(),
+  /** Reason for requiring approval */
+  reason: z.string().min(1, 'Reason is required'),
+
+  // Legacy fields for backward compatibility
+  /** Unique identifier for this approval request (legacy field - use requestId) */
+  id: z.string().min(1, 'Approval ID is required'),
   /** Name of the gate/checkpoint requiring approval */
   gateName: z.string().min(1, 'Gate name is required'),
   /** Type of approval checkpoint */
   gateType: ApprovalCheckpointTypeSchema,
-  /** Description of what this approval is for */
-  description: z.string().optional(),
   /** Who can approve this request (list of usernames, emails, or roles) */
   approvers: z.array(z.string()).optional(),
   /** Minimum number of approvals required */
@@ -2352,10 +2360,18 @@ export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
  * Represents a response to an approval request with decision and context
  */
 export const ApprovalResponseSchema = z.object({
-  /** Unique identifier for this approval request */
-  approvalId: z.string().min(1, 'Approval ID is required'),
+  /** Unique identifier for this approval request (new field) */
+  requestId: z.string().min(1, 'Request ID is required'),
   /** ID of the task that received the approval response */
   taskId: z.string().min(1, 'Task ID is required'),
+  /** Response status (approved, denied, info-requested) */
+  response: z.enum(['approved', 'denied', 'info-requested']),
+  /** Optional message explaining the decision */
+  message: z.string().optional(),
+
+  // Legacy fields for backward compatibility
+  /** Unique identifier for this approval request (legacy field - use requestId) */
+  approvalId: z.string().min(1, 'Approval ID is required'),
   /** Name of the gate/checkpoint */
   gateName: z.string().min(1, 'Gate name is required'),
   /** Action taken (approve, deny, request-info) */
@@ -2575,12 +2591,12 @@ export type ApprovalEventData = ApprovalRequiredEventData | ApprovalResponseEven
 export const ApprovalDecisionRequestSchema = z.object({
   /** ID of the approval request to respond to */
   approvalId: z.string().min(1, 'Approval ID is required'),
-  /** Whether to approve (true) or deny (false) */
-  approved: z.boolean(),
   /** Who is making the decision */
   approver: z.string().min(1, 'Approver is required'),
-  /** Optional comment explaining the decision */
-  comment: z.string().optional(),
+  /** Decision: approved, denied, or info-requested */
+  decision: z.enum(['approved', 'denied', 'info-requested']),
+  /** Optional comments explaining the decision */
+  comments: z.string().optional(),
 });
 export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequestSchema>;
 
@@ -2595,7 +2611,7 @@ export const ApprovalDecisionResponseSchema = z.object({
   /** Error message if the decision failed */
   error: z.string().optional(),
   /** Whether the task will now proceed (all approvals received) */
-  taskWillProceed: z.boolean().optional(),
+  willProceed: z.boolean(),
 });
 export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponseSchema>;
 
