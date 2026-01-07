@@ -17,7 +17,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
         },
       };
 
@@ -64,7 +64,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**', 'tests/**'],
@@ -107,7 +107,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           approvalRules: [
             {
               name: 'High Cost Operations',
@@ -159,7 +159,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
@@ -212,7 +212,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**', 'tests/**'],
@@ -355,7 +355,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**/*.ts', 'tests/**/*.test.js'],
@@ -433,7 +433,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
@@ -500,7 +500,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
@@ -535,7 +535,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
@@ -582,7 +582,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
@@ -620,7 +620,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
         },
       };
 
@@ -636,7 +636,7 @@ describe('PolicyEngine', () => {
         workflows: [],
         policy: {
           enabled: true,
-          enforcement: 'enforce',
+          enforcement: 'strict',
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],

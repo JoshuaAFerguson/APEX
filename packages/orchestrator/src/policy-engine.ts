@@ -253,10 +253,15 @@ export class PolicyEngine implements IPolicyEngine {
           violations: [],
           enforcementMode,
           checkedAt: new Date(),
+          policyName: this.policyConfig.name,
+          policyId: 'policy-engine-config',
           rulesEvaluated: 0,
           rulesPassed: 0,
           rulesFailed: 0,
           durationMs: Date.now() - startTime,
+          metadata: {
+            disabled: true,
+          },
         };
       default:
         status = legacyResult.allowed ? 'allow' : 'deny';
@@ -272,10 +277,17 @@ export class PolicyEngine implements IPolicyEngine {
       violations: limitedViolations,
       enforcementMode,
       checkedAt: new Date(),
+      policyName: this.policyConfig.name,
+      policyId: 'policy-engine-config',
       rulesEvaluated: legacyResult.evaluatedRules.length,
       rulesPassed: legacyResult.evaluatedRules.length - legacyResult.matchedRules.length,
       rulesFailed: legacyResult.matchedRules.filter(rule => rule.action === 'deny').length,
       durationMs: Date.now() - startTime,
+      metadata: {
+        legacyEvaluation: true,
+        matchedRulesCount: legacyResult.matchedRules.length,
+        requiresApproval: legacyResult.requiresApproval,
+      },
     };
   }
 
