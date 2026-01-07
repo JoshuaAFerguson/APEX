@@ -814,6 +814,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     dependsOn?: string[];
     parentTaskId?: string;
     subtaskStrategy?: SubtaskStrategy;
+    dryRun?: boolean;
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -856,6 +857,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       parentTaskId: options.parentTaskId,
       subtaskIds: [],
       subtaskStrategy: options.subtaskStrategy,
+      dryRun: options.dryRun || false,
       createdAt: new Date(),
       updatedAt: new Date(),
       usage: {
@@ -863,6 +865,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         outputTokens: 0,
         totalTokens: 0,
         estimatedCost: 0,
+        totalCostCents: 0,
+        executionTimeMs: 0,
       },
       logs: [],
       artifacts: [],
@@ -932,6 +936,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const task = await this.store.getTask(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Handle dry-run mode - skip actual execution but simulate the process
+    if (task.dryRun) {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: '🚀 DRY-RUN MODE: Simulating task execution without making actual changes',
+      });
+      await this.executeDryRunTask(taskId, task);
+      return;
     }
 
     // Check if this task already has subtasks that need to be continued
@@ -1454,7 +1468,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       return false;
     }
 
-    // Clear pause-related fields
+    // Store original pause state in case we need to rollback
+    const originalPauseState = {
+      pausedAt: task.pausedAt,
+      pauseReason: task.pauseReason,
+      resumeAfter: task.resumeAfter,
+    };
+
+    // Clear pause-related fields and set to in-progress
     await this.store.updateTask(taskId, {
       status: 'in-progress',
       pausedAt: undefined,
@@ -1468,15 +1489,46 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: 'Task resumed',
     });
 
-    // Resume execution from checkpoint
-    const resumed = await this.resumeTask(taskId);
+    try {
+      // Resume execution from checkpoint
+      const resumed = await this.resumeTask(taskId);
 
-    // If this is a subtask, check if parent should also resume
-    if (task.parentTaskId) {
-      await this.checkAndResumeParent(task.parentTaskId);
+      // If this is a subtask, check if parent should also resume
+      if (task.parentTaskId) {
+        await this.checkAndResumeParent(task.parentTaskId);
+      }
+
+      return resumed;
+    } catch (error) {
+      // Check if this is a rate limit error - if so, rollback to paused state
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (this.isUsageLimitError(err)) {
+        // Get current task to find current resumeAttempts (which was incremented by resumeTask)
+        const currentTask = await this.store.getTask(taskId);
+        const rolledBackAttempts = Math.max(0, (currentTask?.resumeAttempts ?? 1) - 1);
+
+        // Rollback to paused state - don't count this as a resume attempt
+        await this.store.updateTask(taskId, {
+          status: 'paused',
+          pausedAt: originalPauseState.pausedAt || new Date(),
+          pauseReason: 'usage_limit',
+          resumeAfter: originalPauseState.resumeAfter,
+          resumeAttempts: rolledBackAttempts,
+          updatedAt: new Date(),
+        });
+
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Resume failed due to usage limit - task remains paused (attempts rolled back to ${rolledBackAttempts}). Error: ${err.message}`,
+        });
+
+        // Re-throw so caller knows it failed
+        throw err;
+      }
+
+      // For other errors, task stays in-progress but we should re-throw
+      throw error;
     }
-
-    return resumed;
   }
 
   /**
@@ -7308,6 +7360,65 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   async getApprovalStateById(approvalId: string): Promise<ApprovalState | null> {
     return await this.store.getApprovalStateById(approvalId);
   }
+
+  /**
+   * Execute a task in dry-run mode - simulates execution without making actual changes
+   */
+  private async executeDryRunTask(taskId: string, task: Task): Promise<void> {
+    await this.store.updateTaskStatus(taskId, 'in-progress');
+
+    // Load workflow for simulation
+    const workflow = await loadWorkflow(this.projectPath, task.workflow);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${task.workflow}`);
+    }
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `🎭 Simulating workflow: ${workflow.name} with ${workflow.stages.length} stages`,
+    });
+
+    // Simulate each stage of the workflow
+    for (const [index, stage] of workflow.stages.entries()) {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `🎭 Simulating stage ${index + 1}/${workflow.stages.length}: ${stage.name} (agent: ${stage.agent})`,
+      });
+
+      // Simulate stage execution time (brief delay to make it feel realistic)
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Update current stage
+      await this.store.updateTask(taskId, {
+        currentStage: stage.name,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `✅ Stage ${stage.name} simulated successfully`,
+      });
+    }
+
+    // Complete the dry-run task
+    await this.store.updateTaskStatus(taskId, 'completed');
+    await this.store.updateTask(taskId, {
+      completedAt: new Date(),
+      updatedAt: new Date(),
+      currentStage: undefined,
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: '✅ DRY-RUN COMPLETE: Task simulation finished successfully',
+    });
+
+    // Emit completion event
+    const completedTask = await this.store.getTask(taskId);
+    if (completedTask) {
+      this.emit('task:completed', completedTask);
+    }
+  }
 }
 
 export { TaskStore, ToolActionStore } from './store';
@@ -7473,6 +7584,16 @@ export {
   type ViolationOptions,
   type PathValidationResult,
 } from './policy';
+
+// Policy Engine
+export {
+  PolicyEngine,
+  createPolicyEngine,
+  type AgentActionContext,
+  type PolicyRule,
+  type PolicyEvaluationResult,
+  type RuleLoadingConfig,
+} from './policy-engine';
 
 // Error Suggestion Matching
 export {

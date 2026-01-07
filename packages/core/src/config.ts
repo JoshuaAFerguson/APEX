@@ -503,6 +503,7 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     project: config.project,
     autonomy: {
       level: config.autonomy?.level || 'review-before-commit',
+      rejectionBehavior: config.autonomy?.rejectionBehavior || 'abort',
       gates: config.autonomy?.gates || [],
       limits: config.autonomy?.limits,
       stageOverrides: config.autonomy?.stageOverrides || {},
@@ -803,5 +804,33 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     },
     policies: config.policies || [],
     hooks: config.hooks || [],
+    toolHooks: config.toolHooks ? {
+      pre: config.toolHooks.pre || [],
+      post: config.toolHooks.post || [],
+      enabled: config.toolHooks.enabled ?? true,
+      defaultTimeoutMs: config.toolHooks.defaultTimeoutMs ?? 30000,
+    } : {
+      pre: [],
+      post: [],
+      enabled: true,
+      defaultTimeoutMs: 30000,
+    },
+    guardrails: config.guardrails ? {
+      enabled: config.guardrails.enabled ?? true,
+      enforcement: config.guardrails.enforcement || 'warn',
+      policies: config.guardrails.policies,
+      secrets: config.guardrails.secrets,
+      reporting: config.guardrails.reporting,
+      pathAccess: config.guardrails.pathAccess,
+      metadata: config.guardrails.metadata || {},
+    } : {
+      enabled: true,
+      enforcement: 'warn',
+      policies: undefined,
+      secrets: undefined,
+      reporting: undefined,
+      pathAccess: undefined,
+      metadata: {},
+    },
   };
 }

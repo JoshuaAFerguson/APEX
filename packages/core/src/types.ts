@@ -1757,6 +1757,8 @@ export interface Task {
   parentTaskId?: string;   // If this is a subtask, the parent task ID
   subtaskIds?: string[];   // If this is a parent task, IDs of its subtasks
   subtaskStrategy?: SubtaskStrategy; // How subtasks should be executed
+  // v0.5.0 dry-run support
+  dryRun?: boolean;         // If true, task execution simulates without making actual API calls
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
@@ -1812,6 +1814,8 @@ export interface TaskUsage {
   outputTokens: number;
   totalTokens: number;
   estimatedCost: number;
+  totalCostCents: number;
+  executionTimeMs: number;
 }
 
 export interface TaskLog {

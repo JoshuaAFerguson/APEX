@@ -4068,6 +4068,78 @@ export class ToolActionStore {
   }
 
   /**
+   * Get audit log entries for a task
+   */
+  async getAuditLog(taskId: string): Promise<AuditLogEntry[]> {
+    const query = 'SELECT * FROM audit_logs WHERE task_id = ? ORDER BY timestamp DESC';
+    const rows = this.db.prepare(query).all([taskId]) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Query audit log entries with filters
+   */
+  async queryAuditLog(filters?: {
+    taskId?: string;
+    actionType?: string;
+    approver?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE 1 = 1';
+    const params: any[] = [];
+
+    if (filters?.taskId) {
+      query += ' AND task_id = ?';
+      params.push(filters.taskId);
+    }
+
+    if (filters?.actionType) {
+      query += ' AND event_type = ?';
+      params.push(filters.actionType);
+    }
+
+    if (filters?.approver) {
+      query += ' AND actor = ?';
+      params.push(filters.approver);
+    }
+
+    if (filters?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(filters.startDate.toISOString());
+    }
+
+    if (filters?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(filters.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Get approval history, optionally filtered by approver
+   */
+  async getApprovalHistory(approver?: string): Promise<AuditLogEntry[]> {
+    let query = `SELECT * FROM audit_logs
+                 WHERE event_type IN ('task.approved', 'task.rejected', 'stage.approved', 'stage.rejected')`;
+    const params: any[] = [];
+
+    if (approver) {
+      query += ' AND actor = ?';
+      params.push(approver);
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
    * Delete old audit logs based on retention policy
    */
   async cleanupAuditLogs(maxAgeDays: number): Promise<number> {
@@ -4204,7 +4276,7 @@ export class ToolActionStore {
     const entry: AuditLogEntry = {
       id: crypto.randomUUID(),
       taskId,
-      eventType: 'mode.changed',
+      eventType: 'config.updated',
       severity: 'info',
       timestamp: new Date(),
       actor: 'system',

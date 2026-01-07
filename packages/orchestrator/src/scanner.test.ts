@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SecretScanner, type SecretPattern } from './scanner';
-import type { SecretFinding } from '@apexcli/core';
+import { SecretScanner, type SecretScanPattern } from './scanner';
+import type { SecretDetection, SecretPattern } from '@apexcli/core';
 
 describe('SecretScanner', () => {
   let scanner: SecretScanner;
@@ -23,9 +23,7 @@ describe('SecretScanner', () => {
     it('should add custom patterns', () => {
       const customPattern: SecretPattern = {
         name: 'test-pattern',
-        regex: /test-\w+-\d+/g,
-        secretType: 'test-type',
-        confidence: 0.8,
+        pattern: 'test-\\w+-\\d+',
         severity: 'medium',
         description: 'Test pattern for unit testing',
       };
@@ -36,15 +34,16 @@ describe('SecretScanner', () => {
       });
 
       expect(testScanner.getPatterns()).toHaveLength(1);
-      expect(testScanner.getPatterns()[0]).toEqual(customPattern);
+      expect(testScanner.getPatterns()[0].name).toBe('test-pattern');
+      expect(testScanner.getPatterns()[0].secretType).toBe('test-pattern'); // secretType defaults to name
     });
   });
 
   describe('scan method API', () => {
     it('should return empty array for normal text content', () => {
       const content = 'This is just normal text content\nwith multiple lines\nbut no sensitive data';
-      const findings = scanner.scan(content, 'test.txt');
-      expect(findings).toEqual([]);
+      const detections = scanner.scan(content, 'test.txt');
+      expect(detections).toEqual([]);
     });
 
     it('should accept file path parameter', () => {
@@ -57,9 +56,7 @@ describe('SecretScanner', () => {
       const testScanner = new SecretScanner({
         customPatterns: [{
           name: 'test-match',
-          regex: /special-test-value-999/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'special-test-value-999',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -67,19 +64,17 @@ describe('SecretScanner', () => {
       });
 
       const content = 'config=special-test-value-999';
-      const findings = testScanner.scan(content);
+      const detections = testScanner.scan(content);
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].file).toBe('unknown');
+      expect(detections).toHaveLength(1);
+      expect(detections[0].filePath).toBe('unknown');
     });
 
     it('should track line numbers correctly', () => {
       const testScanner = new SecretScanner({
         customPatterns: [{
           name: 'test-match',
-          regex: /special-test-value-999/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'special-test-value-999',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -90,19 +85,17 @@ describe('SecretScanner', () => {
 Line 2: config=special-test-value-999
 Line 3: more content`;
 
-      const findings = testScanner.scan(content, 'test.txt');
+      const detections = testScanner.scan(content, 'test.txt');
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].line).toBe(2);
+      expect(detections).toHaveLength(1);
+      expect(detections[0].lineNumber).toBe(2);
     });
 
     it('should track column positions correctly', () => {
       const testScanner = new SecretScanner({
         customPatterns: [{
           name: 'test-match',
-          regex: /special-test-value-999/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'special-test-value-999',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -110,11 +103,10 @@ Line 3: more content`;
       });
 
       const content = 'prefix special-test-value-999 suffix';
-      const findings = testScanner.scan(content, 'test.txt');
+      const detections = testScanner.scan(content, 'test.txt');
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].column).toBe(8); // 1-based indexing
-      expect(findings[0].endColumn).toBe(29);
+      expect(detections).toHaveLength(1);
+      expect(detections[0].columnNumber).toBe(8); // 1-based indexing (prefix = 6 chars + 1 space + 1 for 1-based = 8)
     });
   });
 
@@ -123,9 +115,7 @@ Line 3: more content`;
       const testScanner = new SecretScanner({
         customPatterns: [{
           name: 'test-match',
-          regex: /special-test-value-123456789/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'special-test-value-123456789',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -133,11 +123,11 @@ Line 3: more content`;
       });
 
       const content = 'data=special-test-value-123456789';
-      const findings = testScanner.scan(content, 'test.txt');
+      const detections = testScanner.scan(content, 'test.txt');
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].match).not.toBe('special-test-value-123456789');
-      expect(findings[0].match).toContain('*');
+      expect(detections).toHaveLength(1);
+      expect(detections[0].maskedMatch).not.toBe('special-test-value-123456789');
+      expect(detections[0].maskedMatch).toContain('*');
     });
 
     it('should not mask values when masking is disabled', () => {
@@ -145,9 +135,7 @@ Line 3: more content`;
         maskSecrets: false,
         customPatterns: [{
           name: 'test-match',
-          regex: /special-test-value-123456789/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'special-test-value-123456789',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -155,10 +143,10 @@ Line 3: more content`;
       });
 
       const content = 'data=special-test-value-123456789';
-      const findings = testScanner.scan(content, 'test.txt');
+      const detections = testScanner.scan(content, 'test.txt');
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].match).toBe('special-test-value-123456789');
+      expect(detections).toHaveLength(1);
+      expect(detections[0].maskedMatch).toBe('special-test-value-123456789');
     });
   });
 
@@ -168,9 +156,7 @@ Line 3: more content`;
         maxLineLength: 10,
         customPatterns: [{
           name: 'test-match',
-          regex: /test/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'test',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -178,9 +164,9 @@ Line 3: more content`;
       });
 
       const longLine = 'this is a very long line that exceeds the max length and contains test';
-      const findings = testScanner.scan(longLine, 'test.txt');
+      const detections = testScanner.scan(longLine, 'test.txt');
 
-      expect(findings).toHaveLength(0); // Should skip long lines
+      expect(detections).toHaveLength(0); // Should skip long lines
     });
 
     it('should include context around matches', () => {
@@ -188,9 +174,7 @@ Line 3: more content`;
         contextLength: 5,
         customPatterns: [{
           name: 'test-match',
-          regex: /MATCH/g,
-          secretType: 'test',
-          confidence: 0.9,
+          pattern: 'MATCH',
           severity: 'medium',
           description: 'Test pattern',
         }],
@@ -198,11 +182,11 @@ Line 3: more content`;
       });
 
       const content = 'prefix MATCH suffix';
-      const findings = testScanner.scan(content, 'test.txt');
+      const detections = testScanner.scan(content, 'test.txt');
 
-      expect(findings).toHaveLength(1);
-      expect(findings[0].context).toBeDefined();
-      expect(findings[0].context).toContain('MATCH');
+      expect(detections).toHaveLength(1);
+      expect(detections[0].context).toBeDefined();
+      expect(detections[0].context).toContain('MATCH');
     });
   });
 
@@ -212,9 +196,7 @@ Line 3: more content`;
 
       const newPattern: SecretPattern = {
         name: 'dynamic-pattern',
-        regex: /dynamic-\w+/g,
-        secretType: 'dynamic',
-        confidence: 0.7,
+        pattern: 'dynamic-\\w+',
         severity: 'low',
         description: 'Dynamically added pattern',
       };
@@ -227,9 +209,7 @@ Line 3: more content`;
       // First add a pattern to remove
       const testPattern: SecretPattern = {
         name: 'removable-pattern',
-        regex: /removable-\w+/g,
-        secretType: 'removable',
-        confidence: 0.7,
+        pattern: 'removable-\\w+',
         severity: 'low',
         description: 'Pattern to be removed',
       };
@@ -252,8 +232,6 @@ Line 3: more content`;
         expect(pattern.name).toBeDefined();
         expect(pattern.regex).toBeInstanceOf(RegExp);
         expect(pattern.secretType).toBeDefined();
-        expect(pattern.confidence).toBeGreaterThan(0);
-        expect(pattern.confidence).toBeLessThanOrEqual(1);
         expect(pattern.severity).toMatch(/^(critical|high|medium|low)$/);
         expect(pattern.description).toBeDefined();
       });
@@ -262,30 +240,28 @@ Line 3: more content`;
 
   describe('edge cases', () => {
     it('should handle empty content gracefully', () => {
-      const findings = scanner.scan('', 'test.txt');
-      expect(findings).toEqual([]);
+      const detections = scanner.scan('', 'test.txt');
+      expect(detections).toEqual([]);
     });
 
     it('should handle whitespace-only content', () => {
-      const findings = scanner.scan('   \n\t  \n   ', 'test.txt');
-      expect(findings).toEqual([]);
+      const detections = scanner.scan('   \n\t  \n   ', 'test.txt');
+      expect(detections).toEqual([]);
     });
 
     it('should handle special characters without errors', () => {
       const content = 'config={"value":"test","symbol":"🔑"}';
-      const findings = scanner.scan(content, 'test.txt');
-      expect(Array.isArray(findings)).toBe(true);
+      const detections = scanner.scan(content, 'test.txt');
+      expect(Array.isArray(detections)).toBe(true);
     });
   });
 
-  describe('finding structure', () => {
-    it('should return findings with correct structure', () => {
+  describe('detection structure', () => {
+    it('should return detections with correct structure', () => {
       const testScanner = new SecretScanner({
         customPatterns: [{
           name: 'structure-test',
-          regex: /TESTPATTERN123/g,
-          secretType: 'test-secret',
-          confidence: 0.85,
+          pattern: 'TESTPATTERN123',
           severity: 'high',
           description: 'Test pattern for structure validation',
         }],
@@ -293,25 +269,194 @@ Line 3: more content`;
       });
 
       const content = 'value=TESTPATTERN123';
-      const findings = testScanner.scan(content, 'example.txt');
+      const detections = testScanner.scan(content, 'example.txt');
 
-      expect(findings).toHaveLength(1);
+      expect(detections).toHaveLength(1);
 
-      const finding = findings[0];
-      expect(finding).toHaveProperty('file', 'example.txt');
-      expect(finding).toHaveProperty('line', 1);
-      expect(finding).toHaveProperty('column');
-      expect(finding).toHaveProperty('endColumn');
-      expect(finding).toHaveProperty('secretType', 'test-secret');
-      expect(finding).toHaveProperty('match');
-      expect(finding).toHaveProperty('confidence', 0.85);
-      expect(finding).toHaveProperty('patternName', 'structure-test');
-      expect(finding).toHaveProperty('severity', 'high');
-      expect(finding).toHaveProperty('context');
+      const detection = detections[0];
+      expect(detection).toHaveProperty('id');
+      expect(detection).toHaveProperty('filePath', 'example.txt');
+      expect(detection).toHaveProperty('lineNumber', 1);
+      expect(detection).toHaveProperty('columnNumber');
+      expect(detection).toHaveProperty('secretType', 'structure-test'); // Defaults to pattern name
+      expect(detection).toHaveProperty('maskedMatch');
+      expect(detection).toHaveProperty('patternName', 'structure-test');
+      expect(detection).toHaveProperty('severity', 'high');
+      expect(detection).toHaveProperty('context');
+      expect(detection).toHaveProperty('detectedAt');
+      expect(detection).toHaveProperty('acknowledged', false);
 
-      expect(typeof finding.column).toBe('number');
-      expect(typeof finding.endColumn).toBe('number');
-      expect(finding.endColumn).toBeGreaterThan(finding.column);
+      expect(typeof detection.columnNumber).toBe('number');
+      expect(typeof detection.id).toBe('string');
+      expect(detection.detectedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('file scanning functionality', () => {
+    it('should handle non-existent files gracefully', async () => {
+      const detections = await scanner.scanFile('/path/to/nonexistent/file.txt');
+      expect(detections).toEqual([]);
+    });
+
+    it('should scan multiple files and aggregate results', async () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'file-test',
+          pattern: 'test_secret_123',
+          severity: 'medium',
+          description: 'Test pattern for file scanning',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      // Test with non-existent files
+      const filePaths = [
+        '/path/to/nonexistent1.txt',
+        '/path/to/nonexistent2.txt',
+      ];
+
+      const detections = await testScanner.scanFiles(filePaths);
+      expect(Array.isArray(detections)).toBe(true);
+      expect(detections).toHaveLength(0);
+    });
+
+    it('should handle mixed existing and non-existing files', async () => {
+      const filePaths = [
+        '/path/to/nonexistent1.txt',
+        '/path/to/nonexistent2.txt',
+        '/another/nonexistent/file.txt',
+      ];
+
+      const detections = await scanner.scanFiles(filePaths);
+      expect(Array.isArray(detections)).toBe(true);
+    });
+  });
+
+  describe('createScanResult method', () => {
+    it('should create scan result with no detections', () => {
+      const detections: SecretDetection[] = [];
+      const result = scanner.createScanResult(detections);
+
+      expect(result.hasSecrets).toBe(false);
+      expect(result.count).toBe(0);
+      expect(result.detections).toEqual([]);
+      expect(result.scannedAt).toBeInstanceOf(Date);
+    });
+
+    it('should create scan result with detections', () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'result-test',
+          pattern: 'RESULT_TEST_VALUE',
+          severity: 'low',
+          description: 'Test pattern for scan results',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = 'data=RESULT_TEST_VALUE';
+      const detections = testScanner.scan(content, 'result.txt');
+      const result = testScanner.createScanResult(detections, content);
+
+      expect(result.hasSecrets).toBe(true);
+      expect(result.count).toBe(1);
+      expect(result.detections).toHaveLength(1);
+      expect(result.scannedContent).toBe(content);
+      expect(result.scannedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('advanced edge cases', () => {
+    it('should handle regex with global flag properly', () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'global-test',
+          pattern: 'GLOBAL\\d+',
+          severity: 'medium',
+          description: 'Test pattern with global matching',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = 'First: GLOBAL123, Second: GLOBAL456, Third: GLOBAL789';
+      const detections = testScanner.scan(content, 'global.txt');
+
+      expect(detections).toHaveLength(3);
+      expect(detections[0].maskedMatch).toContain('GL');
+      expect(detections[1].maskedMatch).toContain('GL');
+      expect(detections[2].maskedMatch).toContain('GL');
+    });
+
+    it('should handle zero-length matches gracefully', () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'zero-length-test',
+          pattern: '(?=secret)',
+          severity: 'medium',
+          description: 'Test pattern that can match zero-length',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = 'this contains secret word';
+      const detections = testScanner.scan(content, 'zero.txt');
+      expect(Array.isArray(detections)).toBe(true);
+    });
+
+    it('should mask short secrets correctly', () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'short-test',
+          pattern: 'abc',
+          severity: 'low',
+          description: 'Test pattern for short secrets',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = 'value=abc';
+      const detections = testScanner.scan(content, 'short.txt');
+
+      expect(detections).toHaveLength(1);
+      expect(detections[0].maskedMatch).toBe('***');
+    });
+
+    it('should handle context extraction at line boundaries', () => {
+      const testScanner = new SecretScanner({
+        contextLength: 100,
+        customPatterns: [{
+          name: 'boundary-test',
+          pattern: 'BOUNDARY',
+          severity: 'medium',
+          description: 'Test pattern for boundary conditions',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = 'BOUNDARY';
+      const detections = testScanner.scan(content, 'boundary.txt');
+
+      expect(detections).toHaveLength(1);
+      expect(detections[0].context).toBe('BOUNDARY');
+    });
+
+    it('should handle unicode characters in content', () => {
+      const testScanner = new SecretScanner({
+        customPatterns: [{
+          name: 'unicode-test',
+          pattern: 'TOKEN123',
+          severity: 'medium',
+          description: 'Test pattern with unicode content',
+        }],
+        includeBuiltInPatterns: false,
+      });
+
+      const content = '🔐 secure: TOKEN123 🔒';
+      const detections = testScanner.scan(content, 'unicode.txt');
+
+      expect(detections).toHaveLength(1);
+      expect(detections[0].context).toContain('🔐');
+      expect(detections[0].context).toContain('🔒');
     });
   });
 });

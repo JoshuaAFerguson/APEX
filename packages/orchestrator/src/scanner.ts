@@ -1,21 +1,26 @@
-import { SecretFinding, SecretSeverity } from '@apexcli/core';
+import {
+  SecretDetection,
+  SecretDetectionSchema,
+  SecretScanResult,
+  SecretScanResultSchema,
+  SecretPattern,
+  SecretPatternSchema
+} from '@apexcli/core';
 
 /**
- * Configuration for secret scanning patterns
+ * Configuration for secret scanning patterns (internal representation)
  */
-export interface SecretPattern {
+export interface SecretScanPattern {
   /** Name of the pattern for identification */
   name: string;
   /** Regular expression to match secrets */
   regex: RegExp;
   /** Type of secret this pattern detects */
   secretType: string;
-  /** Confidence level of this pattern (0-1) */
-  confidence: number;
   /** Severity level of this pattern */
-  severity: SecretSeverity;
+  severity: 'critical' | 'high' | 'medium' | 'low';
   /** Description of what this pattern detects */
-  description: string;
+  description?: string;
 }
 
 /**
@@ -38,7 +43,7 @@ export interface SecretScannerConfig {
  * SecretScanner class with pattern matching engine for detecting secrets in content
  */
 export class SecretScanner {
-  private patterns: SecretPattern[];
+  private patterns: SecretScanPattern[];
   private config: Required<SecretScannerConfig>;
 
   constructor(config: SecretScannerConfig = {}) {
@@ -59,7 +64,9 @@ export class SecretScanner {
     }
 
     if (this.config.customPatterns.length > 0) {
-      this.patterns.push(...this.config.customPatterns);
+      // Convert SecretPattern to SecretScanPattern
+      const convertedPatterns = this.config.customPatterns.map(pattern => this.convertToScanPattern(pattern));
+      this.patterns.push(...convertedPatterns);
     }
   }
 
@@ -67,11 +74,12 @@ export class SecretScanner {
    * Scan content for secrets and return findings
    * @param content - The content to scan
    * @param filePath - Optional file path for context
-   * @returns Array of SecretFinding objects
+   * @returns Array of SecretDetection objects
    */
-  public scan(content: string, filePath = 'unknown'): SecretFinding[] {
-    const findings: SecretFinding[] = [];
+  public scan(content: string, filePath = 'unknown'): SecretDetection[] {
+    const detections: SecretDetection[] = [];
     const lines = content.split('\n');
+    const scanTime = new Date();
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
@@ -86,31 +94,32 @@ export class SecretScanner {
         const matches = this.findMatches(line, pattern);
 
         for (const match of matches) {
-          const finding: SecretFinding = {
-            file: filePath,
-            line: lineIndex + 1, // 1-based line numbers
-            column: match.startIndex + 1, // 1-based column numbers
-            endColumn: match.endIndex + 1,
-            secretType: pattern.secretType,
-            match: this.config.maskSecrets ? this.maskSecret(match.value) : match.value,
-            confidence: pattern.confidence,
+          const detection: SecretDetection = {
+            id: this.generateDetectionId(),
             patternName: pattern.name,
+            secretType: pattern.secretType,
             severity: pattern.severity,
+            filePath,
+            lineNumber: lineIndex + 1, // 1-based line numbers
+            columnNumber: match.startIndex + 1, // 1-based column numbers
+            maskedMatch: this.config.maskSecrets ? this.maskSecret(match.value) : match.value,
             context: this.extractContext(line, match.startIndex, match.endIndex),
+            detectedAt: scanTime,
+            acknowledged: false,
           };
 
-          findings.push(finding);
+          detections.push(detection);
         }
       }
     }
 
-    return findings;
+    return detections;
   }
 
   /**
    * Find all matches for a pattern in a line
    */
-  private findMatches(line: string, pattern: SecretPattern): Array<{
+  private findMatches(line: string, pattern: SecretScanPattern): Array<{
     value: string;
     startIndex: number;
     endIndex: number;
@@ -179,14 +188,13 @@ export class SecretScanner {
   /**
    * Get built-in patterns for common secrets
    */
-  private getBuiltInPatterns(): SecretPattern[] {
+  private getBuiltInPatterns(): SecretScanPattern[] {
     return [
       // API Keys
       {
         name: 'generic-api-key',
         regex: /(?:api[_-]?key|apikey)["\s]*[:=]["\s]*([a-zA-Z0-9_\-]{16,})/gi,
         secretType: 'api-key',
-        confidence: 0.8,
         severity: 'medium',
         description: 'Generic API key pattern',
       },
@@ -196,7 +204,6 @@ export class SecretScanner {
         name: 'aws-access-key',
         regex: /AKIA[0-9A-Z]{16}/g,
         secretType: 'aws-access-key',
-        confidence: 0.95,
         severity: 'high',
         description: 'AWS Access Key ID',
       },
@@ -204,7 +211,6 @@ export class SecretScanner {
         name: 'aws-secret-key',
         regex: /(?:aws[_-]?secret[_-]?access[_-]?key|aws[_-]?secret)["\s]*[:=]["\s]*([a-zA-Z0-9/+=]{40})/gi,
         secretType: 'aws-secret-key',
-        confidence: 0.85,
         severity: 'high',
         description: 'AWS Secret Access Key',
       },
@@ -214,7 +220,6 @@ export class SecretScanner {
         name: 'github-token',
         regex: /gh[pousr]_[A-Za-z0-9_]{36}/g,
         secretType: 'github-token',
-        confidence: 0.95,
         severity: 'high',
         description: 'GitHub Personal Access Token',
       },
@@ -222,7 +227,6 @@ export class SecretScanner {
         name: 'github-classic-token',
         regex: /(?:github[_-]?token|gh[_-]?token)["\s]*[:=]["\s]*([a-f0-9]{40})/gi,
         secretType: 'github-token',
-        confidence: 0.8,
         severity: 'high',
         description: 'GitHub Classic Token',
       },
@@ -232,7 +236,6 @@ export class SecretScanner {
         name: 'jwt-token',
         regex: /eyJ[a-zA-Z0-9_=-]+\.eyJ[a-zA-Z0-9_=-]+\.[a-zA-Z0-9_=-]+/g,
         secretType: 'jwt-token',
-        confidence: 0.9,
         severity: 'medium',
         description: 'JSON Web Token (JWT)',
       },
@@ -242,7 +245,6 @@ export class SecretScanner {
         name: 'database-url',
         regex: /(?:database[_-]?url|db[_-]?url|connection[_-]?string)["\s]*[:=]["\s]*["']?(?:postgres|mysql|mongodb|redis|sqlite):\/\/[^"'\s]+/gi,
         secretType: 'connection-string',
-        confidence: 0.85,
         severity: 'high',
         description: 'Database connection URL or connection string',
       },
@@ -252,7 +254,6 @@ export class SecretScanner {
         name: 'private-key',
         regex: /-----BEGIN[A-Z\s]+PRIVATE KEY-----[\s\S]*?-----END[A-Z\s]+PRIVATE KEY-----/g,
         secretType: 'private-key',
-        confidence: 0.95,
         severity: 'critical',
         description: 'Private key (PEM format)',
       },
@@ -262,7 +263,6 @@ export class SecretScanner {
         name: 'password-field',
         regex: /(?:password|passwd|pwd)["\s]*[:=]["\s]*["']([^"'\s]{8,})["']/gi,
         secretType: 'password',
-        confidence: 0.7,
         severity: 'high',
         description: 'Password field in configuration',
       },
@@ -272,7 +272,6 @@ export class SecretScanner {
         name: 'slack-token',
         regex: /xox[baprs]-[0-9a-zA-Z\-]{10,}/g,
         secretType: 'slack-token',
-        confidence: 0.9,
         severity: 'medium',
         description: 'Slack token',
       },
@@ -282,7 +281,6 @@ export class SecretScanner {
         name: 'high-entropy-string',
         regex: /(?:secret|token|key)["\s]*[:=]["\s]*["']([a-zA-Z0-9_\-+/=]{32,})["']/gi,
         secretType: 'generic-secret',
-        confidence: 0.6,
         severity: 'medium',
         description: 'High entropy string that might be a secret',
       },
@@ -292,7 +290,6 @@ export class SecretScanner {
         name: 'base64-secret',
         regex: /(?:secret|token|key)["\s]*[:=]["\s]*["']([A-Za-z0-9+/]{32,}={0,2})["']/gi,
         secretType: 'base64-secret',
-        confidence: 0.7,
         severity: 'medium',
         description: 'Base64 encoded secret',
       },
@@ -302,7 +299,7 @@ export class SecretScanner {
   /**
    * Get all configured patterns
    */
-  public getPatterns(): SecretPattern[] {
+  public getPatterns(): SecretScanPattern[] {
     return [...this.patterns];
   }
 
@@ -310,7 +307,7 @@ export class SecretScanner {
    * Add a custom pattern
    */
   public addPattern(pattern: SecretPattern): void {
-    this.patterns.push(pattern);
+    this.patterns.push(this.convertToScanPattern(pattern));
   }
 
   /**
@@ -323,9 +320,9 @@ export class SecretScanner {
   /**
    * Scan a single file for secrets by reading its content
    * @param filePath - Path to the file to scan
-   * @returns Promise that resolves to array of SecretFinding objects
+   * @returns Promise that resolves to array of SecretDetection objects
    */
-  public async scanFile(filePath: string): Promise<SecretFinding[]> {
+  public async scanFile(filePath: string): Promise<SecretDetection[]> {
     const fs = await import('fs/promises');
     const path = await import('path');
 
@@ -351,10 +348,10 @@ export class SecretScanner {
   /**
    * Scan multiple files for secrets in batch
    * @param filePaths - Array of file paths to scan
-   * @returns Promise that resolves to aggregated array of SecretFinding objects from all files
+   * @returns Promise that resolves to aggregated array of SecretDetection objects from all files
    */
-  public async scanFiles(filePaths: string[]): Promise<SecretFinding[]> {
-    const allFindings: SecretFinding[] = [];
+  public async scanFiles(filePaths: string[]): Promise<SecretDetection[]> {
+    const allDetections: SecretDetection[] = [];
 
     // Process files in parallel for better performance
     const scanPromises = filePaths.map(filePath => this.scanFile(filePath));
@@ -364,7 +361,7 @@ export class SecretScanner {
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
-          allFindings.push(...result.value);
+          allDetections.push(...result.value);
         } else {
           // Log the error but continue processing other files
           console.warn('Error scanning file:', result.reason);
@@ -374,6 +371,41 @@ export class SecretScanner {
       console.error('Unexpected error during batch file scanning:', error);
     }
 
-    return allFindings;
+    return allDetections;
+  }
+
+  /**
+   * Generate a unique ID for a detection
+   */
+  private generateDetectionId(): string {
+    return `secret-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Convert a SecretPattern to a SecretScanPattern
+   */
+  private convertToScanPattern(pattern: SecretPattern): SecretScanPattern {
+    return {
+      name: pattern.name,
+      regex: new RegExp(pattern.pattern),
+      secretType: pattern.secretType || pattern.name,
+      severity: pattern.severity || 'medium',
+      description: pattern.description,
+    };
+  }
+
+  /**
+   * Create a comprehensive scan result
+   */
+  public createScanResult(detections: SecretDetection[], scannedContent?: string): SecretScanResult {
+    const scanTime = new Date();
+
+    return {
+      hasSecrets: detections.length > 0,
+      count: detections.length,
+      detections,
+      scannedContent,
+      scannedAt: scanTime,
+    };
   }
 }
