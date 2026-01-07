@@ -18,7 +18,6 @@ import type {
   PolicyViolation,
   PolicyEngine as IPolicyEngine,
   ApexConfig,
-  HookContext,
 } from '@apexcli/core';
 import type {
   PolicyBlockedEventData,
@@ -175,7 +174,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act - Create a mock hook context and trigger the PreToolUse hook
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-001',
         agentName: 'developer',
         stageName: 'implementation',
@@ -286,7 +285,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-002',
         agentName: 'tester',
         stageName: 'testing',
@@ -349,7 +348,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-003',
         agentName: 'developer',
         stageName: 'implementation',
@@ -400,7 +399,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-004',
         agentName: 'developer',
         stageName: 'implementation',
@@ -464,7 +463,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-005',
         agentName: 'developer',
         stageName: 'implementation',
@@ -508,7 +507,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.getCheckPolicyMock().mockRejectedValue(new Error('Policy engine failure'));
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-006',
         agentName: 'developer',
         stageName: 'implementation',
@@ -548,7 +547,7 @@ describe('Policy Block Enforcement Mode', () => {
       (orchestrator as any).policyEngine = null;
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-007',
         agentName: 'developer',
         stageName: 'implementation',
@@ -611,7 +610,7 @@ describe('Policy Block Enforcement Mode', () => {
       mockPolicyEngine.setMockResult(mockPolicyResult);
 
       // Act
-      const mockHookContext: HookContext = {
+      const mockHookContext = {
         taskId: 'test-task-008',
         agentName: 'developer',
         stageName: 'implementation',
