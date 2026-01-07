@@ -4512,6 +4512,266 @@ export const TaskPolicyCheckResultSchema = z.object({
 export type TaskPolicyCheckResult = z.infer<typeof TaskPolicyCheckResultSchema>;
 
 // ============================================================================
+// Policy Engine Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Policy check decision status
+ * - 'allow': The policy check passed and the action is permitted
+ * - 'deny': The policy check failed and the action is blocked
+ *
+ * @remarks
+ * This is the primary decision outcome from a policy check.
+ * Unlike boolean passed/blocked fields, this provides a clear semantic status.
+ */
+export const PolicyCheckStatusSchema = z.enum(['allow', 'deny']);
+export type PolicyCheckStatus = z.infer<typeof PolicyCheckStatusSchema>;
+
+/**
+ * Result of a policy check operation.
+ * Contains the allow/deny decision, any violations found, and the enforcement mode applied.
+ *
+ * @remarks
+ * This is the standard result type returned by the PolicyEngine.checkPolicy() method.
+ * It provides a complete picture of the policy evaluation including:
+ * - The final decision (allow/deny)
+ * - All violations that were detected
+ * - The enforcement mode that was applied
+ * - Optional metadata for debugging and auditing
+ *
+ * @example
+ * ```typescript
+ * const result: PolicyCheckResult = {
+ *   status: 'deny',
+ *   violations: [{
+ *     id: 'v-123',
+ *     rule: 'no-secrets-in-code',
+ *     message: 'API key detected in source file',
+ *     severity: 'critical',
+ *     blocking: true,
+ *     timestamp: new Date(),
+ *   }],
+ *   enforcementMode: 'strict',
+ *   checkedAt: new Date(),
+ * };
+ * ```
+ */
+export const PolicyCheckResultSchema = z.object({
+  /** The policy check decision: allow or deny */
+  status: PolicyCheckStatusSchema,
+
+  /** Array of policy violations detected during the check */
+  violations: z.array(PolicyViolationSchema),
+
+  /** The enforcement mode that was applied during this check */
+  enforcementMode: PolicyEnforcementModeSchema,
+
+  /** Timestamp when the policy check was performed */
+  checkedAt: z.date(),
+
+  /** Name of the policy or policy set that was evaluated */
+  policyName: z.string().optional(),
+
+  /** ID of the policy or policy set that was evaluated */
+  policyId: z.string().optional(),
+
+  /** Number of rules evaluated */
+  rulesEvaluated: z.number().int().min(0).optional(),
+
+  /** Number of rules that passed */
+  rulesPassed: z.number().int().min(0).optional(),
+
+  /** Number of rules that failed */
+  rulesFailed: z.number().int().min(0).optional(),
+
+  /** Duration of the policy check in milliseconds */
+  durationMs: z.number().int().min(0).optional(),
+
+  /** Additional context or metadata about the check */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyCheckResult = z.infer<typeof PolicyCheckResultSchema>;
+
+/**
+ * Context provided to the policy engine for evaluation.
+ * Contains all relevant information about the action being checked.
+ *
+ * @remarks
+ * This context object provides the PolicyEngine with everything it needs
+ * to evaluate policies against a specific action or request.
+ */
+export const PolicyCheckContextSchema = z.object({
+  /** The action being performed (e.g., 'file_write', 'command_execute', 'api_call') */
+  action: z.string(),
+
+  /** Resource being accessed (e.g., file path, API endpoint, command) */
+  resource: z.string().optional(),
+
+  /** Agent performing the action */
+  agentId: z.string().optional(),
+
+  /** Task context */
+  taskId: z.string().optional(),
+
+  /** Workflow stage */
+  stage: z.string().optional(),
+
+  /** Tool being used */
+  toolName: z.string().optional(),
+
+  /** Tool arguments */
+  toolArguments: z.record(z.string(), z.unknown()).optional(),
+
+  /** File paths involved in the action */
+  filePaths: z.array(z.string()).optional(),
+
+  /** Content being written or modified (for content scanning) */
+  content: z.string().optional(),
+
+  /** User or session identifier */
+  userId: z.string().optional(),
+
+  /** Additional context data */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type PolicyCheckContext = z.infer<typeof PolicyCheckContextSchema>;
+
+/**
+ * Options for policy check operations
+ */
+export const PolicyCheckOptionsSchema = z.object({
+  /** Override the default enforcement mode for this check */
+  enforcementMode: PolicyEnforcementModeSchema.optional(),
+
+  /** Specific policy IDs to evaluate (if not specified, all applicable policies are checked) */
+  policyIds: z.array(z.string()).optional(),
+
+  /** Whether to continue checking after first violation (default: true) */
+  continueOnViolation: z.boolean().optional().default(true),
+
+  /** Maximum violations to report (0 = unlimited) */
+  maxViolations: z.number().int().min(0).optional().default(0),
+
+  /** Whether to include non-blocking violations in the result */
+  includeWarnings: z.boolean().optional().default(true),
+
+  /** Timeout for policy evaluation in milliseconds */
+  timeoutMs: z.number().int().min(0).optional(),
+});
+export type PolicyCheckOptions = z.infer<typeof PolicyCheckOptionsSchema>;
+
+/**
+ * Interface for the PolicyEngine that evaluates policies against actions.
+ *
+ * @remarks
+ * The PolicyEngine is responsible for:
+ * - Loading and managing policy definitions
+ * - Evaluating policies against given contexts
+ * - Reporting violations with appropriate severity
+ * - Supporting different enforcement modes
+ *
+ * Implementations should be stateless for policy evaluation but may
+ * maintain internal caches for policy definitions.
+ *
+ * @example
+ * ```typescript
+ * class ApexPolicyEngine implements PolicyEngine {
+ *   async checkPolicy(
+ *     context: PolicyCheckContext,
+ *     options?: PolicyCheckOptions
+ *   ): Promise<PolicyCheckResult> {
+ *     // Evaluate all applicable policies against the context
+ *     const violations = await this.evaluatePolicies(context);
+ *
+ *     return {
+ *       status: violations.some(v => v.blocking) ? 'deny' : 'allow',
+ *       violations,
+ *       enforcementMode: options?.enforcementMode ?? this.defaultEnforcementMode,
+ *       checkedAt: new Date(),
+ *     };
+ *   }
+ * }
+ * ```
+ */
+export interface PolicyEngine {
+  /**
+   * Check policies against the given context.
+   *
+   * @param context - The context describing the action to check
+   * @param options - Optional configuration for this check
+   * @returns A promise resolving to the policy check result
+   *
+   * @remarks
+   * This is the primary method for policy evaluation. It should:
+   * 1. Identify all applicable policies based on the context
+   * 2. Evaluate each policy's rules against the context
+   * 3. Collect all violations
+   * 4. Determine the final allow/deny status based on violations and enforcement mode
+   */
+  checkPolicy(
+    context: PolicyCheckContext,
+    options?: PolicyCheckOptions
+  ): Promise<PolicyCheckResult>;
+
+  /**
+   * Get the current enforcement mode.
+   *
+   * @returns The current default enforcement mode
+   */
+  getEnforcementMode(): PolicyEnforcementMode;
+
+  /**
+   * Set the default enforcement mode.
+   *
+   * @param mode - The enforcement mode to set as default
+   */
+  setEnforcementMode(mode: PolicyEnforcementMode): void;
+
+  /**
+   * Register a policy for evaluation.
+   *
+   * @param policy - The policy to register
+   */
+  registerPolicy(policy: Policy): void;
+
+  /**
+   * Unregister a policy.
+   *
+   * @param policyId - The ID of the policy to unregister
+   * @returns true if the policy was found and removed, false otherwise
+   */
+  unregisterPolicy(policyId: string): boolean;
+
+  /**
+   * Get all registered policies.
+   *
+   * @returns Array of all registered policies
+   */
+  getPolicies(): Policy[];
+
+  /**
+   * Get a specific policy by ID.
+   *
+   * @param policyId - The ID of the policy to retrieve
+   * @returns The policy if found, undefined otherwise
+   */
+  getPolicy(policyId: string): Policy | undefined;
+
+  /**
+   * Check if a specific policy is registered.
+   *
+   * @param policyId - The ID of the policy to check
+   * @returns true if the policy is registered, false otherwise
+   */
+  hasPolicy(policyId: string): boolean;
+
+  /**
+   * Clear all registered policies.
+   */
+  clearPolicies(): void;
+}
+
+// ============================================================================
 // Guardrails System Types
 // ============================================================================
 

@@ -18,6 +18,9 @@ import type {
   IterationEntry,
   IterationHistory,
   FileSnapshot,
+  AuditLogEntry,
+  AuditEventType,
+  AuditSeverity,
 } from '@apexcli/core';
 import { generateIdleTaskId, generateTaskTemplateId } from '@apexcli/core';
 
@@ -3371,6 +3374,320 @@ describe('TaskStore', () => {
 
         // Should handle corrupted JSON gracefully
         await expect(store.getSnapshots(task.id, 'json_action')).rejects.toThrow();
+      });
+    });
+  });
+
+  describe('Audit Log Query Methods', () => {
+    const createTestAuditLogEntry = (
+      overrides: Partial<AuditLogEntry> = {}
+    ): AuditLogEntry => ({
+      id: `audit_${Date.now()}_${Math.random()}`,
+      taskId: 'test-task-id',
+      eventType: 'task.created' as AuditEventType,
+      severity: 'info' as AuditSeverity,
+      timestamp: new Date(),
+      actor: 'test-user',
+      message: 'Test audit log entry',
+      stage: 'planning',
+      agent: 'planner',
+      metadata: { test: 'data' },
+      previousState: undefined,
+      newState: undefined,
+      durationMs: 1000,
+      success: true,
+      error: undefined,
+      correlationId: undefined,
+      sessionId: 'test-session',
+      ...overrides,
+    });
+
+    beforeEach(async () => {
+      // Set up test audit log entries with different properties for filtering tests
+      const baseTime = new Date('2024-01-01T10:00:00Z');
+
+      const entries = [
+        createTestAuditLogEntry({
+          id: 'audit-1',
+          taskId: 'task-1',
+          eventType: 'task.created',
+          actor: 'user-alice',
+          timestamp: new Date(baseTime.getTime()),
+          message: 'Task created by alice',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-2',
+          taskId: 'task-1',
+          eventType: 'task.approved',
+          actor: 'user-bob',
+          timestamp: new Date(baseTime.getTime() + 60000), // +1 minute
+          message: 'Task approved by bob',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-3',
+          taskId: 'task-2',
+          eventType: 'task.rejected',
+          actor: 'user-alice',
+          timestamp: new Date(baseTime.getTime() + 120000), // +2 minutes
+          message: 'Task rejected by alice',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-4',
+          taskId: 'task-2',
+          eventType: 'stage.approved',
+          actor: 'user-charlie',
+          timestamp: new Date(baseTime.getTime() + 180000), // +3 minutes
+          message: 'Stage approved by charlie',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-5',
+          taskId: 'task-1',
+          eventType: 'task.failed',
+          actor: 'system',
+          timestamp: new Date(baseTime.getTime() + 240000), // +4 minutes
+          message: 'Task failed',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-6',
+          taskId: 'task-3',
+          eventType: 'stage.rejected',
+          actor: 'user-bob',
+          timestamp: new Date(baseTime.getTime() + 300000), // +5 minutes
+          message: 'Stage rejected by bob',
+        }),
+      ];
+
+      // Add all test entries to the database
+      for (const entry of entries) {
+        await store.addAuditLog(entry);
+      }
+    });
+
+    describe('getAuditLog', () => {
+      it('should retrieve all audit logs for a specific task', async () => {
+        const logs = await store.getAuditLog('task-1');
+
+        expect(logs).toHaveLength(3);
+        expect(logs.map(l => l.id).sort()).toEqual(['audit-1', 'audit-2', 'audit-5']);
+
+        // Should be ordered by timestamp DESC
+        expect(logs[0].id).toBe('audit-5'); // Most recent
+        expect(logs[2].id).toBe('audit-1'); // Oldest
+      });
+
+      it('should return empty array for non-existent task', async () => {
+        const logs = await store.getAuditLog('non-existent-task');
+        expect(logs).toHaveLength(0);
+      });
+
+      it('should return properly typed AuditLogEntry objects', async () => {
+        const logs = await store.getAuditLog('task-1');
+
+        expect(logs.length).toBeGreaterThan(0);
+        const log = logs[0];
+
+        // Verify all required properties are present and typed correctly
+        expect(typeof log.id).toBe('string');
+        expect(log.taskId).toBe('task-1');
+        expect(typeof log.eventType).toBe('string');
+        expect(typeof log.severity).toBe('string');
+        expect(log.timestamp).toBeInstanceOf(Date);
+        expect(typeof log.actor).toBe('string');
+        expect(typeof log.message).toBe('string');
+      });
+    });
+
+    describe('queryAuditLog', () => {
+      it('should return all logs when no filters are provided', async () => {
+        const logs = await store.queryAuditLog();
+        expect(logs).toHaveLength(6);
+      });
+
+      it('should filter by taskId', async () => {
+        const logs = await store.queryAuditLog({ taskId: 'task-2' });
+        expect(logs).toHaveLength(2);
+        expect(logs.every(log => log.taskId === 'task-2')).toBe(true);
+      });
+
+      it('should filter by actionType (eventType)', async () => {
+        const logs = await store.queryAuditLog({ actionType: 'task.approved' });
+        expect(logs).toHaveLength(1);
+        expect(logs[0].eventType).toBe('task.approved');
+        expect(logs[0].actor).toBe('user-bob');
+      });
+
+      it('should filter by approver (actor)', async () => {
+        const logs = await store.queryAuditLog({ approver: 'user-alice' });
+        expect(logs).toHaveLength(2);
+        expect(logs.every(log => log.actor === 'user-alice')).toBe(true);
+        expect(logs.map(l => l.id).sort()).toEqual(['audit-1', 'audit-3']);
+      });
+
+      it('should filter by startDate', async () => {
+        const startDate = new Date('2024-01-01T10:02:00Z'); // 2 minutes after base time
+        const logs = await store.queryAuditLog({ startDate });
+
+        expect(logs).toHaveLength(4); // audit-3, audit-4, audit-5, audit-6
+        expect(logs.every(log => log.timestamp >= startDate)).toBe(true);
+      });
+
+      it('should filter by endDate', async () => {
+        const endDate = new Date('2024-01-01T10:02:00Z'); // 2 minutes after base time
+        const logs = await store.queryAuditLog({ endDate });
+
+        expect(logs).toHaveLength(3); // audit-1, audit-2, audit-3
+        expect(logs.every(log => log.timestamp <= endDate)).toBe(true);
+      });
+
+      it('should filter by date range', async () => {
+        const startDate = new Date('2024-01-01T10:01:00Z'); // 1 minute after base
+        const endDate = new Date('2024-01-01T10:03:30Z');   // 3.5 minutes after base
+
+        const logs = await store.queryAuditLog({ startDate, endDate });
+
+        expect(logs).toHaveLength(2); // audit-2, audit-3
+        expect(logs.every(log =>
+          log.timestamp >= startDate && log.timestamp <= endDate
+        )).toBe(true);
+      });
+
+      it('should combine multiple filters', async () => {
+        const logs = await store.queryAuditLog({
+          taskId: 'task-1',
+          approver: 'user-bob',
+        });
+
+        expect(logs).toHaveLength(1);
+        expect(logs[0].taskId).toBe('task-1');
+        expect(logs[0].actor).toBe('user-bob');
+        expect(logs[0].eventType).toBe('task.approved');
+      });
+
+      it('should return empty array when filters match nothing', async () => {
+        const logs = await store.queryAuditLog({
+          taskId: 'non-existent-task',
+          approver: 'non-existent-user',
+        });
+
+        expect(logs).toHaveLength(0);
+      });
+
+      it('should handle edge case filters gracefully', async () => {
+        // Test with very old date
+        const veryOldDate = new Date('2020-01-01T00:00:00Z');
+        const logs = await store.queryAuditLog({ startDate: veryOldDate });
+        expect(logs).toHaveLength(6); // All logs should be after this date
+
+        // Test with future date
+        const futureDate = new Date('2030-01-01T00:00:00Z');
+        const futureLogs = await store.queryAuditLog({ endDate: futureDate });
+        expect(futureLogs).toHaveLength(6); // All logs should be before this date
+      });
+    });
+
+    describe('getApprovalHistory', () => {
+      it('should return all approval-related events when no approver filter', async () => {
+        const history = await store.getApprovalHistory();
+
+        expect(history).toHaveLength(4);
+        const eventTypes = history.map(h => h.eventType);
+        expect(eventTypes).toContain('task.approved');
+        expect(eventTypes).toContain('task.rejected');
+        expect(eventTypes).toContain('stage.approved');
+        expect(eventTypes).toContain('stage.rejected');
+      });
+
+      it('should filter approval history by approver', async () => {
+        const history = await store.getApprovalHistory('user-bob');
+
+        expect(history).toHaveLength(2);
+        expect(history.every(h => h.actor === 'user-bob')).toBe(true);
+        expect(history.map(h => h.eventType)).toContain('task.approved');
+        expect(history.map(h => h.eventType)).toContain('stage.rejected');
+      });
+
+      it('should return empty array for non-existent approver', async () => {
+        const history = await store.getApprovalHistory('non-existent-user');
+        expect(history).toHaveLength(0);
+      });
+
+      it('should only include approval/rejection events', async () => {
+        const history = await store.getApprovalHistory();
+
+        const allowedEvents = ['task.approved', 'task.rejected', 'stage.approved', 'stage.rejected'];
+        expect(history.every(h => allowedEvents.includes(h.eventType))).toBe(true);
+
+        // Should not include other event types like 'task.created' or 'task.failed'
+        expect(history.some(h => h.eventType === 'task.created')).toBe(false);
+        expect(history.some(h => h.eventType === 'task.failed')).toBe(false);
+      });
+
+      it('should be ordered by timestamp DESC (most recent first)', async () => {
+        const history = await store.getApprovalHistory();
+
+        expect(history.length).toBeGreaterThan(1);
+        for (let i = 1; i < history.length; i++) {
+          expect(history[i-1].timestamp.getTime()).toBeGreaterThanOrEqual(
+            history[i].timestamp.getTime()
+          );
+        }
+      });
+
+      it('should return properly typed AuditLogEntry objects', async () => {
+        const history = await store.getApprovalHistory('user-alice');
+
+        expect(history.length).toBeGreaterThan(0);
+        const entry = history[0];
+
+        expect(typeof entry.id).toBe('string');
+        expect(typeof entry.taskId).toBe('string');
+        expect(typeof entry.eventType).toBe('string');
+        expect(typeof entry.severity).toBe('string');
+        expect(entry.timestamp).toBeInstanceOf(Date);
+        expect(typeof entry.actor).toBe('string');
+        expect(typeof entry.message).toBe('string');
+      });
+    });
+
+    describe('Error Handling and Edge Cases', () => {
+      it('should handle SQL injection attempts safely', async () => {
+        // Test with malicious SQL in filters - should be safely parameterized
+        const maliciousInput = "'; DROP TABLE audit_logs; --";
+
+        await expect(store.queryAuditLog({
+          taskId: maliciousInput
+        })).resolves.not.toThrow();
+
+        await expect(store.queryAuditLog({
+          approver: maliciousInput
+        })).resolves.not.toThrow();
+
+        await expect(store.getApprovalHistory(maliciousInput)).resolves.not.toThrow();
+
+        // Verify table still exists by querying for legitimate data
+        const logs = await store.queryAuditLog();
+        expect(logs).toHaveLength(6);
+      });
+
+      it('should handle null and undefined values correctly', async () => {
+        await expect(store.getAuditLog('')).resolves.toEqual([]);
+
+        const logs = await store.queryAuditLog({
+          taskId: undefined,
+          approver: undefined,
+          startDate: undefined,
+          endDate: undefined,
+        });
+        expect(logs).toHaveLength(6); // Should return all logs
+      });
+
+      it('should handle invalid date objects', async () => {
+        const invalidDate = new Date('invalid-date');
+
+        // Should not throw, but may return empty results due to invalid date comparison
+        await expect(store.queryAuditLog({
+          startDate: invalidDate
+        })).resolves.not.toThrow();
       });
     });
   });
