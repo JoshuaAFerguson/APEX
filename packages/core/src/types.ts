@@ -1596,6 +1596,109 @@ export const SecretScannerConfigSchema = z.object({
 });
 export type SecretScannerConfig = z.infer<typeof SecretScannerConfigSchema>;
 
+/**
+ * Enforcement mode for secret scanning.
+ *
+ * @remarks
+ * Available modes:
+ * - `'warn'` - Log warnings when secrets are detected but allow operations to proceed
+ * - `'block'` - Block operations when secrets are detected
+ * - `'audit'` - Log detections for auditing purposes without blocking or warning
+ *
+ * @example
+ * ```yaml
+ * secretScanning:
+ *   enforcementMode: warn  # Default - warns but doesn't block
+ * ```
+ */
+export const SecretScanningEnforcementModeSchema = z.enum(['warn', 'block', 'audit']);
+export type SecretScanningEnforcementMode = z.infer<typeof SecretScanningEnforcementModeSchema>;
+
+/**
+ * Configuration for secret scanning in APEX.
+ *
+ * This configuration block provides a simplified interface for configuring
+ * secret detection with enforcement mode control. It is designed to be
+ * easy to configure in `.apex/config.yaml`.
+ *
+ * @remarks
+ * The `secretScanning` config provides:
+ * - An `enabled` flag to turn secret scanning on/off
+ * - An `enforcementMode` to control behavior when secrets are detected
+ * - A `customPatterns` array for defining project-specific secret patterns
+ *
+ * This is separate from the legacy `scanner` config and the comprehensive
+ * `guardrails.secrets` config, providing a streamlined option for projects
+ * that only need secret detection.
+ *
+ * @example
+ * ```yaml
+ * # .apex/config.yaml
+ * secretScanning:
+ *   enabled: true
+ *   enforcementMode: warn    # 'warn' | 'block' | 'audit'
+ *   customPatterns:
+ *     - name: "Internal API Key"
+ *       pattern: "INTERNAL_[A-Z0-9]{32}"
+ *       severity: high
+ *     - name: "Database Password"
+ *       pattern: "DB_PASSWORD=[^\\s]+"
+ *       severity: critical
+ * ```
+ */
+export const SecretScanningConfigSchema = z.object({
+  /**
+   * Whether secret scanning is enabled (default: true).
+   * When disabled, no secret detection will be performed.
+   */
+  enabled: z.boolean().optional().default(true),
+
+  /**
+   * Enforcement mode for secret scanning (default: 'warn').
+   * - 'warn': Log warnings when secrets are detected
+   * - 'block': Block operations when secrets are detected
+   * - 'audit': Log detections for auditing without blocking
+   */
+  enforcementMode: SecretScanningEnforcementModeSchema.optional().default('warn'),
+
+  /**
+   * Custom patterns to scan for in addition to built-in patterns.
+   * Each pattern should have a name, regex pattern, and optional severity.
+   *
+   * @example
+   * ```yaml
+   * customPatterns:
+   *   - name: "Internal Token"
+   *     pattern: "INT_TOKEN_[A-Z0-9]{24}"
+   *     severity: high
+   *     description: "Internal service token"
+   * ```
+   */
+  customPatterns: z.array(SecretPatternSchema).optional().default([]),
+
+  /**
+   * Whether to include built-in patterns for common secrets (default: true).
+   * Built-in patterns detect AWS keys, GitHub tokens, API keys, etc.
+   * Set to false to only use custom patterns.
+   */
+  includeBuiltInPatterns: z.boolean().optional().default(true),
+
+  /**
+   * Paths to exclude from secret scanning.
+   * Glob patterns are supported.
+   *
+   * @example
+   * ```yaml
+   * excludePaths:
+   *   - "*.test.ts"
+   *   - "fixtures/**"
+   *   - "__mocks__/**"
+   * ```
+   */
+  excludePaths: z.array(z.string()).optional().default([]),
+});
+export type SecretScanningConfig = z.infer<typeof SecretScanningConfigSchema>;
+
 export const ServiceConfigSchema = z.object({
   enableOnBoot: z.boolean().optional().default(false),
 });
@@ -1867,6 +1970,8 @@ export const ApexConfigSchema = z.object({
   codeQuality: CodeQualityConfigSchema.optional(),
   /** Secret scanner configuration for detecting sensitive information (v0.5.0) */
   scanner: SecretScannerConfigSchema.optional(),
+  /** Secret scanning configuration with enforcement mode control (v0.5.0) */
+  secretScanning: SecretScanningConfigSchema.optional(),
   daemon: DaemonConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),

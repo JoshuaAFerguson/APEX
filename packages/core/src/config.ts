@@ -17,6 +17,7 @@ import {
   HookConfigSchema,
   ToolHookConfigSchema,
   SecretScannerConfig,
+  SecretScanningConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -833,6 +834,17 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       maskSecrets: config.scanner?.maskSecrets ?? true,
       contextLength: config.scanner?.contextLength ?? 20,
       onSecretDetected: config.scanner?.onSecretDetected || 'warn',
+    },
+    /**
+     * Secret scanning configuration with enforcement mode control.
+     * Provides a simplified interface for configuring secret detection.
+     */
+    secretScanning: {
+      enabled: config.secretScanning?.enabled ?? true,
+      enforcementMode: config.secretScanning?.enforcementMode || 'warn',
+      customPatterns: config.secretScanning?.customPatterns || [],
+      includeBuiltInPatterns: config.secretScanning?.includeBuiltInPatterns ?? true,
+      excludePaths: config.secretScanning?.excludePaths || [],
     },
     toolActionRetention: {
       maxActionsPerTask: config.toolActionRetention?.maxActionsPerTask ?? 1000,
