@@ -3021,7 +3021,12 @@ export type ApexEventType =
   | 'redo:requested'
   | 'redo:started'
   | 'redo:completed'
-  | 'redo:failed';
+  | 'redo:failed'
+  // Auto-fix events (v0.5.0)
+  | 'auto-fix:start'
+  | 'auto-fix:progress'
+  | 'auto-fix:complete'
+  | 'auto-fix:error';
 
 export interface ApexEvent {
   type: ApexEventType;
@@ -6170,11 +6175,10 @@ export type AutoFixResult = z.infer<typeof AutoFixResultSchema>;
  * Event types for auto-fix operations
  */
 export const AutoFixEventTypeSchema = z.enum([
-  'autofix:requested',   // Auto-fix was requested for a file
-  'autofix:started',     // Auto-fix operation began
-  'autofix:completed',   // Auto-fix operation completed successfully
-  'autofix:failed',      // Auto-fix operation failed
-  'autofix:skipped',     // Auto-fix was skipped (disabled or no fixes needed)
+  'auto-fix:start',      // Auto-fix operation began
+  'auto-fix:progress',   // Auto-fix operation progress update
+  'auto-fix:complete',   // Auto-fix operation completed successfully
+  'auto-fix:error',      // Auto-fix operation failed
 ]);
 export type AutoFixEventType = z.infer<typeof AutoFixEventTypeSchema>;
 

@@ -307,6 +307,14 @@ export interface OrchestratorEvents {
   'lint:issue': (event: LintIssueEventData) => void;
   'lint:fix-applied': (event: LintFixAppliedEventData) => void;
 
+  // Auto-fix events (v0.5.0)
+  'autofix:requested': (event: AutoFixRequestedEventData) => void;
+  'autofix:started': (event: AutoFixStartedEventData) => void;
+  'autofix:progress': (event: AutoFixProgressEventData) => void;
+  'autofix:completed': (event: AutoFixCompletedEventData) => void;
+  'autofix:failed': (event: AutoFixFailedEventData) => void;
+  'autofix:skipped': (event: AutoFixSkippedEventData) => void;
+
   // Undo events (v0.5.0)
   'undo:start': (taskId: string) => void;
   'undo:complete': (taskId: string, actionId: string, restoredFiles: string[]) => void;
@@ -657,6 +665,87 @@ export interface LintFixAppliedEventData {
     originalText: string;
     fixedText: string;
   }[];
+  timestamp: Date;
+}
+
+// ============================================================================
+// Auto-Fix Event Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event payload when auto-fix is requested for a file
+ * Emitted when an agent or hook triggers auto-fix for a file
+ */
+export interface AutoFixRequestedEventData {
+  taskId: string;
+  filePath: string;
+  fixTypes: Array<'syntax' | 'imports' | 'formatting'>;
+  triggeredBy: 'agent' | 'hook' | 'manual';
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix operation begins
+ * Emitted when the auto-fixer starts processing a file
+ */
+export interface AutoFixStartedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesDetected: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for auto-fix progress updates
+ * Emitted during auto-fix to report incremental progress
+ */
+export interface AutoFixProgressEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesFixed: number;
+  issuesRemaining: number;
+  currentFix?: string; // Description of current fix being applied
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix completes successfully
+ * Emitted when all requested fixes have been applied to a file
+ */
+export interface AutoFixCompletedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesDetected: number;
+  issuesFixed: number;
+  duration: number; // milliseconds
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix fails
+ * Emitted when auto-fix encounters an unrecoverable error
+ */
+export interface AutoFixFailedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  error: string;
+  issuesDetected: number;
+  issuesFixed: number; // How many were fixed before failure
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix is skipped
+ * Emitted when auto-fix is not performed for a file
+ */
+export interface AutoFixSkippedEventData {
+  taskId: string;
+  filePath: string;
+  reason: 'disabled' | 'no_issues' | 'unsupported_file' | 'manual_override';
   timestamp: Date;
 }
 
