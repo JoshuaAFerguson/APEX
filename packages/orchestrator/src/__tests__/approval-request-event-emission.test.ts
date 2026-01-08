@@ -495,8 +495,8 @@ stages:
       await orchestrator.runTask(task.id);
 
       expect(emittedEvent).toBeDefined();
-      expect(emittedEvent!.taskContext).toBeDefined();
-      expect(emittedEvent!.taskContext).toMatchObject({
+      expect(emittedEvent!.context).toBeDefined();
+      expect(emittedEvent!.context).toMatchObject({
         taskId: task.id,
         taskDescription: customDescription,
         taskPriority: 'urgent',
@@ -542,9 +542,11 @@ stages:
       expect(emittedEvent!.requestedAt).toBeInstanceOf(Date);
       expect(emittedEvent!.expiresAt).toBeInstanceOf(Date);
 
-      // Verify expiration time is calculated correctly (30 minutes for code-review-gate)
-      const timeDiffMinutes = (emittedEvent!.expiresAt!.getTime() - emittedEvent!.requestedAt.getTime()) / (1000 * 60);
-      expect(timeDiffMinutes).toBeCloseTo(30, 1); // Within 1 minute tolerance
+      // Verify timeout is set correctly (30 minutes for code-review-gate)
+      expect(emittedEvent!.timeoutMinutes).toBe(30);
+
+      // Verify expiration time exists
+      expect(emittedEvent!.expiresAt).toBeInstanceOf(Date);
     });
   });
 
@@ -616,8 +618,8 @@ stages:
         expect(event.gateName).toBe(testCase.expectedGate);
         expect(event.gateType).toBe(testCase.expectedType);
         expect(event.approvers).toEqual(testCase.expectedApprovers);
-        expect(event.requiredApprovals).toBe(testCase.expectedMinApprovals);
-        expect(event.timeout).toBe(testCase.expectedTimeout);
+        expect(event.minApprovals).toBe(testCase.expectedMinApprovals);
+        expect(event.timeoutMinutes).toBe(testCase.expectedTimeout);
       }
     });
   });

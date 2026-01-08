@@ -4388,6 +4388,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   private resolveSecretDetectionBehavior(): SecretDetectionBehavior {
+    // Check if secret scanning is enabled and get enforcement mode
+    const secretScanning = this.effectiveConfig.secretScanning;
+    if (secretScanning?.enabled !== false && secretScanning?.enforcementMode) {
+      // Map enforcement modes to detection behaviors
+      switch (secretScanning.enforcementMode) {
+        case 'audit':
+          return 'log';   // audit mode logs detections for auditing without blocking
+        case 'block':
+          return 'block'; // block mode prevents operations when secrets are detected
+        case 'warn':
+          return 'mask';  // warn mode masks secrets in outputs before storage/emission
+      }
+    }
+
+    // Fallback to legacy guardrails/scanner configuration
     const guardrails = this.effectiveConfig.guardrails;
     const guardrailsEnabled = guardrails?.enabled !== false;
     const guardrailSecrets = guardrailsEnabled && guardrails?.secrets?.enabled !== false
