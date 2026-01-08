@@ -102,6 +102,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
   const toolStartTimeRef = useRef<Map<string, Date>>(new Map());
   const totalTokensRef = useRef<number>(0);
   const stageStartTimeRef = useRef<Date>(new Date());
+  const lastUsageRef = useRef<Record<string, { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }>>({});
 
   // Debug logging helper
   const log = useCallback((message: string, data?: any) => {
@@ -447,6 +448,33 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     ) => {
       if (taskId && eventTaskId !== taskId) return;
 
+      const previousUsage = lastUsageRef.current[eventTaskId];
+      const isTotalUpdate = previousUsage
+        ? usage.totalTokens >= previousUsage.totalTokens
+        : true;
+
+      const deltaInput = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.inputTokens - previousUsage.inputTokens)
+        : usage.inputTokens;
+      const deltaOutput = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.outputTokens - previousUsage.outputTokens)
+        : usage.outputTokens;
+      const deltaTotal = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.totalTokens - previousUsage.totalTokens)
+        : usage.totalTokens;
+      const deltaCost = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.estimatedCost - previousUsage.estimatedCost)
+        : usage.estimatedCost;
+
+      if (isTotalUpdate || !previousUsage) {
+        lastUsageRef.current[eventTaskId] = {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+          estimatedCost: usage.estimatedCost,
+        };
+      }
+
       log('Usage updated', { taskId: eventTaskId, tokens: usage });
 
       // Get current agent name from state
@@ -458,21 +486,23 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         const prevAgentTokens = prev.agentTokens[currentAgentName] || {
           inputTokens: 0,
           outputTokens: 0,
+          estimatedCost: 0,
         };
+        const previousEstimatedCost = prevAgentTokens.estimatedCost ?? 0;
 
         const newAgentTokens = {
           ...prev.agentTokens,
           [currentAgentName]: {
-            inputTokens: prevAgentTokens.inputTokens + usage.inputTokens,
-            outputTokens: prevAgentTokens.outputTokens + usage.outputTokens,
-            estimatedCost: usage.estimatedCost,
+            inputTokens: prevAgentTokens.inputTokens + deltaInput,
+            outputTokens: prevAgentTokens.outputTokens + deltaOutput,
+            estimatedCost: previousEstimatedCost + deltaCost,
           },
         };
 
         // Calculate tokens per second metric
         const now = Date.now();
         const elapsed = (now - stageStartTimeRef.current.getTime()) / 1000;
-        totalTokensRef.current += usage.totalTokens;
+        totalTokensRef.current += deltaTotal;
         const tokensPerSecond = elapsed > 0 ? totalTokensRef.current / elapsed : 0;
 
         return {
@@ -494,8 +524,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           (debugInfo) => ({
             ...debugInfo,
             tokensUsed: {
-              input: (debugInfo?.tokensUsed?.input || 0) + usage.inputTokens,
-              output: (debugInfo?.tokensUsed?.output || 0) + usage.outputTokens,
+              input: (debugInfo?.tokensUsed?.input || 0) + deltaInput,
+              output: (debugInfo?.tokensUsed?.output || 0) + deltaOutput,
             },
           }),
           derivedAgentsByName.get(currentAgentName),

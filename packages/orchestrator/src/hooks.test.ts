@@ -104,6 +104,60 @@ describe('Hooks', () => {
     });
   });
 
+  describe('pre-edit validation', () => {
+    const matchesTool = (matcher: unknown, toolName: string): boolean => {
+      if (!matcher) {
+        return true;
+      }
+      if (Array.isArray(matcher)) {
+        return matcher.includes(toolName);
+      }
+      if (typeof matcher === 'string') {
+        return matcher === toolName || new RegExp(matcher).test(toolName);
+      }
+      return false;
+    };
+
+    it('blocks invalid JSON when pre-edit validation is enabled in block mode', async () => {
+      const context: HookContext = {
+        taskId,
+        store,
+        config: {
+          codeQuality: {
+            preEditValidation: {
+              enabled: true,
+              mode: 'block',
+            },
+          },
+        },
+      };
+
+      const hooks = createHooks(context);
+      const preHooks = hooks.PreToolUse || [];
+      const input = {
+        tool_name: 'Write',
+        tool_input: {
+          file_path: path.join(testDir, 'config.json'),
+          content: '{ "name": "apex", }',
+        },
+      };
+
+      const results = [];
+      for (const hookMatcher of preHooks) {
+        if (!matchesTool(hookMatcher.matcher, 'Write')) {
+          continue;
+        }
+        for (const hook of hookMatcher.hooks) {
+          results.push(await hook(input as any, 'tool-validate-1', { signal: new AbortController().signal }));
+        }
+      }
+
+      const denied = results.find(result => result?.hookSpecificOutput?.permissionDecision === 'deny');
+      expect(denied).toBeDefined();
+      expect(denied?.hookSpecificOutput?.permissionDecisionReason).toContain('invalid JSON');
+    });
+  });
+
   describe('FILE_MODIFYING_TOOLS', () => {
     it('should export FILE_MODIFYING_TOOLS constant with correct tools', () => {
       expect(FILE_MODIFYING_TOOLS).toBeDefined();

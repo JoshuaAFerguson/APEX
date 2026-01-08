@@ -97,6 +97,7 @@ export class CompletionEngine {
           { name: '/agents', desc: 'List agents', icon: '🤖' },
           { name: '/workflows', desc: 'List workflows', icon: '⚙️' },
           { name: '/config', desc: 'Configuration', icon: '🔧' },
+          { name: '/browser', desc: 'Browser backend', icon: '🌐' },
           { name: '/session', desc: 'Session management', icon: '💾' },
           { name: '/logs', desc: 'Task logs', icon: '📝' },
           { name: '/cancel', desc: 'Cancel task', icon: '❌' },

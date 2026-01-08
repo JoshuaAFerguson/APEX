@@ -223,6 +223,43 @@ export const WebToolConfigSchema = BaseToolPermissionConfigSchema.extend({
 export type WebToolConfig = z.infer<typeof WebToolConfigSchema>;
 
 /**
+ * Configuration for browser automation tools (Browser)
+ * Extends base config with browser-specific settings
+ */
+export const BrowserToolConfigSchema = BaseToolPermissionConfigSchema.extend({
+  /** Allowed domains for navigation (empty = all allowed) */
+  allowedDomains: z.array(z.string()).optional().default([]),
+  /** Blocked domains */
+  blockedDomains: z.array(z.string()).optional().default([]),
+  /** Whether to allow JavaScript execution via evaluate() */
+  allowJavaScriptExecution: z.boolean().optional(),
+  /** Whether to allow form submissions */
+  allowFormSubmission: z.boolean().optional(),
+  /** Maximum page load timeout in milliseconds */
+  pageLoadTimeout: z.number().int().min(0).optional(),
+  /** Whether to allow file downloads */
+  allowDownloads: z.boolean().optional(),
+  /** Whether to capture screenshots */
+  allowScreenshots: z.boolean().optional(),
+  /** Whether to block popups/new windows */
+  blockPopups: z.boolean().optional(),
+  /** Browser engine to use */
+  engine: z.enum(['chromium', 'firefox', 'webkit']).optional(),
+  /** Browser automation backend */
+  backend: z.enum(['playwright', 'puppeteer']).optional(),
+  /** Whether to run headless */
+  headless: z.boolean().optional(),
+  /** User agent override */
+  userAgent: z.string().optional(),
+  /** Viewport configuration */
+  viewport: z.object({
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+  }).optional(),
+});
+export type BrowserToolConfig = z.infer<typeof BrowserToolConfigSchema>;
+
+/**
  * Configuration for search tools (Grep)
  * Extends base config with search-specific settings
  */
@@ -249,10 +286,17 @@ export const ToolPermissionConfigSchema = z.union([
   FilesystemToolConfigSchema,
   ShellToolConfigSchema,
   WebToolConfigSchema,
+  BrowserToolConfigSchema,
   SearchToolConfigSchema,
   BaseToolPermissionConfigSchema, // Fallback for generic tools
 ]);
 export type ToolPermissionConfig = z.infer<typeof ToolPermissionConfigSchema>;
+
+/**
+ * Per-tool configuration map for config.yaml
+ */
+export const ToolConfigSchema = z.record(ToolPermissionConfigSchema).optional().default({});
+export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 
 /**
  * Extended permission schema with per-tool configuration
@@ -477,6 +521,42 @@ export const ToolDefinitionSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
+
+// ============================================================================
+// Custom Tool Configuration (v0.5.0)
+// ============================================================================
+
+export const CustomToolOutputParserSchema = z.enum(['json', 'text', 'lines']);
+export type CustomToolOutputParser = z.infer<typeof CustomToolOutputParserSchema>;
+
+export const CustomToolConfigSchema = z.object({
+  /** Unique tool identifier */
+  name: z.string().min(1, 'Tool name is required').max(64, 'Tool name must be 64 characters or less'),
+  /** Human-readable description of what the tool does */
+  description: z.string().min(1, 'Tool description is required'),
+  /** Command to execute for the tool */
+  command: z.string().min(1, 'Command is required'),
+  /** Command-line arguments for the tool */
+  args: z.array(z.string()).optional().default([]),
+  /** JSON Schema for tool parameters */
+  parameters: ToolParametersSchemaSchema.optional().default({
+    type: 'object',
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  }),
+  /** How to parse tool output */
+  outputParser: CustomToolOutputParserSchema.optional().default('text'),
+  /** Timeout for tool execution in milliseconds */
+  timeoutMs: z.number().int().min(1).optional().default(60000),
+  /** Working directory for tool execution */
+  workingDirectory: z.string().optional(),
+  /** Environment variables for tool execution */
+  env: z.record(z.string()).optional(),
+  /** Whether the tool is enabled */
+  enabled: z.boolean().optional().default(true),
+});
+export type CustomToolConfig = z.infer<typeof CustomToolConfigSchema>;
 
 /**
  * Result of a tool execution
@@ -814,6 +894,8 @@ export const ApprovalCheckpointTypeSchema = z.enum([
   'before-commit',
   'before-deploy',
   'before-destructive',
+  'before-network',
+  'before-file-write',
   'deployment',
   'custom',
 ]);
@@ -1015,6 +1097,7 @@ export const ProjectConfigSchema = z.object({
   testCommand: z.string().optional().default('npm test'),
   lintCommand: z.string().optional().default('npm run lint'),
   buildCommand: z.string().optional().default('npm run build'),
+  typecheckCommand: z.string().optional().default('npm run typecheck'),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
@@ -1099,6 +1182,8 @@ export type GitConfig = z.infer<typeof GitConfigSchema>;
 export const LimitsConfigSchema = z.object({
   maxTokensPerTask: z.number().optional().default(500000),
   maxCostPerTask: z.number().optional().default(10.0),
+  maxExecutionTime: z.number().optional().default(0),
+  maxFileChanges: z.number().optional().default(0),
   dailyBudget: z.number().optional().default(100.0),
   maxTurns: z.number().optional().default(100),
   maxConcurrentTasks: z.number().optional().default(3),
@@ -1318,6 +1403,8 @@ export const LinterGlobalConfigSchema = z.object({
   runOnPush: z.boolean().optional().default(false),
   /** Run linters on file save (if supported by IDE) */
   runOnSave: z.boolean().optional().default(false),
+  /** Run linters after tool-driven edits */
+  runAfterEdit: z.boolean().optional().default(false),
   /** Enable parallel execution of linters */
   parallel: z.boolean().optional().default(true),
   /** Maximum number of linters to run concurrently */
@@ -1377,6 +1464,34 @@ export const LinterConfigSchema = z.object({
   }).optional(),
 });
 export type LinterConfig = z.infer<typeof LinterConfigSchema>;
+
+// ============================================================================
+// Code Quality Configuration (v0.5.0)
+// ============================================================================
+
+export const PreEditValidationModeSchema = z.enum(['warn', 'block']);
+export type PreEditValidationMode = z.infer<typeof PreEditValidationModeSchema>;
+
+export const PreEditValidationConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  mode: PreEditValidationModeSchema.optional().default('warn'),
+});
+export type PreEditValidationConfig = z.infer<typeof PreEditValidationConfigSchema>;
+
+export const TypecheckConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  runAfterEdit: z.boolean().optional().default(false),
+  command: z.string().optional(),
+  timeoutMs: z.number().optional().default(60000),
+  failOnError: z.boolean().optional().default(false),
+});
+export type TypecheckConfig = z.infer<typeof TypecheckConfigSchema>;
+
+export const CodeQualityConfigSchema = z.object({
+  preEditValidation: PreEditValidationConfigSchema.optional(),
+  typecheck: TypecheckConfigSchema.optional(),
+});
+export type CodeQualityConfig = z.infer<typeof CodeQualityConfigSchema>;
 
 // ============================================================================
 // Secret Scanner Configuration
@@ -1659,6 +1774,65 @@ export interface HealthMetrics {
   restartHistory: RestartRecord[];
 }
 
+// ============================================================================
+// MCP Configuration (v0.5.0)
+// ============================================================================
+
+export const MCPServerConfigSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(['stdio', 'http', 'sse', 'sdk']).optional().default('stdio'),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  url: z.string().optional(),
+  headers: z.record(z.string()).optional(),
+  autoStart: z.boolean().optional().default(false),
+  capabilities: z.array(z.string()).optional(),
+});
+export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
+
+export const MCPMarketplaceEntrySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  version: z.string().min(1),
+  author: z.string().optional(),
+  homepage: z.string().optional(),
+  repository: z.string().optional(),
+  installCommand: z.string().optional(),
+  serverConfig: MCPServerConfigSchema,
+  capabilities: z.array(z.string()).optional(),
+  verified: z.boolean().optional().default(false),
+});
+export type MCPMarketplaceEntry = z.infer<typeof MCPMarketplaceEntrySchema>;
+
+export const MCPMarketplaceSourceSchema = z.object({
+  url: z.string().min(1),
+  enabled: z.boolean().optional().default(true),
+  refreshIntervalMinutes: z.number().min(1).optional().default(1440),
+  allowUnverified: z.boolean().optional().default(false),
+});
+export type MCPMarketplaceSource = z.infer<typeof MCPMarketplaceSourceSchema>;
+
+export const MCPConfigSchema = z.object({
+  enabled: z.boolean().optional().default(true),
+  servers: z.record(MCPServerConfigSchema).optional().default({}),
+  marketplace: MCPMarketplaceSourceSchema.optional(),
+});
+export type MCPConfig = z.infer<typeof MCPConfigSchema>;
+
+// ============================================================================
+// TDD Mode Configuration (v0.5.0)
+// ============================================================================
+
+export const TDDModeConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  testCommand: z.string().optional().default('npm test'),
+  watchMode: z.boolean().optional().default(false),
+  maxIterations: z.number().int().min(1).optional().default(5),
+  regressionGuard: z.boolean().optional().default(true),
+});
+export type TDDModeConfig = z.infer<typeof TDDModeConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -1689,6 +1863,8 @@ export const ApexConfigSchema = z.object({
     .optional(),
   /** Linter configuration for code quality enforcement (v0.5.0) */
   linter: LinterConfigSchema.optional(),
+  /** Code quality automation configuration (v0.5.0) */
+  codeQuality: CodeQualityConfigSchema.optional(),
   /** Secret scanner configuration for detecting sensitive information (v0.5.0) */
   scanner: SecretScannerConfigSchema.optional(),
   daemon: DaemonConfigSchema.optional(),
@@ -1706,6 +1882,16 @@ export const ApexConfigSchema = z.object({
   hooks: z.lazy(() => z.array(HookConfigSchema)).optional().default([]),
   /** Tool hook configuration for pre/post tool execution hooks (v0.5.0) */
   toolHooks: z.lazy(() => ToolHookConfigSchema).optional(),
+  /** Per-tool configuration overrides */
+  tools: ToolConfigSchema.optional(),
+  /** Custom tool definitions (v0.5.0) */
+  customTools: z.array(CustomToolConfigSchema).optional().default([]),
+  /** MCP server configuration and marketplace settings (v0.5.0) */
+  mcp: MCPConfigSchema.optional(),
+  /** TDD mode configuration for test-first workflows (v0.5.0) */
+  tdd: TDDModeConfigSchema.optional(),
+  /** Project-specific rules defined in .apexrules (v0.4.0) */
+  projectRules: z.lazy(() => z.array(ApexRuleSchema)).optional().default([]),
   /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */
   guardrails: z.lazy(() => GuardrailConfigSchema).optional(),
 });
@@ -5797,3 +5983,64 @@ export const AuditLogEntrySchema = z.object({
   sessionId: z.string().optional(),
 });
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
+
+// ============================================================================
+// APEX Rules (.apexrules) Types
+// ============================================================================
+
+export type RuleTriggerEvent = 'task.start' | 'task.update' | 'tool.use' | 'git.commit' | 'git.push' | 'agent.thought';
+
+export interface RuleTrigger {
+  event: RuleTriggerEvent;
+  // Optional tool name for tool.use triggers
+  toolName?: string;
+}
+
+export interface RuleCondition {
+  expression: string; // Use a string-based expression for initial implementation
+}
+
+export type RuleActionType = 'block' | 'warn' | 'inject_prompt';
+
+export interface RuleAction {
+  type: RuleActionType;
+  message?: string; // Message for block, warn actions
+  prompt?: string;  // Prompt to inject for inject_prompt action
+  // Future: metadata?: Record<string, unknown>;
+}
+
+export interface ApexRule {
+  name: string;
+  description?: string;
+  trigger: RuleTrigger;
+  condition?: RuleCondition;
+  action: RuleAction;
+  enabled?: boolean;
+}
+
+export const RuleTriggerEventSchema = z.enum(['task.start', 'task.update', 'tool.use', 'git.commit', 'git.push', 'agent.thought']);
+export const RuleTriggerSchema = z.object({
+  event: RuleTriggerEventSchema,
+  toolName: z.string().optional(), // For tool.use event
+  // Add other event-specific fields as needed
+});
+
+export const RuleConditionSchema = z.object({
+  expression: z.string(),
+});
+
+export const RuleActionTypeSchema = z.enum(['block', 'warn', 'inject_prompt']);
+export const RuleActionSchema = z.object({
+  type: RuleActionTypeSchema,
+  message: z.string().optional(),
+  prompt: z.string().optional(),
+});
+
+export const ApexRuleSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  trigger: RuleTriggerSchema,
+  condition: RuleConditionSchema.optional(),
+  action: RuleActionSchema,
+  enabled: z.boolean().optional().default(true),
+});

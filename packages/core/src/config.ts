@@ -15,6 +15,7 @@ import {
   LinterConfig,
   HookConfig,
   HookConfigSchema,
+  ToolHookConfigSchema,
   SecretScannerConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
@@ -126,11 +127,24 @@ export async function validateContainerWorkspaceConfig(config: ApexConfig): Prom
  */
 export async function loadConfig(projectPath: string): Promise<ApexConfig> {
   const configPath = normalizePath(path.join(projectPath, APEX_DIR, CONFIG_FILE));
+  const hooksPath = normalizePath(path.join(projectPath, APEX_DIR, 'hooks.yaml'));
 
   try {
     const content = await fs.readFile(configPath, 'utf-8');
     const rawConfig = yaml.parse(content);
     const config = ApexConfigSchema.parse(rawConfig);
+
+    // Load tool hooks from .apex/hooks.yaml if present (overrides config.yaml)
+    try {
+      const hooksContent = await fs.readFile(hooksPath, 'utf-8');
+      const hooksRaw = yaml.parse(hooksContent);
+      const toolHooks = ToolHookConfigSchema.parse(hooksRaw);
+      config.toolHooks = toolHooks;
+    } catch (hookError) {
+      if ((hookError as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw new Error(`Failed to load tool hooks: ${hookError}`);
+      }
+    }
 
     // Validate container workspace configuration
     const containerValidation = await validateContainerWorkspaceConfig(config);
@@ -500,7 +514,15 @@ export async function initializeApex(
 export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
   return {
     version: config.version,
-    project: config.project,
+    project: {
+      name: config.project.name,
+      language: config.project.language,
+      framework: config.project.framework,
+      testCommand: config.project.testCommand || 'npm test',
+      lintCommand: config.project.lintCommand || 'npm run lint',
+      buildCommand: config.project.buildCommand || 'npm run build',
+      typecheckCommand: config.project.typecheckCommand || 'npm run typecheck',
+    },
     autonomy: {
       level: config.autonomy?.level || 'review-before-commit',
       rejectionBehavior: config.autonomy?.rejectionBehavior || 'abort',
@@ -536,6 +558,8 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
     limits: {
       maxTokensPerTask: config.limits?.maxTokensPerTask || 500000,
       maxCostPerTask: config.limits?.maxCostPerTask || 10.0,
+      maxExecutionTime: config.limits?.maxExecutionTime ?? 0,
+      maxFileChanges: config.limits?.maxFileChanges ?? 0,
       dailyBudget: config.limits?.dailyBudget || 100.0,
       maxTurns: config.limits?.maxTurns || 100,
       maxConcurrentTasks: config.limits?.maxConcurrentTasks || 3,
@@ -675,12 +699,26 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       tags: config.policy?.tags || [],
       metadata: config.policy?.metadata || {},
     },
+    codeQuality: {
+      preEditValidation: {
+        enabled: config.codeQuality?.preEditValidation?.enabled ?? false,
+        mode: config.codeQuality?.preEditValidation?.mode || 'warn',
+      },
+      typecheck: {
+        enabled: config.codeQuality?.typecheck?.enabled ?? false,
+        runAfterEdit: config.codeQuality?.typecheck?.runAfterEdit ?? false,
+        command: config.codeQuality?.typecheck?.command || config.project.typecheckCommand || 'npm run typecheck',
+        timeoutMs: config.codeQuality?.typecheck?.timeoutMs ?? 60000,
+        failOnError: config.codeQuality?.typecheck?.failOnError ?? false,
+      },
+    },
     linter: {
       global: {
         enabled: config.linter?.global?.enabled ?? true,
         runOnCommit: config.linter?.global?.runOnCommit ?? true,
         runOnPush: config.linter?.global?.runOnPush ?? false,
         runOnSave: config.linter?.global?.runOnSave ?? false,
+        runAfterEdit: config.linter?.global?.runAfterEdit ?? false,
         parallel: config.linter?.global?.parallel ?? true,
         maxConcurrency: config.linter?.global?.maxConcurrency ?? 4,
         failFast: config.linter?.global?.failFast ?? false,
@@ -803,6 +841,7 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       maxSnapshotStorageMB: config.toolActionRetention?.maxSnapshotStorageMB ?? 100,
     },
     policies: config.policies || [],
+    projectRules: config.projectRules || [],
     hooks: config.hooks || [],
     toolHooks: config.toolHooks ? {
       pre: config.toolHooks.pre || [],
@@ -814,6 +853,35 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       post: [],
       enabled: true,
       defaultTimeoutMs: 30000,
+    },
+    tools: config.tools || {},
+    customTools: config.customTools || [],
+    mcp: config.mcp ? {
+      enabled: config.mcp.enabled ?? true,
+      servers: config.mcp.servers || {},
+      marketplace: config.mcp.marketplace ? {
+        url: config.mcp.marketplace.url,
+        enabled: config.mcp.marketplace.enabled ?? true,
+        refreshIntervalMinutes: config.mcp.marketplace.refreshIntervalMinutes ?? 1440,
+        allowUnverified: config.mcp.marketplace.allowUnverified ?? false,
+      } : undefined,
+    } : {
+      enabled: true,
+      servers: {},
+      marketplace: undefined,
+    },
+    tdd: config.tdd ? {
+      enabled: config.tdd.enabled ?? false,
+      testCommand: config.tdd.testCommand || config.project.testCommand || 'npm test',
+      watchMode: config.tdd.watchMode ?? false,
+      maxIterations: config.tdd.maxIterations ?? 5,
+      regressionGuard: config.tdd.regressionGuard ?? true,
+    } : {
+      enabled: false,
+      testCommand: config.project.testCommand || 'npm test',
+      watchMode: false,
+      maxIterations: 5,
+      regressionGuard: true,
     },
     guardrails: config.guardrails ? {
       enabled: config.guardrails.enabled ?? true,

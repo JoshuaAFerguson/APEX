@@ -876,7 +876,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     '/api/approvals/:id/approve',
     async (request, reply) => {
       const { id: approvalId } = request.params;
-      const { approver, comment } = request.body;
+      const { approver, comments } = request.body;
 
       if (!approver) {
         return reply.status(400).send({ error: 'Approver is required' });
@@ -884,7 +884,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
       try {
         // Grant the approval using the orchestrator
-        await orchestrator.grantApproval(approvalId, approver, comment);
+        await orchestrator.grantApproval(approvalId, approver, comments);
 
         // Get updated approval state
         const updatedState = await orchestrator.getApprovalStateById(approvalId);
@@ -893,14 +893,14 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
           const response: ApprovalDecisionResponse = {
             success: true,
             approvalState: updatedState,
-            taskWillProceed: true
+            willProceed: true
           };
 
           return response;
         } else {
           return {
             success: true,
-            taskWillProceed: true
+            willProceed: true
           };
         }
       } catch (error) {
@@ -916,19 +916,19 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     '/api/approvals/:id/deny',
     async (request, reply) => {
       const { id: approvalId } = request.params;
-      const { approver, comment } = request.body;
+      const { approver, comments } = request.body;
 
       if (!approver) {
         return reply.status(400).send({ error: 'Approver is required' });
       }
 
-      if (!comment) {
+      if (!comments) {
         return reply.status(400).send({ error: 'Reason/comment is required when denying approval' });
       }
 
       try {
         // Deny the approval using the orchestrator
-        await orchestrator.denyApproval(approvalId, approver, comment);
+        await orchestrator.denyApproval(approvalId, approver, comments);
 
         // Get updated approval state
         const updatedState = await orchestrator.getApprovalStateById(approvalId);
@@ -937,14 +937,14 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
           const response: ApprovalDecisionResponse = {
             success: true,
             approvalState: updatedState,
-            taskWillProceed: false
+            willProceed: false
           };
 
           return response;
         } else {
           return {
             success: true,
-            taskWillProceed: false
+            willProceed: false
           };
         }
       } catch (error) {

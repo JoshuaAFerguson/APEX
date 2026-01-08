@@ -325,6 +325,10 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
     }
   }
 
+  listWorkspaces(): WorkspaceInfo[] {
+    return Array.from(this.activeWorkspaces.values());
+  }
+
   /**
    * Get the detected container runtime type
    */

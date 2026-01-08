@@ -10,21 +10,40 @@ import type {
 import { TaskStore, ToolActionStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
-import type { ToolExecution, FileSnapshot } from '@apexcli/core';
+import {
+  createStructuredError,
+  type ToolExecution,
+  type FileSnapshot,
+  type LinterConfig,
+  type CodeQualityConfig,
+  type ProjectConfig,
+  type StructuredError,
+} from '@apexcli/core';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import type { LinterService } from './linter';
+import type { ErrorFeedbackLoop } from './error-feedback';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
 
 export type { HookInput };
+
+const execAsync = promisify(exec);
 
 export interface HookContext {
   taskId: string;
   store: TaskStore;
+  projectPath?: string;
+  errorFeedbackLoop?: ErrorFeedbackLoop;
   permissionPresetManager?: PermissionPresetManager;
   onToolUse?: (tool: string, input: unknown) => void;
   eventEmitter?: {
     emit: (event: string, data: unknown) => void;
   };
   fileSnapshots?: Map<string, string>;
+  linterService?: LinterService;
   // New fields for tool action tracking
   toolActionStore?: ToolActionStore;
   currentAgent?: string;
@@ -34,6 +53,9 @@ export interface HookContext {
     ui?: {
       diffPreview?: boolean;
     };
+    linter?: LinterConfig;
+    codeQuality?: CodeQualityConfig;
+    project?: Partial<ProjectConfig>;
   };
   cliFlags?: {
     diffPreview?: boolean;
@@ -95,6 +117,7 @@ const SENSITIVE_PATHS = [
 
 // Tools that modify files and require snapshot capture
 const FILE_MODIFYING_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+const FILE_MODIFYING_TOOLS_MATCHER = FILE_MODIFYING_TOOLS.join('|');
 
 // Export for use in other modules
 export { FILE_MODIFYING_TOOLS };
@@ -366,13 +389,19 @@ export function createHooks(context: HookContext): HooksConfig {
       },
       // Capture file snapshots for file-modifying tools
       {
-        matcher: FILE_MODIFYING_TOOLS,
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
         hooks: [createHookCallback(context, captureFileSnapshot)],
+        timeout: 5,
+      },
+      // Validate JSON/YAML syntax before edits (v0.5.0)
+      {
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
+        hooks: [createHookCallback(context, validatePreEditSyntax)],
         timeout: 5,
       },
       // Generate diff preview for file-modifying tools (v0.5.0)
       {
-        matcher: FILE_MODIFYING_TOOLS,
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
         hooks: [createHookCallback(context, generateDiffPreview)],
         timeout: 5,
       },
@@ -424,9 +453,21 @@ export function createHooks(context: HookContext): HooksConfig {
     PostToolUse: [
       // Record file-modifying tool actions with snapshots
       {
-        matcher: FILE_MODIFYING_TOOLS,
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
         hooks: [createHookCallback(context, recordFileModifyingToolAction)],
         timeout: 10,
+      },
+      // Run linting after file edits (v0.5.0)
+      {
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
+        hooks: [createHookCallback(context, lintAfterEdit)],
+        timeout: 30,
+      },
+      // Run typecheck after file edits (v0.5.0)
+      {
+        matcher: FILE_MODIFYING_TOOLS_MATCHER,
+        hooks: [createHookCallback(context, runTypecheckAfterEdit)],
+        timeout: 60,
       },
       // Log results
       {
@@ -459,6 +500,38 @@ function getToolName(input: HookInput): string {
   return 'unknown';
 }
 
+function extractToolFilePaths(toolInput: Record<string, unknown>): string[] {
+  const paths = new Set<string>();
+
+  if (typeof toolInput.file_path === 'string') {
+    paths.add(toolInput.file_path);
+  }
+
+  if (typeof toolInput.notebook_path === 'string') {
+    paths.add(toolInput.notebook_path);
+  }
+
+  if (typeof toolInput.path === 'string') {
+    paths.add(toolInput.path);
+  }
+
+  if (Array.isArray(toolInput.edits)) {
+    for (const edit of toolInput.edits) {
+      if (edit && typeof edit === 'object') {
+        const editRecord = edit as Record<string, unknown>;
+        if (typeof editRecord.file_path === 'string') {
+          paths.add(editRecord.file_path);
+        }
+        if (typeof editRecord.path === 'string') {
+          paths.add(editRecord.path);
+        }
+      }
+    }
+  }
+
+  return Array.from(paths);
+}
+
 /**
  * Capture file snapshots for file-modifying tools
  */
@@ -475,16 +548,7 @@ async function captureFileSnapshot(
   }
 
   const toolInput = getToolInput(input);
-  let filePath: string | undefined;
-
-  // Extract file path based on tool type
-  if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
-    filePath = toolInput.file_path;
-  } else if ('notebook_path' in toolInput && typeof toolInput.notebook_path === 'string') {
-    filePath = toolInput.notebook_path;
-  } else if ('path' in toolInput && typeof toolInput.path === 'string') {
-    filePath = toolInput.path;
-  }
+  const [filePath] = extractToolFilePaths(toolInput);
 
   if (!filePath) {
     return {};
@@ -537,6 +601,364 @@ async function captureFileSnapshot(
         },
       });
     }
+  }
+
+  return {};
+}
+
+function getExistingContent(filePath: string, context: HookContext): string {
+  if (context.fileSnapshots?.has(filePath)) {
+    return context.fileSnapshots.get(filePath) ?? '';
+  }
+
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return '';
+    }
+    throw error;
+  }
+}
+
+function applyEditToContent(content: string, oldString: string, newString: string, replaceAll?: boolean): string {
+  if (replaceAll) {
+    return content.replaceAll(oldString, newString);
+  }
+
+  return content.replace(oldString, newString);
+}
+
+function collectNewContentByFile(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  context: HookContext
+): Map<string, string> {
+  const updates = new Map<string, string>();
+
+  if (toolName === 'Write' && typeof toolInput.file_path === 'string' && typeof toolInput.content === 'string') {
+    updates.set(toolInput.file_path, toolInput.content);
+    return updates;
+  }
+
+  if (toolName === 'Edit' && typeof toolInput.file_path === 'string' && typeof toolInput.old_string === 'string' && typeof toolInput.new_string === 'string') {
+    const current = getExistingContent(toolInput.file_path, context);
+    const next = applyEditToContent(
+      current,
+      toolInput.old_string,
+      toolInput.new_string,
+      Boolean(toolInput.replace_all)
+    );
+    updates.set(toolInput.file_path, next);
+    return updates;
+  }
+
+  if (toolName === 'MultiEdit' && Array.isArray(toolInput.edits)) {
+    for (const edit of toolInput.edits) {
+      if (!edit || typeof edit !== 'object') {
+        continue;
+      }
+
+      const editRecord = edit as Record<string, unknown>;
+      const filePath = typeof editRecord.file_path === 'string' ? editRecord.file_path : (
+        typeof editRecord.path === 'string' ? editRecord.path : undefined
+      );
+
+      if (!filePath || typeof editRecord.old_string !== 'string' || typeof editRecord.new_string !== 'string') {
+        continue;
+      }
+
+      const current = updates.has(filePath)
+        ? (updates.get(filePath) ?? '')
+        : getExistingContent(filePath, context);
+
+      const next = applyEditToContent(
+        current,
+        editRecord.old_string,
+        editRecord.new_string,
+        Boolean(editRecord.replace_all)
+      );
+
+      updates.set(filePath, next);
+    }
+  }
+
+  return updates;
+}
+
+function validateJsonOrYaml(filePath: string, content: string): string | null {
+  const extension = path.extname(filePath).toLowerCase();
+
+  if (extension === '.json') {
+    if (content.trim().length === 0) {
+      return 'JSON content is empty';
+    }
+
+    JSON.parse(content);
+    return null;
+  }
+
+  if (extension === '.yaml' || extension === '.yml') {
+    if (content.trim().length === 0) {
+      return null;
+    }
+
+    yaml.load(content);
+    return null;
+  }
+
+  return null;
+}
+
+async function validatePreEditSyntax(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  const preEditConfig = context.config?.codeQuality?.preEditValidation;
+  if (!preEditConfig?.enabled) {
+    return {};
+  }
+
+  const toolInput = getToolInput(input);
+  const updatedContent = collectNewContentByFile(toolName, toolInput, context);
+
+  if (updatedContent.size === 0) {
+    return {};
+  }
+
+  for (const [filePath, content] of updatedContent.entries()) {
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension !== '.json' && extension !== '.yaml' && extension !== '.yml') {
+      continue;
+    }
+
+    try {
+      const validationError = validateJsonOrYaml(filePath, content);
+      if (!validationError) {
+        continue;
+      }
+
+      const mode = preEditConfig.mode || 'warn';
+      await context.store.addLog(context.taskId, {
+        level: mode === 'block' ? 'error' : 'warn',
+        message: `Pre-edit validation failed for ${filePath}: ${validationError}`,
+        metadata: {
+          tool: toolName,
+          filePath,
+          mode,
+          reason: validationError,
+        },
+      });
+
+      if (mode === 'block') {
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: `Blocked: invalid ${extension.replace('.', '').toUpperCase()} content in ${filePath}`,
+          },
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const mode = preEditConfig.mode || 'warn';
+      await context.store.addLog(context.taskId, {
+        level: mode === 'block' ? 'error' : 'warn',
+        message: `Pre-edit validation failed for ${filePath}: ${message}`,
+        metadata: {
+          tool: toolName,
+          filePath,
+          mode,
+          error: message,
+        },
+      });
+
+      if (mode === 'block') {
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: `Blocked: invalid ${extension.replace('.', '').toUpperCase()} content in ${filePath}`,
+          },
+        };
+      }
+    }
+  }
+
+  return {};
+}
+
+async function lintAfterEdit(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  const linterConfig = context.config?.linter;
+  if (!context.linterService || !linterConfig?.global?.enabled || !linterConfig.global.runAfterEdit) {
+    return {};
+  }
+
+  const toolInput = getToolInput(input);
+  const filePaths = extractToolFilePaths(toolInput);
+  if (filePaths.length === 0) {
+    return {};
+  }
+
+  const autoFixEnabled = Boolean(
+    linterConfig.integrations?.ide?.autoFixOnSave ||
+    linterConfig.eslint?.autoFix ||
+    linterConfig.prettier?.autoFix ||
+    (linterConfig.custom || []).some((linter) => linter.autoFix)
+  );
+
+  try {
+    await context.linterService.execute({
+      files: filePaths,
+      mode: linterConfig.global.parallel ? 'parallel' : 'sequential',
+      fix: autoFixEnabled,
+      stopOnError: linterConfig.global.failFast,
+      timeout: linterConfig.global.timeoutMs,
+    });
+  } catch (error) {
+    await context.store.addLog(context.taskId, {
+      level: 'warn',
+      message: 'Lint after edit failed',
+      metadata: {
+        tool: toolName,
+        filePaths,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+
+  return {};
+}
+
+function parseTypecheckErrors(output: string, context: HookContext, command: string): StructuredError[] {
+  const errors: StructuredError[] = [];
+  const lines = output.split('\n');
+  const errorRegex = /^(.*)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s+(.*)$/i;
+
+  for (const line of lines) {
+    const match = line.match(errorRegex);
+    if (!match) {
+      continue;
+    }
+
+    const [, file, lineNumber, columnNumber, severityLabel, code, message] = match;
+    const severity = severityLabel.toLowerCase() === 'warning' ? 'warning' : 'error';
+
+    errors.push(createStructuredError(message.trim(), {
+      severity,
+      category: 'type',
+      code: `TS${code}`,
+      rawText: line,
+      location: {
+        file: file.trim(),
+        line: Number(lineNumber),
+        column: Number(columnNumber),
+      },
+      context: {
+        tool: 'typecheck',
+        taskId: context.taskId,
+        stage: context.currentStage,
+        agent: context.currentAgent,
+        command,
+        workingDir: context.projectPath,
+        timestamp: new Date(),
+      },
+    }));
+  }
+
+  return errors;
+}
+
+async function runTypecheckAfterEdit(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  const toolName = getToolName(input);
+  if (!FILE_MODIFYING_TOOLS.includes(toolName)) {
+    return {};
+  }
+
+  const typecheckConfig = context.config?.codeQuality?.typecheck;
+  if (!typecheckConfig?.enabled || !typecheckConfig.runAfterEdit) {
+    return {};
+  }
+
+  if (!context.projectPath) {
+    await context.store.addLog(context.taskId, {
+      level: 'warn',
+      message: 'Typecheck skipped: projectPath not available',
+      metadata: {
+        tool: toolName,
+      },
+    });
+    return {};
+  }
+
+  const command = typecheckConfig.command || context.config?.project?.typecheckCommand || 'npm run typecheck';
+  const timeoutMs = typecheckConfig.timeoutMs ?? 60000;
+
+  try {
+    await execAsync(command, { cwd: context.projectPath, timeout: timeoutMs });
+
+    const clearedCount = context.errorFeedbackLoop?.clearErrors(context.taskId);
+    await context.store.addLog(context.taskId, {
+      level: 'info',
+      message: 'Typecheck completed successfully',
+      metadata: {
+        tool: toolName,
+        command,
+        clearedErrors: clearedCount ?? 0,
+      },
+    });
+  } catch (error) {
+    const execError = error as { stdout?: string; stderr?: string; message?: string; code?: number | string };
+    const output = [execError.stdout, execError.stderr, execError.message].filter(Boolean).join('\n');
+    const parsedErrors = output ? parseTypecheckErrors(output, context, command) : [];
+    const errorsToReport = parsedErrors.length > 0 ? parsedErrors : [
+      createStructuredError('Typecheck failed', {
+        category: 'type',
+        severity: 'error',
+        rawText: output || execError.message,
+        context: {
+          tool: 'typecheck',
+          taskId: context.taskId,
+          stage: context.currentStage,
+          agent: context.currentAgent,
+          command,
+          workingDir: context.projectPath,
+          timestamp: new Date(),
+        },
+      }),
+    ];
+
+    context.errorFeedbackLoop?.receiveErrors(errorsToReport, context.taskId);
+
+    await context.store.addLog(context.taskId, {
+      level: 'warn',
+      message: 'Typecheck failed after edit',
+      metadata: {
+        tool: toolName,
+        command,
+        errorCount: errorsToReport.length,
+        exitCode: execError.code,
+      },
+    });
   }
 
   return {};
@@ -633,7 +1055,7 @@ async function generateDiffPreview(
         }
 
         // Import the diff utility
-        const { generateFileDiff } = await import('./utils/diff');
+        const { generateFileDiff } = await import('./utils/diff.js');
 
         // Generate the diff for this file
         const diffResult = generateFileDiff(editFilePath, editNewContent);
@@ -694,7 +1116,7 @@ async function generateDiffPreview(
 
   try {
     // Import the diff utility (dynamic import to avoid circular dependencies)
-    const { generateFileDiff } = await import('./utils/diff');
+    const { generateFileDiff } = await import('./utils/diff.js');
 
     // Generate the diff
     const diffResult = generateFileDiff(filePath, newContent);

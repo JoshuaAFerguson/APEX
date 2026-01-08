@@ -82,14 +82,14 @@ describe('PolicyEngine', () => {
       expect(blockRules).toHaveLength(2);
       expect(blockRules[0].pattern).toBe('src/secrets/**');
       expect(blockRules[0].priority).toBe(100);
-      expect(blockRules[0].severity).toBe('error');
+      expect(blockRules[0].severity).toBe('high');
 
       // Should have sensitive rules (require approval)
       const sensitiveRules = rules.filter(r => r.action === 'require_approval' && r.type === 'path');
       expect(sensitiveRules).toHaveLength(2);
       expect(sensitiveRules[0].pattern).toBe('config/**');
       expect(sensitiveRules[0].priority).toBe(90);
-      expect(sensitiveRules[0].severity).toBe('warning');
+      expect(sensitiveRules[0].severity).toBe('medium');
 
       // Should have allow rules for allowlist mode
       const allowRules = rules.filter(r => r.action === 'allow' && r.type === 'path');
@@ -148,9 +148,9 @@ describe('PolicyEngine', () => {
 
       expect(approvalRules).toHaveLength(2);
       expect(approvalRules[0].name).toBe('High Cost Operations');
-      expect(approvalRules[0].severity).toBe('error'); // High urgency maps to error
+      expect(approvalRules[0].severity).toBe('high'); // High urgency maps to high severity
       expect(approvalRules[1].name).toBe('Sensitive File Access');
-      expect(approvalRules[1].severity).toBe('warning'); // Medium urgency maps to warning
+      expect(approvalRules[1].severity).toBe('medium'); // Medium urgency maps to medium severity
     });
 
     it('should respect rule loading configuration', () => {
@@ -258,12 +258,12 @@ describe('PolicyEngine', () => {
 
       expect(result.allowed).toBe(false);
       expect(result.violations).toHaveLength(1);
-      expect(result.violations[0].severity).toBe('error');
+      expect(result.violations[0].severity).toBe('high');
       expect(result.violations[0].message).toContain('Policy violation');
       expect(result.violations[0].resource).toBe('src/secrets/api-key.txt');
       expect(result.violations[0].context?.agentId).toBe('test-agent');
       expect(result.violations[0].context?.taskId).toBe('task-123');
-      expect(result.severity).toBe('error');
+      expect(result.severity).toBe('high');
     });
 
     it('should allow access to allowed paths', () => {
@@ -294,7 +294,7 @@ describe('PolicyEngine', () => {
       expect(result.allowed).toBe(true); // Not blocked, but requires approval
       expect(result.requiresApproval).toBe(true);
       expect(result.violations).toHaveLength(1);
-      expect(result.violations[0].severity).toBe('warning');
+      expect(result.violations[0].severity).toBe('medium');
       expect(result.violations[0].message).toContain('Approval required');
       expect(result.violations[0].context?.requiresApproval).toBe(true);
     });
@@ -420,7 +420,7 @@ describe('PolicyEngine', () => {
 
       expect(result.allowed).toBe(false);
       expect(result.violations).toHaveLength(1);
-      expect(result.violations[0].severity).toBe('error'); // Block rules have error severity
+      expect(result.violations[0].severity).toBe('high'); // Block rules have high severity
     });
   });
 
@@ -460,14 +460,14 @@ describe('PolicyEngine', () => {
     });
 
     it('should get rules by severity', () => {
-      const errorRules = engine.getRulesBySeverity('error');
-      const warningRules = engine.getRulesBySeverity('warning');
+      const errorRules = engine.getRulesBySeverity('high');
+      const warningRules = engine.getRulesBySeverity('medium');
 
-      expect(errorRules.length).toBeGreaterThan(0); // Block rules have error severity
-      expect(warningRules.length).toBeGreaterThan(0); // Sensitive rules have warning severity
+      expect(errorRules.length).toBeGreaterThan(0); // Block rules have high severity
+      expect(warningRules.length).toBeGreaterThan(0); // Sensitive rules have medium severity
 
       errorRules.forEach(rule => {
-        expect(rule.severity).toBe('error');
+        expect(rule.severity).toBe('high');
       });
     });
 
@@ -517,7 +517,7 @@ describe('PolicyEngine', () => {
 
       const blockedViolations = engine.validateFilePath('secrets/api-key.txt');
       expect(blockedViolations.length).toBeGreaterThan(0);
-      expect(blockedViolations[0].severity).toBe('error');
+      expect(blockedViolations[0].severity).toBe('high');
     });
 
     it('should handle optional agent ID parameter', () => {
@@ -586,30 +586,30 @@ describe('PolicyEngine', () => {
           allowedPaths: {
             mode: 'allowlist',
             allow: ['src/**'],
-            block: ['secrets/**'], // error severity
-            sensitive: ['config/**'], // warning severity
+            block: ['secrets/**'], // high severity
+            sensitive: ['config/**'], // medium severity
           },
         },
       };
       const engine = new PolicyEngine(config);
 
-      // Test error severity (block rule)
+      // Test high severity (block rule)
       const errorResult = engine.evaluateAction({
         agentId: 'test-agent',
         actionType: 'file_read',
         toolName: 'Read',
         resource: 'secrets/api-key.txt',
       });
-      expect(errorResult.severity).toBe('error');
+      expect(errorResult.severity).toBe('high');
 
-      // Test warning severity (sensitive rule)
+      // Test medium severity (sensitive rule)
       const warningResult = engine.evaluateAction({
         agentId: 'test-agent',
         actionType: 'file_read',
         toolName: 'Read',
         resource: 'config/database.json',
       });
-      expect(warningResult.severity).toBe('warning');
+      expect(warningResult.severity).toBe('medium');
     });
   });
 

@@ -56,7 +56,7 @@ describe('PolicyEngine Interface Coverage - All Enforcement Modes', () => {
       expect(result.enforcementMode).toBe('strict');
       expect(result.violations.length).toBeGreaterThan(0);
       expect(result.violations[0].blocking).toBe(true);
-      expect(result.violations[0].severity).toBe('error');
+      expect(result.violations[0].severity).toBe('high');
       expect(result.rulesEvaluated).toBeGreaterThan(0);
       expect(result.rulesFailed).toBeGreaterThan(0);
       expect(result.policyId).toBe('policy-engine-config');
@@ -66,7 +66,7 @@ describe('PolicyEngine Interface Coverage - All Enforcement Modes', () => {
     it('should support warn enforcement mode', async () => {
       const warnContext: PolicyCheckContext = {
         ...testContext,
-        resource: 'config/sensitive.json', // Triggers warning, not error
+        resource: 'config/sensitive.json', // Triggers medium severity, not high
       };
 
       const result = await engine.checkPolicy(warnContext, {
@@ -76,7 +76,7 @@ describe('PolicyEngine Interface Coverage - All Enforcement Modes', () => {
       expect(result.status).toBe('allow'); // Warns don't block in warn mode
       expect(result.enforcementMode).toBe('warn');
       expect(result.violations.length).toBeGreaterThan(0);
-      expect(result.violations[0].severity).toBe('warning');
+      expect(result.violations[0].severity).toBe('medium');
       expect(result.rulesEvaluated).toBeGreaterThan(0);
     });
 
@@ -142,7 +142,7 @@ describe('PolicyEngine Interface Coverage - All Enforcement Modes', () => {
           name: 'Test blocking rule',
           condition: 'path.includes("test")',
           action: 'deny',
-          severity: 'error',
+          severity: 'high',
         },
       ],
       config: {

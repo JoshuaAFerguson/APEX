@@ -1,12 +1,25 @@
-import { EventEmitter } from 'events';
+import EventEmitter from 'eventemitter3';
 import type {
   Task,
   TaskUsage,
   ApprovalGate,
   AutonomyLevel,
-  AutonomyLimits,
-  ApexOrchestrator
+  TaskResourceLimits,
 } from '@apexcli/core';
+import type { TaskStore } from './store.js';
+
+// Events the orchestrator emits that we listen to
+interface OrchestratorEvents {
+  'task:started': (task: Task) => void;
+  'task:completed': (task: Task) => void;
+  'task:failed': (task: Task, error?: Error) => void;
+  'usage:updated': (taskId: string, usage: TaskUsage) => void;
+}
+
+// Interface for the orchestrator dependency - we only need specific functionality
+interface OrchestratorLike extends EventEmitter<Record<string, (...args: any[]) => void>> {
+  store: TaskStore;
+}
 
 export interface AutonomyEnforcerConfig {
   /** Autonomy level setting */
@@ -14,7 +27,7 @@ export interface AutonomyEnforcerConfig {
   /** Approval gates configuration */
   gates: ApprovalGate[];
   /** Resource and operational limits */
-  limits: AutonomyLimits;
+  limits: TaskResourceLimits;
   /** Warning thresholds as percentages */
   warningThresholds: {
     costWarningPercent: number;
@@ -48,6 +61,7 @@ export interface LimitCheckResult {
 }
 
 export interface WarningResult {
+  taskId?: string;
   type: 'tokens' | 'cost' | 'time' | 'files';
   threshold: number;
   currentValue: number;
@@ -62,29 +76,17 @@ export interface AutonomyEnforcerEvents {
   'approval:bypass': (gateName: string, reason: string) => void;
 }
 
-declare interface AutonomyEnforcer {
-  on<U extends keyof AutonomyEnforcerEvents>(
-    event: U,
-    listener: AutonomyEnforcerEvents[U]
-  ): this;
-
-  emit<U extends keyof AutonomyEnforcerEvents>(
-    event: U,
-    ...args: Parameters<AutonomyEnforcerEvents[U]>
-  ): boolean;
-}
-
 /**
  * AutonomyEnforcer manages resource limits, approval gates, and safety controls
  * Implements the policy enforcement and resource tracking for autonomous operation
  */
-class AutonomyEnforcer extends EventEmitter {
+class AutonomyEnforcer extends EventEmitter<AutonomyEnforcerEvents> {
   private config: AutonomyEnforcerConfig;
-  private orchestrator: ApexOrchestrator;
+  private orchestrator: OrchestratorLike;
   private taskUsageMap = new Map<string, TaskUsage>();
   private taskStartTimes = new Map<string, Date>();
 
-  constructor(config: AutonomyEnforcerConfig, orchestrator: ApexOrchestrator) {
+  constructor(config: AutonomyEnforcerConfig, orchestrator: OrchestratorLike) {
     super();
     this.config = config;
     this.orchestrator = orchestrator;
@@ -282,37 +284,37 @@ class AutonomyEnforcer extends EventEmitter {
     const { limits } = this.config;
 
     // Check token limit
-    if (limits.maxTokensPerTask && usage.totalTokens > limits.maxTokensPerTask) {
+    if (limits.maxTokens && usage.totalTokens > limits.maxTokens) {
       return {
         exceeded: true,
         limitType: 'tokens',
         currentValue: usage.totalTokens,
-        limitValue: limits.maxTokensPerTask,
-        message: `Token limit exceeded: ${usage.totalTokens} > ${limits.maxTokensPerTask}`,
+        limitValue: limits.maxTokens,
+        message: `Token limit exceeded: ${usage.totalTokens} > ${limits.maxTokens}`,
       };
     }
 
     // Check cost limit
-    if (limits.maxCostPerTask && usage.estimatedCost > limits.maxCostPerTask) {
+    if (limits.maxCost && usage.estimatedCost > limits.maxCost) {
       return {
         exceeded: true,
         limitType: 'cost',
         currentValue: usage.estimatedCost,
-        limitValue: limits.maxCostPerTask,
-        message: `Cost limit exceeded: $${usage.estimatedCost.toFixed(2)} > $${limits.maxCostPerTask.toFixed(2)}`,
+        limitValue: limits.maxCost,
+        message: `Cost limit exceeded: $${usage.estimatedCost.toFixed(2)} > $${limits.maxCost.toFixed(2)}`,
       };
     }
 
     // Check time limit
-    if (limits.maxTimePerTaskMs && startTime) {
+    if (limits.maxTimeMs && startTime) {
       const elapsed = Date.now() - startTime.getTime();
-      if (elapsed > limits.maxTimePerTaskMs) {
+      if (elapsed > limits.maxTimeMs) {
         return {
           exceeded: true,
           limitType: 'time',
           currentValue: elapsed,
-          limitValue: limits.maxTimePerTaskMs,
-          message: `Time limit exceeded: ${Math.round(elapsed / 1000)}s > ${Math.round(limits.maxTimePerTaskMs / 1000)}s`,
+          limitValue: limits.maxTimeMs,
+          message: `Time limit exceeded: ${Math.round(elapsed / 1000)}s > ${Math.round(limits.maxTimeMs / 1000)}s`,
         };
       }
     }
@@ -326,19 +328,42 @@ class AutonomyEnforcer extends EventEmitter {
    * Record resource usage for a task
    */
   recordUsage(taskId: string, usage: Partial<TaskUsage>): void {
+    if (!usage || typeof usage !== 'object') {
+      return;
+    }
+
     const existingUsage = this.taskUsageMap.get(taskId) || {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
     };
 
-    const newUsage = {
-      inputTokens: existingUsage.inputTokens + (usage.inputTokens || 0),
-      outputTokens: existingUsage.outputTokens + (usage.outputTokens || 0),
-      totalTokens: existingUsage.totalTokens + (usage.totalTokens || 0),
-      estimatedCost: existingUsage.estimatedCost + (usage.estimatedCost || 0),
-    };
+    const incomingInput = usage.inputTokens ?? 0;
+    const incomingOutput = usage.outputTokens ?? 0;
+    const incomingTotal = usage.totalTokens ?? (incomingInput + incomingOutput);
+    const isTotalUpdate = incomingTotal >= existingUsage.totalTokens &&
+      (usage.totalTokens !== undefined || incomingInput >= existingUsage.inputTokens || incomingOutput >= existingUsage.outputTokens);
+
+    const newUsage: TaskUsage = isTotalUpdate
+      ? {
+          inputTokens: usage.inputTokens ?? existingUsage.inputTokens,
+          outputTokens: usage.outputTokens ?? existingUsage.outputTokens,
+          totalTokens: usage.totalTokens ?? (incomingInput + incomingOutput),
+          estimatedCost: usage.estimatedCost ?? existingUsage.estimatedCost,
+          totalCostCents: usage.totalCostCents ?? existingUsage.totalCostCents,
+          executionTimeMs: usage.executionTimeMs ?? existingUsage.executionTimeMs,
+        }
+      : {
+          inputTokens: existingUsage.inputTokens + incomingInput,
+          outputTokens: existingUsage.outputTokens + incomingOutput,
+          totalTokens: existingUsage.totalTokens + incomingTotal,
+          estimatedCost: existingUsage.estimatedCost + (usage.estimatedCost || 0),
+          totalCostCents: existingUsage.totalCostCents + (usage.totalCostCents || 0),
+          executionTimeMs: existingUsage.executionTimeMs + (usage.executionTimeMs || 0),
+        };
 
     this.taskUsageMap.set(taskId, newUsage);
 
@@ -348,10 +373,12 @@ class AutonomyEnforcer extends EventEmitter {
     // Check for limit violations
     const limitCheck = this.checkLimits(taskId);
     if (limitCheck.exceeded) {
-      const task = this.orchestrator.store.getTask(taskId);
-      if (task) {
-        this.emit('limit:exceeded', limitCheck, task);
-      }
+      // Fetch task async and emit event
+      this.orchestrator.store.getTask(taskId).then(task => {
+        if (task) {
+          this.emit('limit:exceeded', limitCheck, task);
+        }
+      });
     }
   }
 
@@ -363,14 +390,15 @@ class AutonomyEnforcer extends EventEmitter {
     const { limits, warningThresholds } = this.config;
 
     // Token warning
-    if (limits.maxTokensPerTask && usage.totalTokens > 0) {
-      const tokenPercent = (usage.totalTokens / limits.maxTokensPerTask) * 100;
+    if (limits.maxTokens && usage.totalTokens > 0) {
+      const tokenPercent = (usage.totalTokens / limits.maxTokens) * 100;
       if (tokenPercent >= warningThresholds.tokenWarningPercent) {
         const warning: WarningResult = {
+          taskId,
           type: 'tokens',
           threshold: warningThresholds.tokenWarningPercent,
           currentValue: usage.totalTokens,
-          limitValue: limits.maxTokensPerTask,
+          limitValue: limits.maxTokens,
           message: `Token usage at ${tokenPercent.toFixed(1)}% of limit`,
         };
         warnings.push(warning);
@@ -379,14 +407,15 @@ class AutonomyEnforcer extends EventEmitter {
     }
 
     // Cost warning
-    if (limits.maxCostPerTask && usage.estimatedCost > 0) {
-      const costPercent = (usage.estimatedCost / limits.maxCostPerTask) * 100;
+    if (limits.maxCost && usage.estimatedCost > 0) {
+      const costPercent = (usage.estimatedCost / limits.maxCost) * 100;
       if (costPercent >= warningThresholds.costWarningPercent) {
         const warning: WarningResult = {
+          taskId,
           type: 'cost',
           threshold: warningThresholds.costWarningPercent,
           currentValue: usage.estimatedCost,
-          limitValue: limits.maxCostPerTask,
+          limitValue: limits.maxCost,
           message: `Cost usage at ${costPercent.toFixed(1)}% of limit`,
         };
         warnings.push(warning);
@@ -396,15 +425,16 @@ class AutonomyEnforcer extends EventEmitter {
 
     // Time warning
     const startTime = this.taskStartTimes.get(taskId);
-    if (limits.maxTimePerTaskMs && startTime) {
+    if (limits.maxTimeMs && startTime) {
       const elapsed = Date.now() - startTime.getTime();
-      const timePercent = (elapsed / limits.maxTimePerTaskMs) * 100;
+      const timePercent = (elapsed / limits.maxTimeMs) * 100;
       if (timePercent >= warningThresholds.timeWarningPercent) {
         const warning: WarningResult = {
+          taskId,
           type: 'time',
           threshold: warningThresholds.timeWarningPercent,
           currentValue: elapsed,
-          limitValue: limits.maxTimePerTaskMs,
+          limitValue: limits.maxTimeMs,
           message: `Time usage at ${timePercent.toFixed(1)}% of limit`,
         };
         warnings.push(warning);
@@ -425,6 +455,8 @@ class AutonomyEnforcer extends EventEmitter {
       outputTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
     });
   }
 
@@ -481,4 +513,3 @@ class AutonomyEnforcer extends EventEmitter {
 }
 
 export { AutonomyEnforcer };
-export type { ActionMetadata };

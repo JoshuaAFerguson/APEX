@@ -47,16 +47,16 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(result.status).toBe('allow');
       expect(result.enforcementMode).toBe('warn');
       expect(result.violations.length).toBeGreaterThan(0);
-      expect(result.violations[0].severity).toBe('warning');
+      expect(result.violations[0].severity).toBe('medium');
       expect(result.violations[0].message).toContain('Approval required');
       expect(typeof result.durationMs).toBe('number');
       expect(result.checkedAt).toBeInstanceOf(Date);
     });
 
-    it('should block only on critical/error violations in warn mode', async () => {
+    it('should block only on high/critical violations in warn mode', async () => {
       const context: PolicyCheckContext = {
         action: 'file_read',
-        resource: 'src/secrets/api-key.txt', // This should be blocked (error severity)
+        resource: 'src/secrets/api-key.txt', // This should be blocked (high severity)
         agentId: 'developer',
         taskId: 'task-error-test',
       };
@@ -69,7 +69,7 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(result.enforcementMode).toBe('warn');
       expect(result.violations.length).toBeGreaterThan(0);
       expect(result.violations[0].blocking).toBe(true);
-      expect(result.violations[0].severity).toBe('error');
+      expect(result.violations[0].severity).toBe('high');
     });
   });
 
@@ -100,8 +100,8 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
   });
 
   describe('strict mode comprehensive testing', () => {
-    it('should block on any violation including warnings in strict mode', async () => {
-      // Test with warning-level violation (sensitive path)
+    it('should block on any violation including medium severity in strict mode', async () => {
+      // Test with medium severity violation (sensitive path)
       const sensitiveContext: PolicyCheckContext = {
         action: 'file_write',
         resource: 'config/app.json',
@@ -116,10 +116,10 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(strictResult.status).toBe('deny');
       expect(strictResult.enforcementMode).toBe('strict');
       expect(strictResult.violations.length).toBeGreaterThan(0);
-      expect(strictResult.violations[0].severity).toBe('warning');
+      expect(strictResult.violations[0].severity).toBe('medium');
     });
 
-    it('should block on error violations in strict mode', async () => {
+    it('should block on high severity violations in strict mode', async () => {
       const blockedContext: PolicyCheckContext = {
         action: 'file_read',
         resource: 'src/secrets/credentials.env',
@@ -134,7 +134,7 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(strictResult.status).toBe('deny');
       expect(strictResult.enforcementMode).toBe('strict');
       expect(strictResult.violations.length).toBeGreaterThan(0);
-      expect(strictResult.violations[0].severity).toBe('error');
+      expect(strictResult.violations[0].severity).toBe('high');
     });
   });
 
@@ -156,7 +156,7 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(auditResult.enforcementMode).toBe('audit');
       // Violations should still be recorded for auditing purposes
       expect(auditResult.violations.length).toBeGreaterThan(0);
-      expect(auditResult.violations[0].severity).toBe('error');
+      expect(auditResult.violations[0].severity).toBe('high');
       expect(auditResult.violations[0].blocking).toBe(true);
     });
 
@@ -198,9 +198,9 @@ describe('PolicyEngine Edge Cases - Enforcement Modes', () => {
       expect(overrideResult.enforcementMode).toBe('strict');
 
       // The behavior should be different based on enforcement mode
-      if (defaultResult.violations.length > 0 && defaultResult.violations[0].severity === 'warning') {
-        expect(defaultResult.status).toBe('allow'); // warn mode allows warnings
-        expect(overrideResult.status).toBe('deny'); // strict mode blocks warnings
+      if (defaultResult.violations.length > 0 && defaultResult.violations[0].severity === 'medium') {
+        expect(defaultResult.status).toBe('allow'); // warn mode allows medium severity
+        expect(overrideResult.status).toBe('deny'); // strict mode blocks medium severity
       }
     });
   });

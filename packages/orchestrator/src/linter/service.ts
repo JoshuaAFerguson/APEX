@@ -1387,7 +1387,7 @@ export class LinterService extends EventEmitter<LinterServiceEvents> {
    */
   private forwardPluginEvents(plugin: ILinterPlugin, linterId: string): void {
     // Forward lint:issue events
-    plugin.on('lint:issue', (event) => {
+    plugin.on('lint:issue', (event: LintIssueEvent) => {
       this.emit('linter:issue', {
         executionId: 'unknown', // Will be overwritten by actual execution
         linterId,

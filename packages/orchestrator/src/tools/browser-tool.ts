@@ -2,8 +2,8 @@
  * BrowserTool Implementation
  *
  * Provides browser automation capabilities with comprehensive permission integration.
- * This is a stub implementation that establishes the permission framework and
- * operation interfaces. Actual browser automation will be added in future versions.
+ * This implementation uses Playwright for real browser automation while retaining
+ * strict permission checks and safety controls.
  *
  * Features:
  * - Complete permission integration with PermissionManager
@@ -16,6 +16,10 @@
 
 import { PermissionManager } from '../permission-manager';
 import { PermissionLevel, ToolPermissionResult } from '@apexcli/core';
+import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
+import * as fs from 'fs';
+import pixelmatch from 'pixelmatch';
+import { PNG } from 'pngjs';
 
 /**
  * Supported browser operations
@@ -25,6 +29,7 @@ export type BrowserOperation =
   | 'click'
   | 'type'
   | 'screenshot'
+  | 'compareScreenshot'
   | 'evaluate'
   | 'submit'
   | 'waitForSelector'
@@ -40,6 +45,12 @@ export type BrowserOperation =
 export interface BrowserToolOptions {
   /** Optional permission manager for dependency injection */
   permissionManager?: PermissionManager;
+  /** Optional backend selection */
+  backend?: 'playwright' | 'puppeteer';
+  /** Optional browser engine override */
+  engine?: 'chromium' | 'firefox' | 'webkit';
+  /** Override whether to run headless */
+  headless?: boolean;
 }
 
 /**
@@ -91,6 +102,26 @@ export interface BrowserScreenshotParams {
   /** Whether to capture full page or just viewport */
   fullPage?: boolean;
   /** Optional element selector to screenshot specific element */
+  selector?: string;
+  /** Image format */
+  format?: 'png' | 'jpeg';
+  /** JPEG quality (0-100) */
+  quality?: number;
+}
+
+/**
+ * Parameters for visual regression comparison
+ */
+export interface BrowserCompareScreenshotParams {
+  /** Baseline screenshot file path */
+  baselinePath: string;
+  /** Optional diff output path */
+  diffPath?: string;
+  /** Threshold for acceptable difference ratio (0-1) */
+  threshold?: number;
+  /** Whether to capture full page or just viewport */
+  fullPage?: boolean;
+  /** Optional element selector to capture specific element */
   selector?: string;
   /** Image format */
   format?: 'png' | 'jpeg';
@@ -184,6 +215,7 @@ export type BrowserParams =
   | { operation: 'click'; params: BrowserClickParams }
   | { operation: 'type'; params: BrowserTypeParams }
   | { operation: 'screenshot'; params: BrowserScreenshotParams }
+  | { operation: 'compareScreenshot'; params: BrowserCompareScreenshotParams }
   | { operation: 'evaluate'; params: BrowserEvaluateParams }
   | { operation: 'submit'; params: BrowserSubmitParams }
   | { operation: 'waitForSelector'; params: BrowserWaitForSelectorParams }
@@ -221,7 +253,29 @@ export interface BrowserResult {
     permissionLevel?: PermissionLevel;
     /** Target selector or URL for the operation */
     target?: string;
+    /** Captured console messages during the operation */
+    consoleMessages?: BrowserConsoleMessage[];
+    /** Captured runtime errors during the operation */
+    runtimeErrors?: BrowserRuntimeError[];
   };
+}
+
+/**
+ * Console message captured from the browser runtime
+ */
+export interface BrowserConsoleMessage {
+  type: string;
+  text: string;
+  timestamp: Date;
+}
+
+/**
+ * Runtime error captured from the browser page
+ */
+export interface BrowserRuntimeError {
+  message: string;
+  stack?: string;
+  timestamp: Date;
 }
 
 /**
@@ -252,6 +306,12 @@ export interface BrowserToolConfig {
   allowScreenshots?: boolean;
   /** Whether to block popups/new windows */
   blockPopups?: boolean;
+  /** Browser engine to use */
+  engine?: 'chromium' | 'firefox' | 'webkit';
+  /** Browser automation backend */
+  backend?: 'playwright' | 'puppeteer';
+  /** Whether to run headless */
+  headless?: boolean;
   /** User agent override */
   userAgent?: string;
   /** Viewport configuration */
@@ -279,9 +339,24 @@ const DANGEROUS_OPERATIONS = {
  */
 export class BrowserTool {
   private permissionManager?: PermissionManager;
+  private browser?: Browser;
+  private context?: BrowserContext;
+  private page?: Page;
+  private puppeteerBrowser?: any;
+  private puppeteerPage?: any;
+  private consoleMessages: BrowserConsoleMessage[] = [];
+  private runtimeErrors: BrowserRuntimeError[] = [];
+  private engine: 'chromium' | 'firefox' | 'webkit';
+  private headless?: boolean;
+  private backend: 'playwright' | 'puppeteer';
+  private activeBackend: 'playwright' | 'puppeteer';
 
   constructor(options?: BrowserToolOptions) {
     this.permissionManager = options?.permissionManager;
+    this.engine = options?.engine || 'chromium';
+    this.headless = options?.headless;
+    this.backend = options?.backend || 'playwright';
+    this.activeBackend = this.backend;
   }
 
   /**
@@ -319,6 +394,8 @@ export class BrowserTool {
   async execute(params: BrowserParams): Promise<BrowserResult> {
     const startTime = Date.now();
     const { operation } = params;
+    this.consoleMessages = [];
+    this.runtimeErrors = [];
 
     try {
       // Build permission scope and target for this operation
@@ -466,8 +543,192 @@ export class BrowserTool {
    * Get current page URL (stub implementation)
    */
   private getCurrentUrl(): string {
-    // In real implementation, this would get the current browser page URL
-    return 'about:blank';
+    if (this.activeBackend === 'puppeteer') {
+      return this.puppeteerPage?.url() || 'about:blank';
+    }
+    return this.page?.url() || 'about:blank';
+  }
+
+  /**
+   * Ensure a browser page is available for operations
+   */
+  private async ensurePage(config?: BrowserToolConfig): Promise<{ backend: 'playwright' | 'puppeteer'; page: any }> {
+    const backend = config?.backend || this.backend;
+    this.activeBackend = backend;
+
+    if (backend === 'puppeteer') {
+      return { backend, page: await this.ensurePuppeteerPage(config) };
+    }
+
+    return { backend, page: await this.ensurePlaywrightPage(config) };
+  }
+
+  private async ensurePlaywrightPage(config?: BrowserToolConfig): Promise<Page> {
+    if (this.page) {
+      return this.page;
+    }
+
+    const engine = config?.engine || this.engine;
+    const headless = config?.headless ?? this.headless ?? true;
+
+    const browserType = engine === 'firefox' ? firefox : engine === 'webkit' ? webkit : chromium;
+    this.browser = await browserType.launch({ headless });
+
+    this.context = await this.browser.newContext({
+      userAgent: config?.userAgent,
+      viewport: config?.viewport,
+      acceptDownloads: config?.allowDownloads ?? true,
+    });
+
+    if (config?.blockPopups) {
+      this.context.on('page', async (popup) => {
+        try {
+          await popup.close();
+        } catch {
+          // Ignore popup close errors
+        }
+      });
+    }
+
+    this.page = await this.context.newPage();
+    this.setupPageListeners(this.page);
+    return this.page;
+  }
+
+  private async ensurePuppeteerPage(config?: BrowserToolConfig): Promise<any> {
+    if (this.puppeteerPage) {
+      return this.puppeteerPage;
+    }
+
+    const headless = config?.headless ?? this.headless ?? true;
+    const puppeteerModule = await this.loadPuppeteer();
+    this.puppeteerBrowser = await puppeteerModule.launch({ headless });
+    this.puppeteerPage = await this.puppeteerBrowser.newPage();
+
+    if (config?.viewport) {
+      await this.puppeteerPage.setViewport({
+        width: config.viewport.width,
+        height: config.viewport.height,
+      });
+    }
+
+    if (config?.userAgent) {
+      await this.puppeteerPage.setUserAgent(config.userAgent);
+    }
+
+    this.setupPuppeteerPageListeners(this.puppeteerPage);
+    return this.puppeteerPage;
+  }
+
+  private async loadPuppeteer(): Promise<any> {
+    try {
+      const module = await import('puppeteer');
+      return module.default ?? module;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Puppeteer backend requested but puppeteer is not installed: ${message}`);
+    }
+  }
+
+  private mapWaitUntil(
+    waitUntil: BrowserNavigateParams['waitUntil'] | undefined,
+    backend: 'playwright' | 'puppeteer'
+  ): string {
+    if (!waitUntil) {
+      return 'load';
+    }
+    if (backend === 'puppeteer' && waitUntil === 'networkidle') {
+      return 'networkidle0';
+    }
+    return waitUntil;
+  }
+
+  private getViewportSize(page: any, backend: 'playwright' | 'puppeteer'): { width: number; height: number } {
+    if (backend === 'puppeteer') {
+      const viewport = page.viewport?.();
+      return {
+        width: viewport?.width ?? 0,
+        height: viewport?.height ?? 0,
+      };
+    }
+
+    const viewport = page.viewportSize?.();
+    return {
+      width: viewport?.width ?? 0,
+      height: viewport?.height ?? 0,
+    };
+  }
+
+  private async captureElementScreenshot(
+    page: any,
+    backend: 'playwright' | 'puppeteer',
+    selector: string,
+    options: { path?: string; type?: 'png' | 'jpeg'; quality?: number }
+  ): Promise<Buffer> {
+    if (backend === 'puppeteer') {
+      const element = await page.$(selector);
+      if (!element) {
+        throw new Error(`Element not found for selector: ${selector}`);
+      }
+      return element.screenshot(options);
+    }
+
+    return page.locator(selector).screenshot(options);
+  }
+
+  /**
+   * Track console and runtime errors for visual regression and diagnostics
+   */
+  private setupPageListeners(page: Page): void {
+    page.on('console', (message) => {
+      const entry: BrowserConsoleMessage = {
+        type: message.type(),
+        text: message.text(),
+        timestamp: new Date(),
+      };
+      this.consoleMessages.push(entry);
+
+      if (message.type() === 'error') {
+        this.runtimeErrors.push({
+          message: message.text(),
+          timestamp: new Date(),
+        });
+      }
+    });
+
+    page.on('pageerror', (error) => {
+      this.runtimeErrors.push({
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date(),
+      });
+    });
+  }
+
+  private setupPuppeteerPageListeners(page: any): void {
+    page.on('console', (message: any) => {
+      const entry: BrowserConsoleMessage = {
+        type: message.type(),
+        text: message.text(),
+        timestamp: new Date(),
+      };
+      this.consoleMessages.push(entry);
+
+      if (message.type() === 'error') {
+        this.runtimeErrors.push({
+          message: message.text(),
+          timestamp: new Date(),
+        });
+      }
+    });
+
+    page.on('pageerror', (error: Error) => {
+      this.runtimeErrors.push({
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date(),
+      });
+    });
   }
 
   /**
@@ -588,172 +849,394 @@ export class BrowserTool {
    */
   private async executeOperation(params: BrowserParams): Promise<BrowserResult> {
     const { operation } = params;
-
-    // This is a stub implementation - in real implementation, this would
-    // interface with Playwright, Puppeteer, or Chrome DevTools Protocol
+    const config = this.permissionManager
+      ? (await this.permissionManager.getToolConfig('Browser') as BrowserToolConfig | null)
+      : null;
+    const { backend, page } = await this.ensurePage(config || undefined);
+    const isPuppeteer = backend === 'puppeteer';
+    const viewport = this.getViewportSize(page, backend);
 
     switch (operation) {
       case 'navigate': {
         const { url } = (params as { params: BrowserNavigateParams }).params;
+        const waitUntil = (params as { params: BrowserNavigateParams }).params.waitUntil;
+        const timeout = (params as { params: BrowserNavigateParams }).params.timeout || config?.pageLoadTimeout;
+        const response = await page.goto(url, {
+          waitUntil: this.mapWaitUntil(waitUntil, backend),
+          timeout,
+        });
+        const status = typeof response?.status === 'function' ? response.status() : response?.status;
         return {
           success: true,
           operation,
-          data: { url },
+          data: { url, status },
           metadata: {
             url,
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'click': {
         const { selector } = (params as { params: BrowserClickParams }).params;
+        await page.click(selector, {
+          button: (params as { params: BrowserClickParams }).params.button,
+          clickCount: (params as { params: BrowserClickParams }).params.clickCount,
+          delay: (params as { params: BrowserClickParams }).params.delay,
+        });
         return {
           success: true,
           operation,
           data: { clicked: selector },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'type': {
         const { selector, text } = (params as { params: BrowserTypeParams }).params;
+        const typeParams = (params as { params: BrowserTypeParams }).params;
+        if (typeParams.clearFirst) {
+          if (isPuppeteer) {
+            await page.evaluate((sel: string) => {
+              const doc = (globalThis as { document?: { querySelector?: (value: string) => { value?: string } | null } }).document;
+              const element = doc?.querySelector?.(sel) ?? null;
+              if (element) {
+                element.value = '';
+              }
+            }, selector);
+          } else {
+            await page.fill(selector, '');
+          }
+        }
+        if (typeParams.delay) {
+          await page.click(selector);
+          await page.type(selector, text, { delay: typeParams.delay });
+        } else if (isPuppeteer) {
+          await page.type(selector, text);
+        } else {
+          await page.fill(selector, text);
+        }
         return {
           success: true,
           operation,
           data: { typed: text, into: selector },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'screenshot': {
         const screenshotParams = (params as { params: BrowserScreenshotParams }).params;
+        const screenshotBuffer = screenshotParams.selector
+          ? await this.captureElementScreenshot(page, backend, screenshotParams.selector, {
+            path: screenshotParams.path,
+            type: screenshotParams.format,
+            quality: screenshotParams.quality,
+          })
+          : await page.screenshot({
+            path: screenshotParams.path,
+            fullPage: screenshotParams.fullPage,
+            type: screenshotParams.format,
+            quality: screenshotParams.quality,
+          });
         return {
           success: true,
           operation,
           data: {
-            width: 1280,
-            height: 720,
-            format: screenshotParams.format || 'png'
+            width: viewport.width,
+            height: viewport.height,
+            format: screenshotParams.format || 'png',
           },
-          screenshot: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', // Minimal 1x1 PNG
+          screenshot: screenshotParams.path
+            ? screenshotParams.path
+            : `data:image/${screenshotParams.format || 'png'};base64,${Buffer.from(screenshotBuffer).toString('base64')}`,
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
+          },
+        };
+      }
+
+      case 'compareScreenshot': {
+        const compareParams = (params as { params: BrowserCompareScreenshotParams }).params;
+        const currentBuffer = compareParams.selector
+          ? await this.captureElementScreenshot(page, backend, compareParams.selector, {
+            type: compareParams.format || 'png',
+            quality: compareParams.quality,
+          })
+          : await page.screenshot({
+            fullPage: compareParams.fullPage,
+            type: compareParams.format || 'png',
+            quality: compareParams.quality,
+          });
+
+        if (!fs.existsSync(compareParams.baselinePath)) {
+          return {
+            success: false,
+            operation,
+            error: `Baseline screenshot not found: ${compareParams.baselinePath}`,
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+            },
+          };
+        }
+
+        const baselineBuffer = fs.readFileSync(compareParams.baselinePath);
+        const baseline = PNG.sync.read(baselineBuffer);
+        const current = PNG.sync.read(currentBuffer);
+
+        if (baseline.width !== current.width || baseline.height !== current.height) {
+          return {
+            success: false,
+            operation,
+            error: `Screenshot size mismatch: baseline ${baseline.width}x${baseline.height} vs current ${current.width}x${current.height}`,
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+            },
+          };
+        }
+
+        const diff = new PNG({ width: baseline.width, height: baseline.height });
+        const diffPixels = pixelmatch(
+          baseline.data,
+          current.data,
+          diff.data,
+          baseline.width,
+          baseline.height,
+          { threshold: compareParams.threshold ?? 0.1 }
+        );
+        const totalPixels = baseline.width * baseline.height;
+        const diffRatio = totalPixels > 0 ? diffPixels / totalPixels : 0;
+
+        if (compareParams.diffPath) {
+          fs.writeFileSync(compareParams.diffPath, PNG.sync.write(diff));
+        }
+
+        return {
+          success: true,
+          operation,
+          data: {
+            diffPixels,
+            totalPixels,
+            diffRatio,
+            threshold: compareParams.threshold ?? 0.1,
+            match: diffRatio <= (compareParams.threshold ?? 0.1),
+            diffPath: compareParams.diffPath,
+          },
+          metadata: {
+            url: this.getCurrentUrl(),
+            title: await page.title(),
+            executionTime: 0,
+            permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'evaluate': {
         const { script } = (params as { params: BrowserEvaluateParams }).params;
+        const { args } = (params as { params: BrowserEvaluateParams }).params;
+        const result = await page.evaluate(
+          (payload: { snippet: string; args?: unknown[] }) => {
+            const { snippet, args: evalArgs } = payload;
+            const fn = new Function('args', `"use strict"; return (async () => { ${snippet} })();`);
+            return fn(evalArgs || []);
+          },
+          { snippet: script, args }
+        );
         return {
           success: true,
           operation,
-          data: { result: `[STUB] Executed: ${script.slice(0, 50)}...` },
+          data: { result },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'submit': {
         const { selector } = (params as { params: BrowserSubmitParams }).params;
+        const submitParams = (params as { params: BrowserSubmitParams }).params;
+        if (isPuppeteer) {
+          await page.$eval(selector, (form: any, validate: boolean) => {
+            const formElement = form as { reportValidity?: () => void; submit?: () => void };
+            if (validate && formElement.reportValidity) {
+              formElement.reportValidity();
+            }
+            formElement.submit?.();
+          }, submitParams.validate ?? false);
+        } else {
+          await page.locator(selector).evaluate((form: any, validate: boolean) => {
+            const formElement = form as { reportValidity?: () => void; submit?: () => void };
+            if (validate && formElement.reportValidity) {
+              formElement.reportValidity();
+            }
+            formElement.submit?.();
+          }, submitParams.validate ?? false);
+        }
         return {
           success: true,
           operation,
           data: { submitted: selector },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'waitForSelector': {
         const { selector } = (params as { params: BrowserWaitForSelectorParams }).params;
+        const waitParams = (params as { params: BrowserWaitForSelectorParams }).params;
+        if (isPuppeteer) {
+          await page.waitForSelector(selector, {
+            timeout: waitParams.timeout,
+            visible: waitParams.visible || undefined,
+          });
+        } else {
+          await page.waitForSelector(selector, {
+            timeout: waitParams.timeout,
+            state: waitParams.visible ? 'visible' : 'attached',
+          });
+        }
         return {
           success: true,
           operation,
           data: { found: selector },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'getAttribute': {
         const { selector, attribute } = (params as { params: BrowserGetAttributeParams }).params;
+        const value = isPuppeteer
+          ? await page.$eval(selector, (element: any, attr: string) => element.getAttribute(attr), attribute)
+          : await page.getAttribute(selector, attribute);
         return {
           success: true,
           operation,
-          data: { attribute, value: `[STUB] ${attribute} value` },
+          data: { attribute, value },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'getText': {
         const { selector } = (params as { params: BrowserGetTextParams }).params;
+        const text = isPuppeteer
+          ? await page.$eval(selector, (element: any) => element.textContent || '')
+          : await page.textContent(selector);
         return {
           success: true,
           operation,
-          data: { text: `[STUB] Text content from ${selector}` },
+          data: { text },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'getHtml': {
         const { selector } = (params as { params: BrowserGetHtmlParams }).params;
+        const html = selector
+          ? (isPuppeteer
+            ? await page.$eval(selector, (element: any) => element.innerHTML)
+            : await page.innerHTML(selector))
+          : await page.content();
         return {
           success: true,
           operation,
           data: {
-            html: selector
-              ? `<div data-selector="${selector}">[STUB] HTML content</div>`
-              : '<!DOCTYPE html><html><head><title>Stub</title></head><body>[STUB] Page HTML</body></html>'
+            html,
           },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'scroll': {
         const scrollParams = (params as { params: BrowserScrollParams }).params;
+        if (scrollParams.selector) {
+          if (isPuppeteer) {
+            await page.$eval(scrollParams.selector, (element: any) => element.scrollIntoView());
+          } else {
+            await page.locator(scrollParams.selector).scrollIntoViewIfNeeded();
+          }
+        } else {
+          await page.evaluate((payload: { x?: number; y?: number }) => {
+            const { x, y } = payload;
+            const scrollTo = (globalThis as { scrollTo?: (scrollX: number, scrollY: number) => void }).scrollTo;
+            scrollTo?.(x ?? 0, y ?? 0);
+          }, {
+            x: scrollParams.x,
+            y: scrollParams.y,
+          });
+        }
         return {
           success: true,
           operation,
@@ -762,24 +1245,29 @@ export class BrowserTool {
           },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }
 
       case 'hover': {
         const { selector } = (params as { params: BrowserHoverParams }).params;
+        await page.hover(selector);
         return {
           success: true,
           operation,
           data: { hovered: selector },
           metadata: {
             url: this.getCurrentUrl(),
-            title: 'Stub Page Title',
+            title: await page.title(),
             executionTime: 0,
             permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
           },
         };
       }

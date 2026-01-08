@@ -254,7 +254,7 @@ describe('PolicyEngine - Policy Checks', () => {
 
     const violation = result.violations[0];
     expect(violation.rule).toBe('approval-1');
-    expect(violation.severity).toBe('error'); // high urgency maps to error
+    expect(violation.severity).toBe('high'); // high urgency maps to high severity
   });
 
   it('should handle different enforcement modes correctly', async () => {
@@ -337,7 +337,7 @@ describe('PolicyEngine - Policy Checks', () => {
           id: expect.any(String),
           rule: expect.any(String),
           message: expect.any(String),
-          severity: expect.stringMatching(/^(info|warning|error|critical)$/),
+          severity: expect.stringMatching(/^(low|medium|high|critical)$/),
           blocking: expect.any(Boolean),
           policyType: expect.stringMatching(/^(path|approval|test)$/),
           timestamp: expect.any(Date),
@@ -487,11 +487,11 @@ describe('PolicyEngine - Rule Evaluation', () => {
   });
 
   it('should evaluate rules by severity correctly', () => {
-    const errorRules = engine.getRulesBySeverity('error');
-    expect(errorRules.every(rule => rule.severity === 'error')).toBe(true);
+    const errorRules = engine.getRulesBySeverity('high');
+    expect(errorRules.every(rule => rule.severity === 'high')).toBe(true);
 
-    const warningRules = engine.getRulesBySeverity('warning');
-    expect(warningRules.every(rule => rule.severity === 'warning')).toBe(true);
+    const warningRules = engine.getRulesBySeverity('medium');
+    expect(warningRules.every(rule => rule.severity === 'medium')).toBe(true);
   });
 
   it('should reload rules when configuration changes', () => {

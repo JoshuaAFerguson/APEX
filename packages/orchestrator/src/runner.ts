@@ -844,6 +844,8 @@ export class DaemonRunner {
           outputTokens: 0,
           totalTokens: 0,
           estimatedCost: 0,
+          totalCostCents: 0,
+          executionTimeMs: Date.now() - startTime,
         };
         this.usageManager!.trackTaskCompletion(taskId, estimatedUsage, true);
       })
@@ -858,6 +860,8 @@ export class DaemonRunner {
           outputTokens: 0,
           totalTokens: 0,
           estimatedCost: 0,
+          totalCostCents: 0,
+          executionTimeMs: Date.now() - startTime,
         };
         this.usageManager!.trackTaskCompletion(taskId, estimatedUsage, false);
       })

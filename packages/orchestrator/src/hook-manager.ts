@@ -15,9 +15,18 @@ import {
   BehaviorMode,
   BehaviorEventData,
 } from '@apexcli/core';
-import { TaskStore } from './store';
+import { TaskStore } from './store.js';
 
 const execAsync = promisify(exec);
+
+// Type guards for hook results
+function isPreHookResult(result: PreHookResult | PostHookResult | null | undefined): result is PreHookResult {
+  return result != null && 'action' in result;
+}
+
+function isPostHookResult(result: PreHookResult | PostHookResult | null | undefined): result is PostHookResult {
+  return result != null && !('action' in result);
+}
 
 export interface HookManagerEvents {
   'hook:pre:start': (event: HookExecutionStartEvent) => void;
@@ -28,7 +37,7 @@ export interface HookManagerEvents {
 }
 
 export interface HookExecutionStartEvent {
-  taskId: string;
+  taskId?: string;
   hookName: string;
   hookType: 'pre' | 'post';
   toolName: string;
@@ -36,7 +45,7 @@ export interface HookExecutionStartEvent {
 }
 
 export interface HookExecutionCompleteEvent {
-  taskId: string;
+  taskId?: string;
   hookName: string;
   hookType: 'pre' | 'post';
   toolName: string;
@@ -67,6 +76,16 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   private toolHookConfig: ToolHookConfig = { pre: [], post: [], enabled: true, defaultTimeoutMs: 30000 };
   private projectPath: string;
   private store: TaskStore;
+  private async addLogIfTask(
+    taskId: string | undefined,
+    log: Parameters<TaskStore['addLog']>[1]
+  ): Promise<void> {
+    if (!taskId) {
+      return;
+    }
+
+    await this.store.addLog(taskId, log);
+  }
 
   constructor(
     projectPath: string,
@@ -118,17 +137,19 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           toolName: context.toolName,
           duration,
           success: true,
-          result,
+          result: result ?? undefined,
           timestamp: endTime,
         });
 
-        // Handle hook results
-        if (result && result.action === 'cancel') {
-          await this.store.addLog(context.taskId, {
-            level: 'info',
-            message: `Pre-hook "${hook.name}" cancelled tool execution: ${result.reason || 'No reason provided'}`,
-            metadata: { hook: hook.name, tool: context.toolName, action: 'cancel' },
-          });
+        // Handle hook results - use type guard for PreHookResult
+        if (isPreHookResult(result) && result.action === 'cancel') {
+          if (context.taskId) {
+            await this.addLogIfTask(context.taskId, {
+              level: 'info',
+              message: `Pre-hook "${hook.name}" cancelled tool execution: ${result.reason || 'No reason provided'}`,
+              metadata: { hook: hook.name, tool: context.toolName, action: 'cancel' },
+            });
+          }
 
           return {
             success: true,
@@ -139,12 +160,14 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           };
         }
 
-        if (result && result.action === 'modify' && result.modifiedArguments) {
-          await this.store.addLog(context.taskId, {
-            level: 'info',
-            message: `Pre-hook "${hook.name}" modified tool arguments`,
-            metadata: { hook: hook.name, tool: context.toolName, action: 'modify' },
-          });
+        if (isPreHookResult(result) && result.action === 'modify' && result.modifiedArguments) {
+          if (context.taskId) {
+            await this.addLogIfTask(context.taskId, {
+              level: 'info',
+              message: `Pre-hook "${hook.name}" modified tool arguments`,
+              metadata: { hook: hook.name, tool: context.toolName, action: 'modify' },
+            });
+          }
 
           return {
             success: true,
@@ -170,7 +193,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           timestamp: endTime,
         });
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'error',
           message: `Pre-hook "${hook.name}" failed: ${errorMessage}`,
           metadata: { hook: hook.name, tool: context.toolName, error: errorMessage },
@@ -229,12 +252,12 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           toolName: context.toolName,
           duration,
           success: true,
-          result,
+          result: result ?? undefined,
           timestamp: endTime,
         });
 
         // Handle behavior modes if specified in the hook result
-        if (result?.behaviorMode) {
+        if (isPostHookResult(result) && result.behaviorMode) {
           const behaviorHandlingResult = await this.handleBehaviorMode(
             result.behaviorMode,
             context,
@@ -255,7 +278,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           }
         }
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'debug',
           message: `Post-hook "${hook.name}" executed successfully`,
           metadata: { hook: hook.name, tool: context.toolName },
@@ -278,7 +301,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
           timestamp: endTime,
         });
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'error',
           message: `Post-hook "${hook.name}" failed: ${errorMessage}`,
           metadata: { hook: hook.name, tool: context.toolName, error: errorMessage },
@@ -327,7 +350,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
         eventData.modifiedOutput = toolResult;
         this.emit('hook:behavior:triggered', eventData);
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'warn',
           message: `Behavior mode 'warn' triggered by hook "${hook.name}": ${reason}`,
           metadata: {
@@ -348,7 +371,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
         // Emit event and block output with error
         this.emit('hook:behavior:triggered', eventData);
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'error',
           message: `Behavior mode 'block' triggered by hook "${hook.name}": ${reason}`,
           metadata: {
@@ -377,7 +400,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
         eventData.modifiedOutput = redactedOutput;
         this.emit('hook:behavior:triggered', eventData);
 
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'info',
           message: `Behavior mode 'redact' triggered by hook "${hook.name}": ${reason}`,
           metadata: {
@@ -537,7 +560,7 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
 
       // Log stderr if present
       if (stderr.trim()) {
-        await this.store.addLog(context.taskId, {
+        await this.addLogIfTask(context.taskId, {
           level: 'warn',
           message: `Hook "${hook.name}" stderr: ${stderr}`,
           metadata: { hook: hook.name, tool: context.toolName },

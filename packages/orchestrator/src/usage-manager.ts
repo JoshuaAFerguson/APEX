@@ -127,6 +127,8 @@ export class UsageManager extends EventEmitter<UsageManagerEvents> {
       outputTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
     });
 
     // Update peak concurrent tasks

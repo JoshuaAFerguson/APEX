@@ -178,6 +178,18 @@ export class PermissionManager {
   }
 
   /**
+   * Set tool-specific configuration for the current session.
+   *
+   * @param tool The tool name to set configuration for
+   * @param config Tool configuration to apply (null clears the override)
+   * @param scope Optional scope to associate with this config
+   */
+  setToolConfig(tool: string, config: ToolPermissionConfig | null, scope?: string): void {
+    const cacheKey = this.generateToolConfigCacheKey(tool, scope);
+    this.sessionToolConfigCache.set(cacheKey, config);
+  }
+
+  /**
    * Validate directory access by combining tool-specific configuration with path validation
    *
    * This method checks both session-level directory access overrides and stored

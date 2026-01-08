@@ -540,7 +540,8 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
     const mode = allowedPaths.mode ?? 'allowlist';
     const allowPatterns = allowedPaths.allow ?? [];
     const blockPatterns = allowedPaths.block ?? [];
-    const sensitivePatterns = allowedPaths.sensitivePatterns ?? [];
+    const legacySensitivePatterns = (allowedPaths as AllowedPathsConfig & { sensitive?: string[] }).sensitive ?? [];
+    const sensitivePatterns = allowedPaths.sensitivePatterns ?? legacySensitivePatterns;
 
     // Check sensitive patterns first (for flagging, not blocking)
     const sensitiveMatch = this.matchesPattern(normalizedPath, sensitivePatterns);
@@ -1029,6 +1030,7 @@ export class PolicyEnforcer extends EventEmitter<PolicyEnforcerEvents> {
     // For now, if we can't parse it, return false for safety
     return false;
   }
+
 
   // ============================================================================
   // Task Start Policy Checking

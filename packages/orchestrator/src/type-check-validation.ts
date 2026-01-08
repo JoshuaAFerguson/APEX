@@ -17,10 +17,20 @@ function validateTypes() {
 
   // Test ApprovalResponse type usage
   const response: ApprovalResponse = {
-    requestId: 'test',
+    requestId: 'test-request',
     taskId: 'test-task',
     response: 'approved',
-    approver: 'test-user'
+    message: 'approved for testing',
+    approvalId: 'approval-1',
+    gateName: 'test-gate',
+    action: 'approve',
+    approver: 'test-user',
+    comment: 'LGTM',
+    timestamp: new Date(),
+    requestedAt: new Date(),
+    approvalsReceived: 1,
+    approvalsRequired: 1,
+    resolved: true,
   };
 
   return { respondMethod, waitMethod, response };

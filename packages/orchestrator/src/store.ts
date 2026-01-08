@@ -43,12 +43,21 @@ import {
   AuditLogEntry,
   AuditEventType,
   AuditSeverity,
+  MCPMarketplaceEntry,
+  MCPServerConfig,
 } from '@apexcli/core';
 
 export class TaskStore {
   private db!: Database.Database;
   private dbPath: string;
   private projectPath: string;
+
+  /**
+   * Get the database instance for internal use by related stores
+   */
+  getDatabase(): Database.Database {
+    return this.db;
+  }
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
@@ -163,6 +172,37 @@ export class TaskStore {
       `);
     } catch {
       // Table might already exist
+    }
+
+    // Create MCP marketplace cache and server registry tables (v0.5.0 MCP support)
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS mcp_marketplace (
+          name TEXT PRIMARY KEY,
+          description TEXT,
+          version TEXT,
+          author TEXT,
+          homepage TEXT,
+          repository TEXT,
+          install_command TEXT,
+          server_config TEXT NOT NULL,
+          capabilities TEXT,
+          verified INTEGER DEFAULT 0,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+          name TEXT PRIMARY KEY,
+          config TEXT NOT NULL,
+          installed_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mcp_marketplace_verified ON mcp_marketplace(verified);
+        CREATE INDEX IF NOT EXISTS idx_mcp_servers_updated_at ON mcp_servers(updated_at);
+      `);
+    } catch {
+      // Tables might already exist
     }
 
     // Add extended permission columns to existing permissions table (v0.5.0 migration)
@@ -751,6 +791,8 @@ export class TaskStore {
         outputTokens: 0,
         totalTokens: 0,
         estimatedCost: 0,
+        totalCostCents: 0,
+        executionTimeMs: 0,
       },
       logs: [],
       artifacts: [],
@@ -1684,6 +1726,8 @@ export class TaskStore {
         outputTokens: row.usage_output_tokens,
         totalTokens: row.usage_total_tokens,
         estimatedCost: row.usage_estimated_cost,
+        totalCostCents: Math.round(row.usage_estimated_cost * 100),
+        executionTimeMs: 0, // Not tracked in legacy schema
       },
       logs,
       artifacts,
@@ -3147,6 +3191,725 @@ export class TaskStore {
     return result.changes;
   }
 
+  // ============================================================================
+  // Fix Attempt Tracking Methods (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Add a fix attempt record to the database
+   */
+  async addFixAttempt(taskId: string, attempt: FixAttempt): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO fix_attempts (
+        id, task_id, attempt_number, error_hash, error_message, error_category,
+        error_file_path, error_line, error_column, error_code,
+        started_at, completed_at, approach, agent, stage,
+        before_state, after_state, result_success, result_resolved,
+        result_reason, result_new_errors, delay_applied_ms, metadata
+      ) VALUES (
+        @id, @taskId, @attemptNumber, @errorHash, @errorMessage, @errorCategory,
+        @errorFilePath, @errorLine, @errorColumn, @errorCode,
+        @startedAt, @completedAt, @approach, @agent, @stage,
+        @beforeState, @afterState, @resultSuccess, @resultResolved,
+        @resultReason, @resultNewErrors, @delayAppliedMs, @metadata
+      )
+    `);
+
+    stmt.run({
+      id: attempt.id,
+      taskId: attempt.taskId,
+      attemptNumber: attempt.attemptNumber,
+      errorHash: attempt.error.hash,
+      errorMessage: attempt.error.message,
+      errorCategory: attempt.error.category,
+      errorFilePath: attempt.error.filePath ?? null,
+      errorLine: attempt.error.line ?? null,
+      errorColumn: attempt.error.column ?? null,
+      errorCode: attempt.error.code ?? null,
+      startedAt: attempt.startedAt.toISOString(),
+      completedAt: attempt.completedAt?.toISOString() ?? null,
+      approach: attempt.approach,
+      agent: attempt.agent ?? null,
+      stage: attempt.stage ?? null,
+      beforeState: attempt.beforeState ? JSON.stringify(attempt.beforeState) : null,
+      afterState: attempt.afterState ? JSON.stringify(attempt.afterState) : null,
+      resultSuccess: attempt.result.success ? 1 : 0,
+      resultResolved: attempt.result.resolved ? 1 : 0,
+      resultReason: attempt.result.reason ?? null,
+      resultNewErrors: attempt.result.newErrors ? JSON.stringify(attempt.result.newErrors) : null,
+      delayAppliedMs: attempt.delayAppliedMs ?? null,
+      metadata: attempt.metadata ? JSON.stringify(attempt.metadata) : null,
+    });
+  }
+
+  /**
+   * Get fix attempt history for a task
+   */
+  async getFixAttemptHistory(taskId: string): Promise<FixAttemptHistory> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM fix_attempts
+      WHERE task_id = ?
+      ORDER BY started_at ASC
+    `);
+    const rows = stmt.all(taskId) as FixAttemptRow[];
+
+    const entries: FixAttempt[] = rows.map(row => this.rowToFixAttempt(row));
+
+    // Build error attempt counts
+    const errorAttemptCounts: Record<string, number> = {};
+    for (const entry of entries) {
+      errorAttemptCounts[entry.error.hash] =
+        (errorAttemptCounts[entry.error.hash] ?? 0) + 1;
+    }
+
+    return {
+      entries,
+      totalAttempts: entries.length,
+      resolvedCount: entries.filter(e => e.result.resolved).length,
+      failedCount: entries.filter(e => !e.result.resolved).length,
+      lastAttemptAt: entries.length > 0 ? entries[entries.length - 1].startedAt : undefined,
+      errorAttemptCounts,
+    };
+  }
+
+  /**
+   * Clear all fix attempts for a task
+   */
+  async clearFixAttempts(taskId: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM fix_attempts WHERE task_id = ?');
+    stmt.run(taskId);
+  }
+
+  private rowToFixAttempt(row: FixAttemptRow): FixAttempt {
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      attemptNumber: row.attempt_number,
+      error: {
+        hash: row.error_hash,
+        message: row.error_message,
+        category: row.error_category,
+        filePath: row.error_file_path ?? undefined,
+        line: row.error_line ?? undefined,
+        column: row.error_column ?? undefined,
+        code: row.error_code ?? undefined,
+      },
+      startedAt: new Date(row.started_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      approach: row.approach,
+      agent: row.agent ?? undefined,
+      stage: row.stage ?? undefined,
+      beforeState: row.before_state ? JSON.parse(row.before_state) : undefined,
+      afterState: row.after_state ? JSON.parse(row.after_state) : undefined,
+      result: {
+        success: row.result_success === 1,
+        resolved: row.result_resolved === 1,
+        reason: row.result_reason ?? undefined,
+        newErrors: row.result_new_errors ? JSON.parse(row.result_new_errors) : undefined,
+      },
+      delayAppliedMs: row.delay_applied_ms ?? undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    };
+  }
+
+  /**
+   * Add an audit log entry
+   */
+  async addAuditLog(entry: AuditLogEntry): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO audit_logs (
+        id, task_id, event_type, severity, timestamp, actor, message,
+        stage, agent, metadata, previous_state, new_state, duration_ms,
+        success, error, correlation_id, session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      entry.id,
+      entry.taskId || null,
+      entry.eventType,
+      entry.severity,
+      entry.timestamp.toISOString(),
+      entry.actor,
+      entry.message,
+      entry.stage || null,
+      entry.agent || null,
+      entry.metadata ? JSON.stringify(entry.metadata) : null,
+      entry.previousState || null,
+      entry.newState || null,
+      entry.durationMs || null,
+      entry.success ? 1 : 0,
+      entry.error || null,
+      entry.correlationId || null,
+      entry.sessionId || null
+    );
+  }
+
+  /**
+   * Get audit logs for a task
+   */
+  async getAuditLogs(taskId: string, options?: {
+    eventType?: AuditEventType;
+    severity?: AuditSeverity;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE task_id = ?';
+    const params: any[] = [taskId];
+
+    if (options?.eventType) {
+      query += ' AND event_type = ?';
+      params.push(options.eventType);
+    }
+
+    if (options?.severity) {
+      query += ' AND severity = ?';
+      params.push(options.severity);
+    }
+
+    if (options?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Get all audit logs with optional filters
+   */
+  async queryAuditLogs(options?: {
+    taskId?: string;
+    eventType?: AuditEventType | AuditEventType[];
+    severity?: AuditSeverity | AuditSeverity[];
+    actor?: string;
+    correlationId?: string;
+    sessionId?: string;
+    success?: boolean;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE 1 = 1';
+    const params: any[] = [];
+
+    if (options?.taskId) {
+      query += ' AND task_id = ?';
+      params.push(options.taskId);
+    }
+
+    if (options?.eventType) {
+      if (Array.isArray(options.eventType)) {
+        query += ` AND event_type IN (${options.eventType.map(() => '?').join(', ')})`;
+        params.push(...options.eventType);
+      } else {
+        query += ' AND event_type = ?';
+        params.push(options.eventType);
+      }
+    }
+
+    if (options?.severity) {
+      if (Array.isArray(options.severity)) {
+        query += ` AND severity IN (${options.severity.map(() => '?').join(', ')})`;
+        params.push(...options.severity);
+      } else {
+        query += ' AND severity = ?';
+        params.push(options.severity);
+      }
+    }
+
+    if (options?.actor) {
+      query += ' AND actor = ?';
+      params.push(options.actor);
+    }
+
+    if (options?.correlationId) {
+      query += ' AND correlation_id = ?';
+      params.push(options.correlationId);
+    }
+
+    if (options?.sessionId) {
+      query += ' AND session_id = ?';
+      params.push(options.sessionId);
+    }
+
+    if (options?.success !== undefined) {
+      query += ' AND success = ?';
+      params.push(options.success ? 1 : 0);
+    }
+
+    if (options?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Get audit log entries for a task
+   */
+  async getAuditLog(taskId: string): Promise<AuditLogEntry[]> {
+    const query = 'SELECT * FROM audit_logs WHERE task_id = ? ORDER BY timestamp DESC';
+    const rows = this.db.prepare(query).all([taskId]) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Query audit log entries with filters
+   */
+  async queryAuditLog(filters?: {
+    taskId?: string;
+    actionType?: string;
+    approver?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditLogEntry[]> {
+    let query = 'SELECT * FROM audit_logs WHERE 1 = 1';
+    const params: any[] = [];
+
+    if (filters?.taskId) {
+      query += ' AND task_id = ?';
+      params.push(filters.taskId);
+    }
+
+    if (filters?.actionType) {
+      query += ' AND event_type = ?';
+      params.push(filters.actionType);
+    }
+
+    if (filters?.approver) {
+      query += ' AND actor = ?';
+      params.push(filters.approver);
+    }
+
+    if (filters?.startDate) {
+      query += ' AND timestamp >= ?';
+      params.push(filters.startDate.toISOString());
+    }
+
+    if (filters?.endDate) {
+      query += ' AND timestamp <= ?';
+      params.push(filters.endDate.toISOString());
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Get approval history, optionally filtered by approver
+   */
+  async getApprovalHistory(approver?: string): Promise<AuditLogEntry[]> {
+    let query = `SELECT * FROM audit_logs
+                 WHERE event_type IN ('task.approved', 'task.rejected', 'stage.approved', 'stage.rejected')`;
+    const params: any[] = [];
+
+    if (approver) {
+      query += ' AND actor = ?';
+      params.push(approver);
+    }
+
+    query += ' ORDER BY timestamp DESC';
+
+    const rows = this.db.prepare(query).all(params) as AuditLogRow[];
+    return rows.map(row => this.rowToAuditLogEntry(row));
+  }
+
+  /**
+   * Delete old audit logs based on retention policy
+   */
+  async cleanupAuditLogs(maxAgeDays: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
+
+    const stmt = this.db.prepare(`
+      DELETE FROM audit_logs
+      WHERE timestamp < ?
+    `);
+
+    const result = stmt.run(cutoffDate.toISOString());
+    return result.changes;
+  }
+
+  /**
+   * Get audit log statistics
+   */
+  async getAuditLogStats(options?: {
+    taskId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    byEventType: Record<string, number>;
+    bySeverity: Record<string, number>;
+    successRate: number;
+  }> {
+    let whereClause = '1 = 1';
+    const params: any[] = [];
+
+    if (options?.taskId) {
+      whereClause += ' AND task_id = ?';
+      params.push(options.taskId);
+    }
+
+    if (options?.startDate) {
+      whereClause += ' AND timestamp >= ?';
+      params.push(options.startDate.toISOString());
+    }
+
+    if (options?.endDate) {
+      whereClause += ' AND timestamp <= ?';
+      params.push(options.endDate.toISOString());
+    }
+
+    // Get total count
+    const totalResult = this.db.prepare(`SELECT COUNT(*) as count FROM audit_logs WHERE ${whereClause}`).get(params) as { count: number };
+    const total = totalResult.count;
+
+    // Get event type breakdown
+    const eventTypeResults = this.db.prepare(`
+      SELECT event_type, COUNT(*) as count
+      FROM audit_logs
+      WHERE ${whereClause}
+      GROUP BY event_type
+    `).all(params) as { event_type: string; count: number }[];
+    const byEventType = eventTypeResults.reduce((acc, row) => {
+      acc[row.event_type] = row.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Get severity breakdown
+    const severityResults = this.db.prepare(`
+      SELECT severity, COUNT(*) as count
+      FROM audit_logs
+      WHERE ${whereClause}
+      GROUP BY severity
+    `).all(params) as { severity: string; count: number }[];
+    const bySeverity = severityResults.reduce((acc, row) => {
+      acc[row.severity] = row.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Get success rate
+    const successResult = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+        COUNT(*) as total
+      FROM audit_logs
+      WHERE ${whereClause}
+    `).get(params) as { successes: number; total: number };
+    const successRate = successResult.total > 0 ? (successResult.successes / successResult.total) * 100 : 0;
+
+    return {
+      total,
+      byEventType,
+      bySeverity,
+      successRate
+    };
+  }
+
+  /**
+   * Get audit log statistics in array format (for compatibility with existing tests)
+   */
+  async getAuditLogStatistics(options?: {
+    taskId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    total: number;
+    byEventType: Array<{eventType: string, count: number}>;
+    bySeverity: Array<{severity: string, count: number}>;
+  }> {
+    const stats = await this.getAuditLogStats(options);
+
+    return {
+      total: stats.total,
+      byEventType: Object.entries(stats.byEventType).map(([eventType, count]) => ({
+        eventType,
+        count
+      })),
+      bySeverity: Object.entries(stats.bySeverity).map(([severity, count]) => ({
+        severity,
+        count
+      }))
+    };
+  }
+
+  /**
+   * Convert row to AuditLogEntry
+   */
+  private rowToAuditLogEntry(row: AuditLogRow): AuditLogEntry {
+    return {
+      id: row.id,
+      taskId: row.task_id || undefined,
+      eventType: row.event_type as AuditEventType,
+      severity: row.severity as AuditSeverity,
+      timestamp: new Date(row.timestamp),
+      actor: row.actor,
+      message: row.message,
+      stage: row.stage || undefined,
+      agent: row.agent || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      previousState: row.previous_state || undefined,
+      newState: row.new_state || undefined,
+      durationMs: row.duration_ms || undefined,
+      success: Boolean(row.success),
+      error: row.error || undefined,
+      correlationId: row.correlation_id || undefined,
+      sessionId: row.session_id || undefined,
+    };
+  }
+
+  /**
+   * Log an audit entry (wrapper around addAuditLog for backward compatibility)
+   */
+  async logAuditEntry(entry: AuditLogEntry): Promise<void> {
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log autonomy mode change
+   */
+  async logModeChange(
+    taskId: string,
+    previousMode: string,
+    newMode: string,
+    reason: string
+  ): Promise<void> {
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType: 'config.updated',
+      severity: 'info',
+      timestamp: new Date(),
+      actor: 'system',
+      message: `Autonomy mode changed from ${previousMode} to ${newMode}: ${reason}`,
+      metadata: {
+        previousMode,
+        newMode,
+        reason,
+      },
+      previousState: previousMode,
+      newState: newMode,
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log approval request
+   */
+  async logApprovalRequest(taskId: string, context: string): Promise<void> {
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType: 'approval.requested',
+      severity: 'info',
+      timestamp: new Date(),
+      actor: 'system',
+      message: `Approval requested: ${context}`,
+      metadata: {
+        context,
+        requestedAt: new Date().toISOString(),
+      },
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Log approval response
+   */
+  async logApprovalResponse(
+    taskId: string,
+    approver: string,
+    approved: boolean,
+    context: string
+  ): Promise<void> {
+    const eventType = approved ? 'approval.granted' : 'approval.denied';
+    const message = approved
+      ? `Approval granted by ${approver}: ${context}`
+      : `Approval denied by ${approver}: ${context}`;
+
+    const entry: AuditLogEntry = {
+      id: crypto.randomUUID(),
+      taskId,
+      eventType,
+      severity: 'info',
+      timestamp: new Date(),
+      actor: approver,
+      message,
+      metadata: {
+        context,
+        approved,
+        approver,
+        respondedAt: new Date().toISOString(),
+      },
+      success: true,
+    };
+
+    await this.addAuditLog(entry);
+  }
+
+  /**
+   * Upsert an MCP marketplace entry into the local cache
+   */
+  async upsertMcpMarketplaceEntry(entry: MCPMarketplaceEntry): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO mcp_marketplace (
+        name, description, version, author, homepage, repository, install_command,
+        server_config, capabilities, verified, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        description = excluded.description,
+        version = excluded.version,
+        author = excluded.author,
+        homepage = excluded.homepage,
+        repository = excluded.repository,
+        install_command = excluded.install_command,
+        server_config = excluded.server_config,
+        capabilities = excluded.capabilities,
+        verified = excluded.verified,
+        updated_at = excluded.updated_at
+    `);
+
+    stmt.run(
+      entry.name,
+      entry.description,
+      entry.version,
+      entry.author ?? null,
+      entry.homepage ?? null,
+      entry.repository ?? null,
+      entry.installCommand ?? null,
+      JSON.stringify(entry.serverConfig),
+      entry.capabilities ? JSON.stringify(entry.capabilities) : null,
+      entry.verified ? 1 : 0,
+      new Date().toISOString()
+    );
+  }
+
+  /**
+   * List all cached MCP marketplace entries
+   */
+  async listMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
+    const rows = this.db
+      .prepare('SELECT * FROM mcp_marketplace ORDER BY name')
+      .all() as Array<Record<string, any>>;
+
+    return rows.map((row) => ({
+      name: row.name,
+      description: row.description,
+      version: row.version,
+      author: row.author || undefined,
+      homepage: row.homepage || undefined,
+      repository: row.repository || undefined,
+      installCommand: row.install_command || undefined,
+      serverConfig: JSON.parse(row.server_config) as MCPServerConfig,
+      capabilities: row.capabilities ? JSON.parse(row.capabilities) : undefined,
+      verified: Boolean(row.verified),
+    }));
+  }
+
+  /**
+   * Get a single MCP marketplace entry by name
+   */
+  async getMcpMarketplaceEntry(name: string): Promise<MCPMarketplaceEntry | null> {
+    const row = this.db
+      .prepare('SELECT * FROM mcp_marketplace WHERE name = ?')
+      .get(name) as Record<string, any> | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      name: row.name,
+      description: row.description,
+      version: row.version,
+      author: row.author || undefined,
+      homepage: row.homepage || undefined,
+      repository: row.repository || undefined,
+      installCommand: row.install_command || undefined,
+      serverConfig: JSON.parse(row.server_config) as MCPServerConfig,
+      capabilities: row.capabilities ? JSON.parse(row.capabilities) : undefined,
+      verified: Boolean(row.verified),
+    };
+  }
+
+  /**
+   * Persist installed MCP server configuration
+   */
+  async upsertMcpServerConfig(name: string, config: MCPServerConfig): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO mcp_servers (name, config, installed_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        config = excluded.config,
+        updated_at = excluded.updated_at
+    `);
+
+    const now = new Date().toISOString();
+    stmt.run(name, JSON.stringify(config), now, now);
+  }
+
+  /**
+   * List installed MCP server configurations
+   */
+  async listMcpServerConfigs(): Promise<Array<{ name: string; config: MCPServerConfig }>> {
+    const rows = this.db
+      .prepare('SELECT name, config FROM mcp_servers ORDER BY name')
+      .all() as Array<{ name: string; config: string }>;
+
+    return rows.map((row) => ({
+      name: row.name,
+      config: JSON.parse(row.config) as MCPServerConfig,
+    }));
+  }
+
   /**
    * Close the database connection
    */
@@ -3349,10 +4112,12 @@ interface ToolActionRow {
  */
 export class ToolActionStore {
   private taskStore: TaskStore;
+  private db: Database.Database;
   private retentionConfig: ToolActionRetentionConfig;
 
   constructor(taskStore: TaskStore, retentionConfig: Partial<ToolActionRetentionConfig> = {}) {
     this.taskStore = taskStore;
+    this.db = taskStore.getDatabase();
     this.retentionConfig = {
       maxActionsPerTask: retentionConfig.maxActionsPerTask ?? 1000,
       maxAgeDays: retentionConfig.maxAgeDays ?? 30,

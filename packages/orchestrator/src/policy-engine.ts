@@ -15,9 +15,11 @@ import type {
   PolicyViolation,
   PolicyValidationResult,
   AllowedPathsConfig,
+  ApprovalRulesConfig,
   ApprovalRule,
   ApprovalCondition,
   ApprovalOperationType,
+  ToolPermissionRule,
   ToolAction,
   AgentDefinition,
   ApexConfig,
@@ -26,7 +28,10 @@ import type {
   PolicyCheckContext,
   PolicyCheckOptions,
   PolicyCheckResult,
-  PolicyEnforcementMode
+  PolicyEnforcementMode,
+  PolicyRule as CorePolicyRule,
+  RuleTriggerEvent,
+  ApexRule,
 } from '@apexcli/core';
 
 // ============================================================================
@@ -66,13 +71,13 @@ export interface PolicyRule {
   /** Rule description */
   description?: string;
   /** Rule type */
-  type: 'path' | 'tool' | 'agent' | 'resource' | 'approval';
+  type: 'path' | 'tool' | 'agent' | 'resource' | 'approval' | 'apex-rule';
   /** Rule pattern or condition */
   pattern?: string;
   /** Whether rule allows or denies the action */
-  action: 'allow' | 'deny' | 'require_approval';
+  action: 'allow' | 'deny' | 'require_approval' | 'warn';
   /** Severity level for violations */
-  severity: 'info' | 'warning' | 'error' | 'critical';
+  severity: 'low' | 'medium' | 'high' | 'critical';
   /** Whether rule is enabled */
   enabled: boolean;
   /** Additional rule conditions */
@@ -94,7 +99,7 @@ export interface PolicyEvaluationResult {
   /** Rules that matched the action */
   matchedRules: PolicyRule[];
   /** Overall severity of violations */
-  severity: 'info' | 'warning' | 'error' | 'critical';
+  severity: 'low' | 'medium' | 'high' | 'critical';
   /** Human-readable evaluation summary */
   summary: string;
   /** Whether approval is required */
@@ -181,7 +186,12 @@ export class PolicyEngine implements IPolicyEngine {
     }
   ) {
     this.config = config;
-    this.policyConfig = config.policy || { enabled: false, enforcement: 'warn' };
+    this.policyConfig = config.policy || {
+      enabled: false,
+      enforcement: 'warn',
+      version: '1.0',
+      tags: [],
+    };
     this.enforcementMode = this.policyConfig.enforcement || 'warn';
     this.rules = this.loadRulesFromConfig(ruleLoadingConfig);
   }
@@ -218,17 +228,18 @@ export class PolicyEngine implements IPolicyEngine {
     // Convert legacy result to new format
     const violations: PolicyViolation[] = legacyResult.violations.map(violation => ({
       id: violation.id,
-      rule: violation.ruleId,
+      rule: violation.rule,
       message: violation.message,
       severity: violation.severity,
-      blocking: violation.severity === 'error' || violation.severity === 'critical',
-      policyType: violation.ruleType === 'path' ? 'path' :
-                  violation.ruleType === 'approval' ? 'approval' :
-                  violation.ruleType === 'tool' ? 'test' : 'path',
+      blocking: violation.severity === 'high' || violation.severity === 'critical',
+      policyType: violation.policyType,
       description: violation.description,
       resource: violation.resource,
       context: violation.context,
       timestamp: violation.timestamp,
+      resolved: violation.resolved ?? false,
+      resolvedAt: violation.resolvedAt,
+      resolution: violation.resolution,
     }));
 
     // Apply enforcement mode logic
@@ -392,8 +403,8 @@ export class PolicyEngine implements IPolicyEngine {
     }
 
     // Load tool rules from permissions
-    if (loadingConfig.loadToolRules && this.config.permissions?.tools) {
-      rules.push(...this.loadToolRules(this.config.permissions.tools));
+    if (loadingConfig.loadToolRules && this.config.permissions?.customRules?.length) {
+      rules.push(...this.loadToolRules(this.config.permissions.customRules));
     }
 
     // Load custom rules from policies array
@@ -411,6 +422,8 @@ export class PolicyEngine implements IPolicyEngine {
   private loadPathRules(allowedPaths: AllowedPathsConfig): PolicyRule[] {
     const rules: PolicyRule[] = [];
     let ruleCounter = 1;
+    const legacySensitivePatterns = (allowedPaths as AllowedPathsConfig & { sensitive?: string[] }).sensitive ?? [];
+    const sensitivePatterns = allowedPaths.sensitivePatterns ?? legacySensitivePatterns;
 
     // Block patterns (highest priority)
     if (allowedPaths.block) {
@@ -422,7 +435,7 @@ export class PolicyEngine implements IPolicyEngine {
           type: 'path',
           pattern,
           action: 'deny',
-          severity: 'error',
+          severity: 'high',
           enabled: true,
           priority: 100,
         });
@@ -430,8 +443,8 @@ export class PolicyEngine implements IPolicyEngine {
     }
 
     // Sensitive patterns (require approval)
-    if (allowedPaths.sensitive) {
-      for (const pattern of allowedPaths.sensitive) {
+    if (sensitivePatterns.length > 0) {
+      for (const pattern of sensitivePatterns) {
         rules.push({
           id: `path-sensitive-${ruleCounter++}`,
           name: `Sensitive Path: ${pattern}`,
@@ -439,7 +452,7 @@ export class PolicyEngine implements IPolicyEngine {
           type: 'path',
           pattern,
           action: 'require_approval',
-          severity: 'warning',
+          severity: 'medium',
           enabled: true,
           priority: 90,
         });
@@ -456,7 +469,7 @@ export class PolicyEngine implements IPolicyEngine {
           type: 'path',
           pattern,
           action: 'allow',
-          severity: 'info',
+          severity: 'low',
           enabled: true,
           priority: 50,
         });
@@ -470,7 +483,7 @@ export class PolicyEngine implements IPolicyEngine {
         type: 'path',
         pattern: '**',
         action: 'deny',
-        severity: 'warning',
+        severity: 'medium',
         enabled: true,
         priority: 1,
       });
@@ -482,8 +495,13 @@ export class PolicyEngine implements IPolicyEngine {
   /**
    * Loads approval rules from configuration.
    */
-  private loadApprovalRules(approvalRules: ApprovalRule[]): PolicyRule[] {
-    return approvalRules.map((rule, index) => ({
+  private loadApprovalRules(approvalRules: ApprovalRulesConfig): PolicyRule[] {
+    const normalizedRules = this.normalizeApprovalRulesConfig(approvalRules);
+    if (!normalizedRules || normalizedRules.enabled === false) {
+      return [];
+    }
+
+    return normalizedRules.rules.map((rule, index) => ({
       id: `approval-${index + 1}`,
       name: rule.name || `Approval Rule ${index + 1}`,
       description: rule.description,
@@ -501,10 +519,33 @@ export class PolicyEngine implements IPolicyEngine {
   /**
    * Loads tool restriction rules from permissions configuration.
    */
-  private loadToolRules(toolsConfig: Record<string, unknown>): PolicyRule[] {
+  private loadToolRules(customRules: ToolPermissionRule[]): PolicyRule[] {
     const rules: PolicyRule[] = [];
-    // This would load tool-specific restrictions based on permissions config
-    // Implementation depends on the specific permissions schema
+    let ruleCounter = 1;
+
+    for (const rule of customRules) {
+      const action = rule.behavior === 'confirm'
+        ? 'require_approval'
+        : rule.behavior === 'deny'
+        ? 'deny'
+        : 'allow';
+
+      rules.push({
+        id: `tool-${ruleCounter++}`,
+        name: `Tool ${action}: ${rule.tool}`,
+        description: rule.reason,
+        type: 'tool',
+        pattern: rule.tool,
+        action,
+        severity: rule.behavior === 'deny' ? 'high' : 'medium',
+        enabled: true,
+        priority: 70,
+        conditions: {
+          scope: rule.scope,
+        },
+      });
+    }
+
     return rules;
   }
 
@@ -521,13 +562,13 @@ export class PolicyEngine implements IPolicyEngine {
   /**
    * Maps approval urgency to policy severity.
    */
-  private mapUrgencyToSeverity(urgency: string): 'info' | 'warning' | 'error' | 'critical' {
+  private mapUrgencyToSeverity(urgency: string): 'low' | 'medium' | 'high' | 'critical' {
     switch (urgency) {
-      case 'low': return 'info';
-      case 'medium': return 'warning';
-      case 'high': return 'error';
+      case 'low': return 'low';
+      case 'medium': return 'medium';
+      case 'high': return 'high';
       case 'critical': return 'critical';
-      default: return 'warning';
+      default: return 'medium';
     }
   }
 
@@ -544,7 +585,7 @@ export class PolicyEngine implements IPolicyEngine {
         violations: [],
         evaluatedRules: [],
         matchedRules: [],
-        severity: 'info',
+        severity: 'low',
         summary: 'Policy engine is disabled - all actions allowed',
         requiresApproval: false,
       };
@@ -553,7 +594,7 @@ export class PolicyEngine implements IPolicyEngine {
     const violations: PolicyViolation[] = [];
     const matchedRules: PolicyRule[] = [];
     const evaluatedRules = [...this.rules];
-    let highestSeverity: 'info' | 'warning' | 'error' | 'critical' = 'info';
+    let highestSeverity: 'low' | 'medium' | 'high' | 'critical' = 'low';
     let requiresApproval = false;
 
     // Evaluate each rule against the action
@@ -573,6 +614,13 @@ export class PolicyEngine implements IPolicyEngine {
           if (this.compareSeverity(rule.severity, highestSeverity) > 0) {
             highestSeverity = rule.severity;
           }
+        } else if (rule.action === 'warn') {
+          const violation = this.createViolationFromRule(rule, actionContext);
+          violations.push(violation);
+
+          if (this.compareSeverity(rule.severity, highestSeverity) > 0) {
+            highestSeverity = rule.severity;
+          }
         } else if (rule.action === 'require_approval') {
           requiresApproval = true;
           const violation = this.createApprovalViolation(rule, actionContext);
@@ -586,7 +634,7 @@ export class PolicyEngine implements IPolicyEngine {
       }
     }
 
-    const allowed = violations.length === 0 || violations.every(v => v.severity !== 'error' && v.severity !== 'critical');
+    const allowed = violations.length === 0 || violations.every(v => v.severity !== 'high' && v.severity !== 'critical');
     const summary = this.generateEvaluationSummary(allowed, violations.length, matchedRules.length, requiresApproval);
 
     return {
@@ -613,9 +661,78 @@ export class PolicyEngine implements IPolicyEngine {
         return this.evaluateAgentRule(rule, actionContext);
       case 'approval':
         return this.evaluateApprovalRule(rule, actionContext);
+      case 'apex-rule': // New case for custom ApexRules
+        return this.evaluateApexRule(rule, actionContext);
       default:
         return false;
     }
+  }
+
+  /**
+   * Evaluates an 'apex-rule' type policy rule.
+   * Uses the parseAndEvaluateExpression method to check the rule's condition.
+   */
+  private evaluateApexRule(rule: PolicyRule, actionContext: AgentActionContext): boolean {
+    const triggerEvent = rule.conditions?.triggerEvent as RuleTriggerEvent;
+    const triggerToolName = rule.conditions?.triggerToolName as string | undefined;
+    const expression = rule.conditions?.expression as string;
+
+    if (!expression || !triggerEvent) {
+      return false; // ApexRule must have an expression and trigger event
+    }
+
+    // Check if the actionContext matches the rule's trigger
+    let triggerMatches = false;
+    switch (triggerEvent) {
+      case 'task.start':
+        triggerMatches = actionContext.actionType === 'task.start';
+        break;
+      case 'task.update':
+        triggerMatches = actionContext.actionType === 'task.update';
+        break;
+      case 'tool.use':
+        triggerMatches = actionContext.actionType === 'tool.use' &&
+                         (!triggerToolName || minimatch(actionContext.toolName, triggerToolName));
+        break;
+      case 'git.commit':
+        triggerMatches = actionContext.actionType === 'git.commit';
+        break;
+      case 'git.push':
+        triggerMatches = actionContext.actionType === 'git.push';
+        break;
+      case 'agent.thought':
+        triggerMatches = actionContext.actionType === 'agent.thought';
+        break;
+      default:
+        triggerMatches = false;
+    }
+
+    if (!triggerMatches) {
+      return false;
+    }
+
+    // Build a comprehensive context for expression evaluation
+    const evaluationContext = {
+      task: {
+        id: actionContext.taskId,
+        workflow: actionContext.workflowId,
+      },
+      agent: {
+        id: actionContext.agentId,
+      },
+      tool: {
+        name: actionContext.toolName,
+        input: actionContext.parameters,
+        resource: actionContext.resource,
+      },
+      action: {
+        type: actionContext.actionType,
+      },
+      // Directly expose actionContext for broader access if needed
+      ...actionContext,
+    };
+
+    return this.parseAndEvaluateExpression(expression, evaluationContext);
   }
 
   /**
@@ -670,9 +787,252 @@ export class PolicyEngine implements IPolicyEngine {
    * Evaluates an approval condition against the action context.
    */
   private evaluateApprovalCondition(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
-    // This would implement specific approval condition evaluation logic
-    // Based on the condition type and actionContext
-    return false; // Placeholder
+    const normalizedType = this.normalizeApprovalConditionType(condition.type);
+
+    switch (normalizedType) {
+      case 'file-pattern':
+        return this.evaluateApprovalFilePattern(condition, actionContext);
+      case 'content-pattern':
+        return this.evaluateApprovalContentPattern(condition, actionContext);
+      case 'operation':
+        return this.evaluateApprovalOperation(condition, actionContext);
+      case 'cost-threshold':
+        return this.evaluateApprovalCostThreshold(condition, actionContext);
+      case 'token-threshold':
+        return this.evaluateApprovalTokenThreshold(condition, actionContext);
+      case 'custom':
+        return this.evaluateApprovalCustom(condition, actionContext);
+      default:
+        return false;
+    }
+  }
+
+  private normalizeApprovalRulesConfig(
+    approvalRules: ApprovalRulesConfig | ApprovalRule[] | unknown
+  ): ApprovalRulesConfig | null {
+    if (!approvalRules) {
+      return null;
+    }
+
+    if (Array.isArray(approvalRules)) {
+      return this.buildApprovalRulesConfig({
+        enabled: true,
+        rules: approvalRules.map((rule, index) => this.normalizeApprovalRule(rule, index)),
+      });
+    }
+
+    if (typeof approvalRules === 'object' && approvalRules) {
+      const rules = (approvalRules as ApprovalRulesConfig).rules;
+      if (Array.isArray(rules)) {
+        return this.buildApprovalRulesConfig({
+          ...(approvalRules as ApprovalRulesConfig),
+          rules: rules.map((rule, index) => this.normalizeApprovalRule(rule, index)),
+        });
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeApprovalRule(rule: ApprovalRule, index: number): ApprovalRule {
+    const legacyRule = rule as ApprovalRule & { requiredApprovers?: string[]; id?: string };
+    const normalizedConditions = (legacyRule.conditions || []).map(condition =>
+      this.normalizeApprovalCondition(condition)
+    );
+
+    return {
+      ...legacyRule,
+      id: legacyRule.id || legacyRule.name || `approval-rule-${index + 1}`,
+      approvers: legacyRule.approvers ?? legacyRule.requiredApprovers ?? [],
+      conditions: normalizedConditions,
+    };
+  }
+
+  private buildApprovalRulesConfig(base: Partial<ApprovalRulesConfig>): ApprovalRulesConfig {
+    return {
+      enabled: base.enabled ?? true,
+      rules: base.rules ?? [],
+      defaultTimeoutMinutes: base.defaultTimeoutMinutes ?? 60,
+      defaultTimeoutAction: base.defaultTimeoutAction ?? 'reject',
+      globalApprovers: base.globalApprovers ?? [],
+      notificationsEnabled: base.notificationsEnabled ?? true,
+      notificationChannels: base.notificationChannels,
+      auditLog: base.auditLog ?? true,
+      auditLogPath: base.auditLogPath ?? 'approval-audit.log',
+    };
+  }
+
+  private normalizeApprovalCondition(condition: ApprovalCondition): ApprovalCondition {
+    const legacyCondition = condition as ApprovalCondition & {
+      value?: number;
+      pattern?: string | string[];
+    };
+
+    return {
+      ...legacyCondition,
+      type: this.normalizeApprovalConditionType(legacyCondition.type),
+      threshold: legacyCondition.threshold ?? legacyCondition.value,
+      patterns: legacyCondition.patterns
+        ?? (legacyCondition.pattern ? (Array.isArray(legacyCondition.pattern) ? legacyCondition.pattern : [legacyCondition.pattern]) : undefined),
+    };
+  }
+
+  private normalizeApprovalConditionType(type: ApprovalCondition['type'] | string): ApprovalCondition['type'] {
+    switch (type) {
+      case 'file_pattern':
+        return 'file-pattern';
+      case 'content_pattern':
+        return 'content-pattern';
+      case 'cost_threshold':
+        return 'cost-threshold';
+      case 'token_threshold':
+        return 'token-threshold';
+      default:
+        return type as ApprovalCondition['type'];
+    }
+  }
+
+  private evaluateApprovalFilePattern(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    const patterns = condition.patterns ?? [];
+    if (patterns.length === 0) {
+      return false;
+    }
+
+    const filePaths = this.getApprovalFilePaths(actionContext);
+    return filePaths.some(filePath =>
+      patterns.some(pattern => minimatch(filePath, pattern))
+    );
+  }
+
+  private evaluateApprovalContentPattern(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    const patterns = condition.patterns ?? [];
+    if (patterns.length === 0) {
+      return false;
+    }
+
+    const contents = this.getApprovalContents(actionContext);
+    if (contents.length === 0) {
+      return false;
+    }
+
+    return patterns.some(pattern => {
+      try {
+        const regex = new RegExp(pattern, 'i');
+        return contents.some(content => regex.test(content));
+      } catch (error) {
+        console.warn(`Invalid content pattern regex: ${pattern}`, error);
+        return false;
+      }
+    });
+  }
+
+  private evaluateApprovalOperation(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    const operations = condition.operations ?? [];
+    if (operations.length === 0) {
+      return false;
+    }
+
+    const metadataOperation = actionContext.metadata?.operation as ApprovalOperationType | undefined;
+    const parameterOperation = (actionContext.parameters as { operation?: ApprovalOperationType } | undefined)?.operation;
+    const inferredOperation = metadataOperation ?? parameterOperation ?? (operations.includes(actionContext.actionType as ApprovalOperationType)
+      ? (actionContext.actionType as ApprovalOperationType)
+      : undefined);
+
+    return inferredOperation ? operations.includes(inferredOperation) : false;
+  }
+
+  private evaluateApprovalCostThreshold(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    if (typeof condition.threshold !== 'number') {
+      return false;
+    }
+
+    const estimatedCost = (actionContext.metadata?.estimatedCost as number | undefined)
+      ?? (actionContext.parameters as { estimatedCost?: number } | undefined)?.estimatedCost;
+
+    return typeof estimatedCost === 'number' && estimatedCost >= condition.threshold;
+  }
+
+  private evaluateApprovalTokenThreshold(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    if (typeof condition.threshold !== 'number') {
+      return false;
+    }
+
+    const tokenUsage = (actionContext.metadata?.tokenUsage as number | undefined)
+      ?? (actionContext.parameters as { tokenUsage?: number } | undefined)?.tokenUsage;
+
+    return typeof tokenUsage === 'number' && tokenUsage >= condition.threshold;
+  }
+
+  private evaluateApprovalCustom(condition: ApprovalCondition, actionContext: AgentActionContext): boolean {
+    const expression = condition.expression;
+    if (!expression) {
+      return false;
+    }
+
+    const evaluationContext = {
+      operation: actionContext.metadata?.operation,
+      cost: actionContext.metadata?.estimatedCost,
+      tokens: actionContext.metadata?.tokenUsage,
+      files: this.getApprovalFilePaths(actionContext),
+      action: actionContext.actionType,
+      tool: {
+        name: actionContext.toolName,
+        input: actionContext.parameters,
+        resource: actionContext.resource,
+      },
+      agent: {
+        id: actionContext.agentId,
+      },
+      task: {
+        id: actionContext.taskId,
+        workflow: actionContext.workflowId,
+      },
+    };
+
+    return this.parseAndEvaluateExpression(expression, evaluationContext);
+  }
+
+  private getApprovalFilePaths(actionContext: AgentActionContext): string[] {
+    const filePaths: string[] = [];
+    if (actionContext.resource) {
+      filePaths.push(actionContext.resource);
+    }
+
+    const metadataPaths = actionContext.metadata?.filePaths as string[] | undefined;
+    if (Array.isArray(metadataPaths)) {
+      filePaths.push(...metadataPaths);
+    }
+
+    const params = actionContext.parameters as { file_path?: string; path?: string } | undefined;
+    if (params?.file_path) {
+      filePaths.push(params.file_path);
+    }
+    if (params?.path) {
+      filePaths.push(params.path);
+    }
+
+    return Array.from(new Set(filePaths.filter(Boolean)));
+  }
+
+  private getApprovalContents(actionContext: AgentActionContext): string[] {
+    const contents: string[] = [];
+
+    const params = actionContext.parameters as { content?: string; text?: string } | undefined;
+    if (params?.content) {
+      contents.push(params.content);
+    }
+    if (params?.text) {
+      contents.push(params.text);
+    }
+
+    const metadataContents = actionContext.metadata?.fileContents as Record<string, string> | Map<string, string> | undefined;
+    if (metadataContents instanceof Map) {
+      contents.push(...Array.from(metadataContents.values()));
+    } else if (metadataContents && typeof metadataContents === 'object') {
+      contents.push(...Object.values(metadataContents));
+    }
+
+    return contents;
   }
 
   /**
@@ -681,12 +1041,12 @@ export class PolicyEngine implements IPolicyEngine {
   private createViolationFromRule(rule: PolicyRule, actionContext: AgentActionContext): PolicyViolation {
     return {
       id: randomUUID(),
-      ruleId: rule.id,
-      ruleName: rule.name,
-      ruleType: rule.type,
+      rule: rule.id,
       message: `Policy violation: ${rule.name}`,
       description: rule.description || `Action blocked by policy rule: ${rule.name}`,
       severity: rule.severity,
+      blocking: rule.action === 'deny',
+      policyType: rule.type === 'path' || rule.type === 'approval' ? rule.type : undefined,
       resource: actionContext.resource || actionContext.toolName,
       context: {
         agentId: actionContext.agentId,
@@ -697,6 +1057,7 @@ export class PolicyEngine implements IPolicyEngine {
         rulePattern: rule.pattern,
       },
       timestamp: new Date(),
+      resolved: false,
     };
   }
 
@@ -706,12 +1067,12 @@ export class PolicyEngine implements IPolicyEngine {
   private createApprovalViolation(rule: PolicyRule, actionContext: AgentActionContext): PolicyViolation {
     return {
       id: randomUUID(),
-      ruleId: rule.id,
-      ruleName: rule.name,
-      ruleType: rule.type,
+      rule: rule.id,
       message: `Approval required: ${rule.name}`,
       description: rule.description || `Action requires approval due to policy rule: ${rule.name}`,
       severity: rule.severity,
+      blocking: false,
+      policyType: rule.type === 'path' || rule.type === 'approval' ? rule.type : undefined,
       resource: actionContext.resource || actionContext.toolName,
       context: {
         agentId: actionContext.agentId,
@@ -723,6 +1084,7 @@ export class PolicyEngine implements IPolicyEngine {
         rulePattern: rule.pattern,
       },
       timestamp: new Date(),
+      resolved: false,
     };
   }
 
@@ -731,10 +1093,10 @@ export class PolicyEngine implements IPolicyEngine {
    * @returns Positive number if first severity is higher, negative if lower, 0 if equal
    */
   private compareSeverity(
-    sev1: 'info' | 'warning' | 'error' | 'critical',
-    sev2: 'info' | 'warning' | 'error' | 'critical'
+    sev1: 'low' | 'medium' | 'high' | 'critical',
+    sev2: 'low' | 'medium' | 'high' | 'critical'
   ): number {
-    const severityOrder = { info: 1, warning: 2, error: 3, critical: 4 };
+    const severityOrder = { low: 1, medium: 2, high: 3, critical: 4 };
     return severityOrder[sev1] - severityOrder[sev2];
   }
 
@@ -790,6 +1152,228 @@ export class PolicyEngine implements IPolicyEngine {
    */
   getRulesBySeverity(severity: PolicyRule['severity']): PolicyRule[] {
     return this.rules.filter(rule => rule.severity === severity);
+  }
+
+  /**
+   * Registers a list of ApexRules as a 'project-rules' policy.
+   * Converts ApexRules into PolicyRules and adds them to a dynamically created Policy.
+   *
+   * @param apexRules - An array of ApexRules to register
+   */
+  registerApexRules(apexRules: ApexRule[]): void {
+    if (!apexRules || apexRules.length === 0) {
+      return;
+    }
+
+    const projectId = 'apex-project-rules';
+    let projectPolicy = this.getPolicy(projectId);
+
+    const coreRules: CorePolicyRule[] = [];
+    const evaluationRules: PolicyRule[] = [];
+
+    apexRules.forEach((apexRule, index) => {
+      const ruleId = `apex-rule-${index}`;
+      const evaluationRule = this.convertApexRuleToPolicyRule(apexRule, ruleId);
+      if (evaluationRule) {
+        evaluationRules.push(evaluationRule);
+      }
+      const coreRule = this.convertApexRuleToCorePolicyRule(apexRule, ruleId);
+      if (coreRule) {
+        coreRules.push(coreRule);
+      }
+    });
+
+    if (!projectPolicy) {
+      projectPolicy = {
+        id: projectId,
+        name: 'APEX Project Rules',
+        description: 'Dynamically loaded project-specific rules from .apexrules file',
+        rules: coreRules,
+        enabled: true,
+        enforcement: 'warn',
+        tags: ['apex-rule'],
+        severityLevels: {
+          default: 'medium',
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.registerPolicy(projectPolicy);
+    } else {
+      projectPolicy.rules = coreRules;
+      projectPolicy.updatedAt = new Date();
+      projectPolicy.tags = projectPolicy.tags?.length ? projectPolicy.tags : ['apex-rule'];
+      projectPolicy.severityLevels = projectPolicy.severityLevels || { default: 'medium' };
+      this.policies.set(projectId, projectPolicy);
+    }
+
+    const retainedRules = this.rules.filter(rule => rule.type !== 'apex-rule');
+    this.rules.length = 0;
+    this.rules.push(...retainedRules, ...evaluationRules);
+    this.rules.sort((a, b) => b.priority - a.priority);
+  }
+
+  /**
+   * Converts a single ApexRule to a PolicyRule.
+   */
+  private convertApexRuleToPolicyRule(apexRule: ApexRule, defaultId: string): PolicyRule | null {
+    if (!apexRule.condition?.expression) {
+      console.warn(`ApexRule '${apexRule.name}' has no condition expression. Skipping.`);
+      return null;
+    }
+
+    // Determine PolicyRule action based on ApexRule action
+    let action: PolicyRule['action'];
+    let severity: PolicyRule['severity'] = 'medium';
+
+    switch (apexRule.action.type) {
+      case 'block':
+        action = 'deny';
+        severity = 'critical';
+        break;
+      case 'warn':
+        action = 'warn';
+        severity = 'medium';
+        break;
+      case 'inject_prompt':
+        action = 'warn'; // Injecting a prompt is a warning to the agent
+        severity = 'medium';
+        break;
+      default:
+        action = 'warn';
+        severity = 'medium';
+    }
+
+    // Determine PolicyRule type - for ApexRules, we'll use a new 'apex-rule' type
+    // This allows specific handling in evaluateRuleMatch later
+    return {
+      id: apexRule.name.replace(/\s+/g, '-').toLowerCase() || defaultId,
+      name: apexRule.name,
+      description: apexRule.description,
+      type: 'apex-rule', // New custom rule type
+      pattern: apexRule.trigger.event, // Use trigger event as pattern for now (will be evaluated by expression)
+      action,
+      severity,
+      enabled: apexRule.enabled ?? true,
+      priority: 50, // Default priority for project rules
+      conditions: {
+        expression: apexRule.condition.expression,
+        triggerEvent: apexRule.trigger.event,
+        triggerToolName: apexRule.trigger.toolName, // Pass tool name if defined
+        actionType: apexRule.action.type,
+        actionMessage: apexRule.action.message,
+        actionPrompt: apexRule.action.prompt,
+      },
+    };
+  }
+
+  private convertApexRuleToCorePolicyRule(apexRule: ApexRule, defaultId: string): CorePolicyRule | null {
+    if (!apexRule.condition?.expression) {
+      return null;
+    }
+
+    let action: CorePolicyRule['action'] = 'warn';
+    let severity: CorePolicyRule['severity'] = 'medium';
+
+    switch (apexRule.action.type) {
+      case 'block':
+        action = 'deny';
+        severity = 'critical';
+        break;
+      case 'warn':
+        action = 'warn';
+        severity = 'medium';
+        break;
+      case 'inject_prompt':
+        action = 'warn';
+        severity = 'medium';
+        break;
+      default:
+        action = 'warn';
+        severity = 'medium';
+    }
+
+    return {
+      id: apexRule.name.replace(/\\s+/g, '-').toLowerCase() || defaultId,
+      name: apexRule.name,
+      description: apexRule.description,
+      condition: apexRule.condition.expression,
+      action,
+      severity,
+      enabled: apexRule.enabled ?? true,
+      enforcement: undefined,
+      tags: ['apex-rule'],
+      metadata: {
+        triggerEvent: apexRule.trigger.event,
+        triggerToolName: apexRule.trigger.toolName,
+        actionType: apexRule.action.type,
+        actionMessage: apexRule.action.message,
+        actionPrompt: apexRule.action.prompt,
+      },
+    };
+  }
+
+  /**
+   * Parses and evaluates a boolean expression string against a given context.
+   * Supports basic property access, comparisons (==, !=, <, <=, >, >=),
+   * and logical operators (&&, ||, !).
+   *
+   * This is a simplified evaluator. For production, consider a robust AST-based solution.
+   *
+   * @param expression The boolean expression string (e.g., "tool.name == 'Write' && tool.input.path.startsWith('src/')")
+   * @param context The context object containing variables (e.g., { tool: { name: 'Write', input: { path: 'src/file.ts' } }, task: { workflow: 'feature' } })
+   * @returns The result of the expression evaluation
+   */
+  private parseAndEvaluateExpression(expression: string, context: Record<string, any>): boolean {
+    // Replace property access with safe context lookups
+    let jsExpression = expression.replace(/([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)/g, (match, p1, p2) => {
+      // Handle special string methods like .startsWith() or .includes()
+      // This is a simplification; a full evaluator would parse method calls
+      // For now, assume it's used directly in the expression and `context[p1]` is a string
+      if (p2 === 'startsWith' || p2 === 'includes' || p2 === 'endsWith') {
+        // Need to ensure the base object is a string before calling these methods
+        return `(typeof this.getProperty(context, '${p1}') === 'string' ? this.getProperty(context, '${p1}').${p2}' : false)`;
+      }
+      return `this.getProperty(context, '${p1}.${p2}')`;
+    });
+    
+    // Replace string literals to be safe
+    jsExpression = jsExpression.replace(/'([^']*)'/g, (match, p1) => JSON.stringify(p1));
+    jsExpression = jsExpression.replace(/"([^"]*)"/g, (match, p1) => JSON.stringify(p1));
+
+    // Basic sanitization: check for dangerous constructs (very rudimentary)
+    // Add more comprehensive checks as needed
+    if (/[;`[\]{}<>]/.test(jsExpression) || /new\s+|delete\s+|function\s+|eval\s+|this\s+|window\s+|global\s+|process\s+/.test(jsExpression)) {
+      console.warn(`PolicyEngine: Potentially unsafe expression detected and blocked: ${expression}`);
+      return false;
+    }
+    
+    // Create a safe evaluation context function
+    const evaluate = new Function('context', 'getProperty', `
+      'use strict';
+      const safeContext = { ...context }; // Clone context to prevent modification during evaluation
+      try {
+        return ${jsExpression};
+      } catch (e) {
+        console.error('PolicyEngine: Error evaluating rule expression:', e);
+        return false;
+      }
+    `);
+
+    try {
+      return evaluate(context, this.getProperty);
+    } catch (e) {
+      console.error(`PolicyEngine: Failed to evaluate expression "${expression}":`, e);
+      return false;
+    }
+  }
+
+  /**
+   * Helper to safely get nested properties from an object.
+   * Prevents errors from accessing properties of undefined.
+   */
+  private getProperty(obj: any, path: string): any {
+    return path.split('.').reduce((acc, part) => (acc && typeof acc === 'object' && acc[part] !== undefined ? acc[part] : undefined), obj);
   }
 
   /**

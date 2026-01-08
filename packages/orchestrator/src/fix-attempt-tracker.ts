@@ -12,7 +12,7 @@ import {
   TaskStatus,
   TaskUsage,
 } from '@apexcli/core';
-import { TaskStore } from './store';
+import { TaskStore } from './store.js';
 
 /**
  * Events emitted by FixAttemptTracker

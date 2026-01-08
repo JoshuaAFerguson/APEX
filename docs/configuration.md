@@ -15,6 +15,7 @@ project:
   testCommand: "npm test"
   lintCommand: "npm run lint"
   buildCommand: "npm run build"
+  typecheckCommand: "npm run typecheck"
 
 # Autonomy settings
 autonomy:
@@ -67,6 +68,18 @@ limits:
   maxTurns: 100
   maxConcurrentTasks: 3
 
+# Linting integration
+linter:
+  global:
+    enabled: true
+    runAfterEdit: true
+    parallel: false
+    failFast: false
+    timeoutMs: 60000
+  integrations:
+    ide:
+      autoFixOnSave: true
+
 # Workspace isolation settings
 workspace:
   defaultStrategy: "none"
@@ -97,6 +110,48 @@ permissions:
       reason: "Source files require review"
     - tool: "Bash"
       behavior: "deny"  # Block shell commands
+
+# Policy rules and approvals
+policy:
+  enabled: true
+  approvalRules:
+    enabled: true
+    rules:
+      - id: "modify-approval"
+        name: "Modify approval"
+        conditions:
+          - type: "operation"
+            operations: ["modify"]
+        approvers: ["security"]
+        minApprovals: 1
+
+# Secret detection in tool outputs
+scanner:
+  onSecretDetected: "mask" # "log" | "warn" | "mask" | "block"
+  includeBuiltInPatterns: true
+  maskSecrets: true
+  contextLength: 20
+  customPatterns:
+    - name: "stripe-secret"
+      pattern: "sk_live_[a-zA-Z0-9]{24,}"
+      secretType: "stripe-secret"
+      severity: "high"
+
+# Guardrails override scanner behavior when enabled
+guardrails:
+  enabled: true
+  enforcement: "warn"
+  secrets:
+    enabled: true
+    onDetection: "mask"
+    includeBuiltInPatterns: true
+
+# Per-tool configuration overrides
+tools:
+  Browser:
+    backend: "puppeteer"
+    engine: "chromium"
+    headless: true
 
 # API server settings
 api:
@@ -195,6 +250,124 @@ Safety limits to control costs.
 | `dailyBudget` | number | 100.00 | Daily budget in USD |
 | `maxTurns` | number | 100 | Max agent turns |
 | `maxConcurrentTasks` | number | 3 | Parallel task limit |
+
+### linter
+
+Configure linting behavior and lint-after-edit automation.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `global.enabled` | boolean | `true` | Enable linting |
+| `global.runAfterEdit` | boolean | `false` | Lint files after tool-driven edits |
+| `global.parallel` | boolean | `true` | Run linters in parallel |
+| `global.failFast` | boolean | `false` | Stop on first linter failure |
+| `global.timeoutMs` | number | `60000` | Lint timeout in milliseconds |
+| `integrations.ide.autoFixOnSave` | boolean | `false` | Apply auto-fixes during lint-after-edit |
+
+### codeQuality
+
+Automation for pre-edit validation and typecheck feedback.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `preEditValidation.enabled` | boolean | `false` | Validate JSON/YAML before file edits |
+| `preEditValidation.mode` | string | `warn` | `warn` or `block` on invalid content |
+| `typecheck.enabled` | boolean | `false` | Enable typecheck integration |
+| `typecheck.runAfterEdit` | boolean | `false` | Run typecheck after tool-driven edits |
+| `typecheck.command` | string | `project.typecheckCommand` | Typecheck command override |
+| `typecheck.timeoutMs` | number | `60000` | Typecheck timeout in milliseconds |
+| `typecheck.failOnError` | boolean | `false` | Reserved for future enforcement control |
+
+### customTools
+
+Define custom tools executed as local commands via an in-process MCP server.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `customTools[].name` | string | - | Tool name (unique) |
+| `customTools[].description` | string | - | Tool description shown to the agent |
+| `customTools[].command` | string | - | Command to execute |
+| `customTools[].args` | array | `[]` | Command arguments; supports `{{input}}` or `{{input.key}}` |
+| `customTools[].parameters` | object | `{}` | JSON Schema for tool parameters |
+| `customTools[].outputParser` | string | `text` | `text`, `json`, or `lines` |
+| `customTools[].timeoutMs` | number | `60000` | Tool execution timeout in milliseconds |
+| `customTools[].workingDirectory` | string | - | Working directory override |
+| `customTools[].env` | object | - | Environment variables for the tool |
+| `customTools[].enabled` | boolean | `true` | Enable/disable the tool |
+
+### mcp
+
+Configure MCP servers and marketplace sources.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mcp.enabled` | boolean | `true` | Enable MCP integration |
+| `mcp.servers` | object | `{}` | Map of server names to MCP configs |
+| `mcp.servers.<name>.type` | string | `stdio` | `stdio`, `http`, `sse`, or `sdk` |
+| `mcp.servers.<name>.command` | string | - | Command for stdio servers |
+| `mcp.servers.<name>.args` | array | - | Args for stdio servers |
+| `mcp.servers.<name>.env` | object | - | Environment variables for stdio servers |
+| `mcp.servers.<name>.url` | string | - | URL for `http`/`sse` servers |
+| `mcp.servers.<name>.headers` | object | - | Headers for `http`/`sse` servers |
+| `mcp.marketplace.url` | string | - | Marketplace JSON URL or local path |
+| `mcp.marketplace.enabled` | boolean | `true` | Enable marketplace lookups |
+| `mcp.marketplace.refreshIntervalMinutes` | number | `1440` | Refresh interval for marketplace cache |
+| `mcp.marketplace.allowUnverified` | boolean | `false` | Allow unverified entries |
+
+### tdd
+
+Test-driven development automation settings.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tdd.enabled` | boolean | `false` | Enable TDD automation |
+| `tdd.testCommand` | string | `npm test` | Test command to run |
+| `tdd.watchMode` | boolean | `false` | Enable watch mode (manual use) |
+| `tdd.maxIterations` | number | `5` | Max fix iterations in auto-correction loop |
+| `tdd.regressionGuard` | boolean | `true` | Run full test suite after corrections |
+
+### policy
+
+Policy rules control path restrictions, approvals, and test requirements during execution. Approval rules can trigger task pauses when a tool action matches configured conditions.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable policy enforcement |
+| `enforcement` | string | `warn` | `strict`, `warn`, `audit`, or `disabled` |
+| `allowedPaths.mode` | string | `allowlist` | `allowlist` or `blocklist` |
+| `allowedPaths.allow` | array | `[]` | Allowed path globs when using allowlist mode |
+| `allowedPaths.block` | array | `[]` | Blocked path globs (always enforced) |
+| `allowedPaths.sensitivePatterns` | array | `[]` | Paths requiring explicit approval |
+| `requiredTests.enforcement` | string | `warn` | `none`, `warn`, or `require` |
+| `requiredTests.rules` | array | `[]` | Test requirement rules (source/test patterns) |
+| `approvalRules.enabled` | boolean | `true` | Enable approval rule evaluation |
+| `approvalRules.rules` | array | `[]` | Approval rules for operations and thresholds |
+
+### scanner
+
+Configure secret scanning for tool outputs. When secrets are detected, APEX emits `secret:detected` and applies the configured behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `onSecretDetected` | string | `warn` | `log` (info only), `warn`, `mask` (redact with `[REDACTED]`), or `block` |
+| `includeBuiltInPatterns` | boolean | `true` | Enable built-in secret patterns |
+| `customPatterns` | array | `[]` | Custom secret patterns |
+| `maskSecrets` | boolean | `true` | Mask secret matches in findings |
+| `contextLength` | number | `20` | Characters of context around detections |
+| `maxLineLength` | number | `10000` | Maximum line length to scan |
+
+### guardrails
+
+Guardrails provide a unified configuration for secret handling and policy enforcement. When `guardrails.secrets` is enabled, it overrides `scanner` settings for detection behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable guardrails |
+| `enforcement` | string | `warn` | `warn`, `block`, or `audit` |
+| `secrets.enabled` | boolean | `true` | Enable secret guardrails |
+| `secrets.onDetection` | string | `warn` | `log`, `warn`, `mask`, or `block` |
+| `secrets.includeBuiltInPatterns` | boolean | `true` | Include built-in secret patterns |
+| `secrets.customPatterns` | array | `[]` | Custom secret patterns |
 
 ### workspace
 
@@ -331,6 +504,32 @@ Override preset behavior for specific tools with custom rules:
 | `behavior` | string | `allow`, `confirm`, or `deny` |
 | `scope` | string | Optional scope restriction (e.g., file path pattern) |
 | `reason` | string | Optional reason for this permission rule |
+
+#### Browser tool backend
+
+Browser backend selection lives in the `tools.Browser` config in `.apex/config.yaml`.
+Set `backend` to `playwright` or `puppeteer` along with browser-specific controls:
+
+```yaml
+tools:
+  Browser:
+    backend: "puppeteer"
+    engine: "chromium"
+    headless: true
+```
+
+You can also set it from the CLI:
+
+```text
+/browser backend puppeteer
+```
+
+Additional CLI helpers:
+
+```text
+/browser engine chromium
+/browser headless true
+```
 
 #### Tool Categories
 

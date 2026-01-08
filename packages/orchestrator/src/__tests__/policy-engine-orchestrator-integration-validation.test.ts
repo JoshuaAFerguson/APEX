@@ -312,7 +312,7 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
               id: randomUUID(),
               rule: 'deny-rule',
               message: 'Action denied by policy',
-              severity: 'error',
+              severity: 'high',
               blocking: true,
               policyType: 'path',
               timestamp: new Date(),

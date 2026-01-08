@@ -7,6 +7,8 @@ import {
   SecretPatternSchema
 } from '@apexcli/core';
 
+export type { SecretPattern };
+
 /**
  * Configuration for secret scanning patterns (internal representation)
  */
@@ -388,7 +390,7 @@ export class SecretScanner {
     return {
       name: pattern.name,
       regex: new RegExp(pattern.pattern),
-      secretType: pattern.secretType || pattern.name,
+      secretType: pattern.name,
       severity: pattern.severity || 'medium',
       description: pattern.description,
     };

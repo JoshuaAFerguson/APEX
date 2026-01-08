@@ -10,6 +10,7 @@ coverage/
 
 # APEX runtime data (for this repo, ignore entire .apex since we're the tool itself)
 .apex/
+.apex-worktrees/
 
 # Environment
 .env

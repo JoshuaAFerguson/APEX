@@ -24,6 +24,7 @@ import {
   type Task,
   type TaskUsage,
   type ApprovalRequiredEventData,
+  type BrowserToolConfig,
   getPlatformShell,
   isWindows,
   resolveExecutable,
@@ -335,6 +336,87 @@ async function handleConfig(args: string[]): Promise<void> {
       content: '```yaml\n' + JSON.stringify(ctx.config, null, 2) + '\n```',
     });
   }
+}
+
+async function handleBrowser(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.config) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const [subcommand, value] = args;
+  if (!subcommand || subcommand === 'show') {
+    const browserConfig = ctx.config.tools?.Browser || {};
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `Browser tool config: ${JSON.stringify(browserConfig, null, 2)}`,
+    });
+    return;
+  }
+
+  if (subcommand !== 'backend' && subcommand !== 'engine' && subcommand !== 'headless') {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'Usage: /browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>',
+    });
+    return;
+  }
+
+  ctx.config.tools = ctx.config.tools || {};
+  const browserConfig = {
+    ...(ctx.config.tools.Browser || {}),
+  } as BrowserToolConfig;
+
+  if (!value) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'Missing value. See: /browser show',
+    });
+    return;
+  }
+
+  if (subcommand === 'backend') {
+    if (value !== 'playwright' && value !== 'puppeteer') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid backend. Use "playwright" or "puppeteer".',
+      });
+      return;
+    }
+    browserConfig.backend = value;
+  }
+
+  if (subcommand === 'engine') {
+    if (value !== 'chromium' && value !== 'firefox' && value !== 'webkit') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid engine. Use "chromium", "firefox", or "webkit".',
+      });
+      return;
+    }
+    browserConfig.engine = value;
+  }
+
+  if (subcommand === 'headless') {
+    if (value !== 'true' && value !== 'false') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid headless flag. Use "true" or "false".',
+      });
+      return;
+    }
+    browserConfig.headless = value === 'true';
+  }
+
+  ctx.config.tools.Browser = browserConfig;
+  await saveConfig(ctx.cwd, ctx.config);
+  ctx.app?.addMessage({
+    type: 'system',
+    content: `Browser setting updated: ${subcommand} = ${value}.`,
+  });
 }
 
 async function handleServe(args: string[]): Promise<void> {
@@ -971,6 +1053,7 @@ async function persistPreviewConfig(previewConfig: {
     previewConfidence: previewConfig.confidenceThreshold,
     autoExecuteHighConfidence: previewConfig.autoExecuteHighConfidence,
     previewTimeout: previewConfig.timeoutMs,
+    diffPreview: ctx.config.ui?.diffPreview ?? true,
   };
 
   // Persist to file
@@ -1235,6 +1318,9 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
       break;
     case 'config':
       await handleConfig(args);
+      break;
+    case 'browser':
+      await handleBrowser(args);
       break;
     case 'serve':
       await handleServe(args);
@@ -1715,13 +1801,10 @@ export async function startInkREPL(): Promise<void> {
       // Handle approval required events
       ctx.orchestrator.on('approval:required', async (eventData: ApprovalRequiredEventData) => {
         try {
-          // Pause the UI rendering to show the approval prompt
-          ctx.app?.updateState({ showUI: false });
-
           // Show system message about approval requirement
           ctx.app?.addMessage({
             type: 'system',
-            content: `Approval required for ${eventData.gateName} (Task: ${eventData.taskId.slice(0, 12)}...)`,
+            content: `⚠️ Approval required for ${eventData.gateName} (Task: ${eventData.taskId.slice(0, 12)}...)`,
           });
 
           // Show the interactive approval prompt
@@ -1738,7 +1821,7 @@ export async function startInkREPL(): Promise<void> {
                                   'requested more info for';
                 ctx.app?.addMessage({
                   type: 'system',
-                  content: `Approval ${actionText} for ${eventData.gateName}`,
+                  content: `✅ Approval ${actionText} for ${eventData.gateName}`,
                 });
 
                 // Handle info-requested follow-up
@@ -1756,30 +1839,30 @@ export async function startInkREPL(): Promise<void> {
                         // Note: This would need a corresponding method in the orchestrator
                         ctx.app?.addMessage({
                           type: 'system',
-                          content: `Additional information provided: ${additionalInfo.substring(0, 100)}${additionalInfo.length > 100 ? '...' : ''}`,
+                          content: `📝 Additional information provided: ${additionalInfo.substring(0, 100)}${additionalInfo.length > 100 ? '...' : ''}`,
                         });
 
                         // Remove the one-time listener
-                        ctx.orchestrator?.off('info:requested', handleInfoRequested);
+                        ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
                       } catch (infoError) {
                         console.error('Error handling info request:', infoError);
                         ctx.app?.addMessage({
                           type: 'error',
-                          content: `Error handling info request: ${infoError instanceof Error ? infoError.message : String(infoError)}`,
+                          content: `❌ Error handling info request: ${infoError instanceof Error ? infoError.message : String(infoError)}`,
                         });
-                        ctx.orchestrator?.off('info:requested', handleInfoRequested);
+                        ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
                       }
                     }
                   };
 
                   // Set up temporary listener for info requests
-                  ctx.orchestrator?.on('info:requested', handleInfoRequested);
+                  ctx.orchestrator?.on('approval:info-requested', handleInfoRequested);
                 }
               } catch (responseError) {
                 console.error('Error responding to approval:', responseError);
                 ctx.app?.addMessage({
                   type: 'error',
-                  content: `Error responding to approval: ${responseError instanceof Error ? responseError.message : String(responseError)}`,
+                  content: `❌ Error responding to approval: ${responseError instanceof Error ? responseError.message : String(responseError)}`,
                 });
               }
             }
@@ -1788,11 +1871,8 @@ export async function startInkREPL(): Promise<void> {
           console.error('Error handling approval prompt:', approvalError);
           ctx.app?.addMessage({
             type: 'error',
-            content: `Error handling approval prompt: ${approvalError instanceof Error ? approvalError.message : String(approvalError)}`,
+            content: `❌ Error handling approval prompt: ${approvalError instanceof Error ? approvalError.message : String(approvalError)}`,
           });
-        } finally {
-          // Resume UI rendering
-          ctx.app?.updateState({ showUI: true });
         }
       });
 

@@ -25,6 +25,7 @@ export {
   type BrowserClickParams,
   type BrowserTypeParams,
   type BrowserScreenshotParams,
+  type BrowserCompareScreenshotParams,
   type BrowserEvaluateParams,
   type BrowserSubmitParams,
   type BrowserWaitForSelectorParams,
@@ -33,6 +34,8 @@ export {
   type BrowserGetHtmlParams,
   type BrowserScrollParams,
   type BrowserHoverParams,
+  type BrowserConsoleMessage,
+  type BrowserRuntimeError,
   type BrowserToolConfig,
 } from './browser-tool';
 

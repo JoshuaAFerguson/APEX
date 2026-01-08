@@ -1,10 +1,12 @@
-import { query, type AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'eventemitter3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
+import { promises as fs, existsSync, writeFileSync, unlinkSync, readFileSync, statSync } from 'fs';
+import type { Stats } from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml'; // Added js-yaml import
 import {
   ApexConfig,
   AgentDefinition,
@@ -52,23 +54,28 @@ import {
   TaskTemplate,
   WorktreeInfo,
   UndoOperationResult,
-  SecretScannerConfig,
+  FileSnapshot,
+  SecretDetection,
   SecretFinding,
   SecretDetectionBehavior,
   RejectionBehavior,
   PolicyViolation,
   PolicyEnforcementMode,
-  PolicyEngine,
   PolicyCheckContext,
   PolicyCheckResult,
   ApprovalCheckpointType,
+  ApprovalOperationType,
   AutonomyLevel,
+  ApexRule, // Added ApexRule
+  MCPServerConfig,
+  MCPMarketplaceEntry,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
-import { PolicyEnforcer, createPolicyEnforcer } from './policy';
+import { PolicyEnforcer, createPolicyEnforcer, type ApprovalCheckContext, type ApprovalRequirement } from './policy';
+import type { PolicyEngine } from './policy-engine';
 import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
-import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
+import { WorkspaceManager, type WorkspaceInfo, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -89,8 +96,14 @@ import { PermissionStore } from './permission-store';
 import { PermissionManager } from './permission-manager';
 import { PermissionPresetManager } from './permission-preset-manager';
 import { LinterService } from './linter';
-import { SecretScanner } from './scanner';
+import { ErrorFeedbackLoop } from './error-feedback';
+import { SecretScanner, type SecretScannerConfig as OrchestratorSecretScannerConfig } from './scanner';
+import { SecretOutputProcessor } from './secret-output-processor';
 import { generateFileDiff, type DiffResult } from './utils/diff';
+import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
+import { MCPServerManager } from './mcp/server-manager';
+import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
+import { browserTool } from './tools';
 
 const execAsync = promisify(exec);
 
@@ -473,7 +486,8 @@ export interface LimitWarningEvent {
   limitType: 'tokens' | 'cost' | 'time' | 'files';
   currentValue: number;
   limitValue: number;
-  utilizationPercent: number;
+  percentage: number;
+  utilizationPercent?: number;
   timestamp: Date;
 }
 
@@ -485,6 +499,7 @@ export interface LimitExceededEvent {
   limitType: 'tokens' | 'cost' | 'time' | 'files';
   currentValue: number;
   limitValue: number;
+  percentage: number;
   timestamp: Date;
 }
 
@@ -611,6 +626,8 @@ export interface LintIssueEventData {
     filePath: string;
     line: number;
     column: number;
+    endLine?: number;
+    endColumn?: number;
     severity: 'error' | 'warning' | 'info' | 'hint';
     ruleId: string;
     message: string;
@@ -661,7 +678,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private agents: Record<string, AgentDefinition> = {};
   private workflows: Record<string, WorkflowDefinition> = {};
   private gates: Map<string, ApprovalGate> = new Map();
-  private store!: TaskStore;
+  public store!: TaskStore;
   private toolActionStore!: ToolActionStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
   private interactionManager!: InteractionManager;
@@ -674,8 +691,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private autonomyEnforcer!: AutonomyEnforcer;
   private policyEngine?: PolicyEngine;  // Optional PolicyEngine instance
   private linterService!: LinterService;
+  private errorFeedbackLoop = new ErrorFeedbackLoop();
   private secretScanner?: SecretScanner;
+  private secretOutputProcessor = new SecretOutputProcessor();
   private hookManager!: HookManager;
+  private customToolsServer?: CustomToolsServer;
+  private mcpServerManager?: MCPServerManager;
+  private browserToolsServer?: BrowserToolsServer;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -698,6 +720,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     initialUsage: TaskUsage;
     lastCheckTimestamp: Date;
   }> = new Map();
+  private fileChangesByTask: Map<string, { created: string[]; modified: string[] }> = new Map();
 
   // Tool execution tracking with full timing information
   private activeToolExecutions: Map<string, ToolExecution> = new Map();
@@ -728,11 +751,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.config = await loadConfig(this.projectPath);
     this.effectiveConfig = getEffectiveConfig(this.config);
 
+    // Initialize MCP server manager (v0.5.0)
+    this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
+
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
 
+    // Initialize custom tools (v0.5.0)
+    const customToolsServer = buildCustomToolsServer(this.effectiveConfig.customTools, this.projectPath);
+    if (customToolsServer) {
+      this.customToolsServer = customToolsServer;
+    }
+
     // Load workflow definitions and gates
     await this.loadGates();
+
+    // Load APEX project rules
+    await this.loadApexRules();
 
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
@@ -778,8 +813,31 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       this.effectiveConfig.permissions.preset
     );
 
+    if (this.effectiveConfig.tools && Object.keys(this.effectiveConfig.tools).length > 0) {
+      for (const [toolName, toolConfig] of Object.entries(this.effectiveConfig.tools)) {
+        this.permissionManager.setToolConfig(toolName, toolConfig ?? null);
+      }
+    }
+
+    // Wire browser tool permissions + MCP server
+    browserTool.setPermissionManager(this.permissionManager);
+    const browserToolConfig = this.effectiveConfig.tools?.Browser;
+    if (browserToolConfig?.enabled !== false) {
+      this.browserToolsServer = buildBrowserToolsServer(browserTool);
+    }
+
     // Initialize policy enforcer
     this.policyEnforcer = createPolicyEnforcer(this.config.policy);
+    this.policyEnforcer.on('policy:violation', event => {
+      this.emit('policy:violation', {
+        taskId: event.taskId || this.currentTaskId || 'unknown',
+        agent: event.agentId || 'unknown',
+        action: event.violation.policyType || 'policy',
+        violation: event.violation,
+        enforcementMode: this.resolvePolicyEnforcementMode(),
+        timestamp: event.timestamp || new Date(),
+      });
+    });
 
     // Initialize autonomy enforcer
     if (this.options.autonomyEnforcer) {
@@ -807,8 +865,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.linterService.initialize();
 
     // Initialize secret scanner if configured
-    if (this.config.scanner) {
-      this.secretScanner = new SecretScanner(this.config.scanner);
+    const secretScannerConfig = this.resolveSecretScannerConfig();
+    if (secretScannerConfig) {
+      this.secretScanner = new SecretScanner(secretScannerConfig);
       console.log('SecretScanner initialized with configuration');
     } else {
       console.log('SecretScanner not configured - scanner will be disabled');
@@ -2140,7 +2199,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             outputs: {},
             artifacts: [],
             summary: `Stage failed: ${enhancedErrorMessage}`,
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
             error: enhancedErrorMessage,
             startedAt: new Date(),
             completedAt: new Date(),
@@ -2292,6 +2351,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const hookContext: HookContext = {
       taskId: task.id,
       store: this.store,
+      projectPath: this.projectPath,
+      errorFeedbackLoop: this.errorFeedbackLoop,
       permissionPresetManager: this.permissionPresetManager,
       onToolUse: (tool, input) => {
         this.emit('agent:tool-use', task.id, tool, input);
@@ -2301,11 +2362,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           this.emit(event as any, data);
         },
       },
+      linterService: this.linterService,
       toolActionStore: this.toolActionStore,
       currentAgent: agent.name,
       currentStage: stage.name,
       toolStartTimes: new Map(),
-      config: this.config,
+      config: this.effectiveConfig,
       cliFlags: this.currentTaskCliFlags,
     };
 
@@ -2321,6 +2383,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
     };
 
     // Collect all messages to extract summary
@@ -2418,6 +2482,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         permissionMode: 'acceptEdits',
         maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
+        mcpServers: this.buildQueryMcpServers(),
         cwd: workingDirectory,
         env: {
           ...process.env,
@@ -2511,37 +2576,38 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
                 if (toolExecution) {
                   const duration = endTime.getTime() - toolExecution.startTime.getTime();
-                  const success = !block.is_error;
-
-                  // Update the tool execution record
-                  const completedExecution: ToolExecution = {
-                    ...toolExecution,
-                    endTime,
-                    duration,
-                    status: success ? 'completed' : 'failed',
-                    result: {
-                      success,
-                      output: block.content,
-                      error: block.is_error ? String(block.content) : undefined,
-                    },
-                  };
+                  let success = !block.is_error;
+                  let outputForEvents: unknown = block.content;
+                  let toolError = block.is_error ? String(block.content) : undefined;
 
                   // Scan tool output for secrets if scanner is configured
                   if (this.secretScanner && success && block.content) {
                     try {
                       // Convert output to string for scanning
-                      const outputContent = typeof block.content === 'string'
-                        ? block.content
-                        : JSON.stringify(block.content);
+                      const outputContent = this.normalizeSecretScanContent(block.content);
 
                       // Scan for secrets in the tool output
-                      const findings = this.secretScanner.scan(
+                      const detections = this.secretScanner.scan(
                         outputContent,
                         `tool:${toolExecution.toolName}:${callId}`
                       );
+                      const findings = this.mapSecretDetectionsToFindings(detections);
 
                       // If secrets detected, emit secret:detected event
                       if (findings.length > 0) {
+                        const behavior = this.resolveSecretDetectionBehavior();
+                        const processed = this.secretOutputProcessor.processOutput(
+                          outputForEvents as string | Record<string, unknown>,
+                          findings,
+                          behavior
+                        );
+
+                        outputForEvents = processed.output;
+                        if (processed.shouldBlock) {
+                          success = false;
+                          toolError = processed.blockError || 'Tool output blocked due to secret detection';
+                        }
+
                         const severityCounts = {
                           critical: findings.filter(f => f.severity === 'critical').length,
                           high: findings.filter(f => f.severity === 'high').length,
@@ -2556,20 +2622,20 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                           findings,
                           count: findings.length,
                           severityCounts,
-                          behavior: this.config.scanner?.onSecretDetected ?? 'warn',
+                          behavior,
                           timestamp: new Date(),
                         });
 
                         // Log the detection
                         await this.store.addLog(task.id, {
-                          level: 'warn',
+                          level: processed.logLevel,
                           message: `Secrets detected in tool output: ${toolExecution.toolName} (${findings.length} findings)`,
                           metadata: {
                             toolName: toolExecution.toolName,
                             callId,
                             secretCount: findings.length,
                             severityCounts,
-                            behavior: this.config.scanner?.onSecretDetected ?? 'warn',
+                            behavior,
                           },
                         });
                       }
@@ -2587,14 +2653,27 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                     }
                   }
 
+                  // Update the tool execution record
+                  const completedExecution: ToolExecution = {
+                    ...toolExecution,
+                    endTime,
+                    duration,
+                    status: success ? 'completed' : 'failed',
+                    result: {
+                      success,
+                      output: outputForEvents,
+                      error: success ? undefined : toolError,
+                    },
+                  };
+
                   this.emit('tool:complete', {
                     taskId: task.id,
                     toolName: toolExecution.toolName,
                     callId,
                     result: {
                       success,
-                      output: block.content,
-                      error: block.is_error ? String(block.content) : undefined,
+                      output: outputForEvents,
+                      error: success ? undefined : toolError,
                     },
                     timing: {
                       startTime: toolExecution.startTime,
@@ -3237,10 +3316,112 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputTokens,
       totalTokens,
       estimatedCost,
+      totalCostCents: Math.round(estimatedCost * 100),
+      executionTimeMs: 0, // Will be updated by task completion
     };
 
     await this.store.updateTask(taskId, { usage });
     this.emit('usage:updated', taskId, usage);
+
+    await this.checkResourceLimits(taskId);
+  }
+
+  /**
+   * Update tracked file changes for a task and check resource limits.
+   */
+  private async updateFileChanges(
+    taskId: string,
+    changes: { created?: string[]; modified?: string[] }
+  ): Promise<void> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    const currentChanges = this.fileChangesByTask.get(taskId) || {
+      created: [],
+      modified: [],
+    };
+
+    const created = new Set([...currentChanges.created, ...(changes.created ?? [])]);
+    const modified = new Set([...currentChanges.modified, ...(changes.modified ?? [])]);
+
+    const updatedChanges = {
+      created: Array.from(created),
+      modified: Array.from(modified),
+    };
+
+    this.fileChangesByTask.set(taskId, updatedChanges);
+
+    await this.store.updateTask(taskId, {
+      fileChanges: updatedChanges,
+    } as unknown as Parameters<typeof this.store.updateTask>[1]);
+
+    await this.checkResourceLimits(taskId);
+  }
+
+  /**
+   * Evaluate resource limits for a task and emit warning/exceeded events.
+   */
+  private async checkResourceLimits(taskId: string): Promise<void> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    const limits = this.effectiveConfig.limits;
+    const warningThreshold = 80;
+
+    const usage = task.usage || {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
+    };
+
+    const checkLimit = (limitType: LimitWarningEvent['limitType'], currentValue: number, limitValue: number) => {
+      if (!limitValue || limitValue <= 0) {
+        return;
+      }
+
+      const utilizationPercent = (currentValue / limitValue) * 100;
+
+      if (utilizationPercent >= 100) {
+        this.emit('limit:exceeded', {
+          taskId,
+          limitType,
+          currentValue,
+          limitValue,
+          percentage: utilizationPercent,
+          timestamp: new Date(),
+        });
+      } else if (utilizationPercent >= warningThreshold) {
+        this.emit('limit:warning', {
+          taskId,
+          limitType,
+          currentValue,
+          limitValue,
+          percentage: utilizationPercent,
+          timestamp: new Date(),
+        });
+      }
+    };
+
+    checkLimit('tokens', usage.totalTokens, limits.maxTokensPerTask);
+    checkLimit('cost', usage.estimatedCost, limits.maxCostPerTask);
+
+    const executionTime = (task as Task & { executionTime?: number }).executionTime
+      ?? usage.executionTimeMs
+      ?? 0;
+    checkLimit('time', executionTime, limits.maxExecutionTime);
+
+    const fileChanges = this.fileChangesByTask.get(taskId)
+      ?? (task as Task & { fileChanges?: { created: string[]; modified: string[] } }).fileChanges
+      ?? { created: [], modified: [] };
+    const totalFileChanges = (fileChanges.created?.length || 0) + (fileChanges.modified?.length || 0);
+    checkLimit('files', totalFileChanges, limits.maxFileChanges);
   }
 
   /**
@@ -3249,6 +3430,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getTask(taskId: string): Promise<Task | null> {
     await this.ensureInitialized();
     return this.store.getTask(taskId);
+  }
+
+  /**
+   * Get the currently active task, if any.
+   */
+  async getCurrentTask(): Promise<Task | null> {
+    await this.ensureInitialized();
+    if (!this.currentTaskId) {
+      return null;
+    }
+
+    return this.store.getTask(this.currentTaskId);
   }
 
   /**
@@ -3401,29 +3594,29 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Determine operation type based on tool name and file state
           const toolName = lastAction.execution.toolName;
           const filePath = snapshot.filePath;
-          const fileExists = fs.existsSync(filePath);
+          const fileExists = existsSync(filePath);
 
           if (toolName === 'Write' || toolName === 'Edit') {
             // Write/Edit: restore content from snapshot
             if (snapshot.existed) {
-              fs.writeFileSync(filePath, snapshot.content, 'utf8');
+              writeFileSync(filePath, snapshot.content, 'utf8');
               restoredFiles.push(filePath);
             } else if (fileExists) {
               // File was created, so delete it
-              fs.unlinkSync(filePath);
+              unlinkSync(filePath);
               restoredFiles.push(filePath);
             }
           } else if (toolName === 'Bash' && snapshot.existed && !fileExists) {
             // File was deleted by bash command, restore it
-            fs.writeFileSync(filePath, snapshot.content, 'utf8');
+            writeFileSync(filePath, snapshot.content, 'utf8');
             restoredFiles.push(filePath);
           } else if (!snapshot.existed && fileExists) {
             // File was created, delete it
-            fs.unlinkSync(filePath);
+            unlinkSync(filePath);
             restoredFiles.push(filePath);
           } else if (snapshot.existed) {
             // File was modified, restore original content
-            fs.writeFileSync(filePath, snapshot.content, 'utf8');
+            writeFileSync(filePath, snapshot.content, 'utf8');
             restoredFiles.push(filePath);
           }
         } catch (error) {
@@ -4137,6 +4330,75 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    * Scan staged files for secrets before committing
    * @returns Promise that resolves to secret findings from all staged files
    */
+  private mapSecretDetectionsToFindings(detections: SecretDetection[]): SecretFinding[] {
+    return detections.map(detection => {
+      const line = detection.lineNumber ?? 1;
+      const column = detection.columnNumber ?? 1;
+      const endColumn = column + Math.max(0, detection.maskedMatch.length - 1);
+
+      return {
+        file: detection.filePath ?? 'unknown',
+        line,
+        column,
+        endColumn,
+        secretType: detection.secretType,
+        match: detection.maskedMatch,
+        confidence: 1,
+        patternName: detection.patternName,
+        severity: detection.severity,
+        context: detection.context,
+      };
+    });
+  }
+
+  private resolveSecretDetectionBehavior(): SecretDetectionBehavior {
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailSecrets = guardrailsEnabled && guardrails?.secrets?.enabled !== false
+      ? guardrails.secrets
+      : undefined;
+
+    return guardrailSecrets?.onDetection
+      ?? this.effectiveConfig.scanner?.onSecretDetected
+      ?? 'warn';
+  }
+
+  private resolveSecretScannerConfig(): OrchestratorSecretScannerConfig | null {
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailSecrets = guardrailsEnabled && guardrails?.secrets?.enabled !== false
+      ? guardrails.secrets
+      : undefined;
+    const baseScanner = this.effectiveConfig.scanner;
+
+    const customPatterns = guardrailSecrets?.customPatterns ?? baseScanner?.customPatterns;
+    const includeBuiltInPatterns = guardrailSecrets?.includeBuiltInPatterns ?? baseScanner?.includeBuiltInPatterns;
+
+    if (!customPatterns && includeBuiltInPatterns === undefined && !baseScanner) {
+      return null;
+    }
+
+    return {
+      customPatterns: customPatterns || [],
+      includeBuiltInPatterns,
+      maxLineLength: baseScanner?.maxLineLength,
+      maskSecrets: baseScanner?.maskSecrets,
+      contextLength: baseScanner?.contextLength,
+    };
+  }
+
+  private normalizeSecretScanContent(output: unknown): string {
+    if (typeof output === 'string') {
+      return output;
+    }
+
+    try {
+      return JSON.stringify(output, null, 2);
+    } catch {
+      return String(output);
+    }
+  }
+
   async scanStagedFilesForSecrets(): Promise<SecretFinding[]> {
     if (!this.secretScanner) {
       return [];
@@ -4157,7 +4419,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       );
 
       // Use the new scanFiles method to scan all staged files
-      return await this.secretScanner.scanFiles(absolutePaths);
+      const detections = await this.secretScanner.scanFiles(absolutePaths);
+      return this.mapSecretDetectionsToFindings(detections);
     } catch (error) {
       console.warn('Error scanning staged files for secrets:', error);
       return [];
@@ -5695,12 +5958,15 @@ Parent: ${parentTask.description}`;
     }
 
     // Update parent task with aggregated usage
+    const totalCost = calculateCost(totalInputTokens, totalOutputTokens);
     await this.store.updateTask(parentTaskId, {
       usage: {
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
         totalTokens: totalInputTokens + totalOutputTokens,
-        estimatedCost: calculateCost(totalInputTokens, totalOutputTokens),
+        estimatedCost: totalCost,
+        totalCostCents: Math.round(totalCost * 100),
+        executionTimeMs: 0,
       },
       updatedAt: new Date(),
     });
@@ -6410,12 +6676,7 @@ Parent: ${parentTask.description}`;
       const lintEvent: LintCompletedEventData = {
         taskId: this.getCurrentTaskId() || 'unknown',
         linterId: event.linterId,
-        result: {
-          success: event.result.success,
-          issuesFound: event.result.issues.length,
-          issuesFixed: event.result.issues.filter(issue => issue.fix).length,
-          duration: event.result.duration
-        },
+        result: event.result,
         timestamp: event.timestamp,
       };
       this.emit('lint:completed', lintEvent);
@@ -6445,30 +6706,15 @@ Parent: ${parentTask.description}`;
     this.linterService.on('fix:completed', (event) => {
       // Process each fix result to create separate fix-applied events
       for (const [linterId, fixResult] of event.result.fixResultsByLinter) {
-        // Group fixes by file
-        const fixesByFile = new Map<string, any[]>();
-
-        // Since LinterService doesn't expose individual fix details,
-        // we'll emit a summary event per file that was fixed
-        for (const filePath of fixResult.fixedFiles || []) {
-          const fixEvent: LintFixAppliedEventData = {
-            taskId: this.getCurrentTaskId() || 'unknown',
-            linterId: linterId,
-            filePath: filePath,
-            issuesFixed: fixResult.issuesFixed,
-            fixDetails: [
-              {
-                ruleId: 'auto-fix',
-                line: 1,
-                column: 1,
-                originalText: 'Multiple issues',
-                fixedText: 'Fixed automatically'
-              }
-            ],
-            timestamp: event.timestamp,
-          };
-          this.emit('lint:fix-applied', fixEvent);
-        }
+        const fixEvent: LintFixAppliedEventData = {
+          taskId: this.getCurrentTaskId() || 'unknown',
+          linterId,
+          filePath: 'unknown',
+          issuesFixed: fixResult.issuesFixed,
+          fixDetails: [],
+          timestamp: event.timestamp,
+        };
+        this.emit('lint:fix-applied', fixEvent);
       }
     });
   }
@@ -6497,6 +6743,30 @@ Parent: ${parentTask.description}`;
     this.hookManager.on('hook:post:complete', (event) => {
       this.emit('hook:post:complete', event);
     });
+  }
+
+  /**
+   * Build configuration for the autonomy enforcer from the effective config.
+   */
+  private buildAutonomyEnforcerConfig(): AutonomyEnforcerConfig {
+    return {
+      level: this.effectiveConfig.autonomy.level,
+      gates: this.effectiveConfig.autonomy.gates ?? [],
+      limits: {
+        maxTokens: this.effectiveConfig.limits.maxTokensPerTask,
+        maxCost: this.effectiveConfig.limits.maxCostPerTask,
+        maxTimeMs: this.effectiveConfig.limits.maxExecutionTime || undefined,
+        dailyBudget: this.effectiveConfig.limits.dailyBudget,
+        maxTurns: this.effectiveConfig.limits.maxTurns,
+        maxConcurrentTasks: this.effectiveConfig.limits.maxConcurrentTasks,
+      },
+      warningThresholds: {
+        costWarningPercent: 80,
+        tokenWarningPercent: 80,
+        timeWarningPercent: 80,
+        fileWarningPercent: 80,
+      },
+    };
   }
 
   /**
@@ -6549,6 +6819,7 @@ Parent: ${parentTask.description}`;
         {
           hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
             try {
+              const invocationId = toolUseId ?? input.tool_use_id ?? crypto.randomUUID();
               // Create action metadata for autonomy check
               const actionMetadata: ActionMetadata = {
                 agentType: agentName,
@@ -6563,30 +6834,163 @@ Parent: ${parentTask.description}`;
               if (requiresApproval) {
                 return {
                   hookSpecificOutput: {
-                    hookEventName: 'PreToolUse',
-                    permissionDecision: 'deny',
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
                     permissionDecisionReason: 'Autonomy enforcer requires approval for this action',
                   },
                 };
+              }
+
+              const activeTaskId = hookContext.taskId || this.currentTaskId;
+              if (activeTaskId && this.policyEnforcer?.isEnabled) {
+                const task = await this.store.getTask(activeTaskId);
+                if (task && task.status !== 'awaiting-approval') {
+                  const toolName = input.tool_name || 'unknown';
+                  const filePaths = this.extractApprovalFilePaths(toolName, input.tool_input || {});
+                  const enforcementMode = this.resolvePolicyEnforcementMode();
+
+                  if (filePaths.length > 0 && enforcementMode !== 'disabled') {
+                    const violations = filePaths.flatMap(filePath =>
+                      this.policyEnforcer.validateFilePath(filePath, {
+                        taskId: activeTaskId,
+                        agentId: agentName,
+                        workflowId: workflowName,
+                        metadata: {
+                          stage: stageName,
+                          toolName,
+                        },
+                      })
+                    );
+
+                    if (violations.length > 0) {
+                      const approvalViolations = violations.filter(violation =>
+                        violation.context?.requiresApproval === true || violation.context?.matchType === 'sensitive'
+                      );
+                      const enforcementViolations = violations.filter(violation =>
+                        !approvalViolations.includes(violation)
+                      );
+
+                      if (enforcementViolations.length > 0) {
+                        const handled = await this.handlePolicyViolations(
+                          enforcementViolations,
+                          enforcementMode,
+                          task,
+                          {
+                            action: toolName,
+                            agentName,
+                          }
+                        );
+
+                        if (!handled) {
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason: 'Policy enforcement blocked this action',
+                            },
+                          };
+                        }
+                      }
+
+                      if (approvalViolations.length > 0) {
+                        const approvalOperation = this.resolveApprovalOperation(toolName, input.tool_input || {}) ?? 'modify';
+                        const tokenUsage = task.usage
+                          ? (task.usage.totalTokens ?? ((task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0)))
+                          : undefined;
+
+                        const approvalReq: ApprovalRequirement = {
+                          required: true,
+                          triggeredRules: [],
+                          urgency: 'normal',
+                          timeoutMinutes: 60,
+                          requiredApprovers: [],
+                          minApprovals: 1,
+                          timeoutAction: 'reject',
+                          reason: 'Sensitive path access requires approval',
+                        };
+
+                        await this.requestPolicyApproval(task, approvalReq, {
+                          action: approvalOperation,
+                          toolName,
+                          stageName,
+                          workflowName,
+                          filePaths,
+                          agentName,
+                        });
+
+                        return {
+                          hookSpecificOutput: {
+                            hookEventName: 'PreToolUse' as const,
+                            permissionDecision: 'deny' as const,
+                            permissionDecisionReason: 'Policy approval required: sensitive path access',
+                          },
+                        };
+                      }
+                    }
+                  }
+
+                  const approvalOperation = this.resolveApprovalOperation(
+                    toolName,
+                    input.tool_input || {}
+                  );
+                  if (approvalOperation) {
+                    const tokenUsage = task.usage
+                      ? (task.usage.totalTokens ?? ((task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0)))
+                      : undefined;
+
+                    const approvalContext: ApprovalCheckContext = {
+                      filePaths,
+                      operation: approvalOperation,
+                      estimatedCost: task.usage?.estimatedCost,
+                      tokenUsage,
+                      customContext: {
+                        toolName: input.tool_name || 'unknown',
+                        stage: stageName,
+                        workflow: workflowName,
+                      },
+                    };
+
+                    const approvalReq = this.policyEnforcer.checkApprovalRequired(
+                      task,
+                      approvalOperation,
+                      approvalContext
+                    );
+
+                    if (approvalReq.required) {
+                      await this.requestPolicyApproval(task, approvalReq, {
+                        action: approvalOperation,
+                        toolName: input.tool_name || 'unknown',
+                        stageName,
+                        workflowName,
+                        filePaths: approvalContext.filePaths ?? [],
+                        agentName,
+                      });
+
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: 'PreToolUse' as const,
+                          permissionDecision: 'deny' as const,
+                          permissionDecisionReason: `Policy approval required: ${approvalReq.reason}`,
+                        },
+                      };
+                    }
+                  }
+                }
               }
 
               // Check policy requirements if PolicyEngine is available
               if (this.policyEngine) {
                 try {
                   const policyContext: PolicyCheckContext = {
-                    action: {
-                      type: 'tool_use',
-                      agent: agentName,
-                      tool: input.tool_name || 'unknown',
-                      parameters: input.tool_input || {},
-                      timestamp: new Date(),
-                    },
-                    task: {
-                      id: this.currentTaskId || 'unknown',
-                      stage: stageName,
-                      workflow: workflowName,
-                    },
-                    environment: {
+                    action: input.tool_name || 'unknown',
+                    agentId: agentName,
+                    toolName: input.tool_name || 'unknown',
+                    toolArguments: input.tool_input || {},
+                    taskId: this.currentTaskId || 'unknown',
+                    stage: stageName,
+                    resource: input.tool_input?.file_path || input.tool_input?.path,
+                    metadata: {
+                      workflowId: workflowName,
                       projectPath: this.projectPath,
                     },
                   };
@@ -6604,13 +7008,14 @@ Parent: ${parentTask.description}`;
                       action: input.tool_name || 'unknown',
                       violations: policyResult.violations,
                       enforcementMode: policyResult.enforcementMode,
+                      timestamp: new Date(),
                     };
                     this.emit('policy:blocked', blockedEventData);
 
                     return {
                       hookSpecificOutput: {
-                        hookEventName: 'PreToolUse',
-                        permissionDecision: 'deny',
+                        hookEventName: 'PreToolUse' as const,
+                        permissionDecision: 'deny' as const,
                         permissionDecisionReason: `Policy check failed: ${violations}`,
                       },
                     };
@@ -6672,6 +7077,7 @@ Parent: ${parentTask.description}`;
               const preHookContext = {
                 toolName: input.tool_name || 'unknown',
                 arguments: input.tool_input || {},
+                invocationId,
                 taskId: hookContext.taskId,
                 agentName,
                 stageName,
@@ -6685,8 +7091,8 @@ Parent: ${parentTask.description}`;
               if (!result.success) {
                 return {
                   hookSpecificOutput: {
-                    hookEventName: 'PreToolUse',
-                    permissionDecision: 'deny',
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
                     permissionDecisionReason: result.cancelReason || 'Pre-hook failed',
                   },
                 };
@@ -6695,8 +7101,8 @@ Parent: ${parentTask.description}`;
               if (result.cancelled) {
                 return {
                   hookSpecificOutput: {
-                    hookEventName: 'PreToolUse',
-                    permissionDecision: 'deny',
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
                     permissionDecisionReason: result.cancelReason || 'Operation cancelled by hook',
                   },
                 };
@@ -6705,9 +7111,12 @@ Parent: ${parentTask.description}`;
               if (result.modifiedArgs) {
                 // Modify the tool input with the modified arguments
                 return {
-                  modifiedInput: {
-                    ...input,
-                    tool_input: result.modifiedArgs,
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    updatedInput: {
+                      ...input,
+                      tool_input: result.modifiedArgs,
+                    },
                   },
                 };
               }
@@ -6715,11 +7124,13 @@ Parent: ${parentTask.description}`;
               return {};
             } catch (error) {
               // Log error and allow execution to continue
-              await hookContext.store.addLog(hookContext.taskId, {
-                level: 'error',
-                message: `HookManager pre-hook error: ${error instanceof Error ? error.message : String(error)}`,
-                metadata: { tool: input.tool_name, error: String(error) },
-              });
+              if (hookContext.taskId) {
+                await hookContext.store.addLog(hookContext.taskId, {
+                  level: 'error',
+                  message: `HookManager pre-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                  metadata: { tool: input.tool_name, error: String(error) },
+                });
+              }
               return {};
             }
           }],
@@ -6736,10 +7147,12 @@ Parent: ${parentTask.description}`;
         {
           hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
             try {
+              const invocationId = toolUseId ?? input.tool_use_id ?? crypto.randomUUID();
               // Create PostHookContext for the HookManager
               const postHookContext = {
                 toolName: input.tool_name || 'unknown',
                 arguments: input.tool_input || {},
+                invocationId,
                 taskId: hookContext.taskId,
                 agentName,
                 stageName,
@@ -6758,11 +7171,13 @@ Parent: ${parentTask.description}`;
               return {};
             } catch (error) {
               // Log error but don't fail the operation
-              await hookContext.store.addLog(hookContext.taskId, {
-                level: 'error',
-                message: `HookManager post-hook error: ${error instanceof Error ? error.message : String(error)}`,
-                metadata: { tool: input.tool_name, error: String(error) },
-              });
+              if (hookContext.taskId) {
+                await hookContext.store.addLog(hookContext.taskId, {
+                  level: 'error',
+                  message: `HookManager post-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                  metadata: { tool: input.tool_name, error: String(error) },
+                });
+              }
               return {};
             }
           }],
@@ -6773,6 +7188,71 @@ Parent: ${parentTask.description}`;
     };
 
     return hookManagerIntegration;
+  }
+
+  private buildQueryMcpServers(): Record<string, McpServerConfig> | undefined {
+    // Get MCP server configs from manager and transform to SDK format
+    const internalServers = this.mcpServerManager?.getSdkServerConfigs() ?? {};
+    const servers: Record<string, McpServerConfig> = {};
+
+    // Transform our MCPServerConfig to SDK's McpServerConfig format
+    for (const [name, config] of Object.entries(internalServers)) {
+      const type = config.type ?? 'stdio';
+      if (type === 'stdio') {
+        servers[name] = {
+          type: 'stdio',
+          command: config.command!,
+          args: config.args,
+          env: config.env,
+        };
+      } else if (type === 'http') {
+        servers[name] = {
+          type: 'http',
+          url: config.url!,
+          headers: config.headers,
+        };
+      } else if (type === 'sse') {
+        servers[name] = {
+          type: 'sse',
+          url: config.url!,
+          headers: config.headers,
+        };
+      }
+    }
+
+    if (this.customToolsServer) {
+      servers[this.customToolsServer.name] = this.customToolsServer.config as unknown as McpServerConfig;
+    }
+
+    if (this.browserToolsServer) {
+      servers[this.browserToolsServer.name] = this.browserToolsServer.config as unknown as McpServerConfig;
+    }
+
+    return Object.keys(servers).length > 0 ? servers : undefined;
+  }
+
+  public listMcpServers(): MCPServerConfig[] {
+    return this.mcpServerManager?.listServers() ?? [];
+  }
+
+  public async listMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpServerManager) {
+      return [];
+    }
+    return this.mcpServerManager.listMarketplaceEntries();
+  }
+
+  public async installMcpServer(name: string): Promise<MCPServerConfig> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    const installed = await this.mcpServerManager.installServer(name);
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager.updateConfig(this.config);
+
+    return installed;
   }
 
   /**
@@ -6839,12 +7319,14 @@ Parent: ${parentTask.description}`;
           const timestamp = new Date();
 
           // Create approval state in store
-          await this.store.createApprovalState({
+          await this.store.saveApprovalState({
             id: approvalId,
             taskId,
             gateName,
             status: 'pending',
             requestedAt: timestamp,
+            approvalsReceived: 0,
+            approvalsRequired: 1,
             context: {
               autonomyLevel: task.autonomy,
               triggeredBy: 'autonomy-enforcer',
@@ -6881,6 +7363,55 @@ Parent: ${parentTask.description}`;
       } catch (error) {
         console.error('Error handling autonomy enforcer approval:required event:', error);
       }
+    });
+
+    this.autonomyEnforcer.on('limit:warning', (warning) => {
+      const taskId = warning.taskId ?? this.currentTaskId;
+      if (!taskId) {
+        return;
+      }
+
+      const utilizationPercent = warning.limitValue > 0
+        ? (warning.currentValue / warning.limitValue) * 100
+        : warning.threshold;
+
+      this.emit('limit:warning', {
+        taskId,
+        limitType: warning.type,
+        currentValue: warning.currentValue,
+        limitValue: warning.limitValue,
+        percentage: utilizationPercent,
+        timestamp: new Date(),
+      });
+    });
+
+    this.autonomyEnforcer.on('limit:exceeded', async (result, task) => {
+      if (!result.limitType || result.currentValue === undefined || result.limitValue === undefined) {
+        return;
+      }
+
+      if (!['tokens', 'cost', 'time', 'files'].includes(result.limitType)) {
+        return;
+      }
+
+      const limitType = result.limitType as LimitExceededEvent['limitType'];
+
+      this.emit('limit:exceeded', {
+        taskId: task.id,
+        limitType,
+        currentValue: result.currentValue,
+        limitValue: result.limitValue,
+        percentage: (result.currentValue / result.limitValue) * 100,
+        timestamp: new Date(),
+      });
+
+      const pauseReason = limitType === 'cost'
+        ? 'budget'
+        : limitType === 'tokens'
+        ? 'token_limit'
+        : 'usage_limit';
+
+      await this.pauseTask(task.id, pauseReason);
     });
   }
 
@@ -7487,6 +8018,47 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   }
 
   /**
+   * Load project-specific APEX rules from the .apexrules file.
+   * This is a private helper called during initialization.
+   */
+  private async loadApexRules(): Promise<void> {
+    const apexRulesPath = path.join(this.projectPath, '.apex', '.apexrules');
+    
+    try {
+      const fileContent = await fs.readFile(apexRulesPath, 'utf8');
+      const parsedRules = yaml.load(fileContent) as { rules?: ApexRule[] };
+      const normalizedRules = (parsedRules?.rules ?? []).map((rule) => ({
+        ...rule,
+        enabled: rule.enabled ?? true,
+      })) as Array<ApexRule & { enabled: boolean }>;
+
+      if (normalizedRules.length > 0) {
+        // Assign to config.projectRules directly
+        this.config.projectRules = normalizedRules.filter(rule => rule.enabled);
+        console.log(`Loaded ${this.config.projectRules.length} APEX rules from ${apexRulesPath}`);
+        
+        // Register these rules with the PolicyEngine
+        if (this.policyEngine) {
+          this.policyEngine.registerApexRules(this.config.projectRules);
+          console.log(`Registered ${this.config.projectRules.length} APEX rules with PolicyEngine.`);
+        } else {
+          console.warn('PolicyEngine not initialized. APEX rules will not be enforced.');
+        }
+      } else {
+        console.warn(`APEX rules file ${apexRulesPath} is empty or malformed. No rules loaded.`);
+        this.config.projectRules = []; // Ensure it's an empty array if malformed
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.log(`No .apexrules file found at ${apexRulesPath}. Proceeding without project rules.`);
+      } else {
+        console.error(`Failed to load .apexrules from ${apexRulesPath}:`, error);
+      }
+      this.config.projectRules = []; // Ensure it's an empty array on error
+    }
+  }
+
+  /**
    * Close the orchestrator and cleanup resources
    */
   close(): void {
@@ -7538,12 +8110,12 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   private async createFileSnapshot(filePath: string, existed: boolean = true): Promise<FileSnapshot | null> {
     try {
       let content = '';
-      let fileStats: fs.Stats | null = null;
+      let fileStats: Stats | null = null;
 
       if (existed) {
         try {
-          content = fs.readFileSync(filePath, 'utf8');
-          fileStats = fs.statSync(filePath);
+          content = readFileSync(filePath, 'utf8');
+          fileStats = statSync(filePath);
         } catch (error) {
           // File doesn't exist, treat as non-existent
           existed = false;
@@ -7666,7 +8238,22 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
       // Only record if we have modified files
       if (modifiedFiles.length > 0) {
-        await this.store.recordToolAction(
+        const createdFiles = beforeSnapshots
+          .filter(snapshot => !snapshot.existed)
+          .map(snapshot => snapshot.filePath);
+        const modifiedFromSnapshots = beforeSnapshots
+          .filter(snapshot => snapshot.existed)
+          .map(snapshot => snapshot.filePath);
+        const remainingModified = modifiedFiles.filter(filePath =>
+          !createdFiles.includes(filePath) && !modifiedFromSnapshots.includes(filePath)
+        );
+
+        await this.updateFileChanges(taskId, {
+          created: createdFiles,
+          modified: [...modifiedFromSnapshots, ...remainingModified],
+        });
+
+        await this.toolActionStore.recordToolAction(
           taskId,
           toolExecution,
           modifiedFiles,
@@ -7707,9 +8294,9 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
       const now = new Date();
 
       // Try to get actual file stats if file exists
-      let fileStats: fs.Stats | null = null;
+      let fileStats: Stats | null = null;
       try {
-        fileStats = fs.statSync(filePath);
+        fileStats = statSync(filePath);
       } catch {
         // File doesn't exist or can't be accessed
       }
@@ -7746,6 +8333,14 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    */
   async getPendingApprovals(): Promise<ApprovalState[]> {
     return await this.store.getPendingApprovals();
+  }
+
+  /**
+   * List all active task workspaces
+   */
+  async listAllWorkspaces(): Promise<WorkspaceInfo[]> {
+    await this.ensureInitialized();
+    return this.workspaceManager.listWorkspaces();
   }
 
   /**
@@ -7812,6 +8407,230 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (completedTask) {
       this.emit('task:completed', completedTask);
     }
+  }
+
+  private resolveApprovalOperation(
+    toolName: string,
+    toolInput: Record<string, unknown>
+  ): ApprovalOperationType | null {
+    if (FILE_MODIFYING_TOOLS.includes(toolName)) {
+      if (toolName === 'Write') {
+        const overwrite = Boolean(toolInput.overwrite);
+        return overwrite ? 'modify' : 'create';
+      }
+      return 'modify';
+    }
+
+    if (toolName === 'Bash') {
+      return 'execute';
+    }
+
+    return null;
+  }
+
+  private extractApprovalFilePaths(toolName: string, toolInput: Record<string, unknown>): string[] {
+    return this.extractFilePathsFromToolInput(toolName, toolInput);
+  }
+
+  private getStageIndex(workflowName: string, stageName: string): number {
+    const workflow = this.workflows[workflowName];
+    if (!workflow) {
+      return 0;
+    }
+
+    const index = workflow.stages.findIndex(stage => stage.name === stageName);
+    return index >= 0 ? index : 0;
+  }
+
+  private async requestPolicyApproval(
+    task: Task,
+    approvalReq: ApprovalRequirement,
+    context: {
+      action: ApprovalOperationType;
+      toolName: string;
+      stageName: string;
+      workflowName: string;
+      filePaths: string[];
+      agentName: string;
+    }
+  ): Promise<void> {
+    if (task.status === 'awaiting-approval') {
+      return;
+    }
+
+    const rule = approvalReq.triggeredRules[0];
+    const ruleId = rule?.id || rule?.name || 'approval';
+    const gateName = `policy-${ruleId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+    const requestedAt = new Date();
+
+    const approvalState: ApprovalState = {
+      id: generateApprovalId(),
+      taskId: task.id,
+      gateName,
+      status: 'pending',
+      requestedAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      approvalsReceived: 0,
+      approvalsRequired: approvalReq.minApprovals || 1,
+      timeoutMinutes: approvalReq.timeoutMinutes,
+      expiresAt: approvalReq.timeoutMinutes ? new Date(Date.now() + approvalReq.timeoutMinutes * 60000) : undefined,
+      context: {
+        workflowName: context.workflowName,
+        toolName: context.toolName,
+        action: context.action,
+        reason: approvalReq.reason,
+        filePaths: context.filePaths,
+        triggeredRuleIds: approvalReq.triggeredRules.map(triggered => triggered.id),
+      },
+    };
+
+    await this.store.saveApprovalState(approvalState);
+    await this.store.logApprovalRequest(task.id, `Policy approval: ${gateName} - ${approvalReq.reason}`);
+    await this.store.logModeChange(
+      task.id,
+      task.autonomy,
+      'supervised',
+      `Policy approval required: ${approvalReq.reason}`
+    );
+
+    const currentTask = await this.store.getTask(task.id);
+    const conversationState = currentTask?.conversation || [];
+    const stageIndex = this.getStageIndex(context.workflowName, context.stageName);
+
+    const checkpointId = await this.saveCheckpoint(task.id, {
+      stage: context.stageName,
+      stageIndex,
+      conversationState,
+      metadata: {
+        pauseReason: 'policy_approval',
+        gateName,
+        approvalId: approvalState.id,
+        resumePoint: 'pre_tool_gate',
+        toolName: context.toolName,
+      },
+    });
+
+    await this.store.setGate(task.id, {
+      name: gateName,
+      status: 'pending',
+      requiredAt: approvalState.requestedAt,
+    });
+
+    await this.store.updateTask(task.id, {
+      status: 'awaiting-approval',
+      pausedAt: new Date(),
+      pauseReason: 'approval_gate',
+      updatedAt: new Date(),
+    });
+
+    const eventData: ApprovalRequiredEventData = {
+      approvalId: approvalState.id,
+      taskId: task.id,
+      gateName,
+      gateType: this.mapGateNameToType(gateName),
+      description: rule?.description || approvalReq.reason,
+      approvers: approvalReq.requiredApprovers,
+      minApprovals: approvalReq.minApprovals,
+      timeoutMinutes: approvalReq.timeoutMinutes,
+      expiresAt: approvalState.expiresAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      timestamp: new Date(),
+      context: approvalState.context,
+      blocking: true,
+      approvalUrl: this.generateApprovalUrl(approvalState.id),
+    };
+
+    this.emit('approval:required', eventData);
+
+    await this.store.addLog(task.id, {
+      level: 'info',
+      message: `Task paused for policy approval "${gateName}". Checkpoint ${checkpointId} saved.`,
+      stage: context.stageName,
+      agent: context.agentName,
+    });
+  }
+
+  private resolvePolicyEnforcementMode(): PolicyEnforcementMode {
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailPolicies = guardrailsEnabled && guardrails?.policies?.enabled !== false
+      ? guardrails.policies
+      : undefined;
+
+    const guardrailEnforcement = guardrailPolicies?.enforcement ?? guardrails?.enforcement;
+    if (guardrailEnforcement) {
+      return guardrailEnforcement === 'block' ? 'strict' : guardrailEnforcement;
+    }
+
+    return this.policyEnforcer?.enforcementMode ?? 'warn';
+  }
+
+  private async handlePolicyViolations(
+    violations: PolicyViolation[],
+    enforcementMode: PolicyEnforcementMode,
+    task: Task,
+    context: {
+      action: string;
+      agentName: string;
+    }
+  ): Promise<boolean> {
+    if (violations.length === 0 || enforcementMode === 'disabled') {
+      return true;
+    }
+
+    if (enforcementMode === 'strict') {
+      this.emit('policy:blocked', {
+        taskId: task.id,
+        agent: context.agentName,
+        action: context.action,
+        violations,
+        enforcementMode,
+        timestamp: new Date(),
+      });
+
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Policy enforcement blocked action: ${context.action}`,
+        metadata: { violations },
+      });
+
+      return false;
+    }
+
+    const eventType = enforcementMode === 'audit' ? 'policy:audited' : 'policy:warned';
+    const logLevel = enforcementMode === 'audit' ? 'info' : 'warn';
+
+    for (const violation of violations) {
+      if (eventType === 'policy:audited') {
+        this.emit('policy:audited', {
+          taskId: task.id,
+          agent: context.agentName,
+          action: context.action,
+          violation,
+          enforcementMode,
+          timestamp: new Date(),
+        });
+      } else {
+        this.emit('policy:warned', {
+          taskId: task.id,
+          agent: context.agentName,
+          action: context.action,
+          violation,
+          enforcementMode,
+          timestamp: new Date(),
+        });
+      }
+    }
+
+    await this.store.addLog(task.id, {
+      level: logLevel,
+      message: `Policy violations detected for action: ${context.action}`,
+      metadata: { violations, enforcementMode },
+    });
+
+    return true;
   }
 
   /**
@@ -8015,6 +8834,10 @@ export {
   type SecretPattern,
   type SecretScannerConfig,
 } from './scanner';
+export {
+  SecretOutputProcessor,
+  type SecretProcessingResult,
+} from './secret-output-processor';
 
 // Policy
 export {
@@ -8069,3 +8892,13 @@ export {
   type FixAttemptTrackerOptions,
   type FixAttemptTrackerEvents,
 } from './fix-attempt-tracker';
+
+// TDD Mode
+export {
+  TDDMode,
+  type TDDModeOptions,
+  type TDDResult,
+  type CorrectionResult,
+  type RegressionResult,
+  type CommandResult,
+} from './tdd/tdd-mode';

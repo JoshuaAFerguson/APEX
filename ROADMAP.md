@@ -382,12 +382,12 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Browser Automation (inspired by [Cline](https://github.com/cline/cline) & [OpenHands](https://github.com/OpenHands/OpenHands))
 
-- ⚪ **Headless browser** - Launch sites in headless browser for testing
-- ⚪ **Browser actions** - Click, type, scroll, navigate
-- ⚪ **Screenshot capture** - Capture screenshots for visual debugging
-- ⚪ **Console log capture** - Capture browser console for error detection
-- ⚪ **Visual regression testing** - Compare screenshots across runs
-- ⚪ **Runtime error detection** - Detect and fix JavaScript runtime errors
+- 🟢 **Headless browser** - Launch sites in headless browser for testing
+- 🟢 **Browser actions** - Click, type, scroll, navigate
+- 🟢 **Screenshot capture** - Capture screenshots for visual debugging
+- 🟢 **Console log capture** - Capture browser console for error detection
+- 🟢 **Visual regression testing** - Compare screenshots across runs
+- 🟢 **Runtime error detection** - Detect and fix JavaScript runtime errors
 
 ### Built-in Tools (Claude Code parity)
 
@@ -421,44 +421,44 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Dangerous operation warnings** - Extra confirmation for risky actions
 - ⚪ **Permission presets** - "Autonomous", "Review all", "Read-only"
 - ⚪ **Permission persistence** - Remember choices across sessions
-- ⚪ **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
-- ⚪ **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
+- 🟡 **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
+- 🟢 **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
 
 ### Autonomy Controls
 
-- ⚪ **Autonomy levels** - Full auto, review before commit, review all
-- ⚪ **Approval gates** - Configurable checkpoints requiring approval
-- ⚪ **Budget limits** - Pause when cost threshold reached
-- ⚪ **Token limits** - Pause when token threshold reached
-- ⚪ **Time limits** - Maximum task duration
-- ⚪ **Change limits** - Maximum files/lines changed without approval
+- 🟢 **Autonomy levels** - Full auto, review before commit, review all
+- 🟢 **Approval gates** - Configurable checkpoints requiring approval
+- 🟢 **Budget limits** - Pause when cost threshold reached
+- 🟢 **Token limits** - Pause when token threshold reached
+- 🟢 **Time limits** - Maximum task duration
+- 🟡 **Change limits** - Maximum files/lines changed without approval
 
 ### Code Quality Integration (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
 
-- ⚪ **Lint-after-edit** - Automatically lint code after every edit
-- ⚪ **Auto-fix linting errors** - Fix syntax errors, missing imports automatically
-- ⚪ **Pre-edit validation** - Validate syntax before allowing edits
-- ⚪ **Compiler feedback loop** - Monitor compiler errors and fix proactively
-- ⚪ **Type checking integration** - Run TypeScript/Flow checks after edits
+- 🟢 **Lint-after-edit** - Automatically lint code after every edit
+- 🟢 **Auto-fix linting errors** - Fix syntax errors, missing imports automatically
+- 🟢 **Pre-edit validation** - Validate syntax before allowing edits
+- 🟢 **Compiler feedback loop** - Monitor compiler errors and fix proactively
+- 🟢 **Type checking integration** - Run TypeScript/Flow checks after edits
 
 ### Tool Extensions
 
-- ⚪ **Custom tools** - Define project-specific tools
-- ⚪ **Tool hooks** - Pre/post execution hooks
+- 🟢 **Custom tools** - Define project-specific tools
+- 🟢 **Tool hooks** - Pre/post execution hooks
 - ⚪ **Tool aliases** - Shortcuts for common tool patterns
-- ⚪ **MCP server support** - Model Context Protocol integration
+- 🟢 **MCP server support** - Model Context Protocol integration
 
 ### MCP Ecosystem (Accelerated)
 
-- ⚪ **MCP Marketplace** - Discover and install MCP servers
-- ⚪ **Easy Install** - One-click installation of capabilities
-- ⚪ **Auto-configuration** - Minimal config setup for standard tools
+- 🟢 **MCP Marketplace** - Discover and install MCP servers
+- 🟢 **Easy Install** - One-click installation of capabilities
+- 🟡 **Auto-configuration** - Minimal config setup for standard tools
 
 ### Test-Driven Development (TDD)
 
-- ⚪ **TDD Mode** - "Write test first, then fix" loop
-- ⚪ **Auto-Correction Loop** - Iteratively fix code until tests pass
-- ⚪ **Regression Guard** - Ensure existing tests don't break
+- 🟢 **TDD Mode** - "Write test first, then fix" loop
+- 🟢 **Auto-Correction Loop** - Iteratively fix code until tests pass
+- 🟢 **Regression Guard** - Ensure existing tests don't break
 
 ---
 

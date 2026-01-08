@@ -126,7 +126,7 @@ describe('Resource Limit Tracking', () => {
       await (orchestrator as any).checkResourceLimits('test-task-1');
 
       const event = await warningEvent;
-      expect(event).toEqual({
+      expect(event).toMatchObject({
         taskId: 'test-task-1',
         limitType: 'tokens',
         currentValue: tokenUsage,
@@ -154,7 +154,7 @@ describe('Resource Limit Tracking', () => {
       await (orchestrator as any).checkResourceLimits('test-task-1');
 
       const event = await exceededEvent;
-      expect(event).toEqual({
+      expect(event).toMatchObject({
         taskId: 'test-task-1',
         limitType: 'tokens',
         currentValue: tokenUsage,

@@ -97,7 +97,7 @@ describe('PolicyEngine Acceptance Criteria', () => {
       expect(result.status).toBe('allow'); // Warning doesn't block
       expect(result.enforcementMode).toBe('warn');
       expect(result.violations.length).toBeGreaterThan(0);
-      expect(result.violations[0].severity).toBe('warning');
+      expect(result.violations[0].severity).toBe('medium');
     });
 
     it('should support audit enforcement mode', async () => {

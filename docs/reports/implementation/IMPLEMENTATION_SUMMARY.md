@@ -1,131 +1,110 @@
-# Windows Compatibility Documentation - Implementation Summary
+# Tool Event Streaming Implementation Summary
 
-## Task: Document Unix-only tests and Windows compatibility status
+## Overview
+Added tool event streaming to API WebSocket endpoint with event filtering capability.
 
-### Acceptance Criteria Implementation Status
+## Changes Made
 
-#### ✅ 1. Create or update WINDOWS_COMPATIBILITY.md
+### 1. Core Types Updated (`packages/core/src/types.ts`)
+- Added `tool:start`, `tool:progress`, `tool:complete` to `ApexEventType` union
+- These event types are now properly recognized by the WebSocket streaming system
 
-**File Created**: `/Users/s0v3r1gn/APEX/WINDOWS_COMPATIBILITY.md`
+### 2. API WebSocket Implementation (`packages/api/src/index.ts`)
 
-**Content includes**:
-- Comprehensive overview of Windows compatibility in APEX
-- Detailed documentation of Unix-only tests and skip patterns
-- Platform-specific test utilities documentation
-- Guidelines for writing cross-platform tests
-- Windows-specific implementation status
-- Build and test execution instructions for Windows
-
-#### ✅ 2. List of Unix-only tests and why they're skipped
-
-**Documented categories**:
-
-1. **Service Management Tests** - Skipped because Windows service management not implemented
-   - Location: `packages/orchestrator/src/service-manager*.test.ts`
-   - Skip Pattern: `describe.skipIf(isWindows)`
-   - Reason: Uses Unix-specific systemd/launchd APIs
-
-2. **File Permission Tests** - Skipped because Windows has different permission model
-   - Location: `packages/cli/src/services/__tests__/SessionAutoSaver.error-recovery.integration.test.ts`
-   - Skip Pattern: `it.skipIf(isWindows)`
-   - Reason: `fs.chmod()` behaves differently on Windows
-
-3. **Unix File Operations Tests** - Skipped because of Unix-specific APIs
-   - Location: `packages/cli/src/__tests__/idle-enable-disable*.test.ts`, E2E tests
-   - Skip Pattern: `skipOnWindows()` function call
-   - Reason: chmod and symlink operations are Unix-specific
-
-4. **Git Hook Tests** - Skipped because of permission handling differences
-   - Location: `tests/e2e/git-commands.e2e.test.ts`
-   - Skip Pattern: `skipOnWindows()` function call
-   - Reason: Git hook permissions work differently on Windows
-
-#### ✅ 3. Platform-specific test utilities available
-
-**Documented utilities from `@apex/core`**:
-
-**Platform Detection**:
-- `isWindows()`, `isUnix()`, `isMacOS()`, `isLinux()`, `getPlatform()`
-
-**Test Skipping Functions**:
-- `skipOnWindows()`, `skipOnUnix()`, `skipOnMacOS()`, `skipOnLinux()`
-- `skipUnlessWindows()`, `skipUnlessUnix()`
-
-**Platform-Specific Test Suites**:
-- `describeWindows()`, `describeUnix()`, `describeMacOS()`, `describeLinux()`
-
-**Platform Mocking**:
-- `mockPlatform()`, `testOnAllPlatforms()`
-
-#### ✅ 4. Guidelines for writing cross-platform tests
-
-**Documented patterns**:
-
-1. **Use Appropriate Skip Patterns** - Examples for individual tests and test suites
-2. **Add Inline Comments** - Always explain why tests are skipped
-3. **Import Platform Utilities Consistently** - Recommended import patterns
-4. **Choose the Right Skip Pattern** - Decision matrix for different use cases
-5. **Test Cross-Platform Behavior When Possible** - Examples of good practices
-
-#### ✅ 5. Add inline comments to skipped tests explaining the reason
-
-**Files Modified with Comments Added**:
-
-1. `packages/cli/src/handlers/__tests__/service-handlers.integration.test.ts`
-   - Added comment explaining Windows service management not implemented
-
-2. `packages/cli/src/handlers/__tests__/service-handlers.test.ts`
-   - Added comment explaining Unix-specific systemd/launchd APIs
-
-3. `packages/cli/src/handlers/__tests__/service-management-integration.test.ts`
-   - Added comment explaining Windows service implementation unavailable
-
-4. `packages/cli/src/handlers/__tests__/service-handlers-enableonboot.integration.test.ts`
-   - Added comment explaining Windows service management not implemented
-
-5. `packages/orchestrator/src/service-manager.test.ts`
-   - Added comments to Linux and macOS test sections explaining different service management
-
-**Comment Pattern Used**:
+#### Imports Added
 ```typescript
-// Windows compatibility: Skip [test type] as Windows [specific reason]
-// [additional context about Unix-specific APIs]
-describe.skipIf(isWindows)('Test Suite Name', () => {
+import {
+  ApexOrchestrator,
+  DaemonManager,
+  HealthMonitor,
+  ToolCallStartEvent,
+  ToolCallProgressEvent,
+  ToolCallCompleteEvent
+} from '@apexcli/orchestrator';
 ```
 
-### Additional Implementation Details
+#### WebSocket Client Tracking Enhanced
+- Updated from `Map<string, Set<WebSocket>>` to `Map<string, Set<WebSocketClient>>`
+- Added filtering support with `WebSocketClient` interface:
+```typescript
+interface WebSocketClient {
+  socket: WebSocket;
+  eventFilters?: Set<string>;
+}
+```
 
-#### Files Already with Good Comments
-- `packages/orchestrator/src/service-manager-enableonboot.test.ts` - Already had good header comment
-- `packages/orchestrator/src/service-manager.integration.test.ts` - Already had good header comment
-- `tests/e2e/service-management.e2e.test.ts` - Already had good skip comment
+#### WebSocket Endpoint Enhanced
+- Added query parameter support: `/stream/:taskId?events=tool:start,tool:complete`
+- Added event filtering logic in client registration
+- Enhanced logging to show active filters
 
-#### Documentation Structure
-- **Table of Contents** for easy navigation
-- **Code examples** for all utility functions
-- **Decision matrix** for choosing skip patterns
-- **Troubleshooting section** for common Windows issues
-- **Implementation status** showing what works and what doesn't
+#### Event Broadcasting Updated
+- Modified `broadcast()` function to respect client event filters
+- Added tool event listeners in `setupEventBroadcasting()`:
+  - `tool:start` - emitted when tool call begins
+  - `tool:progress` - emitted during long-running operations
+  - `tool:complete` - emitted when tool call finishes
 
-### Verification
+#### Documentation Updated
+- Added event filtering examples to server startup output
+- Listed new tool events in WebSocket events documentation
 
-- ✅ All files exist and are properly formatted
-- ✅ All skip patterns documented with examples
-- ✅ All platform utilities documented with usage examples
-- ✅ All acceptance criteria addressed
-- ✅ Inline comments added to all major service-related skip blocks
-- ✅ Comprehensive guidelines provided for future development
+### 3. Test Coverage (`packages/api/src/websocket-tool-events.test.ts`)
+- Created comprehensive tests for tool event streaming
+- Tests cover all three tool event types
+- Tests verify event filtering functionality
+- Tests validate event data structure and content
 
-### Files Created/Modified Summary
+## Features Implemented
 
-**Created**:
-- `WINDOWS_COMPATIBILITY.md` (15,588 bytes) - Comprehensive documentation
+### Event Types Supported
+1. **`tool:start`** - Tool call begins
+   - Contains: `toolName`, `input`, `callId`
 
-**Modified**:
-- `packages/cli/src/handlers/__tests__/service-handlers.integration.test.ts`
-- `packages/cli/src/handlers/__tests__/service-handlers.test.ts`
-- `packages/cli/src/handlers/__tests__/service-management-integration.test.ts`
-- `packages/cli/src/handlers/__tests__/service-handlers-enableonboot.integration.test.ts`
-- `packages/orchestrator/src/service-manager.test.ts`
+2. **`tool:progress`** - Long-running tool progress updates
+   - Contains: `toolName`, `callId`, `progress` (message, percentage)
 
-All changes are minimal, focused, and improve documentation clarity while maintaining existing functionality.
+3. **`tool:complete`** - Tool call completion
+   - Contains: `toolName`, `callId`, `result` (success, output/error), `timing`
+
+### Event Filtering
+- Client can subscribe to specific event types: `/stream/task123?events=tool:start,tool:complete`
+- Multiple event types supported: comma-separated list
+- No filtering = receives all events (backward compatible)
+- Filters apply per-client, not globally
+
+### Usage Examples
+
+#### Listen to all events
+```bash
+wscat -c ws://localhost:3000/stream/task123
+```
+
+#### Listen to only tool events
+```bash
+wscat -c ws://localhost:3000/stream/task123?events=tool:start,tool:progress,tool:complete
+```
+
+#### Listen to specific tool lifecycle
+```bash
+wscat -c ws://localhost:3000/stream/task123?events=tool:start,tool:complete
+```
+
+## Backward Compatibility
+- All existing WebSocket clients continue to work unchanged
+- New event types are simply additional events in the stream
+- Event filtering is opt-in via query parameters
+
+## Benefits
+1. **Real-time tool monitoring** - See what tools agents are using in real-time
+2. **Performance visibility** - Track tool execution timing and progress
+3. **Debugging capability** - See tool inputs, outputs, and errors as they happen
+4. **Selective monitoring** - Filter events to reduce noise for specific use cases
+5. **Client efficiency** - Reduce bandwidth by filtering unwanted events
+
+## Technical Implementation Notes
+- Event filtering happens at broadcast time, not emission time
+- Client disconnections properly clean up tracking
+- Event structure follows existing ApexEvent pattern
+- Type safety maintained with proper TypeScript interfaces
+- Graceful fallback for clients without filtering support

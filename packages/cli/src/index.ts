@@ -20,11 +20,19 @@ import {
   ApexConfig,
   Task,
   resolveExecutable,
+  type BrowserToolConfig,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonLogs } from './handlers/daemon-handlers.js';
 import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
+import { handleUsage } from './handlers/usage-handlers.js';
+import {
+  handleWorkspaceList,
+  handleWorkspaceInfo,
+  handleWorkspaceCleanup,
+  handleWorkspaceStats,
+} from './handlers/workspace-handlers.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 
 const VERSION = '0.1.0';
@@ -100,6 +108,68 @@ export const commands: Command[] = [
       }
 
       console.log(chalk.gray('\nOr just type a natural language task description to execute it.\n'));
+    },
+  },
+  {
+    name: 'browser',
+    aliases: ['br'],
+    description: 'Configure browser automation settings',
+    usage: '/browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.config) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      const [subcommand, value] = args;
+      if (!subcommand || subcommand === 'show') {
+        const browserConfig = ctx.config.tools?.Browser || {};
+        console.log(JSON.stringify(browserConfig, null, 2));
+        return;
+      }
+
+      if (subcommand !== 'backend' && subcommand !== 'engine' && subcommand !== 'headless') {
+        console.log(chalk.red('Usage: /browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>'));
+        return;
+      }
+
+      ctx.config.tools = ctx.config.tools || {};
+      const browserConfig = {
+        ...(ctx.config.tools.Browser || {}),
+      } as BrowserToolConfig;
+
+      if (!value) {
+        console.log(chalk.red('Missing value. See: /browser show'));
+        return;
+      }
+
+      if (subcommand === 'backend') {
+        if (value !== 'playwright' && value !== 'puppeteer') {
+          console.log(chalk.red('Invalid backend. Use "playwright" or "puppeteer".'));
+          return;
+        }
+        browserConfig.backend = value;
+      }
+
+      if (subcommand === 'engine') {
+        if (value !== 'chromium' && value !== 'firefox' && value !== 'webkit') {
+          console.log(chalk.red('Invalid engine. Use "chromium", "firefox", or "webkit".'));
+          return;
+        }
+        browserConfig.engine = value;
+      }
+
+      if (subcommand === 'headless') {
+        if (value !== 'true' && value !== 'false') {
+          console.log(chalk.red('Invalid headless flag. Use "true" or "false".'));
+          return;
+        }
+        browserConfig.headless = value === 'true';
+      }
+
+      ctx.config.tools.Browser = browserConfig;
+      await saveConfig(ctx.cwd, ctx.config);
+      console.log(chalk.green(`Browser setting updated: ${subcommand} = ${value}.`));
     },
   },
 
@@ -1271,36 +1341,32 @@ export const commands: Command[] = [
   {
     name: 'workspace',
     aliases: ['ws'],
-    description: 'Manage task workspaces',
-    usage: '/workspace [list|cleanup|info <task-id>]',
+    description: 'Manage task workspaces (list, info, cleanup, stats)',
+    usage: '/workspace [list|info <task-id>|cleanup [<task-id>]|stats]',
     handler: async (ctx, args) => {
-      if (!ctx.orchestrator) {
-        console.log(chalk.red('❌ Orchestrator not available'));
-        return;
-      }
-
       const action = args[0]?.toLowerCase();
 
       switch (action) {
         case 'list':
-          console.log(chalk.blue('📋 Active Workspaces:'));
-          console.log(chalk.gray('Workspace listing not yet implemented'));
-          break;
-        case 'cleanup':
-          console.log(chalk.blue('🧹 Cleaning up old workspaces...'));
-          console.log(chalk.green('✅ Workspace cleanup not yet implemented'));
+          await handleWorkspaceList(ctx);
           break;
         case 'info':
-          const taskId = args[1];
-          if (!taskId) {
-            console.log(chalk.red('Usage: /workspace info <task-id>'));
-            return;
-          }
-          console.log(chalk.blue(`📊 Workspace info for task ${taskId}:`));
-          console.log(chalk.gray('Workspace info not yet implemented'));
+          await handleWorkspaceInfo(ctx, args.slice(1));
+          break;
+        case 'cleanup':
+          await handleWorkspaceCleanup(ctx, args.slice(1));
+          break;
+        case 'stats':
+          await handleWorkspaceStats(ctx);
           break;
         default:
-          console.log(chalk.red('Usage: /workspace [list|cleanup|info <task-id>]'));
+          console.log(chalk.red('Usage: /workspace [list|info <task-id>|cleanup [<task-id>]|stats]'));
+          console.log(chalk.gray('\nSubcommands:'));
+          console.log(chalk.gray('  list           - List all active task workspaces'));
+          console.log(chalk.gray('  info <task-id> - Show detailed info for a specific workspace'));
+          console.log(chalk.gray('  cleanup        - Clean up old, inactive workspaces'));
+          console.log(chalk.gray('  cleanup <task-id> - Clean up a specific task workspace'));
+          console.log(chalk.gray('  stats          - Show aggregate workspace statistics'));
       }
     },
   },
@@ -1748,28 +1814,8 @@ export const commands: Command[] = [
     name: 'usage',
     aliases: ['budget'],
     description: 'View usage statistics and budget management',
-    usage: '/usage [stats|budget|mode]',
-    handler: async (ctx, args) => {
-      const action = args[0]?.toLowerCase();
-
-      switch (action) {
-        case 'stats':
-        case undefined:
-          console.log(chalk.blue('📊 Usage Statistics:'));
-          console.log(chalk.gray('Usage statistics not yet implemented'));
-          break;
-        case 'budget':
-          console.log(chalk.blue('💰 Budget Status:'));
-          console.log(chalk.gray('Budget management not yet implemented'));
-          break;
-        case 'mode':
-          console.log(chalk.blue('🌓 Current Mode:'));
-          console.log(chalk.gray('Time-based mode detection not yet implemented'));
-          break;
-        default:
-          console.log(chalk.red('Usage: /usage [stats|budget|mode]'));
-      }
-    },
+    usage: '/usage',
+    handler: handleUsage,
   },
   {
     name: 'checkout',
@@ -3286,6 +3332,11 @@ async function handleUndoCommand(ctx: ApexContext, args: string[]): Promise<void
         return;
       }
       taskId = task.id;
+    }
+
+    if (!taskId) {
+      console.log(chalk.yellow('⚠️  No task ID available for undo operation.'));
+      return;
     }
 
     // Get undoable actions for preview

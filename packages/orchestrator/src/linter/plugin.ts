@@ -206,7 +206,7 @@ export interface LinterPluginMetadata {
  * 2. Parsing the output into a standardized format
  * 3. Applying fixes when supported
  */
-export interface ILinterPlugin {
+export interface ILinterPlugin extends EventEmitter<LinterPluginEvents> {
   /** Metadata about this linter plugin */
   readonly metadata: LinterPluginMetadata;
 
