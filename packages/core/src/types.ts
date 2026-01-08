@@ -5985,6 +5985,132 @@ export const AuditLogEntrySchema = z.object({
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 
 // ============================================================================
+// AutoFix Configuration and Events
+// ============================================================================
+
+/**
+ * Configuration for auto-fix functionality
+ * Controls which types of fixes can be automatically applied
+ */
+export const AutoFixConfigSchema = z.object({
+  /** Whether auto-fix functionality is enabled globally */
+  enabled: z.boolean().optional().default(false),
+
+  /** Configuration for syntax error fixes */
+  syntax: z.object({
+    /** Whether to automatically fix syntax errors */
+    enabled: z.boolean().optional().default(false),
+    /** Types of syntax errors to auto-fix */
+    types: z.array(z.enum(['missing_semicolons', 'missing_brackets', 'indentation', 'quotes'])).optional().default([]),
+  }).optional(),
+
+  /** Configuration for import/require fixes */
+  imports: z.object({
+    /** Whether to automatically fix import/require statements */
+    enabled: z.boolean().optional().default(false),
+    /** Whether to add missing imports */
+    addMissing: z.boolean().optional().default(false),
+    /** Whether to remove unused imports */
+    removeUnused: z.boolean().optional().default(false),
+    /** Whether to sort imports */
+    sort: z.boolean().optional().default(false),
+  }).optional(),
+});
+export type AutoFixConfig = z.infer<typeof AutoFixConfigSchema>;
+
+/**
+ * Result of an auto-fix operation
+ * Contains information about what was fixed and the outcome
+ */
+export const AutoFixResultSchema = z.object({
+  /** Unique identifier for this auto-fix operation */
+  id: z.string().min(1),
+
+  /** ID of the task this auto-fix belongs to */
+  taskId: z.string().min(1),
+
+  /** Absolute path of the file that was fixed */
+  filePath: z.string().min(1),
+
+  /** Type of fix that was applied */
+  fixType: z.enum(['syntax', 'imports', 'formatting']),
+
+  /** Whether the fix was successful */
+  success: z.boolean(),
+
+  /** Detailed description of what was fixed */
+  description: z.string(),
+
+  /** Number of issues that were fixed */
+  issuesFixed: z.number().min(0).default(0),
+
+  /** Error message if the fix failed */
+  error: z.string().optional(),
+
+  /** Timestamp when the fix was applied */
+  timestamp: z.date(),
+
+  /** Original file content before the fix */
+  originalContent: z.string().optional(),
+
+  /** File content after the fix */
+  fixedContent: z.string().optional(),
+
+  /** Additional metadata about the fix operation */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type AutoFixResult = z.infer<typeof AutoFixResultSchema>;
+
+/**
+ * Event types for auto-fix operations
+ */
+export const AutoFixEventTypeSchema = z.enum([
+  'autofix:requested',   // Auto-fix was requested for a file
+  'autofix:started',     // Auto-fix operation began
+  'autofix:completed',   // Auto-fix operation completed successfully
+  'autofix:failed',      // Auto-fix operation failed
+  'autofix:skipped',     // Auto-fix was skipped (disabled or no fixes needed)
+]);
+export type AutoFixEventType = z.infer<typeof AutoFixEventTypeSchema>;
+
+/**
+ * Event record for auto-fix operations
+ * Tracks the lifecycle of auto-fix operations for auditing and debugging
+ */
+export const AutoFixEventSchema = z.object({
+  /** Unique identifier for this auto-fix event */
+  id: z.string().min(1),
+
+  /** Type of auto-fix event */
+  type: AutoFixEventTypeSchema,
+
+  /** ID of the task this auto-fix event belongs to */
+  taskId: z.string().min(1),
+
+  /** Absolute path of the file being processed */
+  filePath: z.string().min(1),
+
+  /** Type of fix being applied */
+  fixType: z.enum(['syntax', 'imports', 'formatting']).optional(),
+
+  /** Timestamp when this event occurred */
+  timestamp: z.date(),
+
+  /** Number of issues detected */
+  issuesDetected: z.number().min(0).optional(),
+
+  /** Number of issues successfully fixed */
+  issuesFixed: z.number().min(0).optional(),
+
+  /** Error message if the operation failed */
+  error: z.string().optional(),
+
+  /** Additional metadata about the operation */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type AutoFixEvent = z.infer<typeof AutoFixEventSchema>;
+
+// ============================================================================
 // APEX Rules (.apexrules) Types
 // ============================================================================
 

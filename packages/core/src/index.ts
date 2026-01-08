@@ -49,6 +49,9 @@ export * from './error-formatter';
 // APEX Error Handling
 export * from './apex-error';
 
+// Secret Scanner
+export * from './secret-scanner';
+
 // Validation Infrastructure
 export * from './validation';
 

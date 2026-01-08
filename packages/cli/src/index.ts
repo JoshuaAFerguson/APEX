@@ -21,6 +21,7 @@ import {
   Task,
   resolveExecutable,
   type BrowserToolConfig,
+  type ApprovalRequiredEventData,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -34,6 +35,7 @@ import {
   handleWorkspaceStats,
 } from './handlers/workspace-handlers.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
+import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 
 const VERSION = '0.1.0';
 
@@ -3530,6 +3532,62 @@ async function executeTaskWithOutput(
   ctx.orchestrator.on('task:stage-changed', stageHandler);
   ctx.orchestrator.on('agent:tool-use', toolHandler);
 
+  // Handle approval required events
+  const approvalHandler = async (eventData: ApprovalRequiredEventData) => {
+    if (eventData.taskId === taskId) {
+      try {
+        console.log(); // Add spacing
+        console.log(chalk.yellow('⚠️  Approval required for task to continue'));
+
+        await showApprovalPrompt({
+          eventData,
+          onSelection: async (response) => {
+            try {
+              await ctx.orchestrator!.respondToApproval(eventData.approvalId, response);
+
+              // Handle info-requested follow-up
+              if (response.response === 'info-requested') {
+                // Set up a one-time listener for the info-requested event
+                const handleInfoRequested = async (infoEvent: {
+                  approvalId: string;
+                  taskId: string;
+                  requester: string;
+                  message?: string;
+                  timestamp: Date;
+                }) => {
+                  if (infoEvent.approvalId === eventData.approvalId) {
+                    try {
+                      // Prompt for additional information
+                      const additionalInfo = await promptForAdditionalInfo(
+                        eventData,
+                        infoEvent.message || 'Additional information requested'
+                      );
+
+                      // Log the additional info (could be sent back to the system)
+                      console.log(chalk.blue(`📝 Additional info provided: ${additionalInfo}`));
+                    } catch (error) {
+                      console.error(chalk.red(`Error handling info request: ${error}`));
+                    } finally {
+                      ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
+                    }
+                  }
+                };
+
+                ctx.orchestrator?.on('approval:info-requested', handleInfoRequested);
+              }
+            } catch (error) {
+              console.error(chalk.red(`Error responding to approval: ${error}`));
+            }
+          }
+        });
+      } catch (error) {
+        console.error(chalk.red(`Error handling approval request: ${error}`));
+      }
+    }
+  };
+
+  ctx.orchestrator.on('approval:required', approvalHandler);
+
   try {
     await ctx.orchestrator.executeTask(taskId);
 
@@ -3577,6 +3635,7 @@ async function executeTaskWithOutput(
   } finally {
     ctx.orchestrator.off('task:stage-changed', stageHandler);
     ctx.orchestrator.off('agent:tool-use', toolHandler);
+    ctx.orchestrator.off('approval:required', approvalHandler);
   }
 }
 
