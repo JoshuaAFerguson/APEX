@@ -500,6 +500,13 @@ export async function initializeApex(
         },
       },
     },
+    secretScanning: {
+      enabled: true,
+      enforcementMode: 'warn',
+      customPatterns: [],
+      includeBuiltInPatterns: true,
+      excludePaths: [],
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);

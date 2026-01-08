@@ -18,6 +18,7 @@ import {
   ApprovalRequiredEventData,
   ApprovalGrantedEventData,
   ApprovalDeniedEventData,
+  ApprovalRequest,
   ApprovalResponse,
   Task,
   TaskStatus,
@@ -259,6 +260,7 @@ export interface OrchestratorEvents {
 
   // Approval gate events
   'approval:required': (event: ApprovalRequiredEventData) => void;
+  'approval:request': (event: ApprovalRequest) => void;
   'approval:approved': (event: ApprovalGrantedEventData) => void;
   'approval:denied': (event: ApprovalDeniedEventData) => void;
   'approval:info-requested': (event: {
@@ -2131,6 +2133,40 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           };
 
           this.emit('approval:required', eventData);
+
+          // Emit approval:request event with ApprovalRequest payload
+          const approvalRequestData: ApprovalRequest = {
+            requestId: approvalState.id,
+            taskId: task.id,
+            description: `Approval required for ${gateCheck.gate.description || stage.gate}`,
+            reason: `Workflow stage "${stage.name}" requires approval via gate "${stage.gate}" before proceeding`,
+            resourceImpact: this.calculateResourceImpact(task, stage),
+            id: approvalState.id, // Legacy field
+            gateName: stage.gate,
+            gateType: gateCheck.gate.type,
+            approvers: gateCheck.gate.approvers,
+            minApprovals: gateCheck.gate.minApprovals || 1,
+            requestedAt: new Date(),
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: approvalState.expiresAt,
+            stage: stage.name,
+            agent: stage.agent,
+            context: {
+              taskId: task.id,
+              taskDescription: task.description,
+              taskPriority: task.priority,
+              taskWorkflow: task.workflow,
+              acceptanceCriteria: task.acceptanceCriteria,
+              currentStage: stage.name,
+              currentAgent: stage.agent,
+              approvalUrl,
+              blocking: gateCheck.gate.required ?? true,
+            },
+            changesSummary: this.summarizeCompletedStages(stageResults),
+            affectedFiles: this.getAffectedFiles(task.id),
+          };
+
+          this.emit('approval:request', approvalRequestData);
 
           await this.store.addLog(task.id, {
             level: 'info',
@@ -7359,6 +7395,41 @@ Parent: ${parentTask.description}`;
           };
 
           this.emit('approval:required', eventData);
+
+          // Emit approval:request event for autonomy enforcer approvals
+          const approvalRequestData: ApprovalRequest = {
+            requestId: approvalId,
+            taskId,
+            description: this.generateGateDescription(gateName, task.autonomy),
+            reason: `Autonomy level "${task.autonomy}" requires approval for operation "${context?.operationType || 'unknown'}"`,
+            resourceImpact: this.calculateResourceImpactForAutonomy(task, gateName, context),
+            id: approvalId, // Legacy field
+            gateName,
+            gateType: this.mapGateNameToType(gateName),
+            approvers: ['user'], // Autonomy enforcer approvals typically require user approval
+            minApprovals: 1,
+            requestedAt: timestamp,
+            timeoutMinutes: 30, // Default timeout for autonomy approvals
+            expiresAt: new Date(timestamp.getTime() + 30 * 60 * 1000), // 30 minutes from now
+            stage: context?.currentStage,
+            agent: context?.agent,
+            context: {
+              taskId,
+              taskDescription: task.description,
+              taskPriority: task.priority,
+              taskWorkflow: task.workflow,
+              acceptanceCriteria: task.acceptanceCriteria,
+              currentStage: context?.currentStage,
+              currentAgent: context?.agent,
+              approvalUrl,
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              operationType: context?.operationType,
+              blocking: true,
+            },
+          };
+
+          this.emit('approval:request', approvalRequestData);
         }
       } catch (error) {
         console.error('Error handling autonomy enforcer approval:required event:', error);
@@ -8544,6 +8615,41 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
     this.emit('approval:required', eventData);
 
+    // Emit approval:request event for policy approvals
+    const approvalRequestData: ApprovalRequest = {
+      requestId: approvalState.id,
+      taskId: task.id,
+      description: `Policy approval required for ${gateName}`,
+      reason: `Tool "${context.toolName}" requires policy approval due to enforcement level`,
+      resourceImpact: this.calculateResourceImpactForPolicy(task, context),
+      id: approvalState.id, // Legacy field
+      gateName,
+      gateType: 'before-tool' as any, // Policy gates are typically before tool execution
+      approvers: ['user'], // Policy approvals typically require user approval
+      minApprovals: 1,
+      requestedAt: approvalState.requestedAt,
+      timeoutMinutes: 30, // Default timeout for policy approvals
+      expiresAt: approvalState.expiresAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      context: {
+        taskId: task.id,
+        taskDescription: task.description,
+        taskPriority: task.priority,
+        taskWorkflow: task.workflow,
+        acceptanceCriteria: task.acceptanceCriteria,
+        currentStage: context.stageName,
+        currentAgent: context.agentName,
+        approvalUrl: this.generateApprovalUrl(approvalState.id),
+        toolName: context.toolName,
+        enforcementLevel: context.enforcementLevel,
+        triggeredBy: 'policy-enforcer',
+        blocking: true,
+      },
+    };
+
+    this.emit('approval:request', approvalRequestData);
+
     await this.store.addLog(task.id, {
       level: 'info',
       message: `Task paused for policy approval "${gateName}". Checkpoint ${checkpointId} saved.`,
@@ -8676,6 +8782,89 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     // Ensure the URL ends with a slash for proper concatenation
     const baseUrl = this.apiUrl.endsWith('/') ? this.apiUrl : `${this.apiUrl}/`;
     return `${baseUrl}approvals/${approvalId}`;
+  }
+
+  /**
+   * Calculates the resource impact level for a task and stage
+   */
+  private calculateResourceImpact(task: Task, stage: WorkflowStage): string {
+    // Determine resource impact based on task priority, stage type, and agent
+    if (task.priority === 'urgent' || task.priority === 'critical') {
+      return 'high';
+    }
+
+    // High impact stages
+    if (stage.name.toLowerCase().includes('deploy') ||
+        stage.name.toLowerCase().includes('production') ||
+        stage.name.toLowerCase().includes('security')) {
+      return 'high';
+    }
+
+    // Medium impact stages
+    if (stage.name.toLowerCase().includes('test') ||
+        stage.name.toLowerCase().includes('build') ||
+        stage.name.toLowerCase().includes('review')) {
+      return 'medium';
+    }
+
+    // Default to low impact
+    return 'low';
+  }
+
+  /**
+   * Calculates resource impact for autonomy enforcer approvals
+   */
+  private calculateResourceImpactForAutonomy(task: Task, gateName: string, context: any): string {
+    // High impact for dangerous operations or file system modifications
+    if (gateName.includes('dangerous') ||
+        context?.operationType === 'file-modify' ||
+        context?.operationType === 'execute' ||
+        task.priority === 'critical') {
+      return 'high';
+    }
+
+    // Medium impact for network operations or system changes
+    if (context?.operationType === 'network' ||
+        context?.operationType === 'system' ||
+        task.priority === 'urgent') {
+      return 'medium';
+    }
+
+    // Low impact for read operations and normal priority tasks
+    return 'low';
+  }
+
+  /**
+   * Calculates resource impact for policy approvals
+   */
+  private calculateResourceImpactForPolicy(task: Task, context: any): string {
+    // High impact for file system operations or execution commands
+    if (context?.toolName === 'Bash' ||
+        context?.toolName === 'Write' ||
+        context?.toolName === 'Edit' ||
+        task.priority === 'critical') {
+      return 'high';
+    }
+
+    // Medium impact for network operations or multifile operations
+    if (context?.toolName === 'WebFetch' ||
+        context?.toolName === 'WebSearch' ||
+        context?.toolName === 'MultiEdit' ||
+        task.priority === 'urgent') {
+      return 'medium';
+    }
+
+    // Low impact for read operations
+    return 'low';
+  }
+
+  /**
+   * Gets the list of files affected by a task
+   */
+  private getAffectedFiles(taskId: string): string[] | undefined {
+    // This would typically track files that have been modified by the task
+    // For now, return undefined as this is a basic implementation
+    return undefined;
   }
 }
 
@@ -8864,6 +9053,35 @@ export {
   type ErrorPatternCategory,
   type SuggestionResult
 } from './suggestion-matcher';
+
+// Import Auto-Fixer
+export {
+  ImportAutoFixer,
+  BaseDetector,
+  ESLintDetector,
+  BaseResolver,
+  LocalResolver,
+  AliasResolver,
+  PackageResolver,
+  type ImportAutoFixerOptions,
+  type ImportAutoFixerConfig,
+  type ImportAutoFixerEvents,
+  type MissingImportAnalysis,
+  type MissingImport,
+  type ImportFixResult,
+  type ImportFixSummary,
+  type AddedImport,
+  type ImportFixError,
+  type IImportDetector,
+  type IImportResolver,
+  type ResolverContext,
+  type ImportResolution,
+  type ExistingImport,
+  type ImportType,
+  type DetectorType,
+  type ImportStyle,
+  type QuoteStyle,
+} from './import-auto-fixer';
 
 // Linter Plugin System
 export * from './linter';
