@@ -6,6 +6,21 @@
 import React from 'react';
 import { Text, Box } from 'ink';
 import { useThemeColors } from '../../context/ThemeContext.js';
+import { ResourceLimitBar, CompactResourceLimitBar } from './ResourceLimitBar.js';
+
+/**
+ * Resource limits configuration for usage indicators
+ */
+export interface ResourceLimits {
+  /** Maximum tokens per task (maps to config.limits.maxTokensPerTask) */
+  maxTokens?: number;
+  /** Maximum cost per task (maps to config.limits.maxCostPerTask) */
+  maxCost?: number;
+  /** Maximum API calls per task (optional limit) */
+  maxApiCalls?: number;
+  /** Daily budget limit (maps to config.limits.dailyBudget) */
+  dailyBudget?: number;
+}
 
 export interface ResourceUsageDisplayProps {
   // Token metrics
@@ -23,6 +38,10 @@ export interface ResourceUsageDisplayProps {
   showBreakdown?: boolean;     // Show input→output tokens (default: auto based on total > 1000)
   compact?: boolean;           // Compact mode for narrow terminals (default: false)
   label?: string;              // Custom label prefix (default: 'usage')
+
+  // New props for limit indicators
+  limits?: ResourceLimits;     // Resource limits configuration
+  showLimitIndicators?: boolean;  // Show limit indicators (default: true when limits provided)
 }
 
 /**
@@ -69,7 +88,9 @@ export function ResourceUsageDisplay({
   apiCalls,
   showBreakdown,
   compact = false,
-  label = 'usage'
+  label = 'usage',
+  limits,
+  showLimitIndicators
 }: ResourceUsageDisplayProps): React.ReactElement {
   const colors = useThemeColors();
 
@@ -99,28 +120,113 @@ export function ResourceUsageDisplay({
   // Format API calls
   const formattedApiCalls = formatApiCalls(apiCalls);
 
+  // Determine whether to show limit indicators
+  const shouldShowLimitIndicators = showLimitIndicators !== undefined
+    ? showLimitIndicators
+    : Boolean(limits && (limits.maxTokens || limits.maxCost || limits.maxApiCalls || limits.dailyBudget));
+
   if (compact) {
-    // Compact layout: "2k tok | $0.00 | 5"
+    // Compact layout: "2k tok | $0.00 | 5" with optional limit bars below
     return (
-      <Box flexDirection="row" gap={1}>
-        <Text color={colors.info}>{formatTokenCount(totalTokens)} tok</Text>
-        <Text color={colors.muted}>|</Text>
-        <Text color={costColor}>{formattedCost}</Text>
-        <Text color={colors.muted}>|</Text>
-        <Text color={colors.info}>{formattedApiCalls}</Text>
+      <Box flexDirection="column">
+        <Box flexDirection="row" gap={1}>
+          <Text color={colors.info}>{formatTokenCount(totalTokens)} tok</Text>
+          <Text color={colors.muted}>|</Text>
+          <Text color={costColor}>{formattedCost}</Text>
+          <Text color={colors.muted}>|</Text>
+          <Text color={colors.info}>{formattedApiCalls}</Text>
+        </Box>
+
+        {shouldShowLimitIndicators && limits && (
+          <Box flexDirection="row" gap={2} marginTop={1}>
+            {limits.maxTokens && (
+              <CompactResourceLimitBar
+                current={totalTokens}
+                limit={limits.maxTokens}
+                label="tokens"
+                formatter={formatTokenCount}
+                width={8}
+              />
+            )}
+            {limits.maxCost && (
+              <CompactResourceLimitBar
+                current={cost}
+                limit={limits.maxCost}
+                label="cost"
+                formatter={(val) => formatCurrency(val, currency)}
+                width={8}
+              />
+            )}
+            {limits.maxApiCalls && (
+              <CompactResourceLimitBar
+                current={apiCalls}
+                limit={limits.maxApiCalls}
+                label="calls"
+                width={6}
+              />
+            )}
+          </Box>
+        )}
       </Box>
     );
   }
 
-  // Standard layout: "usage: 1.2k→800 (2k total) | $0.0034 | 5 calls"
+  // Standard layout: "usage: 1.2k→800 (2k total) | $0.0034 | 5 calls" with optional limit bars below
   return (
-    <Box flexDirection="row" gap={1}>
-      <Text color={colors.muted}>{label}:</Text>
-      <Text color={colors.info}>{formattedTokens}</Text>
-      <Text color={colors.muted}>|</Text>
-      <Text color={costColor}>{formattedCost}</Text>
-      <Text color={colors.muted}>|</Text>
-      <Text color={colors.info}>{formattedApiCalls} {apiCalls === 1 ? 'call' : 'calls'}</Text>
+    <Box flexDirection="column">
+      <Box flexDirection="row" gap={1}>
+        <Text color={colors.muted}>{label}:</Text>
+        <Text color={colors.info}>{formattedTokens}</Text>
+        <Text color={colors.muted}>|</Text>
+        <Text color={costColor}>{formattedCost}</Text>
+        <Text color={colors.muted}>|</Text>
+        <Text color={colors.info}>{formattedApiCalls} {apiCalls === 1 ? 'call' : 'calls'}</Text>
+      </Box>
+
+      {shouldShowLimitIndicators && limits && (
+        <Box flexDirection="column" marginTop={1} marginLeft={2}>
+          {limits.maxTokens && (
+            <ResourceLimitBar
+              current={totalTokens}
+              limit={limits.maxTokens}
+              label="tokens"
+              formatter={formatTokenCount}
+              limitFormatter={formatTokenCount}
+              width={20}
+            />
+          )}
+          {limits.maxCost && (
+            <ResourceLimitBar
+              current={cost}
+              limit={limits.maxCost}
+              label="cost"
+              formatter={(val) => formatCurrency(val, currency)}
+              limitFormatter={(val) => formatCurrency(val, currency)}
+              width={20}
+            />
+          )}
+          {limits.maxApiCalls && (
+            <ResourceLimitBar
+              current={apiCalls}
+              limit={limits.maxApiCalls}
+              label="calls"
+              formatter={formatApiCalls}
+              limitFormatter={formatApiCalls}
+              width={20}
+            />
+          )}
+          {limits.dailyBudget && (
+            <ResourceLimitBar
+              current={cost}
+              limit={limits.dailyBudget}
+              label="daily budget"
+              formatter={(val) => formatCurrency(val, currency)}
+              limitFormatter={(val) => formatCurrency(val, currency)}
+              width={20}
+            />
+          )}
+        </Box>
+      )}
     </Box>
   );
 }

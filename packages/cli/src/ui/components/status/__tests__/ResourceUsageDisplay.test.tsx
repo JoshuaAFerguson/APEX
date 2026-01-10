@@ -14,6 +14,20 @@ vi.mock('../../context/ThemeContext.js', () => ({
   })),
 }));
 
+// Mock ResourceLimitBar components
+vi.mock('../ResourceLimitBar.js', () => ({
+  ResourceLimitBar: ({ current, limit, label }: any) => (
+    <div data-testid="resource-limit-bar" data-current={current} data-limit={limit}>
+      {label}: {current}/{limit}
+    </div>
+  ),
+  CompactResourceLimitBar: ({ current, limit, label }: any) => (
+    <div data-testid="compact-resource-limit-bar" data-current={current} data-limit={limit}>
+      {label}: {Math.round((current / limit) * 100)}%
+    </div>
+  ),
+}));
+
 describe('ResourceUsageDisplay', () => {
   it('should render with default label', () => {
     render(
@@ -447,5 +461,132 @@ describe('ResourceUsageDisplay Edge Cases', () => {
       />
     );
     expect(screen.getByText('$1.00')).toBeInTheDocument(); // Rounds up to 1.0 threshold
+  });
+
+  // New tests for limit functionality
+  describe('with limits', () => {
+    it('should render limit indicators when limits are provided', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      // Should show limit bars
+      expect(screen.getByTestId('resource-limit-bar')).toBeInTheDocument();
+      expect(screen.getByText('tokens: 500/1000')).toBeInTheDocument();
+      expect(screen.getByText('cost: 2.5/5')).toBeInTheDocument();
+      expect(screen.getByText('calls: 5/10')).toBeInTheDocument();
+    });
+
+    it('should render compact limit indicators in compact mode', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          compact={true}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+          }}
+        />
+      );
+
+      // Should show compact limit bars
+      expect(screen.getByTestId('compact-resource-limit-bar')).toBeInTheDocument();
+      expect(screen.getByText('tokens: 50%')).toBeInTheDocument();
+      expect(screen.getByText('cost: 50%')).toBeInTheDocument();
+    });
+
+    it('should not render limit indicators when showLimitIndicators is false', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+          }}
+          showLimitIndicators={false}
+        />
+      );
+
+      expect(screen.queryByTestId('resource-limit-bar')).not.toBeInTheDocument();
+    });
+
+    it('should not render limit indicators when no limits are provided', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+        />
+      );
+
+      expect(screen.queryByTestId('resource-limit-bar')).not.toBeInTheDocument();
+    });
+
+    it('should render only provided limits', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          limits={{
+            maxTokens: 1000,
+            // No maxCost or maxApiCalls
+          }}
+        />
+      );
+
+      // Should only show tokens limit bar
+      expect(screen.getByText('tokens: 500/1000')).toBeInTheDocument();
+      expect(screen.queryByText(/cost:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/calls:/)).not.toBeInTheDocument();
+    });
+
+    it('should render daily budget limit separately', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          limits={{
+            dailyBudget: 100.0,
+          }}
+        />
+      );
+
+      expect(screen.getByText('daily budget: 2.5/100')).toBeInTheDocument();
+    });
+
+    it('should handle empty limits object', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={200}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={5}
+          limits={{}}
+        />
+      );
+
+      expect(screen.queryByTestId('resource-limit-bar')).not.toBeInTheDocument();
+    });
   });
 });

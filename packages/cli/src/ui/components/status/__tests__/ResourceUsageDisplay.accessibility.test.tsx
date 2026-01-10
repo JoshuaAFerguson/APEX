@@ -19,6 +19,70 @@ vi.mock('../../../context/ThemeContext.js', () => ({
   })),
 }));
 
+// Mock ResourceLimitBar components with accessibility considerations
+vi.mock('../ResourceLimitBar.js', () => ({
+  ResourceLimitBar: ({ current, limit, label }: any) => {
+    const percentage = limit > 0 ? (current / limit) * 100 : 0;
+    const isExceeded = current > limit;
+    const level = percentage < 50 ? 'safe' : percentage < 80 ? 'warning' : 'danger';
+
+    // Provide screen reader friendly content
+    const ariaLabel = `${label} usage: ${current} of ${limit} (${Math.round(percentage)}%)`;
+    const statusMessage = isExceeded ? 'Warning: Limit exceeded' :
+                          level === 'danger' ? 'Alert: Near limit' :
+                          level === 'warning' ? 'Caution: Approaching limit' : 'Normal usage';
+
+    return (
+      <div
+        role="progressbar"
+        aria-label={ariaLabel}
+        aria-valuenow={current}
+        aria-valuemin={0}
+        aria-valuemax={limit}
+        aria-describedby={`${label}-status`}
+        data-testid="accessible-limit-bar"
+        data-level={level}
+        data-exceeded={isExceeded}
+      >
+        <span id={`${label}-status`} className="sr-only">{statusMessage}</span>
+        <span aria-hidden="true">{label}: {current}/{limit}</span>
+        {isExceeded && (
+          <span role="alert" aria-label="Limit exceeded warning">⚠️</span>
+        )}
+      </div>
+    );
+  },
+  CompactResourceLimitBar: ({ current, limit, label }: any) => {
+    const percentage = limit > 0 ? Math.round((current / limit) * 100) : 0;
+    const isExceeded = current > limit;
+    const level = percentage < 50 ? 'safe' : percentage < 80 ? 'warning' : 'danger';
+
+    const ariaLabel = `${label} usage: ${percentage}% of limit`;
+    const statusMessage = isExceeded ? 'Exceeded' :
+                          level === 'danger' ? 'Critical' :
+                          level === 'warning' ? 'High' : 'Normal';
+
+    return (
+      <div
+        role="progressbar"
+        aria-label={ariaLabel}
+        aria-valuenow={percentage}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-describedby={`${label}-compact-status`}
+        data-testid="accessible-compact-limit-bar"
+        data-level={level}
+      >
+        <span id={`${label}-compact-status`} className="sr-only">{statusMessage} usage level</span>
+        <span aria-hidden="true">{label}: {percentage}%</span>
+        {isExceeded && (
+          <span role="alert" aria-label="Limit exceeded warning">⚠️</span>
+        )}
+      </div>
+    );
+  },
+}));
+
 describe('ResourceUsageDisplay Accessibility Tests', () => {
   it('should provide meaningful text content for screen readers', () => {
     render(
@@ -266,5 +330,337 @@ describe('ResourceUsageDisplay Accessibility Tests', () => {
     expect(screen.getByText('1.5k→1.3k (2.8k total)')).toBeInTheDocument();
     expect(screen.getByText('$0.15')).toBeInTheDocument();
     expect(screen.getByText('10 calls')).toBeInTheDocument();
+  });
+
+  describe('Limit Indicators Accessibility', () => {
+    it('should provide accessible limit indicator progress bars', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={500}
+          outputTokens={300}
+          cost={2.5}
+          apiCalls={8}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      // Should have progress bars with proper ARIA attributes
+      const progressBars = screen.getAllByRole('progressbar');
+      expect(progressBars).toHaveLength(3);
+
+      // Each progress bar should have proper accessibility attributes
+      progressBars.forEach(progressBar => {
+        expect(progressBar).toHaveAttribute('aria-label');
+        expect(progressBar).toHaveAttribute('aria-valuenow');
+        expect(progressBar).toHaveAttribute('aria-valuemin', '0');
+        expect(progressBar).toHaveAttribute('aria-valuemax');
+        expect(progressBar).toHaveAttribute('aria-describedby');
+      });
+    });
+
+    it('should provide meaningful status messages for screen readers', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={450}
+          outputTokens={50}
+          cost={7.5}
+          apiCalls={12}
+          limits={{
+            maxTokens: 1000,    // 50% - warning
+            maxCost: 10.0,      // 75% - warning
+            maxApiCalls: 10,    // 120% - exceeded
+          }}
+        />
+      );
+
+      // Check for status descriptions for screen readers
+      expect(screen.getByText('Caution: Approaching limit')).toBeInTheDocument(); // tokens
+      expect(screen.getByText('Caution: Approaching limit')).toBeInTheDocument(); // cost
+      expect(screen.getByText('Warning: Limit exceeded')).toBeInTheDocument(); // API calls
+    });
+
+    it('should provide accessible warning alerts for exceeded limits', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={600}
+          outputTokens={600}
+          cost={6.0}
+          apiCalls={15}
+          limits={{
+            maxTokens: 1000,    // 120% - exceeded
+            maxCost: 5.0,       // 120% - exceeded
+            maxApiCalls: 10,    // 150% - exceeded
+          }}
+        />
+      );
+
+      // Warning indicators should be alerts for screen readers
+      const warningAlerts = screen.getAllByRole('alert');
+      expect(warningAlerts).toHaveLength(3);
+
+      // Each alert should have proper labeling
+      warningAlerts.forEach(alert => {
+        expect(alert).toHaveAttribute('aria-label', 'Limit exceeded warning');
+        expect(alert).toHaveTextContent('⚠️');
+      });
+    });
+
+    it('should maintain accessibility in compact mode with limits', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={400}
+          outputTokens={100}
+          cost={4.0}
+          apiCalls={8}
+          compact={true}
+          limits={{
+            maxTokens: 1000,    // 50% - warning
+            maxCost: 5.0,       // 80% - danger
+            maxApiCalls: 10,    // 80% - danger
+          }}
+        />
+      );
+
+      // Should have compact progress bars with proper accessibility
+      const compactBars = screen.getAllByTestId('accessible-compact-limit-bar');
+      expect(compactBars).toHaveLength(3);
+
+      // Each should be a proper progressbar with percentage values
+      compactBars.forEach(bar => {
+        expect(bar).toHaveAttribute('role', 'progressbar');
+        expect(bar).toHaveAttribute('aria-label');
+        expect(bar).toHaveAttribute('aria-valuenow');
+        expect(bar).toHaveAttribute('aria-valuemin', '0');
+        expect(bar).toHaveAttribute('aria-valuemax', '100');
+      });
+
+      // Check specific percentage labels for screen readers
+      const tokenBar = compactBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('tokens usage')
+      );
+      expect(tokenBar).toHaveAttribute('aria-label', 'tokens usage: 50% of limit');
+
+      const costBar = compactBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('cost usage')
+      );
+      expect(costBar).toHaveAttribute('aria-label', 'cost usage: 80% of limit');
+    });
+
+    it('should not rely solely on color for status indication', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={400}
+          outputTokens={500}
+          cost={4.5}
+          apiCalls={9}
+          limits={{
+            maxTokens: 1000,    // 90% - danger
+            maxCost: 5.0,       // 90% - danger
+            maxApiCalls: 10,    // 90% - danger
+          }}
+        />
+      );
+
+      // Status should be conveyed through text, not just color
+      const progressBars = screen.getAllByTestId('accessible-limit-bar');
+
+      progressBars.forEach(bar => {
+        expect(bar).toHaveAttribute('data-level', 'danger');
+        // Should have text-based status indication
+        expect(bar.querySelector('[id$="-status"]')).toBeInTheDocument();
+      });
+
+      // Text-based status should be present for screen readers
+      expect(screen.getAllByText('Alert: Near limit')).toHaveLength(3);
+    });
+
+    it('should provide meaningful ARIA labels for different resource types', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={750}
+          outputTokens={250}
+          cost={4.0}
+          apiCalls={12}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      const progressBars = screen.getAllByRole('progressbar');
+
+      // Find specific progress bars by their aria-label content
+      const tokenBar = progressBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('tokens usage')
+      );
+      expect(tokenBar).toHaveAttribute('aria-label', 'tokens usage: 1000 of 1000 (100%)');
+
+      const costBar = progressBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('cost usage')
+      );
+      expect(costBar).toHaveAttribute('aria-label', 'cost usage: 4 of 5 (80%)');
+
+      const apiBar = progressBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('calls usage')
+      );
+      expect(apiBar).toHaveAttribute('aria-label', 'calls usage: 12 of 10 (120%)');
+    });
+
+    it('should handle dynamic content changes accessibly', () => {
+      const { rerender } = render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={1.0}
+          apiCalls={3}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      // Initial state - all safe
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Normal usage')).toHaveLength(3);
+
+      // Update to exceeded state
+      rerender(
+        <ResourceUsageDisplay
+          inputTokens={600}
+          outputTokens={600}
+          cost={6.0}
+          apiCalls={12}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      // Should now have alerts for exceeded limits
+      const alerts = screen.getAllByRole('alert');
+      expect(alerts).toHaveLength(3);
+
+      // Alerts should be properly labeled
+      alerts.forEach(alert => {
+        expect(alert).toHaveAttribute('aria-label', 'Limit exceeded warning');
+      });
+
+      // Status messages should update
+      expect(screen.getAllByText('Warning: Limit exceeded')).toHaveLength(3);
+    });
+
+    it('should handle partial limits configuration accessibly', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxTokens: 1000,
+            // Only tokens limit provided
+          }}
+        />
+      );
+
+      // Should only have one accessible progress bar
+      const progressBars = screen.getAllByRole('progressbar');
+      expect(progressBars).toHaveLength(1);
+
+      // Should be properly labeled
+      expect(progressBars[0]).toHaveAttribute('aria-label', 'tokens usage: 500 of 1000 (50%)');
+    });
+
+    it('should provide accessible daily budget vs cost differentiation', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxCost: 5.0,        // Per-task cost limit
+            dailyBudget: 100.0,  // Daily budget limit
+          }}
+        />
+      );
+
+      // Should have two progress bars with different labels
+      const progressBars = screen.getAllByRole('progressbar');
+      expect(progressBars).toHaveLength(2);
+
+      const costBar = progressBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('cost usage')
+      );
+      const budgetBar = progressBars.find(bar =>
+        bar.getAttribute('aria-label')?.includes('daily budget usage')
+      );
+
+      expect(costBar).toHaveAttribute('aria-label', 'cost usage: 4 of 5 (80%)');
+      expect(budgetBar).toHaveAttribute('aria-label', 'daily budget usage: 4 of 100 (4%)');
+    });
+
+    it('should maintain accessibility with no limit indicators shown', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+          }}
+          showLimitIndicators={false}
+        />
+      );
+
+      // Should not have any progress bars when indicators are disabled
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      // Basic usage information should still be accessible
+      expect(screen.getByText('usage:')).toBeInTheDocument();
+      expect(screen.getByText('500')).toBeInTheDocument();
+    });
+
+    it('should handle screen reader navigation flow', () => {
+      const { container } = render(
+        <ResourceUsageDisplay
+          inputTokens={500}
+          outputTokens={300}
+          cost={3.0}
+          apiCalls={7}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+            maxApiCalls: 10,
+          }}
+        />
+      );
+
+      // Extract text content as a screen reader would encounter it
+      const textContent = container.textContent || '';
+
+      // Should contain main usage info first
+      expect(textContent).toContain('usage:');
+      expect(textContent).toContain('800'); // Total tokens
+      expect(textContent).toContain('$3.00');
+      expect(textContent).toContain('7 calls');
+
+      // Should contain accessible status information
+      expect(textContent).toContain('Caution: Approaching limit'); // For warning levels
+      expect(textContent).toContain('Normal usage'); // For safe levels
+    });
   });
 });

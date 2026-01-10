@@ -10,15 +10,66 @@ import { ResourceUsageDisplay } from '../ResourceUsageDisplay';
 import { ThemeProvider } from '../../../context/ThemeContext';
 
 // Mock theme context dependencies
+const mockThemeColors = {
+  muted: '#6B7280',
+  info: '#3B82F6',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  primary: '#8B5CF6',
+};
+
 vi.mock('../../../context/ThemeContext.js', () => ({
-  useThemeColors: vi.fn(() => ({
-    muted: 'gray',
-    info: 'blue',
-    success: 'green',
-    warning: 'yellow',
-    error: 'red',
-  })),
+  useThemeColors: vi.fn(() => mockThemeColors),
   ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+// Mock ResourceLimitBar components with test-friendly implementation
+vi.mock('../ResourceLimitBar.js', () => ({
+  ResourceLimitBar: ({ current, limit, label, formatter, limitFormatter }: any) => {
+    const currentDisplay = formatter ? formatter(current) : current.toLocaleString();
+    const limitDisplay = limitFormatter ? limitFormatter(limit) : limit.toLocaleString();
+    const percentage = limit > 0 ? (current / limit) * 100 : 0;
+    const isExceeded = current > limit;
+    const level = percentage < 50 ? 'safe' : percentage < 80 ? 'warning' : 'danger';
+
+    return (
+      <div
+        data-testid="resource-limit-bar"
+        data-current={current}
+        data-limit={limit}
+        data-percentage={Math.round(percentage)}
+        data-level={level}
+        data-exceeded={isExceeded}
+      >
+        <span>{label}: </span>
+        <span data-testid="progress-display">[{'█'.repeat(Math.floor(percentage / 10))}{'░'.repeat(10 - Math.floor(percentage / 10))}]</span>
+        <span data-testid="value-display">{currentDisplay}/{limitDisplay}</span>
+        {isExceeded && <span data-testid="warning-indicator">⚠️</span>}
+      </div>
+    );
+  },
+  CompactResourceLimitBar: ({ current, limit, label }: any) => {
+    const percentage = limit > 0 ? Math.round((current / limit) * 100) : 0;
+    const isExceeded = current > limit;
+    const level = percentage < 50 ? 'safe' : percentage < 80 ? 'warning' : 'danger';
+
+    return (
+      <div
+        data-testid="compact-resource-limit-bar"
+        data-current={current}
+        data-limit={limit}
+        data-percentage={percentage}
+        data-level={level}
+        data-exceeded={isExceeded}
+      >
+        <span>{label}: </span>
+        <span data-testid="compact-progress">[{'█'.repeat(Math.floor(percentage / 20))}{'░'.repeat(5 - Math.floor(percentage / 20))}]</span>
+        <span data-testid="percentage-display">{percentage}%</span>
+        {isExceeded && <span data-testid="warning-indicator">⚠️</span>}
+      </div>
+    );
+  },
 }));
 
 describe('ResourceUsageDisplay Integration Tests', () => {
@@ -250,5 +301,200 @@ describe('ResourceUsageDisplay Integration Tests', () => {
     expect(screen.getByText('1.6k→1.5k (3.1k total)')).toBeInTheDocument();
     expect(screen.getByText('$0.160')).toBeInTheDocument();
     expect(screen.getByText('9 calls')).toBeInTheDocument();
+  });
+
+  describe('Limit Indicators Integration', () => {
+    it('should render usage display with comprehensive limit indicators', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={400}
+          outputTokens={100}
+          cost={2.5}
+          apiCalls={8}
+          limits={{
+            maxTokens: 1000,    // 500/1000 = 50% (warning)
+            maxCost: 5.0,       // 2.5/5.0 = 50% (warning)
+            maxApiCalls: 10,    // 8/10 = 80% (danger)
+          }}
+        />
+      );
+
+      // Basic usage display should be present
+      expect(screen.getByText('usage:')).toBeInTheDocument();
+      expect(screen.getByText('500')).toBeInTheDocument(); // Total tokens
+      expect(screen.getByText('$2.50')).toBeInTheDocument();
+      expect(screen.getByText('8 calls')).toBeInTheDocument();
+
+      // All limit bars should be rendered
+      const limitBars = screen.getAllByTestId('resource-limit-bar');
+      expect(limitBars).toHaveLength(3);
+
+      // Check specific limit levels
+      const tokenBar = limitBars.find(bar => bar.getAttribute('data-current') === '500');
+      expect(tokenBar).toHaveAttribute('data-limit', '1000');
+      expect(tokenBar).toHaveAttribute('data-level', 'warning');
+
+      const apiBar = limitBars.find(bar => bar.getAttribute('data-current') === '8');
+      expect(apiBar).toHaveAttribute('data-level', 'danger');
+    });
+
+    it('should show exceeded indicators when limits are surpassed', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={600}
+          outputTokens={600}
+          cost={6.0}
+          apiCalls={12}
+          limits={{
+            maxTokens: 1000,    // 1200/1000 = 120% (exceeded)
+            maxCost: 5.0,       // 6.0/5.0 = 120% (exceeded)
+            maxApiCalls: 10,    // 12/10 = 120% (exceeded)
+          }}
+        />
+      );
+
+      const limitBars = screen.getAllByTestId('resource-limit-bar');
+      expect(limitBars).toHaveLength(3);
+
+      // All should be exceeded and show warning indicators
+      limitBars.forEach(bar => {
+        expect(bar).toHaveAttribute('data-exceeded', 'true');
+        expect(bar).toHaveAttribute('data-level', 'danger');
+      });
+
+      const warningIndicators = screen.getAllByTestId('warning-indicator');
+      expect(warningIndicators).toHaveLength(3);
+    });
+
+    it('should handle compact mode with limit indicators', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          compact={true}
+          limits={{
+            maxTokens: 1000,    // 500/1000 = 50% (warning)
+            maxCost: 5.0,       // 4.0/5.0 = 80% (danger)
+            maxApiCalls: 10,    // 9/10 = 90% (danger)
+          }}
+        />
+      );
+
+      // Basic compact display should be present
+      expect(screen.getByText('500 tok')).toBeInTheDocument();
+      expect(screen.getByText('$4.00')).toBeInTheDocument();
+
+      // Compact limit bars should be rendered
+      const compactBars = screen.getAllByTestId('compact-resource-limit-bar');
+      expect(compactBars).toHaveLength(3);
+
+      // Check percentage displays
+      expect(screen.getByText('50%')).toBeInTheDocument(); // Tokens
+      expect(screen.getByText('80%')).toBeInTheDocument(); // Cost
+      expect(screen.getByText('90%')).toBeInTheDocument(); // API calls
+    });
+
+    it('should handle partial limits configuration', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxTokens: 1000,
+            // Only tokens limit provided
+          }}
+        />
+      );
+
+      // Should only render one limit bar
+      const limitBars = screen.getAllByTestId('resource-limit-bar');
+      expect(limitBars).toHaveLength(1);
+
+      // Should be the tokens limit bar
+      expect(limitBars[0]).toHaveAttribute('data-current', '500');
+      expect(limitBars[0]).toHaveAttribute('data-limit', '1000');
+    });
+
+    it('should handle daily budget limit separately from cost limit', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxCost: 5.0,        // Per-task cost limit
+            dailyBudget: 100.0,  // Daily budget limit (also uses cost)
+          }}
+        />
+      );
+
+      // Should render two limit bars (cost and daily budget)
+      const limitBars = screen.getAllByTestId('resource-limit-bar');
+      expect(limitBars).toHaveLength(2);
+
+      // Both should use cost value (4.0) but different limits
+      const costBar = limitBars.find(bar => bar.getAttribute('data-limit') === '5');
+      const budgetBar = limitBars.find(bar => bar.getAttribute('data-limit') === '100');
+
+      expect(costBar).toHaveAttribute('data-current', '4');
+      expect(budgetBar).toHaveAttribute('data-current', '4');
+    });
+
+    it('should hide limit indicators when disabled', () => {
+      render(
+        <ResourceUsageDisplay
+          inputTokens={300}
+          outputTokens={200}
+          cost={4.0}
+          apiCalls={9}
+          limits={{
+            maxTokens: 1000,
+            maxCost: 5.0,
+          }}
+          showLimitIndicators={false}
+        />
+      );
+
+      // Basic usage should be shown
+      expect(screen.getByText('usage:')).toBeInTheDocument();
+      expect(screen.getByText('500')).toBeInTheDocument();
+
+      // No limit bars should be rendered
+      expect(screen.queryByTestId('resource-limit-bar')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('compact-resource-limit-bar')).not.toBeInTheDocument();
+    });
+
+    it('should handle real-world development scenarios', () => {
+      // Test typical development workflow with approaching limits
+      render(
+        <ResourceUsageDisplay
+          inputTokens={4200}
+          outputTokens={4800}
+          cost={8.75}
+          apiCalls={23}
+          limits={{
+            maxTokens: 10000,      // 90% usage (danger)
+            maxCost: 10.0,         // 87.5% usage (danger)
+            maxApiCalls: 25,       // 92% usage (danger)
+          }}
+        />
+      );
+
+      const limitBars = screen.getAllByTestId('resource-limit-bar');
+
+      // All should be in danger level but not exceeded
+      limitBars.forEach(bar => {
+        expect(bar).toHaveAttribute('data-level', 'danger');
+        expect(bar).toHaveAttribute('data-exceeded', 'false');
+      });
+
+      // Should not show warning indicators (not exceeded)
+      expect(screen.queryByTestId('warning-indicator')).not.toBeInTheDocument();
+    });
   });
 });
