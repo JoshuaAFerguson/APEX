@@ -3125,11 +3125,13 @@ describe('Permission Schema Edge Cases', () => {
 describe('Approval Gate Types', () => {
   describe('ApprovalCheckpointTypeSchema', () => {
     it('should accept valid checkpoint types', () => {
-      expect(ApprovalCheckpointTypeSchema.parse('code-review')).toBe('code-review');
+      expect(ApprovalCheckpointTypeSchema.parse('before-commit')).toBe('before-commit');
+      expect(ApprovalCheckpointTypeSchema.parse('before-deploy')).toBe('before-deploy');
+      expect(ApprovalCheckpointTypeSchema.parse('before-destructive')).toBe('before-destructive');
+      expect(ApprovalCheckpointTypeSchema.parse('before-network')).toBe('before-network');
+      expect(ApprovalCheckpointTypeSchema.parse('before-file-write')).toBe('before-file-write');
       expect(ApprovalCheckpointTypeSchema.parse('deployment')).toBe('deployment');
-      expect(ApprovalCheckpointTypeSchema.parse('architecture-review')).toBe('architecture-review');
-      expect(ApprovalCheckpointTypeSchema.parse('security-review')).toBe('security-review');
-      expect(ApprovalCheckpointTypeSchema.parse('business-approval')).toBe('business-approval');
+      expect(ApprovalCheckpointTypeSchema.parse('custom')).toBe('custom');
     });
 
     it('should reject invalid checkpoint types', () => {
@@ -3137,6 +3139,11 @@ describe('Approval Gate Types', () => {
       expect(() => ApprovalCheckpointTypeSchema.parse('')).toThrow();
       expect(() => ApprovalCheckpointTypeSchema.parse(null)).toThrow();
       expect(() => ApprovalCheckpointTypeSchema.parse(undefined)).toThrow();
+      // Legacy invalid types that were incorrectly used before
+      expect(() => ApprovalCheckpointTypeSchema.parse('code-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('architecture-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('security-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('business-approval')).toThrow();
     });
   });
 

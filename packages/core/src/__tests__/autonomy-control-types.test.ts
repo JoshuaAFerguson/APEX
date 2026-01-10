@@ -107,6 +107,9 @@ describe('Autonomy Control Types', () => {
         'before-commit',
         'before-deploy',
         'before-destructive',
+        'before-network',
+        'before-file-write',
+        'deployment',
         'custom'
       ];
 
