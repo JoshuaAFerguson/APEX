@@ -3016,6 +3016,47 @@ export class TaskStore {
   }
 
   /**
+   * Get orphaned approval states (approvals for non-existent tasks or expired)
+   */
+  async getOrphanedApprovalStates(): Promise<ApprovalState[]> {
+    const stmt = this.db.prepare(`
+      SELECT a.* FROM approval_states a
+      LEFT JOIN tasks t ON a.task_id = t.id
+      WHERE t.id IS NULL
+         OR (a.expires_at IS NOT NULL AND a.expires_at < datetime('now'))
+         OR a.status = 'pending' AND a.requested_at < datetime('now', '-24 hours')
+      ORDER BY a.requested_at ASC
+    `);
+    const rows = stmt.all() as ApprovalStateRow[];
+    return rows.map(row => this.rowToApprovalState(row));
+  }
+
+  /**
+   * Clean up orphaned approval states by marking them as denied
+   */
+  async cleanupOrphanedApprovalStates(): Promise<number> {
+    const orphanedStates = await this.getOrphanedApprovalStates();
+    let cleanedCount = 0;
+
+    for (const state of orphanedStates) {
+      try {
+        await this.updateApprovalState(state.id, {
+          status: 'denied',
+          respondedAt: new Date(),
+          approver: 'system',
+          comment: 'Automatically cleaned up orphaned approval state'
+        });
+        cleanedCount++;
+      } catch (error) {
+        // Continue cleaning other states even if one fails
+        console.warn(`Failed to clean up orphaned approval state ${state.id}:`, error);
+      }
+    }
+
+    return cleanedCount;
+  }
+
+  /**
    * Convert an approval state database row to an ApprovalState object
    */
   private rowToApprovalState(row: ApprovalStateRow): ApprovalState {
