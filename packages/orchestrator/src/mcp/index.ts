@@ -80,3 +80,11 @@ export {
   StdioTransport,
   type StdioTransportOptions,
 } from './transports/index.js';
+
+// MCP Client
+export {
+  MCPClient,
+  type MCPClientOptions,
+  type MCPClientEvents,
+  type MCPToolDefinition,
+} from './client.js';

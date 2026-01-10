@@ -538,6 +538,36 @@ export function isPlanningStage(stage: WorkflowStage): boolean {
 }
 
 /**
+ * Check if a stage is a code generation stage that should trigger auto-fix
+ * This includes stages that write, modify, or generate code files
+ */
+export function isCodeGenerationStage(stage: WorkflowStage): boolean {
+  // Check by agent name - these agents typically generate code
+  if (stage.agent === 'developer' || stage.agent === 'tester') {
+    return true;
+  }
+
+  // Check by stage outputs - stages that produce code artifacts
+  if (stage.outputs) {
+    const codeOutputTypes = ['code_changes', 'test_files', 'implementation', 'files_modified'];
+    const hasCodeOutput = stage.outputs.some(output =>
+      codeOutputTypes.some(type => output.toLowerCase().includes(type.toLowerCase()))
+    );
+    if (hasCodeOutput) {
+      return true;
+    }
+  }
+
+  // Check by stage name patterns - configurable list of stage names that generate code
+  const codeStageNames = ['implementation', 'testing', 'development', 'coding', 'build'];
+  if (codeStageNames.includes(stage.name.toLowerCase())) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Build a resume prompt that combines context summary with original task for session resume
  *
  * @param task - The task being resumed

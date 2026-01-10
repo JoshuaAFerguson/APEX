@@ -18,6 +18,8 @@ import {
   ToolHookConfigSchema,
   SecretScannerConfig,
   SecretScanningConfig,
+  ToolAlias,
+  ToolAliasSchema,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -28,6 +30,7 @@ const AGENTS_DIR = 'agents';
 const WORKFLOWS_DIR = 'workflows';
 const SKILLS_DIR = 'skills';
 const SCRIPTS_DIR = 'scripts';
+const TOOLS_DIR = 'tools';
 
 /**
  * Container workspace validation error types
@@ -145,6 +148,15 @@ export async function loadConfig(projectPath: string): Promise<ApexConfig> {
       if ((hookError as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw new Error(`Failed to load tool hooks: ${hookError}`);
       }
+    }
+
+    // Load and merge tool aliases from config.yaml and .apex/tools/ directory
+    try {
+      const mergedAliases = await getMergedAliases(projectPath, config.aliases);
+      // Convert merged aliases back to array format for storage in config
+      config.aliases = Object.values(mergedAliases);
+    } catch (aliasError) {
+      throw new Error(`Failed to load tool aliases: ${aliasError}`);
     }
 
     // Validate container workspace configuration
@@ -310,6 +322,62 @@ export async function loadWorkflow(
 }
 
 /**
+ * Load all tool aliases from the .apex/tools/ directory
+ */
+export async function loadToolAliases(
+  projectPath: string
+): Promise<Record<string, ToolAlias>> {
+  const toolsDir = normalizePath(path.join(projectPath, APEX_DIR, TOOLS_DIR));
+  const aliases: Record<string, ToolAlias> = {};
+
+  try {
+    const files = await fs.readdir(toolsDir);
+
+    for (const file of files) {
+      if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue;
+
+      const filePath = normalizePath(path.join(toolsDir, file));
+      const content = await fs.readFile(filePath, 'utf-8');
+      const alias = ToolAliasSchema.parse(yaml.parse(content));
+      aliases[alias.name] = alias;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return aliases;
+}
+
+/**
+ * Get merged tool aliases from both config.yaml and .apex/tools/ directory
+ * File-based aliases take precedence over config.yaml aliases
+ */
+export async function getMergedAliases(
+  projectPath: string,
+  configAliases: ToolAlias[] = []
+): Promise<Record<string, ToolAlias>> {
+  // Load aliases from .apex/tools/ directory
+  const fileBasedAliases = await loadToolAliases(projectPath);
+
+  // Create a merged collection, starting with config.yaml aliases
+  const mergedAliases: Record<string, ToolAlias> = {};
+
+  // First, add aliases from config.yaml
+  for (const alias of configAliases) {
+    mergedAliases[alias.name] = alias;
+  }
+
+  // Then, add/override with file-based aliases (these take precedence)
+  for (const [name, alias] of Object.entries(fileBasedAliases)) {
+    mergedAliases[name] = alias;
+  }
+
+  return mergedAliases;
+}
+
+/**
  * Get the path to a skill directory
  */
 export function getSkillPath(projectPath: string, skillName: string): string {
@@ -368,6 +436,7 @@ export async function initializeApex(
   await fs.mkdir(normalizePath(path.join(apexDir, WORKFLOWS_DIR)), { recursive: true });
   await fs.mkdir(normalizePath(path.join(apexDir, SKILLS_DIR)), { recursive: true });
   await fs.mkdir(normalizePath(path.join(apexDir, SCRIPTS_DIR)), { recursive: true });
+  await fs.mkdir(normalizePath(path.join(apexDir, TOOLS_DIR)), { recursive: true });
 
   // Create default config - use schema.parse() to apply defaults
   const defaultConfig = ApexConfigSchema.parse({
@@ -919,5 +988,6 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       pathAccess: undefined,
       metadata: {},
     },
+    aliases: config.aliases || [],
   };
 }

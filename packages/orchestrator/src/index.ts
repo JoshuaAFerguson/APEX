@@ -70,6 +70,8 @@ import {
   ApexRule, // Added ApexRule
   MCPServerConfig,
   MCPMarketplaceEntry,
+  AutoFixStageResults,
+  AutoFixStageConfig,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -85,6 +87,7 @@ import {
   buildResumePrompt,
   parseDecompositionRequest,
   isPlanningStage,
+  isCodeGenerationStage,
   type DecompositionRequest,
 } from './prompts';
 import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
@@ -105,6 +108,8 @@ import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
 import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
 import { browserTool } from './tools';
+import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
+import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
 
 const execAsync = promisify(exec);
 
@@ -789,6 +794,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private customToolsServer?: CustomToolsServer;
   private mcpServerManager?: MCPServerManager;
   private browserToolsServer?: BrowserToolsServer;
+  private tddExecutor?: TDDExecutor;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -986,6 +992,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Setup automatic workspace cleanup on task completion
     this.setupAutomaticWorkspaceCleanup();
+
+    // Initialize TDD executor if configured
+    await this.initializeTDDExecutor();
 
     this.initialized = true;
   }
@@ -2981,6 +2990,33 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
+    // Create preliminary stage result for auto-fix processing
+    const preliminaryResult: StageResult = {
+      stageName: stage.name,
+      agent: agent.name,
+      status: 'completed',
+      outputs,
+      artifacts,
+      summary,
+      usage: stageUsage,
+      startedAt,
+      completedAt: new Date(),
+    };
+
+    // Execute auto-fix if this is a code generation stage
+    let autoFixResults: AutoFixStageResults | null = null;
+    try {
+      autoFixResults = await this.executeAutoFixForStage(task.id, stage, preliminaryResult);
+    } catch (error) {
+      // Log auto-fix error but don't fail the stage
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Auto-fix hook failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+    }
+
     return {
       stageName: stage.name,
       agent: agent.name,
@@ -2992,6 +3028,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       startedAt,
       completedAt: new Date(),
       decompositionRequest,
+      autoFixResults: autoFixResults || undefined,
     };
   }
 
@@ -3061,6 +3098,280 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputs,
       artifacts: [...new Set(artifacts)], // Deduplicate
     };
+  }
+
+  /**
+   * Execute auto-fix on files modified during a code generation stage
+   *
+   * @param taskId - The task ID
+   * @param stage - The stage that was executed
+   * @param stageResult - The stage execution result with artifacts
+   * @returns Auto-fix results or null if skipped
+   */
+  private async executeAutoFixForStage(
+    taskId: string,
+    stage: WorkflowStage,
+    stageResult: StageResult
+  ): Promise<AutoFixStageResults | null> {
+    // Check if auto-fix is enabled in configuration
+    const autoFixConfig = this.effectiveConfig.codeQuality?.autoFix;
+    if (!autoFixConfig?.enabled) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'disabled',
+      };
+    }
+
+    // Check if stage failed and we should skip on failure
+    if (stageResult.status === 'failed' && autoFixConfig.skipOnStageFailure) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'stage_failed',
+      };
+    }
+
+    // Check if this is a code generation stage that should trigger auto-fix
+    const shouldTrigger =
+      isCodeGenerationStage(stage) ||
+      autoFixConfig.triggerStages.includes(stage.name.toLowerCase()) ||
+      autoFixConfig.triggerAgents.includes(stage.agent.toLowerCase());
+
+    if (!shouldTrigger) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    // Get files modified by this stage from tool action store
+    let modifiedFiles: string[] = [];
+
+    try {
+      // Get all tool actions for this stage
+      const toolActions = await this.toolActionStore.getToolActions(taskId);
+      const stageActions = toolActions.filter(action =>
+        action.stageName === stage.name &&
+        action.modifiedFiles &&
+        action.modifiedFiles.length > 0
+      );
+
+      // Collect all modified files from this stage
+      const allFiles = new Set<string>();
+      for (const action of stageActions) {
+        for (const file of action.modifiedFiles) {
+          allFiles.add(file);
+        }
+      }
+
+      // Include artifacts from stage result as well
+      if (stageResult.artifacts) {
+        for (const artifact of stageResult.artifacts) {
+          allFiles.add(artifact);
+        }
+      }
+
+      modifiedFiles = Array.from(allFiles);
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Failed to get modified files for auto-fix: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+      });
+
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'failed_to_identify_files',
+      };
+    }
+
+    if (modifiedFiles.length === 0) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    // Filter files by supported extensions
+    const supportedFiles = modifiedFiles.filter(file => {
+      const ext = path.extname(file);
+      return autoFixConfig.fileExtensions.includes(ext);
+    });
+
+    // Limit number of files to process
+    const filesToProcess = supportedFiles.slice(0, autoFixConfig.maxFilesPerStage);
+
+    if (filesToProcess.length === 0) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Auto-fix triggered for ${filesToProcess.length} files after ${stage.name} stage completion`,
+      stage: stage.name,
+    });
+
+    // Emit auto-fix requested event
+    for (const filePath of filesToProcess) {
+      this.emit('autofix:requested', {
+        taskId,
+        filePath,
+        fixTypes: ['imports'], // Currently only supporting import fixes
+        triggeredBy: 'hook',
+        timestamp: new Date(),
+      });
+    }
+
+    try {
+      // Create auto-fixer instance
+      const autoFixer = new ImportAutoFixer({
+        projectPath: this.projectPath,
+        detector: 'auto',
+      });
+
+      // Check if auto-fixer is available
+      if (!(await autoFixer.isAvailable())) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'Auto-fix service unavailable, skipping import fixes',
+          stage: stage.name,
+        });
+
+        for (const filePath of filesToProcess) {
+          this.emit('autofix:skipped', {
+            taskId,
+            filePath,
+            reason: 'no_issues',
+            timestamp: new Date(),
+          });
+        }
+
+        return {
+          applied: false,
+          filesProcessed: filesToProcess,
+          filesModified: [],
+          totalImportsAdded: 0,
+          totalDuration: 0,
+          errors: [],
+          skipReason: 'no_code_files',
+        };
+      }
+
+      // Execute auto-fix on all files
+      const fixResults = await autoFixer.fix(filesToProcess);
+      const summary = autoFixer.getSummary(fixResults);
+
+      // Emit progress events
+      for (const result of fixResults) {
+        if (result.success) {
+          this.emit('autofix:completed', {
+            taskId,
+            filePath: result.filePath,
+            fixType: 'imports',
+            issuesDetected: result.importsAdded.length,
+            issuesFixed: result.importsAdded.length,
+            duration: result.duration,
+            timestamp: new Date(),
+          });
+        } else {
+          this.emit('autofix:failed', {
+            taskId,
+            filePath: result.filePath,
+            fixType: 'imports',
+            error: result.errors.map(e => e.message).join('; '),
+            issuesDetected: 0,
+            issuesFixed: 0,
+            timestamp: new Date(),
+          });
+        }
+      }
+
+      const errors = fixResults.flatMap(result =>
+        result.errors.map(error => ({
+          filePath: result.filePath,
+          error: error.message,
+          type: error.type as 'io' | 'resolution' | 'syntax',
+        }))
+      );
+
+      await this.store.addLog(taskId, {
+        level: summary.totalErrors > 0 ? 'warn' : 'info',
+        message: `Auto-fix completed: ${summary.filesModified}/${summary.filesProcessed} files modified, ${summary.totalImportsAdded} imports added`,
+        stage: stage.name,
+      });
+
+      return {
+        applied: true,
+        filesProcessed: filesToProcess,
+        filesModified: fixResults.filter(r => r.importsAdded.length > 0).map(r => r.filePath),
+        totalImportsAdded: summary.totalImportsAdded,
+        totalDuration: summary.totalDuration,
+        errors,
+      };
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Auto-fix failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+      });
+
+      for (const filePath of filesToProcess) {
+        this.emit('autofix:failed', {
+          taskId,
+          filePath,
+          fixType: 'imports',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          issuesDetected: 0,
+          issuesFixed: 0,
+          timestamp: new Date(),
+        });
+      }
+
+      return {
+        applied: false,
+        filesProcessed: filesToProcess,
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [{
+          filePath: 'all',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          type: 'io',
+        }],
+      };
+    }
   }
 
   /**
@@ -7694,6 +8005,128 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Initialize TDD executor with current configuration and agents
+   */
+  private async initializeTDDExecutor(): Promise<void> {
+    // Check if TDD is configured in the project config
+    const tddConfig = this.config.tdd;
+    if (!tddConfig?.enabled) {
+      return; // TDD not enabled
+    }
+
+    const config: TDDExecutorConfig = {
+      maxIterations: tddConfig.maxIterations || 3,
+      testCommand: tddConfig.testCommand || 'npm test',
+      workingDirectory: this.projectPath,
+      testTimeout: tddConfig.testTimeout || 60000,
+      enableEvents: true,
+    };
+
+    this.tddExecutor = new TDDExecutor(config, this.agents);
+
+    // Forward TDD events to orchestrator events
+    this.setupTDDEventForwarding();
+  }
+
+  /**
+   * Setup event forwarding from TDD executor to orchestrator
+   */
+  private setupTDDEventForwarding(): void {
+    if (!this.tddExecutor) return;
+
+    this.tddExecutor.on('tdd:started', (config, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:started' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { config },
+      });
+    });
+
+    this.tddExecutor.on('tdd:iteration-started', (iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:iteration-started' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:test-run', (testResult, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:test-run' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { testResult, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:fix-generated', (fix, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:fix-generated' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { fix, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:fix-applied', (fixResult, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:fix-applied' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { fixResult, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:iteration-completed', (result, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:iteration-completed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { result },
+      });
+    });
+
+    this.tddExecutor.on('tdd:completed', (result, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:completed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { result },
+      });
+    });
+
+    this.tddExecutor.on('tdd:failed', (error, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:failed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { error: error.message, iteration },
+      });
+    });
+  }
+
+  /**
+   * Execute TDD loop for the current task or specified task
+   */
+  async executeTDD(taskId?: string): Promise<TDDExecutionResult> {
+    if (!this.tddExecutor) {
+      throw new Error('TDD executor not initialized. Ensure TDD is enabled in configuration.');
+    }
+
+    const executionTaskId = taskId || this.currentTaskId || generateTaskId();
+    return await this.tddExecutor.execute(executionTaskId);
+  }
+
+  /**
+   * Check if TDD is enabled and available
+   */
+  isTDDEnabled(): boolean {
+    return this.tddExecutor !== undefined;
+  }
+
+  /**
    * Determine if workspace should be preserved on task failure for debugging
    * Checks task-level config first, then strategy-specific config
    */
@@ -9224,3 +9657,67 @@ export {
   type RegressionResult,
   type CommandResult,
 } from './tdd/tdd-mode';
+
+// TDD Executor
+export {
+  TDDExecutor,
+  createTDDExecutor,
+  executeTDD,
+  type TDDExecutorConfig,
+  type TDDExecutionResult,
+  type TDDIterationResult,
+  type TestResult,
+  type TestFailure,
+  type SuggestedFix,
+  type FixResult,
+} from './tdd-executor';
+
+// MCP (Model Context Protocol) Module
+export {
+  // JSON-RPC message types
+  type JSONRPCError,
+  type JSONRPCRequest,
+  type JSONRPCSuccessResponse,
+  type JSONRPCErrorResponse,
+  type JSONRPCResponse,
+  type JSONRPCNotification,
+  type JSONRPCMessage,
+
+  // Error codes
+  JSONRPCErrorCodes,
+
+  // Transport error types
+  type MCPTransportErrorCode,
+  MCPTransportError,
+
+  // Transport events
+  type MCPTransportEvents,
+
+  // Type guards
+  isJSONRPCRequest,
+  isJSONRPCResponse,
+  isJSONRPCNotification,
+  isJSONRPCErrorResponse,
+  isJSONRPCSuccessResponse,
+
+  // Factory functions
+  createJSONRPCRequest,
+  createJSONRPCNotification,
+  createJSONRPCSuccessResponse,
+  createJSONRPCErrorResponse,
+
+  // Base transport
+  MCPTransport,
+  type TransportState,
+  type MCPTransportBaseOptions,
+
+  // Stdio transport
+  StdioTransport,
+  type StdioTransportOptions,
+
+  // MCP Client
+  MCPClient,
+  type MCPClientOptions,
+  type MCPClientEvents,
+  type MCPToolDefinition,
+} from './mcp';

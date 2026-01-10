@@ -142,6 +142,7 @@ export default function TaskDetailPage() {
         return {
           ...prev,
           usage: {
+            ...prev.usage,
             inputTokens: (usageData.inputTokens as number) || prev.usage.inputTokens,
             outputTokens: (usageData.outputTokens as number) || prev.usage.outputTokens,
             totalTokens: (usageData.totalTokens as number) || prev.usage.totalTokens,

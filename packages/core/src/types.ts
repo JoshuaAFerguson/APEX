@@ -259,6 +259,77 @@ export const BrowserToolConfigSchema = BaseToolPermissionConfigSchema.extend({
 });
 export type BrowserToolConfig = z.infer<typeof BrowserToolConfigSchema>;
 
+// ============================================================================
+// Browser Automation Types
+// ============================================================================
+
+/**
+ * Severity levels for console messages
+ * Maps to browser console API levels
+ */
+export const ConsoleSeveritySchema = z.enum(['log', 'info', 'warn', 'error', 'debug', 'trace']);
+export type ConsoleSeverity = z.infer<typeof ConsoleSeveritySchema>;
+
+/**
+ * Stack frame representing a single frame in a stack trace
+ * Used for error reporting and debugging in browser context
+ */
+export const StackFrameSchema = z.object({
+  /** Function name or anonymous if not available */
+  functionName: z.string().optional(),
+  /** Source file URL */
+  url: z.string(),
+  /** Line number in the source file (1-based) */
+  lineNumber: z.number().int().min(1),
+  /** Column number in the source file (1-based) */
+  columnNumber: z.number().int().min(1),
+});
+export type StackFrame = z.infer<typeof StackFrameSchema>;
+
+/**
+ * Console message captured from browser context
+ * Represents console.log/info/warn/error messages
+ */
+export const ConsoleMessageSchema = z.object({
+  /** The severity level of the console message */
+  severity: ConsoleSeveritySchema,
+  /** The message content */
+  message: z.string(),
+  /** Timestamp when the message was logged */
+  timestamp: z.date(),
+  /** Source URL where the message originated */
+  sourceUrl: z.string().optional(),
+  /** Line number in source where the message originated */
+  lineNumber: z.number().int().min(1).optional(),
+  /** Column number in source where the message originated */
+  columnNumber: z.number().int().min(1).optional(),
+  /** Stack trace if available */
+  stackTrace: z.array(StackFrameSchema).optional(),
+});
+export type ConsoleMessage = z.infer<typeof ConsoleMessageSchema>;
+
+/**
+ * Browser error captured during page interaction
+ * Represents JavaScript errors, network errors, etc.
+ */
+export const BrowserErrorSchema = z.object({
+  /** Error name/type (e.g., 'TypeError', 'NetworkError') */
+  name: z.string(),
+  /** Error message */
+  message: z.string(),
+  /** Timestamp when the error occurred */
+  timestamp: z.date(),
+  /** Source URL where the error originated */
+  sourceUrl: z.string().optional(),
+  /** Line number where the error occurred */
+  lineNumber: z.number().int().min(1).optional(),
+  /** Column number where the error occurred */
+  columnNumber: z.number().int().min(1).optional(),
+  /** Stack trace for the error */
+  stackTrace: z.array(StackFrameSchema).optional(),
+});
+export type BrowserError = z.infer<typeof BrowserErrorSchema>;
+
 /**
  * Configuration for search tools (Grep)
  * Extends base config with search-specific settings
@@ -763,6 +834,102 @@ export const ToolActionSnapshotSchema = z.object({
   canUndo: z.boolean().default(true),
 });
 export type ToolActionSnapshot = z.infer<typeof ToolActionSnapshotSchema>;
+
+// ============================================================================
+// Tool Alias Definitions (v0.5.0)
+// ============================================================================
+
+/**
+ * Parameter types supported by tool aliases
+ */
+export const AliasParameterTypeSchema = z.enum(['string', 'number', 'boolean']);
+export type AliasParameterType = z.infer<typeof AliasParameterTypeSchema>;
+
+/**
+ * Tool alias parameter definition
+ * Defines a parameter that can be passed to a tool alias
+ */
+export const AliasParameterSchema = z.object({
+  /** Parameter name */
+  name: z.string().min(1),
+  /** Parameter type */
+  type: AliasParameterTypeSchema,
+  /** Parameter description */
+  description: z.string().min(1),
+  /** Default value for the parameter */
+  default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+  /** Allowed values for string parameters */
+  values: z.array(z.string()).optional(),
+  /** Whether the parameter is required */
+  required: z.boolean().optional().default(false),
+});
+export type AliasParameter = z.infer<typeof AliasParameterSchema>;
+
+/**
+ * Tool alias definition schema
+ * Defines a reusable tool configuration with parameterization
+ */
+export const ToolAliasSchema = z.object({
+  /** Alias name */
+  name: z.string().min(1),
+  /** Target tool name */
+  tool: z.string().min(1),
+  /** Alias description */
+  description: z.string().min(1),
+  /** Default parameters for the tool */
+  defaults: z.record(z.string(), z.unknown()).optional(),
+  /** Parameter templates with placeholder substitution */
+  parameterTemplates: z.record(z.string(), z.string()).optional(),
+  /** Tool execution timeout in milliseconds */
+  timeout: z.number().positive().optional(),
+  /** Whether to require confirmation before execution */
+  requireConfirmation: z.boolean().optional().default(false),
+  /** Tags for organizing aliases */
+  tags: z.array(z.string()).optional().default([]),
+  /** Whether the alias is enabled */
+  enabled: z.boolean().optional().default(true),
+  /** Parameter definitions for template substitution */
+  aliasParameters: z.array(AliasParameterSchema).optional().default([]),
+});
+export type ToolAlias = z.infer<typeof ToolAliasSchema>;
+
+/**
+ * Tool alias configuration section in config.yaml
+ */
+export const ToolAliasConfigSchema = z.object({
+  /** List of tool aliases */
+  aliases: z.array(ToolAliasSchema).optional().default([]),
+});
+export type ToolAliasConfig = z.infer<typeof ToolAliasConfigSchema>;
+
+/**
+ * Expanded tool alias result
+ * Result of resolving an alias with parameters
+ */
+export const ExpandedToolAliasSchema = z.object({
+  /** Original alias name */
+  aliasName: z.string(),
+  /** Target tool name */
+  tool: z.string(),
+  /** Resolved parameters after template substitution */
+  parameters: z.record(z.string(), z.unknown()),
+  /** Original alias definition */
+  alias: ToolAliasSchema,
+});
+export type ExpandedToolAlias = z.infer<typeof ExpandedToolAliasSchema>;
+
+/**
+ * Tool alias validation result
+ */
+export const AliasParameterValidationResultSchema = z.object({
+  /** Whether validation passed */
+  valid: z.boolean(),
+  /** Validation errors if any */
+  errors: z.array(z.string()).default([]),
+  /** Sanitized parameter values */
+  sanitizedParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+export type AliasParameterValidationResult = z.infer<typeof AliasParameterValidationResultSchema>;
 
 // ============================================================================
 // Undo Event Types (v0.5.0)
@@ -1487,9 +1654,30 @@ export const TypecheckConfigSchema = z.object({
 });
 export type TypecheckConfig = z.infer<typeof TypecheckConfigSchema>;
 
+/**
+ * Auto-fix configuration for stage completion hooks
+ */
+export const AutoFixStageConfigSchema = z.object({
+  /** Enable auto-fix after code generation stages */
+  enabled: z.boolean().optional().default(true),
+  /** Stage names that should trigger auto-fix (in addition to agent-based detection) */
+  triggerStages: z.array(z.string()).optional().default(['implementation', 'testing', 'development', 'coding']),
+  /** Agent names that should trigger auto-fix */
+  triggerAgents: z.array(z.string()).optional().default(['developer', 'tester']),
+  /** File extensions to process (others will be skipped) */
+  fileExtensions: z.array(z.string()).optional().default(['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cs', '.go', '.rs']),
+  /** Maximum number of files to process in one stage */
+  maxFilesPerStage: z.number().optional().default(50),
+  /** Skip auto-fix if stage failed */
+  skipOnStageFailure: z.boolean().optional().default(true),
+});
+export type AutoFixStageConfig = z.infer<typeof AutoFixStageConfigSchema>;
+
 export const CodeQualityConfigSchema = z.object({
   preEditValidation: PreEditValidationConfigSchema.optional(),
   typecheck: TypecheckConfigSchema.optional(),
+  /** Auto-fix configuration for stage completion (v0.5.0) */
+  autoFix: AutoFixStageConfigSchema.optional(),
 });
 export type CodeQualityConfig = z.infer<typeof CodeQualityConfigSchema>;
 
@@ -1923,6 +2111,58 @@ export const MCPConfigSchema = z.object({
 });
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
+/**
+ * MCP Server definition schema
+ * Represents an MCP server available for installation from a registry/marketplace
+ * Contains package information and default configuration
+ */
+export const MCPServerSchema = z.object({
+  /** Unique name identifier for the MCP server */
+  name: z.string().min(1, 'MCP server name is required'),
+  /** NPM package name or installation source */
+  package: z.string().min(1, 'Package name is required'),
+  /** Command to execute the MCP server (e.g., 'npx', 'node', path to binary) */
+  command: z.string().min(1, 'Command is required'),
+  /** Arguments to pass to the command */
+  args: z.array(z.string()).optional().default([]),
+  /** Environment variables required by the server */
+  env: z.record(z.string(), z.string()).optional().default({}),
+  /** Semantic version of the MCP server package */
+  version: z.string().min(1, 'Version is required'),
+});
+export type MCPServer = z.infer<typeof MCPServerSchema>;
+
+/**
+ * Installation status for MCP servers
+ */
+export const MCPInstallationStatusSchema = z.enum([
+  'pending',     // Installation has been requested but not started
+  'installing',  // Currently being installed
+  'installed',   // Successfully installed and ready
+  'failed',      // Installation failed
+  'uninstalling', // Currently being uninstalled
+  'uninstalled', // Has been uninstalled
+]);
+export type MCPInstallationStatus = z.infer<typeof MCPInstallationStatusSchema>;
+
+/**
+ * MCP Installation schema
+ * Represents an installed MCP server instance with tracking metadata
+ */
+export const MCPInstallationSchema = z.object({
+  /** Unique identifier for this installation instance */
+  id: z.string().min(1, 'Installation ID is required'),
+  /** Reference to the MCPServer this installation is based on */
+  serverId: z.string().min(1, 'Server ID is required'),
+  /** Timestamp when the server was installed */
+  installedAt: z.date(),
+  /** Current installation status */
+  status: MCPInstallationStatusSchema,
+  /** Path to the installation's configuration file */
+  configPath: z.string().min(1, 'Config path is required'),
+});
+export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
+
 // ============================================================================
 // TDD Mode Configuration (v0.5.0)
 // ============================================================================
@@ -1999,6 +2239,8 @@ export const ApexConfigSchema = z.object({
   projectRules: z.lazy(() => z.array(ApexRuleSchema)).optional().default([]),
   /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */
   guardrails: z.lazy(() => GuardrailConfigSchema).optional(),
+  /** Tool aliases for reusable tool configurations (v0.5.0) */
+  aliases: z.array(ToolAliasSchema).optional().default([]),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -2559,6 +2801,32 @@ export interface StageResult {
   error?: string;
   startedAt: Date;
   completedAt: Date;
+  autoFixResults?: AutoFixStageResults;  // Auto-fix results if applied to this stage
+}
+
+/**
+ * Auto-fix results for a workflow stage
+ * Contains summary of auto-fix operations applied after stage completion
+ */
+export interface AutoFixStageResults {
+  /** Whether auto-fix was applied to this stage */
+  applied: boolean;
+  /** Files that were processed by auto-fix */
+  filesProcessed: string[];
+  /** Files that were actually modified */
+  filesModified: string[];
+  /** Total number of imports added across all files */
+  totalImportsAdded: number;
+  /** Total duration of auto-fix operations in milliseconds */
+  totalDuration: number;
+  /** Any errors encountered during auto-fix */
+  errors: Array<{
+    filePath: string;
+    error: string;
+    type: 'io' | 'resolution' | 'syntax';
+  }>;
+  /** Reason auto-fix was skipped (if not applied) */
+  skipReason?: 'disabled' | 'no_code_files' | 'failed_to_identify_files' | 'stage_failed';
 }
 
 // ============================================================================
@@ -3026,7 +3294,16 @@ export type ApexEventType =
   | 'auto-fix:start'
   | 'auto-fix:progress'
   | 'auto-fix:complete'
-  | 'auto-fix:error';
+  | 'auto-fix:error'
+  // TDD execution events (v0.5.0)
+  | 'tdd:started'
+  | 'tdd:iteration-started'
+  | 'tdd:test-run'
+  | 'tdd:fix-generated'
+  | 'tdd:fix-applied'
+  | 'tdd:iteration-completed'
+  | 'tdd:completed'
+  | 'tdd:failed';
 
 export interface ApexEvent {
   type: ApexEventType;
@@ -3421,6 +3698,270 @@ export type PermissionEventDataFor<T extends ApexEventType> =
   T extends 'policy:blocked' ? PolicyBlockedEventData :
   T extends 'policy:warned' ? PolicyWarnedEventData :
   T extends 'policy:audited' ? PolicyAuditedEventData :
+  never;
+
+// ============================================================================
+// TDD Event Data Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event data for 'tdd:started' event
+ * Emitted when TDD execution begins
+ */
+export interface TDDStartedEventData {
+  /** TDD executor configuration */
+  config: {
+    maxIterations: number;
+    testCommand: string;
+    workingDirectory?: string;
+    testTimeout?: number;
+    enableEvents?: boolean;
+  };
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when TDD execution started */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:iteration-started' event
+ * Emitted when a new TDD iteration begins
+ */
+export interface TDDIterationStartedEventData {
+  /** Current iteration number (1-based) */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when iteration started */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:test-run' event
+ * Emitted when tests are executed
+ */
+export interface TDDTestRunEventData {
+  /** Results of the test execution */
+  testResult: {
+    success: boolean;
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    duration: number;
+    failures: Array<{
+      file: string;
+      test: string;
+      message: string;
+      stack?: string;
+      expected?: string;
+      actual?: string;
+    }>;
+  };
+  /** Current iteration number */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when test run completed */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:fix-generated' event
+ * Emitted when Claude generates a fix for test failures
+ */
+export interface TDDFixGeneratedEventData {
+  /** The suggested fix from Claude */
+  fix: {
+    description: string;
+    file: string;
+    originalContent: string;
+    newContent: string;
+    confidence: number;
+    reasoning?: string;
+  };
+  /** Current iteration number */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when fix was generated */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:fix-applied' event
+ * Emitted when a fix is applied to the codebase
+ */
+export interface TDDFixAppliedEventData {
+  /** Result of applying the fix */
+  fixResult: {
+    success: boolean;
+    error?: string;
+    modifiedFiles: string[];
+  };
+  /** Current iteration number */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when fix was applied */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:iteration-completed' event
+ * Emitted when a TDD iteration is completed
+ */
+export interface TDDIterationCompletedEventData {
+  /** Complete iteration result */
+  result: {
+    iteration: number;
+    testResult: {
+      success: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+      duration: number;
+      failures: Array<{
+        file: string;
+        test: string;
+        message: string;
+        stack?: string;
+        expected?: string;
+        actual?: string;
+      }>;
+    };
+    suggestedFix?: {
+      description: string;
+      file: string;
+      originalContent: string;
+      newContent: string;
+      confidence: number;
+      reasoning?: string;
+    };
+    fixResult?: {
+      success: boolean;
+      error?: string;
+      modifiedFiles: string[];
+    };
+    resolved: boolean;
+    duration: number;
+    startTime: Date;
+    endTime: Date;
+  };
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when iteration completed */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:completed' event
+ * Emitted when TDD execution completes (success or failure)
+ */
+export interface TDDCompletedEventData {
+  /** Final TDD execution result */
+  result: {
+    success: boolean;
+    totalIterations: number;
+    iterations: Array<{
+      iteration: number;
+      testResult: {
+        success: boolean;
+        exitCode: number;
+        stdout: string;
+        stderr: string;
+        duration: number;
+        failures: Array<{
+          file: string;
+          test: string;
+          message: string;
+          stack?: string;
+          expected?: string;
+          actual?: string;
+        }>;
+      };
+      suggestedFix?: {
+        description: string;
+        file: string;
+        originalContent: string;
+        newContent: string;
+        confidence: number;
+        reasoning?: string;
+      };
+      fixResult?: {
+        success: boolean;
+        error?: string;
+        modifiedFiles: string[];
+      };
+      resolved: boolean;
+      duration: number;
+      startTime: Date;
+      endTime: Date;
+    }>;
+    totalDuration: number;
+    finalTestResult: {
+      success: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+      duration: number;
+      failures: Array<{
+        file: string;
+        test: string;
+        message: string;
+        stack?: string;
+        expected?: string;
+        actual?: string;
+      }>;
+    };
+    stopReason?: 'max_iterations' | 'fix_failed' | 'test_error' | 'no_failures';
+  };
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when TDD execution completed */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:failed' event
+ * Emitted when TDD execution encounters an error
+ */
+export interface TDDFailedEventData {
+  /** Error that caused the failure */
+  error: {
+    message: string;
+    stack?: string;
+    name: string;
+  };
+  /** Current iteration when failure occurred */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when failure occurred */
+  timestamp: Date;
+}
+
+/**
+ * TDD-specific event with typed data
+ */
+export interface TDDEvent<T = unknown> {
+  type: Extract<ApexEventType, `tdd:${string}`>;
+  taskId: string;
+  timestamp: Date;
+  data: T;
+}
+
+/**
+ * Helper type to get the event data type for a specific TDD event type
+ */
+export type TDDEventDataFor<T extends ApexEventType> =
+  T extends 'tdd:started' ? TDDStartedEventData :
+  T extends 'tdd:iteration-started' ? TDDIterationStartedEventData :
+  T extends 'tdd:test-run' ? TDDTestRunEventData :
+  T extends 'tdd:fix-generated' ? TDDFixGeneratedEventData :
+  T extends 'tdd:fix-applied' ? TDDFixAppliedEventData :
+  T extends 'tdd:iteration-completed' ? TDDIterationCompletedEventData :
+  T extends 'tdd:completed' ? TDDCompletedEventData :
+  T extends 'tdd:failed' ? TDDFailedEventData :
   never;
 
 // ============================================================================
@@ -6279,3 +6820,54 @@ export const ApexRuleSchema = z.object({
   action: RuleActionSchema,
   enabled: z.boolean().optional().default(true),
 });
+
+// ============================================================================
+// Screenshot Comparison
+// ============================================================================
+
+/**
+ * Configuration options for screenshot comparison
+ */
+export const ScreenshotComparisonOptionsSchema = z.object({
+  /** Tolerance threshold for pixel differences (0-1, where 0 is exact match, 1 accepts any difference) */
+  tolerance: z.number().min(0).max(1).default(0.1),
+  /** Whether to include alpha channel in comparison */
+  includeAlpha: z.boolean().default(false),
+  /** Whether to output diff image */
+  outputDiff: z.boolean().default(false),
+  /** Path to save diff image (required if outputDiff is true) */
+  diffOutputPath: z.string().optional(),
+});
+export type ScreenshotComparisonOptions = z.infer<typeof ScreenshotComparisonOptionsSchema>;
+
+/**
+ * Result of a screenshot comparison operation
+ */
+export const ScreenshotComparisonResultSchema = z.object({
+  /** Similarity score between 0 (completely different) and 1 (identical) */
+  similarity: z.number().min(0).max(1),
+  /** Number of different pixels */
+  differentPixels: z.number().min(0),
+  /** Total number of pixels compared */
+  totalPixels: z.number().min(1),
+  /** Whether the images pass the similarity threshold */
+  isMatch: z.boolean(),
+  /** Path to diff image if generated */
+  diffImagePath: z.string().optional(),
+});
+export type ScreenshotComparisonResult = z.infer<typeof ScreenshotComparisonResultSchema>;
+
+/**
+ * Image metadata for screenshot comparison
+ */
+export const ImageMetadataSchema = z.object({
+  /** Image width in pixels */
+  width: z.number().min(1),
+  /** Image height in pixels */
+  height: z.number().min(1),
+  /** Number of color channels (3 for RGB, 4 for RGBA) */
+  channels: z.number().min(3).max(4),
+  /** File path or identifier */
+  path: z.string(),
+});
+export type ImageMetadata = z.infer<typeof ImageMetadataSchema>;

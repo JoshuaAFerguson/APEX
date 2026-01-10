@@ -1,7 +1,7 @@
 {
-  "name": "@apexcli/core",
+  "name": "@apexcli/browser",
   "version": "0.4.0",
-  "description": "Core types and utilities for APEX",
+  "description": "Browser automation capabilities for APEX using Playwright",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,25 +26,18 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "eventemitter3": "^5.0.1",
-    "fast-glob": "^3.3.2",
-    "minimatch": "^9.0.0",
-    "pixelmatch": "^5.3.0",
-    "sharp": "^0.33.0",
-    "yaml": "^2.3.4",
-    "zod": "^3.22.4"
+    "playwright": "^1.40.0",
+    "eventemitter3": "^5.0.1"
   },
   "devDependencies": {
-    "@types/minimatch": "^5.1.2",
     "@types/node": "^20.10.0",
-    "@types/pixelmatch": "^5.2.6",
-    "@types/sharp": "^0.32.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.15"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JoshuaAFerguson/apex.git",
-    "directory": "packages/core"
+    "directory": "packages/browser"
   },
   "bugs": {
     "url": "https://github.com/JoshuaAFerguson/apex/issues"
@@ -52,10 +45,10 @@
   "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
   "keywords": [
     "apex",
-    "ai",
-    "agents",
-    "types",
-    "utilities"
+    "browser",
+    "automation",
+    "playwright",
+    "headless"
   ],
   "author": "Joshua A. Ferguson",
   "license": "MIT",
