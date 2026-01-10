@@ -416,10 +416,33 @@ export const commands: Command[] = [
           console.log(chalk.red(`Error: ${task.error}`));
         }
       } else {
-        const tasks = await ctx.orchestrator.listTasks({
-          limit: 10,
-          includeArchived
+        // Display current autonomy level from config
+        const config = ctx.config!;
+        const autonomyLevel = config.autonomy?.level || 'review-before-commit';
+
+        console.log(chalk.cyan('\n📋 APEX Status Overview:\n'));
+        console.log(`${chalk.bold('Autonomy Level:')} ${getAutonomyEmoji(autonomyLevel)} ${autonomyLevel}`);
+        console.log();
+
+        // Calculate and display cumulative resource usage across session
+        const allTasks = await ctx.orchestrator.listTasks({
+          limit: 1000, // Get all tasks for cumulative calculation
+          includeArchived: true
         });
+
+        const sessionUsage = allTasks.reduce((total, task) => ({
+          totalTokens: total.totalTokens + (task.usage?.totalTokens || 0),
+          estimatedCost: total.estimatedCost + (task.usage?.estimatedCost || 0),
+          requestCount: total.requestCount + (task.usage?.requestCount || 0)
+        }), { totalTokens: 0, estimatedCost: 0, requestCount: 0 });
+
+        console.log(chalk.cyan('💰 Session Resource Usage:'));
+        console.log(`  Total Tokens: ${formatTokens(sessionUsage.totalTokens)}`);
+        console.log(`  Total Cost: ${formatCost(sessionUsage.estimatedCost)}`);
+        console.log(`  API Requests: ${sessionUsage.requestCount.toLocaleString()}`);
+        console.log();
+
+        const tasks = allTasks.slice(0, 10); // Use the already fetched tasks for recent tasks display
 
         if (tasks.length === 0) {
           console.log(chalk.gray('\nNo tasks found.\n'));
@@ -3879,6 +3902,15 @@ function parseInput(input: string): string[] {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+function getAutonomyEmoji(level: string): string {
+  const emojis: Record<string, string> = {
+    'full-auto': '🤖',
+    'review-before-commit': '👀',
+    'review-all': '🔍',
+  };
+  return emojis[level] || '⚙️';
+}
 
 function getStatusEmoji(status: string): string {
   const emojis: Record<string, string> = {
