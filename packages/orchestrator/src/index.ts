@@ -72,6 +72,7 @@ import {
   MCPMarketplaceEntry,
   AutoFixStageResults,
   AutoFixStageConfig,
+  AutoFixEvent,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -323,6 +324,12 @@ export interface OrchestratorEvents {
   'autofix:completed': (event: AutoFixCompletedEventData) => void;
   'autofix:failed': (event: AutoFixFailedEventData) => void;
   'autofix:skipped': (event: AutoFixSkippedEventData) => void;
+
+  // Auto-fix events with standardized event names (v0.5.0)
+  'auto-fix-start': (event: AutoFixEvent) => void;
+  'auto-fix-progress': (event: AutoFixEvent) => void;
+  'auto-fix-complete': (event: AutoFixEvent) => void;
+  'auto-fix-error': (event: AutoFixEvent) => void;
 
   // Undo events (v0.5.0)
   'undo:start': (taskId: string) => void;
@@ -3624,6 +3631,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           timestamp: new Date(),
         });
 
+        // Emit standardized auto-fix-start event
+        this.emit('auto-fix-start', {
+          id: `${taskId}-${crypto.randomUUID()}`,
+          eventType: 'auto-fix-start',
+          taskId,
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: 0,
+          totalIterations: filesToProcess.length,
+          currentFile: filePath,
+          status: 'running',
+          timestamp: new Date(),
+          metadata: {
+            fixType: 'imports',
+            issuesDetected: analysis?.missingImports.length || 0,
+          },
+        });
+
         // Execute fix for this file
         const fileResults = await autoFixer.fix([filePath]);
         fixResults.push(...fileResults);
@@ -3642,6 +3667,34 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             currentFix: result.success && issuesFixed > 0 ? `Added ${issuesFixed} imports` : undefined,
             timestamp: new Date(),
           });
+
+          // Emit standardized auto-fix-progress event
+          this.emit('auto-fix-progress', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-progress',
+            taskId,
+            filesModified: [filePath],
+            issuesFixed: result.success && issuesFixed > 0 ? [{
+              type: 'import',
+              description: `Added ${issuesFixed} imports`,
+              filePath,
+              line: 1,
+              column: 1,
+              fixApplied: `Added imports: ${result.importsAdded.join(', ')}`,
+              severity: 'warning',
+            }] : [],
+            iterationCount: i + 1,
+            totalIterations: filesToProcess.length,
+            currentFile: filePath,
+            status: 'running',
+            timestamp: new Date(),
+            metadata: {
+              fixType: 'imports',
+              issuesFixed,
+              issuesRemaining: Math.max(0, issuesDetected - issuesFixed),
+              currentFix: result.success && issuesFixed > 0 ? `Added ${issuesFixed} imports` : undefined,
+            },
+          });
         }
       }
 
@@ -3659,6 +3712,34 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             duration: result.duration,
             timestamp: new Date(),
           });
+
+          // Emit standardized auto-fix-complete event
+          this.emit('auto-fix-complete', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-complete',
+            taskId,
+            filesModified: [result.filePath],
+            issuesFixed: result.importsAdded.map(importName => ({
+              type: 'import',
+              description: `Added import: ${importName}`,
+              filePath: result.filePath,
+              line: 1,
+              column: 1,
+              fixApplied: `Added import statement for ${importName}`,
+              severity: 'warning',
+            })),
+            iterationCount: fixResults.indexOf(result) + 1,
+            totalIterations: fixResults.length,
+            currentFile: result.filePath,
+            status: 'success',
+            timestamp: new Date(),
+            metadata: {
+              fixType: 'imports',
+              issuesDetected: result.importsAdded.length,
+              issuesFixed: result.importsAdded.length,
+              duration: result.duration,
+            },
+          });
         } else {
           this.emit('autofix:failed', {
             taskId,
@@ -3668,6 +3749,30 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             issuesDetected: 0,
             issuesFixed: 0,
             timestamp: new Date(),
+          });
+
+          // Emit standardized auto-fix-error event
+          this.emit('auto-fix-error', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-error',
+            taskId,
+            filesModified: [],
+            issuesFixed: [],
+            iterationCount: fixResults.indexOf(result) + 1,
+            totalIterations: fixResults.length,
+            currentFile: result.filePath,
+            status: 'failed',
+            timestamp: new Date(),
+            error: result.errors.map(e => e.message).join('; '),
+            metadata: {
+              fixType: 'imports',
+              issuesDetected: 0,
+              issuesFixed: 0,
+              errors: result.errors.map(e => ({
+                type: e.type,
+                message: e.message,
+              })),
+            },
           });
         }
       }
@@ -3710,6 +3815,27 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           issuesDetected: 0,
           issuesFixed: 0,
           timestamp: new Date(),
+        });
+
+        // Emit standardized auto-fix-error event
+        this.emit('auto-fix-error', {
+          id: `${taskId}-${crypto.randomUUID()}`,
+          eventType: 'auto-fix-error',
+          taskId,
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: filesToProcess.indexOf(filePath) + 1,
+          totalIterations: filesToProcess.length,
+          currentFile: filePath,
+          status: 'failed',
+          timestamp: new Date(),
+          error: error instanceof Error ? error.message : 'Unknown error',
+          metadata: {
+            fixType: 'imports',
+            issuesDetected: 0,
+            issuesFixed: 0,
+            errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+          },
         });
       }
 

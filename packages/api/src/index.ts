@@ -20,6 +20,7 @@ import {
   ApprovalRequiredEventData,
   ApprovalGrantedEventData,
   ApprovalDeniedEventData,
+  AutoFixEvent,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -1845,6 +1846,43 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
+  // Standardized auto-fix events (v0.5.0) - Broadcast full AutoFixEvent payload
+  orchestrator.on('auto-fix-start', (event) => {
+    broadcast(event.taskId, {
+      type: 'auto-fix-start',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: event, // Full AutoFixEvent payload
+    });
+  });
+
+  orchestrator.on('auto-fix-progress', (event) => {
+    broadcast(event.taskId, {
+      type: 'auto-fix-progress',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: event, // Full AutoFixEvent payload
+    });
+  });
+
+  orchestrator.on('auto-fix-complete', (event) => {
+    broadcast(event.taskId, {
+      type: 'auto-fix-complete',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: event, // Full AutoFixEvent payload
+    });
+  });
+
+  orchestrator.on('auto-fix-error', (event) => {
+    broadcast(event.taskId, {
+      type: 'auto-fix-error',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: event, // Full AutoFixEvent payload
+    });
+  });
+
   orchestrator.on('autofix:started', (event) => {
     broadcast(event.taskId, {
       type: 'autofix:started',
@@ -2092,6 +2130,10 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • autofix:completed         - Auto-fix operation completed (v0.5.0)`);
       console.log(`    • autofix:failed            - Auto-fix operation failed (v0.5.0)`);
       console.log(`    • autofix:skipped           - Auto-fix operation skipped (v0.5.0)`);
+      console.log(`    • auto-fix-start            - Standardized auto-fix start (v0.5.0)`);
+      console.log(`    • auto-fix-progress         - Standardized auto-fix progress (v0.5.0)`);
+      console.log(`    • auto-fix-complete         - Standardized auto-fix complete (v0.5.0)`);
+      console.log(`    • auto-fix-error            - Standardized auto-fix error (v0.5.0)`);
       console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }
   } catch (error) {
