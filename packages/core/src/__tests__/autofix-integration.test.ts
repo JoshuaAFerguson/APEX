@@ -4,10 +4,14 @@ import {
   AutoFixResultSchema,
   AutoFixEventSchema,
   AutoFixEventTypeSchema,
+  AutoFixStatusSchema,
+  AutoFixIssueDetailSchema,
   type AutoFixConfig,
   type AutoFixResult,
   type AutoFixEvent,
-  type AutoFixEventType
+  type AutoFixEventType,
+  type AutoFixStatus,
+  type AutoFixIssueDetail
 } from '../index.js'; // Import from main package index
 
 describe('AutoFix Integration Tests', () => {
@@ -17,6 +21,8 @@ describe('AutoFix Integration Tests', () => {
       expect(AutoFixResultSchema).toBeDefined();
       expect(AutoFixEventSchema).toBeDefined();
       expect(AutoFixEventTypeSchema).toBeDefined();
+      expect(AutoFixStatusSchema).toBeDefined();
+      expect(AutoFixIssueDetailSchema).toBeDefined();
     });
 
     it('provides working schema constructors', () => {
@@ -24,6 +30,8 @@ describe('AutoFix Integration Tests', () => {
       expect(typeof AutoFixResultSchema.parse).toBe('function');
       expect(typeof AutoFixEventSchema.parse).toBe('function');
       expect(typeof AutoFixEventTypeSchema.parse).toBe('function');
+      expect(typeof AutoFixStatusSchema.parse).toBe('function');
+      expect(typeof AutoFixIssueDetailSchema.parse).toBe('function');
     });
   });
 
@@ -95,35 +103,86 @@ describe('AutoFix Integration Tests', () => {
       // Request event
       const requestEvent: AutoFixEvent = {
         id: 'event-request-1',
-        type: 'autofix:requested',
+        eventType: 'auto-fix-start',
         taskId,
-        filePath,
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 3,
+        currentFile: filePath,
+        status: 'running',
         timestamp: new Date()
       };
       events.push(AutoFixEventSchema.parse(requestEvent));
 
-      // Start event
-      const startEvent: AutoFixEvent = {
-        id: 'event-start-1',
-        type: 'autofix:started',
+      // Progress event
+      const progressEvent: AutoFixEvent = {
+        id: 'event-progress-1',
+        eventType: 'auto-fix-progress',
         taskId,
-        filePath,
-        fixType: 'syntax',
+        filesModified: [filePath],
+        issuesFixed: [
+          {
+            type: 'syntax-error',
+            description: 'Missing semicolon fixed',
+            filePath,
+            line: 1,
+            severity: 'error'
+          }
+        ],
+        iterationCount: 1,
+        totalIterations: 3,
+        currentFile: filePath,
+        status: 'running',
         timestamp: new Date(),
-        issuesDetected: 5
+        metadata: {
+          duration: 600,
+          tool: 'prettier'
+        }
       };
-      events.push(AutoFixEventSchema.parse(startEvent));
+      events.push(AutoFixEventSchema.parse(progressEvent));
 
       // Completion event
       const completeEvent: AutoFixEvent = {
         id: 'event-complete-1',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-complete',
         taskId,
-        filePath,
-        fixType: 'syntax',
+        filesModified: [filePath],
+        issuesFixed: [
+          {
+            type: 'syntax-error',
+            description: 'Missing semicolon fixed',
+            filePath,
+            line: 1,
+            severity: 'error'
+          },
+          {
+            type: 'syntax-error',
+            description: 'Missing quotes fixed',
+            filePath,
+            line: 2,
+            severity: 'error'
+          },
+          {
+            type: 'syntax-error',
+            description: 'Indentation fixed',
+            filePath,
+            line: 3,
+            severity: 'warning'
+          },
+          {
+            type: 'syntax-error',
+            description: 'Missing bracket fixed',
+            filePath,
+            line: 4,
+            severity: 'error'
+          }
+        ],
+        iterationCount: 3,
+        totalIterations: 3,
+        currentFile: filePath,
+        status: 'success',
         timestamp: new Date(),
-        issuesDetected: 5,
-        issuesFixed: 4,
         metadata: {
           duration: 1200,
           tool: 'prettier'
@@ -154,16 +213,16 @@ describe('AutoFix Integration Tests', () => {
 
       // Verify workflow integrity
       expect(events).toHaveLength(3);
-      expect(events[0].type).toBe('autofix:requested');
-      expect(events[1].type).toBe('autofix:started');
-      expect(events[2].type).toBe('autofix:completed');
+      expect(events[0].eventType).toBe('auto-fix-start');
+      expect(events[1].eventType).toBe('auto-fix-progress');
+      expect(events[2].eventType).toBe('auto-fix-complete');
       expect(validatedResult.success).toBe(true);
       expect(validatedResult.issuesFixed).toBe(4);
 
       // All events and results should have consistent data
       events.forEach(event => {
         expect(event.taskId).toBe(taskId);
-        expect(event.filePath).toBe(filePath);
+        expect(event.currentFile).toBe(filePath);
       });
       expect(validatedResult.taskId).toBe(taskId);
       expect(validatedResult.filePath).toBe(filePath);
@@ -176,13 +235,15 @@ describe('AutoFix Integration Tests', () => {
       // Failed event
       const failedEvent: AutoFixEvent = {
         id: 'event-failed-1',
-        type: 'autofix:failed',
+        eventType: 'auto-fix-error',
         taskId,
-        filePath,
-        fixType: 'imports',
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 1,
+        totalIterations: 3,
+        currentFile: filePath,
+        status: 'failed',
         timestamp: new Date(),
-        issuesDetected: 3,
-        issuesFixed: 0,
         error: 'Unable to resolve import paths',
         metadata: {
           errorCode: 'UNRESOLVED_IMPORT',
@@ -192,7 +253,7 @@ describe('AutoFix Integration Tests', () => {
       };
 
       const validatedEvent = AutoFixEventSchema.parse(failedEvent);
-      expect(validatedEvent.type).toBe('autofix:failed');
+      expect(validatedEvent.eventType).toBe('auto-fix-error');
       expect(validatedEvent.error).toContain('Unable to resolve');
 
       // Failed result
@@ -225,9 +286,14 @@ describe('AutoFix Integration Tests', () => {
       // Skip event when no fixes needed
       const skipEvent: AutoFixEvent = {
         id: 'event-skip-1',
-        type: 'autofix:skipped',
+        eventType: 'auto-fix-complete',
         taskId,
-        filePath,
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 1,
+        totalIterations: 1,
+        currentFile: filePath,
+        status: 'success',
         timestamp: new Date(),
         metadata: {
           reason: 'no_issues_detected',
@@ -236,7 +302,7 @@ describe('AutoFix Integration Tests', () => {
       };
 
       const validatedEvent = AutoFixEventSchema.parse(skipEvent);
-      expect(validatedEvent.type).toBe('autofix:skipped');
+      expect(validatedEvent.eventType).toBe('auto-fix-complete');
       expect(validatedEvent.metadata?.reason).toBe('no_issues_detected');
 
       // Result when no fixes were needed
@@ -393,9 +459,14 @@ describe('AutoFix Integration Tests', () => {
       timestamps.forEach((timestamp, index) => {
         const event = {
           id: `event-time-${index}`,
-          type: 'autofix:completed',
+          eventType: 'auto-fix-complete',
           taskId: 'task-timestamps',
-          filePath: '/test.js',
+          filesModified: ['/test.js'],
+          issuesFixed: [],
+          iterationCount: 1,
+          totalIterations: 1,
+          currentFile: '/test.js',
+          status: 'success',
           timestamp
         };
 

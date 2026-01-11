@@ -20,6 +20,13 @@ import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page
 import * as fs from 'fs';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
+import {
+  BrowserConsoleStream,
+  ConsoleStreamConfig,
+  ConsoleLogLevel,
+  BrowserConsoleMessage as EnhancedConsoleMessage,
+  BrowserRuntimeError as EnhancedRuntimeError
+} from '../browser-console-stream';
 
 /**
  * Supported browser operations
@@ -257,11 +264,16 @@ export interface BrowserResult {
     consoleMessages?: BrowserConsoleMessage[];
     /** Captured runtime errors during the operation */
     runtimeErrors?: BrowserRuntimeError[];
+    /** Enhanced console messages with full context */
+    enhancedConsoleMessages?: EnhancedConsoleMessage[];
+    /** Enhanced runtime errors with detailed context */
+    enhancedRuntimeErrors?: EnhancedRuntimeError[];
   };
 }
 
 /**
  * Console message captured from the browser runtime
+ * @deprecated Use BrowserConsoleMessage from browser-console-stream.ts for enhanced features
  */
 export interface BrowserConsoleMessage {
   type: string;
@@ -271,6 +283,7 @@ export interface BrowserConsoleMessage {
 
 /**
  * Runtime error captured from the browser page
+ * @deprecated Use BrowserRuntimeError from browser-console-stream.ts for enhanced features
  */
 export interface BrowserRuntimeError {
   message: string;
@@ -319,6 +332,13 @@ export interface BrowserToolConfig {
     width: number;
     height: number;
   };
+  /** Console streaming configuration */
+  consoleStream?: {
+    /** Enable console streaming */
+    enabled?: boolean;
+    /** Console stream configuration */
+    config?: ConsoleStreamConfig;
+  };
 }
 
 /**
@@ -350,6 +370,9 @@ export class BrowserTool {
   private headless?: boolean;
   private backend: 'playwright' | 'puppeteer';
   private activeBackend: 'playwright' | 'puppeteer';
+  private consoleStream?: BrowserConsoleStream;
+  private enhancedConsoleMessages: EnhancedConsoleMessage[] = [];
+  private enhancedRuntimeErrors: EnhancedRuntimeError[] = [];
 
   constructor(options?: BrowserToolOptions) {
     this.permissionManager = options?.permissionManager;
@@ -592,6 +615,7 @@ export class BrowserTool {
 
     this.page = await this.context.newPage();
     this.setupPageListeners(this.page);
+    await this.setupConsoleStreaming(this.page, config);
     return this.page;
   }
 
@@ -617,6 +641,8 @@ export class BrowserTool {
     }
 
     this.setupPuppeteerPageListeners(this.puppeteerPage);
+    // Note: Enhanced console streaming with Puppeteer requires additional setup
+    // For now, keep the legacy listener approach for Puppeteer compatibility
     return this.puppeteerPage;
   }
 
@@ -677,7 +703,47 @@ export class BrowserTool {
   }
 
   /**
+   * Set up enhanced console streaming for the page
+   */
+  private async setupConsoleStreaming(page: Page, config?: BrowserToolConfig): Promise<void> {
+    const consoleConfig = config?.consoleStream;
+
+    // Only set up streaming if explicitly enabled or if no config provided (default enabled)
+    if (consoleConfig?.enabled === false) {
+      return;
+    }
+
+    try {
+      this.consoleStream = new BrowserConsoleStream(consoleConfig?.config);
+
+      // Set up event listeners for enhanced console data
+      this.consoleStream.on('message', (message) => {
+        this.enhancedConsoleMessages.push(message);
+        // Limit buffer size to prevent memory issues
+        if (this.enhancedConsoleMessages.length > 1000) {
+          this.enhancedConsoleMessages = this.enhancedConsoleMessages.slice(-1000);
+        }
+      });
+
+      this.consoleStream.on('error', (error) => {
+        this.enhancedRuntimeErrors.push(error);
+        // Limit buffer size to prevent memory issues
+        if (this.enhancedRuntimeErrors.length > 1000) {
+          this.enhancedRuntimeErrors = this.enhancedRuntimeErrors.slice(-1000);
+        }
+      });
+
+      // Start streaming
+      await this.consoleStream.startStream(page);
+    } catch (error) {
+      console.warn('Failed to set up console streaming:', error);
+      // Fall back to legacy console capture if streaming fails
+    }
+  }
+
+  /**
    * Track console and runtime errors for visual regression and diagnostics
+   * @deprecated Legacy method, enhanced by setupConsoleStreaming
    */
   private setupPageListeners(page: Page): void {
     page.on('console', (message) => {
@@ -877,6 +943,10 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -899,6 +969,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -938,6 +1010,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -974,6 +1048,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1061,6 +1137,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1087,6 +1165,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1122,6 +1202,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1151,6 +1233,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1171,6 +1255,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1191,6 +1277,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1215,6 +1303,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1250,6 +1340,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1268,6 +1360,8 @@ export class BrowserTool {
             permissionGranted: true,
             consoleMessages: this.consoleMessages,
             runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }
@@ -1304,6 +1398,40 @@ export class BrowserTool {
     // Simple hash for stub implementation - in real implementation,
     // might want to use crypto.createHash for better security
     return `script_${Buffer.from(script).toString('base64').slice(0, 16)}`;
+  }
+
+  /**
+   * Get enhanced console messages from the stream
+   */
+  getEnhancedConsoleMessages(): EnhancedConsoleMessage[] {
+    return [...this.enhancedConsoleMessages];
+  }
+
+  /**
+   * Get enhanced runtime errors from the stream
+   */
+  getEnhancedRuntimeErrors(): EnhancedRuntimeError[] {
+    return [...this.enhancedRuntimeErrors];
+  }
+
+  /**
+   * Get console stream instance for direct access
+   */
+  getConsoleStream(): BrowserConsoleStream | undefined {
+    return this.consoleStream;
+  }
+
+  /**
+   * Clear all console and error buffers
+   */
+  clearConsoleBuffers(): void {
+    this.consoleMessages = [];
+    this.runtimeErrors = [];
+    this.enhancedConsoleMessages = [];
+    this.enhancedRuntimeErrors = [];
+    if (this.consoleStream) {
+      this.consoleStream.clearBuffers();
+    }
   }
 
   /**

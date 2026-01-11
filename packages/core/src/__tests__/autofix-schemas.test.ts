@@ -4,10 +4,14 @@ import {
   AutoFixResultSchema,
   AutoFixEventSchema,
   AutoFixEventTypeSchema,
+  AutoFixStatusSchema,
+  AutoFixIssueDetailSchema,
   type AutoFixConfig,
   type AutoFixResult,
   type AutoFixEvent,
-  type AutoFixEventType
+  type AutoFixEventType,
+  type AutoFixStatus,
+  type AutoFixIssueDetail
 } from '../types.js';
 import { z } from 'zod';
 
@@ -102,11 +106,10 @@ describe('AutoFix Schemas', () => {
   describe('AutoFixEventTypeSchema', () => {
     it('validates event types', () => {
       const types: AutoFixEventType[] = [
-        'autofix:requested',
-        'autofix:started',
-        'autofix:completed',
-        'autofix:failed',
-        'autofix:skipped'
+        'auto-fix-start',
+        'auto-fix-progress',
+        'auto-fix-complete',
+        'auto-fix-error'
       ];
 
       types.forEach(type => {
@@ -119,49 +122,135 @@ describe('AutoFix Schemas', () => {
     });
   });
 
+  describe('AutoFixStatusSchema', () => {
+    it('validates status types', () => {
+      const statuses: AutoFixStatus[] = [
+        'running',
+        'success',
+        'failed'
+      ];
+
+      statuses.forEach(status => {
+        expect(() => AutoFixStatusSchema.parse(status)).not.toThrow();
+      });
+    });
+
+    it('rejects invalid status types', () => {
+      expect(() => AutoFixStatusSchema.parse('pending')).toThrow();
+    });
+  });
+
+  describe('AutoFixIssueDetailSchema', () => {
+    it('validates minimal issue detail', () => {
+      const issue: AutoFixIssueDetail = {
+        type: 'syntax-error',
+        description: 'Missing semicolon',
+        filePath: '/src/test.ts'
+      };
+      const result = AutoFixIssueDetailSchema.parse(issue);
+      expect(result.type).toBe('syntax-error');
+      expect(result.description).toBe('Missing semicolon');
+    });
+
+    it('validates issue detail with all fields', () => {
+      const issue = {
+        type: 'import-error',
+        description: 'Unused import detected',
+        filePath: '/src/utils.ts',
+        line: 5,
+        column: 12,
+        severity: 'warning'
+      };
+      const result = AutoFixIssueDetailSchema.parse(issue);
+      expect(result.line).toBe(5);
+      expect(result.severity).toBe('warning');
+    });
+
+    it('rejects invalid severity', () => {
+      const issue = {
+        type: 'syntax-error',
+        description: 'Test',
+        filePath: '/test.ts',
+        severity: 'critical'
+      };
+      expect(() => AutoFixIssueDetailSchema.parse(issue)).toThrow();
+    });
+  });
+
   describe('AutoFixEventSchema', () => {
     it('validates minimal event', () => {
       const event: AutoFixEvent = {
         id: 'event-123',
-        type: 'autofix:requested',
+        eventType: 'auto-fix-start',
         taskId: 'task-456',
-        filePath: '/path/to/file.ts',
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 3,
+        currentFile: '/path/to/file.ts',
+        status: 'running',
         timestamp: new Date()
       };
       const parsed = AutoFixEventSchema.parse(event);
-      expect(parsed.type).toBe('autofix:requested');
+      expect(parsed.eventType).toBe('auto-fix-start');
       expect(parsed.taskId).toBe('task-456');
+      expect(parsed.status).toBe('running');
     });
 
     it('validates event with all fields', () => {
       const event = {
         id: 'event-123',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-complete',
         taskId: 'task-456',
-        filePath: '/path/to/file.ts',
-        fixType: 'syntax',
+        filesModified: ['/src/utils.ts', '/src/main.ts'],
+        issuesFixed: [
+          {
+            type: 'syntax-error',
+            description: 'Missing semicolon',
+            filePath: '/src/utils.ts',
+            line: 10,
+            column: 15,
+            severity: 'error'
+          },
+          {
+            type: 'import-error',
+            description: 'Unused import',
+            filePath: '/src/main.ts',
+            line: 3,
+            severity: 'warning'
+          }
+        ],
+        iterationCount: 2,
+        totalIterations: 3,
+        currentFile: '/src/main.ts',
+        status: 'success',
         timestamp: new Date(),
-        issuesDetected: 5,
-        issuesFixed: 3,
         metadata: { duration: 1500 }
       };
       const parsed = AutoFixEventSchema.parse(event);
-      expect(parsed.fixType).toBe('syntax');
-      expect(parsed.issuesDetected).toBe(5);
-      expect(parsed.issuesFixed).toBe(3);
+      expect(parsed.filesModified).toHaveLength(2);
+      expect(parsed.issuesFixed).toHaveLength(2);
+      expect(parsed.iterationCount).toBe(2);
+      expect(parsed.totalIterations).toBe(3);
     });
 
     it('validates failed event with error', () => {
       const event = {
         id: 'event-123',
-        type: 'autofix:failed',
+        eventType: 'auto-fix-error',
         taskId: 'task-456',
-        filePath: '/path/to/file.ts',
+        filesModified: ['/src/broken.ts'],
+        issuesFixed: [],
+        iterationCount: 1,
+        totalIterations: 3,
+        currentFile: '/src/broken.ts',
+        status: 'failed',
         timestamp: new Date(),
         error: 'Syntax error could not be fixed'
       };
       const parsed = AutoFixEventSchema.parse(event);
       expect(parsed.error).toBe('Syntax error could not be fixed');
+      expect(parsed.status).toBe('failed');
     });
   });
 
@@ -406,95 +495,119 @@ describe('AutoFix Schemas', () => {
     it('rejects empty ID strings', () => {
       const event = {
         id: '',
-        type: 'autofix:started',
+        eventType: 'auto-fix-start',
         taskId: 'task',
-        filePath: '/test',
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 1,
+        currentFile: '/test',
+        status: 'running',
         timestamp: new Date()
       };
       expect(() => AutoFixEventSchema.parse(event)).toThrow(z.ZodError);
     });
 
     it('validates all event types from the enum', () => {
-      const eventTypes = ['autofix:requested', 'autofix:started', 'autofix:completed', 'autofix:failed', 'autofix:skipped'];
+      const eventTypes = ['auto-fix-start', 'auto-fix-progress', 'auto-fix-complete', 'auto-fix-error'];
 
-      eventTypes.forEach(type => {
+      eventTypes.forEach(eventType => {
         const event = {
           id: 'event-123',
-          type,
+          eventType,
           taskId: 'task-456',
-          filePath: '/test.ts',
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: 0,
+          totalIterations: 1,
+          currentFile: '/test.ts',
+          status: 'running',
           timestamp: new Date()
         };
         expect(() => AutoFixEventSchema.parse(event)).not.toThrow();
       });
     });
 
-    it('validates issuesDetected and issuesFixed are non-negative', () => {
+    it('validates iterationCount and totalIterations are non-negative', () => {
       const negativeValues = [-1, -10, -0.5];
 
       negativeValues.forEach(value => {
-        const eventDetected = {
+        const eventIteration = {
           id: 'event-123',
-          type: 'autofix:completed',
+          eventType: 'auto-fix-complete',
           taskId: 'task-456',
-          filePath: '/test.ts',
-          timestamp: new Date(),
-          issuesDetected: value
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: value,
+          totalIterations: 3,
+          currentFile: '/test.ts',
+          status: 'success',
+          timestamp: new Date()
         };
-        expect(() => AutoFixEventSchema.parse(eventDetected)).toThrow(z.ZodError);
+        expect(() => AutoFixEventSchema.parse(eventIteration)).toThrow(z.ZodError);
 
-        const eventFixed = {
+        const eventTotal = {
           id: 'event-123',
-          type: 'autofix:completed',
+          eventType: 'auto-fix-complete',
           taskId: 'task-456',
-          filePath: '/test.ts',
-          timestamp: new Date(),
-          issuesFixed: value
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: 1,
+          totalIterations: value,
+          currentFile: '/test.ts',
+          status: 'success',
+          timestamp: new Date()
         };
-        expect(() => AutoFixEventSchema.parse(eventFixed)).toThrow(z.ZodError);
+        expect(() => AutoFixEventSchema.parse(eventTotal)).toThrow(z.ZodError);
       });
     });
 
-    it('handles zero values for issue counts', () => {
+    it('handles zero values for iteration counts', () => {
       const event = {
         id: 'event-123',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-start',
         taskId: 'task-456',
-        filePath: '/test.ts',
-        timestamp: new Date(),
-        issuesDetected: 0,
-        issuesFixed: 0
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 1,
+        currentFile: '/test.ts',
+        status: 'running',
+        timestamp: new Date()
       };
       expect(() => AutoFixEventSchema.parse(event)).not.toThrow();
     });
 
-    it('validates fix type enum for events', () => {
-      const validFixTypes = ['syntax', 'imports', 'formatting'];
-      const invalidFixTypes = ['unknown', 'style', ''];
+    it('validates totalIterations must be at least 1', () => {
+      const event = {
+        id: 'event-123',
+        eventType: 'auto-fix-start',
+        taskId: 'task-456',
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 0, // Should be at least 1
+        currentFile: '/test.ts',
+        status: 'running',
+        timestamp: new Date()
+      };
+      expect(() => AutoFixEventSchema.parse(event)).toThrow(z.ZodError);
+    });
 
-      validFixTypes.forEach(fixType => {
-        const event = {
-          id: 'event-123',
-          type: 'autofix:completed',
-          taskId: 'task-456',
-          filePath: '/test.ts',
-          fixType,
-          timestamp: new Date()
-        };
-        expect(() => AutoFixEventSchema.parse(event)).not.toThrow();
-      });
-
-      invalidFixTypes.forEach(fixType => {
-        const event = {
-          id: 'event-123',
-          type: 'autofix:completed',
-          taskId: 'task-456',
-          filePath: '/test.ts',
-          fixType,
-          timestamp: new Date()
-        };
-        expect(() => AutoFixEventSchema.parse(event)).toThrow(z.ZodError);
-      });
+    it('validates empty arrays are allowed for filesModified and issuesFixed', () => {
+      const event = {
+        id: 'event-123',
+        eventType: 'auto-fix-start',
+        taskId: 'task-456',
+        filesModified: [],
+        issuesFixed: [],
+        iterationCount: 0,
+        totalIterations: 1,
+        currentFile: '/test.ts',
+        status: 'running',
+        timestamp: new Date()
+      };
+      expect(() => AutoFixEventSchema.parse(event)).not.toThrow();
     });
 
     it('handles complex metadata structures', () => {
@@ -517,9 +630,14 @@ describe('AutoFix Schemas', () => {
 
       const event = {
         id: 'event-123',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-complete',
         taskId: 'task-456',
-        filePath: '/test.ts',
+        filesModified: ['/test.ts'],
+        issuesFixed: [],
+        iterationCount: 1,
+        totalIterations: 1,
+        currentFile: '/test.ts',
+        status: 'success',
         timestamp: new Date(),
         metadata: complexMetadata
       };
@@ -585,13 +703,23 @@ describe('AutoFix Schemas', () => {
     it('survives JSON round-trip for AutoFixEvent', () => {
       const event: AutoFixEvent = {
         id: 'event-789',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-complete',
         taskId: 'task-123',
-        filePath: '/src/utils.js',
-        fixType: 'imports',
+        filesModified: ['/src/utils.js', '/src/main.js'],
+        issuesFixed: [
+          {
+            type: 'import-error',
+            description: 'Unused import removed',
+            filePath: '/src/utils.js',
+            line: 5,
+            severity: 'warning'
+          }
+        ],
+        iterationCount: 2,
+        totalIterations: 3,
+        currentFile: '/src/main.js',
+        status: 'success',
         timestamp: new Date('2023-01-01T14:30:00Z'),
-        issuesDetected: 3,
-        issuesFixed: 2,
         metadata: { duration: 750, rules: ['unused-imports'] }
       };
 
@@ -608,7 +736,7 @@ describe('AutoFix Schemas', () => {
     it('maintains consistent fix types across schemas', () => {
       const fixTypes = ['syntax', 'imports', 'formatting'];
 
-      // These fix types should be valid in both AutoFixResult and AutoFixEvent
+      // These fix types should be valid in both AutoFixResult and issue details in AutoFixEvent
       fixTypes.forEach(fixType => {
         const result = {
           id: 'test',
@@ -622,10 +750,20 @@ describe('AutoFix Schemas', () => {
 
         const event = {
           id: 'event',
-          type: 'autofix:completed',
+          eventType: 'auto-fix-complete',
           taskId: 'task',
-          filePath: '/test',
-          fixType,
+          filesModified: ['/test'],
+          issuesFixed: [
+            {
+              type: fixType,
+              description: 'Test issue',
+              filePath: '/test'
+            }
+          ],
+          iterationCount: 1,
+          totalIterations: 1,
+          currentFile: '/test',
+          status: 'success',
           timestamp: new Date()
         };
 
@@ -635,16 +773,21 @@ describe('AutoFix Schemas', () => {
     });
 
     it('validates event type consistency', () => {
-      const eventTypes = ['autofix:requested', 'autofix:started', 'autofix:completed', 'autofix:failed', 'autofix:skipped'];
+      const eventTypes = ['auto-fix-start', 'auto-fix-progress', 'auto-fix-complete', 'auto-fix-error'];
 
-      eventTypes.forEach(type => {
-        expect(() => AutoFixEventTypeSchema.parse(type)).not.toThrow();
+      eventTypes.forEach(eventType => {
+        expect(() => AutoFixEventTypeSchema.parse(eventType)).not.toThrow();
 
         const event = {
           id: 'event',
-          type,
+          eventType,
           taskId: 'task',
-          filePath: '/test',
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: 0,
+          totalIterations: 1,
+          currentFile: '/test',
+          status: 'running',
           timestamp: new Date()
         };
         expect(() => AutoFixEventSchema.parse(event)).not.toThrow();
@@ -678,9 +821,14 @@ describe('AutoFix Schemas', () => {
 
       const event = {
         id: 'event-123',
-        type: 'autofix:completed',
+        eventType: 'auto-fix-complete',
         taskId: 'task-456',
-        filePath: '/test.ts',
+        filesModified: ['/test.ts'],
+        issuesFixed: [],
+        iterationCount: 1,
+        totalIterations: 1,
+        currentFile: '/test.ts',
+        status: 'success',
         timestamp: new Date(),
         metadata: largeMetadata
       };

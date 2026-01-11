@@ -43,6 +43,7 @@ export type {
   BrowserManagerEvents,
   ScreenshotOptions,
   NavigationOptions,
+  WaitForNavigationOptions,
   BrowserActionResult,
   ElementSelector,
   SelectorType,

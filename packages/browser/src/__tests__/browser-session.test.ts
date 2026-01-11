@@ -70,6 +70,98 @@ describe('BrowserSession', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBe('Test Title');
     });
+
+    it('should navigate using goto method (alias for navigate)', async () => {
+      const result = await session.goto('data:text/html,<h1>Goto Test</h1>');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('data:text/html');
+    });
+
+    it('should reload the current page', async () => {
+      await session.navigate('data:text/html,<h1>Before Reload</h1>');
+      const reloadResult = await session.reload();
+      expect(reloadResult.success).toBe(true);
+      expect(reloadResult.data).toContain('data:text/html');
+    });
+
+    it('should navigate back in history', async () => {
+      // Navigate to first page
+      await session.navigate('data:text/html,<h1>Page 1</h1>');
+      // Navigate to second page
+      await session.navigate('data:text/html,<h1>Page 2</h1>');
+
+      // Go back to first page
+      const result = await session.goBack();
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('data:text/html');
+    });
+
+    it('should return null when going back with no history', async () => {
+      // Navigate to only one page
+      await session.navigate('data:text/html,<h1>Only Page</h1>');
+
+      // Try to go back (should return null)
+      const result = await session.goBack();
+      expect(result.success).toBe(true);
+      expect(result.data).toBe(null);
+    });
+
+    it('should navigate forward in history', async () => {
+      // Navigate to first page
+      await session.navigate('data:text/html,<h1>Page 1</h1>');
+      // Navigate to second page
+      await session.navigate('data:text/html,<h1>Page 2</h1>');
+
+      // Go back
+      await session.goBack();
+
+      // Go forward to second page again
+      const result = await session.goForward();
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('data:text/html');
+    });
+
+    it('should return null when going forward with no forward history', async () => {
+      // Navigate to a page (no forward history)
+      await session.navigate('data:text/html,<h1>Current Page</h1>');
+
+      // Try to go forward (should return null)
+      const result = await session.goForward();
+      expect(result.success).toBe(true);
+      expect(result.data).toBe(null);
+    });
+
+    it('should wait for navigation to complete', async () => {
+      // Navigate to initial page
+      await session.navigate('data:text/html,<h1>Initial Page</h1>');
+
+      // Start a navigation in the background and wait for it
+      const navigationPromise = session.evaluate(() => {
+        setTimeout(() => {
+          window.location.href = 'data:text/html,<h1>New Page</h1>';
+        }, 100);
+      });
+
+      const waitPromise = session.waitForNavigation({ timeout: 5000 });
+
+      await navigationPromise;
+      const result = await waitPromise;
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('data:text/html');
+    });
+
+    it('should wait for navigation with specific URL pattern', async () => {
+      await session.navigate('data:text/html,<h1>Initial</h1>');
+
+      // Use waitForNavigation with URL pattern
+      const waitResult = await session.waitForNavigation({
+        url: 'data:*',
+        timeout: 1000
+      });
+
+      expect(waitResult.success).toBe(true);
+    });
   });
 
   describe('Element Interaction', () => {
@@ -234,6 +326,30 @@ describe('BrowserSession', () => {
 
       const result = await session.getText('#nonexistent');
       expect(result.success).toBe(false);
+    });
+
+    it('should handle navigation methods before launch', async () => {
+      session = new BrowserSession(manager, { browserType: 'chromium', headless: true });
+
+      const gotoResult = await session.goto('https://example.com');
+      expect(gotoResult.success).toBe(false);
+      expect(gotoResult.error).toContain('Browser not launched');
+
+      const reloadResult = await session.reload();
+      expect(reloadResult.success).toBe(false);
+      expect(reloadResult.error).toContain('Browser not launched');
+
+      const backResult = await session.goBack();
+      expect(backResult.success).toBe(false);
+      expect(backResult.error).toContain('Browser not launched');
+
+      const forwardResult = await session.goForward();
+      expect(forwardResult.success).toBe(false);
+      expect(forwardResult.error).toContain('Browser not launched');
+
+      const waitResult = await session.waitForNavigation();
+      expect(waitResult.success).toBe(false);
+      expect(waitResult.error).toContain('Browser not launched');
     });
   });
 

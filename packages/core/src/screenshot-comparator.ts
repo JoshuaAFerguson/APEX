@@ -31,6 +31,7 @@ export class ScreenshotComparator {
       includeAlpha: options.includeAlpha ?? false,
       outputDiff: options.outputDiff ?? false,
       diffOutputPath: options.diffOutputPath,
+      diffColor: options.diffColor ?? [255, 0, 255],
     };
 
     // Validate options schema
@@ -77,16 +78,11 @@ export class ScreenshotComparator {
     const { width, height, channels } = image1Data.info;
     const totalPixels = width * height;
 
-    // Create diff buffer if needed
-    const diffBuffer = finalOptions.outputDiff
-      ? Buffer.alloc(width * height * channels)
-      : null;
-
-    // Compare pixels using pixelmatch
+    // Compare pixels using pixelmatch for similarity calculation
     const differentPixels = pixelmatch(
       image1Data.data,
       image2Data.data,
-      diffBuffer,
+      null, // No diff buffer needed for pixelmatch, we'll create our own
       width,
       height,
       {
@@ -98,14 +94,24 @@ export class ScreenshotComparator {
     // Calculate similarity score
     const similarity = Math.max(0, 1 - differentPixels / totalPixels);
 
-    // Save diff image if requested
+    // Generate custom diff image if requested
     let diffImagePath: string | undefined;
-    if (finalOptions.outputDiff && diffBuffer && finalOptions.diffOutputPath) {
-      diffImagePath = await this.saveDiffImage(
-        diffBuffer,
+    if (finalOptions.outputDiff && finalOptions.diffOutputPath) {
+      const customDiffBuffer = this.generateCustomDiffImage(
+        image1Data.data,
+        image2Data.data,
         width,
         height,
         channels,
+        finalOptions.tolerance,
+        finalOptions.diffColor
+      );
+
+      diffImagePath = await this.saveDiffImage(
+        customDiffBuffer,
+        width,
+        height,
+        3, // Always RGB output for diff images
         finalOptions.diffOutputPath
       );
     }
@@ -158,14 +164,10 @@ export class ScreenshotComparator {
     const { width, height, channels } = image1Data.info;
     const totalPixels = width * height;
 
-    const diffBuffer = finalOptions.outputDiff
-      ? Buffer.alloc(width * height * channels)
-      : null;
-
     const differentPixels = pixelmatch(
       image1Data.data,
       image2Data.data,
-      diffBuffer,
+      null, // No diff buffer needed for pixelmatch, we'll create our own
       width,
       height,
       {
@@ -176,14 +178,24 @@ export class ScreenshotComparator {
 
     const similarity = Math.max(0, 1 - differentPixels / totalPixels);
 
-    // Save diff if requested
+    // Generate custom diff image if requested
     let diffImagePath: string | undefined;
-    if (finalOptions.outputDiff && diffBuffer && finalOptions.diffOutputPath) {
-      diffImagePath = await this.saveDiffImage(
-        diffBuffer,
+    if (finalOptions.outputDiff && finalOptions.diffOutputPath) {
+      const customDiffBuffer = this.generateCustomDiffImage(
+        image1Data.data,
+        image2Data.data,
         width,
         height,
         channels,
+        finalOptions.tolerance,
+        finalOptions.diffColor
+      );
+
+      diffImagePath = await this.saveDiffImage(
+        customDiffBuffer,
+        width,
+        height,
+        3, // Always RGB output for diff images
         finalOptions.diffOutputPath
       );
     }
@@ -265,6 +277,61 @@ export class ScreenshotComparator {
     const { data, info } = await processor.toBuffer({ resolveWithObject: true });
 
     return { data, info };
+  }
+
+  /**
+   * Generate a custom diff image with specified color for different pixels
+   */
+  private generateCustomDiffImage(
+    image1Data: Buffer,
+    image2Data: Buffer,
+    width: number,
+    height: number,
+    channels: number,
+    tolerance: number,
+    diffColor: [number, number, number]
+  ): Buffer {
+    const pixelCount = width * height;
+    const outputChannels = 3; // Always RGB output for diff images
+    const diffBuffer = Buffer.alloc(pixelCount * outputChannels);
+
+    const [diffR, diffG, diffB] = diffColor;
+
+    for (let i = 0; i < pixelCount; i++) {
+      const pixelOffset = i * channels;
+      const outputOffset = i * outputChannels;
+
+      // Extract RGB values from both images
+      const r1 = image1Data[pixelOffset];
+      const g1 = image1Data[pixelOffset + 1];
+      const b1 = image1Data[pixelOffset + 2];
+
+      const r2 = image2Data[pixelOffset];
+      const g2 = image2Data[pixelOffset + 1];
+      const b2 = image2Data[pixelOffset + 2];
+
+      // Calculate pixel difference using euclidean distance in RGB space
+      const delta = Math.sqrt(
+        Math.pow(r2 - r1, 2) +
+        Math.pow(g2 - g1, 2) +
+        Math.pow(b2 - b1, 2)
+      ) / 255;
+
+      // If difference exceeds tolerance, mark as different with specified color
+      if (delta > tolerance) {
+        diffBuffer[outputOffset] = diffR;     // R
+        diffBuffer[outputOffset + 1] = diffG; // G
+        diffBuffer[outputOffset + 2] = diffB; // B
+      } else {
+        // Keep original pixel from first image (grayscale for context)
+        const gray = Math.round((r1 + g1 + b1) / 3 * 0.5); // Dim the background
+        diffBuffer[outputOffset] = gray;     // R
+        diffBuffer[outputOffset + 1] = gray; // G
+        diffBuffer[outputOffset + 2] = gray; // B
+      }
+    }
+
+    return diffBuffer;
   }
 
   /**

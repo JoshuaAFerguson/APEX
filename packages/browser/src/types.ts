@@ -133,6 +133,18 @@ export interface NavigationOptions {
 }
 
 /**
+ * Options for waitForNavigation method
+ */
+export interface WaitForNavigationOptions {
+  /** Timeout in milliseconds */
+  timeout?: number;
+  /** When to consider navigation succeeded */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
+  /** URL pattern to wait for (optional - string or RegExp) */
+  url?: string | RegExp;
+}
+
+/**
  * Result of a browser action
  */
 export interface BrowserActionResult<T = unknown> {

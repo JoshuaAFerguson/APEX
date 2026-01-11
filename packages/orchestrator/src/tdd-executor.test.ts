@@ -642,6 +642,321 @@ FAIL src/math.test.ts
     });
   });
 
+  describe('Regression Guard', () => {
+    it('should capture baseline test result before iterations when regression guard enabled', async () => {
+      const configWithRegression = { ...config, regressionGuard: true };
+      const executorWithRegression = new TDDExecutor(configWithRegression, agents);
+
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // Baseline test run - some tests pass
+          if (callback) {
+            callback(null, { stdout: 'Baseline tests passed', stderr: '' });
+          }
+        } else {
+          // Subsequent test run fails
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × test\n Error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockResolvedValue('old content');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executorWithRegression.execute();
+
+      // Should have captured baseline (callCount should be > 1)
+      expect(callCount).toBeGreaterThan(1);
+      expect(result).toBeDefined();
+    });
+
+    it('should detect regression when previously passing tests fail', async () => {
+      const configWithRegression = { ...config, regressionGuard: true };
+      const executorWithRegression = new TDDExecutor(configWithRegression, agents);
+
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // Baseline test run - all pass
+          if (callback) {
+            callback(null, { stdout: 'All tests passed', stderr: '' });
+          }
+        } else if (callCount === 2) {
+          // First iteration test run - some fail
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × new test\n New error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        } else {
+          // Regression check - previously passing tests now fail
+          const error = new Error('Regression detected');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL baseline.js\n × existing test\n Regression error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix that causes regression',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockResolvedValue('old content');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executorWithRegression.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.iterations[0].regressionResult?.detected).toBe(true);
+      expect(result.iterations[0].fixReverted).toBe(true);
+    });
+
+    it('should revert fix when regression detected', async () => {
+      const configWithRegression = { ...config, regressionGuard: true };
+      const executorWithRegression = new TDDExecutor(configWithRegression, agents);
+
+      let callCount = 0;
+      const originalContent = 'original content';
+      let currentFileContent = originalContent;
+
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // Baseline test run
+          if (callback) {
+            callback(null, { stdout: 'Baseline tests passed', stderr: '' });
+          }
+        } else if (callCount === 2) {
+          // First iteration test run
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × test\n Error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        } else {
+          // Regression check - regression detected
+          const error = new Error('Regression');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL existing.js\n × existing\n Regression';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockImplementation(async () => currentFileContent);
+      mockFs.writeFile.mockImplementation(async (path, content) => {
+        currentFileContent = content as string;
+      });
+
+      const result = await executorWithRegression.execute();
+
+      expect(result.iterations[0].fixReverted).toBe(true);
+      expect(result.iterations[0].fixResult?.success).toBe(false);
+      expect(result.iterations[0].fixResult?.error).toContain('reverted due to regression');
+
+      // Verify file was reverted to original content
+      expect(currentFileContent).toBe(originalContent);
+    });
+
+    it('should skip regression guard when disabled', async () => {
+      const configNoRegression = { ...config, regressionGuard: false };
+      const executorNoRegression = new TDDExecutor(configNoRegression, agents);
+
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // First test run fails
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × test\n Error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        } else {
+          // Second test run passes
+          if (callback) {
+            callback(null, { stdout: 'All tests passed', stderr: '' });
+          }
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockResolvedValue('old content');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executorNoRegression.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.iterations[0].regressionResult).toBeUndefined();
+      expect(result.iterations[0].fixReverted).toBeUndefined();
+      // Should only run tests twice (no baseline, no regression check)
+      expect(callCount).toBe(2);
+    });
+
+    it('should emit regression detection events', async () => {
+      const configWithRegression = { ...config, regressionGuard: true };
+      const executorWithRegression = new TDDExecutor(configWithRegression, agents);
+
+      const events: Array<{ type: string; data: any }> = [];
+      executorWithRegression.on('tdd:regression-detected', (regressionResult, iteration, taskId) => {
+        events.push({ type: 'regression-detected', data: { regressionResult, iteration, taskId } });
+      });
+
+      executorWithRegression.on('tdd:fix-reverted', (fixResult, iteration, taskId) => {
+        events.push({ type: 'fix-reverted', data: { fixResult, iteration, taskId } });
+      });
+
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // Baseline
+          if (callback) {
+            callback(null, { stdout: 'Baseline passed', stderr: '' });
+          }
+        } else if (callCount === 2) {
+          // First iteration
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × test\n Error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        } else {
+          // Regression check
+          const error = new Error('Regression');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL existing.js\n × existing\n Regression';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockResolvedValue('old content');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      await executorWithRegression.execute('test-task');
+
+      expect(events).toHaveLength(2);
+      expect(events[0].type).toBe('regression-detected');
+      expect(events[0].data.regressionResult.detected).toBe(true);
+      expect(events[1].type).toBe('fix-reverted');
+      expect(events[1].data.fixResult.success).toBe(true);
+    });
+
+    it('should handle revert failure gracefully', async () => {
+      const configWithRegression = { ...config, regressionGuard: true };
+      const executorWithRegression = new TDDExecutor(configWithRegression, agents);
+
+      let callCount = 0;
+      mockExec.mockImplementation((command, options, callback) => {
+        callCount++;
+        if (callCount === 1) {
+          // Baseline
+          if (callback) {
+            callback(null, { stdout: 'Baseline passed', stderr: '' });
+          }
+        } else if (callCount === 2) {
+          // First iteration
+          const error = new Error('Tests failed');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL test.js\n × test\n Error';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        } else {
+          // Regression check
+          const error = new Error('Regression');
+          (error as any).code = 1;
+          (error as any).stdout = 'FAIL existing.js\n × existing\n Regression';
+          (error as any).stderr = '';
+          if (callback) callback(error);
+        }
+        return {};
+      });
+
+      mockQuery.mockResolvedValue({
+        content: JSON.stringify({
+          description: 'Fix',
+          file: 'src/app.ts',
+          originalContent: 'old',
+          newContent: 'new',
+          confidence: 0.8,
+        }),
+      });
+
+      mockFs.readFile.mockResolvedValue('old content');
+      // First writeFile succeeds (apply fix), second fails (revert)
+      let writeCount = 0;
+      mockFs.writeFile.mockImplementation(async () => {
+        writeCount++;
+        if (writeCount === 2) {
+          throw new Error('Permission denied during revert');
+        }
+      });
+
+      const result = await executorWithRegression.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.iterations[0].fixResult?.error).toContain('Regression detected but revert failed');
+    });
+  });
+
   describe('Complex Scenarios', () => {
     it('should handle multiple test files with different failures', async () => {
       const complexOutput = `

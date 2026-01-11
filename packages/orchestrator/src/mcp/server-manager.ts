@@ -149,4 +149,72 @@ export class MCPServerManager {
     const entries = Array.isArray(parsed) ? parsed : (parsed as any)?.entries;
     return MCPMarketplaceEntrySchema.array().parse(entries || []);
   }
+
+  async uninstallServer(name: string): Promise<void> {
+    const mcpConfig: MCPConfig = this.config.mcp || { enabled: true, servers: {} };
+
+    if (!mcpConfig.servers || !mcpConfig.servers[name]) {
+      throw new Error(`MCP server '${name}' is not installed`);
+    }
+
+    // Remove from configuration
+    const { [name]: _, ...remainingServers } = mcpConfig.servers;
+
+    const updatedConfig: ApexConfig = {
+      ...this.config,
+      mcp: {
+        ...mcpConfig,
+        servers: remainingServers,
+      },
+    };
+
+    await saveConfig(this.projectPath, updatedConfig);
+    this.config = updatedConfig;
+  }
+
+  async getServerStatus(name: string): Promise<{
+    name: string;
+    status: 'running' | 'stopped' | 'error';
+    lastError?: string;
+  }> {
+    const servers = this.config.mcp?.servers || {};
+    const serverConfig = servers[name];
+
+    if (!serverConfig) {
+      throw new Error(`MCP server '${name}' is not installed`);
+    }
+
+    // For now, return a basic status since we don't have runtime tracking
+    // In a full implementation, this would check if the server process is running
+    return {
+      name,
+      status: 'stopped', // Default to stopped until we have process management
+    };
+  }
+
+  async startServer(name: string): Promise<void> {
+    const servers = this.config.mcp?.servers || {};
+    const serverConfig = servers[name];
+
+    if (!serverConfig) {
+      throw new Error(`MCP server '${name}' is not installed`);
+    }
+
+    // For now, this is a no-op since we don't have runtime server management
+    // In a full implementation, this would start the server process
+    console.log(`Starting MCP server: ${name}`);
+  }
+
+  async stopServer(name: string): Promise<void> {
+    const servers = this.config.mcp?.servers || {};
+    const serverConfig = servers[name];
+
+    if (!serverConfig) {
+      throw new Error(`MCP server '${name}' is not installed`);
+    }
+
+    // For now, this is a no-op since we don't have runtime server management
+    // In a full implementation, this would stop the server process
+    console.log(`Stopping MCP server: ${name}`);
+  }
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, ListTodo, Users, Settings, BarChart3 } from 'lucide-react'
+import { LayoutDashboard, ListTodo, Users, Settings, BarChart3, Puzzle } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme'
 
 const navigationItems = [
@@ -26,6 +26,11 @@ const navigationItems = [
     name: 'Agents',
     href: '/agents',
     icon: Users,
+  },
+  {
+    name: 'MCP Marketplace',
+    href: '/mcp',
+    icon: Puzzle,
   },
   {
     name: 'Config',

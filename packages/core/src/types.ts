@@ -876,6 +876,8 @@ export const ToolAliasSchema = z.object({
   tool: z.string().min(1),
   /** Alias description */
   description: z.string().min(1),
+  /** Tool parameters with template placeholders */
+  parameters: z.record(z.string(), z.unknown()).optional(),
   /** Default parameters for the tool */
   defaults: z.record(z.string(), z.unknown()).optional(),
   /** Parameter templates with placeholder substitution */
@@ -1571,7 +1573,7 @@ export const LinterGlobalConfigSchema = z.object({
   /** Run linters on file save (if supported by IDE) */
   runOnSave: z.boolean().optional().default(false),
   /** Run linters after tool-driven edits */
-  runAfterEdit: z.boolean().optional().default(false),
+  runAfterEdit: z.boolean().optional().default(true),
   /** Enable parallel execution of linters */
   parallel: z.boolean().optional().default(true),
   /** Maximum number of linters to run concurrently */
@@ -2162,6 +2164,71 @@ export const MCPInstallationSchema = z.object({
   configPath: z.string().min(1, 'Config path is required'),
 });
 export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
+
+// ============================================================================
+// MCP Connection Management Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Connection state for an MCP server
+ */
+export const MCPConnectionStateSchema = z.enum([
+  'disconnected',  // Not connected
+  'connecting',    // Connection in progress
+  'connected',     // Connected and ready
+  'reconnecting',  // Attempting reconnection
+  'error',         // Error state
+]);
+export type MCPConnectionState = z.infer<typeof MCPConnectionStateSchema>;
+
+/**
+ * Represents an active MCP connection
+ */
+export const MCPConnectionSchema = z.object({
+  /** Server identifier (config key name) */
+  serverId: z.string().min(1),
+  /** Server name from config */
+  serverName: z.string().min(1),
+  /** Server configuration */
+  config: MCPServerConfigSchema,
+  /** Current connection state */
+  state: MCPConnectionStateSchema,
+  /** When the connection was established */
+  connectedAt: z.date().optional(),
+  /** When the connection was last active */
+  lastActivityAt: z.date().optional(),
+  /** Number of reconnection attempts */
+  reconnectAttempts: z.number().int().min(0).default(0),
+  /** Last error if in error state */
+  lastError: z.string().optional(),
+});
+export type MCPConnection = z.infer<typeof MCPConnectionSchema>;
+
+/**
+ * Connection event types
+ */
+export const MCPConnectionEventTypeSchema = z.enum([
+  'connected',
+  'disconnected',
+  'error',
+  'reconnecting',
+]);
+export type MCPConnectionEventType = z.infer<typeof MCPConnectionEventTypeSchema>;
+
+/**
+ * Connection event data
+ */
+export const MCPConnectionEventSchema = z.object({
+  type: MCPConnectionEventTypeSchema,
+  serverId: z.string().min(1),
+  serverName: z.string().min(1),
+  previousState: MCPConnectionStateSchema,
+  newState: MCPConnectionStateSchema,
+  timestamp: z.date(),
+  message: z.string().optional(),
+  error: z.any().optional(), // Error objects can't be easily validated with Zod
+});
+export type MCPConnectionEvent = z.infer<typeof MCPConnectionEventSchema>;
 
 // ============================================================================
 // TDD Mode Configuration (v0.5.0)
@@ -3291,16 +3358,20 @@ export type ApexEventType =
   | 'redo:completed'
   | 'redo:failed'
   // Auto-fix events (v0.5.0)
-  | 'auto-fix:start'
-  | 'auto-fix:progress'
-  | 'auto-fix:complete'
-  | 'auto-fix:error'
+  | 'autofix:requested'
+  | 'autofix:started'
+  | 'autofix:progress'
+  | 'autofix:completed'
+  | 'autofix:failed'
+  | 'autofix:skipped'
   // TDD execution events (v0.5.0)
   | 'tdd:started'
   | 'tdd:iteration-started'
   | 'tdd:test-run'
   | 'tdd:fix-generated'
   | 'tdd:fix-applied'
+  | 'tdd:regression-detected'
+  | 'tdd:fix-reverted'
   | 'tdd:iteration-completed'
   | 'tdd:completed'
   | 'tdd:failed';
@@ -3807,6 +3878,54 @@ export interface TDDFixAppliedEventData {
 }
 
 /**
+ * Event data for 'tdd:regression-detected' event
+ * Emitted when regression is detected after applying a fix
+ */
+export interface TDDRegressionDetectedEventData {
+  /** Regression detection result */
+  regressionResult: {
+    detected: boolean;
+    error?: string;
+    testResult?: {
+      success: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+      failures: Array<{
+        file: string;
+        test: string;
+        message: string;
+      }>;
+    };
+  };
+  /** Current iteration number */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when regression was detected */
+  timestamp: Date;
+}
+
+/**
+ * Event data for 'tdd:fix-reverted' event
+ * Emitted when a fix is reverted due to regression
+ */
+export interface TDDFixRevertedEventData {
+  /** Result of reverting the fix */
+  revertResult: {
+    success: boolean;
+    error?: string;
+    modifiedFiles: string[];
+  };
+  /** Current iteration number */
+  iteration: number;
+  /** Task ID for tracking TDD execution */
+  taskId: string;
+  /** Timestamp when fix was reverted */
+  timestamp: Date;
+}
+
+/**
  * Event data for 'tdd:iteration-completed' event
  * Emitted when a TDD iteration is completed
  */
@@ -3959,6 +4078,8 @@ export type TDDEventDataFor<T extends ApexEventType> =
   T extends 'tdd:test-run' ? TDDTestRunEventData :
   T extends 'tdd:fix-generated' ? TDDFixGeneratedEventData :
   T extends 'tdd:fix-applied' ? TDDFixAppliedEventData :
+  T extends 'tdd:regression-detected' ? TDDRegressionDetectedEventData :
+  T extends 'tdd:fix-reverted' ? TDDFixRevertedEventData :
   T extends 'tdd:iteration-completed' ? TDDIterationCompletedEventData :
   T extends 'tdd:completed' ? TDDCompletedEventData :
   T extends 'tdd:failed' ? TDDFailedEventData :
@@ -6716,12 +6837,41 @@ export type AutoFixResult = z.infer<typeof AutoFixResultSchema>;
  * Event types for auto-fix operations
  */
 export const AutoFixEventTypeSchema = z.enum([
-  'auto-fix:start',      // Auto-fix operation began
-  'auto-fix:progress',   // Auto-fix operation progress update
-  'auto-fix:complete',   // Auto-fix operation completed successfully
-  'auto-fix:error',      // Auto-fix operation failed
+  'auto-fix-start',      // Auto-fix operation began
+  'auto-fix-progress',   // Auto-fix operation progress update
+  'auto-fix-complete',   // Auto-fix operation completed successfully
+  'auto-fix-error',      // Auto-fix operation failed
 ]);
 export type AutoFixEventType = z.infer<typeof AutoFixEventTypeSchema>;
+
+/**
+ * Status types for auto-fix operations
+ */
+export const AutoFixStatusSchema = z.enum([
+  'running',    // Auto-fix operation is in progress
+  'success',    // Auto-fix operation completed successfully
+  'failed',     // Auto-fix operation failed
+]);
+export type AutoFixStatus = z.infer<typeof AutoFixStatusSchema>;
+
+/**
+ * Details of an issue that was fixed during auto-fix
+ */
+export const AutoFixIssueDetailSchema = z.object({
+  /** Type of issue that was fixed */
+  type: z.string(),
+  /** Description of the issue */
+  description: z.string(),
+  /** File path where the issue was found */
+  filePath: z.string(),
+  /** Line number where the issue was found (optional) */
+  line: z.number().optional(),
+  /** Column number where the issue was found (optional) */
+  column: z.number().optional(),
+  /** Severity of the issue */
+  severity: z.enum(['error', 'warning', 'info']).optional(),
+});
+export type AutoFixIssueDetail = z.infer<typeof AutoFixIssueDetailSchema>;
 
 /**
  * Event record for auto-fix operations
@@ -6732,25 +6882,31 @@ export const AutoFixEventSchema = z.object({
   id: z.string().min(1),
 
   /** Type of auto-fix event */
-  type: AutoFixEventTypeSchema,
+  eventType: AutoFixEventTypeSchema,
 
   /** ID of the task this auto-fix event belongs to */
   taskId: z.string().min(1),
 
-  /** Absolute path of the file being processed */
-  filePath: z.string().min(1),
+  /** List of files that were modified during this auto-fix operation */
+  filesModified: z.array(z.string()),
 
-  /** Type of fix being applied */
-  fixType: z.enum(['syntax', 'imports', 'formatting']).optional(),
+  /** Array of issues that were fixed with detailed information */
+  issuesFixed: z.array(AutoFixIssueDetailSchema),
+
+  /** Current iteration number in the auto-fix process */
+  iterationCount: z.number().min(0),
+
+  /** Total number of iterations planned for this auto-fix process */
+  totalIterations: z.number().min(1),
+
+  /** Currently active file being processed */
+  currentFile: z.string(),
+
+  /** Current status of the auto-fix operation */
+  status: AutoFixStatusSchema,
 
   /** Timestamp when this event occurred */
   timestamp: z.date(),
-
-  /** Number of issues detected */
-  issuesDetected: z.number().min(0).optional(),
-
-  /** Number of issues successfully fixed */
-  issuesFixed: z.number().min(0).optional(),
 
   /** Error message if the operation failed */
   error: z.string().optional(),
@@ -6837,6 +6993,8 @@ export const ScreenshotComparisonOptionsSchema = z.object({
   outputDiff: z.boolean().default(false),
   /** Path to save diff image (required if outputDiff is true) */
   diffOutputPath: z.string().optional(),
+  /** Color for highlighting different pixels in diff image. Format: [r, g, b] values 0-255. Default: [255, 0, 255] (magenta) */
+  diffColor: z.tuple([z.number().min(0).max(255), z.number().min(0).max(255), z.number().min(0).max(255)]).default([255, 0, 255]),
 });
 export type ScreenshotComparisonOptions = z.infer<typeof ScreenshotComparisonOptionsSchema>;
 

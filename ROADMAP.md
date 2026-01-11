@@ -376,7 +376,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.5.0 - Tool System & Permissions
+## v0.5.0 - Tool System & Permissions (Complete)
 
 *Powerful tool system with fine-grained permission controls*
 
@@ -391,37 +391,37 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Built-in Tools (Claude Code parity)
 
-- ⚪ **Read** - Read file contents with line numbers
-- ⚪ **Write** - Create new files
-- ⚪ **Edit** - Surgical edits with old_string/new_string
-- ⚪ **MultiEdit** - Multiple edits in single operation
-- ⚪ **Bash** - Execute shell commands
-- ⚪ **Glob** - Fast file pattern matching
-- ⚪ **Grep** - Content search with ripgrep
-- ⚪ **WebFetch** - Fetch and analyze web content
-- ⚪ **WebSearch** - Search the web for information
-- ⚪ **NotebookEdit** - Edit Jupyter notebooks
-- ⚪ **TodoWrite** - Manage task lists
+- 🟢 **Read** - Read file contents with line numbers
+- 🟢 **Write** - Create new files
+- 🟢 **Edit** - Surgical edits with old_string/new_string
+- 🟢 **MultiEdit** - Multiple edits in single operation
+- 🟢 **Bash** - Execute shell commands
+- 🟢 **Glob** - Fast file pattern matching
+- 🟢 **Grep** - Content search with ripgrep
+- 🟢 **WebFetch** - Fetch and analyze web content
+- 🟢 **WebSearch** - Search the web for information
+- 🟢 **NotebookEdit** - Edit Jupyter notebooks
+- 🟢 **TodoWrite** - Manage task lists
 
 ### Tool Visualization
 
-- ⚪ **Tool call display** - Show tool name, parameters in real-time
-- ⚪ **Tool output formatting** - Syntax highlighted, truncated large outputs
-- ⚪ **Tool timing** - Show execution duration
-- ⚪ **Tool error display** - Clear error messages with context
-- ⚪ **Diff preview** - Show changes before applying
-- ⚪ **Undo capability** - Revert tool actions
-- ⚪ **Dry-run mode** - Simulate tool actions and show planned changes before execution
+- 🟢 **Tool call display** - Show tool name, parameters in real-time
+- 🟢 **Tool output formatting** - Syntax highlighted, truncated large outputs
+- 🟢 **Tool timing** - Show execution duration
+- 🟢 **Tool error display** - Clear error messages with context
+- 🟢 **Diff preview** - Show changes before applying
+- 🟢 **Undo capability** - Revert tool actions
+- 🟢 **Dry-run mode** - Simulate tool actions and show planned changes before execution
 
 ### Permission System
 
-- ⚪ **Permission levels** - Allow always, allow once, deny
-- ⚪ **Per-tool permissions** - Different settings per tool
-- ⚪ **Per-directory permissions** - Restrict access to certain paths
-- ⚪ **Dangerous operation warnings** - Extra confirmation for risky actions
-- ⚪ **Permission presets** - "Autonomous", "Review all", "Read-only"
-- ⚪ **Permission persistence** - Remember choices across sessions
-- 🟡 **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
+- 🟢 **Permission levels** - Allow always, allow once, deny
+- 🟢 **Per-tool permissions** - Different settings per tool
+- 🟢 **Per-directory permissions** - Restrict access to certain paths
+- 🟢 **Dangerous operation warnings** - Extra confirmation for risky actions
+- 🟢 **Permission presets** - "Autonomous", "Review all", "Read-only"
+- 🟢 **Permission persistence** - Remember choices across sessions
+- 🟢 **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
 - 🟢 **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
 
 ### Autonomy Controls
@@ -431,7 +431,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Budget limits** - Pause when cost threshold reached
 - 🟢 **Token limits** - Pause when token threshold reached
 - 🟢 **Time limits** - Maximum task duration
-- 🟡 **Change limits** - Maximum files/lines changed without approval
+- 🟢 **Change limits** - Maximum files/lines changed without approval
 
 ### Code Quality Integration (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
 
@@ -445,14 +445,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 - 🟢 **Custom tools** - Define project-specific tools
 - 🟢 **Tool hooks** - Pre/post execution hooks
-- ⚪ **Tool aliases** - Shortcuts for common tool patterns
+- 🟢 **Tool aliases** - Shortcuts for common tool patterns
 - 🟢 **MCP server support** - Model Context Protocol integration
 
 ### MCP Ecosystem (Accelerated)
 
 - 🟢 **MCP Marketplace** - Discover and install MCP servers
 - 🟢 **Easy Install** - One-click installation of capabilities
-- 🟡 **Auto-configuration** - Minimal config setup for standard tools
+- 🟢 **Auto-configuration** - Minimal config setup for standard tools
 
 ### Test-Driven Development (TDD)
 

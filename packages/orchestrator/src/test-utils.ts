@@ -592,3 +592,228 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
  * Re-export Database type for convenience in tests
  */
 export type { Database };
+
+// ============================================================================
+// Permission Test Database Utilities
+// ============================================================================
+
+import { PermissionStore } from './permission-store';
+import { PermissionManager } from './permission-manager';
+import type { Permission, ExtendedPermission } from '@apexcli/core';
+
+/**
+ * Context returned by createTestPermissionStore containing the store, manager, and cleanup function
+ */
+export interface TestPermissionStoreContext {
+  /** The PermissionStore instance with in-memory database */
+  store: PermissionStore;
+  /** The PermissionManager instance wrapping the store */
+  manager: PermissionManager;
+  /** Cleanup function to close the database - call in afterEach */
+  cleanup: () => void;
+  /** The temporary project path used for the store */
+  tempPath: string;
+}
+
+/**
+ * Creates an in-memory permission store with PermissionManager for testing.
+ *
+ * @param initialPermissions - Optional array of permissions to pre-populate the store
+ * @returns TestPermissionStoreContext with store, manager, and cleanup function
+ *
+ * @example
+ * ```typescript
+ * import { createTestPermissionStore } from '../test-utils';
+ * import { createMockPermission } from '@apexcli/core/test-utils';
+ *
+ * describe('Permission tests', () => {
+ *   let testPermissions: TestPermissionStoreContext;
+ *
+ *   beforeEach(async () => {
+ *     testPermissions = await createTestPermissionStore([
+ *       createMockPermission({ tool: 'Read', level: 'allow-always' }),
+ *       createMockPermission({ tool: 'Write', level: 'allow-once' })
+ *     ]);
+ *   });
+ *
+ *   afterEach(() => {
+ *     testPermissions.cleanup();
+ *   });
+ *
+ *   it('should manage permissions', async () => {
+ *     const permission = await testPermissions.manager.checkPermission('Read');
+ *     expect(permission).toBe('allow-always');
+ *   });
+ * });
+ * ```
+ */
+export async function createTestPermissionStore(initialPermissions: Permission[] = []): Promise<TestPermissionStoreContext> {
+  // Create temporary directory for the test store
+  const tempPath = await createTempDirectoryAsync('apex-test-permission-');
+
+  // Create store with temporary directory
+  const store = new PermissionStore(tempPath);
+  await store.initialize();
+
+  // Create manager
+  const manager = new PermissionManager(store);
+
+  // Populate with initial permissions if provided
+  for (const permission of initialPermissions) {
+    await store.savePermission(permission);
+  }
+
+  return {
+    store,
+    manager,
+    tempPath,
+    cleanup: () => {
+      if (store) {
+        store.close();
+      }
+      // Clean up temp directory asynchronously
+      removeTempDirectory(tempPath).catch(console.error);
+    },
+  };
+}
+
+/**
+ * Creates a test permission store with common permission scenarios
+ *
+ * @param scenario - The permission scenario to create ('read-only', 'full-access', 'review-all', 'mixed')
+ * @returns TestPermissionStoreContext pre-populated with scenario permissions
+ *
+ * @example
+ * ```typescript
+ * const { manager, cleanup } = await createPermissionScenarioStore('read-only');
+ *
+ * const readResult = await manager.checkPermission('Read');
+ * expect(readResult).toBe('allow-always');
+ *
+ * const writeResult = await manager.checkPermission('Write');
+ * expect(writeResult).toBe('deny');
+ *
+ * cleanup();
+ * ```
+ */
+export async function createPermissionScenarioStore(
+  scenario: 'read-only' | 'full-access' | 'review-all' | 'mixed'
+): Promise<TestPermissionStoreContext> {
+  const { createCommonPermissionScenarios } = await import('@apexcli/core/test-utils');
+  const scenarios = createCommonPermissionScenarios();
+
+  const scenarioMap = {
+    'read-only': scenarios.readOnly,
+    'full-access': scenarios.fullAccess,
+    'review-all': scenarios.reviewAll,
+    'mixed': scenarios.mixed,
+  };
+
+  const permissions = Object.values(scenarioMap[scenario]);
+  return createTestPermissionStore(permissions);
+}
+
+/**
+ * Helper to populate a permission store with test data for different tools
+ *
+ * @param store - The PermissionStore to populate
+ * @param toolPermissions - Map of tool names to permission levels
+ *
+ * @example
+ * ```typescript
+ * const { store, cleanup } = await createTestPermissionStore();
+ *
+ * await populateTestPermissions(store, {
+ *   'Read': 'allow-always',
+ *   'Write': 'allow-once',
+ *   'Bash': 'deny'
+ * });
+ *
+ * const readPerm = await store.getPermission('Read');
+ * expect(readPerm?.level).toBe('allow-always');
+ *
+ * cleanup();
+ * ```
+ */
+export async function populateTestPermissions(
+  store: PermissionStore,
+  toolPermissions: Record<string, 'allow-always' | 'allow-once' | 'deny'>
+): Promise<void> {
+  const { createMockPermission } = await import('@apexcli/core/test-utils');
+
+  for (const [tool, level] of Object.entries(toolPermissions)) {
+    const permission = createMockPermission({ tool, level });
+    await store.savePermission(permission);
+  }
+}
+
+/**
+ * Creates a mock permission manager for testing without database operations
+ *
+ * @param permissions - Map of tool names to permission levels for quick setup
+ * @returns Mock PermissionManager with predefined permissions
+ *
+ * @example
+ * ```typescript
+ * const mockManager = createMockPermissionManager({
+ *   'Read': 'allow-always',
+ *   'Write': 'allow-once',
+ *   'Bash': 'deny'
+ * });
+ *
+ * const readLevel = await mockManager.checkPermission('Read');
+ * expect(readLevel).toBe('allow-always');
+ * ```
+ */
+export function createMockPermissionManager(permissions: Record<string, 'allow-always' | 'allow-once' | 'deny'> = {}) {
+  return {
+    async checkPermission(tool: string, scope?: string): Promise<'allow-always' | 'allow-once' | 'deny' | null> {
+      const scopeKey = scope ? `${tool}:${scope}` : tool;
+      return permissions[scopeKey] || permissions[tool] || null;
+    },
+
+    async grantPermission(tool: string, level: 'allow-always' | 'allow-once' | 'deny', scope?: string): Promise<void> {
+      const key = scope ? `${tool}:${scope}` : tool;
+      permissions[key] = level;
+    },
+
+    async hasPermission(tool: string, scope?: string): Promise<boolean> {
+      const level = await this.checkPermission(tool, scope);
+      return level !== null && level !== 'deny';
+    },
+
+    async isAllowed(tool: string, scope?: string): Promise<boolean> {
+      const level = await this.checkPermission(tool, scope);
+      return level === 'allow-always' || level === 'allow-once';
+    },
+
+    async requiresConfirmation(tool: string, scope?: string): Promise<boolean> {
+      const level = await this.checkPermission(tool, scope);
+      return level === 'allow-once';
+    },
+
+    clearSessionCache(): void {
+      // Mock implementation - no-op
+    },
+
+    // Access to internal permissions for testing
+    _getPermissions(): Record<string, 'allow-always' | 'allow-once' | 'deny'> {
+      return { ...permissions };
+    }
+  };
+}
+
+/**
+ * Cleans up a test permission store context by closing connections and removing temp files.
+ * Safe to call multiple times.
+ *
+ * @param context - The TestPermissionStoreContext to clean up
+ */
+export async function cleanupTestPermissionStore(context: TestPermissionStoreContext): Promise<void> {
+  if (context && context.store) {
+    context.store.close();
+  }
+  if (context && context.tempPath) {
+    await removeTempDirectory(context.tempPath);
+  }
+}

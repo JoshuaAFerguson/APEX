@@ -18,3 +18,7 @@ export * from './plugin';
 
 // Re-export the orchestration service
 export * from './service';
+
+// Re-export concrete plugin implementations
+export * from './plugins/eslint';
+export * from './plugins/prettier';

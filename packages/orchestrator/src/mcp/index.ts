@@ -88,3 +88,10 @@ export {
   type MCPClientEvents,
   type MCPToolDefinition,
 } from './client.js';
+
+// Connection Manager
+export {
+  MCPConnectionManager,
+  type MCPConnectionManagerOptions,
+  type MCPConnectionManagerEvents,
+} from './connection-manager.js';

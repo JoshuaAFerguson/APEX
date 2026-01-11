@@ -37,6 +37,8 @@ import type {
   TDDTestRunEventData,
   TDDFixGeneratedEventData,
   TDDFixAppliedEventData,
+  TDDRegressionDetectedEventData,
+  TDDFixRevertedEventData,
   TDDIterationCompletedEventData,
   TDDCompletedEventData,
   TDDFailedEventData,

@@ -9,6 +9,8 @@ import type {
   ApexConfig,
   SubtaskStrategy,
   SubtaskDefinition,
+  MCPMarketplaceEntry,
+  MCPServerConfig,
 } from '@apexcli/core'
 import { getApiUrl } from './config'
 
@@ -304,6 +306,144 @@ export class ApexApiClient {
     const response = await this.fetch('/config', {
       method: 'PATCH',
       body: JSON.stringify(config),
+    })
+    return response.json()
+  }
+
+  // ============================================================================
+  // MCP API Methods
+  // ============================================================================
+
+  /**
+   * Get MCP marketplace entries with filtering
+   */
+  async getMCPMarketplaceEntries(options?: {
+    category?: string;
+    search?: string;
+    featured?: boolean;
+    verified?: boolean;
+  }): Promise<{ entries: MCPMarketplaceEntry[] }> {
+    const params = new URLSearchParams();
+    if (options?.category) params.set('category', options.category);
+    if (options?.search) params.set('search', options.search);
+    if (options?.featured !== undefined) params.set('featured', options.featured.toString());
+    if (options?.verified !== undefined) params.set('verified', options.verified.toString());
+
+    const url = `/mcp/marketplace${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await this.fetch(url);
+    return response.json();
+  }
+
+  /**
+   * List installed MCP servers
+   */
+  async listMCPServers(): Promise<MCPServerConfig[]> {
+    const response = await this.fetch('/mcp/servers')
+    return response.json()
+  }
+
+  /**
+   * Install an MCP server
+   */
+  async installMCPServer(serverName: string): Promise<{
+    ok: boolean;
+    message: string;
+    serverConfig: MCPServerConfig
+  }> {
+    const response = await this.fetch(`/mcp/servers/${serverName}/install`, {
+      method: 'POST',
+    })
+    return response.json()
+  }
+
+  /**
+   * Uninstall an MCP server
+   */
+  async uninstallMCPServer(serverName: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/mcp/servers/${serverName}`, {
+      method: 'DELETE',
+    })
+    return response.json()
+  }
+
+  /**
+   * Get MCP server status
+   */
+  async getMCPServerStatus(serverName: string): Promise<{
+    name: string;
+    status: 'running' | 'stopped' | 'error';
+    lastError?: string;
+  }> {
+    const response = await this.fetch(`/mcp/servers/${serverName}/status`)
+    return response.json()
+  }
+
+  /**
+   * Start an MCP server
+   */
+  async startMCPServer(serverName: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/mcp/servers/${serverName}/start`, {
+      method: 'POST',
+    })
+    return response.json()
+  }
+
+  /**
+   * Stop an MCP server
+   */
+  async stopMCPServer(serverName: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/mcp/servers/${serverName}/stop`, {
+      method: 'POST',
+    })
+    return response.json()
+  }
+
+  /**
+   * Get marketplace categories
+   */
+  async getMCPMarketplaceCategories(): Promise<{ categories: Array<{ name: string; count: number }> }> {
+    const response = await this.fetch('/mcp/marketplace/categories')
+    return response.json()
+  }
+
+  /**
+   * Get featured marketplace entries
+   */
+  async getFeaturedMCPEntries(): Promise<{ entries: MCPMarketplaceEntry[] }> {
+    const response = await this.fetch('/mcp/marketplace/featured')
+    return response.json()
+  }
+
+  /**
+   * Get installation recommendations
+   */
+  async getMCPRecommendations(): Promise<{
+    essential: MCPMarketplaceEntry[];
+    recommended: MCPMarketplaceEntry[];
+    optional: MCPMarketplaceEntry[];
+  }> {
+    const response = await this.fetch('/mcp/recommendations')
+    return response.json()
+  }
+
+  /**
+   * Auto-configure standard development tools
+   */
+  async autoConfigureMCPTools(options?: {
+    developmentTools?: boolean;
+    productivityTools?: boolean;
+    devopsTools?: boolean;
+    customServers?: string[];
+  }): Promise<{
+    ok: boolean;
+    message: string;
+    configured: MCPServerConfig[];
+    skipped: string[];
+    errors: Array<{ name: string; error: string }>;
+  }> {
+    const response = await this.fetch('/mcp/auto-configure', {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
     })
     return response.json()
   }

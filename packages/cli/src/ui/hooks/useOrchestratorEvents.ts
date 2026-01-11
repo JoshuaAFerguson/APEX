@@ -9,6 +9,7 @@ import type { AgentInfo } from '../components/agents/AgentPanel.js';
 import type { VerboseDebugData } from '@apexcli/core';
 import { renderColoredDiff } from '../../diff-renderer.js';
 import chalk from 'chalk';
+import ora from 'ora';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -104,12 +105,43 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
   const stageStartTimeRef = useRef<Date>(new Date());
   const lastUsageRef = useRef<Record<string, { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }>>({});
 
+  // Auto-fix progress tracking
+  const autoFixSpinnersRef = useRef<Map<string, ora.Ora>>(new Map());
+  const autoFixStatsRef = useRef<Map<string, { files: Set<string>; completed: number; failed: number; skipped: number }>>(new Map());
+
   // Debug logging helper
   const log = useCallback((message: string, data?: any) => {
     if (debug) {
       console.log(`[useOrchestratorEvents] ${message}`, data || '');
     }
   }, [debug]);
+
+  // Helper to update auto-fix spinner status
+  const updateAutoFixSpinnerStatus = useCallback((taskId: string) => {
+    const stats = autoFixStatsRef.current.get(taskId);
+    const spinner = autoFixSpinnersRef.current.get(taskId);
+
+    if (!stats || !spinner) return;
+
+    const totalProcessed = stats.completed + stats.failed + stats.skipped;
+    const totalFiles = stats.files.size;
+
+    if (totalProcessed >= totalFiles) {
+      // All files processed, finalize the spinner
+      if (stats.failed > 0) {
+        spinner.fail(`Auto-fix completed with errors: ${stats.completed} fixed, ${stats.failed} failed, ${stats.skipped} skipped`);
+      } else {
+        spinner.succeed(`Auto-fix completed: ${stats.completed} files processed, ${stats.skipped} skipped`);
+      }
+
+      // Clean up
+      autoFixSpinnersRef.current.delete(taskId);
+      autoFixStatsRef.current.delete(taskId);
+    } else {
+      // Update spinner text with progress
+      spinner.text = `Auto-fixing... (${totalProcessed}/${totalFiles} files processed)`;
+    }
+  }, []);
 
   useEffect(() => {
     if (workflow && derivedAgents.length > 0 && stateRef.current.agents.length === 0) {
@@ -385,6 +417,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task completed', { taskId: task.id });
 
+      // Clean up any remaining auto-fix spinners
+      const spinner = autoFixSpinnersRef.current.get(task.id);
+      if (spinner) {
+        spinner.stop();
+        autoFixSpinnersRef.current.delete(task.id);
+        autoFixStatsRef.current.delete(task.id);
+      }
+
       setState((prev: OrchestratorEventState) => ({
         ...prev,
         currentAgent: undefined,
@@ -400,6 +440,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       if (taskId && task.id !== taskId) return;
 
       log('Task failed', { taskId: task.id, error: error.message });
+
+      // Clean up any remaining auto-fix spinners
+      const spinner = autoFixSpinnersRef.current.get(task.id);
+      if (spinner) {
+        spinner.fail(`Task failed: ${error.message}`);
+        autoFixSpinnersRef.current.delete(task.id);
+        autoFixStatsRef.current.delete(task.id);
+      }
 
       setState((prev: OrchestratorEventState) => ({
         ...prev,
@@ -793,6 +841,223 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       console.log(chalk.gray(`+${event.addedLines} -${event.removedLines} lines\n`));
     };
 
+    // Auto-fix event handlers
+    const handleAutoFixRequested = (event: {
+      taskId: string;
+      filePath: string;
+      fixTypes: string[];
+      triggeredBy: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix requested', {
+        taskId: event.taskId,
+        file: event.filePath,
+        types: event.fixTypes,
+        trigger: event.triggeredBy
+      });
+
+      // Initialize or get stats for this task
+      let stats = autoFixStatsRef.current.get(event.taskId);
+      if (!stats) {
+        stats = { files: new Set(), completed: 0, failed: 0, skipped: 0 };
+        autoFixStatsRef.current.set(event.taskId, stats);
+      }
+      stats.files.add(event.filePath);
+
+      // Create or update spinner for this task
+      let spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (!spinner) {
+        spinner = ora({
+          text: `Auto-fixing code issues (${event.fixTypes.join(', ')})...`,
+          color: 'yellow'
+        }).start();
+        autoFixSpinnersRef.current.set(event.taskId, spinner);
+      }
+
+      spinner.text = `Auto-fixing ${stats.files.size} file(s) (${event.fixTypes.join(', ')})...`;
+    };
+
+    const handleAutoFixStarted = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesDetected: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix started', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        issues: event.issuesDetected
+      });
+
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (spinner && event.issuesDetected > 0) {
+        const fileName = event.filePath.split('/').pop() || event.filePath;
+        spinner.text = `Fixing ${event.issuesDetected} ${event.fixType} issues in ${fileName}...`;
+      }
+    };
+
+    const handleAutoFixProgress = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesFixed: number;
+      issuesRemaining: number;
+      currentFix?: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix progress', {
+        taskId: event.taskId,
+        file: event.filePath,
+        fixed: event.issuesFixed,
+        remaining: event.issuesRemaining,
+        currentFix: event.currentFix
+      });
+
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (spinner) {
+        const fileName = event.filePath.split('/').pop() || event.filePath;
+        const progressInfo = `Fixed ${event.issuesFixed} ${event.fixType} issues`;
+        const currentFixInfo = event.currentFix ? ` - ${event.currentFix}` : '';
+        spinner.text = `${fileName}: ${progressInfo}${currentFixInfo}`;
+      }
+    };
+
+    const handleAutoFixCompleted = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesDetected: number;
+      issuesFixed: number;
+      duration: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix completed', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        detected: event.issuesDetected,
+        fixed: event.issuesFixed,
+        duration: event.duration
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.completed++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      if (event.issuesFixed > 0) {
+        const message = `✅ ${fileName}: Fixed ${event.issuesFixed}/${event.issuesDetected} ${event.fixType} issues (${event.duration}ms)`;
+        if (spinner) {
+          spinner.succeed(message);
+        } else {
+          console.log(chalk.green(message));
+        }
+      } else {
+        const message = `✓ ${fileName}: No ${event.fixType} issues found`;
+        if (spinner) {
+          spinner.info(message);
+        } else {
+          console.log(chalk.gray(message));
+        }
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
+    const handleAutoFixFailed = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      error: string;
+      issuesDetected: number;
+      issuesFixed: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix failed', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        error: event.error
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.failed++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      const errorMessage = `❌ ${fileName}: Auto-fix failed - ${event.error}`;
+      if (event.issuesDetected > 0) {
+        const partialMessage = ` (${event.issuesFixed}/${event.issuesDetected} issues fixed before failure)`;
+        if (spinner) {
+          spinner.fail(errorMessage + partialMessage);
+        } else {
+          console.log(chalk.red(errorMessage));
+          console.log(chalk.yellow(`   ${event.issuesFixed}/${event.issuesDetected} issues were fixed before failure`));
+        }
+      } else {
+        if (spinner) {
+          spinner.fail(errorMessage);
+        } else {
+          console.log(chalk.red(errorMessage));
+        }
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
+    const handleAutoFixSkipped = (event: {
+      taskId: string;
+      filePath: string;
+      reason: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix skipped', {
+        taskId: event.taskId,
+        file: event.filePath,
+        reason: event.reason
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.skipped++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      const skipMessage = `⏭️ ${fileName}: Skipped - ${event.reason}`;
+      if (spinner) {
+        spinner.info(skipMessage);
+      } else {
+        console.log(chalk.gray(skipMessage));
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -814,6 +1079,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('agent:turn', handleAgentTurn);
     orchestrator.on('agent:error', handleError);
     orchestrator.on('diff:preview', handleDiffPreview);
+
+    // Register auto-fix event listeners
+    orchestrator.on('autofix:requested', handleAutoFixRequested);
+    orchestrator.on('autofix:started', handleAutoFixStarted);
+    orchestrator.on('autofix:progress', handleAutoFixProgress);
+    orchestrator.on('autofix:completed', handleAutoFixCompleted);
+    orchestrator.on('autofix:failed', handleAutoFixFailed);
+    orchestrator.on('autofix:skipped', handleAutoFixSkipped);
 
     log('Event listeners registered');
 
@@ -839,6 +1112,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('agent:turn', handleAgentTurn);
       orchestrator.off('agent:error', handleError);
       orchestrator.off('diff:preview', handleDiffPreview);
+
+      // Cleanup auto-fix event listeners
+      orchestrator.off('autofix:requested', handleAutoFixRequested);
+      orchestrator.off('autofix:started', handleAutoFixStarted);
+      orchestrator.off('autofix:progress', handleAutoFixProgress);
+      orchestrator.off('autofix:completed', handleAutoFixCompleted);
+      orchestrator.off('autofix:failed', handleAutoFixFailed);
+      orchestrator.off('autofix:skipped', handleAutoFixSkipped);
 
       log('Event listeners cleaned up');
     };

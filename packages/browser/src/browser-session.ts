@@ -11,6 +11,7 @@ import type {
   BrowserSessionConfig,
   BrowserActionResult,
   NavigationOptions,
+  WaitForNavigationOptions,
   ScreenshotOptions,
   ElementSelector,
   CaptureConfig,
@@ -49,6 +50,7 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   private consoleBuffer: CapturedConsoleMessage[] = [];
   private errorBuffer: CapturedJavaScriptError[] = [];
   private pageErrorBuffer: PageErrorEvent[] = [];
+  private errorPollingInterval?: NodeJS.Timeout;
 
   constructor(
     manager: BrowserManager,
@@ -141,6 +143,151 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
       return {
         success: true,
         data: finalUrl,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Navigates to a URL (alias for navigate)
+   */
+  async goto(url: string, options: NavigationOptions = {}): Promise<BrowserActionResult<string>> {
+    return this.navigate(url, options);
+  }
+
+  /**
+   * Reloads the current page
+   */
+  async reload(options: NavigationOptions = {}): Promise<BrowserActionResult<string>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      await this.page.reload({
+        timeout: options.timeout || this.config.timeout,
+        waitUntil: options.waitUntil,
+      });
+
+      return {
+        success: true,
+        data: this.page.url(),
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Navigates back in browser history
+   */
+  async goBack(options: NavigationOptions = {}): Promise<BrowserActionResult<string | null>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const response = await this.page.goBack({
+        timeout: options.timeout || this.config.timeout,
+        waitUntil: options.waitUntil,
+      });
+
+      // response is null if there was no previous page
+      return {
+        success: true,
+        data: response ? this.page.url() : null,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Navigates forward in browser history
+   */
+  async goForward(options: NavigationOptions = {}): Promise<BrowserActionResult<string | null>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const response = await this.page.goForward({
+        timeout: options.timeout || this.config.timeout,
+        waitUntil: options.waitUntil,
+      });
+
+      // response is null if there was no next page
+      return {
+        success: true,
+        data: response ? this.page.url() : null,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Waits for navigation to complete
+   */
+  async waitForNavigation(options: WaitForNavigationOptions = {}): Promise<BrowserActionResult<string>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      await this.page.waitForURL(options.url || '**/*', {
+        timeout: options.timeout || this.config.timeout,
+        waitUntil: options.waitUntil,
+      });
+
+      return {
+        success: true,
+        data: this.page.url(),
         duration: Date.now() - startTime,
       };
     } catch (error) {
@@ -503,6 +650,186 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   }
 
   /**
+   * Retrieves captured JavaScript errors from injected script
+   */
+  async retrieveCapturedJavaScriptErrors(): Promise<BrowserActionResult<CapturedJavaScriptError[]>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      // Retrieve captured errors from the injected script
+      const capturedErrors = await this.page.evaluate(() => {
+        const errors = window.__apexErrorCapture || [];
+        // Clear the captured errors array after retrieval
+        window.__apexErrorCapture = [];
+        return errors;
+      });
+
+      // Process and add to our error buffer
+      const processedErrors: CapturedJavaScriptError[] = capturedErrors.map(error => ({
+        message: error.message,
+        name: error.name || 'JavaScriptError',
+        stack: error.stack,
+        timestamp: error.timestamp,
+        uncaught: error.uncaught,
+        source: error.filename ? {
+          url: error.filename,
+          line: error.lineno,
+          column: error.colno,
+        } : undefined,
+      }));
+
+      // Add to our error buffer and emit events
+      for (const error of processedErrors) {
+        this.addToErrorBuffer(error);
+        this.emit('javascriptError', error);
+      }
+
+      return {
+        success: true,
+        data: processedErrors,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Starts continuous polling for JavaScript errors from injected script
+   */
+  startErrorPolling(intervalMs: number = 1000): void {
+    if (this.errorPollingInterval) {
+      clearInterval(this.errorPollingInterval);
+    }
+
+    this.errorPollingInterval = setInterval(async () => {
+      await this.retrieveCapturedJavaScriptErrors();
+    }, intervalMs);
+  }
+
+  /**
+   * Stops continuous error polling
+   */
+  stopErrorPolling(): void {
+    if (this.errorPollingInterval) {
+      clearInterval(this.errorPollingInterval);
+      this.errorPollingInterval = undefined;
+    }
+  }
+
+  /**
+   * Retrieves enhanced console messages from injected script
+   */
+  async retrieveEnhancedConsoleMessages(): Promise<BrowserActionResult<CapturedConsoleMessage[]>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      // Retrieve captured console messages from the injected script
+      const capturedMessages = await this.page.evaluate(() => {
+        const messages = window.__apexConsoleCapture || [];
+        // Clear the captured messages array after retrieval
+        window.__apexConsoleCapture = [];
+        return messages;
+      });
+
+      // Process and add to our console buffer
+      const processedMessages: CapturedConsoleMessage[] = capturedMessages.map(msg => ({
+        type: msg.level,
+        text: msg.text,
+        args: msg.args,
+        timestamp: msg.timestamp,
+        location: msg.stack ? this.extractLocationFromStack(msg.stack) : undefined,
+      }));
+
+      // Add to our console buffer and emit events
+      for (const message of processedMessages) {
+        this.addToConsoleBuffer(message);
+        this.emit('consoleMessage', message);
+      }
+
+      return {
+        success: true,
+        data: processedMessages,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Starts streaming console messages and errors in real-time
+   */
+  startRealTimeCapture(options: {
+    consolePollingMs?: number;
+    errorPollingMs?: number;
+    autoStart?: boolean;
+  } = {}): void {
+    const {
+      consolePollingMs = 500,
+      errorPollingMs = 1000,
+      autoStart = true,
+    } = options;
+
+    if (autoStart && this.captureConfig.captureConsole) {
+      setInterval(async () => {
+        await this.retrieveEnhancedConsoleMessages();
+      }, consolePollingMs);
+    }
+
+    if (autoStart && this.captureConfig.captureErrors) {
+      this.startErrorPolling(errorPollingMs);
+    }
+  }
+
+  /**
+   * Extract location information from stack trace
+   */
+  private extractLocationFromStack(stack: string): { url: string; lineNumber?: number; columnNumber?: number; } | undefined {
+    try {
+      // Parse stack trace to extract location information
+      const lines = stack.split('\n');
+      for (const line of lines) {
+        const match = line.match(/at .+? \((.+?):(\d+):(\d+)\)/);
+        if (match) {
+          return {
+            url: match[1],
+            lineNumber: parseInt(match[2], 10),
+            columnNumber: parseInt(match[3], 10),
+          };
+        }
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+    return undefined;
+  }
+
+  /**
    * Gets the underlying Playwright page object
    */
   getPage(): Page | undefined {
@@ -532,6 +859,9 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
     const startTime = Date.now();
 
     try {
+      // Stop error polling if running
+      this.stopErrorPolling();
+
       // Close the page if it exists
       if (this.page) {
         await this.page.close();
@@ -649,6 +979,10 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
     if (!this.page) return;
 
     await this.page.addInitScript(() => {
+      // Initialize capture arrays
+      window.__apexErrorCapture = window.__apexErrorCapture || [];
+      window.__apexConsoleCapture = window.__apexConsoleCapture || [];
+
       // Capture uncaught errors
       window.addEventListener('error', (event) => {
         const errorInfo = {
@@ -659,11 +993,9 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
           stack: event.error?.stack,
           timestamp: Date.now(),
           uncaught: true,
+          name: event.error?.name || 'Error',
         };
 
-        if (!window.__apexErrorCapture) {
-          window.__apexErrorCapture = [];
-        }
         window.__apexErrorCapture.push(errorInfo);
       });
 
@@ -674,12 +1006,40 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
           stack: event.reason?.stack,
           timestamp: Date.now(),
           uncaught: true,
+          name: event.reason?.name || 'UnhandledPromiseRejection',
         };
 
-        if (!window.__apexErrorCapture) {
-          window.__apexErrorCapture = [];
-        }
         window.__apexErrorCapture.push(errorInfo);
+      });
+
+      // Intercept console methods for enhanced capture
+      const originalConsole = { ...console };
+      const consoleLevels = ['log', 'debug', 'info', 'warn', 'error', 'trace'];
+
+      consoleLevels.forEach(level => {
+        const originalMethod = console[level];
+        console[level] = function() {
+          const args = Array.prototype.slice.call(arguments);
+
+          // Store enhanced console message with stack trace
+          const stackTrace = new Error().stack;
+          window.__apexConsoleCapture.push({
+            level: level,
+            args: args.map(arg => {
+              try {
+                return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+              } catch (e) {
+                return String(arg);
+              }
+            }),
+            text: args.join(' '),
+            timestamp: Date.now(),
+            stack: stackTrace,
+          });
+
+          // Call original console method
+          return originalMethod.apply(console, args);
+        };
       });
     });
   }

@@ -976,6 +976,223 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // ============================================================================
+  // MCP (Model Context Protocol) API
+  // ============================================================================
+
+  // Get MCP marketplace entries with filtering
+  app.get<{ Querystring: { category?: string; search?: string; featured?: string; verified?: string } }>(
+    '/mcp/marketplace',
+    async (request, reply) => {
+      try {
+        const { category, search, featured, verified } = request.query;
+        const options = {
+          category,
+          search,
+          featured: featured === 'true',
+          verified: verified === 'true' ? true : verified === 'false' ? false : undefined
+        };
+
+        const entries = await orchestrator.getMcpMarketplaceEntries(options);
+        return { entries };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to fetch marketplace entries';
+        return reply.status(500).send({ error: message });
+      }
+    }
+  );
+
+  // List installed MCP servers
+  app.get('/mcp/servers', async (request, reply) => {
+    try {
+      const servers = await orchestrator.listMcpServers();
+      return servers;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to list MCP servers';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // Install an MCP server
+  app.post<{ Params: { serverName: string } }>(
+    '/mcp/servers/:serverName/install',
+    async (request, reply) => {
+      const { serverName } = request.params;
+
+      if (!serverName || !serverName.trim()) {
+        return reply.status(400).send({ error: 'Server name is required' });
+      }
+
+      try {
+        const serverConfig = await orchestrator.installMcpServer(serverName);
+        return {
+          ok: true,
+          message: `MCP server '${serverName}' installed successfully`,
+          serverConfig
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to install MCP server '${serverName}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // Uninstall an MCP server
+  app.delete<{ Params: { serverName: string } }>(
+    '/mcp/servers/:serverName',
+    async (request, reply) => {
+      const { serverName } = request.params;
+
+      if (!serverName || !serverName.trim()) {
+        return reply.status(400).send({ error: 'Server name is required' });
+      }
+
+      try {
+        await orchestrator.uninstallMcpServer(serverName);
+        return {
+          ok: true,
+          message: `MCP server '${serverName}' uninstalled successfully`
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to uninstall MCP server '${serverName}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // Get MCP server status
+  app.get<{ Params: { serverName: string } }>(
+    '/mcp/servers/:serverName/status',
+    async (request, reply) => {
+      const { serverName } = request.params;
+
+      if (!serverName || !serverName.trim()) {
+        return reply.status(400).send({ error: 'Server name is required' });
+      }
+
+      try {
+        const status = await orchestrator.getMcpServerStatus(serverName);
+        return status;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to get status for MCP server '${serverName}'`;
+        return reply.status(500).send({ error: message });
+      }
+    }
+  );
+
+  // Start an MCP server
+  app.post<{ Params: { serverName: string } }>(
+    '/mcp/servers/:serverName/start',
+    async (request, reply) => {
+      const { serverName } = request.params;
+
+      if (!serverName || !serverName.trim()) {
+        return reply.status(400).send({ error: 'Server name is required' });
+      }
+
+      try {
+        await orchestrator.startMcpServer(serverName);
+        return {
+          ok: true,
+          message: `MCP server '${serverName}' started successfully`
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to start MCP server '${serverName}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // Stop an MCP server
+  app.post<{ Params: { serverName: string } }>(
+    '/mcp/servers/:serverName/stop',
+    async (request, reply) => {
+      const { serverName } = request.params;
+
+      if (!serverName || !serverName.trim()) {
+        return reply.status(400).send({ error: 'Server name is required' });
+      }
+
+      try {
+        await orchestrator.stopMcpServer(serverName);
+        return {
+          ok: true,
+          message: `MCP server '${serverName}' stopped successfully`
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `Failed to stop MCP server '${serverName}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // Get marketplace categories
+  app.get('/mcp/marketplace/categories', async (request, reply) => {
+    try {
+      const categories = await orchestrator.getMcpMarketplaceCategories();
+      return { categories };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch marketplace categories';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // Get featured marketplace entries
+  app.get('/mcp/marketplace/featured', async (request, reply) => {
+    try {
+      const entries = await orchestrator.getFeaturedMcpEntries();
+      return { entries };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch featured entries';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // Get installation recommendations
+  app.get('/mcp/recommendations', async (request, reply) => {
+    try {
+      const recommendations = await orchestrator.getMcpInstallationRecommendations();
+      return recommendations;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get recommendations';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // Auto-configure standard tools
+  app.post<{ Body: { developmentTools?: boolean; productivityTools?: boolean; devopsTools?: boolean; customServers?: string[] } }>(
+    '/mcp/auto-configure',
+    async (request, reply) => {
+      try {
+        const options = request.body;
+        const result = await orchestrator.autoConfigureMcpTools(options);
+        return {
+          ok: true,
+          message: `Auto-configuration completed: ${result.configured.length} servers configured, ${result.skipped.length} skipped, ${result.errors.length} errors`,
+          ...result
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to auto-configure tools';
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // ============================================================================
   // Templates API
   // ============================================================================
 
@@ -1613,6 +1830,175 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       },
     });
   });
+
+  // Auto-fix events (v0.5.0) - Real-time auto-fix progress streaming
+  orchestrator.on('autofix:requested', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:requested',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        fixTypes: event.fixTypes,
+        triggeredBy: event.triggeredBy,
+      },
+    });
+  });
+
+  orchestrator.on('autofix:started', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:started',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        fixType: event.fixType,
+        issuesDetected: event.issuesDetected,
+      },
+    });
+  });
+
+  orchestrator.on('autofix:progress', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:progress',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        fixType: event.fixType,
+        issuesFixed: event.issuesFixed,
+        issuesRemaining: event.issuesRemaining,
+        currentFix: event.currentFix,
+      },
+    });
+  });
+
+  orchestrator.on('autofix:completed', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:completed',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        fixType: event.fixType,
+        issuesDetected: event.issuesDetected,
+        issuesFixed: event.issuesFixed,
+        duration: event.duration,
+      },
+    });
+  });
+
+  orchestrator.on('autofix:failed', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:failed',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        fixType: event.fixType,
+        error: event.error,
+        issuesDetected: event.issuesDetected,
+        issuesFixed: event.issuesFixed,
+      },
+    });
+  });
+
+  orchestrator.on('autofix:skipped', (event) => {
+    broadcast(event.taskId, {
+      type: 'autofix:skipped',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        filePath: event.filePath,
+        reason: event.reason,
+      },
+    });
+  });
+
+  // Browser events (v0.5.0) - Real-time browser automation event streaming
+  orchestrator.on('browser:console', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:console',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        message: event.message,
+      },
+    });
+  });
+
+  orchestrator.on('browser:error', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:error',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        error: event.error,
+      },
+    });
+  });
+
+  orchestrator.on('browser:network-error', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:network-error',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        error: event.error,
+      },
+    });
+  });
+
+  orchestrator.on('browser:performance-warning', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:performance-warning',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        warning: event.warning,
+      },
+    });
+  });
+
+  orchestrator.on('browser:security-violation', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:security-violation',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        violation: event.violation,
+      },
+    });
+  });
+
+  orchestrator.on('browser:session-started', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:session-started',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        session: event.session,
+      },
+    });
+  });
+
+  orchestrator.on('browser:session-ended', (event) => {
+    broadcast(event.taskId, {
+      type: 'browser:session-ended',
+      taskId: event.taskId,
+      timestamp: event.timestamp,
+      data: {
+        agentName: event.agentName,
+        session: event.session,
+      },
+    });
+  });
 }
 
 /**
@@ -1700,6 +2086,12 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • approval:required         - Approval gate reached (v0.5.0)`);
       console.log(`    • approval:granted          - Approval request granted (v0.5.0)`);
       console.log(`    • approval:denied           - Approval request denied (v0.5.0)`);
+      console.log(`    • autofix:requested         - Auto-fix requested for file (v0.5.0)`);
+      console.log(`    • autofix:started           - Auto-fix operation started (v0.5.0)`);
+      console.log(`    • autofix:progress          - Auto-fix progress update (v0.5.0)`);
+      console.log(`    • autofix:completed         - Auto-fix operation completed (v0.5.0)`);
+      console.log(`    • autofix:failed            - Auto-fix operation failed (v0.5.0)`);
+      console.log(`    • autofix:skipped           - Auto-fix operation skipped (v0.5.0)`);
       console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }
   } catch (error) {

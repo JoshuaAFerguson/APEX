@@ -50,6 +50,8 @@ export interface TDDExecutorConfig {
   testTimeout?: number;
   /** Whether to emit detailed events */
   enableEvents?: boolean;
+  /** Whether to enable regression guard (default: true) */
+  regressionGuard?: boolean;
 }
 
 /**
@@ -116,6 +118,32 @@ export interface FixResult {
   error?: string;
   /** Files that were modified */
   modifiedFiles: string[];
+  /** Backup data for reverting changes */
+  backup?: FixBackup;
+}
+
+/**
+ * Backup data for reverting fixes
+ */
+export interface FixBackup {
+  /** Modified files with their original content */
+  files: Record<string, string>;
+  /** Timestamp when backup was created */
+  timestamp: Date;
+}
+
+/**
+ * Result of regression detection
+ */
+export interface RegressionResult {
+  /** Whether regression was detected */
+  detected: boolean;
+  /** Test result that detected the regression */
+  testResult?: TestResult;
+  /** Error message if regression check failed */
+  error?: string;
+  /** Whether the regression check was skipped */
+  skipped?: boolean;
 }
 
 /**
@@ -130,6 +158,10 @@ export interface TDDIterationResult {
   suggestedFix?: SuggestedFix;
   /** Result of applying the fix (if attempted) */
   fixResult?: FixResult;
+  /** Result of regression detection (if enabled) */
+  regressionResult?: RegressionResult;
+  /** Whether the fix was reverted due to regression */
+  fixReverted?: boolean;
   /** Whether this iteration resolved all test failures */
   resolved: boolean;
   /** Duration of the entire iteration in milliseconds */
@@ -167,6 +199,8 @@ export interface TDDEvents {
   'tdd:test-run': (testResult: TestResult, iteration: number, taskId: string) => void;
   'tdd:fix-generated': (fix: SuggestedFix, iteration: number, taskId: string) => void;
   'tdd:fix-applied': (fixResult: FixResult, iteration: number, taskId: string) => void;
+  'tdd:regression-detected': (regressionResult: RegressionResult, iteration: number, taskId: string) => void;
+  'tdd:fix-reverted': (fixResult: FixResult, iteration: number, taskId: string) => void;
   'tdd:iteration-completed': (result: TDDIterationResult, taskId: string) => void;
   'tdd:completed': (result: TDDExecutionResult, taskId: string) => void;
   'tdd:failed': (error: Error, iteration: number, taskId: string) => void;
@@ -182,11 +216,16 @@ export interface TDDEvents {
 export class TDDExecutor extends EventEmitter<TDDEvents> {
   private config: TDDExecutorConfig;
   private agents: Record<string, AgentDefinition>;
+  private baselineTestResult?: TestResult;
 
   constructor(config: TDDExecutorConfig, agents: Record<string, AgentDefinition> = {}) {
     super();
     this.config = config;
     this.agents = agents;
+    // Enable regression guard by default
+    if (this.config.regressionGuard === undefined) {
+      this.config.regressionGuard = true;
+    }
   }
 
   /**
@@ -204,6 +243,11 @@ export class TDDExecutor extends EventEmitter<TDDEvents> {
     let currentIteration = 1;
 
     try {
+      // Capture baseline test result if regression guard is enabled
+      if (this.config.regressionGuard) {
+        this.baselineTestResult = await this.runTests();
+      }
+
       while (currentIteration <= this.config.maxIterations) {
         if (this.config.enableEvents) {
           this.emit('tdd:iteration-started', currentIteration, executionTaskId);
@@ -233,7 +277,7 @@ export class TDDExecutor extends EventEmitter<TDDEvents> {
           return result;
         }
 
-        // If fix failed to apply, stop
+        // If fix failed to apply or was reverted due to regression, stop
         if (iterationResult.fixResult && !iterationResult.fixResult.success) {
           const result: TDDExecutionResult = {
             success: false,
@@ -329,11 +373,44 @@ export class TDDExecutor extends EventEmitter<TDDEvents> {
       this.emit('tdd:fix-applied', fixResult, iteration, taskId);
     }
 
+    // Check for regression if fix was applied and regression guard is enabled
+    let regressionResult: RegressionResult | undefined;
+    let fixReverted = false;
+
+    if (fixResult.success && this.config.regressionGuard) {
+      regressionResult = await this.detectRegression();
+
+      if (regressionResult.detected) {
+        // Regression detected - revert the fix
+        if (this.config.enableEvents) {
+          this.emit('tdd:regression-detected', regressionResult, iteration, taskId);
+        }
+
+        const revertResult = await this.revertFix(fixResult);
+        if (revertResult.success) {
+          fixReverted = true;
+          // Mark fix as failed since it was reverted
+          fixResult.success = false;
+          fixResult.error = `Fix reverted due to regression: ${regressionResult.error || 'existing tests failed'}`;
+
+          if (this.config.enableEvents) {
+            this.emit('tdd:fix-reverted', revertResult, iteration, taskId);
+          }
+        } else {
+          // If revert failed, that's a critical error
+          fixResult.success = false;
+          fixResult.error = `Regression detected but revert failed: ${revertResult.error}`;
+        }
+      }
+    }
+
     return {
       iteration,
       testResult,
       suggestedFix,
       fixResult,
+      regressionResult,
+      fixReverted,
       resolved: false, // We'll check in the next iteration
       duration: Date.now() - startTime.getTime(),
       startTime,
@@ -494,6 +571,12 @@ Only provide ONE fix per response, targeting the most critical failure first.`;
       const filePath = path.resolve(this.config.workingDirectory || process.cwd(), fix.file);
       let fileContent = await fs.readFile(filePath, 'utf-8');
 
+      // Create backup for potential reversion
+      const backup: FixBackup = {
+        files: { [fix.file]: fileContent },
+        timestamp: new Date(),
+      };
+
       // Apply the fix
       if (!fileContent.includes(fix.originalContent)) {
         return {
@@ -509,11 +592,103 @@ Only provide ONE fix per response, targeting the most critical failure first.`;
       return {
         success: true,
         modifiedFiles: [fix.file],
+        backup,
       };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error applying fix',
+        modifiedFiles: [],
+      };
+    }
+  }
+
+  /**
+   * Detect if a regression has occurred by comparing current test results to baseline
+   */
+  private async detectRegression(): Promise<RegressionResult> {
+    if (!this.baselineTestResult) {
+      return {
+        detected: false,
+        skipped: true,
+        error: 'No baseline test result available',
+      };
+    }
+
+    try {
+      const currentTestResult = await this.runTests();
+
+      // Regression is detected if:
+      // 1. Previously passing tests now fail
+      // 2. New failures have appeared that weren't in the baseline
+      const regressionDetected =
+        // If baseline tests passed but current tests fail
+        (this.baselineTestResult.success && !currentTestResult.success) ||
+        // If current tests have more failures than baseline
+        (currentTestResult.failures.length > this.baselineTestResult.failures.length) ||
+        // If current tests have different failures than baseline (excluding expected failures)
+        this.hasNewFailures(this.baselineTestResult.failures, currentTestResult.failures);
+
+      return {
+        detected: regressionDetected,
+        testResult: currentTestResult,
+        error: regressionDetected ? 'Regression detected: existing tests are now failing' : undefined,
+      };
+    } catch (error) {
+      return {
+        detected: true, // Assume regression if we can't run tests
+        error: `Failed to run regression check: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  /**
+   * Check if current failures contain new failures not present in baseline
+   */
+  private hasNewFailures(baselineFailures: TestFailure[], currentFailures: TestFailure[]): boolean {
+    // Create a set of baseline failure signatures for comparison
+    const baselineSignatures = new Set(
+      baselineFailures.map(f => `${f.file}:${f.test}:${f.message}`)
+    );
+
+    // Check if any current failures are not in baseline
+    return currentFailures.some(failure => {
+      const signature = `${failure.file}:${failure.test}:${failure.message}`;
+      return !baselineSignatures.has(signature);
+    });
+  }
+
+  /**
+   * Revert a fix by restoring files from backup
+   */
+  private async revertFix(fixResult: FixResult): Promise<FixResult> {
+    if (!fixResult.backup) {
+      return {
+        success: false,
+        error: 'No backup available to revert fix',
+        modifiedFiles: [],
+      };
+    }
+
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const restoredFiles: string[] = [];
+
+      for (const [file, originalContent] of Object.entries(fixResult.backup.files)) {
+        const filePath = path.resolve(this.config.workingDirectory || process.cwd(), file);
+        await fs.writeFile(filePath, originalContent, 'utf-8');
+        restoredFiles.push(file);
+      }
+
+      return {
+        success: true,
+        modifiedFiles: restoredFiles,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error reverting fix',
         modifiedFiles: [],
       };
     }
@@ -530,12 +705,14 @@ Only provide ONE fix per response, targeting the most critical failure first.`;
 export function createTDDExecutor(
   testCommand: string,
   maxIterations: number = 3,
-  agents: Record<string, AgentDefinition> = {}
+  agents: Record<string, AgentDefinition> = {},
+  regressionGuard: boolean = true
 ): TDDExecutor {
   const config: TDDExecutorConfig = {
     maxIterations,
     testCommand,
     enableEvents: true,
+    regressionGuard,
   };
 
   return new TDDExecutor(config, agents);
@@ -547,8 +724,9 @@ export function createTDDExecutor(
 export async function executeTDD(
   testCommand: string,
   maxIterations: number = 3,
-  agents: Record<string, AgentDefinition> = {}
+  agents: Record<string, AgentDefinition> = {},
+  regressionGuard: boolean = true
 ): Promise<TDDExecutionResult> {
-  const executor = createTDDExecutor(testCommand, maxIterations, agents);
+  const executor = createTDDExecutor(testCommand, maxIterations, agents, regressionGuard);
   return await executor.execute();
 }

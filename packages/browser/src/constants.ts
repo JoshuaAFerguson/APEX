@@ -106,6 +106,10 @@ export const ERROR_MESSAGES = {
   CONTEXT_CREATION_FAILED: 'Failed to create browser context',
   MAX_INSTANCES_EXCEEDED: 'Maximum browser instances exceeded',
   RESOURCE_LIMIT_EXCEEDED: 'Resource usage limit exceeded',
+  NAVIGATION_NO_HISTORY_BACK: 'Cannot go back - no previous page in history',
+  NAVIGATION_NO_HISTORY_FORWARD: 'Cannot go forward - no next page in history',
+  NAVIGATION_TIMEOUT: 'Navigation timed out',
+  RELOAD_FAILED: 'Page reload failed',
 } as const;
 
 /**

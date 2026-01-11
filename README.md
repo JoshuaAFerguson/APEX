@@ -59,6 +59,7 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 
 ## Features
 
+### Core Platform
 - **🤖 Specialized Agents** - Purpose-built agents for planning, architecture, implementation, testing, code review, and DevOps
 - **🔄 Configurable Workflows** - Define custom development workflows with stages, dependencies, and approval gates
 - **🎛️ Autonomy Levels** - From fully autonomous to human-in-the-loop approval at each stage
@@ -67,6 +68,16 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 - **💰 Cost Controls** - Built-in token budgets and usage tracking
 - **🔌 Extensible** - Add custom agents, skills, and workflows
 - **🏢 Enterprise Ready** - Scales from individual developers to large teams
+
+### v0.5.0 - Tool System & Permissions ✨ **NEW**
+- **🌐 Browser Automation** - Headless browser testing with Playwright (Chrome, Firefox, Safari)
+- **🔧 Built-in Tools** - Complete Claude Code tool parity (Read, Write, Edit, Bash, etc.)
+- **🛡️ Permission System** - Fine-grained control with autonomous/review/read-only presets
+- **📋 Policy Engine** - Policy-as-code rules for path restrictions and approval gates
+- **🎯 Autonomy Controls** - Smart budget, token, time, and change limits
+- **🔍 Code Quality** - Lint-after-edit, auto-fix, type checking, and TDD mode
+- **🔗 MCP Integration** - Model Context Protocol for extensible tool ecosystem
+- **🔐 Secret Protection** - Automatic detection and blocking of credential leaks
 
 ## Platform Support
 

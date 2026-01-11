@@ -99,17 +99,21 @@ import { InteractionManager } from './interaction-manager';
 import { PermissionStore } from './permission-store';
 import { PermissionManager } from './permission-manager';
 import { PermissionPresetManager } from './permission-preset-manager';
-import { LinterService } from './linter';
+import { BrowserManager, type BrowserManagerOptions, type BrowserManagerEvents } from './browser-manager';
+import { LinterService, ESLintPlugin, PrettierPlugin } from './linter';
 import { ErrorFeedbackLoop } from './error-feedback';
 import { SecretScanner, type SecretScannerConfig as OrchestratorSecretScannerConfig } from './scanner';
 import { SecretOutputProcessor } from './secret-output-processor';
 import { generateFileDiff, type DiffResult } from './utils/diff';
 import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
+import { MCPInstaller } from './mcp-installer';
+import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
 import { browserTool } from './tools';
 import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
 import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
+import type { ImportFixResult, MissingImportAnalysis } from './import-auto-fixer/types';
 
 const execAsync = promisify(exec);
 
@@ -330,6 +334,24 @@ export interface OrchestratorEvents {
   'hook:pre:complete': (event: HookExecutionCompleteEvent) => void;
   'hook:post:start': (event: HookExecutionStartEvent) => void;
   'hook:post:complete': (event: HookExecutionCompleteEvent) => void;
+
+  // Browser events (v0.5.0) - Integration with browser automation streaming
+  'browser:console': (event: BrowserConsoleEvent) => void;
+  'browser:error': (event: BrowserErrorEvent) => void;
+  'browser:network-error': (event: BrowserNetworkErrorEvent) => void;
+  'browser:performance-warning': (event: BrowserPerformanceWarningEvent) => void;
+  'browser:security-violation': (event: BrowserSecurityViolationEvent) => void;
+  'browser:session-started': (event: BrowserSessionStartedEvent) => void;
+  'browser:session-ended': (event: BrowserSessionEndedEvent) => void;
+
+  // Browser Manager events (v0.5.0) - Browser instance lifecycle management
+  'browser:launched': (event: BrowserManagerLaunchedEvent) => void;
+  'browser:closed': (event: BrowserManagerClosedEvent) => void;
+  'browser:context-created': (event: BrowserManagerContextCreatedEvent) => void;
+  'browser:context-closed': (event: BrowserManagerContextClosedEvent) => void;
+  'browser:page-created': (event: BrowserManagerPageCreatedEvent) => void;
+  'browser:page-closed': (event: BrowserManagerPageClosedEvent) => void;
+  'browser:manager-error': (event: BrowserManagerErrorEvent) => void;
 }
 
 /**
@@ -754,6 +776,277 @@ export interface AutoFixSkippedEventData {
   timestamp: Date;
 }
 
+/**
+ * Browser Events - Integrating browser automation events with orchestrator streaming
+ * These events provide real-time visibility into browser automation activities
+ * and include task context correlation for proper event tracking.
+ */
+
+/**
+ * Event payload for browser console messages
+ * Emitted when a console message is captured from browser automation
+ */
+export interface BrowserConsoleEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Console message details */
+  message: {
+    type: string;
+    text: string;
+    timestamp: Date;
+    level: import('./browser-console-stream').ConsoleLogLevel;
+    args?: unknown[];
+    location?: {
+      url: string;
+      lineNumber?: number;
+      columnNumber?: number;
+    };
+    stack?: string;
+    sessionId?: string;
+    pageContext?: {
+      url: string;
+      title: string;
+      userAgent: string;
+    };
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser runtime errors
+ * Emitted when a JavaScript error or runtime error occurs in browser automation
+ */
+export interface BrowserErrorEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Runtime error details */
+  error: {
+    message: string;
+    name?: string;
+    stack?: string;
+    timestamp: Date;
+    source?: {
+      url: string;
+      line: number;
+      column: number;
+    };
+    category: 'javascript' | 'network' | 'security' | 'permission' | 'resource' | 'unknown';
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    context?: {
+      userAgent: string;
+      pageUrl: string;
+      pageTitle: string;
+      viewport: { width: number; height: number };
+      timestamp: Date;
+    };
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser network errors
+ * Emitted when network requests fail during browser automation
+ */
+export interface BrowserNetworkErrorEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Network error details */
+  error: {
+    url: string;
+    method: string;
+    status: number;
+    statusText: string;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser performance warnings
+ * Emitted when performance issues are detected during browser automation
+ */
+export interface BrowserPerformanceWarningEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Performance warning details */
+  warning: {
+    type: 'slow-script' | 'memory-high' | 'layout-thrashing' | 'long-task';
+    message: string;
+    duration?: number;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser security violations
+ * Emitted when security violations are detected during browser automation
+ */
+export interface BrowserSecurityViolationEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Security violation details */
+  violation: {
+    type: 'csp' | 'cors' | 'mixed-content' | 'unsafe-eval';
+    message: string;
+    blockedURI?: string;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser session start
+ * Emitted when a browser automation session starts
+ */
+export interface BrowserSessionStartedEvent {
+  taskId: string;
+  /** Agent name that initiated the browser session */
+  agentName: string;
+  /** Browser session details */
+  session: {
+    sessionId: string;
+    browserType: string;
+    userAgent: string;
+    viewport: { width: number; height: number };
+    headless: boolean;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser session end
+ * Emitted when a browser automation session ends
+ */
+export interface BrowserSessionEndedEvent {
+  taskId: string;
+  /** Agent name that ended the browser session */
+  agentName: string;
+  /** Browser session details */
+  session: {
+    sessionId: string;
+    duration: number; // milliseconds
+    pagesVisited: number;
+    errorsCount: number;
+    consoleMessagesCount: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser instance is launched by BrowserManager
+ */
+export interface BrowserManagerLaunchedEvent {
+  taskId: string;
+  /** Agent name that requested the browser launch */
+  agentName: string;
+  /** Browser instance information */
+  browserInfo: {
+    id: string;
+    engine: string;
+    version: string;
+    isConnected: boolean;
+    pid?: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser instance is closed by BrowserManager
+ */
+export interface BrowserManagerClosedEvent {
+  taskId: string;
+  /** Agent name that closed the browser */
+  agentName: string;
+  /** Browser instance ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser context is created by BrowserManager
+ */
+export interface BrowserManagerContextCreatedEvent {
+  taskId: string;
+  /** Agent name that requested the context */
+  agentName: string;
+  /** Context information */
+  contextInfo: {
+    id: string;
+    browserId: string;
+    pageCount: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser context is closed by BrowserManager
+ */
+export interface BrowserManagerContextClosedEvent {
+  taskId: string;
+  /** Agent name that closed the context */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a page is created within a browser context
+ */
+export interface BrowserManagerPageCreatedEvent {
+  taskId: string;
+  /** Agent name that triggered the page creation */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a page is closed within a browser context
+ */
+export interface BrowserManagerPageClosedEvent {
+  taskId: string;
+  /** Agent name that closed the page */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when an error occurs in BrowserManager operations
+ */
+export interface BrowserManagerErrorEvent {
+  taskId: string;
+  /** Agent name that was executing when the error occurred */
+  agentName: string;
+  /** Error details */
+  error: {
+    message: string;
+    name?: string;
+    stack?: string;
+    operation?: string; // The BrowserManager operation that failed
+  };
+  timestamp: Date;
+}
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -783,6 +1076,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private permissionStore!: PermissionStore;
   private permissionManager!: PermissionManager;
   private permissionPresetManager!: PermissionPresetManager;
+  private browserManager!: BrowserManager;
   private policyEnforcer!: PolicyEnforcer;
   private autonomyEnforcer!: AutonomyEnforcer;
   private policyEngine?: PolicyEngine;  // Optional PolicyEngine instance
@@ -793,6 +1087,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private hookManager!: HookManager;
   private customToolsServer?: CustomToolsServer;
   private mcpServerManager?: MCPServerManager;
+  private mcpInstaller?: MCPInstaller;
+  private mcpMarketplaceService?: MCPMarketplaceService;
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
   private projectPath: string;
@@ -801,6 +1097,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   // Task execution tracking
   private currentTaskId: string | null = null;
+  private currentAgentName: string | null = null;
 
   // CLI flags for current task
   private currentTaskCliFlags: { diffPreview?: boolean } | undefined = undefined;
@@ -848,8 +1145,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.config = await loadConfig(this.projectPath);
     this.effectiveConfig = getEffectiveConfig(this.config);
 
-    // Initialize MCP server manager (v0.5.0)
+    // Initialize MCP server manager and installer (v0.5.0)
     this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
+    this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
+    this.mcpMarketplaceService = new MCPMarketplaceService(this.projectPath, this.config);
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
@@ -923,6 +1222,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       this.browserToolsServer = buildBrowserToolsServer(browserTool);
     }
 
+    // Initialize browser manager with permission manager integration
+    this.browserManager = new BrowserManager({
+      permissionManager: this.permissionManager,
+      browserTool,
+      defaultConfig: browserToolConfig?.browserConfig || {},
+    });
+
+    // Initialize browser event integration with task context correlation
+    this.setupBrowserEventIntegration();
+
+    // Setup task and agent context tracking for event correlation
+    this.setupContextTracking();
+
     // Initialize policy enforcer
     this.policyEnforcer = createPolicyEnforcer(this.config.policy);
     this.policyEnforcer.on('policy:violation', event => {
@@ -960,6 +1272,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
     });
     await this.linterService.initialize();
+
+    // Register available linter plugins
+    await this.registerAvailableLinterPlugins();
 
     // Initialize secret scanner if configured
     const secretScannerConfig = this.resolveSecretScannerConfig();
@@ -3290,10 +3605,49 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
 
       // Execute auto-fix on all files
-      const fixResults = await autoFixer.fix(filesToProcess);
+      const fixResults: ImportFixResult[] = [];
+
+      // First analyze files to get accurate issue counts
+      const analysisResults = await autoFixer.analyze(filesToProcess);
+
+      // Process files individually to emit started/progress events
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const filePath = filesToProcess[i];
+        const analysis = analysisResults[i];
+
+        // Emit started event with accurate issue count
+        this.emit('autofix:started', {
+          taskId,
+          filePath,
+          fixType: 'imports',
+          issuesDetected: analysis?.missingImports.length || 0,
+          timestamp: new Date(),
+        });
+
+        // Execute fix for this file
+        const fileResults = await autoFixer.fix([filePath]);
+        fixResults.push(...fileResults);
+
+        // Emit progress event
+        const result = fileResults[0];
+        if (result) {
+          const issuesFixed = result.success ? result.importsAdded.length : 0;
+          const issuesDetected = analysis?.missingImports.length || 0;
+          this.emit('autofix:progress', {
+            taskId,
+            filePath,
+            fixType: 'imports',
+            issuesFixed,
+            issuesRemaining: Math.max(0, issuesDetected - issuesFixed),
+            currentFix: result.success && issuesFixed > 0 ? `Added ${issuesFixed} imports` : undefined,
+            timestamp: new Date(),
+          });
+        }
+      }
+
       const summary = autoFixer.getSummary(fixResults);
 
-      // Emit progress events
+      // Emit completion/failure events
       for (const result of fixResults) {
         if (result.success) {
           this.emit('autofix:completed', {
@@ -7687,10 +8041,10 @@ Parent: ${parentTask.description}`;
   }
 
   public async listMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
-    if (!this.mcpServerManager) {
+    if (!this.mcpMarketplaceService) {
       return [];
     }
-    return this.mcpServerManager.listMarketplaceEntries();
+    return this.mcpMarketplaceService.getMarketplaceEntries();
   }
 
   public async installMcpServer(name: string): Promise<MCPServerConfig> {
@@ -7704,6 +8058,242 @@ Parent: ${parentTask.description}`;
     this.mcpServerManager.updateConfig(this.config);
 
     return installed;
+  }
+
+  public async uninstallMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.uninstallServer(name);
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager.updateConfig(this.config);
+  }
+
+  public async getMcpServerStatus(name: string): Promise<{
+    name: string;
+    status: 'running' | 'stopped' | 'error';
+    lastError?: string;
+  }> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    return this.mcpServerManager.getServerStatus(name);
+  }
+
+  public async startMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.startServer(name);
+  }
+
+  public async stopMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.stopServer(name);
+  }
+
+  /**
+   * Enhanced MCP server installation with SQLite tracking and npm/npx support
+   */
+  public async installMcpServerEnhanced(
+    nameOrPackage: string,
+    options?: {
+      force?: boolean;
+      args?: string[];
+      env?: Record<string, string>;
+      global?: boolean;
+    }
+  ): Promise<{
+    name: string;
+    config: MCPServerConfig;
+    installedFrom: 'marketplace' | 'npm' | 'npx' | 'manual';
+    installedAt: Date;
+  }> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    const result = await this.mcpInstaller.install(nameOrPackage, options);
+
+    // Update local config after installation
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager?.updateConfig(this.config);
+
+    return result;
+  }
+
+  /**
+   * Install MCP server from npm/npx directly
+   */
+  public async installMcpServerFromNpm(
+    packageName: string,
+    options?: {
+      force?: boolean;
+      args?: string[];
+      env?: Record<string, string>;
+      global?: boolean;
+    }
+  ): Promise<{
+    name: string;
+    config: MCPServerConfig;
+    installedFrom: 'npm' | 'npx';
+    installedAt: Date;
+  }> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    const result = await this.mcpInstaller.installFromNpm(packageName, options);
+
+    // Update local config after installation
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager?.updateConfig(this.config);
+
+    return result;
+  }
+
+  /**
+   * List installed MCP servers with enhanced information
+   */
+  public async listInstalledMcpServers(): Promise<Array<{
+    name: string;
+    config: MCPServerConfig;
+    installedFrom: 'marketplace' | 'npm' | 'npx' | 'manual';
+    installedAt: Date;
+  }>> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.listInstalled();
+  }
+
+  /**
+   * Uninstall an MCP server using enhanced tracking
+   */
+  public async uninstallMcpServerEnhanced(name: string): Promise<void> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    await this.mcpInstaller.uninstall(name);
+  }
+
+  /**
+   * Check if an MCP server is installed
+   */
+  public async isMcpServerInstalled(name: string): Promise<boolean> {
+    if (!this.mcpInstaller) {
+      return false;
+    }
+
+    return this.mcpInstaller.isInstalled(name);
+  }
+
+  /**
+   * Update MCP marketplace cache
+   */
+  public async updateMcpMarketplaceCache(): Promise<void> {
+    if (!this.mcpInstaller || !this.mcpMarketplaceService) {
+      return;
+    }
+
+    // Get entries from marketplace service
+    const entries = await this.mcpMarketplaceService.getMarketplaceEntries();
+
+    // Update local SQLite cache
+    await this.mcpInstaller.updateMarketplaceCache(entries);
+  }
+
+  /**
+   * Get marketplace entries with filtering options
+   */
+  public async getMcpMarketplaceEntries(options?: {
+    category?: string;
+    search?: string;
+    featured?: boolean;
+    verified?: boolean;
+  }): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getMarketplaceEntries(options);
+  }
+
+  /**
+   * Get marketplace categories
+   */
+  public async getMcpMarketplaceCategories(): Promise<Array<{ name: string; count: number }>> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getCategories();
+  }
+
+  /**
+   * Get featured marketplace entries
+   */
+  public async getFeaturedMcpEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getFeaturedEntries();
+  }
+
+  /**
+   * Auto-configure standard development tools
+   */
+  public async autoConfigureMcpTools(options?: AutoConfigurationOptions): Promise<{
+    configured: MCPServerConfig[];
+    skipped: string[];
+    errors: Array<{ name: string; error: string }>;
+  }> {
+    if (!this.mcpMarketplaceService) {
+      throw new Error('MCP marketplace service not initialized');
+    }
+
+    const result = await this.mcpMarketplaceService.autoConfigureStandardTools(options);
+
+    // Refresh configuration after auto-configuration
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager?.updateConfig(this.config);
+
+    return result;
+  }
+
+  /**
+   * Get installation recommendations for the current project
+   */
+  public async getMcpInstallationRecommendations(): Promise<{
+    essential: MCPMarketplaceEntry[];
+    recommended: MCPMarketplaceEntry[];
+    optional: MCPMarketplaceEntry[];
+  }> {
+    if (!this.mcpMarketplaceService) {
+      return { essential: [], recommended: [], optional: [] };
+    }
+    return this.mcpMarketplaceService.getInstallationRecommendations();
+  }
+
+  /**
+   * Get MCP marketplace entries from cache
+   */
+  public async getCachedMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.getMarketplaceEntries();
   }
 
   /**
@@ -8029,6 +8619,74 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Register available linter plugins with the linter service
+   *
+   * Automatically detects and registers ESLint and Prettier plugins
+   * based on configuration and tool availability.
+   */
+  private async registerAvailableLinterPlugins(): Promise<void> {
+    const linterConfig = this.config.linter;
+
+    // Skip if linter is globally disabled
+    if (linterConfig?.global?.enabled === false) {
+      return;
+    }
+
+    // Register ESLint plugin if configured and available
+    if (linterConfig?.eslint?.enabled !== false) {
+      const eslintPlugin = new ESLintPlugin();
+      try {
+        const isAvailable = await eslintPlugin.isAvailable();
+        if (isAvailable) {
+          this.linterService.register(eslintPlugin, {
+            priority: 1,
+            enabled: true,
+            autoFix: linterConfig?.eslint?.autoFix ?? true,
+            timeout: linterConfig?.global?.timeoutMs ?? 60000,
+            include: linterConfig?.eslint?.patterns || [],
+          });
+          console.log('ESLint plugin registered successfully');
+        } else {
+          console.log('ESLint not found, skipping plugin registration');
+        }
+      } catch (error) {
+        console.warn('Failed to register ESLint plugin:', error);
+      }
+    }
+
+    // Register Prettier plugin if configured and available
+    if (linterConfig?.prettier?.enabled !== false) {
+      const prettierPlugin = new PrettierPlugin();
+      try {
+        const isAvailable = await prettierPlugin.isAvailable();
+        if (isAvailable) {
+          this.linterService.register(prettierPlugin, {
+            priority: 2,
+            enabled: true,
+            autoFix: linterConfig?.prettier?.autoFix ?? true,
+            timeout: linterConfig?.global?.timeoutMs ?? 60000,
+            include: linterConfig?.prettier?.patterns || [],
+          });
+          console.log('Prettier plugin registered successfully');
+        } else {
+          console.log('Prettier not found, skipping plugin registration');
+        }
+      } catch (error) {
+        console.warn('Failed to register Prettier plugin:', error);
+      }
+    }
+
+    // Register custom linters if configured
+    const customLinters = linterConfig?.custom || [];
+    for (const customConfig of customLinters) {
+      if (customConfig.enabled !== false) {
+        // TODO: Implement custom linter plugin support in future iteration
+        console.log(`Custom linter '${customConfig.name}' configuration found, but custom linter support not yet implemented`);
+      }
+    }
+  }
+
+  /**
    * Setup event forwarding from TDD executor to orchestrator
    */
   private setupTDDEventForwarding(): void {
@@ -8104,6 +8762,263 @@ Parent: ${parentTask.description}`;
         timestamp: new Date(),
         data: { error: error.message, iteration },
       });
+    });
+  }
+
+  /**
+   * Setup browser event integration with task context correlation
+   * Forwards browser automation events from BrowserTool and BrowserConsoleStream
+   * to the orchestrator's event system with proper task and agent context.
+   */
+  private setupBrowserEventIntegration(): void {
+    // Get the console stream from browser tool for event integration
+    const consoleStream = browserTool.getConsoleStream();
+
+    if (consoleStream) {
+      // Forward console messages with task context
+      consoleStream.on('message', (message) => {
+        const browserEvent: BrowserConsoleEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          message: {
+            type: message.type,
+            text: message.text,
+            timestamp: message.timestamp,
+            level: message.level,
+            args: message.args,
+            location: message.location,
+            stack: message.stack,
+            sessionId: message.sessionId,
+            pageContext: message.pageContext,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:console', browserEvent);
+      });
+
+      // Forward runtime errors with task context
+      consoleStream.on('error', (error) => {
+        const browserEvent: BrowserErrorEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          error: {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            timestamp: error.timestamp,
+            source: error.source,
+            category: error.category,
+            severity: error.severity,
+            context: error.context,
+            sessionId: error.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:error', browserEvent);
+      });
+
+      // Forward network errors with task context
+      consoleStream.on('network-error', (networkError) => {
+        const browserEvent: BrowserNetworkErrorEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          error: {
+            url: networkError.url,
+            method: networkError.method,
+            status: networkError.status,
+            statusText: networkError.statusText,
+            timestamp: networkError.timestamp,
+            sessionId: networkError.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:network-error', browserEvent);
+      });
+
+      // Forward performance warnings with task context
+      consoleStream.on('performance-warning', (warning) => {
+        const browserEvent: BrowserPerformanceWarningEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          warning: {
+            type: warning.type,
+            message: warning.message,
+            duration: warning.duration,
+            timestamp: warning.timestamp,
+            sessionId: warning.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:performance-warning', browserEvent);
+      });
+
+      // Forward security violations with task context
+      consoleStream.on('security-violation', (violation) => {
+        const browserEvent: BrowserSecurityViolationEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          violation: {
+            type: violation.type,
+            message: violation.message,
+            blockedURI: violation.blockedURI,
+            timestamp: violation.timestamp,
+            sessionId: violation.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:security-violation', browserEvent);
+      });
+
+      // Forward stream lifecycle events
+      consoleStream.on('stream-started', (config) => {
+        const browserEvent: BrowserSessionStartedEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          session: {
+            sessionId: config.sessionId || 'unknown',
+            browserType: 'chromium', // Default, could be made configurable
+            userAgent: 'unknown', // Would need to extract from page context
+            viewport: { width: 1280, height: 720 }, // Default, could be made configurable
+            headless: true, // Default, could be made configurable
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:session-started', browserEvent);
+      });
+
+      consoleStream.on('stream-stopped', () => {
+        const stats = consoleStream.getStats();
+        const browserEvent: BrowserSessionEndedEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          session: {
+            sessionId: stats.sessionId,
+            duration: 0, // Duration calculation would need to be implemented
+            pagesVisited: 1, // Would need to track this
+            errorsCount: stats.errorsCount,
+            consoleMessagesCount: stats.messagesCount,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:session-ended', browserEvent);
+      });
+    }
+
+    // Forward BrowserManager events with task context correlation
+    // These events provide browser instance lifecycle information
+    this.browserManager.on('browser:launched', (info) => {
+      const event: BrowserManagerLaunchedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        browserInfo: {
+          id: info.id,
+          engine: info.engine,
+          version: info.version,
+          isConnected: info.isConnected,
+          pid: info.pid,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:launched', event);
+    });
+
+    this.browserManager.on('browser:closed', (browserId) => {
+      const event: BrowserManagerClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:closed', event);
+    });
+
+    this.browserManager.on('context:created', (info) => {
+      const event: BrowserManagerContextCreatedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextInfo: {
+          id: info.id,
+          browserId: info.browserId,
+          pageCount: info.pageCount,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:context-created', event);
+    });
+
+    this.browserManager.on('context:closed', (contextId, browserId) => {
+      const event: BrowserManagerContextClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:context-closed', event);
+    });
+
+    this.browserManager.on('page:created', (page, contextId, browserId) => {
+      const event: BrowserManagerPageCreatedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:page-created', event);
+    });
+
+    this.browserManager.on('page:closed', (contextId, browserId) => {
+      const event: BrowserManagerPageClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:page-closed', event);
+    });
+
+    this.browserManager.on('error', (error, operation) => {
+      const event: BrowserManagerErrorEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        error: {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          operation,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:manager-error', event);
+    });
+  }
+
+  /**
+   * Setup context tracking for task and agent correlation in events
+   * Maintains current task and agent state for proper event attribution
+   */
+  private setupContextTracking(): void {
+    // Track agent transitions to maintain current agent context
+    this.on('agent:transition', (taskId: string, fromAgent: string | null, toAgent: string) => {
+      // Only update current agent if this is for the current task
+      if (this.currentTaskId === taskId) {
+        this.currentAgentName = toAgent;
+      }
+    });
+
+    // Clear agent context when task completes or fails
+    this.on('task:completed', (task) => {
+      if (this.currentTaskId === task.id) {
+        this.currentAgentName = null;
+      }
+    });
+
+    this.on('task:failed', (task) => {
+      if (this.currentTaskId === task.id) {
+        this.currentAgentName = null;
+      }
     });
   }
 
@@ -9407,6 +10322,8 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
 export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
+export { MCPServerStore } from './mcp-store';
+export { MCPInstaller } from './mcp-installer';
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
 export {
@@ -9553,6 +10470,22 @@ export {
   type BrowserHoverParams,
   type BrowserToolConfig,
 } from './tools';
+
+// Browser Console Stream
+export {
+  BrowserConsoleStream,
+  createConsoleStream,
+  ConsoleLogLevel,
+  ConsoleFilters,
+  type ConsoleStreamConfig,
+  type BrowserConsoleMessage as EnhancedBrowserConsoleMessage,
+  type BrowserRuntimeError as EnhancedBrowserRuntimeError,
+  type NetworkError,
+  type PerformanceWarning,
+  type SecurityViolation,
+  type ConsoleStreamEvents,
+  type ConsoleMessageFilter,
+} from './browser-console-stream';
 
 // Scanner
 export {
@@ -9721,3 +10654,6 @@ export {
   type MCPClientEvents,
   type MCPToolDefinition,
 } from './mcp';
+
+// Tool Alias Resolver
+export { AliasResolver, AliasResolutionError } from './alias-resolver';

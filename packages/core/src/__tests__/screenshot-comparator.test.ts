@@ -136,6 +136,76 @@ describe('ScreenshotComparator', () => {
       expect(diffMetadata.height).toBe(100);
     });
 
+    it('should generate diff image with default magenta color', async () => {
+      const diffPath = path.join(tempDir, 'magenta-diff.png');
+      const comparator = new ScreenshotComparator({
+        outputDiff: true,
+        diffOutputPath: diffPath,
+      });
+
+      const result = await comparator.compare(redImagePath, redWithDotPath);
+      expect(result.diffImagePath).toBe(diffPath);
+
+      // Check that diff file was created
+      const diffExists = await fs.access(diffPath).then(() => true).catch(() => false);
+      expect(diffExists).toBe(true);
+
+      // Read the diff image and verify it contains magenta pixels (255, 0, 255)
+      const diffImage = sharp(diffPath);
+      const { data } = await diffImage.raw().toBuffer({ resolveWithObject: true });
+
+      // Look for magenta pixels in the diff image
+      let foundMagentaPixels = false;
+      for (let i = 0; i < data.length; i += 3) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        if (r === 255 && g === 0 && b === 255) {
+          foundMagentaPixels = true;
+          break;
+        }
+      }
+
+      expect(foundMagentaPixels).toBe(true);
+    });
+
+    it('should generate diff image with custom color', async () => {
+      const diffPath = path.join(tempDir, 'custom-diff.png');
+      const customColor: [number, number, number] = [255, 255, 0]; // Yellow
+      const comparator = new ScreenshotComparator({
+        outputDiff: true,
+        diffOutputPath: diffPath,
+        diffColor: customColor,
+      });
+
+      const result = await comparator.compare(redImagePath, redWithDotPath);
+      expect(result.diffImagePath).toBe(diffPath);
+
+      // Check that diff file was created
+      const diffExists = await fs.access(diffPath).then(() => true).catch(() => false);
+      expect(diffExists).toBe(true);
+
+      // Read the diff image and verify it contains yellow pixels (255, 255, 0)
+      const diffImage = sharp(diffPath);
+      const { data } = await diffImage.raw().toBuffer({ resolveWithObject: true });
+
+      // Look for yellow pixels in the diff image
+      let foundYellowPixels = false;
+      for (let i = 0; i < data.length; i += 3) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        if (r === 255 && g === 255 && b === 0) {
+          foundYellowPixels = true;
+          break;
+        }
+      }
+
+      expect(foundYellowPixels).toBe(true);
+    });
+
     it('should throw error for non-existent files', async () => {
       const comparator = new ScreenshotComparator();
 
