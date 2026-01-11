@@ -76,6 +76,7 @@ import {
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
+import { AliasResolver } from './alias-resolver';
 import { PolicyEnforcer, createPolicyEnforcer, type ApprovalCheckContext, type ApprovalRequirement } from './policy';
 import type { PolicyEngine } from './policy-engine';
 import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
@@ -1087,6 +1088,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private policyEnforcer!: PolicyEnforcer;
   private autonomyEnforcer!: AutonomyEnforcer;
   private policyEngine?: PolicyEngine;  // Optional PolicyEngine instance
+  private aliasResolver!: AliasResolver;
   private linterService!: LinterService;
   private errorFeedbackLoop = new ErrorFeedbackLoop();
   private secretScanner?: SecretScanner;
@@ -1151,6 +1153,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Load configuration
     this.config = await loadConfig(this.projectPath);
     this.effectiveConfig = getEffectiveConfig(this.config);
+
+    // Initialize alias resolver with config aliases
+    this.aliasResolver = new AliasResolver(this.config.aliases || []);
 
     // Initialize MCP server manager and installer (v0.5.0)
     this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
@@ -2825,6 +2830,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       toolStartTimes: new Map(),
       config: this.effectiveConfig,
       cliFlags: this.currentTaskCliFlags,
+      aliasResolver: this.aliasResolver,
     };
 
     // Store the context for access during tool completion

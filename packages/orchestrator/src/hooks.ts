@@ -10,6 +10,7 @@ import type {
 import { TaskStore, ToolActionStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
+import { AliasResolver } from './alias-resolver';
 import {
   createStructuredError,
   type ToolExecution,
@@ -60,6 +61,7 @@ export interface HookContext {
   cliFlags?: {
     diffPreview?: boolean;
   };
+  aliasResolver?: AliasResolver;
 }
 
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
@@ -372,6 +374,59 @@ async function checkToolPermissions(
 }
 
 /**
+ * Resolve tool aliases to actual tool invocations
+ */
+async function resolveToolAlias(
+  input: HookInput,
+  _toolUseId: string | undefined,
+  context: HookContext
+): Promise<HookJSONOutput> {
+  // Skip if no alias resolver is available
+  if (!context.aliasResolver) {
+    return {};
+  }
+
+  const toolName = getToolName(input);
+  const toolInput = getToolInput(input);
+
+  // Check if this tool name is actually an alias
+  if (!context.aliasResolver.hasAlias(toolName)) {
+    // Not an alias, pass through unchanged
+    return {};
+  }
+
+  try {
+    // Resolve the alias with the provided parameters
+    const expandedAlias = context.aliasResolver.resolve(toolName, toolInput);
+
+    // Return the resolved tool and parameters
+    return {
+      tool_name: expandedAlias.tool,
+      tool_input: expandedAlias.parameters
+    };
+  } catch (error) {
+    // If alias resolution fails, log the error and block the tool execution
+    await context.store.addLog(context.taskId, {
+      level: 'error',
+      message: `Failed to resolve alias '${toolName}': ${String(error)}`,
+      metadata: {
+        aliasName: toolName,
+        originalInput: toolInput,
+        error: String(error),
+      },
+    });
+
+    // Return an error to block the tool execution
+    return {
+      error: {
+        type: 'AliasResolutionError',
+        message: `Failed to resolve alias '${toolName}': ${String(error)}`,
+      },
+    };
+  }
+}
+
+/**
  * Create hooks for the orchestrator
  */
 export function createHooks(context: HookContext): HooksConfig {
@@ -382,7 +437,12 @@ export function createHooks(context: HookContext): HooksConfig {
         hooks: [createHookCallback(context, checkToolPermissions)],
         timeout: 5,
       },
-      // Detect dangerous operations (runs after permission checks)
+      // Resolve tool aliases (runs after permission checks, before other validations)
+      {
+        hooks: [createHookCallback(context, resolveToolAlias)],
+        timeout: 5,
+      },
+      // Detect dangerous operations (runs after permission checks and alias resolution)
       {
         hooks: [createHookCallback(context, detectDangerousOperation)],
         timeout: 10,
