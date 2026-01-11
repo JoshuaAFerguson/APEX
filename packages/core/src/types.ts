@@ -7029,3 +7029,100 @@ export const ImageMetadataSchema = z.object({
   path: z.string(),
 });
 export type ImageMetadata = z.infer<typeof ImageMetadataSchema>;
+
+// ============================================================================
+// Tool Execution Hooks
+// ============================================================================
+
+/**
+ * Context provided to onToolStart hooks
+ * Contains information available at tool execution start
+ */
+export const ToolStartHookContextSchema = z.object({
+  /** Name of the tool being executed */
+  toolName: z.string().min(1),
+  /** Input parameters passed to the tool */
+  input: z.record(z.string(), z.unknown()),
+  /** Unique identifier for this tool call */
+  callId: z.string().min(1),
+  /** Task ID that initiated this tool call */
+  taskId: z.string().min(1),
+  /** Timestamp when the tool execution started */
+  timestamp: z.date(),
+  /** Agent name executing the tool (if available) */
+  agentName: z.string().optional(),
+  /** Workflow stage name (if available) */
+  stageName: z.string().optional(),
+});
+export type ToolStartHookContext = z.infer<typeof ToolStartHookContextSchema>;
+
+/**
+ * Context provided to onToolComplete hooks
+ * Contains full execution details including result
+ */
+export const ToolCompleteHookContextSchema = z.object({
+  /** Name of the tool that was executed */
+  toolName: z.string().min(1),
+  /** Input parameters that were passed to the tool */
+  input: z.record(z.string(), z.unknown()),
+  /** Unique identifier for this tool call */
+  callId: z.string().min(1),
+  /** Task ID that initiated this tool call */
+  taskId: z.string().min(1),
+  /** Timestamp when the tool execution completed */
+  timestamp: z.date(),
+  /** Result of the tool execution */
+  result: z.object({
+    success: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+  /** Timing information */
+  timing: z.object({
+    startTime: z.date(),
+    endTime: z.date(),
+    duration: z.number().min(0),
+  }),
+  /** Agent name that executed the tool (if available) */
+  agentName: z.string().optional(),
+  /** Workflow stage name (if available) */
+  stageName: z.string().optional(),
+});
+export type ToolCompleteHookContext = z.infer<typeof ToolCompleteHookContextSchema>;
+
+/**
+ * Context provided to onToolError hooks
+ * Focused on error details for failed tool executions
+ */
+export const ToolErrorHookContextSchema = z.object({
+  /** Name of the tool that failed */
+  toolName: z.string().min(1),
+  /** Input parameters that were passed to the tool */
+  input: z.record(z.string(), z.unknown()),
+  /** Unique identifier for this tool call */
+  callId: z.string().min(1),
+  /** Task ID that initiated this tool call */
+  taskId: z.string().min(1),
+  /** Timestamp when the error occurred */
+  timestamp: z.date(),
+  /** Error message describing the failure */
+  error: z.string().min(1),
+  /** Timing information (if available) */
+  timing: z.object({
+    startTime: z.date(),
+    endTime: z.date(),
+    duration: z.number().min(0),
+  }).optional(),
+  /** Agent name that executed the tool (if available) */
+  agentName: z.string().optional(),
+  /** Workflow stage name (if available) */
+  stageName: z.string().optional(),
+});
+export type ToolErrorHookContext = z.infer<typeof ToolErrorHookContextSchema>;
+
+/**
+ * Callback types for hook registration
+ */
+export type ToolStartHookCallback = (context: ToolStartHookContext) => void;
+export type ToolCompleteHookCallback = (context: ToolCompleteHookContext) => void;
+export type ToolErrorHookCallback = (context: ToolErrorHookContext) => void;

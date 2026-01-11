@@ -36,6 +36,12 @@ import {
   PermissionLevel,
   PermissionPreset,
   ToolExecution,
+  ToolStartHookContext,
+  ToolStartHookCallback,
+  ToolCompleteHookContext,
+  ToolCompleteHookCallback,
+  ToolErrorHookContext,
+  ToolErrorHookCallback,
   loadConfig,
   loadAgents,
   loadWorkflows,
@@ -10449,6 +10455,87 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     // This would typically track files that have been modified by the task
     // For now, return undefined as this is a basic implementation
     return undefined;
+  }
+
+  // ============================================================================
+  // Tool Execution Hooks API
+  // ============================================================================
+
+  /**
+   * Register a callback to be invoked when a tool starts execution
+   * @param callback Function to call when a tool starts
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolStart(callback: ToolStartHookCallback): () => void {
+    const handler = (event: ToolCallStartEvent) => {
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolStartHookContext = {
+        toolName: event.toolName,
+        input: event.input,
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:start', handler);
+    return () => this.off('tool:start', handler);
+  }
+
+  /**
+   * Register a callback to be invoked when a tool completes successfully
+   * @param callback Function to call when a tool completes
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolComplete(callback: ToolCompleteHookCallback): () => void {
+    const handler = (event: ToolCallCompleteEvent) => {
+      if (!event.result.success) return; // Skip errors, handled by onToolError
+
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolCompleteHookContext = {
+        toolName: event.toolName,
+        input: activeExecution?.input || {},
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        result: event.result,
+        timing: event.timing,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:complete', handler);
+    return () => this.off('tool:complete', handler);
+  }
+
+  /**
+   * Register a callback to be invoked when a tool execution fails
+   * @param callback Function to call when a tool fails
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolError(callback: ToolErrorHookCallback): () => void {
+    const handler = (event: ToolCallCompleteEvent) => {
+      if (event.result.success) return; // Skip successes, handled by onToolComplete
+
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolErrorHookContext = {
+        toolName: event.toolName,
+        input: activeExecution?.input || {},
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        error: event.result.error || 'Unknown error',
+        timing: event.timing,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:complete', handler);
+    return () => this.off('tool:complete', handler);
   }
 }
 
