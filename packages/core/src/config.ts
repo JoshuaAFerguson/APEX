@@ -20,6 +20,7 @@ import {
   SecretScanningConfig,
   ToolAlias,
   ToolAliasSchema,
+  VisualRegressionConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -953,10 +954,28 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
         refreshIntervalMinutes: config.mcp.marketplace.refreshIntervalMinutes ?? 1440,
         allowUnverified: config.mcp.marketplace.allowUnverified ?? false,
       } : undefined,
+      connection: config.mcp.connection ? {
+        maxRetries: config.mcp.connection.maxRetries ?? 3,
+        retryDelayMs: config.mcp.connection.retryDelayMs ?? 1000,
+        backoffFactor: config.mcp.connection.backoffFactor ?? 2,
+        maxRetryDelayMs: config.mcp.connection.maxRetryDelayMs ?? 30000,
+        connectionTimeoutMs: config.mcp.connection.connectionTimeoutMs ?? 10000,
+        requestTimeoutMs: config.mcp.connection.requestTimeoutMs ?? 30000,
+        idleTimeoutMs: config.mcp.connection.idleTimeoutMs ?? 300000,
+        poolSize: config.mcp.connection.poolSize ?? 1,
+        poolMinSize: config.mcp.connection.poolMinSize ?? 0,
+        healthCheckIntervalMs: config.mcp.connection.healthCheckIntervalMs ?? 30000,
+        healthCheckTimeoutMs: config.mcp.connection.healthCheckTimeoutMs ?? 5000,
+        healthCheckFailureThreshold: config.mcp.connection.healthCheckFailureThreshold ?? 3,
+        autoReconnect: config.mcp.connection.autoReconnect ?? true,
+        keepAlive: config.mcp.connection.keepAlive ?? true,
+        keepAliveIntervalMs: config.mcp.connection.keepAliveIntervalMs ?? 15000,
+      } : undefined,
     } : {
       enabled: true,
       servers: {},
       marketplace: undefined,
+      connection: undefined,
     },
     tdd: config.tdd ? {
       enabled: config.tdd.enabled ?? false,
@@ -970,6 +989,19 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       watchMode: false,
       maxIterations: 5,
       regressionGuard: true,
+    },
+    visualRegression: config.visualRegression ? {
+      enabled: config.visualRegression.enabled ?? false,
+      threshold: config.visualRegression.threshold ?? 0.99,
+      diffColor: config.visualRegression.diffColor ?? [255, 0, 255],
+      snapshotDir: config.visualRegression.snapshotDir || '.apex/snapshots',
+      failOnMismatch: config.visualRegression.failOnMismatch ?? true,
+    } : {
+      enabled: false,
+      threshold: 0.99,
+      diffColor: [255, 0, 255] as [number, number, number],
+      snapshotDir: '.apex/snapshots',
+      failOnMismatch: true,
     },
     guardrails: config.guardrails ? {
       enabled: config.guardrails.enabled ?? true,

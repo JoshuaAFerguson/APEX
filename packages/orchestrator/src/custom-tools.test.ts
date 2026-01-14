@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { buildCustomToolsServer } from './custom-tools';
 import type { CustomToolConfig } from '@apexcli/core';
+import {
+  createTestToolConfig,
+  loadValidToolFixtures,
+} from '@apexcli/core/src/__tests__/fixtures/custom-tools/index.js';
 
 describe('buildCustomToolsServer', () => {
   it('returns null when no tools are enabled', () => {
@@ -9,29 +13,41 @@ describe('buildCustomToolsServer', () => {
   });
 
   it('creates an SDK MCP server for enabled tools', () => {
-    const toolConfig: CustomToolConfig = {
+    // Use fixture helper instead of inline configuration
+    const toolConfig = createTestToolConfig({
       name: 'EchoTool',
       description: 'Echo input payload',
-      command: 'echo',
-      args: ['{{input.message}}'],
-      parameters: {
-        type: 'object',
-        properties: {
-          message: {
-            type: 'string',
-          },
-        },
-        required: ['message'],
-        additionalProperties: false,
-      },
-      outputParser: 'text',
       timeoutMs: 1000,
-      enabled: true,
-    };
+    });
 
     const server = buildCustomToolsServer([toolConfig], '/tmp');
     expect(server).not.toBeNull();
     expect(server?.config.type).toBe('sdk');
     expect(server?.config.name).toBe('custom-tools');
+  });
+
+  it('can create server from fixture tools', async () => {
+    // Demonstrate using actual fixture files
+    const validTools = await loadValidToolFixtures();
+    expect(validTools.length).toBeGreaterThan(0);
+
+    // Use a subset of tools to create a server
+    const enabledTools = validTools.slice(0, 3); // Use first 3 tools
+    const server = buildCustomToolsServer(enabledTools, '/tmp');
+
+    expect(server).not.toBeNull();
+    expect(server?.config.type).toBe('sdk');
+    expect(server?.config.name).toBe('custom-tools');
+  });
+
+  it('handles disabled tools from fixtures correctly', async () => {
+    const validTools = await loadValidToolFixtures();
+
+    // Find disabled tools
+    const disabledTools = validTools.filter(tool => !tool.enabled);
+
+    // Should return null when all tools are disabled
+    const server = buildCustomToolsServer(disabledTools, '/tmp');
+    expect(server).toBeNull();
   });
 });

@@ -10876,3 +10876,6 @@ export {
 
 // Tool Alias Resolver
 export { AliasResolver, AliasResolutionError } from './alias-resolver';
+
+// MCP Installer
+export { MCPInstaller, type MCPInstallationOptions } from './mcp-installer';

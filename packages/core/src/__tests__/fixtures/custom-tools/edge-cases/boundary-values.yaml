@@ -1,0 +1,111 @@
+# Boundary Values Edge Cases
+# Tools testing edge cases for numeric and string boundaries
+
+# Maximum allowed name length (64 characters)
+- name: ThisIsExactlySixtyFourCharactersLongForTestingTheLimitExactly!!
+  description: Tool with max length name
+  command: echo
+  enabled: true
+
+# Single character name (minimum)
+- name: X
+  description: Tool with single character name
+  command: echo
+  enabled: true
+
+# Minimum timeout value (1)
+- name: MinTimeoutTool
+  description: Tool with minimum timeout
+  command: true
+  timeoutMs: 1
+  enabled: true
+
+# Very large timeout value
+- name: MaxTimeoutTool
+  description: Tool with very large timeout
+  command: sleep
+  args:
+    - "0"
+  timeoutMs: 999999999
+  enabled: true
+
+# Parameter with minimum = maximum
+- name: EqualMinMaxTool
+  description: Tool with equal min/max constraints
+  command: echo
+  parameters:
+    type: object
+    properties:
+      fixed_value:
+        type: integer
+        minimum: 5
+        maximum: 5
+    additionalProperties: false
+  enabled: true
+
+# String parameter with minLength = maxLength
+- name: FixedLengthStringTool
+  description: Tool with fixed length string
+  command: echo
+  parameters:
+    type: object
+    properties:
+      code:
+        type: string
+        minLength: 4
+        maxLength: 4
+    required:
+      - code
+    additionalProperties: false
+  enabled: true
+
+# Zero minimum, zero maximum (only valid value is 0)
+- name: ZeroOnlyTool
+  description: Tool accepting only zero
+  command: echo
+  parameters:
+    type: object
+    properties:
+      zero_value:
+        type: integer
+        minimum: 0
+        maximum: 0
+    additionalProperties: false
+  enabled: true
+
+# Very long description
+- name: LongDescTool
+  description: |
+    This is a very long description that spans multiple lines and includes
+    extensive documentation about what this tool does, how it works, and
+    various use cases. It might include examples, notes about edge cases,
+    and other detailed information that a user might need to understand
+    how to properly use this tool in their workflow. The description
+    continues with more details about implementation specifics, potential
+    caveats, and best practices for integration.
+  command: echo
+  enabled: true
+
+# Empty args array
+- name: NoArgsTool
+  description: Tool with empty args array
+  command: date
+  args: []
+  enabled: true
+
+# Many args
+- name: ManyArgsTool
+  description: Tool with many arguments
+  command: echo
+  args:
+    - arg1
+    - arg2
+    - arg3
+    - arg4
+    - arg5
+    - arg6
+    - arg7
+    - arg8
+    - arg9
+    - arg10
+  enabled: true

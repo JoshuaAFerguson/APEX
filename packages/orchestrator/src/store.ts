@@ -45,6 +45,8 @@ import {
   AuditSeverity,
   MCPMarketplaceEntry,
   MCPServerConfig,
+  MCPInstallation,
+  MCPInstallationStatus,
 } from '@apexcli/core';
 
 export class TaskStore {
@@ -198,8 +200,18 @@ export class TaskStore {
           updated_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS mcp_installations (
+          id TEXT PRIMARY KEY,
+          server_id TEXT NOT NULL,
+          installed_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active',
+          config_path TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_mcp_marketplace_verified ON mcp_marketplace(verified);
         CREATE INDEX IF NOT EXISTS idx_mcp_servers_updated_at ON mcp_servers(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_mcp_installations_server_id ON mcp_installations(server_id);
+        CREATE INDEX IF NOT EXISTS idx_mcp_installations_status ON mcp_installations(status);
       `);
     } catch {
       // Tables might already exist
@@ -3949,6 +3961,83 @@ export class TaskStore {
       name: row.name,
       config: JSON.parse(row.config) as MCPServerConfig,
     }));
+  }
+
+  /**
+   * Create a new MCP installation record
+   */
+  async createMcpInstallation(installation: MCPInstallation): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO mcp_installations (id, server_id, installed_at, status, config_path)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      installation.id,
+      installation.serverId,
+      installation.installedAt.toISOString(),
+      installation.status,
+      installation.configPath
+    );
+  }
+
+  /**
+   * Get a specific MCP installation by server ID
+   */
+  async getMcpInstallation(serverId: string): Promise<MCPInstallation | null> {
+    const row = this.db
+      .prepare('SELECT * FROM mcp_installations WHERE server_id = ?')
+      .get(serverId) as Record<string, any> | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      serverId: row.server_id,
+      installedAt: new Date(row.installed_at),
+      status: row.status as MCPInstallationStatus,
+      configPath: row.config_path,
+    };
+  }
+
+  /**
+   * List all MCP installations
+   */
+  async listMcpInstallations(): Promise<MCPInstallation[]> {
+    const rows = this.db
+      .prepare('SELECT * FROM mcp_installations ORDER BY installed_at DESC')
+      .all() as Array<Record<string, any>>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      serverId: row.server_id,
+      installedAt: new Date(row.installed_at),
+      status: row.status as MCPInstallationStatus,
+      configPath: row.config_path,
+    }));
+  }
+
+  /**
+   * Update the status of an MCP installation
+   */
+  async updateMcpInstallationStatus(id: string, status: MCPInstallationStatus): Promise<void> {
+    const stmt = this.db.prepare(`
+      UPDATE mcp_installations
+      SET status = ?
+      WHERE id = ?
+    `);
+
+    stmt.run(status, id);
+  }
+
+  /**
+   * Remove an MCP installation record
+   */
+  async removeMcpInstallation(id: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM mcp_installations WHERE id = ?');
+    stmt.run(id);
   }
 
   /**

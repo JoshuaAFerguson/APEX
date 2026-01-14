@@ -2071,19 +2071,152 @@ export interface HealthMetrics {
 // MCP Configuration (v0.5.0)
 // ============================================================================
 
+/**
+ * MCP Connection Configuration Schema (v0.5.0)
+ * Configuration for MCP connection management including retry policies,
+ * timeouts, connection pooling, and health check settings.
+ *
+ * Can be specified at the global level (mcp.connection) to apply to all servers,
+ * or per-server (mcp.servers.<name>.connection) to override for specific servers.
+ */
+export const MCPConnectionConfigSchema = z.object({
+  /**
+   * Maximum number of retry attempts when a connection fails
+   * Set to 0 for no retries
+   * @default 3
+   */
+  maxRetries: z.number().int().min(0).optional().default(3),
+
+  /**
+   * Initial delay between retry attempts in milliseconds
+   * Subsequent retries may use exponential backoff based on backoffFactor
+   * @default 1000
+   */
+  retryDelayMs: z.number().int().min(0).optional().default(1000),
+
+  /**
+   * Backoff factor for exponential retry delay
+   * Each retry delay = retryDelayMs * (backoffFactor ^ attemptNumber)
+   * @default 2
+   */
+  backoffFactor: z.number().min(1).optional().default(2),
+
+  /**
+   * Maximum retry delay in milliseconds (caps exponential backoff)
+   * @default 30000
+   */
+  maxRetryDelayMs: z.number().int().min(0).optional().default(30000),
+
+  /**
+   * Connection timeout in milliseconds
+   * How long to wait for initial connection before timing out
+   * @default 10000
+   */
+  connectionTimeoutMs: z.number().int().min(0).optional().default(10000),
+
+  /**
+   * Request timeout in milliseconds
+   * How long to wait for a response to an individual request
+   * @default 30000
+   */
+  requestTimeoutMs: z.number().int().min(0).optional().default(30000),
+
+  /**
+   * Idle timeout in milliseconds
+   * How long a connection can be idle before being closed
+   * Set to 0 for no idle timeout
+   * @default 300000 (5 minutes)
+   */
+  idleTimeoutMs: z.number().int().min(0).optional().default(300000),
+
+  /**
+   * Maximum number of concurrent connections to a single MCP server
+   * Used for connection pooling
+   * @default 1
+   */
+  poolSize: z.number().int().min(1).max(100).optional().default(1),
+
+  /**
+   * Minimum number of connections to keep in the pool
+   * These connections are kept alive even when idle
+   * @default 0
+   */
+  poolMinSize: z.number().int().min(0).optional().default(0),
+
+  /**
+   * Health check interval in milliseconds
+   * How often to check if the connection is still alive
+   * Set to 0 to disable health checks
+   * @default 30000
+   */
+  healthCheckIntervalMs: z.number().int().min(0).optional().default(30000),
+
+  /**
+   * Health check timeout in milliseconds
+   * How long to wait for health check response before considering unhealthy
+   * @default 5000
+   */
+  healthCheckTimeoutMs: z.number().int().min(0).optional().default(5000),
+
+  /**
+   * Number of consecutive health check failures before marking connection unhealthy
+   * @default 3
+   */
+  healthCheckFailureThreshold: z.number().int().min(1).optional().default(3),
+
+  /**
+   * Whether to automatically reconnect when a connection is lost
+   * @default true
+   */
+  autoReconnect: z.boolean().optional().default(true),
+
+  /**
+   * Whether to enable keep-alive for the connection
+   * @default true
+   */
+  keepAlive: z.boolean().optional().default(true),
+
+  /**
+   * Keep-alive interval in milliseconds
+   * How often to send keep-alive messages
+   * @default 15000
+   */
+  keepAliveIntervalMs: z.number().int().min(0).optional().default(15000),
+});
+export type MCPConnectionConfig = z.infer<typeof MCPConnectionConfigSchema>;
+
+/**
+ * MCP Server configuration schema
+ * Defines how to connect to and configure an individual MCP server
+ */
 export const MCPServerConfigSchema = z.object({
+  /** Display name for the server */
   name: z.string().min(1),
+  /** Connection type: stdio (subprocess), http, sse (server-sent events), or sdk (direct) */
   type: z.enum(['stdio', 'http', 'sse', 'sdk']).optional().default('stdio'),
+  /** Command to execute for stdio connections */
   command: z.string().optional(),
+  /** Arguments to pass to the command */
   args: z.array(z.string()).optional(),
+  /** Environment variables for the server process */
   env: z.record(z.string()).optional(),
+  /** URL for http/sse connections */
   url: z.string().optional(),
+  /** HTTP headers for http/sse connections */
   headers: z.record(z.string()).optional(),
+  /** Whether to start this server automatically when MCP is initialized */
   autoStart: z.boolean().optional().default(false),
+  /** List of capabilities this server provides */
   capabilities: z.array(z.string()).optional(),
+  /** Per-server connection configuration (overrides global mcp.connection) */
+  connection: MCPConnectionConfigSchema.optional(),
 });
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
 
+/**
+ * MCP Marketplace entry schema
+ * Represents a server available for installation from a marketplace
+ */
 export const MCPMarketplaceEntrySchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
@@ -2098,6 +2231,10 @@ export const MCPMarketplaceEntrySchema = z.object({
 });
 export type MCPMarketplaceEntry = z.infer<typeof MCPMarketplaceEntrySchema>;
 
+/**
+ * MCP Marketplace source configuration
+ * Configures where to discover available MCP servers
+ */
 export const MCPMarketplaceSourceSchema = z.object({
   url: z.string().min(1),
   enabled: z.boolean().optional().default(true),
@@ -2107,9 +2244,14 @@ export const MCPMarketplaceSourceSchema = z.object({
 export type MCPMarketplaceSource = z.infer<typeof MCPMarketplaceSourceSchema>;
 
 export const MCPConfigSchema = z.object({
+  /** Whether MCP is enabled globally */
   enabled: z.boolean().optional().default(true),
+  /** MCP server configurations keyed by server identifier */
   servers: z.record(MCPServerConfigSchema).optional().default({}),
+  /** Marketplace source configuration for discovering MCP servers */
   marketplace: MCPMarketplaceSourceSchema.optional(),
+  /** Global connection configuration applied to all MCP servers unless overridden */
+  connection: MCPConnectionConfigSchema.optional(),
 });
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
@@ -2182,9 +2324,13 @@ export const MCPConnectionStateSchema = z.enum([
 export type MCPConnectionState = z.infer<typeof MCPConnectionStateSchema>;
 
 /**
- * Represents an active MCP connection
+ * MCP Connection Info Schema
+ * Represents runtime information about an active MCP connection,
+ * including health status, performance metrics, and connection state.
+ *
+ * This is aliased as both MCPConnectionInfo and MCPConnection for backwards compatibility.
  */
-export const MCPConnectionSchema = z.object({
+export const MCPConnectionInfoSchema = z.object({
   /** Server identifier (config key name) */
   serverId: z.string().min(1),
   /** Server name from config */
@@ -2201,8 +2347,55 @@ export const MCPConnectionSchema = z.object({
   reconnectAttempts: z.number().int().min(0).default(0),
   /** Last error if in error state */
   lastError: z.string().optional(),
+  /** Health check status */
+  health: z.object({
+    /** Whether the connection is considered healthy */
+    healthy: z.boolean().default(true),
+    /** Timestamp of the last successful health check */
+    lastCheckAt: z.date().optional(),
+    /** Timestamp of the last successful health check */
+    lastSuccessAt: z.date().optional(),
+    /** Number of consecutive health check failures */
+    consecutiveFailures: z.number().int().min(0).default(0),
+    /** Last health check latency in milliseconds */
+    latencyMs: z.number().int().min(0).optional(),
+    /** Average latency over recent health checks */
+    avgLatencyMs: z.number().min(0).optional(),
+    /** Health check error message if unhealthy */
+    errorMessage: z.string().optional(),
+  }).optional(),
+  /** Connection pool status (if pooling is enabled) */
+  pool: z.object({
+    /** Current number of active connections in the pool */
+    activeConnections: z.number().int().min(0).default(0),
+    /** Number of idle connections in the pool */
+    idleConnections: z.number().int().min(0).default(0),
+    /** Total number of connections created */
+    totalConnections: z.number().int().min(0).default(0),
+    /** Number of pending connection requests */
+    pendingRequests: z.number().int().min(0).default(0),
+  }).optional(),
+  /** Connection metrics */
+  metrics: z.object({
+    /** Total number of requests made through this connection */
+    totalRequests: z.number().int().min(0).default(0),
+    /** Number of successful requests */
+    successfulRequests: z.number().int().min(0).default(0),
+    /** Number of failed requests */
+    failedRequests: z.number().int().min(0).default(0),
+    /** Total bytes sent */
+    bytesSent: z.number().int().min(0).default(0),
+    /** Total bytes received */
+    bytesReceived: z.number().int().min(0).default(0),
+    /** Connection uptime in milliseconds */
+    uptimeMs: z.number().int().min(0).default(0),
+  }).optional(),
 });
-export type MCPConnection = z.infer<typeof MCPConnectionSchema>;
+export type MCPConnectionInfo = z.infer<typeof MCPConnectionInfoSchema>;
+
+// Backwards compatibility aliases
+export const MCPConnectionSchema = MCPConnectionInfoSchema;
+export type MCPConnection = MCPConnectionInfo;
 
 /**
  * Connection event types
@@ -2242,6 +2435,52 @@ export const TDDModeConfigSchema = z.object({
   regressionGuard: z.boolean().optional().default(true),
 });
 export type TDDModeConfig = z.infer<typeof TDDModeConfigSchema>;
+
+// ============================================================================
+// Visual Regression Configuration (v0.5.0)
+// ============================================================================
+
+/**
+ * Configuration for visual regression testing with screenshot comparison
+ *
+ * This configuration controls how visual regression tests are executed,
+ * including similarity thresholds, diff highlighting, and snapshot management.
+ */
+export const VisualRegressionConfigSchema = z.object({
+  /** Enable visual regression testing (default: false) */
+  enabled: z.boolean().optional().default(false),
+
+  /**
+   * Similarity threshold for comparison (0-1, where 1 is exact match).
+   * A value of 0.99 means 99% of pixels must match for the comparison to pass.
+   * Default: 0.99
+   */
+  threshold: z.number().min(0).max(1).optional().default(0.99),
+
+  /**
+   * Color for highlighting different pixels in diff image.
+   * Format: [r, g, b] values 0-255.
+   * Default: [255, 0, 255] (magenta)
+   */
+  diffColor: z.tuple([
+    z.number().min(0).max(255),
+    z.number().min(0).max(255),
+    z.number().min(0).max(255)
+  ]).optional().default([255, 0, 255]),
+
+  /**
+   * Directory for storing baseline snapshots (relative to project root).
+   * Default: '.apex/snapshots'
+   */
+  snapshotDir: z.string().optional().default('.apex/snapshots'),
+
+  /**
+   * Whether to fail the test/comparison when mismatch is detected.
+   * Default: true
+   */
+  failOnMismatch: z.boolean().optional().default(true),
+});
+export type VisualRegressionConfig = z.infer<typeof VisualRegressionConfigSchema>;
 
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
@@ -2302,6 +2541,8 @@ export const ApexConfigSchema = z.object({
   mcp: MCPConfigSchema.optional(),
   /** TDD mode configuration for test-first workflows (v0.5.0) */
   tdd: TDDModeConfigSchema.optional(),
+  /** Visual regression configuration for screenshot comparison testing (v0.5.0) */
+  visualRegression: VisualRegressionConfigSchema.optional(),
   /** Project-specific rules defined in .apexrules (v0.4.0) */
   projectRules: z.lazy(() => z.array(ApexRuleSchema)).optional().default([]),
   /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */
@@ -6984,18 +7225,31 @@ export const ApexRuleSchema = z.object({
 /**
  * Configuration options for screenshot comparison
  */
-export const ScreenshotComparisonOptionsSchema = z.object({
+export const VisualRegressionConfigSchema = z.object({
+  /** Snapshot directory for storing and comparing screenshots (default: '.apex/snapshots') */
+  snapshotDir: z.string().optional().default('.apex/snapshots'),
+
   /** Tolerance threshold for pixel differences (0-1, where 0 is exact match, 1 accepts any difference) */
-  tolerance: z.number().min(0).max(1).default(0.1),
+  threshold: z.number().min(0).max(1).default(0.99),
+
   /** Whether to include alpha channel in comparison */
   includeAlpha: z.boolean().default(false),
+
   /** Whether to output diff image */
   outputDiff: z.boolean().default(false),
+
   /** Path to save diff image (required if outputDiff is true) */
   diffOutputPath: z.string().optional(),
+
   /** Color for highlighting different pixels in diff image. Format: [r, g, b] values 0-255. Default: [255, 0, 255] (magenta) */
   diffColor: z.tuple([z.number().min(0).max(255), z.number().min(0).max(255), z.number().min(0).max(255)]).default([255, 0, 255]),
+
+  /** Whether to fail the test if there's a mismatch (default: true) */
+  failOnMismatch: z.boolean().default(true),
 });
+
+/** Legacy alias for backward compatibility */
+export const ScreenshotComparisonOptionsSchema = VisualRegressionConfigSchema;
 export type ScreenshotComparisonOptions = z.infer<typeof ScreenshotComparisonOptionsSchema>;
 
 /**

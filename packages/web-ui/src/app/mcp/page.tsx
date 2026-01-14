@@ -210,7 +210,7 @@ export default function MCPMarketplacePage() {
             <Button
               onClick={() => handleAutoConfig('development')}
               disabled={autoConfigureLoading}
-              variant="outline"
+              variant="secondary"
               size="sm"
             >
               {autoConfigureLoading ? <Spinner className="w-4 h-4 mr-2" /> : null}
@@ -219,7 +219,7 @@ export default function MCPMarketplacePage() {
             <Button
               onClick={() => handleAutoConfig('productivity')}
               disabled={autoConfigureLoading}
-              variant="outline"
+              variant="secondary"
               size="sm"
             >
               Productivity Tools
@@ -288,7 +288,7 @@ export default function MCPMarketplacePage() {
         </div>
 
         <Button
-          variant={showFeatured ? "default" : "outline"}
+          variant={showFeatured ? "primary" : "secondary"}
           size="sm"
           onClick={() => setShowFeatured(!showFeatured)}
         >
@@ -367,12 +367,12 @@ export default function MCPMarketplacePage() {
               {entry.tags && entry.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {entry.tags.slice(0, 3).map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
+                    <Badge key={tag} variant="default" className="text-xs">
                       {tag}
                     </Badge>
                   ))}
                   {entry.tags.length > 3 && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="default" className="text-xs">
                       +{entry.tags.length - 3} more
                     </Badge>
                   )}
@@ -381,7 +381,7 @@ export default function MCPMarketplacePage() {
 
               {/* Category */}
               {entry.category && (
-                <Badge variant="outline" className="w-fit">
+                <Badge variant="info" className="w-fit">
                   {entry.category}
                 </Badge>
               )}
@@ -429,7 +429,7 @@ export default function MCPMarketplacePage() {
                   </Button>
                 )}
 
-                <Button variant="outline" size="sm">
+                <Button variant="secondary" size="sm">
                   <ExternalLink className="w-4 h-4" />
                 </Button>
               </div>
@@ -447,7 +447,7 @@ export default function MCPMarketplacePage() {
             Try adjusting your search terms or category filter.
           </p>
           {searchQuery && (
-            <Button variant="outline" onClick={() => setSearchQuery('')}>
+            <Button variant="secondary" onClick={() => setSearchQuery('')}>
               Clear search
             </Button>
           )}

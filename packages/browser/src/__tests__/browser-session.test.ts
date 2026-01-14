@@ -433,4 +433,73 @@ describe('BrowserSession', () => {
       expect(typeof browser?.newContext).toBe('function');
     });
   });
+
+  describe('Element Interaction Methods', () => {
+    beforeEach(async () => {
+      session = new BrowserSession(manager, { browserType: 'chromium', headless: true });
+      await session.launch();
+    });
+
+    it('should hover over an element', async () => {
+      const html = `
+        <div id="hover-target" style="width: 100px; height: 100px; background: red;">
+          Hover me
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      const result = await session.hover('#hover-target');
+      expect(result.success).toBe(true);
+      expect(typeof result.duration).toBe('number');
+    });
+
+    it('should focus on an element', async () => {
+      const html = `
+        <input id="focus-target" type="text" placeholder="Focus me">
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      const result = await session.focus('#focus-target');
+      expect(result.success).toBe(true);
+      expect(typeof result.duration).toBe('number');
+    });
+
+    it('should handle hover with timeout option', async () => {
+      const html = `
+        <div id="hover-target" style="width: 100px; height: 100px; background: red;">
+          Hover me
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      const result = await session.hover('#hover-target', { timeout: 5000 });
+      expect(result.success).toBe(true);
+    });
+
+    it('should handle focus with timeout option', async () => {
+      const html = `
+        <input id="focus-target" type="text" placeholder="Focus me">
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      const result = await session.focus('#focus-target', { timeout: 5000 });
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail hover when element not found', async () => {
+      await session.navigate('data:text/html,<h1>No hover target</h1>');
+
+      const result = await session.hover('#nonexistent');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should fail focus when element not found', async () => {
+      await session.navigate('data:text/html,<h1>No focus target</h1>');
+
+      const result = await session.focus('#nonexistent');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+  });
 });

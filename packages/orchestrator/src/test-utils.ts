@@ -817,3 +817,242 @@ export async function cleanupTestPermissionStore(context: TestPermissionStoreCon
     await removeTempDirectory(context.tempPath);
   }
 }
+
+/**
+ * Create a comprehensive permission testing environment with both store and manager
+ *
+ * @param options - Configuration options for the test environment
+ * @returns Complete testing environment with utilities
+ *
+ * @example
+ * ```typescript
+ * describe('Permission integration tests', () => {
+ *   let testEnv: PermissionTestEnvironment;
+ *
+ *   beforeEach(async () => {
+ *     testEnv = await createPermissionTestEnvironment({
+ *       initialPermissions: [
+ *         createMockPermission({ tool: 'Read', level: 'allow-always' })
+ *       ],
+ *       mockConfirmation: true
+ *     });
+ *   });
+ *
+ *   afterEach(async () => {
+ *     await testEnv.cleanup();
+ *   });
+ *
+ *   it('should handle permission requests', async () => {
+ *     await testEnv.assertPermissionLevel('Read', 'allow-always');
+ *   });
+ * });
+ * ```
+ */
+export interface PermissionTestEnvironment {
+  /** Permission store instance */
+  store: PermissionStore;
+  /** Permission manager instance */
+  manager: PermissionManager;
+  /** Temporary directory path */
+  tempPath: string;
+  /** Clean up resources */
+  cleanup: () => Promise<void>;
+  /** Assert permission level for a tool */
+  assertPermissionLevel: (tool: string, expectedLevel: 'allow-always' | 'allow-once' | 'deny' | null, scope?: string) => Promise<void>;
+  /** Assert tool is allowed */
+  assertToolAllowed: (tool: string, scope?: string) => Promise<void>;
+  /** Assert tool is denied */
+  assertToolDenied: (tool: string, scope?: string) => Promise<void>;
+  /** Assert tool requires confirmation */
+  assertToolRequiresConfirmation: (tool: string, scope?: string) => Promise<void>;
+  /** Add a permission for testing */
+  addPermission: (permission: Permission) => Promise<void>;
+  /** Remove a permission */
+  removePermission: (tool: string, scope?: string) => Promise<void>;
+  /** Get all permissions */
+  getAllPermissions: () => Promise<Permission[]>;
+}
+
+export async function createPermissionTestEnvironment(options: {
+  initialPermissions?: Permission[];
+  mockConfirmation?: boolean | Record<string, boolean>;
+} = {}): Promise<PermissionTestEnvironment> {
+  const { initialPermissions = [], mockConfirmation = false } = options;
+
+  // Create the test permission store
+  const testContext = await createTestPermissionStore(initialPermissions);
+
+  // Configure confirmation handler if requested
+  if (mockConfirmation) {
+    // This would need to be implemented in PermissionManager
+    // For now, we'll just document this as a feature that could be added
+  }
+
+  return {
+    store: testContext.store,
+    manager: testContext.manager,
+    tempPath: testContext.tempPath,
+    cleanup: testContext.cleanup,
+
+    async assertPermissionLevel(tool: string, expectedLevel: 'allow-always' | 'allow-once' | 'deny' | null, scope?: string): Promise<void> {
+      const actualLevel = await testContext.manager.checkPermission(tool, scope);
+      if (actualLevel !== expectedLevel) {
+        throw new Error(`Expected permission level ${expectedLevel} for ${tool}${scope ? `:${scope}` : ''}, got ${actualLevel}`);
+      }
+    },
+
+    async assertToolAllowed(tool: string, scope?: string): Promise<void> {
+      const allowed = await testContext.manager.isAllowed(tool, scope);
+      if (!allowed) {
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be allowed but is denied`);
+      }
+    },
+
+    async assertToolDenied(tool: string, scope?: string): Promise<void> {
+      const allowed = await testContext.manager.isAllowed(tool, scope);
+      if (allowed) {
+        const level = await testContext.manager.checkPermission(tool, scope);
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be denied but is allowed with level ${level}`);
+      }
+    },
+
+    async assertToolRequiresConfirmation(tool: string, scope?: string): Promise<void> {
+      const requiresConfirm = await testContext.manager.requiresConfirmation(tool, scope);
+      if (!requiresConfirm) {
+        const level = await testContext.manager.checkPermission(tool, scope);
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should require confirmation but has level ${level}`);
+      }
+    },
+
+    async addPermission(permission: Permission): Promise<void> {
+      await testContext.store.savePermission(permission);
+    },
+
+    async removePermission(tool: string, scope?: string): Promise<void> {
+      await testContext.store.deletePermission({ tool, scope });
+    },
+
+    async getAllPermissions(): Promise<Permission[]> {
+      return testContext.store.listPermissions();
+    },
+  };
+}
+
+/**
+ * Helper to assert database state for permissions testing
+ *
+ * @param store - The permission store to check
+ * @param expectedPermissions - Array of expected permission objects
+ *
+ * @example
+ * ```typescript
+ * await assertDatabaseState(store, [
+ *   { tool: 'Read', level: 'allow-always', scope: undefined },
+ *   { tool: 'Write', level: 'allow-once', scope: '/project/**' }
+ * ]);
+ * ```
+ */
+export async function assertDatabaseState(
+  store: PermissionStore,
+  expectedPermissions: Array<{ tool: string; level: 'allow-always' | 'allow-once' | 'deny'; scope?: string }>
+): Promise<void> {
+  const actualPermissions = await store.listPermissions();
+
+  if (actualPermissions.length !== expectedPermissions.length) {
+    throw new Error(`Expected ${expectedPermissions.length} permissions in database, got ${actualPermissions.length}`);
+  }
+
+  for (const expected of expectedPermissions) {
+    const actual = actualPermissions.find(p =>
+      p.tool === expected.tool && p.scope === expected.scope
+    );
+
+    if (!actual) {
+      throw new Error(`Expected permission for ${expected.tool}${expected.scope ? `:${expected.scope}` : ''} not found in database`);
+    }
+
+    if (actual.level !== expected.level) {
+      throw new Error(`Permission for ${expected.tool}${expected.scope ? `:${expected.scope}` : ''} has wrong level. Expected: ${expected.level}, got: ${actual.level}`);
+    }
+  }
+}
+
+/**
+ * Helper to create permission test scenarios with database verification
+ *
+ * @param scenario - The test scenario to set up
+ * @returns Test environment configured for the scenario
+ *
+ * @example
+ * ```typescript
+ * const testEnv = await createPermissionTestScenario('read-only');
+ *
+ * // Verify read operations are allowed
+ * await testEnv.assertToolAllowed('Read');
+ * await testEnv.assertToolAllowed('Grep');
+ *
+ * // Verify write operations are denied
+ * await testEnv.assertToolDenied('Write');
+ * await testEnv.assertToolDenied('Bash');
+ *
+ * await testEnv.cleanup();
+ * ```
+ */
+export async function createPermissionTestScenario(
+  scenario: 'read-only' | 'full-access' | 'review-all' | 'mixed' | 'empty'
+): Promise<PermissionTestEnvironment> {
+  if (scenario === 'empty') {
+    return createPermissionTestEnvironment();
+  }
+
+  const testContext = await createPermissionScenarioStore(scenario);
+
+  return {
+    store: testContext.store,
+    manager: testContext.manager,
+    tempPath: testContext.tempPath,
+    cleanup: testContext.cleanup,
+
+    async assertPermissionLevel(tool: string, expectedLevel: 'allow-always' | 'allow-once' | 'deny' | null, scope?: string): Promise<void> {
+      const actualLevel = await testContext.manager.checkPermission(tool, scope);
+      if (actualLevel !== expectedLevel) {
+        throw new Error(`Expected permission level ${expectedLevel} for ${tool}${scope ? `:${scope}` : ''}, got ${actualLevel}`);
+      }
+    },
+
+    async assertToolAllowed(tool: string, scope?: string): Promise<void> {
+      const allowed = await testContext.manager.isAllowed(tool, scope);
+      if (!allowed) {
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be allowed but is denied`);
+      }
+    },
+
+    async assertToolDenied(tool: string, scope?: string): Promise<void> {
+      const allowed = await testContext.manager.isAllowed(tool, scope);
+      if (allowed) {
+        const level = await testContext.manager.checkPermission(tool, scope);
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be denied but is allowed with level ${level}`);
+      }
+    },
+
+    async assertToolRequiresConfirmation(tool: string, scope?: string): Promise<void> {
+      const requiresConfirm = await testContext.manager.requiresConfirmation(tool, scope);
+      if (!requiresConfirm) {
+        const level = await testContext.manager.checkPermission(tool, scope);
+        throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should require confirmation but has level ${level}`);
+      }
+    },
+
+    async addPermission(permission: Permission): Promise<void> {
+      await testContext.store.savePermission(permission);
+    },
+
+    async removePermission(tool: string, scope?: string): Promise<void> {
+      await testContext.store.deletePermission({ tool, scope });
+    },
+
+    async getAllPermissions(): Promise<Permission[]> {
+      return testContext.store.listPermissions();
+    },
+  };
+}

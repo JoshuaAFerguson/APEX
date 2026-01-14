@@ -9,7 +9,11 @@ import {
   populateTestPermissions,
   createMockPermissionManager,
   cleanupTestPermissionStore,
+  createPermissionTestEnvironment,
+  createPermissionTestScenario,
+  assertDatabaseState,
   type TestPermissionStoreContext,
+  type PermissionTestEnvironment,
 } from '../test-utils';
 import { createMockPermission } from '@apexcli/core/test-utils';
 
@@ -193,6 +197,175 @@ describe('Permission Database Test Utilities', () => {
         'Read': 'allow-always',
         'Write': 'deny',
       });
+    });
+  });
+
+  describe('createPermissionTestEnvironment', () => {
+    let testEnv: PermissionTestEnvironment;
+
+    afterEach(async () => {
+      if (testEnv) {
+        await testEnv.cleanup();
+      }
+    });
+
+    it('should create test environment with initial permissions', async () => {
+      const initialPerms = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once' }),
+      ];
+
+      testEnv = await createPermissionTestEnvironment({
+        initialPermissions: initialPerms,
+      });
+
+      expect(testEnv.store).toBeDefined();
+      expect(testEnv.manager).toBeDefined();
+      expect(testEnv.tempPath).toBeDefined();
+
+      const permissions = await testEnv.getAllPermissions();
+      expect(permissions).toHaveLength(2);
+    });
+
+    it('should support permission level assertions', async () => {
+      testEnv = await createPermissionTestEnvironment({
+        initialPermissions: [
+          createMockPermission({ tool: 'Read', level: 'allow-always' }),
+          createMockPermission({ tool: 'Write', level: 'allow-once' }),
+        ],
+      });
+
+      await expect(testEnv.assertPermissionLevel('Read', 'allow-always')).resolves.not.toThrow();
+      await expect(testEnv.assertPermissionLevel('Write', 'allow-once')).resolves.not.toThrow();
+      await expect(testEnv.assertPermissionLevel('Read', 'deny')).rejects.toThrow();
+    });
+
+    it('should support tool allowed/denied assertions', async () => {
+      testEnv = await createPermissionTestEnvironment({
+        initialPermissions: [
+          createMockPermission({ tool: 'Read', level: 'allow-always' }),
+          createMockPermission({ tool: 'Bash', level: 'deny' }),
+        ],
+      });
+
+      await expect(testEnv.assertToolAllowed('Read')).resolves.not.toThrow();
+      await expect(testEnv.assertToolDenied('Bash')).resolves.not.toThrow();
+
+      await expect(testEnv.assertToolAllowed('Bash')).rejects.toThrow('should be allowed but is denied');
+      await expect(testEnv.assertToolDenied('Read')).rejects.toThrow('should be denied but is allowed');
+    });
+
+    it('should support confirmation requirement assertions', async () => {
+      testEnv = await createPermissionTestEnvironment({
+        initialPermissions: [
+          createMockPermission({ tool: 'Write', level: 'allow-once' }),
+          createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        ],
+      });
+
+      await expect(testEnv.assertToolRequiresConfirmation('Write')).resolves.not.toThrow();
+      await expect(testEnv.assertToolRequiresConfirmation('Read')).rejects.toThrow('should require confirmation');
+    });
+
+    it('should support adding and removing permissions', async () => {
+      testEnv = await createPermissionTestEnvironment();
+
+      await testEnv.addPermission(createMockPermission({ tool: 'Read', level: 'allow-always' }));
+      await expect(testEnv.assertToolAllowed('Read')).resolves.not.toThrow();
+
+      await testEnv.removePermission('Read');
+      await expect(testEnv.assertToolDenied('Read')).resolves.not.toThrow();
+    });
+  });
+
+  describe('createPermissionTestScenario', () => {
+    let testEnv: PermissionTestEnvironment;
+
+    afterEach(async () => {
+      if (testEnv) {
+        await testEnv.cleanup();
+      }
+    });
+
+    it('should create read-only scenario', async () => {
+      testEnv = await createPermissionTestScenario('read-only');
+
+      await expect(testEnv.assertToolAllowed('Read')).resolves.not.toThrow();
+      await expect(testEnv.assertToolAllowed('Grep')).resolves.not.toThrow();
+      await expect(testEnv.assertToolDenied('Write')).resolves.not.toThrow();
+      await expect(testEnv.assertToolDenied('Bash')).resolves.not.toThrow();
+    });
+
+    it('should create full-access scenario', async () => {
+      testEnv = await createPermissionTestScenario('full-access');
+
+      await expect(testEnv.assertToolAllowed('Read')).resolves.not.toThrow();
+      await expect(testEnv.assertToolAllowed('Write')).resolves.not.toThrow();
+      await expect(testEnv.assertToolAllowed('Bash')).resolves.not.toThrow();
+    });
+
+    it('should create review-all scenario', async () => {
+      testEnv = await createPermissionTestScenario('review-all');
+
+      await expect(testEnv.assertToolRequiresConfirmation('Read')).resolves.not.toThrow();
+      await expect(testEnv.assertToolRequiresConfirmation('Write')).resolves.not.toThrow();
+      await expect(testEnv.assertToolRequiresConfirmation('Bash')).resolves.not.toThrow();
+    });
+
+    it('should create empty scenario', async () => {
+      testEnv = await createPermissionTestScenario('empty');
+
+      const permissions = await testEnv.getAllPermissions();
+      expect(permissions).toEqual([]);
+    });
+  });
+
+  describe('assertDatabaseState', () => {
+    beforeEach(async () => {
+      testContext = await createTestPermissionStore();
+    });
+
+    it('should pass for matching database state', async () => {
+      await populateTestPermissions(testContext.store, {
+        'Read': 'allow-always',
+        'Write': 'allow-once',
+      });
+
+      await expect(assertDatabaseState(testContext.store, [
+        { tool: 'Read', level: 'allow-always' },
+        { tool: 'Write', level: 'allow-once' },
+      ])).resolves.not.toThrow();
+    });
+
+    it('should fail for wrong number of permissions', async () => {
+      await populateTestPermissions(testContext.store, {
+        'Read': 'allow-always',
+      });
+
+      await expect(assertDatabaseState(testContext.store, [
+        { tool: 'Read', level: 'allow-always' },
+        { tool: 'Write', level: 'allow-once' },
+      ])).rejects.toThrow('Expected 2 permissions in database, got 1');
+    });
+
+    it('should fail for missing permission', async () => {
+      await populateTestPermissions(testContext.store, {
+        'Read': 'allow-always',
+      });
+
+      await expect(assertDatabaseState(testContext.store, [
+        { tool: 'Write', level: 'allow-once' },
+      ])).rejects.toThrow('Expected permission for Write not found in database');
+    });
+
+    it('should fail for wrong permission level', async () => {
+      await populateTestPermissions(testContext.store, {
+        'Read': 'allow-always',
+      });
+
+      await expect(assertDatabaseState(testContext.store, [
+        { tool: 'Read', level: 'deny' },
+      ])).rejects.toThrow('Permission for Read has wrong level');
     });
   });
 });

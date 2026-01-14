@@ -1,0 +1,106 @@
+# Hook Integration Tool Fixtures
+# Tools specifically designed for testing hook execution and integration
+
+# Tool with simple hook integration
+- name: HookTestTool
+  description: Simple tool for testing hook integration
+  command: echo
+  args:
+    - "Tool execution: {{input.message}}"
+  parameters:
+    type: object
+    properties:
+      message:
+        type: string
+        description: Message to process
+    required:
+      - message
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 5000
+  enabled: true
+
+# Tool that demonstrates context passing between hooks
+- name: ContextPassingTool
+  description: Tool that shows context data flow through hooks
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Processing: {{input.data}}' && echo 'Metadata: {{input.metadata}}'"
+  parameters:
+    type: object
+    properties:
+      data:
+        type: string
+        description: Primary data to process
+      metadata:
+        type: object
+        description: Additional metadata
+        properties:
+          source:
+            type: string
+          timestamp:
+            type: string
+    required:
+      - data
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 10000
+  enabled: true
+
+# Tool for testing pre-hook cancellation
+- name: CancellableTool
+  description: Tool that can be cancelled by pre-hooks
+  command: echo
+  args:
+    - "This should run only if pre-hooks allow it: {{input.action}}"
+  parameters:
+    type: object
+    properties:
+      action:
+        type: string
+        enum: ["allow", "deny", "modify"]
+        description: Action to test hook behavior
+    required:
+      - action
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool for testing post-hook result modification
+- name: ResultModificationTool
+  description: Tool whose results can be modified by post-hooks
+  command: echo
+  args:
+    - '{"original": "{{input.value}}", "processed": true}'
+  parameters:
+    type: object
+    properties:
+      value:
+        type: string
+        description: Value to process
+    required:
+      - value
+    additionalProperties: false
+  outputParser: json
+  enabled: true
+
+# Tool with custom environment for hook testing
+- name: HookEnvTool
+  description: Tool that uses environment variables set by hooks
+  command: sh
+  args:
+    - "-c"
+    - "echo 'HOOK_VAR='$HOOK_VAR' TOOL_INPUT={{input.name}}'"
+  env:
+    TOOL_DEFAULT: "default_value"
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+    required:
+      - name
+    additionalProperties: false
+  outputParser: text
+  enabled: true

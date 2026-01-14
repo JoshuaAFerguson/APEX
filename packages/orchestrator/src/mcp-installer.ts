@@ -5,17 +5,14 @@ import { promises as fs } from 'fs';
 import {
   MCPServerConfig,
   MCPMarketplaceEntry,
+  MCPInstallation,
+  MCPInstallationStatus,
+  MCPServer,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 
 const execAsync = promisify(exec);
 
-export interface InstallationResult {
-  name: string;
-  config: MCPServerConfig;
-  installedFrom: 'marketplace' | 'npm' | 'npx' | 'manual';
-  installedAt: Date;
-}
 
 export interface MCPInstallationOptions {
   /** Force reinstallation even if already installed */
@@ -45,164 +42,129 @@ export class MCPInstaller {
    * Install an MCP server from various sources
    */
   async install(
-    nameOrPackage: string,
+    server: MCPServer,
     options: MCPInstallationOptions = {}
-  ): Promise<InstallationResult> {
-    // First try to find in marketplace
-    const marketplaceEntry = await this.store.getMcpMarketplaceEntry(nameOrPackage);
-
-    if (marketplaceEntry) {
-      return this.installFromMarketplace(marketplaceEntry, options);
-    }
-
-    // If not in marketplace, try to install as npm package
-    return this.installFromNpm(nameOrPackage, options);
-  }
-
-  /**
-   * Install an MCP server from the marketplace
-   */
-  private async installFromMarketplace(
-    entry: MCPMarketplaceEntry,
-    options: MCPInstallationOptions = {}
-  ): Promise<InstallationResult> {
-    const { name, serverConfig, installCommand } = entry;
-
+  ): Promise<MCPInstallation> {
     // Check if already installed
-    const existing = await this.getInstalledServer(name);
+    const existing = await this.getInstallation(server.name);
     if (existing && !options.force) {
-      throw new Error(`MCP server '${name}' is already installed. Use force option to reinstall.`);
+      throw new Error(`MCP server '${server.name}' is already installed. Use force option to reinstall.`);
     }
+
+    // Generate installation ID and install server
+    const installationId = this.generateInstallationId();
 
     try {
-      // Run the install command if provided
-      if (installCommand) {
-        const env = { ...process.env, ...options.env };
-        await execAsync(installCommand, {
-          cwd: this.projectPath,
-          env,
-        });
-      }
+      // Execute the installation command based on server config
+      await this.executeInstallation(server, options);
 
-      // Store the server config in SQLite
-      await this.store.upsertMcpServerConfig(name, serverConfig);
-
-      const result: InstallationResult = {
-        name,
-        config: serverConfig,
-        installedFrom: 'marketplace',
+      // Create the installation record
+      const installation: MCPInstallation = {
+        id: installationId,
+        serverId: server.name,
         installedAt: new Date(),
+        status: 'installed' as MCPInstallationStatus,
+        configPath: await this.createConfigFile(server, installationId),
       };
 
-      return result;
+      // Store the installation record
+      await this.store.createMcpInstallation(installation);
+
+      return installation;
     } catch (error) {
-      throw new Error(`Failed to install MCP server '${name}': ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to install MCP server '${server.name}': ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Install an MCP server from npm/npx
+   * Execute the installation command for an MCP server
    */
-  async installFromNpm(
-    packageName: string,
+  private async executeInstallation(
+    server: MCPServer,
     options: MCPInstallationOptions = {}
-  ): Promise<InstallationResult> {
-    const serverName = this.extractServerName(packageName);
+  ): Promise<void> {
+    // Build installation command based on server configuration
+    const command = this.buildInstallCommand(server, options);
+    const env = { ...process.env, ...options.env };
 
-    // Check if already installed
-    const existing = await this.getInstalledServer(serverName);
-    if (existing && !options.force) {
-      throw new Error(`MCP server '${serverName}' is already installed. Use force option to reinstall.`);
-    }
+    await execAsync(command, {
+      cwd: this.projectPath,
+      env,
+    });
+  }
 
-    try {
-      // Install the npm package
-      const installCommand = this.buildNpmInstallCommand(packageName, options);
-      const env = { ...process.env, ...options.env };
+  /**
+   * Create configuration file for installed server
+   */
+  private async createConfigFile(
+    server: MCPServer,
+    installationId: string
+  ): Promise<string> {
+    const apexDir = path.join(this.projectPath, '.apex');
+    const configPath = path.join(apexDir, 'mcp-installations', `${installationId}.json`);
 
-      await execAsync(installCommand, {
-        cwd: this.projectPath,
-        env,
-      });
+    // Ensure the mcp-installations directory exists
+    const installationsDir = path.dirname(configPath);
+    await fs.mkdir(installationsDir, { recursive: true });
 
-      // Try to detect the server configuration
-      const serverConfig = await this.detectServerConfig(packageName, serverName);
+    // Create server configuration based on MCPServer
+    const serverConfig: MCPServerConfig = {
+      name: server.name,
+      type: 'stdio',
+      command: server.command,
+      args: server.args,
+      autoStart: false,
+    };
 
-      // Store the server config in SQLite
-      await this.store.upsertMcpServerConfig(serverName, serverConfig);
+    // Write configuration file
+    await fs.writeFile(configPath, JSON.stringify(serverConfig, null, 2), 'utf-8');
 
-      const result: InstallationResult = {
-        name: serverName,
-        config: serverConfig,
-        installedFrom: options.global ? 'npm' : 'npx',
-        installedAt: new Date(),
-      };
-
-      return result;
-    } catch (error) {
-      throw new Error(`Failed to install MCP server from npm '${packageName}': ${error instanceof Error ? error.message : String(error)}`);
-    }
+    return configPath;
   }
 
   /**
    * Uninstall an MCP server
    */
-  async uninstall(name: string): Promise<void> {
-    const server = await this.getInstalledServer(name);
-    if (!server) {
-      throw new Error(`MCP server '${name}' is not installed`);
+  async uninstall(serverId: string): Promise<void> {
+    const installation = await this.getInstallation(serverId);
+    if (!installation) {
+      throw new Error(`MCP server '${serverId}' is not installed`);
     }
 
     try {
-      // Remove from SQLite tracking
-      await this.removeInstalledServer(name);
+      // Remove configuration file
+      await this.removeConfigFile(installation.configPath);
+
+      // Remove installation record from SQLite
+      await this.store.removeMcpInstallation(installation.id);
 
       // Note: We don't automatically uninstall npm packages as they might be used by other projects
       // Users would need to run npm uninstall manually if desired
     } catch (error) {
-      throw new Error(`Failed to uninstall MCP server '${name}': ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to uninstall MCP server '${serverId}': ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
    * List all installed MCP servers
    */
-  async listInstalled(): Promise<InstallationResult[]> {
-    const servers = await this.store.listMcpServerConfigs();
-
-    return servers.map(({ name, config }) => ({
-      name,
-      config,
-      installedFrom: this.guessInstallationSource(config),
-      installedAt: new Date(), // We don't have the actual install date in current schema
-    }));
+  async listInstalled(): Promise<MCPInstallation[]> {
+    return this.store.listMcpInstallations();
   }
 
   /**
    * Get information about a specific installed server
    */
-  async getInstalledServer(name: string): Promise<InstallationResult | null> {
-    const servers = await this.store.listMcpServerConfigs();
-    const server = servers.find(s => s.name === name);
-
-    if (!server) {
-      return null;
-    }
-
-    return {
-      name: server.name,
-      config: server.config,
-      installedFrom: this.guessInstallationSource(server.config),
-      installedAt: new Date(),
-    };
+  async getInstallation(serverId: string): Promise<MCPInstallation | null> {
+    return this.store.getMcpInstallation(serverId);
   }
 
   /**
    * Check if a server is installed
    */
-  async isInstalled(name: string): Promise<boolean> {
-    const server = await this.getInstalledServer(name);
-    return server !== null;
+  async isInstalled(serverId: string): Promise<boolean> {
+    const installation = await this.getInstallation(serverId);
+    return installation !== null;
   }
 
   /**
@@ -223,36 +185,27 @@ export class MCPInstaller {
 
   // Private helper methods
 
-  private async removeInstalledServer(name: string): Promise<void> {
-    // Since the current SQLite schema doesn't have a direct delete method,
-    // we'll need to use direct SQL
-    const db = this.store.getDatabase();
-    const stmt = db.prepare('DELETE FROM mcp_servers WHERE name = ?');
-    stmt.run(name);
+  /**
+   * Generate a unique installation ID
+   */
+  private generateInstallationId(): string {
+    return `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
   }
 
-  private extractServerName(packageName: string): string {
-    // Extract a reasonable server name from npm package name
-    // e.g., "@modelcontextprotocol/server-filesystem" -> "filesystem"
-    if (packageName.startsWith('@modelcontextprotocol/server-')) {
-      return packageName.replace('@modelcontextprotocol/server-', '');
-    }
-    if (packageName.includes('/')) {
-      return packageName.split('/').pop() || packageName;
-    }
-    if (packageName.startsWith('mcp-server-')) {
-      return packageName.replace('mcp-server-', '');
-    }
-    return packageName;
-  }
-
-  private buildNpmInstallCommand(packageName: string, options: MCPInstallationOptions): string {
+  /**
+   * Build the installation command for an MCP server
+   */
+  private buildInstallCommand(server: MCPServer, options: MCPInstallationOptions): string {
+    // For now, we assume the server has a package name that can be installed via npm/npx
+    // In the future, this could be expanded to support other installation methods
     const parts = ['npm', 'install'];
 
     if (options.global) {
       parts.push('-g');
     }
 
+    // Use the command as package name if it looks like a package
+    const packageName = this.extractPackageName(server);
     parts.push(packageName);
 
     if (options.args && options.args.length > 0) {
@@ -262,57 +215,35 @@ export class MCPInstaller {
     return parts.join(' ');
   }
 
-  private async detectServerConfig(packageName: string, serverName: string): Promise<MCPServerConfig> {
-    // Basic server configuration detection
-    // This is a simple implementation - in practice, you might want to:
-    // 1. Check package.json for MCP configuration
-    // 2. Look for standard MCP server patterns
-    // 3. Provide interactive configuration
-
-    const config: MCPServerConfig = {
-      name: serverName,
-      type: 'stdio',
-      autoStart: false,
-    };
-
-    // Try to detect if it's a global install or npx-based
-    if (packageName.startsWith('@')) {
-      // Scoped package, likely use npx
-      config.command = 'npx';
-      config.args = [packageName];
-    } else {
-      // Regular package, try to detect binary name
-      try {
-        const { stdout } = await execAsync(`npm list -g ${packageName} --depth=0`, {
-          cwd: this.projectPath,
-        });
-        if (stdout.includes(packageName)) {
-          // Globally installed
-          config.command = serverName;
-        } else {
-          // Use npx
-          config.command = 'npx';
-          config.args = [packageName];
-        }
-      } catch {
-        // Fallback to npx
-        config.command = 'npx';
-        config.args = [packageName];
-      }
+  /**
+   * Extract a package name from an MCP server definition
+   */
+  private extractPackageName(server: MCPServer): string {
+    // If args are provided and command is npx, use first arg as package name
+    if (server.command === 'npx' && server.args && server.args.length > 0) {
+      return server.args[0];
     }
 
-    return config;
+    // If command looks like a scoped package, use it
+    if (server.command.startsWith('@')) {
+      return server.command;
+    }
+
+    // Default to server name
+    return server.name;
   }
 
-  private guessInstallationSource(config: MCPServerConfig): 'marketplace' | 'npm' | 'npx' | 'manual' {
-    if (config.command === 'npx') {
-      return 'npx';
+  /**
+   * Remove configuration file for an uninstalled server
+   */
+  private async removeConfigFile(configPath: string): Promise<void> {
+    try {
+      await fs.unlink(configPath);
+    } catch (error) {
+      // Ignore if file doesn't exist
+      if ((error as any)?.code !== 'ENOENT') {
+        throw error;
+      }
     }
-    if (config.command && !config.command.includes('/') && !config.command.includes('\\')) {
-      // Looks like a global npm install
-      return 'npm';
-    }
-    // Default to manual for other configurations
-    return 'manual';
   }
 }

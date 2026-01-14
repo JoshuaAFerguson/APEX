@@ -1264,6 +1264,7 @@ telemetry:
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | 💡 Considering | ✅ Has feature | ❌ No feature
 >
 > **Competitors**:
+>
 > - [GSD (Get-Shit-Done)](https://github.com/glittercowboy/get-shit-done) - Meta-prompting and context engineering for Claude Code
 > - [Auto-Claude](https://github.com/AndyMik90/Auto-Claude) - Autonomous multi-agent desktop app with Kanban board
 > - [OpenCode](https://github.com/anomalyco/opencode) - Provider-agnostic terminal agent with LSP support
@@ -1293,18 +1294,18 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 
 | Version | Target Date | Focus |
 |---------|-------------|-------|
-| v0.1.0 | Q1 2025 | Foundation ✅ |
-| v0.2.0 | Q1 2025 | Production Ready ✅ |
-| v0.3.0 | Q2 2025 | Claude Code-like CLI Experience |
-| v0.4.0 | Q2 2025 | Sleepless Mode & Autonomy |
-| v0.5.0 | Q2 2025 | Tool System & Permissions |
-| v0.6.0 | Q3 2025 | Context & Memory |
-| v0.7.0 | Q3 2025 | Web Dashboard & Integrations |
-| v0.8.0 | Q3 2025 | IDE Integration |
-| v0.9.0 | Q4 2025 | Advanced Workflows |
-| v0.10.0 | Q4 2025 | Intelligence & Learning |
-| v0.11.0 | Q1 2026 | Enterprise Features |
-| v0.12.0 | Q1 2026 | Domain-Specific Agent Packs |
+| v0.1.0 | Q4 2025 | Foundation ✅ |
+| v0.2.0 | Q4 2025 | Production Ready ✅ |
+| v0.3.0 | Q4 2025 | Claude Code-like CLI Experience |
+| v0.4.0 | Q4 2025 | Sleepless Mode & Autonomy |
+| v0.5.0 | Q1 2026 | Tool System & Permissions |
+| v0.6.0 | Q1 2026 | Context & Memory |
+| v0.7.0 | Q1 2026 | Web Dashboard & Integrations |
+| v0.8.0 | Q1 2026 | IDE Integration |
+| v0.9.0 | Q1 2026 | Advanced Workflows |
+| v0.10.0 | Q2 2026 | Intelligence & Learning |
+| v0.11.0 | Q2 2026 | Enterprise Features |
+| v0.12.0 | Q2 2026 | Domain-Specific Agent Packs |
 | v0.13.0 | Q2 2026 | Ecosystem & Extensibility |
 | v0.14.0 | Q2 2026 | Scale & Performance |
 | v1.0.0 | Q3 2026 | General Availability |

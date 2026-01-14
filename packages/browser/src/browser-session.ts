@@ -428,6 +428,84 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   }
 
   /**
+   * Hovers over an element
+   */
+  async hover(
+    selector: string | ElementSelector,
+    options?: {
+      timeout?: number;
+      force?: boolean;
+    }
+  ): Promise<BrowserActionResult<void>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const selectorString = this.normalizeSelector(selector);
+      await this.page.hover(selectorString, {
+        timeout: options?.timeout || this.config.timeout,
+        force: options?.force,
+      });
+
+      return {
+        success: true,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Focuses on an element
+   */
+  async focus(
+    selector: string | ElementSelector,
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<void>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const selectorString = this.normalizeSelector(selector);
+      await this.page.focus(selectorString, {
+        timeout: options?.timeout || this.config.timeout,
+      });
+
+      return {
+        success: true,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
    * Takes a screenshot
    */
   async screenshot(options: ScreenshotOptions = {}): Promise<BrowserActionResult<Buffer>> {

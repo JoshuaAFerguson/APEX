@@ -1,0 +1,175 @@
+# Interpolation Pattern Edge Cases
+# Tools testing various {{input}} interpolation patterns
+
+# Simple input interpolation
+- name: SimpleInterpolationTool
+  description: Tool with simple input interpolation
+  command: echo
+  args:
+    - "{{input}}"
+  parameters:
+    type: object
+    properties:
+      value:
+        type: string
+    required:
+      - value
+    additionalProperties: false
+  enabled: true
+
+# Nested property interpolation
+- name: NestedInterpolationTool
+  description: Tool with nested property interpolation
+  command: echo
+  args:
+    - "{{input.config.database.host}}"
+    - "{{input.config.database.port}}"
+  parameters:
+    type: object
+    properties:
+      config:
+        type: object
+        properties:
+          database:
+            type: object
+            properties:
+              host:
+                type: string
+              port:
+                type: integer
+    required:
+      - config
+    additionalProperties: false
+  enabled: true
+
+# Multiple interpolations in single arg
+- name: MultiInterpolationTool
+  description: Tool with multiple interpolations
+  command: echo
+  args:
+    - "User: {{input.firstName}} {{input.lastName}} <{{input.email}}>"
+  parameters:
+    type: object
+    properties:
+      firstName:
+        type: string
+      lastName:
+        type: string
+      email:
+        type: string
+    required:
+      - firstName
+      - lastName
+      - email
+    additionalProperties: false
+  enabled: true
+
+# Interpolation with array index (if supported)
+- name: ArrayIndexInterpolationTool
+  description: Tool with array index interpolation
+  command: echo
+  args:
+    - "First: {{input.items.0}}"
+    - "Second: {{input.items.1}}"
+  parameters:
+    type: object
+    properties:
+      items:
+        type: array
+        items:
+          type: string
+    required:
+      - items
+    additionalProperties: false
+  enabled: true
+
+# Mixed literal and interpolation
+- name: MixedInterpolationTool
+  description: Tool with mixed literals and interpolation
+  command: echo
+  args:
+    - "--name={{input.name}}"
+    - "--count={{input.count}}"
+    - "--verbose"
+    - "{{input.message}}"
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+      count:
+        type: integer
+      message:
+        type: string
+    required:
+      - name
+      - count
+      - message
+    additionalProperties: false
+  enabled: true
+
+# No interpolation (literal args only)
+- name: NoInterpolationTool
+  description: Tool with no interpolation patterns
+  command: echo
+  args:
+    - "This is a literal string"
+    - "--flag"
+    - "-v"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  enabled: true
+
+# Complex interpolation with special characters
+- name: ComplexInterpolationTool
+  description: Tool with complex interpolation patterns
+  command: echo
+  args:
+    - '{"name": "{{input.name}}", "data": "{{input.data}}"}'
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+      data:
+        type: string
+    required:
+      - name
+      - data
+    additionalProperties: false
+  outputParser: json
+  enabled: true
+
+# Interpolation in env vars (if supported)
+- name: EnvInterpolationTool
+  description: Tool testing if env supports interpolation
+  command: echo
+  args:
+    - "$DYNAMIC_VAR"
+  parameters:
+    type: object
+    properties:
+      value:
+        type: string
+    required:
+      - value
+    additionalProperties: false
+  env:
+    DYNAMIC_VAR: "{{input.value}}"
+  enabled: true
+
+# Edge case: interpolation-like but not (escaped or invalid)
+- name: EscapedInterpolationTool
+  description: Tool with escaped interpolation patterns
+  command: echo
+  args:
+    - "This looks like {{input}} but should be literal"
+    - "{input.notReal}"
+    - "{{notInput.something}}"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  enabled: true

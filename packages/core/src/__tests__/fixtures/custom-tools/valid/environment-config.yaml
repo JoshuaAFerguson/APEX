@@ -1,0 +1,92 @@
+# Environment Configuration Custom Tool Fixtures
+# Tools with environment variables and working directory settings
+
+# Tool with environment variables
+- name: EnvVarTool
+  description: Tool that uses environment variables
+  command: printenv
+  args:
+    - "TEST_VAR"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  env:
+    TEST_VAR: test-value
+    NODE_ENV: test
+  enabled: true
+
+# Tool with multiple environment variables
+- name: MultiEnvTool
+  description: Tool with multiple environment variables
+  command: echo
+  args:
+    - "$DB_HOST:$DB_PORT"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  env:
+    DB_HOST: localhost
+    DB_PORT: "5432"
+    DB_NAME: test_database
+    DB_USER: test_user
+  enabled: true
+
+# Tool with working directory
+- name: WorkingDirTool
+  description: Tool with specific working directory
+  command: pwd
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  workingDirectory: "/tmp"
+  enabled: true
+
+# Tool with both env vars and working directory
+- name: FullEnvTool
+  description: Tool with full environment configuration
+  command: echo
+  args:
+    - "Running in $(pwd) with ENV=$APP_ENV"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  workingDirectory: "./src"
+  env:
+    APP_ENV: development
+    DEBUG: "true"
+    LOG_LEVEL: debug
+  enabled: true
+
+# Tool with custom timeout
+- name: LongRunningTool
+  description: Tool with extended timeout
+  command: sleep
+  args:
+    - "1"
+  parameters:
+    type: object
+    properties:
+      duration:
+        type: integer
+        description: Sleep duration in seconds
+        default: 1
+    additionalProperties: false
+  timeoutMs: 30000
+  enabled: true
+
+# Tool with short timeout (for testing timeout handling)
+- name: ShortTimeoutTool
+  description: Tool with very short timeout
+  command: sleep
+  args:
+    - "0.1"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  timeoutMs: 500
+  enabled: true

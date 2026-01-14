@@ -1,0 +1,48 @@
+# Missing Required Fields Fixtures
+# Tool configurations that are missing required fields for error testing
+
+# Missing name
+- description: Tool without a name
+  command: echo
+  args:
+    - "test"
+  enabled: true
+
+# Missing description
+- name: NoDescriptionTool
+  command: echo
+  enabled: true
+
+# Missing command
+- name: NoCommandTool
+  description: Tool without a command
+  enabled: true
+
+# Empty name (should fail min length validation)
+- name: ""
+  description: Empty name tool
+  command: echo
+  enabled: true
+
+# Empty description (should fail min length validation)
+- name: EmptyDescTool
+  description: ""
+  command: echo
+  enabled: true
+
+# Empty command (should fail min length validation)
+- name: EmptyCommandTool
+  description: Tool with empty command
+  command: ""
+  enabled: true
+
+# Null values for required fields
+- name: null
+  description: Tool with null name
+  command: echo
+  enabled: true
+
+# Missing all required fields (only optional fields)
+- enabled: true
+  outputParser: text
+  timeoutMs: 5000

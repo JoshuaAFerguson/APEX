@@ -18,6 +18,15 @@ import {
   mockToolPermissions,
   createMockUserConfirmation,
   assertPermissionEquals,
+  assertPermissionResultEquals,
+  assertPermissionState,
+  assertToolIsAllowed,
+  assertToolIsDenied,
+  assertToolRequiresConfirmation,
+  createPermissionTestingSuite,
+  createBatchPermissionChecker,
+  waitForPermissionEvent,
+  mockPermissionConfirmation,
 } from '../test-utils';
 import type { Permission, PermissionLevel } from '../types';
 
@@ -243,6 +252,314 @@ describe('Permission Test Utilities', () => {
       expect(deniedEvent.deniedBy).toBe('test-system');
       expect(deniedEvent.deniedAt).toBeInstanceOf(Date);
     });
+  });
+
+  describe('new assertion utilities', () => {
+    describe('assertPermissionResultEquals', () => {
+      it('should pass for matching permission results', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-always',
+          requiresConfirmation: false,
+        });
+
+        expect(() => {
+          assertPermissionResultEquals(result, {
+            allowed: true,
+            level: 'allow-always',
+            requiresConfirmation: false,
+          });
+        }).not.toThrow();
+      });
+
+      it('should throw for mismatched permission results', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-always',
+        });
+
+        expect(() => {
+          assertPermissionResultEquals(result, {
+            allowed: false,
+            level: 'deny',
+          });
+        }).toThrow('Permission result assertion failed');
+      });
+    });
+
+    describe('assertPermissionState', () => {
+      it('should pass for matching states', () => {
+        expect(() => {
+          assertPermissionState('allow-always', 'allow-always');
+        }).not.toThrow();
+
+        expect(() => {
+          assertPermissionState(null, null);
+        }).not.toThrow();
+      });
+
+      it('should throw for mismatched states', () => {
+        expect(() => {
+          assertPermissionState('allow-always', 'deny');
+        }).toThrow('Permission state assertion failed');
+      });
+    });
+
+    describe('assertToolIsAllowed', () => {
+      it('should pass for allowed tools', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-always',
+        });
+
+        expect(() => {
+          assertToolIsAllowed(result, 'allow-always');
+        }).not.toThrow();
+      });
+
+      it('should throw for denied tools', () => {
+        const result = createMockToolPermissionResult({
+          allowed: false,
+          denialReason: 'Tool blocked',
+        });
+
+        expect(() => {
+          assertToolIsAllowed(result);
+        }).toThrow('Tool should be allowed but was denied');
+      });
+
+      it('should throw for wrong permission level', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-once',
+        });
+
+        expect(() => {
+          assertToolIsAllowed(result, 'allow-always');
+        }).toThrow('Tool allowed but with wrong level');
+      });
+    });
+
+    describe('assertToolIsDenied', () => {
+      it('should pass for denied tools', () => {
+        const result = createMockToolPermissionResult({
+          allowed: false,
+          denialReason: 'Tool blocked',
+        });
+
+        expect(() => {
+          assertToolIsDenied(result, 'Tool blocked');
+        }).not.toThrow();
+      });
+
+      it('should throw for allowed tools', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-always',
+        });
+
+        expect(() => {
+          assertToolIsDenied(result);
+        }).toThrow('Tool should be denied but was allowed');
+      });
+    });
+
+    describe('assertToolRequiresConfirmation', () => {
+      it('should pass for tools requiring confirmation', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-once',
+          requiresConfirmation: true,
+        });
+
+        expect(() => {
+          assertToolRequiresConfirmation(result);
+        }).not.toThrow();
+      });
+
+      it('should throw for denied tools', () => {
+        const result = createMockToolPermissionResult({
+          allowed: false,
+        });
+
+        expect(() => {
+          assertToolRequiresConfirmation(result);
+        }).toThrow('Tool is denied, cannot require confirmation');
+      });
+
+      it('should throw for tools not requiring confirmation', () => {
+        const result = createMockToolPermissionResult({
+          allowed: true,
+          level: 'allow-always',
+          requiresConfirmation: false,
+        });
+
+        expect(() => {
+          assertToolRequiresConfirmation(result);
+        }).toThrow('Tool should require confirmation but doesn\'t');
+      });
+    });
+  });
+
+  describe('createPermissionTestingSuite', () => {
+    it('should create suite with initial permissions', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once', scope: '/project/**' }),
+      ];
+
+      const suite = createPermissionTestingSuite(permissions);
+
+      expect(suite.isAllowed('Read')).toBe(true);
+      expect(suite.requiresConfirmation('Write', '/project/**')).toBe(true);
+    });
+
+    it('should support adding and removing permissions', () => {
+      const suite = createPermissionTestingSuite();
+
+      suite.addPermission(createMockPermission({ tool: 'Read', level: 'allow-always' }));
+      expect(suite.isAllowed('Read')).toBe(true);
+
+      suite.removePermission('Read');
+      expect(suite.isAllowed('Read')).toBe(false);
+    });
+
+    it('should support assertions', async () => {
+      const suite = createPermissionTestingSuite([
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'deny' }),
+      ]);
+
+      await expect(suite.assertToolIsAllowed('Read', 'allow-always')).resolves.not.toThrow();
+      await expect(suite.assertToolIsDenied('Write')).resolves.not.toThrow();
+    });
+
+    it('should throw for invalid assertions', async () => {
+      const suite = createPermissionTestingSuite([
+        createMockPermission({ tool: 'Read', level: 'deny' }),
+      ]);
+
+      await expect(suite.assertToolIsAllowed('Read')).rejects.toThrow('Tool Read is denied');
+      await expect(suite.assertToolIsDenied('Nonexistent')).resolves.not.toThrow(); // No permission = denied
+    });
+  });
+
+  describe('createBatchPermissionChecker', () => {
+    it('should check multiple permissions at once', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once' }),
+        createMockPermission({ tool: 'Bash', level: 'deny' }),
+      ];
+
+      const checker = createBatchPermissionChecker(permissions);
+
+      const results = checker.checkBatch([
+        { tool: 'Read', expected: 'allow-always' },
+        { tool: 'Write', expected: 'allow-once' },
+        { tool: 'Bash', expected: 'deny' },
+      ]);
+
+      expect(results.every(r => r.passed)).toBe(true);
+    });
+
+    it('should fail batch assertion for mismatched permissions', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+      ];
+
+      const checker = createBatchPermissionChecker(permissions);
+
+      expect(() => {
+        checker.assertBatch([
+          { tool: 'Read', expected: 'deny' }, // This should fail
+        ]);
+      }).toThrow('Batch permission assertion failed');
+    });
+
+    it('should provide permission summary', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once', scope: '/project/**' }),
+      ];
+
+      const checker = createBatchPermissionChecker(permissions);
+      const summary = checker.getSummary();
+
+      expect(summary).toHaveLength(2);
+      expect(summary[0]).toEqual({ tool: 'Read', scope: undefined, level: 'allow-always' });
+      expect(summary[1]).toEqual({ tool: 'Write', scope: '/project/**', level: 'allow-once' });
+    });
+  });
+
+  describe('mockPermissionConfirmation', () => {
+    it('should return configured responses', async () => {
+      const mockConfirm = mockPermissionConfirmation({
+        'Allow Write access?': true,
+        'Allow dangerous command?': false,
+      });
+
+      expect(await mockConfirm('Allow Write access?')).toBe(true);
+      expect(await mockConfirm('Allow dangerous command?')).toBe(false);
+    });
+
+    it('should support partial matching', async () => {
+      const mockConfirm = mockPermissionConfirmation({
+        'Write access': true,
+        'dangerous': false,
+      });
+
+      expect(await mockConfirm('Allow Write access to file.ts?')).toBe(true);
+      expect(await mockConfirm('This is a dangerous command')).toBe(false);
+    });
+
+    it('should default to false for unknown prompts', async () => {
+      const mockConfirm = mockPermissionConfirmation({});
+
+      expect(await mockConfirm('Unknown permission request')).toBe(false);
+    });
+  });
+
+  describe('waitForPermissionEvent', () => {
+    it('should resolve when event is received', async () => {
+      const mockEmitter = {
+        listeners: [] as Array<(data: any) => void>,
+        on(event: string, listener: (data: any) => void) {
+          this.listeners.push(listener);
+        },
+        off(event: string, listener: (data: any) => void) {
+          const index = this.listeners.indexOf(listener);
+          if (index >= 0) {
+            this.listeners.splice(index, 1);
+          }
+        },
+        emit(data: any) {
+          this.listeners.forEach(listener => listener(data));
+        },
+      };
+
+      const eventPromise = waitForPermissionEvent(mockEmitter, 'permission:requested', 1000);
+
+      // Simulate event emission after a short delay
+      setTimeout(() => {
+        mockEmitter.emit({ tool: 'Write', scope: '/file.ts' });
+      }, 10);
+
+      const eventData = await eventPromise;
+      expect(eventData.tool).toBe('Write');
+      expect(eventData.scope).toBe('/file.ts');
+    });
+
+    it('should reject on timeout', async () => {
+      const mockEmitter = {
+        on() {},
+        off() {},
+      };
+
+      await expect(
+        waitForPermissionEvent(mockEmitter, 'permission:requested', 10)
+      ).rejects.toThrow('Permission event \'permission:requested\' not received within 10ms');
+    }, 100);
   });
 
   describe('permission result mocks', () => {

@@ -1311,3 +1311,441 @@ export function assertPermissionEquals(
     throw new Error(`Permission assertion failed: ${fullMessage}`);
   }
 }
+
+/**
+ * Assert that a permission result has the expected properties for testing
+ *
+ * @param actual - The actual permission result object
+ * @param expected - The expected permission result properties
+ * @param message - Optional assertion message
+ *
+ * @example
+ * ```typescript
+ * const result = await permissionManager.checkToolPermission('Read', '/project/file.ts');
+ * assertPermissionResultEquals(result, {
+ *   allowed: true,
+ *   level: 'allow-always',
+ *   requiresConfirmation: false
+ * });
+ * ```
+ */
+export function assertPermissionResultEquals(
+  actual: ToolPermissionResult,
+  expected: Partial<ToolPermissionResult>,
+  message?: string
+): void {
+  const failures: string[] = [];
+
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    const actualValue = (actual as any)[key];
+    if (actualValue !== expectedValue) {
+      failures.push(`${key}: expected ${JSON.stringify(expectedValue)}, got ${JSON.stringify(actualValue)}`);
+    }
+  }
+
+  if (failures.length > 0) {
+    const failureMessage = failures.join(', ');
+    const fullMessage = message ? `${message}: ${failureMessage}` : failureMessage;
+    throw new Error(`Permission result assertion failed: ${fullMessage}`);
+  }
+}
+
+/**
+ * Assert that a permission state matches expected state for testing
+ *
+ * @param actual - The actual permission state
+ * @param expected - The expected permission state
+ * @param message - Optional assertion message
+ *
+ * @example
+ * ```typescript
+ * assertPermissionState('allow-always', 'allow-always');
+ * assertPermissionState('deny', 'deny', 'Write permission should be denied');
+ * ```
+ */
+export function assertPermissionState(
+  actual: PermissionLevel | null,
+  expected: PermissionLevel | null,
+  message?: string
+): void {
+  if (actual !== expected) {
+    const fullMessage = message
+      ? `${message}: expected ${expected}, got ${actual}`
+      : `Permission state assertion failed: expected ${expected}, got ${actual}`;
+    throw new Error(fullMessage);
+  }
+}
+
+/**
+ * Assert that a tool is allowed with the expected permission level
+ *
+ * @param result - The permission result to check
+ * @param expectedLevel - The expected permission level, or null if denied
+ * @param message - Optional assertion message
+ *
+ * @example
+ * ```typescript
+ * const result = await manager.checkPermission('Read');
+ * assertToolIsAllowed(result, 'allow-always', 'Read should be always allowed');
+ *
+ * const deniedResult = await manager.checkPermission('Bash');
+ * assertToolIsDenied(deniedResult, 'Bash should be denied');
+ * ```
+ */
+export function assertToolIsAllowed(
+  result: ToolPermissionResult,
+  expectedLevel?: PermissionLevel,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (!result.allowed) {
+    throw new Error(`${baseMessage}Tool should be allowed but was denied. Reason: ${result.denialReason || 'Unknown'}`);
+  }
+
+  if (expectedLevel && result.level !== expectedLevel) {
+    throw new Error(`${baseMessage}Tool allowed but with wrong level. Expected: ${expectedLevel}, got: ${result.level}`);
+  }
+}
+
+/**
+ * Assert that a tool is denied
+ *
+ * @param result - The permission result to check
+ * @param expectedReason - Optional expected denial reason
+ * @param message - Optional assertion message
+ *
+ * @example
+ * ```typescript
+ * const result = await manager.checkPermission('Bash');
+ * assertToolIsDenied(result, 'Tool requires confirmation');
+ * ```
+ */
+export function assertToolIsDenied(
+  result: ToolPermissionResult,
+  expectedReason?: string,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (result.allowed) {
+    throw new Error(`${baseMessage}Tool should be denied but was allowed with level: ${result.level}`);
+  }
+
+  if (expectedReason && result.denialReason !== expectedReason) {
+    throw new Error(`${baseMessage}Tool denied but with wrong reason. Expected: "${expectedReason}", got: "${result.denialReason || 'Unknown'}"`);
+  }
+}
+
+/**
+ * Assert that a tool requires confirmation
+ *
+ * @param result - The permission result to check
+ * @param message - Optional assertion message
+ *
+ * @example
+ * ```typescript
+ * const result = await manager.checkPermission('Write');
+ * assertToolRequiresConfirmation(result, 'Write should require user confirmation');
+ * ```
+ */
+export function assertToolRequiresConfirmation(
+  result: ToolPermissionResult,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (!result.allowed) {
+    throw new Error(`${baseMessage}Tool is denied, cannot require confirmation`);
+  }
+
+  if (!result.requiresConfirmation) {
+    throw new Error(`${baseMessage}Tool should require confirmation but doesn't`);
+  }
+
+  if (result.level !== 'allow-once') {
+    throw new Error(`${baseMessage}Tool requires confirmation but has wrong level. Expected: allow-once, got: ${result.level}`);
+  }
+}
+
+/**
+ * Create a comprehensive permission testing suite with helper methods
+ *
+ * @param initialPermissions - Optional initial permissions to set up
+ * @returns Testing suite with commonly used assertion methods
+ *
+ * @example
+ * ```typescript
+ * describe('Permission integration tests', () => {
+ *   const suite = createPermissionTestingSuite([
+ *     createMockPermission({ tool: 'Read', level: 'allow-always' })
+ *   ]);
+ *
+ *   it('should test read permissions', async () => {
+ *     await suite.assertToolIsAllowed('Read', 'allow-always');
+ *     await suite.assertToolIsDenied('Write');
+ *   });
+ * });
+ * ```
+ */
+export function createPermissionTestingSuite(initialPermissions: Permission[] = []) {
+  const permissionMap = new Map<string, Permission>();
+
+  // Initialize with provided permissions
+  for (const permission of initialPermissions) {
+    const key = permission.scope ? `${permission.tool}:${permission.scope}` : permission.tool;
+    permissionMap.set(key, permission);
+  }
+
+  return {
+    /**
+     * Add a permission to the test suite
+     */
+    addPermission(permission: Permission): void {
+      const key = permission.scope ? `${permission.tool}:${permission.scope}` : permission.tool;
+      permissionMap.set(key, permission);
+    },
+
+    /**
+     * Remove a permission from the test suite
+     */
+    removePermission(tool: string, scope?: string): void {
+      const key = scope ? `${tool}:${scope}` : tool;
+      permissionMap.delete(key);
+    },
+
+    /**
+     * Get a permission from the test suite
+     */
+    getPermission(tool: string, scope?: string): Permission | undefined {
+      const key = scope ? `${tool}:${scope}` : tool;
+      return permissionMap.get(key);
+    },
+
+    /**
+     * Check if a tool is allowed based on current permissions
+     */
+    isAllowed(tool: string, scope?: string): boolean {
+      const permission = this.getPermission(tool, scope);
+      if (!permission) return false;
+      return permission.level !== 'deny';
+    },
+
+    /**
+     * Check if a tool requires confirmation based on current permissions
+     */
+    requiresConfirmation(tool: string, scope?: string): boolean {
+      const permission = this.getPermission(tool, scope);
+      if (!permission) return false;
+      return permission.level === 'allow-once';
+    },
+
+    /**
+     * Assert that a tool is allowed with expected level
+     */
+    async assertToolIsAllowed(tool: string, expectedLevel?: PermissionLevel, scope?: string, message?: string): Promise<void> {
+      const permission = this.getPermission(tool, scope);
+      if (!permission) {
+        throw new Error(`${message || ''}: No permission found for ${tool}${scope ? `:${scope}` : ''}`);
+      }
+      if (permission.level === 'deny') {
+        throw new Error(`${message || ''}: Tool ${tool} is denied`);
+      }
+      if (expectedLevel && permission.level !== expectedLevel) {
+        throw new Error(`${message || ''}: Tool ${tool} has level ${permission.level}, expected ${expectedLevel}`);
+      }
+    },
+
+    /**
+     * Assert that a tool is denied
+     */
+    async assertToolIsDenied(tool: string, scope?: string, message?: string): Promise<void> {
+      const permission = this.getPermission(tool, scope);
+      if (!permission) {
+        // No permission found means denied in most cases
+        return;
+      }
+      if (permission.level !== 'deny') {
+        throw new Error(`${message || ''}: Tool ${tool} should be denied but has level ${permission.level}`);
+      }
+    },
+
+    /**
+     * Assert that a tool requires confirmation
+     */
+    async assertToolRequiresConfirmation(tool: string, scope?: string, message?: string): Promise<void> {
+      const permission = this.getPermission(tool, scope);
+      if (!permission) {
+        throw new Error(`${message || ''}: No permission found for ${tool}${scope ? `:${scope}` : ''}`);
+      }
+      if (permission.level !== 'allow-once') {
+        throw new Error(`${message || ''}: Tool ${tool} should require confirmation but has level ${permission.level}`);
+      }
+    },
+
+    /**
+     * Get all permissions in the test suite
+     */
+    getAllPermissions(): Permission[] {
+      return Array.from(permissionMap.values());
+    },
+
+    /**
+     * Clear all permissions
+     */
+    clearAll(): void {
+      permissionMap.clear();
+    },
+  };
+}
+
+/**
+ * Create a batch permission checker for testing multiple tools at once
+ *
+ * @param permissions - Array of permissions to check against
+ * @returns Batch checker with utility methods
+ *
+ * @example
+ * ```typescript
+ * const checker = createBatchPermissionChecker([
+ *   createMockPermission({ tool: 'Read', level: 'allow-always' }),
+ *   createMockPermission({ tool: 'Write', level: 'deny' })
+ * ]);
+ *
+ * checker.assertBatch([
+ *   { tool: 'Read', expected: 'allow-always' },
+ *   { tool: 'Write', expected: 'deny' }
+ * ]);
+ * ```
+ */
+export function createBatchPermissionChecker(permissions: Permission[]) {
+  const permissionMap = new Map<string, Permission>();
+
+  for (const permission of permissions) {
+    const key = permission.scope ? `${permission.tool}:${permission.scope}` : permission.tool;
+    permissionMap.set(key, permission);
+  }
+
+  return {
+    /**
+     * Check permissions for multiple tools at once
+     */
+    checkBatch(checks: Array<{ tool: string; scope?: string; expected: PermissionLevel | null }>): Array<{ tool: string; scope?: string; passed: boolean; actual: PermissionLevel | null; expected: PermissionLevel | null; error?: string }> {
+      return checks.map(check => {
+        const key = check.scope ? `${check.tool}:${check.scope}` : check.tool;
+        const permission = permissionMap.get(key);
+        const actual = permission?.level || null;
+        const passed = actual === check.expected;
+
+        return {
+          tool: check.tool,
+          scope: check.scope,
+          passed,
+          actual,
+          expected: check.expected,
+          error: passed ? undefined : `Expected ${check.expected}, got ${actual}`,
+        };
+      });
+    },
+
+    /**
+     * Assert that all batch checks pass
+     */
+    assertBatch(checks: Array<{ tool: string; scope?: string; expected: PermissionLevel | null }>): void {
+      const results = this.checkBatch(checks);
+      const failures = results.filter(result => !result.passed);
+
+      if (failures.length > 0) {
+        const errorMessages = failures.map(failure =>
+          `${failure.tool}${failure.scope ? `:${failure.scope}` : ''}: ${failure.error}`
+        ).join(', ');
+        throw new Error(`Batch permission assertion failed: ${errorMessages}`);
+      }
+    },
+
+    /**
+     * Get summary of all permissions
+     */
+    getSummary(): { tool: string; scope?: string; level: PermissionLevel }[] {
+      return Array.from(permissionMap.values()).map(permission => ({
+        tool: permission.tool,
+        scope: permission.scope,
+        level: permission.level,
+      }));
+    },
+  };
+}
+
+/**
+ * Helper to wait for permission events in tests
+ *
+ * @param eventEmitter - Event emitter to listen on
+ * @param eventType - Type of permission event to wait for
+ * @param timeout - Maximum time to wait in milliseconds
+ * @returns Promise that resolves with the event data
+ *
+ * @example
+ * ```typescript
+ * // Start an operation that should trigger a permission request
+ * const operation = manager.requestPermission('Write', '/file.ts');
+ *
+ * // Wait for the permission request event
+ * const requestEvent = await waitForPermissionEvent(orchestrator, 'permission:requested', 5000);
+ * expect(requestEvent.tool).toBe('Write');
+ * ```
+ */
+export function waitForPermissionEvent<T = any>(
+  eventEmitter: { on: (event: string, listener: (data: T) => void) => void; off: (event: string, listener: (data: T) => void) => void },
+  eventType: string,
+  timeout = 10000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      eventEmitter.off(eventType, listener);
+      reject(new Error(`Permission event '${eventType}' not received within ${timeout}ms`));
+    }, timeout);
+
+    const listener = (data: T) => {
+      clearTimeout(timeoutId);
+      eventEmitter.off(eventType, listener);
+      resolve(data);
+    };
+
+    eventEmitter.on(eventType, listener);
+  });
+}
+
+/**
+ * Mock permission confirmation dialog for testing user interactions
+ *
+ * @param responses - Map of permission prompts to user responses
+ * @returns Mock confirmation function
+ *
+ * @example
+ * ```typescript
+ * const mockConfirm = mockPermissionConfirmation({
+ *   'Allow Write access to /project/file.ts?': true,
+ *   'Allow Bash command: npm install?': false
+ * });
+ *
+ * // Use in your permission manager configuration
+ * const manager = new PermissionManager(store, { confirmationHandler: mockConfirm });
+ * ```
+ */
+export function mockPermissionConfirmation(responses: Record<string, boolean>) {
+  return (prompt: string, details?: any): Promise<boolean> => {
+    if (prompt in responses) {
+      return Promise.resolve(responses[prompt]);
+    }
+
+    // Check for partial matches
+    for (const [pattern, response] of Object.entries(responses)) {
+      if (prompt.includes(pattern) || pattern.includes(prompt)) {
+        return Promise.resolve(response);
+      }
+    }
+
+    // Default to deny if no specific response configured
+    return Promise.resolve(false);
+  };
+}
