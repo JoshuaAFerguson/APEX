@@ -1999,6 +1999,99 @@ export const DaemonConfigSchema = z.object({
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 
 // ============================================================================
+// Logging Configuration (v0.6.0)
+// ============================================================================
+
+/**
+ * Log level schema
+ */
+export const LogLevelSchema = z.enum(['debug', 'info', 'warn', 'error', 'fatal']);
+export type LogLevelType = z.infer<typeof LogLevelSchema>;
+
+/**
+ * Log rotation configuration for file-based logging
+ */
+export const LogRotationConfigSchema = z.object({
+  /** Maximum file size before rotation (e.g., '10M', '100K', '1G') */
+  maxSize: z.string().regex(/^\d+[KMG]?$/i).optional().default('10M'),
+  /** Number of rotated files to keep */
+  maxFiles: z.number().int().min(1).max(100).optional().default(5),
+  /** Compress rotated files with gzip */
+  compress: z.boolean().optional().default(false),
+});
+export type LogRotationConfig = z.infer<typeof LogRotationConfigSchema>;
+
+/**
+ * Logging configuration for APEX
+ *
+ * Controls logging behavior across all packages including:
+ * - Log levels (global and per-package)
+ * - Output format (JSON vs pretty-printed)
+ * - File logging with rotation
+ * - Sensitive field redaction
+ *
+ * @example
+ * ```yaml
+ * logging:
+ *   level: info
+ *   format: auto
+ *   packageLevels:
+ *     orchestrator: debug
+ *   file:
+ *     enabled: true
+ *     path: .apex/apex.log
+ *     rotation:
+ *       maxSize: 10M
+ *       maxFiles: 5
+ * ```
+ */
+export const LoggingConfigSchema = z.object({
+  /** Default log level for all packages */
+  level: LogLevelSchema.optional().default('info'),
+
+  /** Output format: 'json' for production, 'pretty' for development, 'auto' to detect */
+  format: z.enum(['json', 'pretty', 'auto']).optional().default('auto'),
+
+  /** Per-package log level overrides (e.g., { orchestrator: 'debug', api: 'warn' }) */
+  packageLevels: z.record(z.string(), LogLevelSchema).optional().default({}),
+
+  /** File logging configuration */
+  file: z.object({
+    /** Enable file logging */
+    enabled: z.boolean().optional().default(false),
+    /** Log file path (relative to project root) */
+    path: z.string().optional().default('.apex/apex.log'),
+    /** Rotation configuration */
+    rotation: LogRotationConfigSchema.optional(),
+  }).optional(),
+
+  /** Daemon-specific logging configuration */
+  daemon: z.object({
+    /** Daemon log file path */
+    path: z.string().optional().default('.apex/daemon.log'),
+    /** Rotation configuration for daemon logs */
+    rotation: LogRotationConfigSchema.optional(),
+  }).optional(),
+
+  /** Include timestamps in console output */
+  timestamps: z.boolean().optional().default(true),
+
+  /** Include stack traces for errors */
+  stackTraces: z.boolean().optional().default(true),
+
+  /** Fields to redact from logs (prevents leaking secrets) */
+  redactFields: z.array(z.string()).optional().default([
+    'password',
+    'token',
+    'secret',
+    'apiKey',
+    'authorization',
+    'ANTHROPIC_API_KEY',
+  ]),
+});
+export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
+
+// ============================================================================
 // Daemon Health Metrics Types (v0.4.0)
 // ============================================================================
 
@@ -2519,6 +2612,8 @@ export const ApexConfigSchema = z.object({
   /** Secret scanning configuration with enforcement mode control (v0.5.0) */
   secretScanning: SecretScanningConfigSchema.optional(),
   daemon: DaemonConfigSchema.optional(),
+  /** Logging configuration for structured logging across all packages (v0.6.0) */
+  logging: LoggingConfigSchema.optional(),
   documentation: z.lazy(() => DocumentationAnalysisConfigSchema).optional(),
   workspace: z.lazy(() => WorkspaceDefaultsSchema).optional(),
   /** Permission preset configuration for tool access control (v0.5.0) */

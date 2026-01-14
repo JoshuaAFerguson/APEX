@@ -1749,3 +1749,551 @@ export function mockPermissionConfirmation(responses: Record<string, boolean>) {
     return Promise.resolve(false);
   };
 }
+
+// ============================================================================
+// Enhanced Permission Assertion Helpers (v0.5.0)
+// ============================================================================
+
+/**
+ * Assert that a permission is granted (allowed) with optional permission level check
+ *
+ * @param result - The permission result to check
+ * @param expectedLevel - Optional expected permission level
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const result = await permissionManager.checkPermission('Read', '/project/file.ts');
+ * expectPermissionGranted(result, 'allow-always', 'Read access should be granted');
+ * ```
+ */
+export function expectPermissionGranted(
+  result: ToolPermissionResult,
+  expectedLevel?: PermissionLevel,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (!result.allowed) {
+    throw new Error(`${baseMessage}Expected permission to be granted, but was denied. Reason: ${result.denialReason || 'Unknown'}`);
+  }
+
+  if (expectedLevel && result.level !== expectedLevel) {
+    throw new Error(`${baseMessage}Permission granted but with unexpected level. Expected: ${expectedLevel}, got: ${result.level}`);
+  }
+}
+
+/**
+ * Assert that a permission is denied with optional reason check
+ *
+ * @param result - The permission result to check
+ * @param expectedReason - Optional expected denial reason (partial match)
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const result = await permissionManager.checkPermission('Bash', 'rm -rf /');
+ * expectPermissionDenied(result, 'dangerous operation', 'Dangerous commands should be denied');
+ * ```
+ */
+export function expectPermissionDenied(
+  result: ToolPermissionResult,
+  expectedReason?: string,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (result.allowed) {
+    throw new Error(`${baseMessage}Expected permission to be denied, but was granted with level: ${result.level}`);
+  }
+
+  if (expectedReason && result.denialReason) {
+    const actualReason = result.denialReason.toLowerCase();
+    const expectedReasonLower = expectedReason.toLowerCase();
+    if (!actualReason.includes(expectedReasonLower)) {
+      throw new Error(`${baseMessage}Permission denied but with unexpected reason. Expected reason containing "${expectedReason}", got: "${result.denialReason}"`);
+    }
+  }
+}
+
+/**
+ * Assert that a permission is pending (requires user confirmation)
+ *
+ * @param result - The permission result to check
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const result = await permissionManager.checkPermission('Write', '/project/new-file.ts');
+ * expectPermissionPending(result, 'Write operations should require confirmation');
+ * ```
+ */
+export function expectPermissionPending(
+  result: ToolPermissionResult,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (!result.allowed && !result.requiresConfirmation) {
+    throw new Error(`${baseMessage}Expected permission to be pending (require confirmation), but was denied outright`);
+  }
+
+  if (result.allowed && !result.requiresConfirmation) {
+    throw new Error(`${baseMessage}Expected permission to be pending (require confirmation), but was granted automatically`);
+  }
+
+  if (!result.requiresConfirmation) {
+    throw new Error(`${baseMessage}Expected permission to require confirmation, but requiresConfirmation is false`);
+  }
+
+  if (result.level !== 'allow-once') {
+    throw new Error(`${baseMessage}Expected permission level to be 'allow-once' for pending permissions, got: ${result.level}`);
+  }
+}
+
+/**
+ * Interface for permission context used in assertions
+ */
+export interface PermissionContext {
+  /** Active permissions */
+  permissions: Permission[];
+  /** Permission preset being used */
+  preset?: PermissionPreset;
+  /** Agent name this context applies to */
+  agent?: string;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Assert that a permission context has expected state and permissions
+ *
+ * @param context - The permission context to validate
+ * @param expectedState - Expected context properties
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const context = {
+ *   permissions: [
+ *     createMockPermission({ tool: 'Read', level: 'allow-always' }),
+ *     createMockPermission({ tool: 'Write', level: 'allow-once' })
+ *   ],
+ *   preset: 'review-all' as PermissionPreset,
+ *   agent: 'developer'
+ * };
+ *
+ * assertPermissionContext(context, {
+ *   hasPermissions: ['Read', 'Write'],
+ *   preset: 'review-all',
+ *   agent: 'developer'
+ * });
+ * ```
+ */
+export function assertPermissionContext(
+  context: PermissionContext,
+  expectedState: {
+    hasPermissions?: string[];
+    lacksPermissions?: string[];
+    preset?: PermissionPreset;
+    agent?: string;
+    permissionCount?: number;
+  },
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+  const errors: string[] = [];
+
+  // Check if expected permissions exist
+  if (expectedState.hasPermissions) {
+    for (const tool of expectedState.hasPermissions) {
+      const hasPermission = context.permissions.some(p => p.tool === tool);
+      if (!hasPermission) {
+        errors.push(`Missing expected permission for tool: ${tool}`);
+      }
+    }
+  }
+
+  // Check if permissions should not exist
+  if (expectedState.lacksPermissions) {
+    for (const tool of expectedState.lacksPermissions) {
+      const hasPermission = context.permissions.some(p => p.tool === tool);
+      if (hasPermission) {
+        errors.push(`Unexpected permission found for tool: ${tool}`);
+      }
+    }
+  }
+
+  // Check preset
+  if (expectedState.preset !== undefined && context.preset !== expectedState.preset) {
+    errors.push(`Expected preset: ${expectedState.preset}, got: ${context.preset}`);
+  }
+
+  // Check agent
+  if (expectedState.agent !== undefined && context.agent !== expectedState.agent) {
+    errors.push(`Expected agent: ${expectedState.agent}, got: ${context.agent}`);
+  }
+
+  // Check permission count
+  if (expectedState.permissionCount !== undefined && context.permissions.length !== expectedState.permissionCount) {
+    errors.push(`Expected ${expectedState.permissionCount} permissions, got: ${context.permissions.length}`);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`${baseMessage}Permission context assertion failed:\n  ${errors.join('\n  ')}`);
+  }
+}
+
+/**
+ * Interface for permission history entry
+ */
+export interface PermissionHistoryEntry {
+  /** Tool name */
+  tool: string;
+  /** Permission scope */
+  scope?: string;
+  /** Permission level granted/denied */
+  level?: PermissionLevel;
+  /** Whether permission was granted */
+  granted: boolean;
+  /** Timestamp of the decision */
+  timestamp: Date;
+  /** Reason for the decision */
+  reason?: string;
+  /** Who made the decision */
+  decidedBy?: string;
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Interface for permission history
+ */
+export interface PermissionHistory {
+  /** List of permission entries */
+  entries: PermissionHistoryEntry[];
+  /** Total number of entries */
+  total: number;
+  /** Number of granted permissions */
+  granted: number;
+  /** Number of denied permissions */
+  denied: number;
+}
+
+/**
+ * Assert that permission history matches expected criteria
+ *
+ * @param history - The permission history to validate
+ * @param expectedCriteria - Expected history state
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const history: PermissionHistory = {
+ *   entries: [
+ *     {
+ *       tool: 'Read',
+ *       granted: true,
+ *       level: 'allow-always',
+ *       timestamp: new Date(),
+ *       decidedBy: 'user'
+ *     }
+ *   ],
+ *   total: 1,
+ *   granted: 1,
+ *   denied: 0
+ * };
+ *
+ * assertPermissionHistory(history, {
+ *   totalEntries: 1,
+ *   grantedCount: 1,
+ *   deniedCount: 0,
+ *   hasToolEntry: 'Read'
+ * });
+ * ```
+ */
+export function assertPermissionHistory(
+  history: PermissionHistory,
+  expectedCriteria: {
+    totalEntries?: number;
+    grantedCount?: number;
+    deniedCount?: number;
+    hasToolEntry?: string;
+    lacksToolEntry?: string;
+    hasRecentEntry?: {
+      tool: string;
+      withinMinutes: number;
+      granted?: boolean;
+    };
+    entriesInOrder?: string[]; // Tool names in expected chronological order
+  },
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+  const errors: string[] = [];
+
+  // Check total entries
+  if (expectedCriteria.totalEntries !== undefined && history.total !== expectedCriteria.totalEntries) {
+    errors.push(`Expected ${expectedCriteria.totalEntries} total entries, got: ${history.total}`);
+  }
+
+  // Check granted count
+  if (expectedCriteria.grantedCount !== undefined && history.granted !== expectedCriteria.grantedCount) {
+    errors.push(`Expected ${expectedCriteria.grantedCount} granted entries, got: ${history.granted}`);
+  }
+
+  // Check denied count
+  if (expectedCriteria.deniedCount !== undefined && history.denied !== expectedCriteria.deniedCount) {
+    errors.push(`Expected ${expectedCriteria.deniedCount} denied entries, got: ${history.denied}`);
+  }
+
+  // Check for specific tool entry
+  if (expectedCriteria.hasToolEntry) {
+    const hasEntry = history.entries.some(entry => entry.tool === expectedCriteria.hasToolEntry);
+    if (!hasEntry) {
+      errors.push(`Expected entry for tool: ${expectedCriteria.hasToolEntry}`);
+    }
+  }
+
+  // Check for absence of specific tool entry
+  if (expectedCriteria.lacksToolEntry) {
+    const hasEntry = history.entries.some(entry => entry.tool === expectedCriteria.lacksToolEntry);
+    if (hasEntry) {
+      errors.push(`Unexpected entry found for tool: ${expectedCriteria.lacksToolEntry}`);
+    }
+  }
+
+  // Check for recent entry
+  if (expectedCriteria.hasRecentEntry) {
+    const { tool, withinMinutes, granted } = expectedCriteria.hasRecentEntry;
+    const cutoffTime = new Date(Date.now() - withinMinutes * 60 * 1000);
+
+    const recentEntry = history.entries.find(entry =>
+      entry.tool === tool &&
+      entry.timestamp >= cutoffTime &&
+      (granted === undefined || entry.granted === granted)
+    );
+
+    if (!recentEntry) {
+      const grantedText = granted !== undefined ? ` (${granted ? 'granted' : 'denied'})` : '';
+      errors.push(`Expected recent entry for tool: ${tool} within ${withinMinutes} minutes${grantedText}`);
+    }
+  }
+
+  // Check entries order
+  if (expectedCriteria.entriesInOrder) {
+    const actualOrder = history.entries
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+      .map(entry => entry.tool);
+
+    const expectedOrder = expectedCriteria.entriesInOrder;
+
+    if (actualOrder.length !== expectedOrder.length) {
+      errors.push(`Expected ${expectedOrder.length} entries in order, got: ${actualOrder.length}`);
+    } else {
+      for (let i = 0; i < expectedOrder.length; i++) {
+        if (actualOrder[i] !== expectedOrder[i]) {
+          errors.push(`Expected entry ${i + 1} to be '${expectedOrder[i]}', got: '${actualOrder[i]}'`);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`${baseMessage}Permission history assertion failed:\n  ${errors.join('\n  ')}`);
+  }
+}
+
+/**
+ * Create a mock permission history for testing
+ *
+ * @param entries - Array of permission history entries
+ * @returns Complete permission history object
+ *
+ * @example
+ * ```typescript
+ * const history = createMockPermissionHistory([
+ *   {
+ *     tool: 'Read',
+ *     granted: true,
+ *     level: 'allow-always',
+ *     timestamp: new Date(),
+ *     decidedBy: 'user'
+ *   },
+ *   {
+ *     tool: 'Write',
+ *     granted: false,
+ *     timestamp: new Date(),
+ *     reason: 'User denied request',
+ *     decidedBy: 'user'
+ *   }
+ * ]);
+ * ```
+ */
+export function createMockPermissionHistory(entries: Partial<PermissionHistoryEntry>[]): PermissionHistory {
+  const completeEntries: PermissionHistoryEntry[] = entries.map(entry => ({
+    tool: entry.tool || 'Read',
+    scope: entry.scope,
+    level: entry.level,
+    granted: entry.granted ?? true,
+    timestamp: entry.timestamp || new Date(),
+    reason: entry.reason,
+    decidedBy: entry.decidedBy || 'test-system',
+    metadata: entry.metadata,
+  }));
+
+  const granted = completeEntries.filter(entry => entry.granted).length;
+  const denied = completeEntries.filter(entry => !entry.granted).length;
+
+  return {
+    entries: completeEntries,
+    total: completeEntries.length,
+    granted,
+    denied,
+  };
+}
+
+/**
+ * Comprehensive permission state matcher for complex assertions
+ *
+ * @param result - The permission result to check
+ * @param expectedState - Expected permission state with multiple criteria
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const result = await permissionManager.checkPermission('Write');
+ * expectPermissionState(result, {
+ *   allowed: true,
+ *   level: 'allow-once',
+ *   requiresConfirmation: true,
+ *   hasConfig: true,
+ *   configType: 'filesystem'
+ * });
+ * ```
+ */
+export function expectPermissionState(
+  result: ToolPermissionResult,
+  expectedState: {
+    allowed?: boolean;
+    level?: PermissionLevel | null;
+    requiresConfirmation?: boolean;
+    denialReason?: string | RegExp;
+    hasConfig?: boolean;
+    configType?: string;
+  },
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+  const errors: string[] = [];
+
+  // Check allowed state
+  if (expectedState.allowed !== undefined && result.allowed !== expectedState.allowed) {
+    errors.push(`Expected allowed: ${expectedState.allowed}, got: ${result.allowed}`);
+  }
+
+  // Check permission level
+  if (expectedState.level !== undefined && result.level !== expectedState.level) {
+    errors.push(`Expected level: ${expectedState.level}, got: ${result.level}`);
+  }
+
+  // Check confirmation requirement
+  if (expectedState.requiresConfirmation !== undefined && result.requiresConfirmation !== expectedState.requiresConfirmation) {
+    errors.push(`Expected requiresConfirmation: ${expectedState.requiresConfirmation}, got: ${result.requiresConfirmation}`);
+  }
+
+  // Check denial reason
+  if (expectedState.denialReason !== undefined && result.denialReason) {
+    if (typeof expectedState.denialReason === 'string') {
+      if (!result.denialReason.includes(expectedState.denialReason)) {
+        errors.push(`Expected denial reason to contain: "${expectedState.denialReason}", got: "${result.denialReason}"`);
+      }
+    } else if (expectedState.denialReason instanceof RegExp) {
+      if (!expectedState.denialReason.test(result.denialReason)) {
+        errors.push(`Expected denial reason to match: ${expectedState.denialReason}, got: "${result.denialReason}"`);
+      }
+    }
+  }
+
+  // Check config presence
+  if (expectedState.hasConfig !== undefined) {
+    const hasConfig = result.config !== undefined && result.config !== null;
+    if (hasConfig !== expectedState.hasConfig) {
+      errors.push(`Expected hasConfig: ${expectedState.hasConfig}, got: ${hasConfig}`);
+    }
+  }
+
+  // Check config type (if config exists)
+  if (expectedState.configType !== undefined && result.config) {
+    // This is a simplified check - in practice you might want more sophisticated type detection
+    const configHasExpectedType = Object.prototype.hasOwnProperty.call(result.config, expectedState.configType) ||
+      (expectedState.configType === 'filesystem' && 'directoryAccess' in result.config) ||
+      (expectedState.configType === 'shell' && 'blockedCommands' in result.config) ||
+      (expectedState.configType === 'web' && 'allowedDomains' in result.config);
+
+    if (!configHasExpectedType) {
+      errors.push(`Expected config type: ${expectedState.configType}, but config doesn't match`);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`${baseMessage}Permission state assertion failed:\n  ${errors.join('\n  ')}`);
+  }
+}
+
+/**
+ * Batch permission assertions for testing multiple permissions at once
+ *
+ * @param results - Array of permission results to check
+ * @param expectations - Array of expected states for each result
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const results = await Promise.all([
+ *   permissionManager.checkPermission('Read'),
+ *   permissionManager.checkPermission('Write'),
+ *   permissionManager.checkPermission('Bash')
+ * ]);
+ *
+ * expectBatchPermissions(results, [
+ *   { tool: 'Read', allowed: true, level: 'allow-always' },
+ *   { tool: 'Write', allowed: true, requiresConfirmation: true },
+ *   { tool: 'Bash', allowed: false, denialReason: 'dangerous' }
+ * ]);
+ * ```
+ */
+export function expectBatchPermissions(
+  results: ToolPermissionResult[],
+  expectations: Array<{
+    tool: string;
+    allowed?: boolean;
+    level?: PermissionLevel | null;
+    requiresConfirmation?: boolean;
+    denialReason?: string;
+  }>,
+  message?: string
+): void {
+  const baseMessage = message ? `${message}: ` : '';
+
+  if (results.length !== expectations.length) {
+    throw new Error(`${baseMessage}Results count (${results.length}) doesn't match expectations count (${expectations.length})`);
+  }
+
+  const errors: string[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const expectation = expectations[i];
+
+    try {
+      expectPermissionState(result, expectation, `Tool ${expectation.tool}`);
+    } catch (error) {
+      errors.push(`${expectation.tool}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`${baseMessage}Batch permission assertion failed:\n  ${errors.join('\n  ')}`);
+  }
+}

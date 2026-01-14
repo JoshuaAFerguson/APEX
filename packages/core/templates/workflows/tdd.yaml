@@ -1,0 +1,51 @@
+name: tdd
+description: Test-Driven Development workflow following Red-Green-Refactor cycle
+trigger:
+  - manual
+  - apex:tdd
+  - apex:test-driven
+
+stages:
+  - name: write-test
+    agent: tester
+    description: Write failing test cases (Red phase)
+    outputs:
+      - test_files
+      - test_requirements
+      - baseline_coverage
+
+  - name: run-test
+    agent: tester
+    description: Run tests to confirm they fail (Red validation)
+    dependsOn: [write-test]
+    outputs:
+      - test_results
+      - failure_confirmation
+      - test_report
+
+  - name: implement
+    agent: developer
+    description: Write minimal code to make tests pass (Green phase)
+    dependsOn: [run-test]
+    outputs:
+      - code_changes
+      - implementation_notes
+      - branch_name
+
+  - name: verify
+    agent: tester
+    description: Run all tests to confirm implementation works (Green validation)
+    dependsOn: [implement]
+    outputs:
+      - test_results
+      - coverage_report
+      - success_confirmation
+
+  - name: regression-check
+    agent: tester
+    description: Run full test suite and perform refactoring if needed (Refactor phase)
+    dependsOn: [verify]
+    outputs:
+      - regression_results
+      - refactor_suggestions
+      - final_coverage_report
