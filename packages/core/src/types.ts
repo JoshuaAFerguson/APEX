@@ -2275,6 +2275,21 @@ export const MCPConnectionConfigSchema = z.object({
    * @default 15000
    */
   keepAliveIntervalMs: z.number().int().min(0).optional().default(15000),
+
+  /**
+   * Whether to enable heartbeat/ping-pong for health monitoring
+   * When enabled, uses ping/pong instead of listTools() for health checks
+   * @default true
+   */
+  heartbeatEnabled: z.boolean().optional().default(true),
+
+  /**
+   * Heartbeat ping interval in milliseconds
+   * How often to send ping messages for heartbeat health checks
+   * Only used when heartbeatEnabled is true
+   * @default 30000
+   */
+  heartbeatIntervalMs: z.number().int().min(0).optional().default(30000),
 });
 export type MCPConnectionConfig = z.infer<typeof MCPConnectionConfigSchema>;
 

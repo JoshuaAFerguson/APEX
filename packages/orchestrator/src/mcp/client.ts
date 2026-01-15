@@ -79,6 +79,17 @@ export class MCPClient extends EventEmitter<MCPClientEvents> {
     return (result as any)?.content ?? result;
   }
 
+  /**
+   * Send a ping message to test connection health
+   * This is the preferred method for health checks over listTools()
+   * @returns Promise that resolves when the pong response is received
+   */
+  async ping(): Promise<void> {
+    const response = await this.sendRequest('ping');
+    this.unwrapResponse(response);
+    // If we get here, the ping was successful (no error thrown)
+  }
+
   private async sendRequest(method: string, params?: Record<string, unknown>): Promise<JSONRPCResponse> {
     const requestId = this.nextId++;
     const request: JSONRPCRequest = createJSONRPCRequest(requestId, method, params);

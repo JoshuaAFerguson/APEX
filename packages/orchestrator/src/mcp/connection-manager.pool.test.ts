@@ -60,6 +60,7 @@ function createMockClient(transport: any) {
     disconnect: vi.fn().mockResolvedValue(undefined),
     listTools: vi.fn().mockResolvedValue([{ name: 'test-tool', description: 'Test tool' }]),
     callTool: vi.fn().mockResolvedValue({ result: 'success' }),
+    ping: vi.fn().mockResolvedValue(undefined), // Mock heartbeat ping
     on: vi.fn(),
     off: vi.fn(),
     emit: vi.fn(),

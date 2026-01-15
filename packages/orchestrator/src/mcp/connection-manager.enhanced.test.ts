@@ -60,6 +60,7 @@ function createMockClient(transport: any) {
     disconnect: vi.fn().mockResolvedValue(undefined),
     listTools: vi.fn().mockResolvedValue([{ name: 'test-tool', description: 'Test tool' }]),
     callTool: vi.fn().mockResolvedValue({ result: 'success' }),
+    ping: vi.fn().mockResolvedValue(undefined), // Mock heartbeat ping
     on: vi.fn(),
     off: vi.fn(),
     emit: vi.fn(),
@@ -421,5 +422,125 @@ describe('MCPConnectionManager - Configuration Integration', () => {
         config: configWithoutMcp,
       });
     }).not.toThrow();
+  });
+
+  it('should use ping for health checks when heartbeat is enabled', async () => {
+    const manager = new MCPConnectionManager({
+      projectPath: '/test',
+      config: {
+        ...baseTestConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'test-server': {
+              name: 'Test Server',
+              type: 'stdio' as const,
+              command: 'test',
+            },
+          },
+          connection: {
+            heartbeatEnabled: true,
+            healthCheckIntervalMs: 100,
+          },
+        },
+      },
+    });
+
+    vi.useFakeTimers();
+
+    const healthCheckSpy = vi.fn();
+    manager.on('healthCheck', healthCheckSpy);
+
+    // Connect to server
+    await manager.connect('test-server');
+
+    // Get the mock client to verify ping is called
+    const context = (manager as any).connections.get('test-server');
+    const pingMock = context.client.ping;
+    const listToolsMock = context.client.listTools;
+
+    // Reset mock call counts
+    pingMock.mockClear();
+    listToolsMock.mockClear();
+
+    // Fast-forward to trigger health check
+    vi.advanceTimersByTime(150);
+    await vi.runAllTimersAsync();
+
+    // Should have called ping (not listTools) for health check
+    expect(pingMock).toHaveBeenCalled();
+    expect(listToolsMock).not.toHaveBeenCalled();
+
+    // Should have performed a successful health check
+    expect(healthCheckSpy).toHaveBeenCalledWith(
+      'test-server',
+      expect.objectContaining({
+        success: true,
+        isHealthy: true,
+        consecutiveFailures: 0,
+      })
+    );
+
+    vi.useRealTimers();
+  });
+
+  it('should use listTools for health checks when heartbeat is disabled', async () => {
+    const manager = new MCPConnectionManager({
+      projectPath: '/test',
+      config: {
+        ...baseTestConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'test-server': {
+              name: 'Test Server',
+              type: 'stdio' as const,
+              command: 'test',
+            },
+          },
+          connection: {
+            heartbeatEnabled: false,
+            healthCheckIntervalMs: 100,
+          },
+        },
+      },
+    });
+
+    vi.useFakeTimers();
+
+    const healthCheckSpy = vi.fn();
+    manager.on('healthCheck', healthCheckSpy);
+
+    // Connect to server
+    await manager.connect('test-server');
+
+    // Get the mock client to verify listTools is called
+    const context = (manager as any).connections.get('test-server');
+    const pingMock = context.client.ping;
+    const listToolsMock = context.client.listTools;
+
+    // Reset mock call counts
+    pingMock.mockClear();
+    listToolsMock.mockClear();
+
+    // Fast-forward to trigger health check
+    vi.advanceTimersByTime(150);
+    await vi.runAllTimersAsync();
+
+    // Should have called listTools (not ping) for health check
+    expect(listToolsMock).toHaveBeenCalled();
+    expect(pingMock).not.toHaveBeenCalled();
+
+    // Should have performed a successful health check
+    expect(healthCheckSpy).toHaveBeenCalledWith(
+      'test-server',
+      expect.objectContaining({
+        success: true,
+        isHealthy: true,
+        consecutiveFailures: 0,
+      })
+    );
+
+    vi.useRealTimers();
   });
 });

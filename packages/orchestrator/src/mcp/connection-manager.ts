@@ -125,6 +125,12 @@ export interface HealthState {
   latencyHistory: number[];
   /** Health check timer */
   healthCheckTimer?: NodeJS.Timeout;
+  /** Last successful ping timestamp (when using heartbeat) */
+  lastPingAt?: Date;
+  /** Last pong received timestamp (when using heartbeat) */
+  lastPongAt?: Date;
+  /** Whether currently using heartbeat ping/pong for health checks */
+  usingHeartbeat: boolean;
 }
 
 /**
@@ -280,6 +286,8 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       autoReconnect: baseConfig.autoReconnect ?? true,
       keepAlive: baseConfig.keepAlive ?? true,
       keepAliveIntervalMs: baseConfig.keepAliveIntervalMs ?? 15000,
+      heartbeatEnabled: baseConfig.heartbeatEnabled ?? true,
+      heartbeatIntervalMs: baseConfig.heartbeatIntervalMs ?? 30000,
     };
   }
 
@@ -384,6 +392,7 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
         isHealthy: true,
         averageLatencyMs: 0,
         latencyHistory: [],
+        usingHeartbeat: this.connectionConfig.heartbeatEnabled,
       };
 
       // Initialize metrics
@@ -890,8 +899,6 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
     const timestamp = new Date();
 
     try {
-      // Use a simple ping-like request to check health
-      // In a real implementation, this might use an MCP-specific ping method
       const client = context.client;
 
       // Create a timeout promise
@@ -899,20 +906,34 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
         setTimeout(() => reject(new Error('Health check timeout')), this.connectionConfig.healthCheckTimeoutMs);
       });
 
-      // Try to list tools as a health check
-      const healthPromise = client.listTools();
+      // Use heartbeat ping if enabled, otherwise fall back to listTools
+      let healthPromise: Promise<any>;
+      if (this.connectionConfig.heartbeatEnabled) {
+        // Use proper ping/pong heartbeat protocol
+        context.health.lastPingAt = timestamp;
+        healthPromise = client.ping();
+      } else {
+        // Fall back to listing tools as health check
+        healthPromise = client.listTools();
+      }
 
       // Race between health check and timeout
       await Promise.race([healthPromise, timeoutPromise]);
 
       // Health check succeeded
       const latencyMs = Date.now() - startTime;
+      const pongReceivedAt = new Date();
 
       // Update health state
       context.health.consecutiveFailures = 0;
       context.health.isHealthy = true;
       context.health.lastHealthyAt = timestamp;
       context.health.lastCheckAt = timestamp;
+
+      // Update heartbeat-specific timestamps
+      if (this.connectionConfig.heartbeatEnabled) {
+        context.health.lastPongAt = pongReceivedAt;
+      }
 
       // Update latency history (keep last 10)
       context.health.latencyHistory.push(latencyMs);

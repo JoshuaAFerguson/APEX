@@ -59,6 +59,7 @@ function createMockClient(transport: ReturnType<typeof createMockTransport>) {
     disconnect: vi.fn().mockResolvedValue(undefined),
     listTools: vi.fn().mockResolvedValue([]),
     callTool: vi.fn().mockResolvedValue({}),
+    ping: vi.fn().mockResolvedValue(undefined), // Mock heartbeat ping
     transport,
   };
 }
