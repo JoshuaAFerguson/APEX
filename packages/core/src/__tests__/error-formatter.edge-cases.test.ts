@@ -398,8 +398,8 @@ describe('ErrorFormatter Edge Cases and Error Handling', () => {
       formatter.parse(largeInput);
       formatter.parse(largeArray);
 
-      // Validate methods complete without throwing
-      expect(true).toBe(true); // Methods should complete without memory issues
+      const formatted = formatter.formatErrors('Error: memory test');
+      expect(formatted).toContain('memory test');
     });
 
     it('should handle repeated operations without memory growth', () => {
@@ -412,8 +412,8 @@ describe('ErrorFormatter Edge Cases and Error Handling', () => {
         formatter.format([]);
       }
 
-      // Should complete without memory issues
-      expect(true).toBe(true);
+      const output = formatter.format([createStructuredError('Final error')]);
+      expect(output).toContain('Final error');
     });
   });
 });

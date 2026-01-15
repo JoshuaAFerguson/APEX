@@ -1138,7 +1138,7 @@ You are a developer agent that implements code changes.
     it('should wait for all running tasks', async () => {
       // With no running tasks, should resolve immediately
       await orchestrator.waitForAllTasks();
-      expect(true).toBe(true); // Just ensuring no hang
+      expect((orchestrator as any).runningTasks.size).toBe(0);
     });
 
     it('should respect concurrency limit in batch processing', async () => {

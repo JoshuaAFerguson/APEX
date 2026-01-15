@@ -6,6 +6,7 @@ import {
   ScreenshotComparator,
   createScreenshotComparator,
   compareImages,
+  compareScreenshot,
 } from '../screenshot-comparator';
 import {
   ScreenshotComparisonOptions,

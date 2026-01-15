@@ -128,8 +128,8 @@ describe('ErrorFormatter Performance Tests', () => {
         }
       }
 
-      // If we get here without running out of memory, the test passes
-      expect(true).toBe(true);
+      const finalResult = formatter.format(error);
+      expect(finalResult).toContain('Memory test error');
     });
 
     it('should handle large datasets without excessive memory usage', () => {

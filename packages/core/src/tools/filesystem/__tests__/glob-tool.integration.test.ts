@@ -87,8 +87,8 @@ async function createComplexTestStructure(baseDir: string): Promise<void> {
     // Test files
     'tests/unit/engine.test.ts': 'import { Engine } from "../../src/core/engine.js";\n\ntest("engine starts", () => {\n  expect(new Engine().start()).toBe(undefined);\n});',
     'tests/unit/helper.test.ts': 'import { helper } from "../../src/utils/helper.js";\n\ntest("helper works", () => {\n  expect(helper("test")).toBe("TEST");\n});',
-    'tests/integration/api.test.ts': 'describe("API integration", () => {\n  it("should respond to requests", () => {\n    expect(true).toBe(true);\n  });\n});',
-    'tests/e2e/app.e2e.test.ts': 'describe("E2E tests", () => {\n  it("should load the application", () => {\n    expect(true).toBe(true);\n  });\n});',
+    'tests/integration/api.test.ts': 'describe("API integration", () => {\n  it("should respond to requests", () => {\n    expect(1 + 1).toBe(2);\n  });\n});',
+    'tests/e2e/app.e2e.test.ts': 'describe("E2E tests", () => {\n  it("should load the application", () => {\n    expect("app").toBe("app");\n  });\n});',
 
     // Documentation
     'docs/README.md': '# Documentation\n\nProject documentation.',
@@ -470,7 +470,7 @@ describe('GlobTool Integration Tests', () => {
       const additionalFiles: Promise<string>[] = [];
       for (let i = 0; i < 100; i++) {
         additionalFiles.push(createTestFile(tempDir, `generated/file${i}.ts`, `export const value${i} = ${i};`));
-        additionalFiles.push(createTestFile(tempDir, `generated/test${i}.test.ts`, `test("test${i}", () => { expect(true).toBe(true); });`));
+        additionalFiles.push(createTestFile(tempDir, `generated/test${i}.test.ts`, `test("test${i}", () => { expect(${i}).toBe(${i}); });`));
       }
 
       await Promise.all(additionalFiles);

@@ -48,6 +48,7 @@ import type {
   MCPConnectionState,
   MCPConnectionConfig,
 } from '@apexcli/core';
+import { ExponentialBackoffReconnector } from '@apexcli/core';
 import { StdioTransport, type StdioTransportOptions } from './transports/index.js';
 import { MCPClient } from './client.js';
 import type { MCPTransport } from './transports/transport.js';
@@ -204,8 +205,10 @@ interface ConnectionContext {
   transport: MCPTransport;
   /** The client instance */
   client: MCPClient;
-  /** Reconnection timer reference */
+  /** Reconnection timer reference (deprecated - use reconnector instead) */
   reconnectTimer?: NodeJS.Timeout;
+  /** Exponential backoff reconnection manager */
+  reconnector: ExponentialBackoffReconnector;
   /** Whether we're intentionally disconnecting (not for reconnect) */
   intentionalDisconnect: boolean;
   /** Health state tracking */
@@ -408,11 +411,61 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
         };
       }
 
+      // Create exponential backoff reconnector
+      const reconnector = new ExponentialBackoffReconnector({
+        baseDelayMs: this.connectionConfig.retryDelayMs,
+        backoffFactor: this.connectionConfig.backoffFactor,
+        maxDelayMs: this.connectionConfig.maxRetryDelayMs,
+        maxRetries: this.connectionConfig.maxRetries,
+        jitterStrategy: 'equal', // Use equal jitter to prevent thundering herd
+      });
+
+      // Set up reconnector event handlers
+      reconnector.on('state:changed', (prev, next) => {
+        if (next === 'reconnecting') {
+          connection.state = 'reconnecting';
+        } else if (next === 'connecting') {
+          connection.state = 'connecting';
+        } else if (next === 'connected') {
+          connection.state = 'connected';
+        } else if (next === 'failed') {
+          connection.state = 'error';
+        }
+        this.emit('stateChange', serverId, prev as MCPConnectionState, connection.state);
+      });
+
+      reconnector.on('reconnect:attempt', (attempt, delayMs) => {
+        connection.reconnectAttempts = attempt;
+        this.emit('reconnecting', serverId, attempt, this.connectionConfig.maxRetries);
+      });
+
+      reconnector.on('reconnect:success', (attempt, totalTime) => {
+        connection.reconnectAttempts = 0;
+        metrics.totalReconnections++;
+      });
+
+      reconnector.on('reconnect:failure', (attempt, error) => {
+        connection.lastError = error;
+        metrics.totalErrors++;
+        metrics.lastError = {
+          message: error,
+          timestamp: new Date(),
+          code: 'RECONNECTION_FAILED',
+        };
+      });
+
+      reconnector.on('reconnect:exhausted', (attempts, error) => {
+        connection.state = 'error';
+        connection.lastError = error;
+        this.emit('error', serverId, new Error(`Reconnection exhausted after ${attempts} attempts: ${error}`));
+      });
+
       // Create context
       const context: ConnectionContext = {
         connection,
         transport,
         client,
+        reconnector,
         intentionalDisconnect: false,
         health,
         metrics,
@@ -435,6 +488,9 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       connection.lastActivityAt = now;
       connection.reconnectAttempts = 0;
       connection.lastError = undefined;
+
+      // Notify reconnector of successful connection
+      context.reconnector.notifyConnected();
 
       // Update metrics
       context.metrics.connectedAt = now;
@@ -485,6 +541,9 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       clearTimeout(context.reconnectTimer);
       context.reconnectTimer = undefined;
     }
+
+    // Clean up reconnector
+    context.reconnector.destroy();
 
     // Stop health monitoring
     this.stopHealthMonitoring(context);
@@ -734,58 +793,54 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
 
       this.emit('disconnected', serverId, reason);
 
-      // Attempt reconnection if enabled
-      if (this.connectionConfig.autoReconnect && connection.reconnectAttempts < this.connectionConfig.maxRetries) {
+      // Attempt reconnection if enabled and not exhausted
+      if (this.connectionConfig.autoReconnect && !context.reconnector.isExhausted()) {
         this.scheduleReconnection(serverId, context);
       }
     });
   }
 
   /**
-   * Schedule a reconnection attempt with exponential backoff
+   * Schedule a reconnection attempt using exponential backoff
    */
   private scheduleReconnection(serverId: string, context: ConnectionContext): void {
-    const { connection } = context;
+    // Clear any existing timer for backward compatibility
+    if (context.reconnectTimer) {
+      clearTimeout(context.reconnectTimer);
+      context.reconnectTimer = undefined;
+    }
 
-    // Calculate delay with exponential backoff
-    const attempt = connection.reconnectAttempts;
-    const delay = Math.min(
-      this.connectionConfig.retryDelayMs * Math.pow(this.connectionConfig.backoffFactor, attempt),
-      this.connectionConfig.maxRetryDelayMs
-    );
+    // Notify reconnector about disconnection
+    context.reconnector.notifyDisconnected(context.connection.lastError);
 
-    // Add jitter (up to 25% of delay)
-    const jitter = Math.random() * delay * 0.25;
-    const totalDelay = delay + jitter;
-
-    // Update state
-    connection.state = 'reconnecting';
-    connection.reconnectAttempts++;
-
-    // Update metrics
-    context.metrics.totalReconnections++;
-
-    // Emit reconnecting event
-    this.emit('reconnecting', serverId, connection.reconnectAttempts, this.connectionConfig.maxRetries);
-
-    // Schedule reconnection
-    context.reconnectTimer = setTimeout(async () => {
+    // Schedule reconnection using the reconnector
+    context.reconnector.scheduleReconnect(async () => {
       try {
-        // Remove old context
+        // Remove old context (reconnector will handle retry logic)
         this.connections.delete(serverId);
 
         // Attempt reconnection
         await this.connect(serverId);
-      } catch (error) {
-        // Check if we should try again
+
+        // Get new context and notify successful connection
         const newContext = this.connections.get(serverId);
-        if (newContext && newContext.connection.reconnectAttempts < this.connectionConfig.maxRetries) {
-          // Preserve reconnect attempts count
-          newContext.connection.reconnectAttempts = connection.reconnectAttempts;
-          this.scheduleReconnection(serverId, newContext);
+        if (newContext) {
+          newContext.reconnector.notifyConnected();
+        }
+      } catch (error) {
+        // Get current context and notify connection failure
+        const currentContext = this.connections.get(serverId);
+        if (currentContext) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          currentContext.reconnector.notifyConnectionFailed(errorMessage);
+
+          // Check if we should retry again
+          if (!currentContext.reconnector.isExhausted()) {
+            this.scheduleReconnection(serverId, currentContext);
+          }
         }
       }
-    }, totalDelay);
+    });
   }
 
   /**
@@ -892,7 +947,7 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
         context.health.isHealthy = false;
 
         // If this connection was healthy and is now unhealthy, trigger reconnection
-        if (this.connectionConfig.autoReconnect && !context.intentionalDisconnect) {
+        if (this.connectionConfig.autoReconnect && !context.intentionalDisconnect && !context.reconnector.isExhausted()) {
           // Mark connection as disconnected and attempt reconnection
           const previousState = context.connection.state;
           context.connection.state = 'disconnected';

@@ -278,9 +278,10 @@ describe('ApexOrchestrator Lint Event Integration', () => {
 
   describe('Event Forwarding Setup', () => {
     it('should call setupLinterEventForwarding during initialization', () => {
-      // This test documents the current state where the method is called but not implemented
-      // When the method is implemented, this test should verify it sets up event forwarding
-      expect(true).toBe(true); // Placeholder for now
+      expect(mockLinterService.on).toHaveBeenCalledWith('linter:started', expect.any(Function));
+      expect(mockLinterService.on).toHaveBeenCalledWith('linter:completed', expect.any(Function));
+      expect(mockLinterService.on).toHaveBeenCalledWith('linter:issue', expect.any(Function));
+      expect(mockLinterService.on).toHaveBeenCalledWith('linter:fix-applied', expect.any(Function));
     });
   });
 

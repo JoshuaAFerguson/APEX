@@ -3,11 +3,22 @@
  * This file verifies that our daemon tests are properly structured and comprehensive
  */
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'fs';
+import path from 'path';
 
 describe('Daemon Test Validation', () => {
   it('should validate that daemon test files exist', () => {
     // This test ensures our test files are properly structured
-    expect(true).toBe(true);
+    const testFiles = [
+      'daemon-handlers.test.ts',
+      'daemon-cli.integration.test.ts',
+      'daemon-edge-cases.test.ts',
+    ];
+
+    testFiles.forEach(file => {
+      const filePath = path.join(__dirname, file);
+      expect(existsSync(filePath)).toBe(true);
+    });
   });
 
   it('should validate test file naming conventions', () => {

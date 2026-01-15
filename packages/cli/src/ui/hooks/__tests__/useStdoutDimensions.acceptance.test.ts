@@ -225,7 +225,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
     it('should have comprehensive unit test coverage', () => {
       // This test itself validates that unit tests exist
       // The existence of this test file and its execution proves AC 5
-      expect(true).toBe(true);
+      expect(typeof useStdoutDimensions).toBe('function');
     });
   });
 
@@ -272,7 +272,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
 
       // AC 5: Has unit tests (this test validates this)
       // This comprehensive test suite validates AC 5
-      expect(true).toBe(true);
+      expect(mockBaseHook).toHaveBeenCalledTimes(1);
     });
   });
 });

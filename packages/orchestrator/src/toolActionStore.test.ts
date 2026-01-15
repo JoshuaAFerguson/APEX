@@ -642,8 +642,10 @@ describe('ToolActionStore', () => {
       // Run cleanup
       await toolActionStore.cleanup();
 
-      // Verify snapshots are cleaned up (we can't directly query, but cleanup should run without error)
-      expect(true).toBe(true); // Placeholder assertion
+      const snapshotCount = (taskStore as any).db
+        .prepare('SELECT COUNT(*) as count FROM file_snapshots')
+        .get() as { count: number };
+      expect(snapshotCount.count).toBe(0);
     });
 
     it('should run cleanup for all tasks when no specific task provided', async () => {

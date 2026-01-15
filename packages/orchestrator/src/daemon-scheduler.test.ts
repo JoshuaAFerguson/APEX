@@ -613,8 +613,9 @@ describe('DaemonScheduler', () => {
         scheduler.getUsageStats(dayTime);
       }
 
-      // If we get here without memory issues, test passes
-      expect(true).toBe(true);
+      const stats = scheduler.getUsageStats(dayTime);
+      expect(stats.capacity).toBeDefined();
+      expect(stats.timeWindow.isActive).toBe(true);
     });
 
     it('should handle rapid successive calls efficiently', () => {

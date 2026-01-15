@@ -61,5 +61,8 @@ export * from './tools';
 // Screenshot Comparison
 export * from './screenshot-comparator';
 
+// Exponential Backoff Reconnection
+export * from './exponential-backoff';
+
 // Note: test-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files

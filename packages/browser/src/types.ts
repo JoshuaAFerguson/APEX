@@ -121,6 +121,28 @@ export interface ScreenshotOptions {
 }
 
 /**
+ * Options for screenshot capture methods (captureViewport, captureFullPage)
+ */
+export interface ScreenshotCaptureOptions {
+  /** Image format - PNG or JPEG */
+  type?: 'png' | 'jpeg';
+  /** JPEG quality (0-100). Only applies when type is 'jpeg' */
+  quality?: number;
+  /** Optional file path to save the screenshot */
+  path?: string;
+  /** Whether to omit the background (transparent for PNG) */
+  omitBackground?: boolean;
+}
+
+/**
+ * Options for element screenshot capture
+ */
+export interface ElementScreenshotOptions extends ScreenshotCaptureOptions {
+  /** Timeout in milliseconds for finding the element */
+  timeout?: number;
+}
+
+/**
  * Navigation options for page navigation
  */
 export interface NavigationOptions {

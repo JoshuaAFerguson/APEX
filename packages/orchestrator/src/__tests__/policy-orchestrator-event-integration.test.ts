@@ -310,15 +310,15 @@ policy:
 
       const policyEnforcer = (orchestrator as any).policyEnforcer as PolicyEnforcer;
 
-      policyEnforcer.validateFilePath('node_modules/malicious/script.js', {
+      const violations = policyEnforcer.validateFilePath('node_modules/malicious/script.js', {
         taskId: 'blocked-reason-test',
         agent: 'test-agent',
         action: 'execute',
       });
 
-      // The test verifies that if blocking were implemented,
-      // it would include the proper reason and context
-      expect(true).toBe(true); // Placeholder since blocking implementation is incomplete
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toContain('blocked');
+      expect(violations[0].resource).toContain('node_modules/malicious/script.js');
     });
   });
 
@@ -355,15 +355,14 @@ policy:
 
       const policyEnforcer = (orchestrator as any).policyEnforcer as PolicyEnforcer;
 
-      policyEnforcer.validateFilePath('src/secrets/.env.production', {
+      const violations = policyEnforcer.validateFilePath('src/secrets/.env.production', {
         taskId: 'warned-task-001',
         agent: 'developer',
         action: 'read',
       });
 
-      // The test verifies the event structure that would be emitted
-      // Note: Actual emission would require implementation of the warn event logic
-      expect(true).toBe(true); // Placeholder since warn event implementation is incomplete
+      expect(violations.length).toBeGreaterThan(0);
+      expect(violations[0].message).toContain('blocked');
     });
 
     it('should include warning details and allow action to proceed', async () => {
@@ -429,7 +428,7 @@ policy:
 
       const policyEnforcer = (orchestrator as any).policyEnforcer as PolicyEnforcer;
 
-      policyEnforcer.checkTaskStart({
+      const result = policyEnforcer.checkTaskStart({
         id: 'audit-task-001',
         title: 'Audited Task',
         description: 'Task for audit logging',
@@ -448,9 +447,8 @@ policy:
         metadata: { auditReason: 'compliance-check' },
       });
 
-      // Verify audit event structure
-      // Note: Actual emission would require implementation of audit event logic
-      expect(true).toBe(true); // Placeholder since audit event implementation is incomplete
+      expect(result.passed).toBe(true);
+      expect(result.results.length).toBeGreaterThan(0);
     });
 
     it('should include audit trail information', async () => {
@@ -459,8 +457,7 @@ policy:
 
       const policyEnforcer = (orchestrator as any).policyEnforcer as PolicyEnforcer;
 
-      // Simulate audit logging for sensitive file access
-      policyEnforcer.validateFilePath('src/user-data.csv', {
+      const violations = policyEnforcer.validateFilePath('src/user-data.csv', {
         taskId: 'audit-trail-task',
         agent: 'data-processor',
         action: 'process',
@@ -470,9 +467,8 @@ policy:
           purpose: 'analytics',
         },
       });
-
-      // The test validates that audit events would include proper trail information
-      expect(true).toBe(true);
+      expect(violations.length).toBeGreaterThan(0);
+      expect(violations[0].context?.matchType).toBeDefined();
     });
   });
 

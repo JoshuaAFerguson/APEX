@@ -42,6 +42,8 @@ export type {
   BrowserContextInfo,
   BrowserManagerEvents,
   ScreenshotOptions,
+  ScreenshotCaptureOptions,
+  ElementScreenshotOptions,
   NavigationOptions,
   WaitForNavigationOptions,
   BrowserActionResult,

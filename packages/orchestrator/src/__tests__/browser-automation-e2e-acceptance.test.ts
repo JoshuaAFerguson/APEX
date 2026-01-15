@@ -744,7 +744,7 @@ describe('Browser Automation E2E Acceptance Test', () => {
       // - Error context with stack traces: VERIFIED ✅
       // - Tests verify console capture and error detection: VERIFIED ✅
 
-      expect(true).toBe(true); // Final assertion that all criteria are met
+      expect(operationResult.metadata?.enhancedConsoleMessages?.length).toBeGreaterThan(0);
     });
   });
 

@@ -2297,3 +2297,440 @@ export function expectBatchPermissions(
     throw new Error(`${baseMessage}Batch permission assertion failed:\n  ${errors.join('\n  ')}`);
   }
 }
+
+// ============================================================================
+// Vitest Custom Matchers for Permission Testing
+// ============================================================================
+
+import type { ExpectStatic } from 'vitest';
+
+/**
+ * Interface for custom permission matchers
+ */
+export interface PermissionMatchers<R = unknown> {
+  /**
+   * Assert that a permission result is granted
+   *
+   * @param expectedLevel - Optional expected permission level
+   * @example
+   * ```typescript
+   * const result = await permissionManager.checkPermission('Read');
+   * expect(result).toBePermissionGranted('allow-always');
+   * ```
+   */
+  toBePermissionGranted(expectedLevel?: PermissionLevel): R;
+
+  /**
+   * Assert that a permission result is denied
+   *
+   * @param expectedReason - Optional expected denial reason (partial match)
+   * @example
+   * ```typescript
+   * const result = await permissionManager.checkPermission('Bash');
+   * expect(result).toBePermissionDenied('dangerous operation');
+   * ```
+   */
+  toBePermissionDenied(expectedReason?: string): R;
+
+  /**
+   * Assert that a permission result is pending (requires confirmation)
+   *
+   * @example
+   * ```typescript
+   * const result = await permissionManager.checkPermission('Write');
+   * expect(result).toBePermissionPending();
+   * ```
+   */
+  toBePermissionPending(): R;
+
+  /**
+   * Assert that a permission context has expected state
+   *
+   * @param expectedState - Expected context properties
+   * @example
+   * ```typescript
+   * const context = { permissions: [...], preset: 'review-all' };
+   * expect(context).toHavePermissionContext({
+   *   hasPermissions: ['Read', 'Write'],
+   *   preset: 'review-all'
+   * });
+   * ```
+   */
+  toHavePermissionContext(expectedState: {
+    hasPermissions?: string[];
+    lacksPermissions?: string[];
+    preset?: PermissionPreset;
+    agent?: string;
+    permissionCount?: number;
+  }): R;
+
+  /**
+   * Assert that a permission history matches expected criteria
+   *
+   * @param expectedCriteria - Expected history state
+   * @example
+   * ```typescript
+   * const history = { entries: [...], total: 5, granted: 3, denied: 2 };
+   * expect(history).toHavePermissionHistory({
+   *   totalEntries: 5,
+   *   grantedCount: 3,
+   *   hasToolEntry: 'Read'
+   * });
+   * ```
+   */
+  toHavePermissionHistory(expectedCriteria: {
+    totalEntries?: number;
+    grantedCount?: number;
+    deniedCount?: number;
+    hasToolEntry?: string;
+    lacksToolEntry?: string;
+    hasRecentEntry?: {
+      tool: string;
+      withinMinutes: number;
+      granted?: boolean;
+    };
+    entriesInOrder?: string[];
+  }): R;
+}
+
+// Add the matchers to the global expect
+declare module 'vitest' {
+  interface Assertion extends PermissionMatchers {}
+  interface AsymmetricMatchersContaining extends PermissionMatchers {}
+}
+
+/**
+ * Custom Vitest matcher: toBePermissionGranted
+ */
+export function toBePermissionGranted(
+  this: { isNot?: boolean; utils?: any },
+  received: ToolPermissionResult,
+  expectedLevel?: PermissionLevel
+): { message(): string; pass: boolean } {
+  const { isNot = false, utils = {} } = this;
+  const { printReceived = (x: any) => x, printExpected = (x: any) => x, matcherHint = (x: any) => x } = utils;
+
+  const pass = received.allowed && (expectedLevel ? received.level === expectedLevel : true);
+
+  const message = () => {
+    const hint = matcherHint('.toBePermissionGranted', 'result', expectedLevel || '');
+
+    if (isNot) {
+      if (!received.allowed) {
+        return `${hint}\n\nExpected permission NOT to be granted, but it was denied:\n  Received: ${printReceived(received)}\n  Reason: ${received.denialReason || 'Unknown'}`;
+      }
+      if (expectedLevel && received.level !== expectedLevel) {
+        return `${hint}\n\nExpected permission NOT to be granted with level ${expectedLevel}, but it was:\n  Received level: ${printReceived(received.level)}`;
+      }
+      return `${hint}\n\nExpected permission NOT to be granted, but it was:\n  Received: ${printReceived(received)}`;
+    }
+
+    if (!received.allowed) {
+      return `${hint}\n\nExpected permission to be granted, but it was denied:\n  Received: ${printReceived(received)}\n  Reason: ${received.denialReason || 'Unknown'}`;
+    }
+
+    if (expectedLevel && received.level !== expectedLevel) {
+      return `${hint}\n\nExpected permission to be granted with level ${expectedLevel}, but got:\n  Expected level: ${printExpected(expectedLevel)}\n  Received level: ${printReceived(received.level)}`;
+    }
+
+    return `${hint}\n\nExpected permission NOT to be granted, but it was:\n  Received: ${printReceived(received)}`;
+  };
+
+  return { message, pass };
+}
+
+/**
+ * Custom Vitest matcher: toBePermissionDenied
+ */
+export function toBePermissionDenied(
+  this: { isNot?: boolean; utils?: any },
+  received: ToolPermissionResult,
+  expectedReason?: string
+): { message(): string; pass: boolean } {
+  const { isNot = false, utils = {} } = this;
+  const { printReceived = (x: any) => x, printExpected = (x: any) => x, matcherHint = (x: any) => x } = utils;
+
+  const reasonMatches = !expectedReason ||
+    (received.denialReason && received.denialReason.toLowerCase().includes(expectedReason.toLowerCase()));
+
+  const pass = !received.allowed && reasonMatches;
+
+  const message = () => {
+    const hint = matcherHint('.toBePermissionDenied', 'result', expectedReason || '');
+
+    if (isNot) {
+      if (received.allowed) {
+        return `${hint}\n\nExpected permission NOT to be denied, but it was granted:\n  Received: ${printReceived(received)}\n  Level: ${received.level}`;
+      }
+      if (expectedReason && !reasonMatches) {
+        return `${hint}\n\nExpected permission NOT to be denied with reason containing "${expectedReason}", but it was:\n  Received reason: ${printReceived(received.denialReason || 'No reason given')}`;
+      }
+      return `${hint}\n\nExpected permission NOT to be denied, but it was:\n  Received: ${printReceived(received)}`;
+    }
+
+    if (received.allowed) {
+      return `${hint}\n\nExpected permission to be denied, but it was granted:\n  Received: ${printReceived(received)}\n  Level: ${received.level}`;
+    }
+
+    if (expectedReason && !reasonMatches) {
+      return `${hint}\n\nExpected permission to be denied with reason containing "${expectedReason}", but got:\n  Expected reason containing: ${printExpected(expectedReason)}\n  Received reason: ${printReceived(received.denialReason || 'No reason given')}`;
+    }
+
+    return `${hint}\n\nExpected permission to be denied, but it was granted:\n  Received: ${printReceived(received)}`;
+  };
+
+  return { message, pass };
+}
+
+/**
+ * Custom Vitest matcher: toBePermissionPending
+ */
+export function toBePermissionPending(
+  this: { isNot?: boolean; utils?: any },
+  received: ToolPermissionResult
+): { message(): string; pass: boolean } {
+  const { isNot = false, utils = {} } = this;
+  const { printReceived = (x: any) => x, matcherHint = (x: any) => x } = utils;
+
+  const pass = received.requiresConfirmation && received.level === 'allow-once';
+
+  const message = () => {
+    const hint = matcherHint('.toBePermissionPending', 'result');
+
+    if (isNot) {
+      return `${hint}\n\nExpected permission NOT to be pending, but it was:\n  Received: ${printReceived(received)}`;
+    }
+
+    if (!received.allowed && !received.requiresConfirmation) {
+      return `${hint}\n\nExpected permission to be pending (require confirmation), but it was denied outright:\n  Received: ${printReceived(received)}\n  Reason: ${received.denialReason || 'Unknown'}`;
+    }
+
+    if (received.allowed && !received.requiresConfirmation) {
+      return `${hint}\n\nExpected permission to be pending (require confirmation), but it was granted automatically:\n  Received: ${printReceived(received)}\n  Level: ${received.level}`;
+    }
+
+    if (!received.requiresConfirmation) {
+      return `${hint}\n\nExpected permission to require confirmation, but requiresConfirmation is false:\n  Received: ${printReceived(received)}`;
+    }
+
+    if (received.level !== 'allow-once') {
+      return `${hint}\n\nExpected permission level to be 'allow-once' for pending permissions, but got:\n  Received level: ${printReceived(received.level)}`;
+    }
+
+    return `${hint}\n\nExpected permission NOT to be pending, but it was:\n  Received: ${printReceived(received)}`;
+  };
+
+  return { message, pass };
+}
+
+/**
+ * Custom Vitest matcher: toHavePermissionContext
+ */
+export function toHavePermissionContext(
+  this: { isNot?: boolean; utils?: any },
+  received: PermissionContext,
+  expectedState: {
+    hasPermissions?: string[];
+    lacksPermissions?: string[];
+    preset?: PermissionPreset;
+    agent?: string;
+    permissionCount?: number;
+  }
+): { message(): string; pass: boolean } {
+  const { isNot = false, utils = {} } = this;
+  const { printReceived = (x: any) => x, printExpected = (x: any) => x, matcherHint = (x: any) => x } = utils;
+
+  const errors: string[] = [];
+
+  // Check if expected permissions exist
+  if (expectedState.hasPermissions) {
+    for (const tool of expectedState.hasPermissions) {
+      const hasPermission = received.permissions.some(p => p.tool === tool);
+      if (!hasPermission) {
+        errors.push(`Missing expected permission for tool: ${tool}`);
+      }
+    }
+  }
+
+  // Check if permissions should not exist
+  if (expectedState.lacksPermissions) {
+    for (const tool of expectedState.lacksPermissions) {
+      const hasPermission = received.permissions.some(p => p.tool === tool);
+      if (hasPermission) {
+        errors.push(`Unexpected permission found for tool: ${tool}`);
+      }
+    }
+  }
+
+  // Check preset
+  if (expectedState.preset !== undefined && received.preset !== expectedState.preset) {
+    errors.push(`Expected preset: ${expectedState.preset}, got: ${received.preset}`);
+  }
+
+  // Check agent
+  if (expectedState.agent !== undefined && received.agent !== expectedState.agent) {
+    errors.push(`Expected agent: ${expectedState.agent}, got: ${received.agent}`);
+  }
+
+  // Check permission count
+  if (expectedState.permissionCount !== undefined && received.permissions.length !== expectedState.permissionCount) {
+    errors.push(`Expected ${expectedState.permissionCount} permissions, got: ${received.permissions.length}`);
+  }
+
+  const pass = errors.length === 0;
+
+  const message = () => {
+    const hint = matcherHint('.toHavePermissionContext', 'context', 'expectedState');
+
+    if (isNot) {
+      if (pass) {
+        return `${hint}\n\nExpected permission context NOT to match expected state, but it did:\n  Received: ${printReceived(received)}\n  Expected: ${printExpected(expectedState)}`;
+      }
+      return `${hint}\n\nExpected permission context NOT to match expected state, and it didn't:\n  Received: ${printReceived(received)}\n  Validation errors: ${errors.join(', ')}`;
+    }
+
+    if (pass) {
+      return `${hint}\n\nExpected permission context NOT to match expected state, but it did:\n  Received: ${printReceived(received)}`;
+    }
+
+    return `${hint}\n\nExpected permission context to match expected state:\n  Received: ${printReceived(received)}\n  Expected: ${printExpected(expectedState)}\n  Validation errors:\n    ${errors.join('\n    ')}`;
+  };
+
+  return { message, pass };
+}
+
+/**
+ * Custom Vitest matcher: toHavePermissionHistory
+ */
+export function toHavePermissionHistory(
+  this: { isNot?: boolean; utils?: any },
+  received: PermissionHistory,
+  expectedCriteria: {
+    totalEntries?: number;
+    grantedCount?: number;
+    deniedCount?: number;
+    hasToolEntry?: string;
+    lacksToolEntry?: string;
+    hasRecentEntry?: {
+      tool: string;
+      withinMinutes: number;
+      granted?: boolean;
+    };
+    entriesInOrder?: string[];
+  }
+): { message(): string; pass: boolean } {
+  const { isNot = false, utils = {} } = this;
+  const { printReceived = (x: any) => x, printExpected = (x: any) => x, matcherHint = (x: any) => x } = utils;
+
+  const errors: string[] = [];
+
+  // Check total entries
+  if (expectedCriteria.totalEntries !== undefined && received.total !== expectedCriteria.totalEntries) {
+    errors.push(`Expected ${expectedCriteria.totalEntries} total entries, got: ${received.total}`);
+  }
+
+  // Check granted count
+  if (expectedCriteria.grantedCount !== undefined && received.granted !== expectedCriteria.grantedCount) {
+    errors.push(`Expected ${expectedCriteria.grantedCount} granted entries, got: ${received.granted}`);
+  }
+
+  // Check denied count
+  if (expectedCriteria.deniedCount !== undefined && received.denied !== expectedCriteria.deniedCount) {
+    errors.push(`Expected ${expectedCriteria.deniedCount} denied entries, got: ${received.denied}`);
+  }
+
+  // Check for specific tool entry
+  if (expectedCriteria.hasToolEntry) {
+    const hasEntry = received.entries.some(entry => entry.tool === expectedCriteria.hasToolEntry);
+    if (!hasEntry) {
+      errors.push(`Expected entry for tool: ${expectedCriteria.hasToolEntry}`);
+    }
+  }
+
+  // Check for absence of specific tool entry
+  if (expectedCriteria.lacksToolEntry) {
+    const hasEntry = received.entries.some(entry => entry.tool === expectedCriteria.lacksToolEntry);
+    if (hasEntry) {
+      errors.push(`Unexpected entry found for tool: ${expectedCriteria.lacksToolEntry}`);
+    }
+  }
+
+  // Check for recent entry
+  if (expectedCriteria.hasRecentEntry) {
+    const { tool, withinMinutes, granted } = expectedCriteria.hasRecentEntry;
+    const cutoffTime = new Date(Date.now() - withinMinutes * 60 * 1000);
+
+    const recentEntry = received.entries.find(entry =>
+      entry.tool === tool &&
+      entry.timestamp >= cutoffTime &&
+      (granted === undefined || entry.granted === granted)
+    );
+
+    if (!recentEntry) {
+      const grantedText = granted !== undefined ? ` (${granted ? 'granted' : 'denied'})` : '';
+      errors.push(`Expected recent entry for tool: ${tool} within ${withinMinutes} minutes${grantedText}`);
+    }
+  }
+
+  // Check entries order
+  if (expectedCriteria.entriesInOrder) {
+    const actualOrder = received.entries
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+      .map(entry => entry.tool);
+
+    const expectedOrder = expectedCriteria.entriesInOrder;
+
+    if (actualOrder.length !== expectedOrder.length) {
+      errors.push(`Expected ${expectedOrder.length} entries in order, got: ${actualOrder.length}`);
+    } else {
+      for (let i = 0; i < expectedOrder.length; i++) {
+        if (actualOrder[i] !== expectedOrder[i]) {
+          errors.push(`Expected entry ${i + 1} to be '${expectedOrder[i]}', got: '${actualOrder[i]}'`);
+        }
+      }
+    }
+  }
+
+  const pass = errors.length === 0;
+
+  const message = () => {
+    const hint = matcherHint('.toHavePermissionHistory', 'history', 'expectedCriteria');
+
+    if (isNot) {
+      if (pass) {
+        return `${hint}\n\nExpected permission history NOT to match expected criteria, but it did:\n  Received: ${printReceived(received)}\n  Expected: ${printExpected(expectedCriteria)}`;
+      }
+      return `${hint}\n\nExpected permission history NOT to match expected criteria, and it didn't:\n  Received: ${printReceived(received)}\n  Validation errors: ${errors.join(', ')}`;
+    }
+
+    if (pass) {
+      return `${hint}\n\nExpected permission history NOT to match expected criteria, but it did:\n  Received: ${printReceived(received)}`;
+    }
+
+    return `${hint}\n\nExpected permission history to match expected criteria:\n  Received: ${printReceived(received)}\n  Expected: ${printExpected(expectedCriteria)}\n  Validation errors:\n    ${errors.join('\n    ')}`;
+  };
+
+  return { message, pass };
+}
+
+/**
+ * Setup function to extend Vitest's expect with custom permission matchers
+ * Call this in your test setup file or at the beginning of test files
+ *
+ * @example
+ * ```typescript
+ * import { expect } from 'vitest';
+ * import { setupPermissionMatchers } from '@apexcli/core/test-utils';
+ *
+ * setupPermissionMatchers(expect);
+ * ```
+ */
+export function setupPermissionMatchers(expectInstance: ExpectStatic): void {
+  expectInstance.extend({
+    toBePermissionGranted,
+    toBePermissionDenied,
+    toBePermissionPending,
+    toHavePermissionContext,
+    toHavePermissionHistory,
+  });
+}

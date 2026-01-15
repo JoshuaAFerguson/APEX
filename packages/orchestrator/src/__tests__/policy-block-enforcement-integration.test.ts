@@ -355,9 +355,29 @@ language: typescript
     it('should handle policy check failures gracefully without breaking task execution', async () => {
       // This test verifies that policy engine failures don't crash the orchestrator
 
-      // We can verify error handling is in place by checking the implementation
-      // The actual error scenarios would be tested with policy engine mocks
-      expect(true).toBe(true); // Placeholder - error handling verified in unit tests
+      const policyEngine = {
+        checkPolicy: vi.fn().mockRejectedValue(new Error('simulated policy failure')),
+      };
+
+      (orchestrator as any).policyEngine = policyEngine;
+
+      const hooks = (orchestrator as any).createHooksWithManager(
+        {} as any,
+        'developer',
+        'implementation',
+        'test-workflow'
+      );
+
+      const preToolUseHook = hooks.PreToolUse[0].hooks[0];
+      const result = await preToolUseHook(
+        { tool_name: 'Read', tool_input: {} },
+        undefined,
+        { signal: new AbortController().signal }
+      );
+
+      expect(policyEngine.checkPolicy).toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledWith('PolicyEngine check failed:', expect.any(Error));
+      expect(result).toBeUndefined();
     });
 
     it('should not significantly impact performance when policy checking is enabled', async () => {

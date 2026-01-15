@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ApexEvent, Task } from '@apexcli/core'
+import { ExponentialBackoffReconnector, type ExponentialBackoffConfig } from '@apexcli/core'
 import { getApiUrl } from './config'
 
 type WebSocketEventHandler = (event: ApexEvent) => void
@@ -39,18 +40,57 @@ function toWebSocketUrl(baseUrl: string): string {
 export class ApexWebSocketClient {
   private ws: WebSocket | null = null
   private url: string
-  private reconnectAttempts = 0
-  private maxReconnectAttempts = 10
-  private reconnectDelay = 1000 // Start with 1 second
-  private maxReconnectDelay = 30000 // Max 30 seconds
-  private reconnectTimer: NodeJS.Timeout | null = null
+  private reconnector: ExponentialBackoffReconnector
   private eventHandlers: Map<string, Set<WebSocketEventHandler>> = new Map()
   private stateHandlers: Set<StateEventHandler> = new Set()
   private shouldReconnect = true
 
-  constructor(url?: string) {
+  // Deprecated properties for backward compatibility
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 10
+  private reconnectDelay = 1000
+  private maxReconnectDelay = 30000
+  private reconnectTimer: NodeJS.Timeout | null = null
+
+  constructor(url?: string, reconnectConfig?: Partial<ExponentialBackoffConfig>) {
     const baseUrl = url || getApiUrl()
     this.url = toWebSocketUrl(baseUrl)
+
+    // Initialize reconnector with optimized settings for WebSocket
+    this.reconnector = new ExponentialBackoffReconnector({
+      baseDelayMs: 1000,
+      backoffFactor: 2,
+      maxDelayMs: 30000,
+      maxRetries: 10,
+      jitterStrategy: 'equal', // Prevent thundering herd in browser environments
+      ...reconnectConfig,
+    })
+
+    // Set up reconnector event handlers
+    this.setupReconnectorHandlers()
+  }
+
+  /**
+   * Set up reconnector event handlers
+   */
+  private setupReconnectorHandlers(): void {
+    this.reconnector.on('reconnect:attempt', (attempt, delayMs) => {
+      console.log(`[APEX WS] Reconnection attempt ${attempt} in ${delayMs}ms...`)
+      this.reconnectAttempts = attempt // Update for backward compatibility
+    })
+
+    this.reconnector.on('reconnect:success', (attempt, totalTime) => {
+      console.log(`[APEX WS] Reconnected after ${attempt} attempts in ${totalTime}ms`)
+      this.reconnectAttempts = 0 // Reset for backward compatibility
+    })
+
+    this.reconnector.on('reconnect:failure', (attempt, error) => {
+      console.warn(`[APEX WS] Reconnection attempt ${attempt} failed:`, error)
+    })
+
+    this.reconnector.on('reconnect:exhausted', (totalAttempts, lastError) => {
+      console.error(`[APEX WS] Max reconnection attempts (${totalAttempts}) reached:`, lastError)
+    })
   }
 
   /**
@@ -68,6 +108,7 @@ export class ApexWebSocketClient {
         console.log('[APEX WS] Connected')
         this.reconnectAttempts = 0
         this.reconnectDelay = 1000
+        this.reconnector.notifyConnected()
       }
 
       this.ws.onmessage = (event) => {
@@ -108,17 +149,21 @@ export class ApexWebSocketClient {
         console.error('[APEX WS] Connection error - is the API server running? Start with: apex serve')
       }
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
         console.log('[APEX WS] Disconnected')
         this.ws = null
 
-        if (this.shouldReconnect) {
+        if (this.shouldReconnect && !this.reconnector.isExhausted()) {
+          const reason = event.reason || `Connection closed with code ${event.code}`
+          this.reconnector.notifyDisconnected(reason)
           this.scheduleReconnect()
         }
       }
     } catch (error) {
       console.error('[APEX WS] Connection error:', error)
-      if (this.shouldReconnect) {
+      if (this.shouldReconnect && !this.reconnector.isExhausted()) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        this.reconnector.notifyConnectionFailed(errorMessage)
         this.scheduleReconnect()
       }
     }
@@ -179,25 +224,18 @@ export class ApexWebSocketClient {
   }
 
   /**
-   * Schedule a reconnection attempt with exponential backoff
+   * Schedule a reconnection attempt using exponential backoff
    */
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[APEX WS] Max reconnection attempts reached')
-      return
-    }
-
-    const delay = Math.min(
-      this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
-      this.maxReconnectDelay
-    )
-
-    console.log(`[APEX WS] Reconnecting in ${delay}ms...`)
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts++
-      this.connect()
-    }, delay)
+    this.reconnector.scheduleReconnect(async () => {
+      try {
+        this.connect()
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        this.reconnector.notifyConnectionFailed(errorMessage)
+        throw error // Re-throw to let reconnector handle retry logic
+      }
+    })
   }
 
   /**

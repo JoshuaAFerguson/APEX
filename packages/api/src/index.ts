@@ -31,6 +31,8 @@ import {
   ToolCallCompleteEvent
 } from '@apexcli/orchestrator';
 
+import { registerScreenshotRoutes } from './routes/screenshot.js';
+
 // Subtask API request types
 interface DecomposeTaskRequest {
   subtasks: SubtaskDefinition[];
@@ -92,6 +94,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Register plugins
   await app.register(cors, { origin: true });
   await app.register(websocket);
+
+  // Register screenshot routes
+  await registerScreenshotRoutes(app);
 
   // Initialize orchestrator
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
@@ -2094,6 +2099,12 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /api/approvals            - List pending approvals`);
       console.log(`  POST   /api/approvals/:id/approve - Approve an approval request`);
       console.log(`  POST   /api/approvals/:id/deny  - Deny an approval request`);
+      console.log('');
+      console.log('Screenshot Endpoints:');
+      console.log(`  POST   /screenshot/viewport      - Capture viewport screenshot`);
+      console.log(`  POST   /screenshot/fullpage      - Capture full page screenshot`);
+      console.log(`  POST   /screenshot/element       - Capture element screenshot`);
+      console.log(`  GET    /screenshot/health        - Screenshot service health check`);
       console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /health                   - Basic health check`);

@@ -166,7 +166,7 @@ describe('Test Utils Edge Cases', () => {
       }
 
       // If we get here without running out of memory, the test passes
-      expect(true).toBe(true);
+      expect(getPlatform()).toBe(process.platform);
     });
 
     it('should handle frequent mocking/restoration cycles', () => {
@@ -179,7 +179,7 @@ describe('Test Utils Edge Cases', () => {
         restore();
       }
 
-      expect(true).toBe(true);
+      expect(getPlatform()).toBe(process.platform);
     });
   });
 

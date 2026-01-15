@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { ApexOrchestrator } from '../index';
 import { SecretScanner } from '../scanner';
 
@@ -73,25 +75,34 @@ describe('SecretScanner Integration Verification', () => {
     it('should cover AC1: ApexOrchestrator reads scanner config and initializes SecretScanner', () => {
       // Covered in: apex-orchestrator-secret-scanner-integration.test.ts
       // Tests: Constructor invocation with config, initialization during setup
-      expect(true).toBe(true); // Tests validate this through mock verification
+      const integrationPath = path.join(__dirname, 'apex-orchestrator-secret-scanner-integration.test.ts');
+      const content = fs.readFileSync(integrationPath, 'utf8');
+      expect(content).toContain('AC1: ApexOrchestrator reads scanner config');
     });
 
     it('should cover AC2: Scanner is optional (graceful handling if not configured)', () => {
       // Covered in: apex-orchestrator-secret-scanner-integration.test.ts
       // Tests: Missing config handling, null/undefined config, graceful continuation
-      expect(true).toBe(true); // Tests validate this through behavior verification
+      const integrationPath = path.join(__dirname, 'apex-orchestrator-secret-scanner-integration.test.ts');
+      const content = fs.readFileSync(integrationPath, 'utf8');
+      expect(content).toContain('should handle missing scanner configuration gracefully');
     });
 
     it('should cover AC3: Initialization is logged appropriately', () => {
       // Covered in: both integration and instantiation test files
       // Tests: Success logging, disabled state logging, no duplicate messages
-      expect(true).toBe(true); // Tests validate this through console spy verification
+      const integrationPath = path.join(__dirname, 'apex-orchestrator-secret-scanner-integration.test.ts');
+      const content = fs.readFileSync(integrationPath, 'utf8');
+      expect(content).toContain('SecretScanner initialized with configuration');
+      expect(content).toContain('SecretScanner not configured - scanner will be disabled');
     });
 
     it('should cover configuration validation and edge cases', () => {
       // Covered in: apex-orchestrator-secret-scanner-instantiation.test.ts
       // Tests: Complete config, partial config, empty config, custom patterns
-      expect(true).toBe(true); // Tests validate this through constructor parameter verification
+      const instantiationPath = path.join(__dirname, 'apex-orchestrator-secret-scanner-instantiation.test.ts');
+      const content = fs.readFileSync(instantiationPath, 'utf8');
+      expect(content).toContain('custom patterns');
     });
   });
 
@@ -118,7 +129,9 @@ describe('SecretScanner Integration Verification', () => {
     it('should follow established error handling patterns', () => {
       // SecretScanner integration should handle errors consistently with other services
       // Tests verify that constructor errors are properly propagated
-      expect(true).toBe(true); // Validated through error test scenarios
+      const integrationPath = path.join(__dirname, 'apex-orchestrator-secret-scanner-integration.test.ts');
+      const content = fs.readFileSync(integrationPath, 'utf8');
+      expect(content).toContain('constructor errors gracefully');
     });
   });
 });

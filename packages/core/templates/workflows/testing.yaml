@@ -1,0 +1,36 @@
+name: testing
+description: Test creation and execution workflow
+trigger:
+  - manual
+  - apex:testing
+
+stages:
+  - name: analysis
+    agent: tester
+    description: Analyze codebase and identify testing needs
+    outputs:
+      - test_strategy
+      - coverage_gaps
+
+  - name: test-creation
+    agent: tester
+    description: Create unit and integration tests
+    dependsOn: [analysis]
+    outputs:
+      - test_files
+      - test_count
+
+  - name: execution
+    agent: tester
+    description: Run tests and verify coverage
+    dependsOn: [test-creation]
+    outputs:
+      - test_results
+      - coverage_report
+
+  - name: review
+    agent: reviewer
+    description: Review test quality and coverage
+    dependsOn: [execution]
+    outputs:
+      - review_findings

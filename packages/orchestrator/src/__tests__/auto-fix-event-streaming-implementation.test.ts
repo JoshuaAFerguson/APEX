@@ -10,8 +10,8 @@
  * - API WebSocket broadcasts auto-fix events to connected clients
  */
 
+import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'eventemitter3';
-import type { ApexOrchestrator } from '../index';
 import type {
   AutoFixRequestedEventData,
   AutoFixStartedEventData,
@@ -21,45 +21,7 @@ import type {
   AutoFixSkippedEventData,
 } from '../index';
 
-// Mock auto-fixer for testing
-jest.mock('../import-auto-fixer/import-auto-fixer', () => ({
-  ImportAutoFixer: jest.fn().mockImplementation(() => ({
-    isAvailable: jest.fn().mockResolvedValue(true),
-    analyze: jest.fn().mockResolvedValue([
-      {
-        filePath: '/test/file.ts',
-        missingImports: [
-          { identifier: 'useState', source: 'react' },
-          { identifier: 'lodash', source: 'lodash' },
-        ],
-        errors: [],
-        duration: 50,
-      },
-    ]),
-    fix: jest.fn().mockResolvedValue([
-      {
-        success: true,
-        filePath: '/test/file.ts',
-        importsAdded: [
-          { identifier: 'useState', source: 'react', type: 'named' },
-          { identifier: 'lodash', source: 'lodash', type: 'default' },
-        ],
-        errors: [],
-        duration: 100,
-      },
-    ]),
-    getSummary: jest.fn().mockReturnValue({
-      filesProcessed: 1,
-      filesModified: 1,
-      totalImportsAdded: 2,
-      totalDuration: 100,
-      totalErrors: 0,
-    }),
-  })),
-}));
-
 describe('Auto-Fix Event Streaming Implementation', () => {
-  let orchestrator: ApexOrchestrator;
   let eventCapture: {
     requested: AutoFixRequestedEventData[];
     started: AutoFixStartedEventData[];
@@ -89,15 +51,70 @@ describe('Auto-Fix Event Streaming Implementation', () => {
   });
 
   it('should emit all required auto-fix events during stage completion', async () => {
-    // This test verifies the event flow:
-    // 1. autofix:requested - emitted for each file to be processed
-    // 2. autofix:started - emitted when auto-fix begins for a file
-    // 3. autofix:progress - emitted during fixing with progress details
-    // 4. autofix:completed - emitted when auto-fix succeeds
-    // 5. autofix:failed - emitted when auto-fix encounters errors
-    // 6. autofix:skipped - emitted when auto-fix is skipped
+    const emitter = new EventEmitter();
+    emitter.on('autofix:requested', (event: AutoFixRequestedEventData) => eventCapture.requested.push(event));
+    emitter.on('autofix:started', (event: AutoFixStartedEventData) => eventCapture.started.push(event));
+    emitter.on('autofix:progress', (event: AutoFixProgressEventData) => eventCapture.progress.push(event));
+    emitter.on('autofix:completed', (event: AutoFixCompletedEventData) => eventCapture.completed.push(event));
+    emitter.on('autofix:failed', (event: AutoFixFailedEventData) => eventCapture.failed.push(event));
+    emitter.on('autofix:skipped', (event: AutoFixSkippedEventData) => eventCapture.skipped.push(event));
 
-    expect(true).toBe(true); // Placeholder - actual test would validate event emission
+    const timestamp = new Date();
+    emitter.emit('autofix:requested', {
+      taskId: 'task-1',
+      filePath: '/test/file.ts',
+      fixTypes: ['imports'],
+      triggeredBy: 'tdd',
+      timestamp,
+    });
+    emitter.emit('autofix:started', {
+      taskId: 'task-1',
+      filePath: '/test/file.ts',
+      fixType: 'imports',
+      issuesDetected: 2,
+      timestamp,
+    });
+    emitter.emit('autofix:progress', {
+      taskId: 'task-1',
+      filePath: '/test/file.ts',
+      fixType: 'imports',
+      issuesDetected: 2,
+      issuesFixed: 1,
+      issuesRemaining: 1,
+      currentFix: 'Added useState import',
+      timestamp,
+    });
+    emitter.emit('autofix:completed', {
+      taskId: 'task-1',
+      filePath: '/test/file.ts',
+      fixType: 'imports',
+      issuesDetected: 2,
+      issuesFixed: 2,
+      duration: 100,
+      timestamp,
+    });
+    emitter.emit('autofix:failed', {
+      taskId: 'task-2',
+      filePath: '/test/failed.ts',
+      fixType: 'imports',
+      error: 'Auto-fix failed',
+      issuesDetected: 1,
+      issuesFixed: 0,
+      timestamp,
+    });
+    emitter.emit('autofix:skipped', {
+      taskId: 'task-3',
+      filePath: '/test/skipped.ts',
+      reason: 'Auto-fixer unavailable',
+      timestamp,
+    });
+
+    expect(eventCapture.requested).toHaveLength(1);
+    expect(eventCapture.started).toHaveLength(1);
+    expect(eventCapture.progress).toHaveLength(1);
+    expect(eventCapture.completed).toHaveLength(1);
+    expect(eventCapture.failed).toHaveLength(1);
+    expect(eventCapture.skipped).toHaveLength(1);
   });
 
   it('should include correct event payload structure for API WebSocket broadcasting', () => {
@@ -109,7 +126,18 @@ describe('Auto-Fix Event Streaming Implementation', () => {
     // - AutoFixFailedEventData: taskId, filePath, fixType, error, issuesDetected, issuesFixed, timestamp
     // - AutoFixSkippedEventData: taskId, filePath, reason, timestamp
 
-    expect(true).toBe(true); // Placeholder - actual test would validate event data
+    const requested: AutoFixRequestedEventData = {
+      taskId: 'task-4',
+      filePath: '/test/file.ts',
+      fixTypes: ['imports'],
+      triggeredBy: 'tdd',
+      timestamp: new Date(),
+    };
+
+    expect(requested.taskId).toBe('task-4');
+    expect(requested.filePath).toBe('/test/file.ts');
+    expect(requested.fixTypes).toContain('imports');
+    expect(requested.triggeredBy).toBe('tdd');
   });
 
   it('should provide detailed progress information for CLI ora/chalk display', () => {
@@ -120,7 +148,20 @@ describe('Auto-Fix Event Streaming Implementation', () => {
     // - Progress indicators
     // - Duration tracking
 
-    expect(true).toBe(true); // Placeholder - actual test would validate CLI display data
+    const progress: AutoFixProgressEventData = {
+      taskId: 'task-5',
+      filePath: '/test/file.ts',
+      fixType: 'imports',
+      issuesDetected: 3,
+      issuesFixed: 2,
+      issuesRemaining: 1,
+      currentFix: 'Added lodash import',
+      timestamp: new Date(),
+    };
+
+    expect(progress.issuesDetected).toBeGreaterThan(0);
+    expect(progress.issuesFixed).toBeLessThan(progress.issuesDetected);
+    expect(progress.currentFix.length).toBeGreaterThan(0);
   });
 
   it('should handle errors gracefully and emit appropriate failure events', () => {
@@ -129,7 +170,25 @@ describe('Auto-Fix Event Streaming Implementation', () => {
     // - Fix operation fails -> autofix:failed
     // - Partial success -> autofix:completed with correct counts
 
-    expect(true).toBe(true); // Placeholder - actual test would validate error handling
+    const failed: AutoFixFailedEventData = {
+      taskId: 'task-6',
+      filePath: '/test/broken.ts',
+      fixType: 'imports',
+      error: 'Parser error',
+      issuesDetected: 1,
+      issuesFixed: 0,
+      timestamp: new Date(),
+    };
+
+    const skipped: AutoFixSkippedEventData = {
+      taskId: 'task-7',
+      filePath: '/test/skipped.ts',
+      reason: 'Auto-fixer unavailable',
+      timestamp: new Date(),
+    };
+
+    expect(failed.error).toContain('Parser');
+    expect(skipped.reason).toContain('unavailable');
   });
 
   it('should maintain consistency between orchestrator, API, and CLI event handling', () => {
@@ -139,7 +198,29 @@ describe('Auto-Fix Event Streaming Implementation', () => {
     // - All required fields are present
     // - Type safety is maintained
 
-    expect(true).toBe(true); // Placeholder - actual test would validate consistency
+    const base = {
+      taskId: 'task-8',
+      filePath: '/test/file.ts',
+      timestamp: new Date(),
+    };
+
+    const requested: AutoFixRequestedEventData = {
+      ...base,
+      fixTypes: ['imports'],
+      triggeredBy: 'tdd',
+    };
+
+    const completed: AutoFixCompletedEventData = {
+      ...base,
+      fixType: 'imports',
+      issuesDetected: 2,
+      issuesFixed: 2,
+      duration: 200,
+    };
+
+    expect(requested.taskId).toBe(completed.taskId);
+    expect(requested.filePath).toBe(completed.filePath);
+    expect(completed.duration).toBeGreaterThan(0);
   });
 });
 

@@ -7,25 +7,30 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import path from 'path';
+import { existsSync } from 'fs';
 
 describe('Browser Events Test Suite Validation', () => {
   describe('Test File Structure Validation', () => {
     it('should have browser-manager-integration.test.ts for unit tests', () => {
       // This test validates that the primary integration test file exists
       // and covers BrowserManager → Orchestrator event forwarding
-      expect(true).toBe(true); // Placeholder - file exists based on creation
+      const filePath = path.join(__dirname, 'browser-manager-integration.test.ts');
+      expect(existsSync(filePath)).toBe(true);
     });
 
     it('should have browser-events-end-to-end.test.ts for integration tests', () => {
       // This test validates that the end-to-end integration test file exists
       // and covers complete browser lifecycle event flow
-      expect(true).toBe(true); // Placeholder - file exists based on creation
+      const filePath = path.join(__dirname, 'browser-events-end-to-end.test.ts');
+      expect(existsSync(filePath)).toBe(true);
     });
 
     it('should have browser-events-error-handling.test.ts for edge cases', () => {
       // This test validates that the error handling test file exists
       // and covers error scenarios and edge cases
-      expect(true).toBe(true); // Placeholder - file exists based on creation
+      const filePath = path.join(__dirname, 'browser-events-error-handling.test.ts');
+      expect(existsSync(filePath)).toBe(true);
     });
   });
 

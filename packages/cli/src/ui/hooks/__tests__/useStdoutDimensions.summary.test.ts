@@ -100,7 +100,7 @@ describe.skip('useStdoutDimensions - Testing Summary', () => {
     });
 
     // This test suite itself validates that unit tests exist (AC 5)
-    expect(true).toBe(true);
+    expect(acceptanceCriteria).toContain('Has unit tests');
   });
 
   it('should demonstrate the hook is ready for production use', () => {

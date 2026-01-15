@@ -241,7 +241,7 @@ describe('AgentPanel - Parallel Execution Performance Tests', () => {
       }
 
       // All tests completed without memory issues
-      expect(true).toBe(true);
+      expect(document.body.textContent).toBe('');
     });
 
     it('handles memory efficiently during stress testing', () => {

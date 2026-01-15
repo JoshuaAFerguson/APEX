@@ -7379,6 +7379,109 @@ export const ImageMetadataSchema = z.object({
 });
 export type ImageMetadata = z.infer<typeof ImageMetadataSchema>;
 
+// ----------------------------------------------------------------------------
+// Screenshot Capture Options & Results
+// ----------------------------------------------------------------------------
+
+/**
+ * Supported screenshot image formats
+ */
+export const ScreenshotFormatSchema = z.enum(['png', 'jpeg']);
+export type ScreenshotFormat = z.infer<typeof ScreenshotFormatSchema>;
+
+/**
+ * Screenshot output mode - determines how the screenshot is returned
+ */
+export const ScreenshotOutputModeSchema = z.enum(['buffer', 'file']);
+export type ScreenshotOutputMode = z.infer<typeof ScreenshotOutputModeSchema>;
+
+/**
+ * Options for capturing screenshots
+ * Used by browser automation tools to configure screenshot capture behavior
+ */
+export const ScreenshotOptionsSchema = z.object({
+  /** Image format for the screenshot (default: 'png') */
+  format: ScreenshotFormatSchema.optional().default('png'),
+
+  /** Image quality (1-100), only applicable for JPEG format (default: 80) */
+  quality: z.number().int().min(1).max(100).optional().default(80),
+
+  /** How to return the screenshot - as a buffer or saved to file */
+  output: ScreenshotOutputModeSchema.optional().default('buffer'),
+
+  /** File path to save the screenshot (required when output is 'file') */
+  path: z.string().optional(),
+
+  /** Whether to capture the full scrollable page (default: false) */
+  fullPage: z.boolean().optional().default(false),
+
+  /** Whether to hide default white background and allow capturing with transparency (PNG only) */
+  omitBackground: z.boolean().optional().default(false),
+}).refine(
+  (data) => data.output !== 'file' || (data.output === 'file' && data.path !== undefined),
+  { message: "Path is required when output mode is 'file'", path: ['path'] }
+);
+export type ScreenshotOptions = z.infer<typeof ScreenshotOptionsSchema>;
+
+/**
+ * Result of a screenshot capture operation
+ * Contains either the image buffer or file path, along with dimensions
+ */
+export const ScreenshotResultSchema = z.object({
+  /** Image data as a Buffer (present when output mode is 'buffer') */
+  buffer: z.instanceof(Buffer).optional(),
+
+  /** File path where screenshot was saved (present when output mode is 'file') */
+  path: z.string().optional(),
+
+  /** Width of the captured screenshot in pixels */
+  width: z.number().int().min(1),
+
+  /** Height of the captured screenshot in pixels */
+  height: z.number().int().min(1),
+
+  /** Format of the captured image */
+  format: ScreenshotFormatSchema.optional(),
+
+  /** Timestamp when the screenshot was captured */
+  capturedAt: z.date().optional(),
+}).refine(
+  (data) => data.buffer !== undefined || data.path !== undefined,
+  { message: 'Either buffer or path must be provided' }
+);
+export type ScreenshotResult = z.infer<typeof ScreenshotResultSchema>;
+
+/**
+ * Options for capturing a screenshot of a specific element
+ * Extends base screenshot options with element selector
+ */
+export const CaptureElementOptionsSchema = ScreenshotOptionsSchema.innerType().extend({
+  /** CSS selector for the element to capture */
+  selector: z.string().min(1, 'Selector is required'),
+
+  /** Padding around the element in pixels (default: 0) */
+  padding: z.number().int().min(0).optional().default(0),
+});
+export type CaptureElementOptions = z.infer<typeof CaptureElementOptionsSchema>;
+
+/**
+ * Options for capturing a screenshot of a specific viewport region
+ */
+export const CaptureRegionOptionsSchema = ScreenshotOptionsSchema.innerType().extend({
+  /** X coordinate of the region's top-left corner */
+  x: z.number().int().min(0),
+
+  /** Y coordinate of the region's top-left corner */
+  y: z.number().int().min(0),
+
+  /** Width of the region to capture */
+  width: z.number().int().min(1),
+
+  /** Height of the region to capture */
+  height: z.number().int().min(1),
+});
+export type CaptureRegionOptions = z.infer<typeof CaptureRegionOptionsSchema>;
+
 // ============================================================================
 // Tool Execution Hooks
 // ============================================================================
@@ -7475,3 +7578,126 @@ export type ToolErrorHookContext = z.infer<typeof ToolErrorHookContextSchema>;
 export type ToolStartHookCallback = (context: ToolStartHookContext) => void;
 export type ToolCompleteHookCallback = (context: ToolCompleteHookContext) => void;
 export type ToolErrorHookCallback = (context: ToolErrorHookContext) => void;
+
+// ============================================================================
+// Screenshot Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Screenshot capture configuration options
+ */
+export const ScreenshotOptionsSchema = z.object({
+  /** Image format - PNG or JPEG */
+  format: z.enum(['png', 'jpeg']).optional(),
+  /** JPEG quality (0-100). Only applies when format is 'jpeg' */
+  quality: z.number().min(0).max(100).optional(),
+  /** Optional file path to save the screenshot */
+  savePath: z.string().optional(),
+  /** Whether to omit the background (transparent for PNG) */
+  omitBackground: z.boolean().optional(),
+  /** Viewport dimensions for browser */
+  viewport: z.object({
+    width: z.number().min(100).max(4000),
+    height: z.number().min(100).max(4000),
+  }).optional(),
+});
+export type ScreenshotOptions = z.infer<typeof ScreenshotOptionsSchema>;
+
+/**
+ * Element screenshot capture options
+ */
+export const ElementScreenshotOptionsSchema = ScreenshotOptionsSchema.extend({
+  /** CSS selector for the target element */
+  selector: z.string().min(1),
+  /** Timeout in milliseconds for finding the element */
+  timeout: z.number().min(1000).max(60000).optional(),
+});
+export type ElementScreenshotOptions = z.infer<typeof ElementScreenshotOptionsSchema>;
+
+/**
+ * Screenshot capture result
+ */
+export const ScreenshotResultSchema = z.object({
+  /** Whether the capture succeeded */
+  success: z.boolean(),
+  /** File path if saved to file */
+  filePath: z.string().optional(),
+  /** Error message if failed */
+  error: z.string().optional(),
+  /** Time taken in milliseconds */
+  duration: z.number().min(0),
+  /** Image format used */
+  format: z.enum(['png', 'jpeg']),
+  /** Image dimensions */
+  dimensions: z.object({
+    width: z.number().min(1),
+    height: z.number().min(1),
+  }).optional(),
+});
+export type ScreenshotResult = z.infer<typeof ScreenshotResultSchema>;
+
+/**
+ * Screenshot API request for viewport capture
+ */
+export const ScreenshotViewportRequestSchema = z.object({
+  url: z.string().url(),
+  format: z.enum(['png', 'jpeg']).optional(),
+  quality: z.number().min(0).max(100).optional(),
+  omitBackground: z.boolean().optional(),
+  viewport: z.object({
+    width: z.number().min(100).max(4000),
+    height: z.number().min(100).max(4000),
+  }).optional(),
+  savePath: z.string().optional(),
+});
+export type ScreenshotViewportRequest = z.infer<typeof ScreenshotViewportRequestSchema>;
+
+/**
+ * Screenshot API request for full page capture
+ */
+export const ScreenshotFullPageRequestSchema = z.object({
+  url: z.string().url(),
+  format: z.enum(['png', 'jpeg']).optional(),
+  quality: z.number().min(0).max(100).optional(),
+  omitBackground: z.boolean().optional(),
+  viewport: z.object({
+    width: z.number().min(100).max(4000),
+    height: z.number().min(100).max(4000),
+  }).optional(),
+  savePath: z.string().optional(),
+});
+export type ScreenshotFullPageRequest = z.infer<typeof ScreenshotFullPageRequestSchema>;
+
+/**
+ * Screenshot API request for element capture
+ */
+export const ScreenshotElementRequestSchema = z.object({
+  url: z.string().url(),
+  selector: z.string().min(1),
+  format: z.enum(['png', 'jpeg']).optional(),
+  quality: z.number().min(0).max(100).optional(),
+  omitBackground: z.boolean().optional(),
+  timeout: z.number().min(1000).max(60000).optional(),
+  viewport: z.object({
+    width: z.number().min(100).max(4000),
+    height: z.number().min(100).max(4000),
+  }).optional(),
+  savePath: z.string().optional(),
+});
+export type ScreenshotElementRequest = z.infer<typeof ScreenshotElementRequestSchema>;
+
+/**
+ * Screenshot API response
+ */
+export const ScreenshotResponseSchema = z.object({
+  success: z.boolean(),
+  format: z.string().optional(),
+  duration: z.number().min(0).optional(),
+  filePath: z.string().optional(),
+  dimensions: z.object({
+    width: z.number().min(1),
+    height: z.number().min(1),
+  }).optional(),
+  error: z.string().optional(),
+});
+export type ScreenshotResponse = z.infer<typeof ScreenshotResponseSchema>;

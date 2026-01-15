@@ -514,8 +514,7 @@ limits:
         }
       }
 
-      // If we reach here without memory issues or timeouts, test passes
-      expect(true).toBe(true);
+      expect((orchestrator as any).pendingApprovalPromises.size).toBe(0);
 
       grantApprovalSpy.mockRestore();
     });

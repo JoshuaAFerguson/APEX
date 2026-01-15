@@ -265,6 +265,6 @@ describe('Final HealthMetrics Implementation Validation', () => {
     expect(DaemonConfigSchema.parse(config)).toBeDefined();
 
     // SUCCESS: All acceptance criteria have been implemented and tested!
-    expect(true).toBe(true);
+    expect(health.restartHistory).toHaveLength(1);
   });
 });

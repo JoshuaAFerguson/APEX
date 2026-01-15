@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
   // Event types and enums
   ApexEventType,
@@ -586,8 +586,8 @@ describe('Container Lifecycle Event Types', () => {
       // const badData: ContainerEventDataFor<'task:created'> = {};
       // const invalidData: ContainerEventDataFor<'agent:message'> = {};
 
-      // We can't test 'never' type at runtime, but TypeScript enforces it at compile time
-      expect(true).toBe(true); // Placeholder test
+      expectTypeOf<ContainerEventDataFor<'task:created'>>().toEqualTypeOf<never>();
+      expectTypeOf<ContainerEventDataFor<'agent:message'>>().toEqualTypeOf<never>();
     });
   });
 

@@ -133,7 +133,8 @@ describe('Test Coverage Validation', () => {
     it('should validate that all test files are properly importable', () => {
       // This test ensures all our test files can be imported without syntax errors
       // The fact that this test runs means the imports work
-      expect(true).toBe(true);
+      expect(typeof BrowserManager).toBe('function');
+      expect(typeof BrowserSession).toBe('function');
     });
 
     it('should validate test coverage categories', () => {

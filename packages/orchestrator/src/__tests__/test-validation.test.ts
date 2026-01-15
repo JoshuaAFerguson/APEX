@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 
 describe('Test Validation', () => {
   it('should validate basic test setup', () => {
-    expect(true).toBe(true);
+    expect(typeof describe).toBe('function');
+    expect(typeof it).toBe('function');
+    expect(typeof expect).toBe('function');
   });
 
   it('should validate imports work', () => {

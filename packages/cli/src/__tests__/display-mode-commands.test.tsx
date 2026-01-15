@@ -529,7 +529,8 @@ describe('Display Mode Commands', () => {
       // Check that help content includes the display mode commands
       // Note: In the actual implementation, help shows a temporary overlay
       // We would need to check for the presence of help text in the UI
-      expect(true).toBe(true); // Placeholder - actual help testing would require more detailed mocking
+      expect(screen.getByText('/compact')).toBeInTheDocument();
+      expect(screen.getByText('/verbose')).toBeInTheDocument();
     });
   });
 

@@ -441,7 +441,7 @@ describe('MCP Connection Types - Acceptance Criteria Validation', () => {
       // (This is tested in the integration test above and in the separate config loading test file)
 
       // Comprehensive validation - all components work together
-      expect(true).toBe(true); // If we reach here, all acceptance criteria are met
+      expect(() => MCPConnectionInfoSchema.parse(connectionInfo)).not.toThrow();
     });
 
     it('should demonstrate complete workflow with all MCP connection types', () => {

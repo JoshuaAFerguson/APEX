@@ -417,8 +417,17 @@ describe('Usage examples', () => {
     // This would skip on Windows platforms
     // skipOnWindows();
 
-    // Test Unix-specific functionality
-    expect(true).toBe(true);
+    const restore = mockPlatform('linux');
+
+    try {
+      const unixResult = runOnUnix(() => 'unix-only');
+      const windowsResult = runOnWindows(() => 'windows-only');
+
+      expect(unixResult).toBe('unix-only');
+      expect(windowsResult).toBeUndefined();
+    } finally {
+      restore();
+    }
   });
 
   it('demonstrates conditional execution', () => {

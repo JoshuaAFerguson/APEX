@@ -474,7 +474,11 @@ project:
         encoding: 'utf-8'
       }).trim();
       // Either clean or has resolved changes
-      expect(true).toBe(true); // Placeholder - actual behavior depends on merge result
+      if (gitStatus.includes('UU')) {
+        expect(hasConflictOrError).toBe(true);
+      } else {
+        expect(gitStatus).toBe('');
+      }
     });
 
     it('should preserve task data through multiple retry cycles', async () => {

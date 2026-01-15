@@ -611,12 +611,10 @@ git:
       await orchestrator.initialize();
 
       expect(consoleSpy).toHaveBeenCalledWith('SecretScanner initialized with configuration');
+      expect((orchestrator as any).secretScanner).toBeDefined();
 
       // Shutdown orchestrator
       await orchestrator.shutdown();
-
-      // Should shutdown gracefully without errors
-      expect(true).toBe(true); // Test passes if no errors thrown
     });
 
     it('should maintain configuration after orchestrator re-initialization', async () => {
@@ -800,7 +798,7 @@ git:
       // orchestrator should still initialize other services
       try {
         await orchestrator.initialize();
-        expect(true).toBe(true); // Test passes if initialization completes
+        expect((orchestrator as any).secretScanner).toBeDefined();
       } catch (error) {
         // If error is propagated, that's also valid behavior
         expect(error).toBeDefined();

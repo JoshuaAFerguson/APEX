@@ -765,8 +765,7 @@ describe('PolicyEngine - Real-world Workflow Scenarios', () => {
       } else if (result.status === 'rejected') {
         // Step failed - check if it was expected to fail
         if (!step.expectedAllowed) {
-          // Expected failure due to policy violation
-          expect(true).toBe(true); // This is expected
+          expect(result.reason).toBeDefined();
         }
       }
     });

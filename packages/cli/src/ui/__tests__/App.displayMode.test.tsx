@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '../__tests__/test-utils';
 import { App, type AppProps, type AppState } from '../App';
 import type { DisplayMode } from '@apexcli/core';
+import { ShortcutManager } from '../../services/ShortcutManager.js';
 
 // Mock ink hooks
 vi.mock('ink', async () => {
@@ -365,7 +366,15 @@ describe('App DisplayMode Integration', () => {
       // This test would verify the help text for display mode commands
       // The help text should explain what compact and verbose modes do
       render(<App {...props} />);
-      expect(true).toBe(true); // Placeholder
+
+      const shortcutInstance = (ShortcutManager as any).mock.results[0]?.value;
+      const commandHandler = shortcutInstance?.on.mock.calls.find((call: any[]) => call[0] === 'command')?.[1];
+      if (commandHandler) {
+        commandHandler('help');
+      }
+
+      expect(screen.getByText('/compact')).toBeInTheDocument();
+      expect(screen.getByText('/verbose')).toBeInTheDocument();
     });
   });
 
@@ -403,12 +412,16 @@ describe('App DisplayMode Integration', () => {
         initialState: {
           ...baseState,
           displayMode: 'compact' as DisplayMode,
+          messages: [
+            { id: 'sys', type: 'system', content: 'System message', timestamp: new Date() },
+            { id: 'tool', type: 'tool', toolName: 'Read', toolInput: {}, toolOutput: 'ok', timestamp: new Date() },
+          ],
           isProcessing: true,
         },
       };
 
       rerender(<App {...updatedProps} />);
-      expect(true).toBe(true); // Placeholder for actual assertion
+      expect(screen.queryByText('System message')).not.toBeInTheDocument();
     });
 
     it('should handle rapid displayMode changes', () => {
@@ -433,13 +446,23 @@ describe('App DisplayMode Integration', () => {
 
   describe('State Persistence', () => {
     it('should maintain displayMode across re-renders', () => {
-      const { rerender } = render(<App {...props} />);
-
-      // Change some other state
-      const updatedProps = {
+      const propsWithMessage = {
         ...props,
         initialState: {
           ...baseState,
+          messages: [
+            { id: 'sys', type: 'system', content: 'System message', timestamp: new Date() },
+          ],
+        },
+      };
+
+      const { rerender } = render(<App {...propsWithMessage} />);
+
+      // Change some other state
+      const updatedProps = {
+        ...propsWithMessage,
+        initialState: {
+          ...propsWithMessage.initialState,
           isProcessing: true,
         },
       };
@@ -447,7 +470,7 @@ describe('App DisplayMode Integration', () => {
       rerender(<App {...updatedProps} />);
 
       // displayMode should remain the same
-      expect(true).toBe(true); // Placeholder
+      expect(screen.queryByText('System message')).toBeInTheDocument();
     });
 
     it('should update displayMode when state changes', () => {
@@ -463,7 +486,7 @@ describe('App DisplayMode Integration', () => {
       };
 
       rerender(<App {...updatedProps} />);
-      expect(true).toBe(true); // Placeholder
+      expect(screen.getByText('Debug Activity Log')).toBeInTheDocument();
     });
   });
 });

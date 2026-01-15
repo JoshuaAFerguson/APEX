@@ -886,8 +886,8 @@ describe('PolicyEnforcer.checkTaskStart', () => {
         expect(result.results).toEqual([]);
       }
 
-      // If we got here without running out of memory, the test passes
-      expect(true).toBe(true);
+      const finalResult = enforcer.checkTaskStart(task);
+      expect(finalResult.results).toEqual([]);
     });
   });
 });

@@ -7,7 +7,7 @@ trigger:
 
 stages:
   - name: write-test
-    agent: tester
+    agent: tdd-tester
     description: Write failing test cases (Red phase)
     outputs:
       - test_files
@@ -15,7 +15,7 @@ stages:
       - baseline_coverage
 
   - name: run-test
-    agent: tester
+    agent: tdd-tester
     description: Run tests to confirm they fail (Red validation)
     dependsOn: [write-test]
     outputs:
@@ -24,7 +24,7 @@ stages:
       - test_report
 
   - name: implement
-    agent: developer
+    agent: tdd-developer
     description: Write minimal code to make tests pass (Green phase)
     dependsOn: [run-test]
     outputs:
@@ -33,7 +33,7 @@ stages:
       - branch_name
 
   - name: verify
-    agent: tester
+    agent: tdd-tester
     description: Run all tests to confirm implementation works (Green validation)
     dependsOn: [implement]
     outputs:
@@ -42,7 +42,7 @@ stages:
       - success_confirmation
 
   - name: regression-check
-    agent: tester
+    agent: tdd-tester
     description: Run full test suite and perform refactoring if needed (Refactor phase)
     dependsOn: [verify]
     outputs:

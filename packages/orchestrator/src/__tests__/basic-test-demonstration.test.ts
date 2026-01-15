@@ -25,7 +25,7 @@ describe('Basic Test Configuration Demonstration', () => {
   describe('Vitest configuration', () => {
     it('should be properly configured and working', () => {
       // Basic assertion to verify test framework works
-      expect(true).toBe(true);
+      expect(testDb.db.open).toBe(true);
       expect(typeof describe).toBe('function');
       expect(typeof it).toBe('function');
       expect(typeof expect).toBe('function');

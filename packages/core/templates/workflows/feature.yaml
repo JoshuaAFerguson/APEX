@@ -1,0 +1,43 @@
+name: feature
+description: Full feature implementation workflow
+trigger:
+  - manual
+  - apex:feature
+
+stages:
+  - name: planning
+    agent: planner
+    description: Create implementation plan
+    outputs:
+      - implementation_plan
+      - subtasks
+
+  - name: architecture
+    agent: architect
+    description: Design technical solution
+    dependsOn: [planning]
+    outputs:
+      - technical_design
+
+  - name: implementation
+    agent: developer
+    description: Write the code
+    dependsOn: [architecture]
+    outputs:
+      - code_changes
+      - branch_name
+
+  - name: testing
+    agent: tester
+    description: Create and run tests
+    dependsOn: [implementation]
+    outputs:
+      - test_files
+      - coverage_report
+
+  - name: review
+    agent: reviewer
+    description: Review code quality
+    dependsOn: [implementation, testing]
+    outputs:
+      - review_findings

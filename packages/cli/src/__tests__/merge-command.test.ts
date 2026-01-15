@@ -195,9 +195,11 @@ describe('Merge CLI Command', () => {
 
   describe('Command Registration', () => {
     it('should be registered with name "merge" and alias "m"', () => {
-      // This test verifies that the command is properly registered
-      // In the actual implementation, this would be tested by checking the commands array
-      expect(true).toBe(true); // Placeholder - actual registration tested in integration
+      const commands = require('../index.js').commands as Array<{ name: string; aliases?: string[] }>;
+      const mergeCommand = commands.find(cmd => cmd.name === 'merge');
+
+      expect(mergeCommand).toBeDefined();
+      expect(mergeCommand?.aliases).toContain('m');
     });
   });
 

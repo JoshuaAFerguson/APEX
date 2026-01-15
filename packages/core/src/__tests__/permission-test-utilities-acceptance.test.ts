@@ -567,9 +567,7 @@ describe('Permission Test Utilities - Acceptance Criteria Validation', () => {
       // 4. ✅ Common assertion helpers for permission states
       const result = createMockToolPermissionResult({ allowed: true });
       expect(() => assertToolIsAllowed(result)).not.toThrow();
-
-      // All requirements successfully validated ✅
-      expect(true).toBe(true); // Meta-assertion that all above checks passed
+      expect(result.allowed).toBe(true);
     });
 
     it('should provide comprehensive documentation through examples', () => {

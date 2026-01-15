@@ -389,3 +389,170 @@ export async function compareImages(
   const result = await comparator.compare(imagePath1, imagePath2);
   return result.isMatch;
 }
+
+/**
+ * Options for compareScreenshot function
+ */
+export interface CompareOptions {
+  /** Similarity threshold (0-1, where 0 is exact match, 1 accepts any difference) */
+  threshold?: number;
+  /** Whether to include alpha channel in comparison */
+  includeAlpha?: boolean;
+  /** Whether to output diff image */
+  outputDiff?: boolean;
+  /** Path to save diff image (required if outputDiff is true) */
+  diffOutputPath?: string;
+  /** Color for highlighting different pixels in diff image [r, g, b] */
+  diffColor?: [number, number, number];
+}
+
+/**
+ * Result of a screenshot comparison
+ */
+export interface ComparisonResult {
+  /** Whether the images match within the threshold */
+  match: boolean;
+  /** Percentage of different pixels (0-100) */
+  diffPercentage: number;
+  /** Similarity score between 0 (completely different) and 1 (identical) */
+  similarity: number;
+  /** Total number of pixels compared */
+  totalPixels: number;
+  /** Number of different pixels */
+  differentPixels: number;
+  /** Base64 encoded diff image data (if outputDiff is true) */
+  diffImageData?: string;
+  /** Path to saved diff image file (if diffOutputPath provided) */
+  diffImagePath?: string;
+}
+
+/**
+ * Compare two screenshots with comprehensive result including diff image data
+ *
+ * Accepts file paths or base64 images for baseline and actual screenshots.
+ * Returns a ComparisonResult with match status, diff percentage, and diff image data.
+ * Uses pixel-level comparison with configurable threshold.
+ *
+ * @param baseline - File path or base64 image data for baseline screenshot
+ * @param actual - File path or base64 image data for actual screenshot
+ * @param options - Comparison options with configurable threshold
+ * @returns Promise<ComparisonResult> with match status, diff percentage, and diff image data
+ */
+export async function compareScreenshot(
+  baseline: string,
+  actual: string,
+  options: CompareOptions = {}
+): Promise<ComparisonResult> {
+  const {
+    threshold = 0.1,
+    includeAlpha = false,
+    outputDiff = false,
+    diffOutputPath,
+    diffColor = [255, 0, 255]
+  } = options;
+
+  // Create comparator with provided options
+  const comparator = new ScreenshotComparator({
+    tolerance: threshold,
+    includeAlpha,
+    outputDiff,
+    diffOutputPath,
+    diffColor,
+  });
+
+  let result: ScreenshotComparisonResult;
+
+  // Check if inputs are file paths or base64 data
+  const isBaselinePath = !baseline.startsWith('data:image/') && !isBase64(baseline);
+  const isActualPath = !actual.startsWith('data:image/') && !isBase64(actual);
+
+  if (isBaselinePath && isActualPath) {
+    // Both are file paths
+    result = await comparator.compare(baseline, actual);
+  } else {
+    // At least one is base64 data, convert to buffers
+    const baselineBuffer = isBaselinePath
+      ? await fs.readFile(baseline)
+      : decodeBase64Image(baseline);
+
+    const actualBuffer = isActualPath
+      ? await fs.readFile(actual)
+      : decodeBase64Image(actual);
+
+    result = await comparator.compareBuffers(baselineBuffer, actualBuffer, {
+      tolerance: threshold,
+      includeAlpha,
+      outputDiff,
+      diffOutputPath,
+      diffColor,
+    });
+  }
+
+  // Convert to the expected ComparisonResult format
+  const diffPercentage = (result.differentPixels / result.totalPixels) * 100;
+
+  let diffImageData: string | undefined;
+  if (outputDiff && result.diffImagePath) {
+    // Read the diff image file and encode as base64
+    try {
+      const diffImageBuffer = await fs.readFile(result.diffImagePath);
+      diffImageData = `data:image/png;base64,${diffImageBuffer.toString('base64')}`;
+    } catch (error) {
+      // If we can't read the diff image, continue without it
+      console.warn('Failed to read diff image for base64 encoding:', error);
+    }
+  }
+
+  return {
+    match: result.isMatch,
+    diffPercentage,
+    similarity: result.similarity,
+    totalPixels: result.totalPixels,
+    differentPixels: result.differentPixels,
+    diffImageData,
+    diffImagePath: result.diffImagePath,
+  };
+}
+
+/**
+ * Check if a string is base64 encoded data (simple heuristic)
+ */
+function isBase64(str: string): boolean {
+  if (typeof str !== 'string' || str.length === 0) return false;
+
+  // Check if it has data URL prefix
+  if (str.startsWith('data:image/')) {
+    return true;
+  }
+
+  // Remove data URL prefix if present
+  const base64Part = str.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+
+  // Check if it looks like base64
+  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+  return base64Part.length > 0 &&
+         base64Part.length % 4 === 0 &&
+         base64Regex.test(base64Part);
+}
+
+/**
+ * Decode base64 image data to buffer
+ */
+function decodeBase64Image(data: string): Buffer {
+  if (!data || typeof data !== 'string') {
+    throw new Error('Invalid base64 image data provided');
+  }
+
+  try {
+    // Remove data URL prefix if present
+    const base64Data = data.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+
+    if (base64Data.length === 0) {
+      throw new Error('Empty base64 data after removing data URL prefix');
+    }
+
+    return Buffer.from(base64Data, 'base64');
+  } catch (error) {
+    throw new Error(`Failed to decode base64 image data: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}

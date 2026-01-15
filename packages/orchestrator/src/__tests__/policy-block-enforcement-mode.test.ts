@@ -655,15 +655,27 @@ describe('Policy Block Enforcement Mode', () => {
 
   describe('integration with existing autonomy enforcer', () => {
     it('should check autonomy before policy when both are present', async () => {
-      // This test verifies that the existing autonomy enforcer check
-      // happens before the policy check in the hook chain
+      const autonomyEnforcer = (orchestrator as any).autonomyEnforcer;
+      const autonomyCheck = vi.fn().mockResolvedValue(true);
+      autonomyEnforcer.checkAction = autonomyCheck;
 
-      // We can see from the implementation that autonomy check happens first:
-      // 1. requiresApproval = await this.autonomyEnforcer.checkAction()
-      // 2. if (this.policyEngine) { ... policy check ... }
+      const hooks = (orchestrator as any).createHooksWithManager(
+        { taskId: 'autonomy-task-001' } as any,
+        'developer',
+        'implementation',
+        'test-workflow'
+      );
 
-      // The test implicitly verifies this ordering exists in the hook implementation
-      expect(true).toBe(true); // Placeholder - implementation order verified by code review
+      const preToolUseHook = hooks.PreToolUse[0].hooks[0];
+      const result = await preToolUseHook(
+        { tool_name: 'Read', tool_input: { path: 'src/index.ts' } },
+        undefined,
+        { signal: new AbortController().signal }
+      );
+
+      expect(autonomyCheck).toHaveBeenCalled();
+      expect(mockPolicyEngine.getCheckPolicyMock()).not.toHaveBeenCalled();
+      expect(result?.hookSpecificOutput?.permissionDecision).toBe('deny');
     });
   });
 });

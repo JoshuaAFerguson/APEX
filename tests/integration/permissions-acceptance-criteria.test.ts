@@ -261,22 +261,51 @@ limits:
       // GIVEN: A dangerous operation
       const tool = 'Bash';
       const command = 'rm -rf /tmp/test-data';
+      const taskId = 'dangerous-task';
+      const agent = 'dangerous-agent';
+
+      const confirmationEvents: Array<{ operationId: string; tool: string; operation: string; confirmedBy: string }> = [];
+      orchestrator.on('dangerous:confirmed', (event) => {
+        confirmationEvents.push({
+          operationId: event.operationId,
+          tool: event.tool,
+          operation: event.operation,
+          confirmedBy: event.confirmedBy,
+        });
+      });
 
       // WHEN: Flagging the dangerous operation
-      const requestId = await orchestrator.flagDangerousOperation(tool, command, 'medium', {
-        reason: 'Potentially destructive file operation',
-        patterns: ['rm -rf']
-      });
+      const requestId = await orchestrator.flagDangerousOperation(
+        taskId,
+        tool,
+        command,
+        'medium',
+        'Potentially destructive file operation',
+        agent,
+        { patterns: ['rm -rf'] }
+      );
 
       // THEN: Should receive a valid request ID
       expect(requestId).toBeDefined();
       expect(typeof requestId).toBe('string');
 
       // WHEN: Confirming the dangerous operation
-      await orchestrator.confirmDangerousOperation(requestId, 'experienced-user');
+      await orchestrator.confirmDangerousOperation(
+        requestId,
+        taskId,
+        tool,
+        command,
+        'experienced-user'
+      );
 
-      // THEN: Operation should be confirmed (no exception thrown)
-      expect(true).toBe(true); // If we get here, confirmation succeeded
+      // THEN: Operation should be confirmed and emitted
+      expect(confirmationEvents).toHaveLength(1);
+      expect(confirmationEvents[0]).toEqual({
+        operationId: requestId,
+        tool,
+        operation: command,
+        confirmedBy: 'experienced-user',
+      });
     });
 
     it('should handle multiple concurrent confirmation flows', async () => {

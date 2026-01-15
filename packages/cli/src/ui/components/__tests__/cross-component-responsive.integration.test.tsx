@@ -280,8 +280,14 @@ describe('Cross-Component Responsive Integration', () => {
         unmount();
       }
 
-      // If we get here without memory issues, the test passes
-      expect(true).toBe(true);
+      const { container } = render(
+        <TestApp
+          terminalWidth={100}
+          statusBarProps={statusBarProps}
+          bannerProps={bannerProps}
+        />
+      );
+      expect(container.textContent?.length).toBeGreaterThan(0);
     });
   });
 

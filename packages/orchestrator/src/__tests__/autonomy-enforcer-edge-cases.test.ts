@@ -333,7 +333,8 @@ describe('AutonomyEnforcer Edge Cases', () => {
       }
 
       // Should handle all events without issues
-      expect(true).toBe(true); // Test that no errors were thrown
+      expect(autonomyEnforcer.getTaskUsage('task-0')).toBeUndefined();
+      expect(autonomyEnforcer.getTaskUsage(`task-${eventCount - 1}`)).toBeUndefined();
     });
 
     it('should handle malformed event data', () => {

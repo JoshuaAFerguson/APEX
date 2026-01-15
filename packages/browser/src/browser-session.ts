@@ -13,6 +13,8 @@ import type {
   NavigationOptions,
   WaitForNavigationOptions,
   ScreenshotOptions,
+  ScreenshotCaptureOptions,
+  ElementScreenshotOptions,
   ElementSelector,
   CaptureConfig,
   CapturedConsoleMessage,
@@ -525,6 +527,149 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
         type: options.type || 'png',
         quality: options.quality,
         fullPage: options.fullPage || false,
+        omitBackground: options.omitBackground,
+      });
+
+      return {
+        success: true,
+        data: screenshot,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Captures a screenshot of the current viewport
+   *
+   * @param options - Screenshot capture options (format, quality, path)
+   * @returns Buffer containing the screenshot image data
+   */
+  async captureViewport(
+    options: ScreenshotCaptureOptions = {}
+  ): Promise<BrowserActionResult<Buffer>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const screenshot = await this.page.screenshot({
+        fullPage: false,
+        type: options.type || 'png',
+        quality: options.type === 'jpeg' ? options.quality : undefined,
+        path: options.path,
+        omitBackground: options.omitBackground,
+      });
+
+      return {
+        success: true,
+        data: screenshot,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Captures a screenshot of the full scrollable page
+   *
+   * @param options - Screenshot capture options (format, quality, path)
+   * @returns Buffer containing the screenshot image data
+   */
+  async captureFullPage(
+    options: ScreenshotCaptureOptions = {}
+  ): Promise<BrowserActionResult<Buffer>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const screenshot = await this.page.screenshot({
+        fullPage: true,
+        type: options.type || 'png',
+        quality: options.type === 'jpeg' ? options.quality : undefined,
+        path: options.path,
+        omitBackground: options.omitBackground,
+      });
+
+      return {
+        success: true,
+        data: screenshot,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Captures a screenshot of a specific element
+   *
+   * @param selector - CSS selector, XPath, or ElementSelector for the target element
+   * @param options - Screenshot capture options (format, quality, path, timeout)
+   * @returns Buffer containing the screenshot image data
+   */
+  async captureElement(
+    selector: string | ElementSelector,
+    options: ElementScreenshotOptions = {}
+  ): Promise<BrowserActionResult<Buffer>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const selectorString = this.normalizeSelector(selector);
+
+      // Wait for element to be visible before capturing
+      const element = await this.page.waitForSelector(selectorString, {
+        timeout: options.timeout || this.config.timeout,
+        state: 'visible',
+      });
+
+      if (!element) {
+        return {
+          success: false,
+          error: `Element not found: ${selectorString}`,
+          duration: Date.now() - startTime,
+        };
+      }
+
+      const screenshot = await element.screenshot({
+        type: options.type || 'png',
+        quality: options.type === 'jpeg' ? options.quality : undefined,
+        path: options.path,
         omitBackground: options.omitBackground,
       });
 

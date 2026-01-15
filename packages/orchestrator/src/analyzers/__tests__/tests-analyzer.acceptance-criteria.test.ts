@@ -598,8 +598,8 @@ describe('TestsAnalyzer - Acceptance Criteria Validation', () => {
       const dataSuggestions = dataTask?.remediationSuggestions || [];
       expect(dataSuggestions.some(s => s.command?.includes('transformation pipelines'))).toBe(true);
 
-      // AC4: Unit tests pass (verified by this test running successfully)
-      expect(true).toBe(true);
+      // AC4: Unit tests pass with actionable integration candidates
+      expect(integrationCandidates.length).toBeGreaterThan(0);
     });
   });
 });
