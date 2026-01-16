@@ -2575,6 +2575,428 @@ export const MCPConnectionEventSchema = z.object({
 export type MCPConnectionEvent = z.infer<typeof MCPConnectionEventSchema>;
 
 // ============================================================================
+// MCP Tool Types (v0.5.0)
+// ============================================================================
+
+/**
+ * JSON Schema for MCP tool parameters
+ * Follows the JSON Schema Draft 7 specification as used by MCP protocol.
+ * Provides a complete schema definition for tool input validation.
+ */
+export const MCPToolSchemaSchema = z.object({
+  /** JSON Schema type (typically 'object' for tool parameters) */
+  type: z.literal('object').default('object'),
+
+  /** Human-readable title for the schema */
+  title: z.string().optional(),
+
+  /** Description of what the parameters represent */
+  description: z.string().optional(),
+
+  /** Object properties defining each parameter */
+  properties: z
+    .record(
+      z.string(),
+      z.object({
+        type: JSONSchemaTypeSchema,
+        description: z.string().optional(),
+        default: z.unknown().optional(),
+        enum: z.array(z.unknown()).optional(),
+        const: z.unknown().optional(),
+        properties: z.record(z.string(), z.unknown()).optional(),
+        items: z.unknown().optional(),
+        minimum: z.number().optional(),
+        maximum: z.number().optional(),
+        minLength: z.number().optional(),
+        maxLength: z.number().optional(),
+        minItems: z.number().optional(),
+        maxItems: z.number().optional(),
+        pattern: z.string().optional(),
+        format: z.string().optional(),
+        oneOf: z.array(z.unknown()).optional(),
+        anyOf: z.array(z.unknown()).optional(),
+        allOf: z.array(z.unknown()).optional(),
+      })
+    )
+    .optional()
+    .default({}),
+
+  /** Array of required property names */
+  required: z.array(z.string()).optional().default([]),
+
+  /** Whether additional properties are allowed */
+  additionalProperties: z.boolean().optional().default(false),
+
+  /** JSON Schema version identifier */
+  $schema: z.string().optional(),
+});
+export type MCPToolSchema = z.infer<typeof MCPToolSchemaSchema>;
+
+/**
+ * Tool capability flags indicating what operations a tool supports
+ */
+export const MCPToolCapabilitiesSchema = z.object({
+  /** Whether the tool supports streaming responses */
+  streaming: z.boolean().optional().default(false),
+
+  /** Whether the tool can be cancelled mid-execution */
+  cancellable: z.boolean().optional().default(false),
+
+  /** Whether the tool supports progress reporting */
+  progressReporting: z.boolean().optional().default(false),
+
+  /** Whether the tool is idempotent (safe to retry) */
+  idempotent: z.boolean().optional().default(false),
+
+  /** Whether the tool has side effects */
+  hasSideEffects: z.boolean().optional().default(true),
+});
+export type MCPToolCapabilities = z.infer<typeof MCPToolCapabilitiesSchema>;
+
+/**
+ * MCP Tool definition schema
+ * Represents a tool exposed by an MCP server with full metadata.
+ * This is the canonical representation of tools discovered from MCP servers.
+ */
+export const MCPToolSchema = z.object({
+  /** Unique tool name within the MCP server namespace */
+  name: z.string().min(1, 'Tool name is required'),
+
+  /** Human-readable description of what the tool does */
+  description: z.string().optional(),
+
+  /** JSON Schema for the tool's input parameters */
+  inputSchema: MCPToolSchemaSchema,
+
+  /** JSON Schema for the tool's output (optional, for documentation) */
+  outputSchema: MCPToolSchemaSchema.optional(),
+
+  /** ID of the MCP server providing this tool */
+  serverId: z.string().min(1, 'Server ID is required'),
+
+  /** Display name of the MCP server */
+  serverName: z.string().optional(),
+
+  /** Tool capabilities and features */
+  capabilities: MCPToolCapabilitiesSchema.optional(),
+
+  /** Whether the tool is currently available */
+  available: z.boolean().default(true),
+
+  /** Reason if the tool is unavailable */
+  unavailableReason: z.string().optional(),
+
+  /** Tool version (if provided by MCP server) */
+  version: z.string().optional(),
+
+  /** Tags for categorization and filtering */
+  tags: z.array(z.string()).optional().default([]),
+
+  /** Deprecation notice if tool is deprecated */
+  deprecated: z.string().optional(),
+
+  /** When this tool definition was last updated */
+  updatedAt: z.date().optional(),
+});
+export type MCPTool = z.infer<typeof MCPToolSchema>;
+
+/**
+ * Source type for tools in the registry
+ */
+export const ToolSourceTypeSchema = z.enum([
+  'builtin', // Built-in APEX tools (Read, Write, Bash, etc.)
+  'custom', // User-defined custom tools from config
+  'mcp', // Tools provided by MCP servers
+  'plugin', // Tools from plugins (future)
+]);
+export type ToolSourceType = z.infer<typeof ToolSourceTypeSchema>;
+
+/**
+ * Tool source information tracking where a tool came from
+ */
+export const ToolSourceSchema = z.object({
+  /** Type of tool source */
+  type: ToolSourceTypeSchema,
+
+  /** Source identifier (server ID for MCP, config path for custom) */
+  sourceId: z.string().optional(),
+
+  /** Human-readable source name */
+  sourceName: z.string().optional(),
+
+  /** When the tool was registered from this source */
+  registeredAt: z.date(),
+
+  /** Version of the tool from this source */
+  version: z.string().optional(),
+});
+export type ToolSource = z.infer<typeof ToolSourceSchema>;
+
+/**
+ * Extended tool registry entry for MCP tools
+ * Extends the base ToolRegistryEntry with MCP-specific metadata
+ */
+export const MCPToolRegistryEntrySchema = z.object({
+  /** The MCP tool definition */
+  tool: MCPToolSchema,
+
+  /** Source information */
+  source: ToolSourceSchema,
+
+  /** Whether the tool is currently available */
+  available: z.boolean().default(true),
+
+  /** Reason if the tool is unavailable */
+  unavailableReason: z.string().optional(),
+
+  /** Last time the tool was invoked */
+  lastInvoked: z.date().optional(),
+
+  /** Number of times the tool has been invoked */
+  invocationCount: z.number().min(0).default(0),
+
+  /** Number of successful invocations */
+  successCount: z.number().min(0).default(0),
+
+  /** Number of failed invocations */
+  failureCount: z.number().min(0).default(0),
+
+  /** Average execution time in milliseconds */
+  avgExecutionTimeMs: z.number().min(0).optional(),
+
+  /** Permission configuration for this tool */
+  permissionConfig: ToolPermissionConfigSchema.optional(),
+});
+export type MCPToolRegistryEntry = z.infer<typeof MCPToolRegistryEntrySchema>;
+
+/**
+ * Unified tool registry entry that can represent any tool type
+ * Provides a consistent interface for all tools regardless of source
+ */
+export const UnifiedToolRegistryEntrySchema = z.object({
+  /** Unique identifier for the registry entry (tool name + source) */
+  id: z.string().min(1),
+
+  /** Tool name */
+  name: z.string().min(1),
+
+  /** Tool description */
+  description: z.string().optional(),
+
+  /** Source information */
+  source: ToolSourceSchema,
+
+  /** JSON Schema for input parameters */
+  inputSchema: MCPToolSchemaSchema,
+
+  /** Whether the tool is currently available */
+  available: z.boolean().default(true),
+
+  /** Reason if unavailable */
+  unavailableReason: z.string().optional(),
+
+  /** Tool capabilities */
+  capabilities: MCPToolCapabilitiesSchema.optional(),
+
+  /** Runtime statistics */
+  stats: z
+    .object({
+      lastInvoked: z.date().optional(),
+      invocationCount: z.number().min(0).default(0),
+      successCount: z.number().min(0).default(0),
+      failureCount: z.number().min(0).default(0),
+      avgExecutionTimeMs: z.number().min(0).optional(),
+      lastErrorMessage: z.string().optional(),
+      lastErrorAt: z.date().optional(),
+    })
+    .optional(),
+
+  /** Permission configuration */
+  permissionConfig: ToolPermissionConfigSchema.optional(),
+
+  /** Version */
+  version: z.string().optional(),
+
+  /** Tags */
+  tags: z.array(z.string()).optional().default([]),
+
+  /** Deprecation notice */
+  deprecated: z.string().optional(),
+
+  /** When the entry was last updated */
+  updatedAt: z.date().optional(),
+});
+export type UnifiedToolRegistryEntry = z.infer<typeof UnifiedToolRegistryEntrySchema>;
+
+/**
+ * Tool registry state snapshot
+ * Represents the complete state of all registered tools
+ */
+export const ToolRegistryStateSchema = z.object({
+  /** All registered tools keyed by their unique ID */
+  tools: z.record(z.string(), UnifiedToolRegistryEntrySchema),
+
+  /** Tools grouped by source type */
+  bySource: z.object({
+    builtin: z.array(z.string()).default([]),
+    custom: z.array(z.string()).default([]),
+    mcp: z.array(z.string()).default([]),
+    plugin: z.array(z.string()).default([]),
+  }),
+
+  /** Tools grouped by MCP server ID */
+  byMCPServer: z.record(z.string(), z.array(z.string())).default({}),
+
+  /** Last time the registry was updated */
+  lastUpdated: z.date(),
+
+  /** Total number of registered tools */
+  totalCount: z.number().int().min(0),
+
+  /** Number of available tools */
+  availableCount: z.number().int().min(0),
+});
+export type ToolRegistryState = z.infer<typeof ToolRegistryStateSchema>;
+
+/**
+ * Tool discovery event types
+ */
+export const ToolDiscoveryEventTypeSchema = z.enum([
+  'tool_registered', // New tool added to registry
+  'tool_unregistered', // Tool removed from registry
+  'tool_updated', // Tool metadata updated
+  'tool_available', // Tool became available
+  'tool_unavailable', // Tool became unavailable
+  'server_tools_refreshed', // All tools from a server were refreshed
+]);
+export type ToolDiscoveryEventType = z.infer<typeof ToolDiscoveryEventTypeSchema>;
+
+/**
+ * Tool discovery event data
+ */
+export const ToolDiscoveryEventSchema = z.object({
+  /** Event type */
+  type: ToolDiscoveryEventTypeSchema,
+
+  /** Tool ID affected */
+  toolId: z.string().min(1),
+
+  /** Tool name */
+  toolName: z.string().min(1),
+
+  /** Source of the tool */
+  source: ToolSourceSchema,
+
+  /** When the event occurred */
+  timestamp: z.date(),
+
+  /** Previous state (for updates) */
+  previousState: UnifiedToolRegistryEntrySchema.optional(),
+
+  /** New state (for registrations and updates) */
+  newState: UnifiedToolRegistryEntrySchema.optional(),
+
+  /** Additional event context */
+  context: z.record(z.string(), z.unknown()).optional(),
+});
+export type ToolDiscoveryEvent = z.infer<typeof ToolDiscoveryEventSchema>;
+
+/**
+ * MCP tool invocation request
+ */
+export const MCPToolInvocationRequestSchema = z.object({
+  /** Tool name to invoke */
+  toolName: z.string().min(1),
+
+  /** MCP server ID */
+  serverId: z.string().min(1),
+
+  /** Tool arguments */
+  arguments: z.record(z.string(), z.unknown()).default({}),
+
+  /** Request ID for correlation */
+  requestId: z.string().optional(),
+
+  /** Timeout in milliseconds */
+  timeoutMs: z.number().int().min(0).optional(),
+
+  /** Whether to stream the response */
+  stream: z.boolean().optional().default(false),
+});
+export type MCPToolInvocationRequest = z.infer<typeof MCPToolInvocationRequestSchema>;
+
+/**
+ * MCP tool invocation result content types
+ */
+export const MCPToolResultContentTypeSchema = z.enum([
+  'text', // Plain text content
+  'image', // Base64 encoded image
+  'resource', // Resource reference
+  'error', // Error content
+]);
+export type MCPToolResultContentType = z.infer<typeof MCPToolResultContentTypeSchema>;
+
+/**
+ * MCP tool result content item
+ */
+export const MCPToolResultContentSchema = z.object({
+  /** Content type */
+  type: MCPToolResultContentTypeSchema,
+
+  /** Text content (for text type) */
+  text: z.string().optional(),
+
+  /** Image data (base64) for image type */
+  data: z.string().optional(),
+
+  /** MIME type for image/resource */
+  mimeType: z.string().optional(),
+
+  /** Resource URI for resource type */
+  uri: z.string().optional(),
+
+  /** Error message for error type */
+  error: z.string().optional(),
+});
+export type MCPToolResultContent = z.infer<typeof MCPToolResultContentSchema>;
+
+/**
+ * MCP tool invocation response
+ */
+export const MCPToolInvocationResponseSchema = z.object({
+  /** Request ID for correlation */
+  requestId: z.string().optional(),
+
+  /** Whether the invocation was successful */
+  success: z.boolean(),
+
+  /** Result content array */
+  content: z.array(MCPToolResultContentSchema).default([]),
+
+  /** Whether this is a partial/streaming response */
+  isPartial: z.boolean().optional().default(false),
+
+  /** Error details if failed */
+  error: z
+    .object({
+      code: z.string().optional(),
+      message: z.string(),
+      details: z.unknown().optional(),
+    })
+    .optional(),
+
+  /** Execution metrics */
+  metrics: z
+    .object({
+      startedAt: z.date(),
+      completedAt: z.date().optional(),
+      durationMs: z.number().int().min(0).optional(),
+    })
+    .optional(),
+});
+export type MCPToolInvocationResponse = z.infer<typeof MCPToolInvocationResponseSchema>;
+
+// ============================================================================
 // TDD Mode Configuration (v0.5.0)
 // ============================================================================
 
