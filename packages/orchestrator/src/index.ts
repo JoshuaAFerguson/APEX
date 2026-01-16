@@ -76,6 +76,8 @@ import {
   ApexRule, // Added ApexRule
   MCPServerConfig,
   MCPMarketplaceEntry,
+  MCPConnection,
+  HealthCheckResult,
   AutoFixStageResults,
   AutoFixStageConfig,
   AutoFixEvent,
@@ -8577,6 +8579,64 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Get all current MCP connections
+   *
+   * @returns Array of current MCP connections
+   */
+  public getMCPConnections(): MCPConnection[] {
+    return this.mcpConnectionManager?.listConnections() ?? [];
+  }
+
+  /**
+   * Get a specific MCP connection by server ID
+   *
+   * @param serverId - The ID of the MCP server
+   * @returns The MCP connection or undefined if not found
+   */
+  public getMCPConnection(serverId: string): MCPConnection | undefined {
+    return this.mcpConnectionManager?.getConnection(serverId);
+  }
+
+  /**
+   * Connect to an MCP server
+   *
+   * @param serverId - The ID of the MCP server to connect to
+   * @returns Promise that resolves to the MCP connection
+   */
+  public async connectMCPServer(serverId: string): Promise<MCPConnection> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    return this.mcpConnectionManager.connect(serverId);
+  }
+
+  /**
+   * Disconnect from an MCP server
+   *
+   * @param serverId - The ID of the MCP server to disconnect from
+   * @returns Promise that resolves when disconnected
+   */
+  public async disconnectMCPServer(serverId: string): Promise<void> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    return this.mcpConnectionManager.disconnect(serverId);
+  }
+
+  /**
+   * Check the health of an MCP connection
+   *
+   * @param serverId - The ID of the MCP server to check
+   * @returns Promise that resolves to the health check result
+   */
+  public async checkMCPServerHealth(serverId: string): Promise<HealthCheckResult> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    return this.mcpConnectionManager.checkHealth(serverId);
+  }
+
+  /**
    * Set up interaction event handlers
    * Handles iteration events emitted by the interaction manager
    */
@@ -10789,6 +10849,7 @@ export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
 export { MCPServerStore } from './mcp-store';
 export { MCPInstaller } from './mcp-installer';
+export { MCPConnectionManager, type MCPConnectionManagerOptions, type MCPConnectionManagerEvents } from './mcp/connection-manager';
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
 export {
