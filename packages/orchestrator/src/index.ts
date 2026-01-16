@@ -118,6 +118,7 @@ import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
 import { MCPInstaller } from './mcp-installer';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
+import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
 import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
 import { browserTool } from './tools';
 import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
@@ -1109,6 +1110,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private mcpServerManager?: MCPServerManager;
   private mcpInstaller?: MCPInstaller;
   private mcpMarketplaceService?: MCPMarketplaceService;
+  private mcpConnectionManager?: MCPConnectionManager;
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
   private projectPath: string;
@@ -1172,6 +1174,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
     this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
     this.mcpMarketplaceService = new MCPMarketplaceService(this.projectPath, this.config);
+    this.mcpConnectionManager = new MCPConnectionManager({
+      projectPath: this.projectPath,
+      config: this.config
+    });
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
