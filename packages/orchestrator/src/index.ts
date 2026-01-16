@@ -11181,6 +11181,14 @@ export {
   type MCPToolDefinition,
 } from './mcp';
 
+// Schema Translator
+export {
+  SchemaTranslator,
+  type JSONSchemaProperty,
+  type ClaudeSDKTool,
+  type SchemaTranslatorOptions,
+} from './schema-translator';
+
 // Tool Alias Resolver
 export { AliasResolver, AliasResolutionError } from './alias-resolver';
 

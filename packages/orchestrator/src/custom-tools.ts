@@ -4,94 +4,31 @@ import { promisify } from 'util';
 import * as path from 'path';
 import { z } from 'zod';
 import type { CustomToolConfig, ToolParametersSchema, ToolParameter } from '@apexcli/core';
+import { SchemaTranslator } from './schema-translator.js';
 
 const execFileAsync = promisify(execFile);
 
 type ZodShape = Record<string, z.ZodTypeAny>;
 
-function buildZodSchemaFromParameter(parameter: ToolParameter): z.ZodTypeAny {
-  switch (parameter.type) {
-    case 'string': {
-      if (Array.isArray(parameter.enum) && parameter.enum.length > 0) {
-        const enumValues = parameter.enum.filter(value => typeof value === 'string') as string[];
-        if (enumValues.length === parameter.enum.length) {
-          const enumSchema = z.enum(enumValues as [string, ...string[]]);
-          return parameter.default !== undefined ? enumSchema.default(parameter.default as string) : enumSchema;
-        }
-      }
-      let strSchema = z.string();
-      if (parameter.minLength !== undefined) {
-        strSchema = strSchema.min(parameter.minLength);
-      }
-      if (parameter.maxLength !== undefined) {
-        strSchema = strSchema.max(parameter.maxLength);
-      }
-      if (parameter.pattern) {
-        strSchema = strSchema.regex(new RegExp(parameter.pattern));
-      }
-      return parameter.default !== undefined ? strSchema.default(parameter.default as string) : strSchema;
-    }
-    case 'integer': {
-      let intSchema = z.number().int();
-      if (parameter.minimum !== undefined) {
-        intSchema = intSchema.min(parameter.minimum);
-      }
-      if (parameter.maximum !== undefined) {
-        intSchema = intSchema.max(parameter.maximum);
-      }
-      return parameter.default !== undefined ? intSchema.default(parameter.default as number) : intSchema;
-    }
-    case 'number': {
-      let numSchema = z.number();
-      if (parameter.minimum !== undefined) {
-        numSchema = numSchema.min(parameter.minimum);
-      }
-      if (parameter.maximum !== undefined) {
-        numSchema = numSchema.max(parameter.maximum);
-      }
-      return parameter.default !== undefined ? numSchema.default(parameter.default as number) : numSchema;
-    }
-    case 'boolean': {
-      const boolSchema = z.boolean();
-      return parameter.default !== undefined ? boolSchema.default(parameter.default as boolean) : boolSchema;
-    }
-    case 'array': {
-      const itemSchema = parameter.items ? buildZodSchemaFromParameter(parameter.items) : z.unknown();
-      const arrSchema = z.array(itemSchema);
-      return parameter.default !== undefined ? arrSchema.default(parameter.default as unknown[]) : arrSchema;
-    }
-    case 'object': {
-      if (parameter.properties && Object.keys(parameter.properties).length > 0) {
-        const nestedShape: ZodShape = {};
-        for (const [key, value] of Object.entries(parameter.properties)) {
-          nestedShape[key] = buildZodSchemaFromParameter(value);
-        }
-        const objSchema = z.object(nestedShape);
-        return parameter.default !== undefined ? objSchema.default(parameter.default as Record<string, unknown>) : objSchema;
-      } else {
-        const recSchema = z.record(z.unknown());
-        return parameter.default !== undefined ? recSchema.default(parameter.default as Record<string, unknown>) : recSchema;
-      }
-    }
-    default: {
-      const unknownSchema = z.unknown();
-      return parameter.default !== undefined ? unknownSchema.default(parameter.default) : unknownSchema;
-    }
-  }
-}
-
+/**
+ * Build Zod schema shape from tool parameters using SchemaTranslator
+ * @deprecated - Use SchemaTranslator directly for new code
+ */
 function buildZodSchemaShape(parameters: ToolParametersSchema): ZodShape {
-  const shape: ZodShape = {};
-  const properties = parameters.properties || {};
-  const required = new Set(parameters.required || []);
+  const schemaTranslator = new SchemaTranslator();
 
-  for (const [key, value] of Object.entries(properties)) {
-    const parameter = value as ToolParameter;
-    const schema = buildZodSchemaFromParameter(parameter);
-    shape[key] = required.has(key) ? schema : schema.optional();
-  }
+  // Convert ToolParametersSchema to MCPToolSchema format
+  const mcpSchema = {
+    type: 'object' as const,
+    properties: parameters.properties || {},
+    required: parameters.required || [],
+  };
 
-  return shape;
+  // Use SchemaTranslator to convert
+  const zodObjectSchema = schemaTranslator.translateInputSchema(mcpSchema);
+
+  // Return the shape for compatibility with existing code
+  return zodObjectSchema.shape;
 }
 
 function interpolateArg(arg: string, input: Record<string, unknown>): string {
@@ -152,15 +89,28 @@ export type CustomToolsServer = { name: string; config: ReturnType<typeof create
 
 export function buildCustomToolsServer(
   customTools: CustomToolConfig[],
-  projectPath: string
+  projectPath: string,
+  schemaTranslator?: SchemaTranslator
 ): CustomToolsServer | null {
   const enabledTools = customTools.filter(toolConfig => toolConfig.enabled !== false);
   if (enabledTools.length === 0) {
     return null;
   }
 
+  const translator = schemaTranslator || new SchemaTranslator();
+
   const toolDefinitions = enabledTools.map((toolConfig) => {
-    const shape = buildZodSchemaShape(toolConfig.parameters);
+    // Convert ToolParametersSchema to MCPToolSchema format
+    const mcpSchema = {
+      type: 'object' as const,
+      properties: toolConfig.parameters.properties || {},
+      required: toolConfig.parameters.required || [],
+    };
+
+    // Use SchemaTranslator to get Zod schema
+    const zodObjectSchema = translator.translateInputSchema(mcpSchema);
+    const shape = zodObjectSchema.shape;
+
     return tool(toolConfig.name, toolConfig.description, shape, async (args) => {
       const input = (args ?? {}) as Record<string, unknown>;
       const executionArgs = buildCommandArgs(toolConfig.args, input);

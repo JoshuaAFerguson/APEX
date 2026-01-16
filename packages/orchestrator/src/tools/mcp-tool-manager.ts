@@ -14,11 +14,14 @@ import type {
   ToolDefinition,
   ToolExecution,
   PermissionLevel,
+  MCPTool,
+  MCPToolSchema,
 } from '@apexcli/core';
 import type { ToolRegistry, ToolInterface } from '@apexcli/core/tools';
 import type { PermissionManager } from '../permission-manager';
 import { MCPClient, type MCPClientOptions, type MCPToolDefinition } from '../mcp/client.js';
 import { StdioTransport } from '../mcp/transports/stdio-transport.js';
+import { SchemaTranslator } from '../schema-translator.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -33,6 +36,8 @@ export interface MCPToolManagerOptions {
   enableAutoDiscovery?: boolean;
   /** Timeout for MCP operations in milliseconds */
   operationTimeoutMs?: number;
+  /** Schema translator for converting MCP schemas to Claude Agent SDK format */
+  schemaTranslator?: SchemaTranslator;
 }
 
 export interface MCPToolManagerEvents {
@@ -119,6 +124,7 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
   private toolRegistry: ToolRegistry;
   private enableAutoDiscovery: boolean;
   private operationTimeoutMs: number;
+  private schemaTranslator: SchemaTranslator;
 
   private servers: Map<string, ConnectedServer> = new Map();
   private hooks: MCPToolHook[] = [];
@@ -130,6 +136,7 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
     this.toolRegistry = options.toolRegistry;
     this.enableAutoDiscovery = options.enableAutoDiscovery ?? true;
     this.operationTimeoutMs = options.operationTimeoutMs ?? 30000;
+    this.schemaTranslator = options.schemaTranslator ?? new SchemaTranslator();
   }
 
   // ==========================================================================
@@ -324,6 +331,21 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
    * @returns APEX tool definition
    */
   private convertMcpToolToApexTool(mcpTool: MCPToolDefinition, serverId: string): ToolDefinition {
+    // Convert MCPToolDefinition to MCPTool format for SchemaTranslator
+    const mcpToolForTranslator: MCPTool = {
+      name: mcpTool.name,
+      description: mcpTool.description,
+      serverId: serverId,
+      inputSchema: (mcpTool.inputSchema as MCPToolSchema) || {
+        type: 'object',
+        properties: {},
+        required: []
+      },
+    };
+
+    // Use SchemaTranslator to create Claude Agent SDK compatible tool
+    const claudeSDKTool = this.schemaTranslator.translateTool(mcpToolForTranslator);
+
     return {
       name: mcpTool.name,
       description: mcpTool.description || `MCP tool from ${serverId}`,
@@ -335,6 +357,7 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
       metadata: {
         mcpServerId: serverId,
         mcpTool: true,
+        claudeSDKTool: claudeSDKTool, // Store translated tool for Claude Agent SDK usage
       },
     };
   }
