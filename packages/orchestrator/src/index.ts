@@ -326,6 +326,15 @@ export interface OrchestratorEvents {
   'lint:issue': (event: LintIssueEventData) => void;
   'lint:fix-applied': (event: LintFixAppliedEventData) => void;
 
+  // MCP Connection events (v0.5.0)
+  'mcp:connected': (event: MCPConnectionEventData) => void;
+  'mcp:disconnected': (event: MCPDisconnectionEventData) => void;
+  'mcp:error': (event: MCPErrorEventData) => void;
+  'mcp:reconnecting': (event: MCPReconnectingEventData) => void;
+  'mcp:health-check': (event: MCPHealthCheckEventData) => void;
+  'mcp:state-change': (event: MCPStateChangeEventData) => void;
+  'mcp:pool-change': (event: MCPPoolChangeEventData) => void;
+
   // Auto-fix events (v0.5.0)
   'autofix:requested': (event: AutoFixRequestedEventData) => void;
   'autofix:started': (event: AutoFixStartedEventData) => void;
@@ -797,6 +806,124 @@ export interface AutoFixSkippedEventData {
 }
 
 /**
+ * MCP Connection event payload data
+ */
+export interface MCPConnectionEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Connection timestamp */
+  timestamp: Date;
+  /** Server configuration details */
+  config: {
+    type: string;
+    command?: string;
+    url?: string;
+  };
+}
+
+/**
+ * MCP Disconnection event payload data
+ */
+export interface MCPDisconnectionEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Disconnection reason */
+  reason?: string;
+  /** Disconnection timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Error event payload data
+ */
+export interface MCPErrorEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Error message */
+  error: string;
+  /** Error timestamp */
+  timestamp: Date;
+  /** Error code if available */
+  code?: string;
+}
+
+/**
+ * MCP Reconnecting event payload data
+ */
+export interface MCPReconnectingEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Current reconnection attempt number */
+  attempt: number;
+  /** Maximum reconnection attempts */
+  maxAttempts: number;
+  /** Reconnection timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Health Check event payload data
+ */
+export interface MCPHealthCheckEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Health check success status */
+  success: boolean;
+  /** Response latency in milliseconds (if successful) */
+  latencyMs?: number;
+  /** Error details (if failed) */
+  error?: string;
+  /** Number of consecutive failures */
+  consecutiveFailures: number;
+  /** Whether connection is considered healthy */
+  isHealthy: boolean;
+  /** Health check timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP State Change event payload data
+ */
+export interface MCPStateChangeEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Previous connection state */
+  previousState: string;
+  /** New connection state */
+  newState: string;
+  /** State change timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Pool Change event payload data
+ */
+export interface MCPPoolChangeEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Total pool size */
+  poolSize: number;
+  /** Number of active connections */
+  activeConnections: number;
+  /** Pool change timestamp */
+  timestamp: Date;
+}
+
+/**
  * Browser Events - Integrating browser automation events with orchestrator streaming
  * These events provide real-time visibility into browser automation activities
  * and include task context correlation for proper event tracking.
@@ -1178,6 +1305,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       projectPath: this.projectPath,
       config: this.config
     });
+
+    // Set up MCP event forwarding
+    this.setupMCPEventForwarding();
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
@@ -8912,6 +9042,110 @@ Parent: ${parentTask.description}`;
         timestamp: new Date(),
         data: { error: error.message, iteration },
       });
+    });
+  }
+
+  /**
+   * Setup MCP connection event forwarding
+   * Forwards MCP connection events from MCPConnectionManager to the orchestrator's event system
+   * with proper metadata and timestamps.
+   */
+  private setupMCPEventForwarding(): void {
+    if (!this.mcpConnectionManager) return;
+
+    // Forward connection events
+    this.mcpConnectionManager.on('connected', (connection) => {
+      const eventData: MCPConnectionEventData = {
+        serverId: connection.serverId,
+        serverName: connection.serverName,
+        timestamp: new Date(),
+        config: {
+          type: connection.config.type || 'stdio',
+          command: connection.config.command,
+          url: connection.config.url,
+        },
+      };
+      this.emit('mcp:connected', eventData);
+    });
+
+    // Forward disconnection events
+    this.mcpConnectionManager.on('disconnected', (serverId, reason) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPDisconnectionEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        reason,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:disconnected', eventData);
+    });
+
+    // Forward error events
+    this.mcpConnectionManager.on('error', (serverId, error) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPErrorEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        error: error.message,
+        timestamp: new Date(),
+        code: error.name || 'UNKNOWN_ERROR',
+      };
+      this.emit('mcp:error', eventData);
+    });
+
+    // Forward reconnection events
+    this.mcpConnectionManager.on('reconnecting', (serverId, attempt, maxAttempts) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPReconnectingEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        attempt,
+        maxAttempts,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:reconnecting', eventData);
+    });
+
+    // Forward health check events
+    this.mcpConnectionManager.on('healthCheck', (serverId, result) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPHealthCheckEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        success: result.success,
+        latencyMs: result.latencyMs,
+        error: result.error?.message,
+        consecutiveFailures: result.consecutiveFailures,
+        isHealthy: result.isHealthy,
+        timestamp: result.timestamp,
+      };
+      this.emit('mcp:health-check', eventData);
+    });
+
+    // Forward state change events
+    this.mcpConnectionManager.on('stateChange', (serverId, previousState, newState) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPStateChangeEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        previousState,
+        newState,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:state-change', eventData);
+    });
+
+    // Forward pool change events
+    this.mcpConnectionManager.on('poolChange', (serverId, poolSize, activeConnections) => {
+      const connection = this.mcpConnectionManager.getConnection(serverId);
+      const eventData: MCPPoolChangeEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        poolSize,
+        activeConnections,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:pool-change', eventData);
     });
   }
 
