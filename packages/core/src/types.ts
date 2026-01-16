@@ -2294,6 +2294,45 @@ export const MCPConnectionConfigSchema = z.object({
 export type MCPConnectionConfig = z.infer<typeof MCPConnectionConfigSchema>;
 
 /**
+ * MCP Environment Variable Schema (v0.5.0)
+ * Defines structured metadata for environment variables used by MCP servers.
+ * Provides richer configuration than simple key-value pairs, including
+ * descriptions, sensitivity flags, and required/optional status.
+ *
+ * @example
+ * ```yaml
+ * envVars:
+ *   - name: OPENAI_API_KEY
+ *     description: OpenAI API key for model access
+ *     required: true
+ *     sensitive: true
+ *   - name: LOG_LEVEL
+ *     description: Logging verbosity level
+ *     required: false
+ *     defaultValue: info
+ * ```
+ */
+export const MCPEnvironmentVarSchema = z.object({
+  /** Name of the environment variable (e.g., 'OPENAI_API_KEY') */
+  name: z.string().min(1, 'Environment variable name is required'),
+  /** Human-readable description of the variable's purpose */
+  description: z.string().optional(),
+  /** Whether the variable is required for the server to function */
+  required: z.boolean().optional().default(false),
+  /** Whether the variable contains sensitive data (API keys, passwords, tokens) */
+  sensitive: z.boolean().optional().default(false),
+  /** Default value if not provided (ignored for required variables) */
+  defaultValue: z.string().optional(),
+  /** Current value of the environment variable (may be masked if sensitive) */
+  value: z.string().optional(),
+  /** Validation pattern for the variable value (regex string) */
+  pattern: z.string().optional(),
+  /** Source of the variable value: 'config', 'env', 'user', 'default' */
+  source: z.enum(['config', 'env', 'user', 'default']).optional(),
+});
+export type MCPEnvironmentVar = z.infer<typeof MCPEnvironmentVarSchema>;
+
+/**
  * MCP Server configuration schema
  * Defines how to connect to and configure an individual MCP server
  */
@@ -2306,8 +2345,10 @@ export const MCPServerConfigSchema = z.object({
   command: z.string().optional(),
   /** Arguments to pass to the command */
   args: z.array(z.string()).optional(),
-  /** Environment variables for the server process */
+  /** Environment variables for the server process (simple key-value pairs) */
   env: z.record(z.string()).optional(),
+  /** Structured environment variable definitions with metadata */
+  envVars: z.array(MCPEnvironmentVarSchema).optional(),
   /** URL for http/sse connections */
   url: z.string().optional(),
   /** HTTP headers for http/sse connections */
@@ -2377,8 +2418,10 @@ export const MCPServerSchema = z.object({
   command: z.string().min(1, 'Command is required'),
   /** Arguments to pass to the command */
   args: z.array(z.string()).optional().default([]),
-  /** Environment variables required by the server */
+  /** Environment variables required by the server (simple key-value pairs) */
   env: z.record(z.string(), z.string()).optional().default({}),
+  /** Structured environment variable definitions with metadata */
+  envVars: z.array(MCPEnvironmentVarSchema).optional().default([]),
   /** Semantic version of the MCP server package */
   version: z.string().min(1, 'Version is required'),
 });
@@ -3725,7 +3768,10 @@ export type ApexEventType =
   | 'tdd:fix-reverted'
   | 'tdd:iteration-completed'
   | 'tdd:completed'
-  | 'tdd:failed';
+  | 'tdd:failed'
+  // Visual comparison events (v0.5.0)
+  | 'visual:comparison:failed'
+  | 'visual:comparison:passed';
 
 export interface ApexEvent {
   type: ApexEventType;
@@ -4434,6 +4480,58 @@ export type TDDEventDataFor<T extends ApexEventType> =
   T extends 'tdd:iteration-completed' ? TDDIterationCompletedEventData :
   T extends 'tdd:completed' ? TDDCompletedEventData :
   T extends 'tdd:failed' ? TDDFailedEventData :
+  never;
+
+// ============================================================================
+// Visual Comparison Event Data Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event data for visual comparison results
+ * Emitted when compareScreenshot() completes with comparison result
+ */
+export const VisualComparisonEventDataSchema = z.object({
+  /** Unique test/comparison identifier */
+  testId: z.string().min(1),
+  /** Path to baseline image */
+  baseline: z.string().min(1),
+  /** Path to actual (current) image or base64 data URI */
+  actual: z.string().min(1),
+  /** Path to diff image (if generated) */
+  diffImage: z.string().optional(),
+  /** Percentage of pixels that differ (0-100) */
+  diffPercentage: z.number().min(0).max(100),
+  /** Threshold percentage for acceptable difference (0-100) */
+  threshold: z.number().min(0).max(100),
+  /** Whether the comparison passed (diffPercentage <= threshold) */
+  passed: z.boolean(),
+  /** Task ID associated with this comparison */
+  taskId: z.string().optional(),
+  /** Timestamp when comparison occurred */
+  timestamp: z.date(),
+  /** URL of the page being compared (if applicable) */
+  pageUrl: z.string().optional(),
+  /** Selector if element-specific comparison */
+  selector: z.string().optional(),
+});
+export type VisualComparisonEventData = z.infer<typeof VisualComparisonEventDataSchema>;
+
+/**
+ * Visual comparison-specific event with typed data
+ */
+export interface VisualComparisonEvent<T = unknown> {
+  type: Extract<ApexEventType, `visual:${string}`>;
+  taskId: string;
+  timestamp: Date;
+  data: T;
+}
+
+/**
+ * Type helper for visual comparison event data by type
+ */
+export type VisualComparisonEventDataFor<T extends ApexEventType> =
+  T extends 'visual:comparison:failed' ? VisualComparisonEventData :
+  T extends 'visual:comparison:passed' ? VisualComparisonEventData :
   never;
 
 // ============================================================================

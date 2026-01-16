@@ -79,6 +79,7 @@ import {
   AutoFixStageResults,
   AutoFixStageConfig,
   AutoFixEvent,
+  VisualComparisonEventData,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -366,6 +367,10 @@ export interface OrchestratorEvents {
   'browser:page-created': (event: BrowserManagerPageCreatedEvent) => void;
   'browser:page-closed': (event: BrowserManagerPageClosedEvent) => void;
   'browser:manager-error': (event: BrowserManagerErrorEvent) => void;
+
+  // Visual comparison events (v0.5.0)
+  'visual:comparison:failed': (event: VisualComparisonEventData) => void;
+  'visual:comparison:passed': (event: VisualComparisonEventData) => void;
 }
 
 /**
@@ -1235,6 +1240,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Wire browser tool permissions + MCP server
     browserTool.setPermissionManager(this.permissionManager);
+    browserTool.setEventEmitter(this);
     const browserToolConfig = this.effectiveConfig.tools?.Browser;
     if (browserToolConfig?.enabled !== false) {
       this.browserToolsServer = buildBrowserToolsServer(browserTool);

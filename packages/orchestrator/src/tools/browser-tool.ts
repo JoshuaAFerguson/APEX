@@ -15,8 +15,9 @@
  */
 
 import { PermissionManager } from '../permission-manager';
-import { PermissionLevel, ToolPermissionResult } from '@apexcli/core';
+import { PermissionLevel, ToolPermissionResult, VisualComparisonEventData } from '@apexcli/core';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
+import { EventEmitter } from 'eventemitter3';
 import * as fs from 'fs';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
@@ -58,6 +59,10 @@ export interface BrowserToolOptions {
   engine?: 'chromium' | 'firefox' | 'webkit';
   /** Override whether to run headless */
   headless?: boolean;
+  /** Optional event emitter for broadcasting events */
+  eventEmitter?: EventEmitter;
+  /** Optional task ID for event correlation */
+  taskId?: string;
 }
 
 /**
@@ -134,6 +139,8 @@ export interface BrowserCompareScreenshotParams {
   format?: 'png' | 'jpeg';
   /** JPEG quality (0-100) */
   quality?: number;
+  /** Unique test identifier for event correlation */
+  testId?: string;
 }
 
 /**
@@ -373,6 +380,7 @@ export class BrowserTool {
   private consoleStream?: BrowserConsoleStream;
   private enhancedConsoleMessages: EnhancedConsoleMessage[] = [];
   private enhancedRuntimeErrors: EnhancedRuntimeError[] = [];
+  private eventEmitter?: EventEmitter;
 
   constructor(options?: BrowserToolOptions) {
     this.permissionManager = options?.permissionManager;
@@ -388,6 +396,14 @@ export class BrowserTool {
    */
   setPermissionManager(manager: PermissionManager): void {
     this.permissionManager = manager;
+  }
+
+  /**
+   * Inject event emitter at runtime
+   * Allows visual comparison events to be emitted to orchestrator
+   */
+  setEventEmitter(emitter: EventEmitter): void {
+    this.eventEmitter = emitter;
   }
 
   /**
@@ -1119,6 +1135,29 @@ export class BrowserTool {
           fs.writeFileSync(compareParams.diffPath, PNG.sync.write(diff));
         }
 
+        const passed = diffRatio <= (compareParams.threshold ?? 0.1);
+        const diffPercentage = diffRatio * 100;
+
+        // Emit visual comparison event if eventEmitter is available
+        if (this.eventEmitter) {
+          const eventData: VisualComparisonEventData = {
+            testId: compareParams.testId || `screenshot-${Date.now()}`,
+            baseline: compareParams.baselinePath,
+            actual: compareParams.selector ? `element-screenshot-${compareParams.selector}` : 'full-page-screenshot',
+            diffImage: compareParams.diffPath,
+            diffPercentage,
+            threshold: (compareParams.threshold ?? 0.1) * 100,
+            passed,
+            pageUrl: this.getCurrentUrl(),
+            selector: compareParams.selector,
+            taskId: 'unknown', // This will be set by the orchestrator
+            timestamp: new Date(),
+          };
+
+          const eventType = passed ? 'visual:comparison:passed' : 'visual:comparison:failed';
+          this.eventEmitter.emit(eventType, eventData);
+        }
+
         return {
           success: true,
           operation,
@@ -1127,7 +1166,7 @@ export class BrowserTool {
             totalPixels,
             diffRatio,
             threshold: compareParams.threshold ?? 0.1,
-            match: diffRatio <= (compareParams.threshold ?? 0.1),
+            match: passed,
             diffPath: compareParams.diffPath,
           },
           metadata: {

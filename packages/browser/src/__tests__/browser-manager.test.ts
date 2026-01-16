@@ -604,6 +604,53 @@ describe('BrowserManager', () => {
 
       expect(contextResult.success).toBe(true);
     });
+
+    it('should handle headless mode explicitly', async () => {
+      const headlessResult = await manager.launchBrowser({
+        browserType: 'chromium',
+        headless: true
+      });
+
+      expect(headlessResult.success).toBe(true);
+      expect(headlessResult.data?.type).toBe('chromium');
+    });
+
+    it('should handle non-headless mode', async () => {
+      const nonHeadlessResult = await manager.launchBrowser({
+        browserType: 'chromium',
+        headless: false
+      });
+
+      expect(nonHeadlessResult.success).toBe(true);
+      expect(nonHeadlessResult.data?.type).toBe('chromium');
+    });
+
+    it('should apply complex launch options combination', async () => {
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        headless: true,
+        launchOptions: {
+          args: ['--disable-web-security', '--allow-running-insecure-content'],
+          env: { NODE_ENV: 'test' },
+          timeout: 60000
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.duration).toBeDefined();
+      expect(result.duration!).toBeGreaterThan(0);
+    });
+
+    it('should measure launch duration accurately', async () => {
+      const startTime = Date.now();
+      const result = await manager.launchBrowser({ browserType: 'chromium' });
+      const endTime = Date.now();
+
+      expect(result.success).toBe(true);
+      expect(result.duration).toBeDefined();
+      expect(result.duration!).toBeGreaterThanOrEqual(0);
+      expect(result.duration!).toBeLessThanOrEqual(endTime - startTime + 100); // Small buffer for timing
+    });
   });
 
   describe('Instance Reuse Logic', () => {
@@ -634,6 +681,276 @@ describe('BrowserManager', () => {
       expect(firstResult.data!.id).not.toBe(secondResult.data!.id);
 
       await reuseManager.shutdown();
+    });
+  });
+});
+
+describe('BrowserManager Acceptance Criteria Validation', () => {
+  let manager: BrowserManager;
+
+  beforeEach(() => {
+    manager = new BrowserManager();
+  });
+
+  afterEach(async () => {
+    if (manager) {
+      await manager.shutdown();
+    }
+  });
+
+  describe('AC1: Browser Launch with Options', () => {
+    it('should launch browser with default options', async () => {
+      const result = await manager.launchBrowser();
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(result.data!.id).toBeDefined();
+      expect(result.data!.type).toBe('chromium'); // default browser type
+      expect(result.data!.createdAt).toBeDefined();
+      expect(result.duration).toBeGreaterThan(0);
+    });
+
+    it('should launch browser with custom browser type options', async () => {
+      const browserTypes = ['chromium', 'firefox', 'webkit'] as const;
+
+      for (const browserType of browserTypes) {
+        const result = await manager.launchBrowser({ browserType });
+
+        expect(result.success).toBe(true);
+        expect(result.data!.type).toBe(browserType);
+
+        // Clean up after each test
+        await manager.closeBrowser(result.data!.id);
+      }
+    });
+
+    it('should launch browser with headless options', async () => {
+      // Test headless: true
+      const headlessResult = await manager.launchBrowser({ headless: true });
+      expect(headlessResult.success).toBe(true);
+
+      // Test headless: false
+      const nonHeadlessResult = await manager.launchBrowser({ headless: false });
+      expect(nonHeadlessResult.success).toBe(true);
+    });
+
+    it('should launch browser with custom launch options', async () => {
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        headless: true,
+        launchOptions: {
+          args: ['--no-sandbox', '--disable-dev-shm-usage'],
+          timeout: 30000,
+          env: { NODE_ENV: 'test' }
+        }
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data!.type).toBe('chromium');
+    });
+  });
+
+  describe('AC2: Browser Close and Cleanup', () => {
+    it('should close browser and clean up resources', async () => {
+      const launchResult = await manager.launchBrowser({ browserType: 'chromium' });
+      const instanceId = launchResult.data!.id;
+
+      // Verify browser is running
+      expect(manager.getInstances()).toHaveLength(1);
+      const instance = manager.getInstance(instanceId);
+      expect(instance).toBeDefined();
+
+      // Close browser
+      const closeResult = await manager.closeBrowser(instanceId);
+      expect(closeResult.success).toBe(true);
+      expect(closeResult.duration).toBeGreaterThan(0);
+
+      // Verify cleanup
+      expect(manager.getInstances()).toHaveLength(0);
+      expect(manager.getInstance(instanceId)).toBeUndefined();
+    });
+
+    it('should close browser with contexts and clean up all resources', async () => {
+      const launchResult = await manager.launchBrowser({ browserType: 'chromium' });
+      const instanceId = launchResult.data!.id;
+
+      // Create multiple contexts
+      const context1 = await manager.createContext(instanceId);
+      const context2 = await manager.createContext(instanceId);
+
+      expect(manager.getContexts()).toHaveLength(2);
+
+      // Close browser should close all contexts
+      const closeResult = await manager.closeBrowser(instanceId);
+      expect(closeResult.success).toBe(true);
+
+      // Verify all resources cleaned up
+      expect(manager.getInstances()).toHaveLength(0);
+      expect(manager.getContexts()).toHaveLength(0);
+    });
+
+    it('should handle cleanup during shutdown', async () => {
+      // Launch multiple browsers
+      await manager.launchBrowser({ browserType: 'chromium' });
+      await manager.launchBrowser({ browserType: 'firefox' });
+
+      expect(manager.getInstances()).toHaveLength(2);
+
+      // Shutdown should clean up all resources
+      await manager.shutdown();
+
+      expect(manager.getInstances()).toHaveLength(0);
+      expect(manager.getContexts()).toHaveLength(0);
+    });
+  });
+
+  describe('AC3: Error Handling for Launch Failures', () => {
+    it('should handle and return structured error for launch timeout', async () => {
+      const timeoutManager = new BrowserManager({
+        defaultSessionConfig: {
+          browserType: 'chromium',
+          launchOptions: { timeout: 1 } // Very short timeout
+        }
+      });
+
+      const result = await timeoutManager.launchBrowser();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(typeof result.error).toBe('string');
+      expect(result.duration).toBeGreaterThan(0);
+      expect(result.data).toBeUndefined();
+
+      await timeoutManager.shutdown();
+    });
+
+    it('should handle invalid executable path errors', async () => {
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        launchOptions: {
+          executablePath: '/nonexistent/browser/path'
+        }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Failed to launch');
+    });
+
+    it('should maintain manager state consistency on launch failure', async () => {
+      const initialInstances = manager.getInstances().length;
+
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        launchOptions: { executablePath: '/invalid/path' }
+      });
+
+      expect(result.success).toBe(false);
+      expect(manager.getInstances().length).toBe(initialInstances);
+    });
+
+    it('should handle max instances exceeded error', async () => {
+      const limitedManager = new BrowserManager({ maxInstances: 1 });
+
+      // First launch should succeed
+      const first = await limitedManager.launchBrowser();
+      expect(first.success).toBe(true);
+
+      // Second launch should fail due to limit
+      const second = await limitedManager.launchBrowser();
+      expect(second.success).toBe(false);
+      expect(second.error).toContain('Maximum browser instances exceeded');
+
+      await limitedManager.shutdown();
+    });
+
+    it('should handle operations on shutdown manager', async () => {
+      await manager.shutdown();
+
+      const result = await manager.launchBrowser();
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('shut down');
+    });
+  });
+
+  describe('AC4: Configuration Options', () => {
+    it('should apply viewport configuration', async () => {
+      const instanceResult = await manager.launchBrowser({ browserType: 'chromium' });
+      const customViewport = { width: 1920, height: 1080 };
+
+      const contextResult = await manager.createContext(instanceResult.data!.id, {
+        viewport: customViewport
+      });
+
+      expect(contextResult.success).toBe(true);
+      expect(contextResult.data!.config.viewport).toEqual(customViewport);
+    });
+
+    it('should apply user agent configuration', async () => {
+      const instanceResult = await manager.launchBrowser({ browserType: 'chromium' });
+      const customUserAgent = 'Custom Test Agent 1.0';
+
+      const contextResult = await manager.createContext(instanceResult.data!.id, {
+        userAgent: customUserAgent
+      });
+
+      expect(contextResult.success).toBe(true);
+      expect(contextResult.data!.config.userAgent).toBe(customUserAgent);
+    });
+
+    it('should apply timeout configuration', async () => {
+      const instanceResult = await manager.launchBrowser({ browserType: 'chromium' });
+      const customTimeout = 60000;
+
+      const contextResult = await manager.createContext(instanceResult.data!.id, {
+        timeout: customTimeout
+      });
+
+      expect(contextResult.success).toBe(true);
+      expect(contextResult.data!.config.timeout).toBe(customTimeout);
+    });
+
+    it('should apply ignore HTTPS errors configuration', async () => {
+      const instanceResult = await manager.launchBrowser({ browserType: 'chromium' });
+
+      const contextResult = await manager.createContext(instanceResult.data!.id, {
+        ignoreHTTPSErrors: true
+      });
+
+      expect(contextResult.success).toBe(true);
+      expect(contextResult.data!.config.ignoreHTTPSErrors).toBe(true);
+    });
+
+    it('should apply complex configuration combinations', async () => {
+      const complexConfig = {
+        browserType: 'chromium' as const,
+        headless: true,
+        launchOptions: {
+          args: ['--no-sandbox', '--disable-dev-shm-usage'],
+          timeout: 30000
+        }
+      };
+
+      const instanceResult = await manager.launchBrowser(complexConfig);
+      expect(instanceResult.success).toBe(true);
+
+      const contextConfig = {
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Test Agent',
+        timeout: 45000,
+        ignoreHTTPSErrors: true,
+        contextOptions: {
+          locale: 'en-US',
+          timezoneId: 'America/New_York'
+        }
+      };
+
+      const contextResult = await manager.createContext(instanceResult.data!.id, contextConfig);
+      expect(contextResult.success).toBe(true);
+      expect(contextResult.data!.config.viewport).toEqual(contextConfig.viewport);
+      expect(contextResult.data!.config.userAgent).toBe(contextConfig.userAgent);
+      expect(contextResult.data!.config.timeout).toBe(contextConfig.timeout);
+      expect(contextResult.data!.config.ignoreHTTPSErrors).toBe(contextConfig.ignoreHTTPSErrors);
     });
   });
 });
@@ -669,6 +986,48 @@ describe('BrowserManager Error Scenarios', () => {
       expect(result.error).toBeDefined();
 
       await timeoutManager.shutdown();
+    });
+
+    it('should handle invalid launch options gracefully', async () => {
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        headless: true,
+        launchOptions: {
+          executablePath: '/invalid/path/to/browser' // Invalid executable path
+        }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.duration).toBeGreaterThan(0);
+    });
+
+    it('should handle launch failures and maintain consistent state', async () => {
+      const beforeInstances = manager.getInstances().length;
+
+      const result = await manager.launchBrowser({
+        browserType: 'chromium',
+        launchOptions: {
+          executablePath: '/non/existent/browser'
+        }
+      });
+
+      expect(result.success).toBe(false);
+      expect(manager.getInstances().length).toBe(beforeInstances); // No instance created on failure
+    });
+
+    it('should return appropriate error messages for different failure types', async () => {
+      const invalidExecResult = await manager.launchBrowser({
+        browserType: 'chromium',
+        launchOptions: {
+          executablePath: '/invalid/browser/path'
+        }
+      });
+
+      expect(invalidExecResult.success).toBe(false);
+      expect(invalidExecResult.error).toBeDefined();
+      expect(typeof invalidExecResult.error).toBe('string');
+      expect(invalidExecResult.error!.length).toBeGreaterThan(0);
     });
   });
 

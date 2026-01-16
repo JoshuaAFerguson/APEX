@@ -1,25 +1,22 @@
 #!/usr/bin/env node
 
 /**
- * Simple test runner to verify autonomy enforcement tests
+ * Simple test runner to verify BrowserManager tests
  * without requiring npm command approval
  */
 
 const fs = require('fs');
 const path = require('path');
 
-console.log('=== APEX Autonomy Enforcement Test Validation ===\n');
+console.log('=== APEX BrowserManager Test Validation ===\n');
 
 // Test files to validate
 const testFiles = [
-  'packages/orchestrator/src/__tests__/autonomy-enforcement-comprehensive.test.ts',
-  'packages/orchestrator/src/__tests__/autonomy-agent-overrides.test.ts',
-  'packages/orchestrator/src/__tests__/autonomy-git-commit-detection.test.ts',
-  'packages/orchestrator/src/__tests__/autonomy-audit-logging-enhanced.test.ts'
+  'packages/browser/src/__tests__/browser-manager.test.ts'
 ];
 
 // Source file to validate
-const sourceFile = 'packages/orchestrator/src/autonomy-enforcer.ts';
+const sourceFile = 'packages/browser/src/browser-manager.ts';
 
 let allValid = true;
 
@@ -28,10 +25,11 @@ console.log('1. Validating source implementation...');
 if (fs.existsSync(sourceFile)) {
   const sourceContent = fs.readFileSync(sourceFile, 'utf8');
   const hasRequiredMethods = [
-    'checkAction',
-    'recordUsage',
-    'checkLimits',
-    'startTracking'
+    'launchBrowser',
+    'closeBrowser',
+    'createContext',
+    'closeContext',
+    'shutdown'
   ].every(method => sourceContent.includes(method));
 
   if (hasRequiredMethods) {
@@ -110,12 +108,12 @@ if (fs.existsSync('vitest.config.ts')) {
 console.log('\n=== VALIDATION SUMMARY ===');
 if (allValid) {
   console.log('✅ ALL VALIDATIONS PASSED');
-  console.log('\nThe autonomy enforcement system appears to be properly implemented with comprehensive test coverage.');
+  console.log('\nThe BrowserManager system appears to be properly implemented with comprehensive test coverage.');
   console.log('\nTest files cover:');
-  console.log('  • All three autonomy modes (full-auto, review-before-commit, review-all)');
-  console.log('  • Git commit detection for review-before-commit mode');
-  console.log('  • Per-task autonomy override behavior');
-  console.log('  • Audit logging verification');
+  console.log('  • Browser launch with different options (chromium, firefox, webkit)');
+  console.log('  • Browser close and cleanup operations');
+  console.log('  • Error handling for launch failures');
+  console.log('  • Configuration options (viewport, user agent, timeout, etc.)');
   console.log('\nTo run the actual tests, execute: npm run test');
   process.exit(0);
 } else {

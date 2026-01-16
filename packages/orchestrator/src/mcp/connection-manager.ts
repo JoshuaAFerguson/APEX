@@ -48,7 +48,13 @@ import type {
   MCPConnectionState,
   MCPConnectionConfig,
 } from '@apexcli/core';
-import { ExponentialBackoffReconnector } from '@apexcli/core';
+import {
+  ExponentialBackoffReconnector,
+  ConnectionHealthManager,
+  type HealthCheckConfig,
+  type HealthCheckResult as UnifiedHealthCheckResult,
+  type ConnectionHealthState,
+} from '@apexcli/core';
 import { StdioTransport, type StdioTransportOptions } from './transports/index.js';
 import { MCPClient } from './client.js';
 import type { MCPTransport } from './transports/transport.js';
@@ -256,6 +262,9 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
   /** Map of server ID to connection context */
   private connections: Map<string, ConnectionContext> = new Map();
 
+  /** Unified health check manager */
+  private healthManager: ConnectionHealthManager;
+
   /**
    * Create a new MCPConnectionManager instance
    *
@@ -289,6 +298,35 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       heartbeatEnabled: baseConfig.heartbeatEnabled ?? true,
       heartbeatIntervalMs: baseConfig.heartbeatIntervalMs ?? 30000,
     };
+
+    // Initialize unified health manager
+    this.healthManager = new ConnectionHealthManager({
+      enabled: this.connectionConfig.healthCheckIntervalMs > 0,
+      method: this.connectionConfig.heartbeatEnabled ? 'ping' : 'custom',
+      intervalMs: this.connectionConfig.healthCheckIntervalMs,
+      timeoutMs: this.connectionConfig.healthCheckTimeoutMs,
+      failureThreshold: this.connectionConfig.healthCheckFailureThreshold,
+      triggerReconnectOnFailure: this.connectionConfig.autoReconnect,
+      customHealthCheck: async (connectionId: string) => {
+        const context = this.connections.get(connectionId);
+        if (!context) throw new Error(`Connection ${connectionId} not found`);
+
+        try {
+          const startTime = Date.now();
+          await context.client.listTools();
+          const latencyMs = Date.now() - startTime;
+          return { success: true, latencyMs };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      }
+    });
+
+    // Set up health manager event handlers
+    this.setupHealthManagerHandlers();
   }
 
   // ==========================================================================
@@ -504,7 +542,17 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       // Update metrics
       context.metrics.connectedAt = now;
 
-      // Start health monitoring if enabled
+      // Register with unified health manager
+      this.healthManager.register(serverId, {
+        enabled: this.connectionConfig.healthCheckIntervalMs > 0,
+        method: this.connectionConfig.heartbeatEnabled ? 'ping' : 'custom',
+        intervalMs: this.connectionConfig.healthCheckIntervalMs,
+        timeoutMs: this.connectionConfig.healthCheckTimeoutMs,
+        failureThreshold: this.connectionConfig.healthCheckFailureThreshold,
+        triggerReconnectOnFailure: this.connectionConfig.autoReconnect,
+      });
+
+      // Start legacy health monitoring if enabled (for backward compatibility)
       if (this.connectionConfig.healthCheckIntervalMs > 0) {
         this.startHealthMonitoring(serverId, context);
       }
@@ -554,7 +602,10 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
     // Clean up reconnector
     context.reconnector.destroy();
 
-    // Stop health monitoring
+    // Unregister from health manager
+    this.healthManager.unregister(serverId);
+
+    // Stop legacy health monitoring
     this.stopHealthMonitoring(context);
 
     // Clean up connection pool if it exists
@@ -633,6 +684,7 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
   async disconnectAll(): Promise<void> {
     const serverIds = Array.from(this.connections.keys());
     await Promise.all(serverIds.map(id => this.disconnect(id)));
+    this.healthManager.destroy();
   }
 
   /**
@@ -652,12 +704,71 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
    * @returns Promise resolving to health check result
    */
   async checkHealth(serverId: string): Promise<HealthCheckResult> {
-    const context = this.connections.get(serverId);
-    if (!context) {
-      throw new Error(`Connection '${serverId}' not found`);
-    }
+    try {
+      // Use unified health manager for new check
+      const unifiedResult = await this.healthManager.performHealthCheck(serverId);
 
-    return this.performHealthCheck(serverId, context);
+      // Convert to legacy format
+      return {
+        success: unifiedResult.success,
+        latencyMs: unifiedResult.latencyMs,
+        consecutiveFailures: unifiedResult.consecutiveFailures,
+        isHealthy: unifiedResult.isHealthy,
+        timestamp: unifiedResult.startedAt,
+        error: unifiedResult.error instanceof Error ? unifiedResult.error : undefined,
+      };
+    } catch (error) {
+      // Fall back to legacy health check
+      const context = this.connections.get(serverId);
+      if (!context) {
+        throw new Error(`Connection '${serverId}' not found`);
+      }
+      return this.performHealthCheck(serverId, context);
+    }
+  }
+
+  /**
+   * Get unified health state for a connection
+   *
+   * @param serverId - The server identifier
+   * @returns Unified health state or undefined if not found
+   */
+  getUnifiedHealthState(serverId: string): ConnectionHealthState | undefined {
+    return this.healthManager.getHealthState(serverId);
+  }
+
+  /**
+   * Get health statistics for a connection
+   *
+   * @param serverId - The server identifier
+   * @returns Health statistics or undefined if not found
+   */
+  getHealthStatistics(serverId: string) {
+    return this.healthManager.getHealthStats(serverId);
+  }
+
+  /**
+   * Notify health manager about external ping being sent
+   * This is useful for integrating with ping/pong protocols at the transport level
+   *
+   * @param serverId - The server identifier
+   * @param pingId - Unique ping identifier
+   * @param timestamp - Ping timestamp
+   */
+  notifyPingSent(serverId: string, pingId: string, timestamp: number): void {
+    this.healthManager.notifyPingSent(serverId, pingId, timestamp);
+  }
+
+  /**
+   * Notify health manager about external pong being received
+   * This is useful for integrating with ping/pong protocols at the transport level
+   *
+   * @param serverId - The server identifier
+   * @param pingId - Ping identifier that was responded to
+   * @param latencyMs - Round-trip latency
+   */
+  notifyPongReceived(serverId: string, pingId: string, latencyMs: number): void {
+    this.healthManager.notifyPongReceived(serverId, pingId, latencyMs);
   }
 
   /**
@@ -725,6 +836,79 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
   // ==========================================================================
   // Private Methods
   // ==========================================================================
+
+  /**
+   * Set up unified health manager event handlers
+   */
+  private setupHealthManagerHandlers(): void {
+    this.healthManager.on('health:check', (result) => {
+      // Convert unified result to legacy format and emit
+      const legacyResult: HealthCheckResult = {
+        success: result.success,
+        latencyMs: result.latencyMs,
+        consecutiveFailures: result.consecutiveFailures,
+        isHealthy: result.isHealthy,
+        timestamp: result.startedAt,
+        error: result.error instanceof Error ? result.error : undefined,
+      };
+      this.emit('healthCheck', result.connectionId, legacyResult);
+    });
+
+    this.healthManager.on('health:healthy', (connectionId, state) => {
+      // Update legacy health state
+      const context = this.connections.get(connectionId);
+      if (context) {
+        context.health.isHealthy = true;
+        context.health.consecutiveFailures = 0;
+        context.health.lastHealthyAt = new Date();
+      }
+    });
+
+    this.healthManager.on('health:unhealthy', (connectionId, state, result) => {
+      const context = this.connections.get(connectionId);
+      if (context) {
+        context.health.isHealthy = false;
+        context.health.consecutiveFailures = result.consecutiveFailures;
+      }
+    });
+
+    this.healthManager.on('health:reconnect-required', (connectionId, state, result) => {
+      // Trigger reconnection using existing logic
+      const context = this.connections.get(connectionId);
+      if (context && !context.intentionalDisconnect) {
+        const previousState = context.connection.state;
+        context.connection.state = 'disconnected';
+        context.connection.lastError = result.error instanceof Error ? result.error.message : String(result.error);
+
+        this.emit('stateChange', connectionId, previousState, 'disconnected');
+        this.scheduleReconnection(connectionId, context);
+      }
+    });
+
+    this.healthManager.on('ping:sent', (connectionId, pingId, timestamp) => {
+      const context = this.connections.get(connectionId);
+      if (context) {
+        context.health.lastPingAt = new Date(timestamp);
+      }
+    });
+
+    this.healthManager.on('pong:received', (connectionId, pingId, latencyMs) => {
+      const context = this.connections.get(connectionId);
+      if (context) {
+        context.health.lastPongAt = new Date();
+
+        // Update latency history
+        context.health.latencyHistory.push(latencyMs);
+        if (context.health.latencyHistory.length > 10) {
+          context.health.latencyHistory.shift();
+        }
+
+        // Update average latency
+        context.health.averageLatencyMs =
+          context.health.latencyHistory.reduce((sum, lat) => sum + lat, 0) / context.health.latencyHistory.length;
+      }
+    });
+  }
 
   /**
    * Get server configuration from the config

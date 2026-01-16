@@ -1,9 +1,36 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import type { ApexEvent, Task } from '@apexcli/core'
-import { ExponentialBackoffReconnector, type ExponentialBackoffConfig } from '@apexcli/core'
 import { getApiUrl } from './config'
+import {
+  ExponentialBackoffReconnector,
+  type ExponentialBackoffConfig
+} from './exponential-backoff'
+import {
+  ConnectionHealthManager,
+  type HealthCheckConfig,
+  type HealthCheckResult
+} from './connection-health'
+
+// Types imported separately to avoid pulling in Node.js dependencies
+// These are just type definitions, not runtime code
+export interface ApexEvent {
+  type: string;
+  taskId?: string;
+  timestamp: Date;
+  data: Record<string, unknown>;
+}
+
+export interface Task {
+  id: string;
+  description: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  workflow?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  result?: unknown;
+  error?: string;
+}
 
 type WebSocketEventHandler = (event: ApexEvent) => void
 type StateEventHandler = (tasks: Task[]) => void
@@ -114,6 +141,10 @@ export class ApexWebSocketClient {
   private pingTimeoutTimer: NodeJS.Timeout | null = null
   private latencyHistory: number[] = []
 
+  // Unified health manager
+  private healthManager: ConnectionHealthManager
+  private connectionId: string
+
   // Deprecated properties for backward compatibility
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
@@ -158,27 +189,116 @@ export class ApexWebSocketClient {
 
     // Set up reconnector event handlers
     this.setupReconnectorHandlers()
+
+    // Initialize unified health manager
+    this.connectionId = `websocket-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    this.healthManager = new ConnectionHealthManager({
+      enabled: this.healthConfig.healthCheckEnabled,
+      method: this.healthConfig.healthCheckMethod === 'ping' ? 'ping' : 'heartbeat',
+      intervalMs: this.healthConfig.healthCheckIntervalMs,
+      timeoutMs: this.healthConfig.healthCheckTimeoutMs,
+      failureThreshold: this.healthConfig.healthCheckFailureThreshold,
+      triggerReconnectOnFailure: true,
+      customHealthCheck: async () => {
+        // For WebSocket, we rely on ping/pong messages
+        const now = Date.now()
+        const threshold = this.healthConfig.healthCheckIntervalMs * 2
+
+        if (this.healthState.lastPongAt) {
+          const timeSinceLastPong = now - this.healthState.lastPongAt.getTime()
+          return {
+            success: timeSinceLastPong <= threshold,
+            latencyMs: this.healthState.averageLatencyMs,
+            error: timeSinceLastPong > threshold ? 'No recent pong received' : undefined,
+            metadata: { timeSinceLastPong, threshold }
+          }
+        }
+
+        return {
+          success: false,
+          error: 'No pong received yet',
+          metadata: { threshold }
+        }
+      }
+    })
+
+    // Set up health manager event handlers
+    this.setupHealthManagerHandlers()
+  }
+
+  /**
+   * Set up unified health manager event handlers
+   */
+  private setupHealthManagerHandlers(): void {
+    this.healthManager.on('health:check', (result: HealthCheckResult) => {
+      const event: HealthCheckEvent = {
+        type: 'health:check',
+        timestamp: result.startedAt,
+        isHealthy: result.isHealthy,
+        latencyMs: result.latencyMs,
+        consecutiveFailures: result.consecutiveFailures,
+        error: result.error instanceof Error ? result.error.message : String(result.error || '')
+      }
+      this.emitHealthEvent(event)
+    })
+
+    this.healthManager.on('health:healthy', () => {
+      const event: HealthCheckEvent = {
+        type: 'health:healthy',
+        timestamp: new Date(),
+        isHealthy: true,
+        consecutiveFailures: 0
+      }
+      this.emitHealthEvent(event)
+    })
+
+    this.healthManager.on('health:unhealthy', () => {
+      const event: HealthCheckEvent = {
+        type: 'health:unhealthy',
+        timestamp: new Date(),
+        isHealthy: false,
+        consecutiveFailures: this.healthState.consecutiveFailures
+      }
+      this.emitHealthEvent(event)
+    })
+
+    this.healthManager.on('health:recovered', () => {
+      const event: HealthCheckEvent = {
+        type: 'health:recovered',
+        timestamp: new Date(),
+        isHealthy: true,
+        consecutiveFailures: 0
+      }
+      this.emitHealthEvent(event)
+    })
+
+    this.healthManager.on('health:reconnect-required', () => {
+      console.warn('[APEX WS] Health check failed repeatedly, triggering reconnection')
+      if (this.shouldReconnect && this.ws) {
+        this.ws.close(1006, 'Health check failed')
+      }
+    })
   }
 
   /**
    * Set up reconnector event handlers
    */
   private setupReconnectorHandlers(): void {
-    this.reconnector.on('reconnect:attempt', (attempt, delayMs) => {
+    this.reconnector.on('reconnect:attempt', (attempt: number, delayMs: number) => {
       console.log(`[APEX WS] Reconnection attempt ${attempt} in ${delayMs}ms...`)
       this.reconnectAttempts = attempt // Update for backward compatibility
     })
 
-    this.reconnector.on('reconnect:success', (attempt, totalTime) => {
+    this.reconnector.on('reconnect:success', (attempt: number, totalTime: number) => {
       console.log(`[APEX WS] Reconnected after ${attempt} attempts in ${totalTime}ms`)
       this.reconnectAttempts = 0 // Reset for backward compatibility
     })
 
-    this.reconnector.on('reconnect:failure', (attempt, error) => {
+    this.reconnector.on('reconnect:failure', (attempt: number, error: string) => {
       console.warn(`[APEX WS] Reconnection attempt ${attempt} failed:`, error)
     })
 
-    this.reconnector.on('reconnect:exhausted', (totalAttempts, lastError) => {
+    this.reconnector.on('reconnect:exhausted', (totalAttempts: number, lastError: string) => {
       console.error(`[APEX WS] Max reconnection attempts (${totalAttempts}) reached:`, lastError)
     })
   }
@@ -203,7 +323,16 @@ export class ApexWebSocketClient {
         // Reset health state on successful connection
         this.resetHealthState()
 
-        // Start health check timer if enabled
+        // Register with health manager
+        this.healthManager.register(this.connectionId, {
+          enabled: this.healthConfig.healthCheckEnabled,
+          method: this.healthConfig.healthCheckMethod === 'ping' ? 'ping' : 'heartbeat',
+          intervalMs: this.healthConfig.healthCheckIntervalMs,
+          timeoutMs: this.healthConfig.healthCheckTimeoutMs,
+          failureThreshold: this.healthConfig.healthCheckFailureThreshold,
+        })
+
+        // Start health check timer if enabled (legacy support)
         if (this.healthConfig.healthCheckEnabled) {
           this.startHealthCheckTimer()
         }
@@ -293,6 +422,9 @@ export class ApexWebSocketClient {
   disconnect(): void {
     this.shouldReconnect = false
 
+    // Unregister from health manager
+    this.healthManager.unregister(this.connectionId)
+
     // Stop health checks
     this.stopHealthCheckTimer()
     this.clearPingTimeout()
@@ -306,6 +438,9 @@ export class ApexWebSocketClient {
       this.ws.close()
       this.ws = null
     }
+
+    // Clean up health manager
+    this.healthManager.destroy()
   }
 
   /**
@@ -393,6 +528,20 @@ export class ApexWebSocketClient {
    */
   offHealth(handler: HealthEventHandler): void {
     this.healthHandlers.delete(handler)
+  }
+
+  /**
+   * Get unified health state from health manager
+   */
+  getUnifiedHealthState() {
+    return this.healthManager.getHealthState(this.connectionId)
+  }
+
+  /**
+   * Get health statistics from health manager
+   */
+  getHealthStatistics() {
+    return this.healthManager.getHealthStats(this.connectionId)
   }
 
   /**
@@ -523,6 +672,9 @@ export class ApexWebSocketClient {
     this.pendingPingId = pingId
     this.healthState.lastPingAt = new Date(timestamp)
 
+    // Notify health manager about ping being sent
+    this.healthManager.notifyPingSent(this.connectionId, pingId, timestamp)
+
     try {
       this.ws!.send(JSON.stringify({
         type: 'ping',
@@ -535,6 +687,7 @@ export class ApexWebSocketClient {
       this.pingTimeoutTimer = setTimeout(() => {
         if (this.pendingPingId === pingId) {
           this.markUnhealthy('Ping timeout')
+          this.healthManager.notifyPingTimeout(this.connectionId, pingId)
           this.pendingPingId = null
         }
       }, this.healthConfig.healthCheckTimeoutMs)
@@ -571,6 +724,9 @@ export class ApexWebSocketClient {
       // Calculate latency
       const latencyMs = now - data.timestamp
       this.updateLatencyMetrics(latencyMs)
+
+      // Notify health manager about pong received
+      this.healthManager.notifyPongReceived(this.connectionId, data.id, latencyMs)
 
       // Clear pending ping
       this.pendingPingId = null

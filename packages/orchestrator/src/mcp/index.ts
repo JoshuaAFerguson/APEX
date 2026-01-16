@@ -95,3 +95,40 @@ export {
   type MCPConnectionManagerOptions,
   type MCPConnectionManagerEvents,
 } from './connection-manager.js';
+
+// MCP Configurator
+export {
+  MCPConfigurator,
+  type MCPConfiguratorOptions,
+  type MCPConfiguratorEvents,
+  type MCPConfigFormat,
+  type ClaudeDesktopConfig,
+  type ClaudeDesktopServerConfig,
+  type EnvVarDetectionResult,
+  type ConfigValidationResult,
+  type ConfigValidationErrorCode,
+  type ConfigValidationWarningCode,
+  type MCPServerTemplate,
+} from './configurator.js';
+
+// Environment Variable Detector
+export {
+  EnvVarDetector,
+  type EnvVarSource,
+  type EnvVarResolution,
+} from './env-detector.js';
+
+// Configuration Validator
+export {
+  ConfigValidator,
+} from './config-validator.js';
+
+// Built-in Templates
+export {
+  BUILTIN_TEMPLATES,
+  getTemplatesByCategory,
+  getVerifiedTemplates,
+  getDefaultEnabledTemplates,
+  findTemplateByPackage,
+  searchTemplatesByCapabilities,
+} from './templates.js';
