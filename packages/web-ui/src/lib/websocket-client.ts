@@ -8,6 +8,66 @@ import { getApiUrl } from './config'
 type WebSocketEventHandler = (event: ApexEvent) => void
 type StateEventHandler = (tasks: Task[]) => void
 
+// Health check configuration interface
+export interface WebSocketHealthConfig {
+  /** Enable/disable health checks (default: true) */
+  healthCheckEnabled: boolean;
+
+  /** Interval between health checks in milliseconds (default: 30000) */
+  healthCheckIntervalMs: number;
+
+  /** Timeout for health check response in milliseconds (default: 5000) */
+  healthCheckTimeoutMs: number;
+
+  /** Number of consecutive failures before marking unhealthy (default: 3) */
+  healthCheckFailureThreshold: number;
+
+  /** Whether to use ping/pong frames or custom heartbeat messages (default: 'message') */
+  healthCheckMethod: 'ping' | 'message';
+}
+
+// Health state interface
+export interface WebSocketHealthState {
+  /** Whether the connection is currently healthy */
+  isHealthy: boolean;
+
+  /** Last successful health check timestamp */
+  lastHealthyAt?: Date;
+
+  /** Last health check timestamp (regardless of result) */
+  lastCheckAt?: Date;
+
+  /** Number of consecutive health check failures */
+  consecutiveFailures: number;
+
+  /** Average round-trip time in milliseconds */
+  averageLatencyMs: number;
+
+  /** Last ping sent timestamp */
+  lastPingAt?: Date;
+
+  /** Last pong received timestamp */
+  lastPongAt?: Date;
+}
+
+// Health event types
+export type HealthEventType =
+  | 'health:check'      // Health check performed
+  | 'health:healthy'    // Connection became healthy
+  | 'health:unhealthy'  // Connection became unhealthy
+  | 'health:recovered'; // Connection recovered from unhealthy state
+
+export interface HealthCheckEvent {
+  type: HealthEventType;
+  timestamp: Date;
+  isHealthy: boolean;
+  latencyMs?: number;
+  consecutiveFailures: number;
+  error?: string;
+}
+
+type HealthEventHandler = (event: HealthCheckEvent) => void
+
 // Maximum number of events to keep in buffer to prevent memory leaks
 const MAX_EVENT_BUFFER_SIZE = 1000
 
@@ -45,6 +105,15 @@ export class ApexWebSocketClient {
   private stateHandlers: Set<StateEventHandler> = new Set()
   private shouldReconnect = true
 
+  // Health check properties
+  private healthConfig: WebSocketHealthConfig
+  private healthState: WebSocketHealthState
+  private healthHandlers: Set<HealthEventHandler> = new Set()
+  private healthCheckTimer: NodeJS.Timeout | null = null
+  private pendingPingId: string | null = null
+  private pingTimeoutTimer: NodeJS.Timeout | null = null
+  private latencyHistory: number[] = []
+
   // Deprecated properties for backward compatibility
   private reconnectAttempts = 0
   private maxReconnectAttempts = 10
@@ -52,9 +121,30 @@ export class ApexWebSocketClient {
   private maxReconnectDelay = 30000
   private reconnectTimer: NodeJS.Timeout | null = null
 
-  constructor(url?: string, reconnectConfig?: Partial<ExponentialBackoffConfig>) {
+  constructor(
+    url?: string,
+    reconnectConfig?: Partial<ExponentialBackoffConfig>,
+    healthConfig?: Partial<WebSocketHealthConfig>
+  ) {
     const baseUrl = url || getApiUrl()
     this.url = toWebSocketUrl(baseUrl)
+
+    // Initialize health check configuration
+    this.healthConfig = {
+      healthCheckEnabled: true,
+      healthCheckIntervalMs: 30000, // 30 seconds
+      healthCheckTimeoutMs: 5000,   // 5 seconds
+      healthCheckFailureThreshold: 3,
+      healthCheckMethod: 'message',
+      ...healthConfig,
+    }
+
+    // Initialize health state
+    this.healthState = {
+      isHealthy: true,
+      consecutiveFailures: 0,
+      averageLatencyMs: 0,
+    }
 
     // Initialize reconnector with optimized settings for WebSocket
     this.reconnector = new ExponentialBackoffReconnector({
@@ -109,11 +199,32 @@ export class ApexWebSocketClient {
         this.reconnectAttempts = 0
         this.reconnectDelay = 1000
         this.reconnector.notifyConnected()
+
+        // Reset health state on successful connection
+        this.resetHealthState()
+
+        // Start health check timer if enabled
+        if (this.healthConfig.healthCheckEnabled) {
+          this.startHealthCheckTimer()
+        }
       }
 
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+
+          // Handle ping/pong health check messages
+          if (data.type === 'ping') {
+            // Server sent a ping, respond with pong
+            this.sendPongMessage(data.timestamp)
+            return
+          }
+
+          if (data.type === 'pong') {
+            // Server responded to our ping
+            this.handlePongMessage(data)
+            return
+          }
 
           // Handle initial state event
           if (data.type === 'task:state') {
@@ -153,6 +264,13 @@ export class ApexWebSocketClient {
         console.log('[APEX WS] Disconnected')
         this.ws = null
 
+        // Stop health checks on disconnect
+        this.stopHealthCheckTimer()
+        this.clearPingTimeout()
+
+        // Mark as unhealthy
+        this.markUnhealthy('Connection closed')
+
         if (this.shouldReconnect && !this.reconnector.isExhausted()) {
           const reason = event.reason || `Connection closed with code ${event.code}`
           this.reconnector.notifyDisconnected(reason)
@@ -174,6 +292,10 @@ export class ApexWebSocketClient {
    */
   disconnect(): void {
     this.shouldReconnect = false
+
+    // Stop health checks
+    this.stopHealthCheckTimer()
+    this.clearPingTimeout()
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
@@ -243,6 +365,284 @@ export class ApexWebSocketClient {
    */
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * Check if connection is healthy
+   */
+  isHealthy(): boolean {
+    return this.healthState.isHealthy && this.isConnected()
+  }
+
+  /**
+   * Get current health state
+   */
+  getHealthState(): WebSocketHealthState {
+    return { ...this.healthState }
+  }
+
+  /**
+   * Subscribe to health events
+   */
+  onHealth(handler: HealthEventHandler): void {
+    this.healthHandlers.add(handler)
+  }
+
+  /**
+   * Unsubscribe from health events
+   */
+  offHealth(handler: HealthEventHandler): void {
+    this.healthHandlers.delete(handler)
+  }
+
+  /**
+   * Manual health check trigger
+   */
+  async checkHealth(): Promise<HealthCheckEvent> {
+    return new Promise((resolve) => {
+      if (!this.isConnected()) {
+        const event: HealthCheckEvent = {
+          type: 'health:check',
+          timestamp: new Date(),
+          isHealthy: false,
+          consecutiveFailures: this.healthState.consecutiveFailures,
+          error: 'Not connected'
+        }
+        this.emitHealthEvent(event)
+        resolve(event)
+        return
+      }
+
+      // Send a ping and wait for response
+      this.sendPingMessage()
+
+      // Set up a one-time listener for the result
+      const originalHandler = this.handlePongMessage.bind(this)
+      this.handlePongMessage = (data) => {
+        originalHandler(data)
+        const event: HealthCheckEvent = {
+          type: 'health:check',
+          timestamp: new Date(),
+          isHealthy: this.healthState.isHealthy,
+          latencyMs: this.healthState.averageLatencyMs,
+          consecutiveFailures: this.healthState.consecutiveFailures
+        }
+        resolve(event)
+      }
+
+      // Timeout the check
+      setTimeout(() => {
+        this.handlePongMessage = originalHandler
+        const event: HealthCheckEvent = {
+          type: 'health:check',
+          timestamp: new Date(),
+          isHealthy: false,
+          consecutiveFailures: this.healthState.consecutiveFailures + 1,
+          error: 'Health check timeout'
+        }
+        this.markUnhealthy('Health check timeout')
+        resolve(event)
+      }, this.healthConfig.healthCheckTimeoutMs)
+    })
+  }
+
+  // Private health check methods
+
+  /**
+   * Reset health state on connection
+   */
+  private resetHealthState(): void {
+    this.healthState = {
+      isHealthy: true,
+      consecutiveFailures: 0,
+      averageLatencyMs: this.healthState.averageLatencyMs, // Preserve latency history
+      lastHealthyAt: new Date(),
+    }
+
+    this.emitHealthEvent({
+      type: this.healthState.consecutiveFailures > 0 ? 'health:recovered' : 'health:healthy',
+      timestamp: new Date(),
+      isHealthy: true,
+      consecutiveFailures: 0
+    })
+  }
+
+  /**
+   * Mark connection as unhealthy
+   */
+  private markUnhealthy(error: string): void {
+    const wasHealthy = this.healthState.isHealthy
+    this.healthState.isHealthy = false
+    this.healthState.consecutiveFailures++
+    this.healthState.lastCheckAt = new Date()
+
+    const event: HealthCheckEvent = {
+      type: wasHealthy ? 'health:unhealthy' : 'health:check',
+      timestamp: new Date(),
+      isHealthy: false,
+      consecutiveFailures: this.healthState.consecutiveFailures,
+      error
+    }
+
+    this.emitHealthEvent(event)
+
+    // Trigger reconnection if threshold exceeded
+    if (this.healthState.consecutiveFailures >= this.healthConfig.healthCheckFailureThreshold) {
+      console.warn(`[APEX WS] Health check failed ${this.healthState.consecutiveFailures} times, triggering reconnection`)
+      if (this.shouldReconnect) {
+        this.reconnector.notifyDisconnected('Health check failed')
+        if (this.ws) {
+          this.ws.close(1006, 'Health check failed')
+        }
+      }
+    }
+  }
+
+  /**
+   * Emit health event to subscribers
+   */
+  private emitHealthEvent(event: HealthCheckEvent): void {
+    this.healthHandlers.forEach(handler => {
+      try {
+        handler(event)
+      } catch (error) {
+        console.error('[APEX WS] Error in health event handler:', error)
+      }
+    })
+  }
+
+  /**
+   * Send ping message for health check
+   */
+  private sendPingMessage(): void {
+    if (!this.isConnected()) return
+
+    const pingId = crypto.randomUUID()
+    const timestamp = Date.now()
+
+    this.pendingPingId = pingId
+    this.healthState.lastPingAt = new Date(timestamp)
+
+    try {
+      this.ws!.send(JSON.stringify({
+        type: 'ping',
+        id: pingId,
+        timestamp
+      }))
+
+      // Set timeout for pong response
+      this.clearPingTimeout()
+      this.pingTimeoutTimer = setTimeout(() => {
+        if (this.pendingPingId === pingId) {
+          this.markUnhealthy('Ping timeout')
+          this.pendingPingId = null
+        }
+      }, this.healthConfig.healthCheckTimeoutMs)
+
+    } catch (error) {
+      this.markUnhealthy(`Failed to send ping: ${error}`)
+    }
+  }
+
+  /**
+   * Send pong response message
+   */
+  private sendPongMessage(originalTimestamp: number): void {
+    if (!this.isConnected()) return
+
+    try {
+      this.ws!.send(JSON.stringify({
+        type: 'pong',
+        timestamp: originalTimestamp,
+        serverTimestamp: Date.now()
+      }))
+    } catch (error) {
+      console.error('[APEX WS] Failed to send pong:', error)
+    }
+  }
+
+  /**
+   * Handle pong message response
+   */
+  private handlePongMessage(data: any): void {
+    const now = Date.now()
+
+    if (this.pendingPingId && data.id === this.pendingPingId) {
+      // Calculate latency
+      const latencyMs = now - data.timestamp
+      this.updateLatencyMetrics(latencyMs)
+
+      // Clear pending ping
+      this.pendingPingId = null
+      this.clearPingTimeout()
+
+      // Update health state
+      const wasUnhealthy = !this.healthState.isHealthy
+      this.healthState.isHealthy = true
+      this.healthState.consecutiveFailures = 0
+      this.healthState.lastHealthyAt = new Date()
+      this.healthState.lastPongAt = new Date()
+      this.healthState.lastCheckAt = new Date()
+
+      this.emitHealthEvent({
+        type: wasUnhealthy ? 'health:recovered' : 'health:check',
+        timestamp: new Date(),
+        isHealthy: true,
+        latencyMs,
+        consecutiveFailures: 0
+      })
+    }
+  }
+
+  /**
+   * Update latency metrics with new measurement
+   */
+  private updateLatencyMetrics(latencyMs: number): void {
+    // Keep a rolling window of latency measurements
+    this.latencyHistory.push(latencyMs)
+    if (this.latencyHistory.length > 10) {
+      this.latencyHistory.shift() // Keep only last 10 measurements
+    }
+
+    // Calculate average latency
+    this.healthState.averageLatencyMs = Math.round(
+      this.latencyHistory.reduce((sum, lat) => sum + lat, 0) / this.latencyHistory.length
+    )
+  }
+
+  /**
+   * Start health check timer
+   */
+  private startHealthCheckTimer(): void {
+    this.stopHealthCheckTimer()
+
+    if (this.healthConfig.healthCheckEnabled && this.healthConfig.healthCheckIntervalMs > 0) {
+      this.healthCheckTimer = setInterval(() => {
+        if (this.isConnected()) {
+          this.sendPingMessage()
+        }
+      }, this.healthConfig.healthCheckIntervalMs)
+    }
+  }
+
+  /**
+   * Stop health check timer
+   */
+  private stopHealthCheckTimer(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer)
+      this.healthCheckTimer = null
+    }
+  }
+
+  /**
+   * Clear ping timeout
+   */
+  private clearPingTimeout(): void {
+    if (this.pingTimeoutTimer) {
+      clearTimeout(this.pingTimeoutTimer)
+      this.pingTimeoutTimer = null
+    }
   }
 }
 

@@ -1383,6 +1383,61 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // WebSocket for real-time streaming
   // ============================================================================
 
+  // Global WebSocket endpoint with health check support
+  app.get(
+    '/ws',
+    { websocket: true },
+    (socket, request) => {
+      app.log.info('Global WebSocket client connected')
+
+      // Send current tasks state immediately
+      orchestrator.listTasks({}).then((tasks: Task[]) => {
+        socket.send(
+          JSON.stringify({
+            type: 'task:state',
+            tasks,
+            timestamp: new Date(),
+          })
+        );
+      }).catch((error) => {
+        app.log.error('Failed to send initial tasks state:', error);
+      });
+
+      // Handle incoming messages (primarily ping/pong)
+      socket.on('message', (message) => {
+        try {
+          const data = JSON.parse(message.toString());
+
+          if (data.type === 'ping') {
+            // Respond with pong immediately
+            socket.send(JSON.stringify({
+              type: 'pong',
+              id: data.id,
+              timestamp: data.timestamp,
+              serverTimestamp: Date.now()
+            }));
+            return;
+          }
+
+          // Handle other message types if needed
+          app.log.debug('Received WebSocket message:', data);
+        } catch (error) {
+          app.log.error('Error parsing WebSocket message:', error);
+        }
+      });
+
+      // Handle disconnect
+      socket.on('close', () => {
+        app.log.info('Global WebSocket client disconnected');
+      });
+
+      // Handle errors
+      socket.on('error', (error) => {
+        app.log.error('Global WebSocket error:', error.message);
+      });
+    }
+  );
+
   app.get<{
     Params: { taskId: string };
     Querystring: { events?: string; }; // Comma-separated list of event types to subscribe to
