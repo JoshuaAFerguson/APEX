@@ -21,6 +21,9 @@ import {
   ToolAlias,
   ToolAliasSchema,
   VisualRegressionConfig,
+  MCPConfig,
+  MCPConfigSchema,
+  MCPServerConfig,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -420,6 +423,33 @@ export async function listScripts(projectPath: string): Promise<string[]> {
 }
 
 /**
+ * Load MCP server configurations from config
+ */
+export function getMCPServers(config: ApexConfig): Record<string, MCPServerConfig> {
+  return config.mcp?.servers || {};
+}
+
+/**
+ * Get MCP configuration with defaults applied
+ */
+export function getMCPConfig(config: ApexConfig): MCPConfig {
+  return {
+    enabled: config.mcp?.enabled ?? true,
+    servers: config.mcp?.servers || {},
+    marketplace: config.mcp?.marketplace,
+    connection: config.mcp?.connection,
+    tools: config.mcp?.tools,
+  };
+}
+
+/**
+ * Check if MCP is enabled in the configuration
+ */
+export function isMCPEnabled(config: ApexConfig): boolean {
+  return config.mcp?.enabled ?? true;
+}
+
+/**
  * Initialize APEX in a project directory
  */
 export async function initializeApex(
@@ -583,6 +613,17 @@ export async function initializeApex(
       watchMode: false,
       maxIterations: 5,
       regressionGuard: true,
+    },
+    mcp: {
+      enabled: true,
+      servers: {},
+      connection: {
+        maxRetries: 3,
+        retryDelayMs: 1000,
+        connectionTimeoutMs: 10000,
+        requestTimeoutMs: 30000,
+        autoReconnect: true,
+      },
     },
   });
 
