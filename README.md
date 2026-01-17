@@ -157,6 +157,7 @@ apex run "Add user authentication with JWT tokens"
 | [Service Management](docs/service-management.md) | Install and manage as system service |
 | [Agents](docs/agents.md) | Built-in agents and customization |
 | [Workflows](docs/workflows.md) | Defining development workflows |
+| [TDD Workflows](docs/tdd-workflows.md) | Test-Driven Development with AI assistance |
 | [API Reference](docs/api-reference.md) | REST API documentation |
 
 ## Architecture
