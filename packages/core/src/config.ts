@@ -587,6 +587,84 @@ export async function initializeApex(
   });
 
   await saveConfig(projectPath, defaultConfig);
+
+  // Copy template files if they exist
+  await copyTemplateFiles(projectPath);
+}
+
+/**
+ * Copy template files to project .apex directory
+ */
+async function copyTemplateFiles(projectPath: string): Promise<void> {
+  const apexDir = normalizePath(path.join(projectPath, APEX_DIR));
+
+  // Find the template directory - it could be in node_modules or the package directory
+  const possibleTemplatePaths = [
+    path.resolve(__dirname, '..', 'templates'), // Local development
+    path.resolve(process.cwd(), 'node_modules', '@apexcli', 'core', 'templates'), // Installed package
+    path.resolve(__dirname, 'templates'), // If built/distributed differently
+  ];
+
+  let templateDir: string | null = null;
+
+  for (const templatePath of possibleTemplatePaths) {
+    try {
+      await fs.access(templatePath);
+      templateDir = templatePath;
+      break;
+    } catch {
+      // Directory doesn't exist, try next one
+    }
+  }
+
+  if (!templateDir) {
+    console.warn('Warning: Template directory not found. Skipping template file copying.');
+    return;
+  }
+
+  // Copy agent templates
+  try {
+    const agentTemplatesDir = normalizePath(path.join(templateDir, 'agents'));
+    const targetAgentsDir = normalizePath(path.join(apexDir, AGENTS_DIR));
+    await copyDirectory(agentTemplatesDir, targetAgentsDir);
+  } catch (error) {
+    console.warn('Warning: Could not copy agent templates:', (error as Error).message);
+  }
+
+  // Copy workflow templates
+  try {
+    const workflowTemplatesDir = normalizePath(path.join(templateDir, 'workflows'));
+    const targetWorkflowsDir = normalizePath(path.join(apexDir, WORKFLOWS_DIR));
+    await copyDirectory(workflowTemplatesDir, targetWorkflowsDir);
+  } catch (error) {
+    console.warn('Warning: Could not copy workflow templates:', (error as Error).message);
+  }
+}
+
+/**
+ * Recursively copy a directory
+ */
+async function copyDirectory(source: string, destination: string): Promise<void> {
+  try {
+    await fs.access(source);
+  } catch {
+    return; // Source doesn't exist
+  }
+
+  await fs.mkdir(destination, { recursive: true });
+
+  const entries = await fs.readdir(source, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = normalizePath(path.join(source, entry.name));
+    const destPath = normalizePath(path.join(destination, entry.name));
+
+    if (entry.isDirectory()) {
+      await copyDirectory(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
+  }
 }
 
 /**

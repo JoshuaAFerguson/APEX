@@ -32,6 +32,7 @@
   },
   "files": [
     "dist",
+    "templates",
     "src/test-utils.ts",
     "src/test-utils.d.ts",
     "src/test-utils.js",
