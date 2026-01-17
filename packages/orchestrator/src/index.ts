@@ -82,6 +82,18 @@ import {
   AutoFixStageConfig,
   AutoFixEvent,
   VisualComparisonEventData,
+  TestReport,
+  TestReportSchema,
+  TestResult,
+  TestResultSchema,
+  TestArtifact,
+  TestArtifactSchema,
+  TestSummary,
+  TestSummarySchema,
+  VisualRegressionSummary,
+  VisualRegressionSummarySchema,
+  TestVisualComparison,
+  TestVisualComparisonSchema,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -126,6 +138,7 @@ import { browserTool } from './tools';
 import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
 import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
 import type { ImportFixResult, MissingImportAnalysis } from './import-auto-fixer/types';
+import { TestReportGenerator, type TestReportGeneratorOptions, type TestStartInfo, type TestCompleteInfo } from './test-report-generator';
 
 const execAsync = promisify(exec);
 
@@ -10850,6 +10863,14 @@ export { PermissionStore } from './permission-store';
 export { MCPServerStore } from './mcp-store';
 export { MCPInstaller } from './mcp-installer';
 export { MCPConnectionManager, type MCPConnectionManagerOptions, type MCPConnectionManagerEvents } from './mcp/connection-manager';
+export {
+  MCPToolRegistry,
+  type MCPToolRegistryEntry,
+  type MCPToolRegistryStats,
+  type MCPToolRegistryEvents,
+  type MCPToolRegistryOptions,
+  type MCPConnectionManager as MCPConnectionManagerInterface
+} from './mcp-tool-registry';
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
 export {
@@ -11130,6 +11151,14 @@ export {
   type SuggestedFix,
   type FixResult,
 } from './tdd-executor';
+
+// Test Report Generator
+export {
+  TestReportGenerator,
+  type TestReportGeneratorOptions,
+  type TestStartInfo,
+  type TestCompleteInfo,
+} from './test-report-generator';
 
 // MCP (Model Context Protocol) Module
 export {

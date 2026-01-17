@@ -8,7 +8,8 @@ Browser automation capabilities for APEX using Playwright. This package provides
 - **Context Isolation**: Create isolated browser contexts for different automation tasks
 - **Resource Monitoring**: Track memory usage and automatically cleanup idle instances
 - **Console & Error Capture**: Real-time capture of browser console messages and JavaScript errors
-- **Screenshot Support**: Capture full-page or element-specific screenshots
+- **Screenshot Support**: Capture full-page or element-specific screenshots with format and quality control
+- **Screenshot Utilities**: Base utility functions for direct page/context screenshot capture
 - **Element Interaction**: Click, type, scroll, and interact with page elements
 - **Navigation Control**: Advanced navigation with wait strategies and timeout controls
 - **Event Streaming**: Real-time events for browser and context lifecycle
@@ -45,6 +46,60 @@ const screenshot = await session.screenshot({ fullPage: true });
 await session.close();
 await manager.shutdown();
 ```
+
+## Screenshot Utilities
+
+For direct screenshot capture from Playwright Page or BrowserContext objects:
+
+```typescript
+import { captureScreenshot, capturePNG, captureJPEG } from '@apexcli/browser';
+import { chromium } from 'playwright';
+
+const browser = await chromium.launch();
+const page = await browser.newPage();
+await page.goto('https://example.com');
+
+// Base screenshot utility with format and quality support
+const pngResult = await captureScreenshot(page, {
+  format: 'png',
+  fullPage: true
+});
+
+const jpegResult = await captureScreenshot(page, {
+  format: 'jpeg',
+  quality: 80,
+  path: './screenshot.jpg'
+});
+
+// Convenience functions
+const pngScreenshot = await capturePNG(page, { fullPage: true });
+const jpegScreenshot = await captureJPEG(page, 90); // 90% quality
+
+// Works with BrowserContext too
+const contextResult = await captureScreenshot(context, {
+  format: 'png',
+  omitBackground: true
+});
+
+if (jpegResult.success) {
+  console.log(`Screenshot captured: ${jpegResult.data!.length} bytes`);
+  console.log(`Capture took: ${jpegResult.duration}ms`);
+}
+```
+
+### Screenshot Utility Functions
+
+- **`captureScreenshot(target, options)`**: Base utility accepting Page/BrowserContext
+  - Format: PNG (default) or JPEG
+  - Quality: 1-100 for JPEG (default 80)
+  - Full page or viewport capture
+  - Optional file saving
+  - Returns Buffer with metadata
+
+- **`capturePNG(target, options)`**: Convenience function for PNG screenshots
+- **`captureJPEG(target, quality, options)`**: Convenience function for JPEG screenshots
+- **`captureFullPageScreenshot(target, options)`**: Full scrollable page capture
+- **`captureViewportScreenshot(target, options)`**: Viewport-only capture
 
 ## Core Classes
 

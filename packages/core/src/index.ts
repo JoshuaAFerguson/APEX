@@ -25,6 +25,9 @@ export * from './image-builder';
 // Dependency Detection
 export * from './dependency-detector';
 
+// Environment Detection
+export * from './environment-detector';
+
 // Package Manager Utilities
 export * from './package-manager-utils';
 

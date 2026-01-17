@@ -8236,3 +8236,158 @@ export const ScreenshotResponseSchema = z.object({
   error: z.string().optional(),
 });
 export type ScreenshotResponse = z.infer<typeof ScreenshotResponseSchema>;
+
+// ----------------------------------------------------------------------------
+// Test Report Types
+// ----------------------------------------------------------------------------
+
+/**
+ * Visual comparison information for test reports
+ */
+export const TestVisualComparisonSchema = z.object({
+  /** Path to baseline image */
+  baseline: z.string().optional(),
+  /** Path to actual image */
+  actual: z.string().optional(),
+  /** Percentage of pixels that differ (0-100) */
+  diffPercentage: z.number().min(0).max(100),
+  /** Threshold percentage for acceptable difference (0-100) */
+  threshold: z.number().min(0).max(100),
+  /** Whether the comparison passed */
+  passed: z.boolean(),
+  /** Path to diff image if generated */
+  diffImage: z.string().optional(),
+  /** Timestamp when comparison occurred */
+  timestamp: z.date().optional(),
+  /** URL of the page being compared (if applicable) */
+  pageUrl: z.string().optional(),
+  /** CSS selector if element-specific comparison */
+  selector: z.string().optional(),
+});
+export type TestVisualComparison = z.infer<typeof TestVisualComparisonSchema>;
+
+/**
+ * Test artifact information
+ */
+export const TestArtifactSchema = z.object({
+  /** Type of artifact */
+  type: z.enum(['screenshot', 'diff', 'log', 'video', 'trace']),
+  /** File path to the artifact */
+  path: z.string().min(1),
+  /** Test ID this artifact belongs to */
+  testId: z.string().min(1),
+  /** Human-readable description of the artifact */
+  description: z.string().min(1),
+  /** Size of the artifact file in bytes */
+  size: z.number().min(0).optional(),
+  /** MIME type of the artifact */
+  mimeType: z.string().optional(),
+});
+export type TestArtifact = z.infer<typeof TestArtifactSchema>;
+
+/**
+ * Individual test result information
+ */
+export const TestResultSchema = z.object({
+  /** Unique identifier for the test */
+  testId: z.string().min(1),
+  /** Name or title of the test */
+  name: z.string().min(1),
+  /** Test category */
+  category: z.enum(['functional', 'visual', 'integration', 'unit', 'e2e', 'performance']),
+  /** Test execution status */
+  status: z.enum(['passed', 'failed', 'skipped', 'pending']),
+  /** Execution time in milliseconds */
+  executionTime: z.number().min(0),
+  /** Visual comparison data if this is a visual test */
+  visualComparison: TestVisualComparisonSchema.optional(),
+  /** Error details if the test failed */
+  errorDetails: z.string().optional(),
+  /** Stack trace if the test failed */
+  stackTrace: z.string().optional(),
+  /** Tags associated with the test */
+  tags: z.array(z.string()).optional(),
+});
+export type TestResult = z.infer<typeof TestResultSchema>;
+
+/**
+ * Visual regression summary statistics
+ */
+export const VisualRegressionSummarySchema = z.object({
+  /** Total number of visual comparisons performed */
+  totalComparisons: z.number().min(0),
+  /** Number of comparisons that passed */
+  passedComparisons: z.number().min(0),
+  /** Number of comparisons that failed */
+  failedComparisons: z.number().min(0),
+  /** Average difference percentage across all comparisons */
+  averageDiffPercentage: z.number().min(0).max(100),
+  /** Number of comparisons that exceeded threshold */
+  thresholdViolations: z.number().min(0),
+  /** Number of diff images generated */
+  diffImageCount: z.number().min(0),
+  /** Most significant regression (highest diff percentage) */
+  maxDiffPercentage: z.number().min(0).max(100).optional(),
+  /** Baseline coverage percentage */
+  baselineCoverage: z.number().min(0).max(100).optional(),
+});
+export type VisualRegressionSummary = z.infer<typeof VisualRegressionSummarySchema>;
+
+/**
+ * Test execution summary statistics
+ */
+export const TestSummarySchema = z.object({
+  /** Name of the test suite */
+  testSuite: z.string().min(1),
+  /** Total number of tests executed */
+  totalTests: z.number().min(0),
+  /** Number of tests that passed */
+  passedTests: z.number().min(0),
+  /** Number of tests that failed */
+  failedTests: z.number().min(0),
+  /** Number of tests that were skipped */
+  skippedTests: z.number().min(0),
+  /** Number of tests that are pending */
+  pendingTests: z.number().min(0).optional(),
+  /** Pass rate as a percentage (0-100) */
+  passRate: z.number().min(0).max(100),
+  /** Total execution time in milliseconds */
+  executionTime: z.number().min(0),
+  /** Timestamp when the test execution started */
+  timestamp: z.date(),
+  /** Environment where tests were executed */
+  environment: z.string().optional(),
+  /** Version of the application under test */
+  version: z.string().optional(),
+});
+export type TestSummary = z.infer<typeof TestSummarySchema>;
+
+/**
+ * Comprehensive test execution report
+ * Includes summary statistics, visual regression data, detailed test results, and artifacts
+ */
+export const TestReportSchema = z.object({
+  /** Unique identifier for this test report */
+  reportId: z.string().min(1),
+  /** Task ID associated with this test execution */
+  taskId: z.string().min(1).optional(),
+  /** Name of the agent that generated this report */
+  agentName: z.string().min(1).optional(),
+  /** Test execution summary */
+  summary: TestSummarySchema,
+  /** Visual regression testing summary (if any visual tests were run) */
+  visualRegression: VisualRegressionSummarySchema.optional(),
+  /** Array of visual comparison results */
+  visualComparisons: z.array(TestVisualComparisonSchema).optional(),
+  /** Detailed results for each test */
+  testResults: z.array(TestResultSchema),
+  /** Test artifacts (screenshots, diff images, logs, etc.) */
+  artifacts: z.array(TestArtifactSchema),
+  /** Additional metadata about the test execution */
+  metadata: z.record(z.string(), z.any()).optional(),
+  /** Timestamp when the report was generated */
+  generatedAt: z.date(),
+  /** Version of the test report schema */
+  schemaVersion: z.string().optional().default('1.0.0'),
+});
+export type TestReport = z.infer<typeof TestReportSchema>;

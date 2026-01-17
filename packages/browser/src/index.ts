@@ -70,6 +70,18 @@ export {
   USER_AGENTS,
 } from './constants.js';
 
+// Export screenshot utilities
+export {
+  captureScreenshot,
+  capturePNG,
+  captureJPEG,
+  captureFullPageScreenshot,
+  captureViewportScreenshot,
+  type ScreenshotFormat,
+  type ScreenshotCaptureOptions,
+  type ScreenshotResult,
+} from './screenshot-utility.js';
+
 // Export Playwright browser launcher functions for convenience
 export { chromium, firefox, webkit } from 'playwright';
 
@@ -134,6 +146,11 @@ export default {
   createBrowserManager,
   createBrowserSession,
   launchBrowser,
+  captureScreenshot,
+  capturePNG,
+  captureJPEG,
+  captureFullPageScreenshot,
+  captureViewportScreenshot,
   chromium,
   firefox,
   webkit,
