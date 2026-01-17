@@ -133,6 +133,8 @@ import { MCPServerManager } from './mcp/server-manager';
 import { MCPInstaller } from './mcp-installer';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
+import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
+import { type ClaudeSDKTool } from './schema-translator';
 import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
 import { browserTool } from './tools';
 import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
@@ -1256,6 +1258,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private mcpInstaller?: MCPInstaller;
   private mcpMarketplaceService?: MCPMarketplaceService;
   private mcpConnectionManager?: MCPConnectionManager;
+  private mcpToolRegistry?: MCPToolRegistry;
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
   private projectPath: string;
@@ -1326,6 +1329,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Set up MCP event forwarding
     this.setupMCPEventForwarding();
+
+    // Initialize MCP tool registry for tool discovery
+    if (this.mcpConnectionManager) {
+      this.mcpToolRegistry = new MCPToolRegistry({
+        operationTimeoutMs: 30000,
+        autoRefresh: false, // We'll manually refresh during execution
+      });
+      this.mcpToolRegistry.setConnectionManager(this.mcpConnectionManager);
+
+      // Connect to enabled servers and discover tools
+      await this.discoverAndRegisterMcpTools();
+    }
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
@@ -1490,6 +1505,38 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.initializeTDDExecutor();
 
     this.initialized = true;
+  }
+
+  /**
+   * Discover and register MCP tools from all enabled servers
+   * Called during initialization and can be called to refresh tools
+   */
+  private async discoverAndRegisterMcpTools(): Promise<void> {
+    if (!this.mcpConnectionManager || !this.mcpToolRegistry) {
+      return;
+    }
+
+    // Discover available servers from config
+    const servers = this.mcpConnectionManager.discoverServers();
+
+    // Connect to each server
+    for (const serverConfig of servers) {
+      const serverId = serverConfig.name ?? Object.keys(this.config.mcp?.servers ?? {})
+        .find(key => this.config.mcp?.servers?.[key] === serverConfig);
+
+      if (!serverId) continue;
+
+      try {
+        const connection = await this.mcpConnectionManager.connect(serverId);
+        await this.mcpToolRegistry.addConnection(connection);
+      } catch (error) {
+        // Log error but continue with other servers
+        console.warn(`Failed to connect to MCP server '${serverId}':`, error);
+      }
+    }
+
+    // Refresh tools from all connected servers
+    await this.mcpToolRegistry.refreshAllTools();
   }
 
   /**
@@ -3472,6 +3519,58 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         startedAt,
         completedAt: new Date(),
         error: 'Task was blocked by permission restrictions and could not complete its work',
+      };
+    }
+
+    // Check for test failures in the agent's output
+    const testFailurePatterns = [
+      'tests? failed',
+      'test.*failure',
+      'failing tests?',
+      'npm test.*failed',
+      'npm test.*error',
+      'vitest.*failed',
+      'jest.*failed',
+      '\\d+ failed',
+      'exit code [1-9]',
+      'exited with code [1-9]',
+      'error: tests? did not pass',
+      'test suite failed',
+      'some tests failed',
+      'build failed',
+      'compilation error',
+      'type error',
+      'cannot find module',
+    ];
+
+    const isTestFailure = testFailurePatterns.some(pattern =>
+      new RegExp(pattern, 'i').test(fullOutputLower)
+    );
+
+    // Also check for explicit "Status: failed" in structured output
+    const hasExplicitFailure = /\*\*status\*\*:\s*failed/i.test(fullOutputLower) ||
+                               /status:\s*failed/i.test(fullOutputLower);
+
+    if (isTestFailure || hasExplicitFailure) {
+      // Tests or build failed - mark stage as failed
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Stage "${stage.name}" failed: Tests or build did not pass`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'failed',
+        outputs,
+        artifacts,
+        summary: `Failed: Tests or build did not pass. ${summary}`,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        error: 'Tests or build did not pass',
       };
     }
 
@@ -8716,6 +8815,43 @@ Parent: ${parentTask.description}`;
    */
   public getMCPConnection(serverId: string): MCPConnection | undefined {
     return this.mcpConnectionManager?.getConnection(serverId);
+  }
+
+  /**
+   * Get available MCP tools translated to Claude Agent SDK format
+   * for use in agent execution
+   *
+   * @returns Array of Claude SDK compatible tools
+   */
+  public getMcpToolsForAgent(): ClaudeSDKTool[] {
+    if (!this.mcpToolRegistry) {
+      return [];
+    }
+
+    return this.mcpToolRegistry.getAvailableTools()
+      .map(entry => entry.claudeTool);
+  }
+
+  /**
+   * Get statistics about discovered MCP tools
+   *
+   * @returns Registry statistics or undefined if registry not initialized
+   */
+  public getMcpToolStats(): MCPToolRegistryStats | undefined {
+    return this.mcpToolRegistry?.getStats();
+  }
+
+  /**
+   * Refresh MCP tools from all connected servers
+   *
+   * @returns Promise that resolves when refresh is complete
+   */
+  public async refreshMcpTools(): Promise<void> {
+    if (!this.mcpToolRegistry) {
+      return;
+    }
+
+    await this.mcpToolRegistry.refreshAllTools();
   }
 
   /**
