@@ -2392,6 +2392,41 @@ export const MCPMarketplaceSourceSchema = z.object({
 });
 export type MCPMarketplaceSource = z.infer<typeof MCPMarketplaceSourceSchema>;
 
+/**
+ * MCP Tools Configuration Schema (v0.5.0)
+ * Configuration for managing MCP tool discovery, caching, and access control.
+ * Controls how tools from MCP servers are registered and made available to agents.
+ */
+export const MCPToolsConfigSchema = z.object({
+  /** Whether to automatically discover tools from connected MCP servers */
+  autoDiscovery: z.boolean().optional().default(true),
+
+  /** Whether to cache tool metadata for faster subsequent access */
+  enableCaching: z.boolean().optional().default(true),
+
+  /** Cache TTL in seconds for tool metadata (default: 300 = 5 minutes) */
+  cacheTtlSeconds: z.number().min(0).optional().default(300),
+
+  /** Maximum number of concurrent tool invocations across all MCP servers */
+  maxConcurrentInvocations: z.number().min(1).optional().default(10),
+
+  /** Timeout in milliseconds for tool invocations (default: 30000 = 30 seconds) */
+  invocationTimeoutMs: z.number().min(1000).optional().default(30000),
+
+  /** Whether to validate tool schemas before invocation */
+  validateSchemas: z.boolean().optional().default(true),
+
+  /** Whitelist of tool names to allow (if specified, only these tools are accessible) */
+  allowedTools: z.array(z.string()).optional(),
+
+  /** Blacklist of tool names to deny (takes precedence over allowedTools) */
+  deniedTools: z.array(z.string()).optional().default([]),
+
+  /** Whether to log tool invocations for debugging */
+  enableLogging: z.boolean().optional().default(false),
+});
+export type MCPToolsConfig = z.infer<typeof MCPToolsConfigSchema>;
+
 export const MCPConfigSchema = z.object({
   /** Whether MCP is enabled globally */
   enabled: z.boolean().optional().default(true),
@@ -2401,6 +2436,8 @@ export const MCPConfigSchema = z.object({
   marketplace: MCPMarketplaceSourceSchema.optional(),
   /** Global connection configuration applied to all MCP servers unless overridden */
   connection: MCPConnectionConfigSchema.optional(),
+  /** Tools configuration for MCP tool management */
+  tools: MCPToolsConfigSchema.optional(),
 });
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
