@@ -577,6 +577,13 @@ export async function initializeApex(
       includeBuiltInPatterns: true,
       excludePaths: [],
     },
+    tdd: {
+      enabled: false,
+      testCommand: 'npm test',
+      watchMode: false,
+      maxIterations: 5,
+      regressionGuard: true,
+    },
   });
 
   await saveConfig(projectPath, defaultConfig);
