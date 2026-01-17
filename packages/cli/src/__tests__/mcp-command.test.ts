@@ -20,12 +20,15 @@ vi.mock('chalk', () => ({
   },
 }));
 
-// Mock the loadMCPTemplates function
+// Mock the MCP and config functions
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');
   return {
     ...actual,
     loadMCPTemplates: vi.fn(),
+    getMCPTemplate: vi.fn(),
+    loadConfig: vi.fn(),
+    saveConfig: vi.fn(),
   };
 });
 
@@ -35,6 +38,9 @@ const mockConsoleLog = vi.spyOn(console, 'log');
 describe('MCP Command', () => {
   let mockContext: CliContext;
   let mockLoadMCPTemplates: any;
+  let mockGetMCPTemplate: any;
+  let mockLoadConfig: any;
+  let mockSaveConfig: any;
 
   const sampleTemplates: Record<string, MCPTemplate> = {
     filesystem: {
@@ -52,6 +58,7 @@ describe('MCP Command', () => {
       capabilities: ['filesystem', 'read', 'write'],
       verified: true,
       defaultEnabled: true,
+      documentationUrl: 'https://modelcontextprotocol.io/servers/filesystem',
     },
     github: {
       id: 'github',
@@ -124,12 +131,18 @@ describe('MCP Command', () => {
       },
     };
 
-    // Get the mocked function
-    const { loadMCPTemplates } = await import('@apexcli/core');
+    // Get the mocked functions
+    const { loadMCPTemplates, getMCPTemplate, loadConfig, saveConfig } = await import('@apexcli/core');
     mockLoadMCPTemplates = vi.mocked(loadMCPTemplates);
+    mockGetMCPTemplate = vi.mocked(getMCPTemplate);
+    mockLoadConfig = vi.mocked(loadConfig);
+    mockSaveConfig = vi.mocked(saveConfig);
 
     mockConsoleLog.mockClear();
     mockLoadMCPTemplates.mockClear();
+    mockGetMCPTemplate.mockClear();
+    mockLoadConfig.mockClear();
+    mockSaveConfig.mockClear();
   });
 
   afterEach(() => {
@@ -146,7 +159,7 @@ describe('MCP Command', () => {
       expect(mcpCommand?.name).toBe('mcp');
       expect(mcpCommand?.aliases).toEqual([]);
       expect(mcpCommand?.description).toBe('Manage MCP (Model Context Protocol) server templates');
-      expect(mcpCommand?.usage).toBe('/mcp list');
+      expect(mcpCommand?.usage).toBe('/mcp list | /mcp add <server-name>');
     });
 
     it('should have proper handler function signature', async () => {
@@ -312,7 +325,7 @@ describe('MCP Command', () => {
         expect.stringContaining('Unknown subcommand: unknown')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('Usage: /mcp list')
+        expect.stringContaining('Usage: /mcp list | /mcp add <server-name>')
       );
     });
 
@@ -585,6 +598,174 @@ describe('MCP Command', () => {
 
       // Should be positioned logically among other commands
       expect(mcpIndex).toBeLessThan(commands.length);
+    });
+  });
+
+  describe('MCP add command functionality', () => {
+    beforeEach(() => {
+      // Setup default config for add tests
+      mockLoadConfig.mockResolvedValue({
+        ...mockContext.config,
+        mcp: { servers: {} }
+      });
+      mockSaveConfig.mockResolvedValue(undefined);
+    });
+
+    it('should successfully add a valid MCP server', async () => {
+      const template = sampleTemplates.filesystem;
+      mockGetMCPTemplate.mockResolvedValue(template);
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'filesystem']);
+
+      expect(mockGetMCPTemplate).toHaveBeenCalledWith('filesystem');
+      expect(mockLoadConfig).toHaveBeenCalledWith(mockContext.cwd);
+      expect(mockSaveConfig).toHaveBeenCalledWith(mockContext.cwd, expect.objectContaining({
+        mcp: {
+          servers: {
+            filesystem: expect.objectContaining({
+              name: 'Filesystem Server',
+              type: 'stdio',
+              command: 'npx',
+              autoStart: true,
+            })
+          }
+        }
+      }));
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('✅ Successfully added MCP server \'Filesystem Server\' (filesystem)')
+      );
+    });
+
+    it('should handle missing server name', async () => {
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Error: Server name is required')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Usage: /mcp add <server-name>')
+      );
+    });
+
+    it('should handle invalid template', async () => {
+      mockGetMCPTemplate.mockResolvedValue(null);
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'invalid-template']);
+
+      expect(mockGetMCPTemplate).toHaveBeenCalledWith('invalid-template');
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Error: Template \'invalid-template\' not found')
+      );
+    });
+
+    it('should handle duplicate server', async () => {
+      const template = sampleTemplates.filesystem;
+      mockGetMCPTemplate.mockResolvedValue(template);
+      mockLoadConfig.mockResolvedValue({
+        ...mockContext.config,
+        mcp: {
+          servers: {
+            filesystem: { name: 'Existing Server' }
+          }
+        }
+      });
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'filesystem']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('⚠️  Server \'filesystem\' already exists in configuration')
+      );
+      expect(mockSaveConfig).not.toHaveBeenCalled();
+    });
+
+    it('should properly handle environment variables', async () => {
+      const template = sampleTemplates.github;
+      mockGetMCPTemplate.mockResolvedValue(template);
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'github']);
+
+      expect(mockSaveConfig).toHaveBeenCalledWith(mockContext.cwd, expect.objectContaining({
+        mcp: {
+          servers: {
+            github: expect.objectContaining({
+              name: 'GitHub Server',
+              envVars: expect.arrayContaining([
+                expect.objectContaining({
+                  name: 'GITHUB_TOKEN',
+                  description: 'GitHub personal access token',
+                  required: true,
+                  value: undefined, // Should be undefined for sensitive vars
+                })
+              ])
+            })
+          }
+        }
+      }));
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('📝 Configuration Notes:')
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('GITHUB_TOKEN')
+      );
+    });
+
+    it('should handle errors during template loading', async () => {
+      mockGetMCPTemplate.mockRejectedValue(new Error('Template file not readable'));
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'filesystem']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Error adding MCP server: Template file not readable')
+      );
+    });
+
+    it('should handle errors during config saving', async () => {
+      const template = sampleTemplates.filesystem;
+      mockGetMCPTemplate.mockResolvedValue(template);
+      mockSaveConfig.mockRejectedValue(new Error('Failed to write config file'));
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'filesystem']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Error adding MCP server: Failed to write config file')
+      );
+    });
+
+    it('should include documentation URL when available', async () => {
+      const template = sampleTemplates.filesystem;
+      mockGetMCPTemplate.mockResolvedValue(template);
+
+      const { commands } = await import('../index.js');
+      const mcpCommand = commands.find(cmd => cmd.name === 'mcp');
+
+      await mcpCommand?.handler(mockContext, ['add', 'filesystem']);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('Documentation: https://modelcontextprotocol.io/servers/filesystem')
+      );
     });
   });
 });

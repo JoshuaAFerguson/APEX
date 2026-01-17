@@ -23,6 +23,8 @@ import {
   type BrowserToolConfig,
   type ApprovalRequiredEventData,
   loadMCPTemplates,
+  getMCPTemplate,
+  type MCPServerConfig,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -2634,9 +2636,9 @@ export const commands: Command[] = [
     name: 'mcp',
     aliases: [],
     description: 'Manage MCP (Model Context Protocol) server templates',
-    usage: '/mcp list',
+    usage: '/mcp list | /mcp add <server-name>',
     handler: async (ctx, args) => {
-      const [subcommand] = args;
+      const [subcommand, serverName] = args;
 
       if (!subcommand || subcommand === 'list') {
         // Handle 'mcp list' subcommand
@@ -2666,9 +2668,105 @@ export const commands: Command[] = [
         } catch (error) {
           console.log(chalk.red(`❌ Error loading MCP templates: ${(error as Error).message}`));
         }
+      } else if (subcommand === 'add') {
+        // Handle 'mcp add <server-name>' subcommand
+        if (!serverName) {
+          console.log(chalk.red('❌ Error: Server name is required'));
+          console.log(chalk.gray('Usage: /mcp add <server-name>'));
+          console.log(chalk.gray('Available servers: /mcp list'));
+          return;
+        }
+
+        try {
+          // Load the template
+          const template = await getMCPTemplate(serverName);
+
+          if (!template) {
+            console.log(chalk.red(`❌ Error: Template '${serverName}' not found`));
+            console.log(chalk.gray('Run "/mcp list" to see available templates'));
+            return;
+          }
+
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          // Initialize MCP config if it doesn't exist
+          config.mcp = config.mcp || { servers: {} };
+
+          // Check if server already exists
+          if (config.mcp.servers[template.id]) {
+            console.log(chalk.yellow(`⚠️  Server '${template.id}' already exists in configuration`));
+            console.log(chalk.gray('Edit .apex/config.yaml to modify or remove existing servers'));
+            return;
+          }
+
+          // Create server config from template
+          const serverConfig: MCPServerConfig = {
+            name: template.name,
+            ...template.config, // Spread template config (type, command, args, etc.)
+          };
+
+          // Add environment variables if defined in template
+          if (template.envVars && template.envVars.length > 0) {
+            serverConfig.envVars = template.envVars.map(envVar => ({
+              ...envVar,
+              // Only include non-sensitive default values
+              value: !envVar.sensitive ? envVar.defaultValue : undefined,
+            }));
+          }
+
+          // Add capabilities if defined in template
+          if (template.capabilities && template.capabilities.length > 0) {
+            serverConfig.capabilities = template.capabilities;
+          }
+
+          // Set autoStart based on template default
+          if (template.defaultEnabled !== undefined) {
+            serverConfig.autoStart = template.defaultEnabled;
+          }
+
+          // Add the server to config
+          config.mcp.servers[template.id] = serverConfig;
+
+          // Save the updated config
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green(`✅ Successfully added MCP server '${template.name}' (${template.id})`));
+
+          // Show helpful information about environment variables
+          if (template.envVars && template.envVars.some(env => env.required || env.sensitive)) {
+            console.log(chalk.cyan('\n📝 Configuration Notes:'));
+
+            const requiredVars = template.envVars.filter(env => env.required);
+            const sensitiveVars = template.envVars.filter(env => env.sensitive);
+
+            if (requiredVars.length > 0) {
+              console.log(chalk.yellow('Required environment variables:'));
+              for (const envVar of requiredVars) {
+                console.log(`  • ${envVar.name}: ${envVar.description || 'No description'}`);
+              }
+            }
+
+            if (sensitiveVars.length > 0) {
+              console.log(chalk.yellow('Sensitive environment variables (configure separately):'));
+              for (const envVar of sensitiveVars) {
+                console.log(`  • ${envVar.name}: ${envVar.description || 'No description'}`);
+              }
+            }
+
+            console.log(chalk.gray('\nEdit .apex/config.yaml to configure environment variables'));
+          }
+
+          if (template.documentationUrl) {
+            console.log(chalk.gray(`\nDocumentation: ${template.documentationUrl}`));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error adding MCP server: ${(error as Error).message}`));
+        }
       } else {
         console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
-        console.log(chalk.gray('Usage: /mcp list'));
+        console.log(chalk.gray('Usage: /mcp list | /mcp add <server-name>'));
       }
     },
   },
