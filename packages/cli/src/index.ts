@@ -22,6 +22,7 @@ import {
   resolveExecutable,
   type BrowserToolConfig,
   type ApprovalRequiredEventData,
+  loadMCPTemplates,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -2625,6 +2626,49 @@ export const commands: Command[] = [
         console.log(chalk.gray('   Task is now visible in /status output.'));
       } catch (error) {
         console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
+      }
+    },
+  },
+
+  {
+    name: 'mcp',
+    aliases: [],
+    description: 'Manage MCP (Model Context Protocol) server templates',
+    usage: '/mcp list',
+    handler: async (ctx, args) => {
+      const [subcommand] = args;
+
+      if (!subcommand || subcommand === 'list') {
+        // Handle 'mcp list' subcommand
+        try {
+          console.log(chalk.cyan('\n📦 Available MCP Server Templates:\n'));
+
+          const templates = await loadMCPTemplates();
+
+          if (Object.keys(templates).length === 0) {
+            console.log(chalk.gray('No MCP templates found.'));
+            return;
+          }
+
+          // Calculate max name length for formatting
+          const maxNameLength = Math.max(...Object.values(templates).map(t => t.name.length));
+
+          // Sort templates by name for consistent output
+          const sortedTemplates = Object.values(templates).sort((a, b) => a.name.localeCompare(b.name));
+
+          for (const template of sortedTemplates) {
+            const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+            console.log(`  ${chalk.yellow(template.name)}${padding}${chalk.gray(template.description)}`);
+          }
+
+          console.log(chalk.gray(`\nTotal: ${Object.keys(templates).length} templates available\n`));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error loading MCP templates: ${(error as Error).message}`));
+        }
+      } else {
+        console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
+        console.log(chalk.gray('Usage: /mcp list'));
       }
     },
   },
