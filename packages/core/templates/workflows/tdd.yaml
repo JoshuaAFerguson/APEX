@@ -1,51 +1,51 @@
 name: tdd
-description: Test-Driven Development workflow following Red-Green-Refactor cycle
+description: Test-Driven Development workflow with planning, red-green-refactor stages
 trigger:
   - manual
   - apex:tdd
   - apex:test-driven
 
 stages:
-  - name: write-test
+  - name: planning
+    agent: planner
+    description: Plan the TDD implementation approach and identify test scenarios
+    outputs:
+      - implementation_plan
+      - test_scenarios
+      - acceptance_criteria
+
+  - name: test-first
     agent: tdd-tester
-    description: Write failing test cases (Red phase)
+    description: Write failing test cases first (Red phase)
+    dependsOn: [planning]
     outputs:
       - test_files
       - test_requirements
-      - baseline_coverage
-
-  - name: run-test
-    agent: tdd-tester
-    description: Run tests to confirm they fail (Red validation)
-    dependsOn: [write-test]
-    outputs:
-      - test_results
       - failure_confirmation
-      - test_report
 
-  - name: implement
+  - name: implementation
     agent: tdd-developer
     description: Write minimal code to make tests pass (Green phase)
-    dependsOn: [run-test]
+    dependsOn: [test-first]
     outputs:
       - code_changes
       - implementation_notes
       - branch_name
 
-  - name: verify
-    agent: tdd-tester
-    description: Run all tests to confirm implementation works (Green validation)
-    dependsOn: [implement]
+  - name: refactor
+    agent: developer
+    description: Improve code design while keeping tests green (Refactor phase)
+    dependsOn: [implementation]
     outputs:
-      - test_results
-      - coverage_report
-      - success_confirmation
+      - refactored_code
+      - design_improvements
+      - refactor_notes
 
-  - name: regression-check
+  - name: verification
     agent: tdd-tester
-    description: Run full test suite and perform refactoring if needed (Refactor phase)
-    dependsOn: [verify]
+    description: Run full test suite and validate final implementation
+    dependsOn: [refactor]
     outputs:
-      - regression_results
-      - refactor_suggestions
-      - final_coverage_report
+      - final_test_results
+      - coverage_report
+      - quality_metrics
