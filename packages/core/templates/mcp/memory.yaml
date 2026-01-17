@@ -1,0 +1,74 @@
+# Memory MCP Server Template
+# Provides in-memory storage capabilities for temporary data persistence
+
+id: memory
+name: Memory Server
+description: MCP server providing in-memory key-value storage and temporary data persistence
+package: "@modelcontextprotocol/server-memory"
+
+# Base server configuration
+config:
+  name: memory
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-memory"
+  autoStart: true
+
+# Environment variables
+envVars:
+  - name: MAX_MEMORY_SIZE
+    description: Maximum memory usage in bytes for storage
+    required: false
+    sensitive: false
+    defaultValue: "104857600"
+    source: config
+  - name: DEFAULT_TTL
+    description: Default time-to-live for stored items in seconds
+    required: false
+    sensitive: false
+    defaultValue: "3600"
+    source: config
+  - name: MAX_KEY_SIZE
+    description: Maximum key length in characters
+    required: false
+    sensitive: false
+    defaultValue: "256"
+    source: config
+  - name: MAX_VALUE_SIZE
+    description: Maximum value size in bytes
+    required: false
+    sensitive: false
+    defaultValue: "1048576"
+    source: config
+  - name: ENABLE_PERSISTENCE
+    description: Enable data persistence across server restarts
+    required: false
+    sensitive: false
+    defaultValue: "false"
+    source: config
+
+# Server capabilities
+capabilities:
+  - memory
+  - storage
+  - key-value
+  - cache
+  - temporary-storage
+
+# Template metadata
+verified: true
+defaultEnabled: false
+category: storage
+tags:
+  - memory
+  - storage
+  - cache
+  - key-value
+  - temporary
+  - persistence
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/memory"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"

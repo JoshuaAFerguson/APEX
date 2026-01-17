@@ -1,0 +1,72 @@
+# Fetch MCP Server Template
+# Provides HTTP fetch capabilities for making web requests
+
+id: fetch
+name: Fetch Server
+description: MCP server for making HTTP requests and web API interactions
+package: "@modelcontextprotocol/server-fetch"
+
+# Base server configuration
+config:
+  name: fetch
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-fetch"
+  autoStart: true
+
+# Environment variables
+envVars:
+  - name: ALLOWED_HOSTS
+    description: Comma-separated list of allowed hostnames for HTTP requests
+    required: false
+    sensitive: false
+    source: config
+  - name: DENIED_HOSTS
+    description: Comma-separated list of denied hostnames to block requests
+    required: false
+    sensitive: false
+    source: config
+  - name: REQUEST_TIMEOUT
+    description: Request timeout in milliseconds
+    required: false
+    sensitive: false
+    defaultValue: "30000"
+    source: config
+  - name: MAX_REQUEST_SIZE
+    description: Maximum request payload size in bytes
+    required: false
+    sensitive: false
+    defaultValue: "10485760"
+    source: config
+  - name: USER_AGENT
+    description: User agent string for HTTP requests
+    required: false
+    sensitive: false
+    defaultValue: "MCP-Fetch-Client/1.0"
+    source: config
+
+# Server capabilities
+capabilities:
+  - http
+  - fetch
+  - web-requests
+  - api-calls
+  - networking
+
+# Template metadata
+verified: true
+defaultEnabled: true
+category: networking
+tags:
+  - http
+  - fetch
+  - web
+  - api
+  - networking
+  - requests
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/fetch"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"

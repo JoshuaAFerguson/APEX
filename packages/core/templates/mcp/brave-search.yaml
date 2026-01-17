@@ -1,0 +1,80 @@
+# Brave Search MCP Server Template
+# Provides web search capabilities using the Brave Search API
+
+id: brave-search
+name: Brave Search
+description: MCP server for web search using Brave Search API
+package: "@modelcontextprotocol/server-brave-search"
+
+# Base server configuration
+config:
+  name: brave-search
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-brave-search"
+  autoStart: false
+
+# Environment variables
+envVars:
+  - name: BRAVE_API_KEY
+    description: Brave Search API key for authentication
+    required: true
+    sensitive: true
+    source: user
+  - name: SEARCH_RESULT_COUNT
+    description: Default number of search results to return
+    required: false
+    sensitive: false
+    defaultValue: "10"
+    source: config
+  - name: SEARCH_COUNTRY
+    description: Country code for localized search results
+    required: false
+    sensitive: false
+    defaultValue: "US"
+    source: config
+  - name: SEARCH_LANGUAGE
+    description: Language code for search results
+    required: false
+    sensitive: false
+    defaultValue: "en"
+    source: config
+  - name: SAFE_SEARCH
+    description: Safe search filter (off, moderate, strict)
+    required: false
+    sensitive: false
+    defaultValue: "moderate"
+    source: config
+  - name: REQUEST_TIMEOUT
+    description: Search API request timeout in milliseconds
+    required: false
+    sensitive: false
+    defaultValue: "10000"
+    source: config
+
+# Server capabilities
+capabilities:
+  - search
+  - web-search
+  - brave-search
+  - internet
+  - information-retrieval
+
+# Template metadata
+verified: true
+defaultEnabled: false
+category: search
+tags:
+  - search
+  - brave
+  - web
+  - internet
+  - api
+  - information
+  - retrieval
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/brave-search"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"

@@ -1,0 +1,61 @@
+# Filesystem MCP Server Template
+# Provides file system access capabilities for reading, writing, and managing files
+
+id: filesystem
+name: Filesystem Server
+description: MCP server providing secure filesystem access with configurable path restrictions
+package: "@modelcontextprotocol/server-filesystem"
+
+# Base server configuration
+config:
+  name: filesystem
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-filesystem"
+  autoStart: true
+
+# Environment variables
+envVars:
+  - name: ALLOWED_PATHS
+    description: Comma-separated list of allowed directory paths for filesystem access
+    required: false
+    sensitive: false
+    defaultValue: "."
+    source: config
+  - name: DENIED_PATHS
+    description: Comma-separated list of denied directory paths to exclude from access
+    required: false
+    sensitive: false
+    source: config
+  - name: FILE_SIZE_LIMIT
+    description: Maximum file size in bytes for read/write operations
+    required: false
+    sensitive: false
+    defaultValue: "10485760"
+    source: config
+
+# Server capabilities
+capabilities:
+  - filesystem
+  - read
+  - write
+  - search
+  - directory
+  - file-management
+
+# Template metadata
+verified: true
+defaultEnabled: true
+category: filesystem
+tags:
+  - filesystem
+  - files
+  - workspace
+  - io
+  - local
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/filesystem"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"

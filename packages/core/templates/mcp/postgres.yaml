@@ -1,0 +1,75 @@
+# PostgreSQL MCP Server Template
+# Provides PostgreSQL database integration capabilities
+
+id: postgres
+name: PostgreSQL Database
+description: MCP server for PostgreSQL database operations and SQL queries
+package: "@modelcontextprotocol/server-postgres"
+
+# Base server configuration
+config:
+  name: postgres
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-postgres"
+  autoStart: false
+
+# Environment variables
+envVars:
+  - name: POSTGRES_CONNECTION_STRING
+    description: PostgreSQL connection string (postgresql://user:password@host:port/database)
+    required: true
+    sensitive: true
+    pattern: "^postgresql://.*"
+    source: env
+  - name: MAX_CONNECTIONS
+    description: Maximum number of concurrent database connections
+    required: false
+    sensitive: false
+    defaultValue: "10"
+    source: config
+  - name: QUERY_TIMEOUT
+    description: SQL query timeout in seconds
+    required: false
+    sensitive: false
+    defaultValue: "30"
+    source: config
+  - name: ENABLE_SSL
+    description: Enable SSL connection to PostgreSQL server
+    required: false
+    sensitive: false
+    defaultValue: "true"
+    source: config
+  - name: SCHEMA_NAME
+    description: Default schema name for database operations
+    required: false
+    sensitive: false
+    defaultValue: "public"
+    source: config
+
+# Server capabilities
+capabilities:
+  - database
+  - postgresql
+  - sql
+  - queries
+  - transactions
+  - data-access
+
+# Template metadata
+verified: true
+defaultEnabled: false
+category: database
+tags:
+  - database
+  - postgresql
+  - sql
+  - queries
+  - transactions
+  - relational
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/postgres"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"
