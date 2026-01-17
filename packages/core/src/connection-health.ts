@@ -118,7 +118,7 @@ export interface HealthCheckEvents {
   /** Emitted when a health check is performed */
   'health:check': (result: HealthCheckResult) => void;
   /** Emitted when a connection becomes healthy */
-  'health:healthy': (connectionId: string, state: ConnectionHealthState) => void;
+  'health:healthy': (connectionId: string, state: ConnectionHealthState, result: HealthCheckResult) => void;
   /** Emitted when a connection becomes unhealthy */
   'health:unhealthy': (connectionId: string, state: ConnectionHealthState, result: HealthCheckResult) => void;
   /** Emitted when a connection recovers from unhealthy state */

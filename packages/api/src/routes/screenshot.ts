@@ -55,8 +55,6 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
     '/screenshot/viewport',
     {
       schema: {
-        description: 'Capture a screenshot of the current viewport',
-        tags: ['screenshot'],
         body: {
           type: 'object',
           required: ['url'],
@@ -171,7 +169,7 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
 
       } catch (error) {
-        app.log.error('Viewport screenshot error:', error);
+        app.log.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Viewport screenshot error');
         return reply.status(500).send({
           success: false,
           error: 'Internal server error during screenshot capture'
@@ -185,8 +183,6 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
     '/screenshot/fullpage',
     {
       schema: {
-        description: 'Capture a screenshot of the full scrollable page',
-        tags: ['screenshot'],
         body: {
           type: 'object',
           required: ['url'],
@@ -283,7 +279,7 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
 
       } catch (error) {
-        app.log.error('Full page screenshot error:', error);
+        app.log.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Full page screenshot error');
         return reply.status(500).send({
           success: false,
           error: 'Internal server error during screenshot capture'
@@ -297,8 +293,6 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
     '/screenshot/element',
     {
       schema: {
-        description: 'Capture a screenshot of a specific element',
-        tags: ['screenshot'],
         body: {
           type: 'object',
           required: ['url', 'selector'],
@@ -416,7 +410,7 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
 
       } catch (error) {
-        app.log.error('Element screenshot error:', error);
+        app.log.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Element screenshot error');
         return reply.status(500).send({
           success: false,
           error: 'Internal server error during element screenshot capture'
@@ -442,7 +436,7 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         message: testResult.success ? 'Screenshot service operational' : 'Screenshot service degraded'
       });
     } catch (error) {
-      app.log.error('Screenshot health check error:', error);
+      app.log.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Screenshot health check error');
       return reply.status(503).send({
         status: 'unhealthy',
         service: 'screenshot',

@@ -961,8 +961,6 @@ export class BrowserTool {
             runtimeErrors: this.runtimeErrors,
             enhancedConsoleMessages: this.enhancedConsoleMessages,
             enhancedRuntimeErrors: this.enhancedRuntimeErrors,
-            enhancedConsoleMessages: this.enhancedConsoleMessages,
-            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
       }

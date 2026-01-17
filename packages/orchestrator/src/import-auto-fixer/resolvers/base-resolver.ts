@@ -12,6 +12,7 @@ import type {
   ImportResolution,
   ResolverContext,
   ImportType,
+  ExistingImport,
 } from '../types';
 
 /**
@@ -172,7 +173,7 @@ export abstract class BaseResolver implements IImportResolver {
   protected getExistingImportForSource(
     source: string,
     context: ResolverContext
-  ): typeof context.existingImports[0] | undefined {
+  ): ExistingImport | undefined {
     return context.existingImports.find(imp => imp.source === source);
   }
 }

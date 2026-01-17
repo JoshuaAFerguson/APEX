@@ -30,36 +30,27 @@ import {
   type MCPEnvironmentVar,
 } from '../types.js';
 
-// ============================================================================
-// Validation Result Types
-// ============================================================================
-
-/**
- * Severity levels for validation issues
- */
-export const ValidationSeveritySchema = z.enum([
+// MCP-specific validation types (different from syntax-validator types)
+const MCPValidationSeveritySchema = z.enum([
   'error',   // Critical issue that prevents configuration from working
   'warning', // Non-critical issue that may cause problems
   'info',    // Informational message about configuration
 ]);
-export type ValidationSeverity = z.infer<typeof ValidationSeveritySchema>;
+type MCPValidationSeverity = z.infer<typeof MCPValidationSeveritySchema>;
 
-/**
- * Individual validation issue
- */
-export const ValidationIssueSchema = z.object({
+const MCPValidationIssueSchema = z.object({
   /** Unique identifier for this type of validation issue */
   code: z.string().min(1),
   /** Human-readable message describing the issue */
   message: z.string().min(1),
   /** Severity level of this issue */
-  severity: ValidationSeveritySchema,
+  severity: MCPValidationSeveritySchema,
   /** Path to the configuration field that has the issue (e.g., "servers.myserver.command") */
   path: z.string().optional(),
   /** Suggested action to resolve the issue */
   suggestion: z.string().optional(),
 });
-export type ValidationIssue = z.infer<typeof ValidationIssueSchema>;
+type MCPValidationIssue = z.infer<typeof MCPValidationIssueSchema>;
 
 /**
  * Result of MCP configuration validation
@@ -68,7 +59,7 @@ export const MCPValidationResultSchema = z.object({
   /** Whether the overall configuration is valid */
   isValid: z.boolean(),
   /** List of validation issues found */
-  issues: z.array(ValidationIssueSchema),
+  issues: z.array(MCPValidationIssueSchema),
   /** Number of errors found */
   errorCount: z.number().min(0),
   /** Number of warnings found */
@@ -117,7 +108,7 @@ export class MCPConfigValidator {
    * Validate a complete MCP configuration
    */
   async validate(config: unknown): Promise<MCPValidationResult> {
-    const issues: ValidationIssue[] = [];
+    const issues: MCPValidationIssue[] = [];
 
     // Step 1: Validate JSON structure using Zod schema
     const structureValidation = this.validateStructure(config);
@@ -149,10 +140,10 @@ export class MCPConfigValidator {
    * Validate only the JSON structure of the configuration
    */
   validateStructure(config: unknown): {
-    issues: ValidationIssue[];
+    issues: MCPValidationIssue[];
     parsedConfig: MCPConfig | null;
   } {
-    const issues: ValidationIssue[] = [];
+    const issues: MCPValidationIssue[] = [];
 
     try {
       const parsedConfig = MCPConfigSchema.parse(config);
@@ -183,8 +174,8 @@ export class MCPConfigValidator {
   /**
    * Validate configuration-level logic and constraints
    */
-  private async validateConfigurationLogic(config: MCPConfig): Promise<ValidationIssue[]> {
-    const issues: ValidationIssue[] = [];
+  private async validateConfigurationLogic(config: MCPConfig): Promise<MCPValidationIssue[]> {
+    const issues: MCPValidationIssue[] = [];
 
     // Check if MCP is enabled but no servers are configured
     if (config.enabled && (!config.servers || Object.keys(config.servers).length === 0)) {
@@ -209,8 +200,8 @@ export class MCPConfigValidator {
   /**
    * Validate an individual server configuration
    */
-  private async validateServer(serverId: string, config: MCPServerConfig): Promise<ValidationIssue[]> {
-    const issues: ValidationIssue[] = [];
+  private async validateServer(serverId: string, config: MCPServerConfig): Promise<MCPValidationIssue[]> {
+    const issues: MCPValidationIssue[] = [];
     const basePath = `servers.${serverId}`;
 
     // Validate required fields
@@ -246,13 +237,14 @@ export class MCPConfigValidator {
     }
 
     // Check for potential issues with server configuration
-    if (config.autoStart === false && config.enabled !== false) {
+    // Note: autoStart defaults to false, so servers need explicit autoStart: true to start automatically
+    if (config.autoStart === false) {
       issues.push({
-        code: 'AUTOSTART_DISABLED_BUT_ENABLED',
-        message: `Server '${serverId}' has autoStart disabled but is still enabled`,
+        code: 'AUTOSTART_DISABLED',
+        message: `Server '${serverId}' has autoStart disabled - it will need to be started manually`,
         severity: 'info',
         path: `${basePath}.autoStart`,
-        suggestion: 'Consider setting enabled: false if this server should not be used, or enable autoStart if it should start automatically',
+        suggestion: 'Set autoStart: true if this server should start automatically when MCP is initialized',
       });
     }
 
@@ -262,8 +254,8 @@ export class MCPConfigValidator {
   /**
    * Validate command existence and executability
    */
-  private async validateCommandExistence(command: string, configPath: string): Promise<ValidationIssue[]> {
-    const issues: ValidationIssue[] = [];
+  private async validateCommandExistence(command: string, configPath: string): Promise<MCPValidationIssue[]> {
+    const issues: MCPValidationIssue[] = [];
 
     try {
       // Check if it's a system command (like npx, node, python)
@@ -315,8 +307,8 @@ export class MCPConfigValidator {
   /**
    * Validate environment variable configuration and availability
    */
-  private async validateEnvironmentVariable(envVar: MCPEnvironmentVar, configPath: string): Promise<ValidationIssue[]> {
-    const issues: ValidationIssue[] = [];
+  private async validateEnvironmentVariable(envVar: MCPEnvironmentVar, configPath: string): Promise<MCPValidationIssue[]> {
+    const issues: MCPValidationIssue[] = [];
 
     // Check if required environment variable is available
     if (envVar.required) {
@@ -353,8 +345,8 @@ export class MCPConfigValidator {
   /**
    * Validate connection configuration parameters
    */
-  private validateConnectionConfig(connection: any, configPath: string): ValidationIssue[] {
-    const issues: ValidationIssue[] = [];
+  private validateConnectionConfig(connection: any, configPath: string): MCPValidationIssue[] {
+    const issues: MCPValidationIssue[] = [];
 
     try {
       MCPConnectionConfigSchema.parse(connection);
@@ -400,7 +392,7 @@ export class MCPConfigValidator {
   /**
    * Create validation result from issues
    */
-  private createResult(issues: ValidationIssue[]): MCPValidationResult {
+  private createResult(issues: MCPValidationIssue[]): MCPValidationResult {
     const errorCount = issues.filter(i => i.severity === 'error').length;
     const warningCount = issues.filter(i => i.severity === 'warning').length;
     const infoCount = issues.filter(i => i.severity === 'info').length;
@@ -461,7 +453,7 @@ export async function validateMCPConfig(
  * Convenience function to validate only structure
  */
 export function validateMCPConfigStructure(config: unknown): {
-  issues: ValidationIssue[];
+  issues: MCPValidationIssue[];
   parsedConfig: MCPConfig | null;
 } {
   const validator = new MCPConfigValidator();

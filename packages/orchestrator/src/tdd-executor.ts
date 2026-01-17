@@ -495,8 +495,9 @@ export class TDDExecutor extends EventEmitter<TDDEvents> {
   private async generateFix(failures: TestFailure[]): Promise<SuggestedFix> {
     // Find a developer agent to use for fixes
     const developerAgent = this.agents['developer'] || Object.values(this.agents).find(
-      agent => agent.role?.toLowerCase().includes('developer') ||
-               agent.role?.toLowerCase().includes('implement')
+      agent => agent.name?.toLowerCase().includes('developer') ||
+               agent.description?.toLowerCase().includes('developer') ||
+               agent.description?.toLowerCase().includes('implement')
     );
 
     if (!developerAgent) {
@@ -532,19 +533,26 @@ Respond with a JSON object in this format:
 Only provide ONE fix per response, targeting the most critical failure first.`;
 
     try {
-      const response = await query({
-        agent: {
-          name: developerAgent.name,
-          role: developerAgent.role,
-          description: developerAgent.description,
-          instructions: developerAgent.instructions,
+      // Collect response content from the async generator
+      let responseContent = '';
+      for await (const message of query({
+        prompt,
+        options: {
+          model: developerAgent.model || 'sonnet',
         },
-        message: prompt,
-        model: 'claude-3-5-sonnet-20241022',
-      });
+      })) {
+        // Extract text content from assistant messages
+        if (message.type === 'assistant' && message.message?.content) {
+          for (const block of message.message.content) {
+            if (block.type === 'text') {
+              responseContent += block.text;
+            }
+          }
+        }
+      }
 
       // Parse the JSON response
-      const fixData = JSON.parse(response.content);
+      const fixData = JSON.parse(responseContent);
 
       return {
         description: fixData.description,

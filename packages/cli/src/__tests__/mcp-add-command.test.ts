@@ -597,7 +597,7 @@ describe('mcp add command', () => {
         expect.stringContaining('Unknown subcommand: unknown-subcommand')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('Usage: /mcp list | /mcp add <server-name>')
+        expect.stringContaining('Usage: /mcp init | /mcp list | /mcp add <server-name> | /mcp validate')
       );
     });
 

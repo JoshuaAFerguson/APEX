@@ -57,10 +57,13 @@ export interface TestCompleteInfo {
  * TestReportGenerator collects test execution events and visual comparison results
  * to generate comprehensive test reports with visual regression analysis.
  */
+// Extended type that includes testId for internal tracking
+type VisualComparisonWithTestId = TestVisualComparison & { testId?: string };
+
 export class TestReportGenerator {
   private options: TestReportGeneratorOptions;
   private startTime: number;
-  private visualComparisons: TestVisualComparison[] = [];
+  private visualComparisons: VisualComparisonWithTestId[] = [];
   private testResults: TestResult[] = [];
   private artifacts: TestArtifact[] = [];
   private testStartTimes: Map<string, number> = new Map();
@@ -127,7 +130,7 @@ export class TestReportGenerator {
    * Add a visual comparison result
    */
   public addVisualComparison(event: VisualComparisonEventData): void {
-    const visualComparison: TestVisualComparison = {
+    const visualComparison: VisualComparisonWithTestId = {
       baseline: event.baseline,
       actual: event.actual,
       diffPercentage: event.diffPercentage,
@@ -137,13 +140,11 @@ export class TestReportGenerator {
       timestamp: event.timestamp,
       pageUrl: event.pageUrl,
       selector: event.selector,
+      testId: event.testId,
     };
 
     // Remove existing comparison for the same test if it exists
     this.visualComparisons = this.visualComparisons.filter(vc => vc.testId !== event.testId);
-
-    // Add testId to the comparison for internal tracking
-    (visualComparison as any).testId = event.testId;
 
     this.visualComparisons.push(visualComparison);
 

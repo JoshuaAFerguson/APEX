@@ -302,7 +302,10 @@ export class ScreenshotService {
    */
   private async waitForPageReady(session: BrowserSession): Promise<void> {
     // Wait for network idle and DOM content loaded
-    await session.waitForLoadState('networkidle', { timeout: 15000 });
+    const page = session.getPage();
+    if (page) {
+      await page.waitForLoadState('networkidle', { timeout: 15000 });
+    }
 
     // Small additional delay to ensure rendering is complete
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -312,7 +315,7 @@ export class ScreenshotService {
    * Cleanup browser manager and all active sessions
    */
   async cleanup(): Promise<void> {
-    await this.browserManager.closeAll();
+    await this.browserManager.shutdown();
   }
 }
 

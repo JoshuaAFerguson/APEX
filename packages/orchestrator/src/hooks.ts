@@ -399,10 +399,17 @@ async function resolveToolAlias(
     // Resolve the alias with the provided parameters
     const expandedAlias = context.aliasResolver.resolve(toolName, toolInput);
 
-    // Return the resolved tool and parameters
+    // Return the resolved tool and parameters via hookSpecificOutput
+    // The updatedInput contains the resolved tool info for the alias system to process
     return {
-      tool_name: expandedAlias.tool,
-      tool_input: expandedAlias.parameters
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        updatedInput: {
+          _resolvedAlias: true,
+          _resolvedToolName: expandedAlias.tool,
+          ...expandedAlias.parameters,
+        },
+      },
     };
   } catch (error) {
     // If alias resolution fails, log the error and block the tool execution
@@ -416,11 +423,12 @@ async function resolveToolAlias(
       },
     });
 
-    // Return an error to block the tool execution
+    // Block the tool execution with an error reason
     return {
-      error: {
-        type: 'AliasResolutionError',
-        message: `Failed to resolve alias '${toolName}': ${String(error)}`,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        permissionDecision: 'deny',
+        permissionDecisionReason: `Failed to resolve alias '${toolName}': ${String(error)}`,
       },
     };
   }

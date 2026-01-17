@@ -28,6 +28,12 @@
       "import": "./src/test-setup.js",
       "require": "./src/test-setup.js",
       "default": "./src/test-setup.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js",
+      "require": "./dist/tools/index.js",
+      "default": "./dist/tools/index.js"
     }
   },
   "files": [

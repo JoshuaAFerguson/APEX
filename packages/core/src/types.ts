@@ -3113,6 +3113,15 @@ export const VisualRegressionConfigSchema = z.object({
    * Default: true
    */
   failOnMismatch: z.boolean().optional().default(true),
+
+  /** Whether to include alpha channel in comparison (default: false) */
+  includeAlpha: z.boolean().optional().default(false),
+
+  /** Whether to output diff image (default: false) */
+  outputDiff: z.boolean().optional().default(false),
+
+  /** Path to save diff image (required if outputDiff is true) */
+  diffOutputPath: z.string().optional(),
 });
 export type VisualRegressionConfig = z.infer<typeof VisualRegressionConfigSchema>;
 
@@ -4254,7 +4263,15 @@ export type ApexEventType =
   | 'tdd:failed'
   // Visual comparison events (v0.5.0)
   | 'visual:comparison:failed'
-  | 'visual:comparison:passed';
+  | 'visual:comparison:passed'
+  // Browser automation events (v0.5.0)
+  | 'browser:console'
+  | 'browser:error'
+  | 'browser:network-error'
+  | 'browser:performance-warning'
+  | 'browser:security-violation'
+  | 'browser:session-started'
+  | 'browser:session-ended';
 
 export interface ApexEvent {
   type: ApexEventType;
@@ -7913,32 +7930,6 @@ export const ApexRuleSchema = z.object({
 // Screenshot Comparison
 // ============================================================================
 
-/**
- * Configuration options for screenshot comparison
- */
-export const VisualRegressionConfigSchema = z.object({
-  /** Snapshot directory for storing and comparing screenshots (default: '.apex/snapshots') */
-  snapshotDir: z.string().optional().default('.apex/snapshots'),
-
-  /** Tolerance threshold for pixel differences (0-1, where 0 is exact match, 1 accepts any difference) */
-  threshold: z.number().min(0).max(1).default(0.99),
-
-  /** Whether to include alpha channel in comparison */
-  includeAlpha: z.boolean().default(false),
-
-  /** Whether to output diff image */
-  outputDiff: z.boolean().default(false),
-
-  /** Path to save diff image (required if outputDiff is true) */
-  diffOutputPath: z.string().optional(),
-
-  /** Color for highlighting different pixels in diff image. Format: [r, g, b] values 0-255. Default: [255, 0, 255] (magenta) */
-  diffColor: z.tuple([z.number().min(0).max(255), z.number().min(0).max(255), z.number().min(0).max(255)]).default([255, 0, 255]),
-
-  /** Whether to fail the test if there's a mismatch (default: true) */
-  failOnMismatch: z.boolean().default(true),
-});
-
 /** Legacy alias for backward compatibility */
 export const ScreenshotComparisonOptionsSchema = VisualRegressionConfigSchema;
 export type ScreenshotComparisonOptions = z.infer<typeof ScreenshotComparisonOptionsSchema>;
@@ -8176,61 +8167,8 @@ export type ToolCompleteHookCallback = (context: ToolCompleteHookContext) => voi
 export type ToolErrorHookCallback = (context: ToolErrorHookContext) => void;
 
 // ============================================================================
-// Screenshot Types (v0.5.0)
+// Screenshot API Types (v0.5.0)
 // ============================================================================
-
-/**
- * Screenshot capture configuration options
- */
-export const ScreenshotOptionsSchema = z.object({
-  /** Image format - PNG or JPEG */
-  format: z.enum(['png', 'jpeg']).optional(),
-  /** JPEG quality (0-100). Only applies when format is 'jpeg' */
-  quality: z.number().min(0).max(100).optional(),
-  /** Optional file path to save the screenshot */
-  savePath: z.string().optional(),
-  /** Whether to omit the background (transparent for PNG) */
-  omitBackground: z.boolean().optional(),
-  /** Viewport dimensions for browser */
-  viewport: z.object({
-    width: z.number().min(100).max(4000),
-    height: z.number().min(100).max(4000),
-  }).optional(),
-});
-export type ScreenshotOptions = z.infer<typeof ScreenshotOptionsSchema>;
-
-/**
- * Element screenshot capture options
- */
-export const ElementScreenshotOptionsSchema = ScreenshotOptionsSchema.extend({
-  /** CSS selector for the target element */
-  selector: z.string().min(1),
-  /** Timeout in milliseconds for finding the element */
-  timeout: z.number().min(1000).max(60000).optional(),
-});
-export type ElementScreenshotOptions = z.infer<typeof ElementScreenshotOptionsSchema>;
-
-/**
- * Screenshot capture result
- */
-export const ScreenshotResultSchema = z.object({
-  /** Whether the capture succeeded */
-  success: z.boolean(),
-  /** File path if saved to file */
-  filePath: z.string().optional(),
-  /** Error message if failed */
-  error: z.string().optional(),
-  /** Time taken in milliseconds */
-  duration: z.number().min(0),
-  /** Image format used */
-  format: z.enum(['png', 'jpeg']),
-  /** Image dimensions */
-  dimensions: z.object({
-    width: z.number().min(1),
-    height: z.number().min(1),
-  }).optional(),
-});
-export type ScreenshotResult = z.infer<typeof ScreenshotResultSchema>;
 
 /**
  * Screenshot API request for viewport capture

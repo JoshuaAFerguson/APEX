@@ -9,7 +9,7 @@ import type { AgentInfo } from '../components/agents/AgentPanel.js';
 import type { VerboseDebugData } from '@apexcli/core';
 import { renderColoredDiff } from '../../diff-renderer.js';
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { type Ora } from 'ora';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -106,7 +106,7 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
   const lastUsageRef = useRef<Record<string, { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }>>({});
 
   // Auto-fix progress tracking
-  const autoFixSpinnersRef = useRef<Map<string, ora.Ora>>(new Map());
+  const autoFixSpinnersRef = useRef<Map<string, Ora>>(new Map());
   const autoFixStatsRef = useRef<Map<string, { files: Set<string>; completed: number; failed: number; skipped: number }>>(new Map());
 
   // Debug logging helper

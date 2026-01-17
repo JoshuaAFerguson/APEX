@@ -331,34 +331,46 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
    * @returns APEX tool definition
    */
   private convertMcpToolToApexTool(mcpTool: MCPToolDefinition, serverId: string): ToolDefinition {
+    // Create default input schema with required fields
+    const defaultInputSchema: MCPToolSchema = {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: true,
+    };
+
     // Convert MCPToolDefinition to MCPTool format for SchemaTranslator
     const mcpToolForTranslator: MCPTool = {
       name: mcpTool.name,
       description: mcpTool.description,
       serverId: serverId,
-      inputSchema: (mcpTool.inputSchema as MCPToolSchema) || {
-        type: 'object',
-        properties: {},
-        required: []
-      },
+      inputSchema: (mcpTool.inputSchema as MCPToolSchema) || defaultInputSchema,
+      // Add required fields with defaults
+      tags: [],
+      available: true,
     };
 
     // Use SchemaTranslator to create Claude Agent SDK compatible tool
     const claudeSDKTool = this.schemaTranslator.translateTool(mcpToolForTranslator);
 
+    // Build parameters with proper structure
+    const inputSchema = mcpTool.inputSchema as MCPToolSchema | undefined;
+    const parameters: MCPToolSchema = {
+      type: 'object',
+      properties: inputSchema?.properties || {},
+      required: inputSchema?.required || [],
+      additionalProperties: inputSchema?.additionalProperties ?? true,
+    };
+
     return {
       name: mcpTool.name,
       description: mcpTool.description || `MCP tool from ${serverId}`,
       category: 'custom', // MCP tools are categorized as custom
-      parameters: mcpTool.inputSchema || { type: 'object', properties: {} },
+      parameters,
       enabled: true,
       version: '1.0.0',
-      permissions: this.inferPermissionsFromTool(mcpTool),
-      metadata: {
-        mcpServerId: serverId,
-        mcpTool: true,
-        claudeSDKTool: claudeSDKTool, // Store translated tool for Claude Agent SDK usage
-      },
+      permissions: this.inferPermissionsFromTool(mcpTool) as ('read' | 'write' | 'execute' | 'network' | 'admin')[],
+      dangerous: false, // MCP tools are not considered dangerous by default
     };
   }
 
@@ -426,10 +438,11 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
   async executeTool(toolName: string, params: Record<string, unknown>): Promise<MCPToolExecutionResult> {
     const startTime = Date.now();
 
+    // Find the server that provides this tool (declared outside try for catch block access)
+    let serverId: string | null = null;
+    let server: ConnectedServer | null = null;
+
     try {
-      // Find the server that provides this tool
-      let serverId: string | null = null;
-      let server: ConnectedServer | null = null;
 
       for (const [id, srv] of this.servers) {
         if (srv.tools.has(toolName) && srv.connected) {
@@ -606,12 +619,16 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
 
       // Additional path-based checks for file operations
       if (params.path && typeof params.path === 'string') {
-        const pathPermitted = await this.permissionManager.checkPathAccess?.(params.path);
-        if (pathPermitted === false) {
-          return {
-            allowed: false,
-            reason: `Path access denied: ${params.path}`,
-          };
+        // Use optional chaining with type assertion since checkPathAccess may be extended later
+        const pm = this.permissionManager as unknown as Record<string, unknown>;
+        if (typeof pm.checkPathAccess === 'function') {
+          const pathPermitted = await (pm.checkPathAccess as (path: string) => Promise<boolean>)(params.path);
+          if (pathPermitted === false) {
+            return {
+              allowed: false,
+              reason: `Path access denied: ${params.path}`,
+            };
+          }
         }
       }
 

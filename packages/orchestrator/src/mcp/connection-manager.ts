@@ -276,7 +276,7 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
     this.config = options.config;
 
     // Use provided connection config or fall back to config default, then apply all defaults
-    const baseConfig = options.connectionConfig ?? options.config.mcp?.connection ?? {};
+    const baseConfig: Partial<MCPConnectionConfig> = options.connectionConfig ?? options.config.mcp?.connection ?? {};
 
     // Apply all default values to ensure Required<MCPConnectionConfig>
     this.connectionConfig = {

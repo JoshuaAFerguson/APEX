@@ -16,6 +16,9 @@
 import { EventEmitter } from 'eventemitter3';
 import { Page } from 'playwright';
 
+// Declare navigator for browser context code evaluated via Playwright's page.evaluate()
+declare const navigator: { userAgent: string };
+
 /**
  * Console log levels with severity ordering
  */

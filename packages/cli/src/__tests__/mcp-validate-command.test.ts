@@ -14,11 +14,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
-import { validateMCPConfig } from '@apex/core';
-import { loadConfig } from '@apex/core';
+import { validateMCPConfig } from '@apexcli/core';
+import { loadConfig } from '@apexcli/core';
 
 // Mock dependencies
-vi.mock('@apex/core');
+vi.mock('@apexcli/core');
 vi.mock('fs/promises');
 vi.mock('chalk', () => ({
   default: {

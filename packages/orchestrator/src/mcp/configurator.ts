@@ -374,7 +374,7 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
   resolveEnvVariable(
     varName: string,
     sources: Array<'env' | 'config' | 'user'> = ['env', 'config', 'user']
-  ): { value: string; source: 'env' | 'config' | 'user' } | undefined {
+  ): { value: string; source: 'env' | 'config' | 'user' | 'default' } | undefined {
     return this.envDetector.resolveEnvVariable(varName, sources);
   }
 

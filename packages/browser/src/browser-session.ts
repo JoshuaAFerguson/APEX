@@ -21,6 +21,7 @@ import type {
   CapturedJavaScriptError,
   PageErrorEvent,
   BrowserCaptureEvents,
+  ConsoleLogLevel,
 } from './types.js';
 
 import {
@@ -31,6 +32,29 @@ import {
 } from './constants.js';
 
 import { BrowserManager } from './browser-manager.js';
+
+// Extend Window interface for custom capture properties
+declare global {
+  interface Window {
+    __apexErrorCapture?: Array<{
+      message: string;
+      name?: string;
+      stack?: string;
+      timestamp: number;
+      uncaught: boolean;
+      filename?: string;
+      lineno?: number;
+      colno?: number;
+    }>;
+    __apexConsoleCapture?: Array<{
+      level: string;
+      text: string;
+      args: unknown[];
+      timestamp: number;
+      stack?: string;
+    }>;
+  }
+}
 
 /**
  * Browser session manager for handling browser automation
@@ -75,7 +99,11 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
       // Launch browser instance
       const instanceResult = await this.manager.launchBrowser(this.config);
       if (!instanceResult.success) {
-        return instanceResult;
+        return {
+          success: false,
+          error: instanceResult.error,
+          duration: Date.now() - startTime,
+        };
       }
 
       this.instanceId = instanceResult.data!.id;
@@ -977,7 +1005,7 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
       // Process and add to our console buffer
       const processedMessages: CapturedConsoleMessage[] = capturedMessages.map(msg => ({
-        type: msg.level,
+        type: msg.level as ConsoleLogLevel,
         text: msg.text,
         args: msg.args,
         timestamp: msg.timestamp,
@@ -1219,7 +1247,7 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
           name: event.error?.name || 'Error',
         };
 
-        window.__apexErrorCapture.push(errorInfo);
+        window.__apexErrorCapture!.push(errorInfo);
       });
 
       // Capture unhandled promise rejections
@@ -1232,36 +1260,34 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
           name: event.reason?.name || 'UnhandledPromiseRejection',
         };
 
-        window.__apexErrorCapture.push(errorInfo);
+        window.__apexErrorCapture!.push(errorInfo);
       });
 
       // Intercept console methods for enhanced capture
-      const originalConsole = { ...console };
-      const consoleLevels = ['log', 'debug', 'info', 'warn', 'error', 'trace'];
+      const consoleLevels = ['log', 'debug', 'info', 'warn', 'error', 'trace'] as const;
+      type ConsoleMethod = typeof consoleLevels[number];
 
-      consoleLevels.forEach(level => {
+      consoleLevels.forEach((level: ConsoleMethod) => {
         const originalMethod = console[level];
-        console[level] = function() {
-          const args = Array.prototype.slice.call(arguments);
-
+        (console as unknown as Record<string, typeof originalMethod>)[level] = function(...capturedArgs: unknown[]) {
           // Store enhanced console message with stack trace
           const stackTrace = new Error().stack;
-          window.__apexConsoleCapture.push({
+          window.__apexConsoleCapture!.push({
             level: level,
-            args: args.map(arg => {
+            args: capturedArgs.map(arg => {
               try {
                 return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-              } catch (e) {
+              } catch {
                 return String(arg);
               }
             }),
-            text: args.join(' '),
+            text: capturedArgs.map(arg => String(arg)).join(' '),
             timestamp: Date.now(),
             stack: stackTrace,
           });
 
           // Call original console method
-          return originalMethod.apply(console, args);
+          return originalMethod.apply(console, capturedArgs);
         };
       });
     });

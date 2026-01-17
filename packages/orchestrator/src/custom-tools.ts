@@ -22,6 +22,7 @@ function buildZodSchemaShape(parameters: ToolParametersSchema): ZodShape {
     type: 'object' as const,
     properties: parameters.properties || {},
     required: parameters.required || [],
+    additionalProperties: false,
   };
 
   // Use SchemaTranslator to convert
@@ -105,6 +106,7 @@ export function buildCustomToolsServer(
       type: 'object' as const,
       properties: toolConfig.parameters.properties || {},
       required: toolConfig.parameters.required || [],
+      additionalProperties: false,
     };
 
     // Use SchemaTranslator to get Zod schema

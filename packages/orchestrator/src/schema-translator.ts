@@ -16,14 +16,23 @@ import type { MCPTool, MCPToolSchema, JSONSchemaType, ToolParameter } from '@ape
 
 /**
  * Extended JSON Schema property definition for MCP tools
- * Based on the existing ToolParameter type with additional JSON Schema Draft 7 features
+ * Standalone interface based on JSON Schema Draft 7 features
  */
-export interface JSONSchemaProperty extends ToolParameter {
+export interface JSONSchemaProperty {
   type?: JSONSchemaType | JSONSchemaType[];
   const?: unknown;
   properties?: Record<string, JSONSchemaProperty>;
   items?: JSONSchemaProperty;
+  /** For object types, array of required property names */
   required?: string[];
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
   exclusiveMinimum?: number;
   exclusiveMaximum?: number;
   multipleOf?: number;
@@ -123,15 +132,13 @@ export class SchemaTranslator {
       shape[key] = isRequired ? zodType : zodType.optional();
     }
 
-    let objectSchema = z.object(shape);
+    const objectSchema = z.object(shape);
 
     if (this.options.allowAdditionalProperties || schema.additionalProperties) {
-      objectSchema = objectSchema.passthrough();
+      return objectSchema.passthrough();
     } else {
-      objectSchema = objectSchema.strict();
+      return objectSchema.strict();
     }
-
-    return objectSchema;
   }
 
   /**
@@ -160,7 +167,8 @@ export class SchemaTranslator {
   private translateBaseType(property: JSONSchemaProperty): z.ZodTypeAny {
     // Handle const first (overrides type and enum)
     if (property.const !== undefined) {
-      return z.literal(property.const);
+      // Cast to primitive type for z.literal
+      return z.literal(property.const as z.Primitive);
     }
 
     // Handle enum first (overrides type-based handling)
@@ -218,7 +226,11 @@ export class SchemaTranslator {
     }
 
     // Mixed types, use union of literals
-    return z.union(enumValues.map(val => z.literal(val)) as [z.ZodLiteral<any>, ...z.ZodLiteral<any>[]]);
+    const literals = enumValues.map(val => z.literal(val as z.Primitive));
+    if (literals.length === 1) {
+      return literals[0];
+    }
+    return z.union([literals[0], literals[1], ...literals.slice(2)] as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
   }
 
   private translateUnion(schemas: JSONSchemaProperty[]): z.ZodTypeAny {
@@ -231,7 +243,7 @@ export class SchemaTranslator {
     }
 
     const zodSchemas = schemas.map(schema => this.translateBaseType(schema));
-    return z.union(zodSchemas as [z.ZodTypeAny, ...z.ZodTypeAny[]]);
+    return z.union([zodSchemas[0], zodSchemas[1], ...zodSchemas.slice(2)] as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
   }
 
   private translateIntersection(schemas: JSONSchemaProperty[]): z.ZodTypeAny {
@@ -274,7 +286,13 @@ export class SchemaTranslator {
       this.translateBaseType({ ...property, type })
     );
 
-    const unionSchema = z.union(schemas as [z.ZodTypeAny, ...z.ZodTypeAny[]]);
+    // Ensure we have at least 2 schemas for union (required by z.union)
+    if (schemas.length < 2) {
+      const unionSchema = schemas[0] || z.unknown();
+      return isNullable ? unionSchema.nullable() : unionSchema;
+    }
+
+    const unionSchema = z.union([schemas[0], schemas[1], ...schemas.slice(2)] as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
     return isNullable ? unionSchema.nullable() : unionSchema;
   }
 
@@ -412,15 +430,13 @@ export class SchemaTranslator {
       shape[key] = isRequired ? zodType : zodType.optional();
     }
 
-    let objectSchema = z.object(shape);
+    const objectSchema = z.object(shape);
 
-    // Handle additional properties
+    // Handle additional properties - return as ZodTypeAny to avoid type narrowing issues
     if (this.options.allowAdditionalProperties || property.additionalProperties === true) {
-      objectSchema = objectSchema.passthrough();
+      return objectSchema.passthrough() as z.ZodTypeAny;
     } else {
-      objectSchema = objectSchema.strict();
+      return objectSchema.strict() as z.ZodTypeAny;
     }
-
-    return objectSchema;
   }
 }

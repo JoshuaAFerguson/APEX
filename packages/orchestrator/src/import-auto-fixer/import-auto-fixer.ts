@@ -28,8 +28,8 @@ import type {
   ExistingImport,
   TsConfigInfo,
   PackageJsonInfo,
-  DEFAULT_CONFIG,
 } from './types';
+import { DEFAULT_CONFIG } from './types';
 import { ESLintDetector } from './detectors/eslint-detector';
 import { LocalResolver } from './resolvers/local-resolver';
 import { AliasResolver } from './resolvers/alias-resolver';

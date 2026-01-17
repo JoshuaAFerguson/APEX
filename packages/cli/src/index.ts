@@ -40,6 +40,7 @@ import {
 } from './handlers/workspace-handlers.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
+import inquirer from 'inquirer';
 
 const VERSION = '0.1.0';
 
@@ -437,13 +438,11 @@ export const commands: Command[] = [
         const sessionUsage = allTasks.reduce((total, task) => ({
           totalTokens: total.totalTokens + (task.usage?.totalTokens || 0),
           estimatedCost: total.estimatedCost + (task.usage?.estimatedCost || 0),
-          requestCount: total.requestCount + (task.usage?.requestCount || 0)
-        }), { totalTokens: 0, estimatedCost: 0, requestCount: 0 });
+        }), { totalTokens: 0, estimatedCost: 0 });
 
         console.log(chalk.cyan('💰 Session Resource Usage:'));
         console.log(`  Total Tokens: ${formatTokens(sessionUsage.totalTokens)}`);
         console.log(`  Total Cost: ${formatCost(sessionUsage.estimatedCost)}`);
-        console.log(`  API Requests: ${sessionUsage.requestCount.toLocaleString()}`);
         console.log();
 
         const tasks = allTasks.slice(0, 10); // Use the already fetched tasks for recent tasks display
@@ -2637,11 +2636,140 @@ export const commands: Command[] = [
     name: 'mcp',
     aliases: [],
     description: 'Manage MCP (Model Context Protocol) server templates',
-    usage: '/mcp list | /mcp add <server-name> | /mcp validate',
+    usage: '/mcp init | /mcp list | /mcp add <server-name> | /mcp validate',
     handler: async (ctx, args) => {
       const [subcommand, serverName] = args;
 
-      if (!subcommand || subcommand === 'list') {
+      if (subcommand === 'init') {
+        // Handle 'mcp init' subcommand for interactive MCP setup
+        try {
+          if (!ctx.initialized) {
+            console.log(chalk.red('❌ APEX not initialized. Run /init first.'));
+            return;
+          }
+
+          console.log(chalk.cyan('\n🛠️  MCP Interactive Setup\n'));
+          console.log(chalk.gray('This will help you configure MCP (Model Context Protocol) for your APEX project.\n'));
+
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          // Initialize MCP config if it doesn't exist
+          config.mcp = config.mcp || { enabled: false, servers: {} };
+
+          // Ask if MCP should be enabled
+          const { enableMCP } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'enableMCP',
+              message: 'Enable MCP (Model Context Protocol) for this project?',
+              default: config.mcp.enabled || false
+            }
+          ]);
+
+          config.mcp.enabled = enableMCP;
+
+          if (!enableMCP) {
+            // Save config and exit if user doesn't want MCP
+            await saveConfig(ctx.cwd, config);
+            console.log(chalk.yellow('✓ MCP disabled for this project.'));
+            return;
+          }
+
+          // Load available templates
+          const templates = await loadMCPTemplates();
+          const templateChoices = Object.values(templates).map(t => ({
+            name: `${t.name} - ${t.description}`,
+            value: t.id,
+            short: t.name
+          }));
+
+          if (templateChoices.length === 0) {
+            console.log(chalk.yellow('⚠️  No MCP templates found. You can manually configure servers later.'));
+            await saveConfig(ctx.cwd, config);
+            return;
+          }
+
+          // Ask which servers to add
+          const { selectedServers } = await inquirer.prompt([
+            {
+              type: 'checkbox',
+              name: 'selectedServers',
+              message: 'Which MCP servers would you like to add?',
+              choices: [
+                ...templateChoices,
+                { name: 'None (configure manually later)', value: 'none' }
+              ],
+              validate: (answer) => {
+                if (answer.length === 0) {
+                  return 'Please select at least one option or choose "None"';
+                }
+                return true;
+              }
+            }
+          ]);
+
+          // Add selected servers to config
+          if (selectedServers.length > 0 && !selectedServers.includes('none')) {
+            console.log(chalk.cyan('\n📦 Adding selected MCP servers...\n'));
+
+            for (const serverId of selectedServers) {
+              const template = templates[serverId];
+              if (!template) continue;
+
+              // Check if server already exists
+              if (config.mcp.servers[template.id]) {
+                console.log(chalk.yellow(`⚠️  Server '${template.name}' already exists, skipping...`));
+                continue;
+              }
+
+              // Create server config from template
+              const serverConfig: MCPServerConfig = {
+                type: 'stdio', // Default type
+                autoStart: false, // Default autoStart
+                name: template.name,
+                ...template.config, // Spread template config (type, command, args, etc.)
+              };
+
+              // Add environment variables if defined in template
+              if (template.envVars && template.envVars.length > 0) {
+                serverConfig.envVars = template.envVars.map(envVar => ({
+                  ...envVar,
+                  // Only include non-sensitive default values
+                  value: !envVar.sensitive ? envVar.defaultValue : undefined,
+                }));
+              }
+
+              // Add capabilities if defined in template
+              if (template.capabilities && template.capabilities.length > 0) {
+                serverConfig.capabilities = template.capabilities;
+              }
+
+              // Set autoStart based on template default
+              if (template.defaultEnabled !== undefined) {
+                serverConfig.autoStart = template.defaultEnabled;
+              }
+
+              // Add the server to config
+              config.mcp.servers[template.id] = serverConfig;
+              console.log(chalk.green(`✓ Added MCP server: ${template.name}`));
+            }
+          }
+
+          // Save the updated configuration
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green('\n✅ MCP configuration saved successfully!'));
+          console.log(chalk.gray('\nNext steps:'));
+          console.log(chalk.gray('  • Use /mcp validate to check your configuration'));
+          console.log(chalk.gray('  • Use /mcp add <server-name> to add more servers'));
+          console.log(chalk.gray('  • Edit .apex/config.yaml to configure environment variables'));
+          console.log(chalk.gray('  • Restart APEX to apply MCP configuration\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error during MCP setup: ${(error as Error).message}`));
+        }
+      } else if (!subcommand || subcommand === 'list') {
         // Handle 'mcp list' subcommand
         try {
           console.log(chalk.cyan('\n📦 Available MCP Server Templates:\n'));
@@ -2692,7 +2820,7 @@ export const commands: Command[] = [
           const config = await loadConfig(ctx.cwd);
 
           // Initialize MCP config if it doesn't exist
-          config.mcp = config.mcp || { servers: {} };
+          config.mcp = config.mcp || { enabled: true, servers: {} };
 
           // Check if server already exists
           if (config.mcp.servers[template.id]) {
@@ -2703,6 +2831,8 @@ export const commands: Command[] = [
 
           // Create server config from template
           const serverConfig: MCPServerConfig = {
+            type: 'stdio', // Default type
+            autoStart: false, // Default autoStart
             name: template.name,
             ...template.config, // Spread template config (type, command, args, etc.)
           };
@@ -2727,7 +2857,7 @@ export const commands: Command[] = [
           }
 
           // Add the server to config
-          config.mcp.servers[template.id] = serverConfig;
+          config.mcp!.servers[template.id] = serverConfig;
 
           // Save the updated config
           await saveConfig(ctx.cwd, config);
@@ -2856,7 +2986,7 @@ export const commands: Command[] = [
         }
       } else {
         console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
-        console.log(chalk.gray('Usage: /mcp list | /mcp add <server-name> | /mcp validate'));
+        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp add <server-name> | /mcp validate'));
       }
     },
   },

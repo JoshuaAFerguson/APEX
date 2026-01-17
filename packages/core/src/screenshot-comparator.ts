@@ -21,13 +21,22 @@ import {
  * - Generate diff images
  * - Handle different image formats and sizes
  */
+/** Internal options type with required fields that have defaults */
+type ResolvedComparisonOptions = {
+  threshold: number;
+  includeAlpha: boolean;
+  outputDiff: boolean;
+  diffOutputPath?: string;
+  diffColor: [number, number, number];
+};
+
 export class ScreenshotComparator {
-  private defaultOptions: Required<ScreenshotComparisonOptions>;
+  private defaultOptions: ResolvedComparisonOptions;
 
   constructor(options: Partial<ScreenshotComparisonOptions> = {}) {
     // Validate and set default options
     this.defaultOptions = {
-      tolerance: options.tolerance ?? 0.1,
+      threshold: options.threshold ?? 0.1,
       includeAlpha: options.includeAlpha ?? false,
       outputDiff: options.outputDiff ?? false,
       diffOutputPath: options.diffOutputPath,
@@ -86,7 +95,7 @@ export class ScreenshotComparator {
       width,
       height,
       {
-        threshold: finalOptions.tolerance,
+        threshold: finalOptions.threshold,
         includeAA: finalOptions.includeAlpha,
       }
     );
@@ -103,7 +112,7 @@ export class ScreenshotComparator {
         width,
         height,
         channels,
-        finalOptions.tolerance,
+        finalOptions.threshold,
         finalOptions.diffColor
       );
 
@@ -121,7 +130,7 @@ export class ScreenshotComparator {
       similarity,
       differentPixels,
       totalPixels,
-      isMatch: similarity >= (1 - finalOptions.tolerance),
+      isMatch: similarity >= (1 - finalOptions.threshold),
       diffImagePath,
     };
 
@@ -171,7 +180,7 @@ export class ScreenshotComparator {
       width,
       height,
       {
-        threshold: finalOptions.tolerance,
+        threshold: finalOptions.threshold,
         includeAA: finalOptions.includeAlpha,
       }
     );
@@ -187,7 +196,7 @@ export class ScreenshotComparator {
         width,
         height,
         channels,
-        finalOptions.tolerance,
+        finalOptions.threshold,
         finalOptions.diffColor
       );
 
@@ -204,7 +213,7 @@ export class ScreenshotComparator {
       similarity,
       differentPixels,
       totalPixels,
-      isMatch: similarity >= (1 - finalOptions.tolerance),
+      isMatch: similarity >= (1 - finalOptions.threshold),
       diffImagePath,
     };
 
@@ -252,7 +261,7 @@ export class ScreenshotComparator {
    */
   private async loadAndNormalizeImage(
     imagePath: string,
-    options: Required<ScreenshotComparisonOptions>
+    options: ResolvedComparisonOptions
   ): Promise<{ data: Buffer; info: sharp.OutputInfo }> {
     return this.processImageBuffer(await fs.readFile(imagePath), options);
   }
@@ -262,7 +271,7 @@ export class ScreenshotComparator {
    */
   private async processImageBuffer(
     buffer: Buffer,
-    options: Required<ScreenshotComparisonOptions>
+    options: ResolvedComparisonOptions
   ): Promise<{ data: Buffer; info: sharp.OutputInfo }> {
     let processor = sharp(buffer);
 
@@ -288,7 +297,7 @@ export class ScreenshotComparator {
     width: number,
     height: number,
     channels: number,
-    tolerance: number,
+    threshold: number,
     diffColor: [number, number, number]
   ): Buffer {
     const pixelCount = width * height;
@@ -317,8 +326,8 @@ export class ScreenshotComparator {
         Math.pow(b2 - b1, 2)
       ) / 255;
 
-      // If difference exceeds tolerance, mark as different with specified color
-      if (delta > tolerance) {
+      // If difference exceeds threshold, mark as different with specified color
+      if (delta > threshold) {
         diffBuffer[outputOffset] = diffR;     // R
         diffBuffer[outputOffset + 1] = diffG; // G
         diffBuffer[outputOffset + 2] = diffB; // B
@@ -341,7 +350,7 @@ export class ScreenshotComparator {
     diffBuffer: Buffer,
     width: number,
     height: number,
-    channels: number,
+    channels: 1 | 2 | 3 | 4,
     outputPath: string
   ): Promise<string> {
     // Ensure output directory exists
@@ -383,9 +392,9 @@ export function createScreenshotComparator(
 export async function compareImages(
   imagePath1: string,
   imagePath2: string,
-  tolerance: number = 0.1
+  threshold: number = 0.1
 ): Promise<boolean> {
-  const comparator = new ScreenshotComparator({ tolerance });
+  const comparator = new ScreenshotComparator({ threshold });
   const result = await comparator.compare(imagePath1, imagePath2);
   return result.isMatch;
 }
@@ -453,7 +462,7 @@ export async function compareScreenshot(
 
   // Create comparator with provided options
   const comparator = new ScreenshotComparator({
-    tolerance: threshold,
+    threshold: threshold,
     includeAlpha,
     outputDiff,
     diffOutputPath,
@@ -480,7 +489,7 @@ export async function compareScreenshot(
       : decodeBase64Image(actual);
 
     result = await comparator.compareBuffers(baselineBuffer, actualBuffer, {
-      tolerance: threshold,
+      threshold: threshold,
       includeAlpha,
       outputDiff,
       diffOutputPath,

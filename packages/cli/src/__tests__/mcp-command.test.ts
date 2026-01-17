@@ -159,7 +159,7 @@ describe('MCP Command', () => {
       expect(mcpCommand?.name).toBe('mcp');
       expect(mcpCommand?.aliases).toEqual([]);
       expect(mcpCommand?.description).toBe('Manage MCP (Model Context Protocol) server templates');
-      expect(mcpCommand?.usage).toBe('/mcp list | /mcp add <server-name>');
+      expect(mcpCommand?.usage).toBe('/mcp init | /mcp list | /mcp add <server-name> | /mcp validate');
     });
 
     it('should have proper handler function signature', async () => {
@@ -325,7 +325,7 @@ describe('MCP Command', () => {
         expect.stringContaining('Unknown subcommand: unknown')
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('Usage: /mcp list | /mcp add <server-name>')
+        expect.stringContaining('Usage: /mcp init | /mcp list | /mcp add <server-name> | /mcp validate')
       );
     });
 

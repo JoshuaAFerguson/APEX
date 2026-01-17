@@ -150,7 +150,7 @@ export class AliasResolver {
     const resolvedParams = this.mergeWithDefaults(alias, params);
 
     // Perform parameter substitution in the tool parameters
-    const substitutedParameters = this.substituteParameters(alias.parameters, resolvedParams);
+    const substitutedParameters = this.substituteParameters(alias.parameters ?? {}, resolvedParams);
 
     return {
       aliasName,

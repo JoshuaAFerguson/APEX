@@ -138,7 +138,7 @@ export class MCPToolRegistry extends EventEmitter<MCPToolRegistryEvents> {
   private operationTimeoutMs: number;
   private autoRefresh: boolean;
   private autoRefreshInterval: number;
-  private autoRefreshTimer?: NodeJS.Timer;
+  private autoRefreshTimer?: ReturnType<typeof setInterval>;
 
   /** Map of tool name -> registry entry */
   private toolRegistry: Map<string, MCPToolRegistryEntry> = new Map();
@@ -393,7 +393,11 @@ export class MCPToolRegistry extends EventEmitter<MCPToolRegistryEvents> {
           type: 'object',
           properties: {},
           required: [],
+          additionalProperties: true,
         },
+        // Add required fields with defaults
+        tags: [],
+        available: true,
       };
 
       // Translate to Claude Agent SDK format

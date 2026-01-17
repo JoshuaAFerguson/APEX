@@ -396,6 +396,9 @@ export interface OrchestratorEvents {
   // Visual comparison events (v0.5.0)
   'visual:comparison:failed': (event: VisualComparisonEventData) => void;
   'visual:comparison:passed': (event: VisualComparisonEventData) => void;
+
+  // Generic APEX events (v0.5.0) - for TDD and other subsystems
+  'apex-event': (event: ApexEvent) => void;
 }
 
 /**
@@ -1401,7 +1404,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.browserManager = new BrowserManager({
       permissionManager: this.permissionManager,
       browserTool,
-      defaultConfig: browserToolConfig?.browserConfig || {},
+      defaultConfig: (browserToolConfig as Record<string, unknown>)?.browserConfig as Record<string, unknown> || {},
     });
 
     // Initialize browser event integration with task context correlation
@@ -1864,6 +1867,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
                 message: `Git operations failed: ${(error as Error).message}`,
               });
             }
+          }
+
+          // If this is a subtask, check if all sibling subtasks are complete
+          // and update the parent task status accordingly
+          if (task.parentTaskId && completedTask) {
+            await this.checkAndCompleteParentTask(task.parentTaskId);
           }
         }
         // If shouldComplete is false, subtasks are paused/incomplete
@@ -2730,7 +2739,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             reason: `Workflow stage "${stage.name}" requires approval via gate "${stage.gate}" before proceeding`,
             resourceImpact: this.calculateResourceImpact(task, stage),
             id: approvalState.id, // Legacy field
-            gateName: stage.gate,
+            gateName: stage.gate || '',
             gateType: gateCheck.gate.type,
             approvers: gateCheck.gate.approvers,
             minApprovals: gateCheck.gate.minApprovals || 1,
@@ -3653,10 +3662,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     let modifiedFiles: string[] = [];
 
     try {
-      // Get all tool actions for this stage
+      // Get all tool actions for this stage (filter by actionGroup which contains stage name)
       const toolActions = await this.toolActionStore.getToolActions(taskId);
       const stageActions = toolActions.filter(action =>
-        action.stageName === stage.name &&
+        action.actionGroup === stage.name &&
         action.modifiedFiles &&
         action.modifiedFiles.length > 0
       );
@@ -3845,12 +3854,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             filesModified: [filePath],
             issuesFixed: result.success && issuesFixed > 0 ? [{
               type: 'import',
-              description: `Added ${issuesFixed} imports`,
+              description: `Added ${issuesFixed} imports: ${result.importsAdded.join(', ')}`,
               filePath,
               line: 1,
               column: 1,
-              fixApplied: `Added imports: ${result.importsAdded.join(', ')}`,
-              severity: 'warning',
+              severity: 'warning' as const,
             }] : [],
             iterationCount: i + 1,
             totalIterations: filesToProcess.length,
@@ -3890,12 +3898,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             filesModified: [result.filePath],
             issuesFixed: result.importsAdded.map(importName => ({
               type: 'import',
-              description: `Added import: ${importName}`,
+              description: `Added import statement for ${importName}`,
               filePath: result.filePath,
               line: 1,
               column: 1,
-              fixApplied: `Added import statement for ${importName}`,
-              severity: 'warning',
+              severity: 'warning' as const,
             })),
             iterationCount: fixResults.indexOf(result) + 1,
             totalIterations: fixResults.length,
@@ -7019,6 +7026,50 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Check if all subtasks of a parent task are complete and update parent status
+   * Called when a subtask completes to potentially mark the parent as complete
+   */
+  private async checkAndCompleteParentTask(parentTaskId: string): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) return;
+
+    // Only process if parent is still in-progress
+    if (parentTask.status !== 'in-progress') return;
+
+    // Check if all subtasks are complete
+    const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+
+    if (allComplete) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'All subtasks completed. Marking parent task as complete.',
+      });
+
+      await this.updateTaskStatus(parentTaskId, 'completed');
+      const completedParent = await this.store.getTask(parentTaskId);
+      if (completedParent) {
+        this.emit('task:completed', completedParent);
+
+        // Handle git operations for the completed parent task
+        try {
+          const prResult = await this.handleTaskGitOperations(completedParent);
+          if (prResult?.success && prResult.prUrl) {
+            await this.store.addLog(parentTaskId, {
+              level: 'info',
+              message: `Pull request created: ${prResult.prUrl}`,
+            });
+          }
+        } catch (error) {
+          await this.store.addLog(parentTaskId, {
+            level: 'warn',
+            message: `Git operations failed: ${(error as Error).message}`,
+          });
+        }
+      }
+    }
+  }
+
+  /**
    * Aggregate results from all subtasks into the parent task
    * Returns true if all subtasks are complete, false if some are still pending
    */
@@ -8415,14 +8466,37 @@ Parent: ${parentTask.description}`;
       throw new Error('MCP installer not initialized');
     }
 
-    const result = await this.mcpInstaller.install(nameOrPackage, options);
+    // Construct MCPServer object from package name
+    const server = {
+      name: nameOrPackage,
+      package: nameOrPackage,
+      command: options?.global ? 'npx' : 'node',
+      args: options?.args || [],
+      env: options?.env || {},
+      envVars: [],
+      version: '1.0.0',
+    };
+
+    const result = await this.mcpInstaller.install(server, { force: options?.force });
 
     // Update local config after installation
     this.config = await loadConfig(this.projectPath);
     this.effectiveConfig = getEffectiveConfig(this.config);
     this.mcpServerManager?.updateConfig(this.config);
 
-    return result;
+    // Return enhanced format
+    return {
+      name: server.name,
+      config: {
+        name: server.name,
+        type: 'stdio',
+        command: server.command,
+        args: server.args,
+        autoStart: false,
+      },
+      installedFrom: 'npm',
+      installedAt: result.installedAt,
+    };
   }
 
   /**
@@ -8446,14 +8520,36 @@ Parent: ${parentTask.description}`;
       throw new Error('MCP installer not initialized');
     }
 
-    const result = await this.mcpInstaller.installFromNpm(packageName, options);
+    // Construct MCPServer object for npm package
+    const server = {
+      name: packageName,
+      package: packageName,
+      command: 'npx',
+      args: [packageName, ...(options?.args || [])],
+      env: options?.env || {},
+      envVars: [],
+      version: '1.0.0',
+    };
+
+    const result = await this.mcpInstaller.install(server, { force: options?.force });
 
     // Update local config after installation
     this.config = await loadConfig(this.projectPath);
     this.effectiveConfig = getEffectiveConfig(this.config);
     this.mcpServerManager?.updateConfig(this.config);
 
-    return result;
+    return {
+      name: server.name,
+      config: {
+        name: server.name,
+        type: 'stdio',
+        command: server.command,
+        args: server.args,
+        autoStart: false,
+      },
+      installedFrom: 'npx',
+      installedAt: result.installedAt,
+    };
   }
 
   /**
@@ -8469,7 +8565,19 @@ Parent: ${parentTask.description}`;
       return [];
     }
 
-    return this.mcpInstaller.listInstalled();
+    const installations = await this.mcpInstaller.listInstalled();
+
+    // Transform MCPInstallation objects to the expected format
+    return installations.map(installation => ({
+      name: installation.serverId,
+      config: {
+        name: installation.serverId,
+        type: 'stdio' as const,
+        autoStart: false,
+      },
+      installedFrom: 'manual' as const,
+      installedAt: installation.installedAt,
+    }));
   }
 
   /**
@@ -8646,7 +8754,22 @@ Parent: ${parentTask.description}`;
     if (!this.mcpConnectionManager) {
       throw new Error('MCP Connection Manager is not initialized');
     }
-    return this.mcpConnectionManager.checkHealth(serverId);
+    const mcpResult = await this.mcpConnectionManager.checkHealth(serverId);
+
+    // Convert MCP health check result to core HealthCheckResult format
+    return {
+      id: `health-${serverId}-${Date.now()}`,
+      connectionId: serverId,
+      method: 'ping',
+      startedAt: mcpResult.timestamp || new Date(),
+      completedAt: new Date(),
+      success: mcpResult.success,
+      latencyMs: mcpResult.latencyMs,
+      error: mcpResult.error?.message,
+      status: mcpResult.isHealthy ? 'healthy' : 'unhealthy',
+      consecutiveFailures: mcpResult.consecutiveFailures,
+      isHealthy: mcpResult.isHealthy,
+    };
   }
 
   /**
@@ -8961,7 +9084,7 @@ Parent: ${parentTask.description}`;
       maxIterations: tddConfig.maxIterations || 3,
       testCommand: tddConfig.testCommand || 'npm test',
       workingDirectory: this.projectPath,
-      testTimeout: tddConfig.testTimeout || 60000,
+      testTimeout: 60000, // Default timeout since not in TDDModeConfig
       enableEvents: true,
     };
 
@@ -8996,7 +9119,7 @@ Parent: ${parentTask.description}`;
             enabled: true,
             autoFix: linterConfig?.eslint?.autoFix ?? true,
             timeout: linterConfig?.global?.timeoutMs ?? 60000,
-            include: linterConfig?.eslint?.patterns || [],
+            include: linterConfig?.eslint?.include || [],
           });
           console.log('ESLint plugin registered successfully');
         } else {
@@ -9018,7 +9141,7 @@ Parent: ${parentTask.description}`;
             enabled: true,
             autoFix: linterConfig?.prettier?.autoFix ?? true,
             timeout: linterConfig?.global?.timeoutMs ?? 60000,
-            include: linterConfig?.prettier?.patterns || [],
+            include: linterConfig?.prettier?.include || [],
           });
           console.log('Prettier plugin registered successfully');
         } else {
@@ -9124,10 +9247,11 @@ Parent: ${parentTask.description}`;
    * with proper metadata and timestamps.
    */
   private setupMCPEventForwarding(): void {
-    if (!this.mcpConnectionManager) return;
+    const connManager = this.mcpConnectionManager;
+    if (!connManager) return;
 
     // Forward connection events
-    this.mcpConnectionManager.on('connected', (connection) => {
+    connManager.on('connected', (connection) => {
       const eventData: MCPConnectionEventData = {
         serverId: connection.serverId,
         serverName: connection.serverName,
@@ -9142,8 +9266,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward disconnection events
-    this.mcpConnectionManager.on('disconnected', (serverId, reason) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('disconnected', (serverId, reason) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPDisconnectionEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -9154,8 +9278,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward error events
-    this.mcpConnectionManager.on('error', (serverId, error) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('error', (serverId, error) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPErrorEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -9167,8 +9291,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward reconnection events
-    this.mcpConnectionManager.on('reconnecting', (serverId, attempt, maxAttempts) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('reconnecting', (serverId, attempt, maxAttempts) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPReconnectingEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -9180,8 +9304,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward health check events
-    this.mcpConnectionManager.on('healthCheck', (serverId, result) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('healthCheck', (serverId, result) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPHealthCheckEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -9196,8 +9320,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward state change events
-    this.mcpConnectionManager.on('stateChange', (serverId, previousState, newState) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('stateChange', (serverId, previousState, newState) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPStateChangeEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -9209,8 +9333,8 @@ Parent: ${parentTask.description}`;
     });
 
     // Forward pool change events
-    this.mcpConnectionManager.on('poolChange', (serverId, poolSize, activeConnections) => {
-      const connection = this.mcpConnectionManager.getConnection(serverId);
+    connManager.on('poolChange', (serverId, poolSize, activeConnections) => {
+      const connection = connManager.getConnection(serverId);
       const eventData: MCPPoolChangeEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
@@ -10551,7 +10675,6 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
         currentAgent: context.agentName,
         approvalUrl: this.generateApprovalUrl(approvalState.id),
         toolName: context.toolName,
-        enforcementLevel: context.enforcementLevel,
         triggeredBy: 'policy-enforcer',
         blocking: true,
       },
@@ -10698,7 +10821,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    */
   private calculateResourceImpact(task: Task, stage: WorkflowStage): string {
     // Determine resource impact based on task priority, stage type, and agent
-    if (task.priority === 'urgent' || task.priority === 'critical') {
+    if (task.priority === 'urgent' || task.priority === 'high') {
       return 'high';
     }
 
@@ -10728,14 +10851,14 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (gateName.includes('dangerous') ||
         context?.operationType === 'file-modify' ||
         context?.operationType === 'execute' ||
-        task.priority === 'critical') {
+        task.priority === 'urgent') {
       return 'high';
     }
 
     // Medium impact for network operations or system changes
     if (context?.operationType === 'network' ||
         context?.operationType === 'system' ||
-        task.priority === 'urgent') {
+        task.priority === 'high') {
       return 'medium';
     }
 
@@ -10751,7 +10874,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (context?.toolName === 'Bash' ||
         context?.toolName === 'Write' ||
         context?.toolName === 'Edit' ||
-        task.priority === 'critical') {
+        task.priority === 'urgent') {
       return 'high';
     }
 
@@ -10759,7 +10882,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     if (context?.toolName === 'WebFetch' ||
         context?.toolName === 'WebSearch' ||
         context?.toolName === 'MultiEdit' ||
-        task.priority === 'urgent') {
+        task.priority === 'high') {
       return 'medium';
     }
 
@@ -10861,7 +10984,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
 export { MCPServerStore } from './mcp-store';
-export { MCPInstaller } from './mcp-installer';
+// MCPInstaller is exported later with type MCPInstallationOptions
 export { MCPConnectionManager, type MCPConnectionManagerOptions, type MCPConnectionManagerEvents } from './mcp/connection-manager';
 export {
   MCPToolRegistry,
@@ -11078,7 +11201,7 @@ export {
   ESLintDetector,
   BaseResolver,
   LocalResolver,
-  AliasResolver,
+  AliasResolver as ImportAliasResolver,
   PackageResolver,
   type ImportAutoFixerOptions,
   type ImportAutoFixerConfig,

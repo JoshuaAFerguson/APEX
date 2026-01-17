@@ -5,9 +5,19 @@
  * This package provides browser automation tools for AI agents.
  */
 
+// Import core classes for re-export and use in utility functions
+import { BrowserManager as BrowserManagerClass } from './browser-manager.js';
+import { BrowserSession as BrowserSessionClass } from './browser-session.js';
+import type {
+  BrowserManagerConfig,
+  BrowserSessionConfig,
+  CaptureConfig,
+  BrowserActionResult,
+} from './types.js';
+
 // Export core classes
-export { BrowserManager } from './browser-manager.js';
-export { BrowserSession } from './browser-session.js';
+export { BrowserManagerClass as BrowserManager };
+export { BrowserSessionClass as BrowserSession };
 
 // Export types and interfaces
 export type {
@@ -70,37 +80,49 @@ export {
   USER_AGENTS,
 } from './constants.js';
 
-// Export screenshot utilities
-export {
-  captureScreenshot,
-  capturePNG,
-  captureJPEG,
-  captureFullPageScreenshot,
-  captureViewportScreenshot,
-  type ScreenshotFormat,
-  type ScreenshotCaptureOptions,
-  type ScreenshotResult,
+// Import and export screenshot utilities
+import {
+  captureScreenshot as captureScreenshotFn,
+  capturePNG as capturePNGFn,
+  captureJPEG as captureJPEGFn,
+  captureFullPageScreenshot as captureFullPageScreenshotFn,
+  captureViewportScreenshot as captureViewportScreenshotFn,
 } from './screenshot-utility.js';
 
-// Export Playwright browser launcher functions for convenience
-export { chromium, firefox, webkit } from 'playwright';
+export {
+  captureScreenshotFn as captureScreenshot,
+  capturePNGFn as capturePNG,
+  captureJPEGFn as captureJPEG,
+  captureFullPageScreenshotFn as captureFullPageScreenshot,
+  captureViewportScreenshotFn as captureViewportScreenshot,
+};
+
+export type {
+  ScreenshotFormat,
+  ScreenshotCaptureOptions as ScreenshotUtilityOptions, // Renamed to avoid conflict with types.ts
+  ScreenshotResult,
+} from './screenshot-utility.js';
+
+// Import and export Playwright browser launcher functions for convenience
+import { chromium as chromiumLauncher, firefox as firefoxLauncher, webkit as webkitLauncher } from 'playwright';
+export { chromiumLauncher as chromium, firefoxLauncher as firefox, webkitLauncher as webkit };
 
 /**
  * Utility function to create a new browser manager
  */
 export function createBrowserManager(config?: Partial<BrowserManagerConfig>) {
-  return new BrowserManager(config);
+  return new BrowserManagerClass(config);
 }
 
 /**
  * Utility function to create a new browser session
  */
 export function createBrowserSession(
-  manager: BrowserManager,
+  manager: BrowserManagerClass,
   config?: Partial<BrowserSessionConfig>,
   captureConfig?: Partial<CaptureConfig>
 ) {
-  return new BrowserSession(manager, config, captureConfig);
+  return new BrowserSessionClass(manager, config, captureConfig);
 }
 
 /**
@@ -109,7 +131,7 @@ export function createBrowserSession(
 export async function launchBrowser(
   config?: Partial<BrowserSessionConfig>,
   captureConfig?: Partial<CaptureConfig>
-): Promise<BrowserActionResult<BrowserSession>> {
+): Promise<BrowserActionResult<BrowserSessionClass>> {
   const startTime = Date.now();
 
   try {
@@ -141,17 +163,17 @@ export async function launchBrowser(
 
 // Default export for convenience
 export default {
-  BrowserManager,
-  BrowserSession,
+  BrowserManager: BrowserManagerClass,
+  BrowserSession: BrowserSessionClass,
   createBrowserManager,
   createBrowserSession,
   launchBrowser,
-  captureScreenshot,
-  capturePNG,
-  captureJPEG,
-  captureFullPageScreenshot,
-  captureViewportScreenshot,
-  chromium,
-  firefox,
-  webkit,
+  captureScreenshot: captureScreenshotFn,
+  capturePNG: capturePNGFn,
+  captureJPEG: captureJPEGFn,
+  captureFullPageScreenshot: captureFullPageScreenshotFn,
+  captureViewportScreenshot: captureViewportScreenshotFn,
+  chromium: chromiumLauncher,
+  firefox: firefoxLauncher,
+  webkit: webkitLauncher,
 };

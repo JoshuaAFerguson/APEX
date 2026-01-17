@@ -1055,6 +1055,8 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
         autoReconnect: config.mcp.connection.autoReconnect ?? true,
         keepAlive: config.mcp.connection.keepAlive ?? true,
         keepAliveIntervalMs: config.mcp.connection.keepAliveIntervalMs ?? 15000,
+        heartbeatEnabled: config.mcp.connection.heartbeatEnabled ?? true,
+        heartbeatIntervalMs: config.mcp.connection.heartbeatIntervalMs ?? 30000,
       } : undefined,
     } : {
       enabled: true,
@@ -1081,12 +1083,18 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       diffColor: config.visualRegression.diffColor ?? [255, 0, 255],
       snapshotDir: config.visualRegression.snapshotDir || '.apex/snapshots',
       failOnMismatch: config.visualRegression.failOnMismatch ?? true,
+      includeAlpha: config.visualRegression.includeAlpha ?? false,
+      outputDiff: config.visualRegression.outputDiff ?? false,
+      diffOutputPath: config.visualRegression.diffOutputPath,
     } : {
       enabled: false,
       threshold: 0.99,
       diffColor: [255, 0, 255] as [number, number, number],
       snapshotDir: '.apex/snapshots',
       failOnMismatch: true,
+      includeAlpha: false,
+      outputDiff: false,
+      diffOutputPath: undefined,
     },
     guardrails: config.guardrails ? {
       enabled: config.guardrails.enabled ?? true,
@@ -1106,5 +1114,24 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       metadata: {},
     },
     aliases: config.aliases || [],
+    logging: config.logging ? {
+      level: config.logging.level || 'info',
+      format: config.logging.format || 'auto',
+      packageLevels: config.logging.packageLevels || {},
+      file: config.logging.file,
+      daemon: config.logging.daemon,
+      timestamps: config.logging.timestamps ?? true,
+      stackTraces: config.logging.stackTraces ?? true,
+      redactFields: config.logging.redactFields || ['password', 'token', 'secret', 'apiKey', 'authorization'],
+    } : {
+      level: 'info',
+      format: 'auto',
+      packageLevels: {},
+      file: undefined,
+      daemon: undefined,
+      timestamps: true,
+      stackTraces: true,
+      redactFields: ['password', 'token', 'secret', 'apiKey', 'authorization'],
+    },
   };
 }

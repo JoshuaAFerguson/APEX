@@ -4,7 +4,7 @@
  */
 
 import { useThemeColors } from '../../context/ThemeContext.js';
-import type { Theme } from '../../types/theme.js';
+import type { Theme } from '../../../types/theme.js';
 
 export type UsageLevel = 'safe' | 'warning' | 'danger';
 

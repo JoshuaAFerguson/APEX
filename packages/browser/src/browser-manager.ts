@@ -66,7 +66,12 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
     }
 
     try {
-      const config = { ...this.config.defaultSessionConfig, ...sessionConfig };
+      // Merge with defaults to ensure required fields are present
+      const config: BrowserSessionConfig = {
+        ...defaultBrowserConfig,
+        ...this.config.defaultSessionConfig,
+        ...sessionConfig,
+      };
 
       // Check if we can reuse an existing instance
       if (this.config.reuseInstances) {

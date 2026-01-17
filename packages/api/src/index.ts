@@ -1422,7 +1422,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
           // Handle other message types if needed
           app.log.debug('Received WebSocket message:', data);
         } catch (error) {
-          app.log.error('Error parsing WebSocket message:', error);
+          app.log.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Error parsing WebSocket message');
         }
       });
 
@@ -1433,7 +1433,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
       // Handle errors
       socket.on('error', (error) => {
-        app.log.error('Global WebSocket error:', error.message);
+        app.log.error({ err: new Error(error.message) }, 'Global WebSocket error');
       });
     }
   );
@@ -1906,43 +1906,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     });
   });
 
-  // Standardized auto-fix events (v0.5.0) - Broadcast full AutoFixEvent payload
-  orchestrator.on('auto-fix-start', (event) => {
-    broadcast(event.taskId, {
-      type: 'auto-fix-start',
-      taskId: event.taskId,
-      timestamp: event.timestamp,
-      data: event, // Full AutoFixEvent payload
-    });
-  });
-
-  orchestrator.on('auto-fix-progress', (event) => {
-    broadcast(event.taskId, {
-      type: 'auto-fix-progress',
-      taskId: event.taskId,
-      timestamp: event.timestamp,
-      data: event, // Full AutoFixEvent payload
-    });
-  });
-
-  orchestrator.on('auto-fix-complete', (event) => {
-    broadcast(event.taskId, {
-      type: 'auto-fix-complete',
-      taskId: event.taskId,
-      timestamp: event.timestamp,
-      data: event, // Full AutoFixEvent payload
-    });
-  });
-
-  orchestrator.on('auto-fix-error', (event) => {
-    broadcast(event.taskId, {
-      type: 'auto-fix-error',
-      taskId: event.taskId,
-      timestamp: event.timestamp,
-      data: event, // Full AutoFixEvent payload
-    });
-  });
-
+  // Auto-fix events (v0.5.0)
   orchestrator.on('autofix:started', (event) => {
     broadcast(event.taskId, {
       type: 'autofix:started',
