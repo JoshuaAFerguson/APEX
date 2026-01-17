@@ -2405,6 +2405,67 @@ export const MCPConfigSchema = z.object({
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
 /**
+ * MCP Server Template schema
+ * Represents a reusable template for configuring MCP servers.
+ * Templates provide pre-configured defaults for common MCP servers,
+ * including environment variable requirements and capability declarations.
+ *
+ * Used by the MCPConfigurator service to provide quick setup options
+ * for popular MCP servers from the ecosystem.
+ *
+ * @example
+ * ```yaml
+ * templates:
+ *   - id: filesystem
+ *     name: Filesystem Server
+ *     description: Read and write files, list directories
+ *     package: '@modelcontextprotocol/server-filesystem'
+ *     config:
+ *       type: stdio
+ *       command: npx
+ *       args: ['-y', '@modelcontextprotocol/server-filesystem']
+ *     capabilities: ['filesystem', 'read', 'write']
+ *     verified: true
+ *     defaultEnabled: true
+ * ```
+ */
+export const MCPTemplateSchema = z.object({
+  /** Unique identifier for the template (e.g., 'filesystem', 'github', 'postgres') */
+  id: z.string().min(1, 'Template ID is required'),
+  /** Human-readable display name for the template */
+  name: z.string().min(1, 'Template name is required'),
+  /** Description of what the MCP server does */
+  description: z.string().min(1, 'Template description is required'),
+  /** NPM package name for the MCP server (e.g., '@modelcontextprotocol/server-filesystem') */
+  package: z.string().min(1, 'Package name is required'),
+  /** Base server configuration with pre-filled defaults */
+  config: MCPServerConfigSchema.partial(),
+  /** Environment variables required or used by this server template */
+  envVars: z.array(MCPEnvironmentVarSchema).optional().default([]),
+  /** Capabilities this server provides (e.g., ['filesystem', 'read', 'write']) */
+  capabilities: z.array(z.string()).optional().default([]),
+  /** Whether this template is from a verified/official source */
+  verified: z.boolean().optional().default(false),
+  /** Whether this server should be enabled by default when the template is applied */
+  defaultEnabled: z.boolean().optional().default(false),
+  /** Optional category for grouping templates (e.g., 'database', 'api', 'filesystem') */
+  category: z.string().optional(),
+  /** Optional tags for searchability */
+  tags: z.array(z.string()).optional().default([]),
+  /** Minimum required version of the MCP server package */
+  minVersion: z.string().optional(),
+  /** Documentation URL for the MCP server */
+  documentationUrl: z.string().optional(),
+  /** Repository URL for the MCP server source code */
+  repositoryUrl: z.string().optional(),
+});
+export type MCPTemplate = z.infer<typeof MCPTemplateSchema>;
+
+// Backwards compatibility alias for MCPServerTemplate
+export const MCPServerTemplateSchema = MCPTemplateSchema;
+export type MCPServerTemplate = MCPTemplate;
+
+/**
  * MCP Server definition schema
  * Represents an MCP server available for installation from a registry/marketplace
  * Contains package information and default configuration
