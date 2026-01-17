@@ -25,6 +25,7 @@ import {
   loadMCPTemplates,
   getMCPTemplate,
   type MCPServerConfig,
+  validateMCPConfig,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
@@ -2636,7 +2637,7 @@ export const commands: Command[] = [
     name: 'mcp',
     aliases: [],
     description: 'Manage MCP (Model Context Protocol) server templates',
-    usage: '/mcp list | /mcp add <server-name>',
+    usage: '/mcp list | /mcp add <server-name> | /mcp validate',
     handler: async (ctx, args) => {
       const [subcommand, serverName] = args;
 
@@ -2764,9 +2765,98 @@ export const commands: Command[] = [
         } catch (error) {
           console.log(chalk.red(`❌ Error adding MCP server: ${(error as Error).message}`));
         }
+      } else if (subcommand === 'validate') {
+        // Handle MCP configuration validation
+        try {
+          const config = await loadConfig(ctx.cwd);
+
+          console.log(chalk.cyan('🔍 Validating MCP configuration...'));
+
+          // Validate the MCP configuration
+          const mcpConfig = config.mcp || { enabled: false, servers: {} };
+          const validationResult = await validateMCPConfig(mcpConfig, {
+            checkEnvironmentVars: true,
+            checkCommandExistence: true,
+            validateConnectionConfig: true,
+            baseDirectory: ctx.cwd,
+          });
+
+          // Display validation results
+          if (validationResult.isValid) {
+            console.log(chalk.green('✅ MCP configuration is valid!'));
+
+            if (validationResult.warningCount > 0 || validationResult.infoCount > 0) {
+              console.log(chalk.cyan('\n📋 Additional information:'));
+            }
+          } else {
+            console.log(chalk.red('❌ MCP configuration has validation errors'));
+          }
+
+          // Display summary
+          const totalIssues = validationResult.errorCount + validationResult.warningCount + validationResult.infoCount;
+          if (totalIssues > 0) {
+            console.log(chalk.gray(`\n📊 Summary: ${validationResult.errorCount} errors, ${validationResult.warningCount} warnings, ${validationResult.infoCount} info`));
+
+            // Display issues grouped by severity
+            const errorIssues = validationResult.issues.filter(i => i.severity === 'error');
+            const warningIssues = validationResult.issues.filter(i => i.severity === 'warning');
+            const infoIssues = validationResult.issues.filter(i => i.severity === 'info');
+
+            if (errorIssues.length > 0) {
+              console.log(chalk.red('\n🚨 Errors:'));
+              for (const issue of errorIssues) {
+                console.log(chalk.red(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.yellow(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+
+            if (warningIssues.length > 0) {
+              console.log(chalk.yellow('\n⚠️  Warnings:'));
+              for (const issue of warningIssues) {
+                console.log(chalk.yellow(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.cyan(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+
+            if (infoIssues.length > 0) {
+              console.log(chalk.blue('\nℹ️  Information:'));
+              for (const issue of infoIssues) {
+                console.log(chalk.blue(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.cyan(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+          }
+
+          if (!config.mcp || !config.mcp.enabled) {
+            console.log(chalk.gray('\n💡 Note: MCP is currently disabled or not configured'));
+          } else if (!config.mcp.servers || Object.keys(config.mcp.servers).length === 0) {
+            console.log(chalk.gray('\n💡 Note: No MCP servers are configured'));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error validating MCP configuration: ${(error as Error).message}`));
+        }
       } else {
         console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
-        console.log(chalk.gray('Usage: /mcp list | /mcp add <server-name>'));
+        console.log(chalk.gray('Usage: /mcp list | /mcp add <server-name> | /mcp validate'));
       }
     },
   },
