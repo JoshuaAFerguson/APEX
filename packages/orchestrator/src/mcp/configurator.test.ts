@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { MCPConfigurator } from './configurator.js';
+import { MCPConfigurator, MCPConfiguratorError } from './configurator.js';
 import { BUILTIN_TEMPLATES } from './templates.js';
 import type { ApexConfig, MCPConfig, MCPServerConfig, MCPEnvironmentVar } from '@apexcli/core';
 
@@ -428,6 +428,170 @@ describe('Edge Cases and Integration Tests', () => {
     });
   });
 
+  describe('Server Management', () => {
+    describe('getConfig', () => {
+      it('should return current configuration', () => {
+        const config = configurator.getConfig();
+        expect(config.enabled).toBe(true);
+        expect(config.servers).toHaveProperty('filesystem');
+        expect(config.servers).toHaveProperty('github');
+      });
+
+      it('should return a copy that prevents external mutations', () => {
+        const config = configurator.getConfig();
+
+        // Attempt to mutate the returned config
+        config.enabled = false;
+        config.servers!['new-server'] = {
+          name: 'new-server',
+          type: 'stdio',
+          command: 'test',
+        };
+
+        // Original config should remain unchanged
+        const freshConfig = configurator.getConfig();
+        expect(freshConfig.enabled).toBe(true);
+        expect(freshConfig.servers).not.toHaveProperty('new-server');
+      });
+    });
+
+    describe('addServer', () => {
+      const newServerConfig: MCPServerConfig = {
+        name: 'new-test-server',
+        type: 'stdio',
+        command: 'npx',
+        args: ['test-server'],
+        autoStart: false,
+      };
+
+      it('should add a new server successfully', () => {
+        const addedSpy = vi.fn();
+        configurator.on('server:added', addedSpy);
+
+        const updatedConfig = configurator.addServer('test-server', newServerConfig);
+
+        expect(updatedConfig.servers).toHaveProperty('test-server');
+        expect(updatedConfig.servers!['test-server']).toEqual(newServerConfig);
+        expect(addedSpy).toHaveBeenCalledWith({
+          serverId: 'test-server',
+          config: newServerConfig,
+        });
+      });
+
+      it('should throw error when server exists and overwrite is false', () => {
+        // First add a server
+        configurator.addServer('duplicate-server', newServerConfig);
+
+        // Try to add again without overwrite
+        expect(() => configurator.addServer('duplicate-server', newServerConfig))
+          .toThrow('Server \'duplicate-server\' already exists');
+      });
+
+      it('should overwrite existing server when overwrite is true', () => {
+        const originalConfig: MCPServerConfig = {
+          name: 'original',
+          type: 'stdio',
+          command: 'original-command',
+        };
+
+        const updatedConfig: MCPServerConfig = {
+          name: 'updated',
+          type: 'http',
+          url: 'http://example.com',
+        };
+
+        // Add original server
+        configurator.addServer('overwrite-test', originalConfig);
+
+        // Overwrite with new config
+        const result = configurator.addServer('overwrite-test', updatedConfig, {
+          overwrite: true,
+        });
+
+        expect(result.servers!['overwrite-test']).toEqual(updatedConfig);
+      });
+
+      it('should validate server config by default', () => {
+        const invalidConfig: MCPServerConfig = {
+          name: 'invalid',
+          type: 'stdio',
+          // Missing required command field
+        } as MCPServerConfig;
+
+        expect(() => configurator.addServer('invalid-server', invalidConfig))
+          .toThrow('Server configuration validation failed');
+      });
+
+      it('should skip validation when validate is false', () => {
+        const invalidConfig: MCPServerConfig = {
+          name: 'invalid',
+          type: 'stdio',
+        } as MCPServerConfig;
+
+        expect(() => configurator.addServer('invalid-server', invalidConfig, {
+          validate: false,
+        })).not.toThrow();
+      });
+
+      it('should handle servers object initialization', () => {
+        // Create configurator with empty servers
+        const emptyConfig: ApexConfig = {
+          project: { name: 'test' },
+          mcp: { enabled: true },
+        };
+
+        const emptyConfigurator = new MCPConfigurator({
+          projectPath: testProjectPath,
+          config: emptyConfig,
+        });
+
+        const result = emptyConfigurator.addServer('first-server', newServerConfig);
+        expect(result.servers).toHaveProperty('first-server');
+      });
+    });
+
+    describe('removeServer', () => {
+      beforeEach(() => {
+        // Add a test server for removal tests
+        configurator.addServer('removal-test', {
+          name: 'removal-test',
+          type: 'stdio',
+          command: 'test-command',
+        });
+      });
+
+      it('should remove an existing server successfully', () => {
+        const removedSpy = vi.fn();
+        configurator.on('server:removed', removedSpy);
+
+        const updatedConfig = configurator.removeServer('removal-test');
+
+        expect(updatedConfig).not.toBeNull();
+        expect(updatedConfig!.servers).not.toHaveProperty('removal-test');
+        expect(removedSpy).toHaveBeenCalledWith({ serverId: 'removal-test' });
+      });
+
+      it('should throw error when server does not exist', () => {
+        expect(() => configurator.removeServer('non-existent'))
+          .toThrow('Server \'non-existent\' not found');
+      });
+
+      it('should handle removal from existing configuration', () => {
+        // Verify server exists first
+        const beforeConfig = configurator.getConfig();
+        expect(beforeConfig.servers).toHaveProperty('removal-test');
+
+        // Remove server
+        const afterConfig = configurator.removeServer('removal-test');
+        expect(afterConfig!.servers).not.toHaveProperty('removal-test');
+
+        // Verify it's also removed from subsequent getConfig calls
+        const freshConfig = configurator.getConfig();
+        expect(freshConfig.servers).not.toHaveProperty('removal-test');
+      });
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle missing server gracefully in environment detection', async () => {
       await expect(configurator.detectEnvironmentVariables('non-existent'))
@@ -453,6 +617,54 @@ describe('Edge Cases and Integration Tests', () => {
 
       await expect(configurator.applyConfig(invalidConfig))
         .rejects.toThrow('Configuration validation failed');
+    });
+
+    describe('MCPConfiguratorError', () => {
+      it('should throw proper error when server already exists', () => {
+        const serverConfig: MCPServerConfig = {
+          name: 'test',
+          type: 'stdio',
+          command: 'test',
+        };
+
+        configurator.addServer('existing', serverConfig);
+
+        try {
+          configurator.addServer('existing', serverConfig);
+          expect.fail('Should have thrown an error');
+        } catch (error) {
+          expect(error).toBeInstanceOf(MCPConfiguratorError);
+          expect((error as MCPConfiguratorError).code).toBe('SERVER_EXISTS');
+          expect((error as MCPConfiguratorError).serverId).toBe('existing');
+        }
+      });
+
+      it('should throw proper error when removing non-existent server', () => {
+        try {
+          configurator.removeServer('non-existent');
+          expect.fail('Should have thrown an error');
+        } catch (error) {
+          expect(error).toBeInstanceOf(MCPConfiguratorError);
+          expect((error as MCPConfiguratorError).code).toBe('SERVER_NOT_FOUND');
+          expect((error as MCPConfiguratorError).serverId).toBe('non-existent');
+        }
+      });
+
+      it('should throw proper error for validation failures', () => {
+        const invalidConfig: MCPServerConfig = {
+          name: 'invalid',
+          type: 'stdio',
+        } as MCPServerConfig;
+
+        try {
+          configurator.addServer('invalid', invalidConfig);
+          expect.fail('Should have thrown an error');
+        } catch (error) {
+          expect(error).toBeInstanceOf(MCPConfiguratorError);
+          expect((error as MCPConfiguratorError).code).toBe('VALIDATION_FAILED');
+          expect((error as MCPConfiguratorError).serverId).toBe('invalid');
+        }
+      });
     });
   });
 });

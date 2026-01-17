@@ -119,6 +119,8 @@ export interface MCPConfiguratorEvents {
   'config:applied': (data: { serverCount: number }) => void;
   'env:detected': (data: EnvVarDetectionResult) => void;
   'env:missing': (data: { variables: MCPEnvironmentVar[] }) => void;
+  'server:added': (data: { serverId: string; config: MCPServerConfig }) => void;
+  'server:removed': (data: { serverId: string }) => void;
 }
 
 /**
@@ -134,6 +136,24 @@ export interface MCPConfiguratorOptions {
 }
 
 /**
+ * MCPConfigurator specific error class
+ */
+export class MCPConfiguratorError extends Error {
+  constructor(
+    message: string,
+    public readonly code:
+      | 'SERVER_EXISTS'      // addServer with overwrite=false
+      | 'SERVER_NOT_FOUND'   // removeServer for non-existent
+      | 'VALIDATION_FAILED'  // addServer with invalid config
+      | 'PERSIST_FAILED',    // Failed to save to disk
+    public readonly serverId?: string
+  ) {
+    super(message);
+    this.name = 'MCPConfiguratorError';
+  }
+}
+
+/**
  * MCPConfigurator - Central service for MCP configuration management
  *
  * Provides comprehensive MCP configuration generation, validation, and management
@@ -146,6 +166,7 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
   private readonly templates: Map<string, MCPServerTemplate>;
   private readonly envDetector: EnvVarDetector;
   private readonly validator: ConfigValidator;
+  private localMcpConfig: MCPConfig;
 
   constructor(options: MCPConfiguratorOptions) {
     super();
@@ -153,6 +174,14 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
     this.projectPath = options.projectPath;
     this.config = options.config;
     this.templates = new Map();
+
+    // Initialize local MCP config from provided config
+    this.localMcpConfig = {
+      enabled: options.config.mcp?.enabled ?? true,
+      servers: { ...(options.config.mcp?.servers || {}) },
+      marketplace: options.config.mcp?.marketplace,
+      connection: options.config.mcp?.connection,
+    };
 
     // Initialize built-in templates
     for (const template of BUILTIN_TEMPLATES) {
@@ -184,8 +213,7 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
     format: MCPConfigFormat,
     servers?: string[]
   ): ClaudeDesktopConfig | MCPConfig {
-    const mcpConfig = this.config.mcp || { enabled: true, servers: {} };
-    const serverIds = servers || Object.keys(mcpConfig.servers || {});
+    const serverIds = servers || Object.keys(this.localMcpConfig.servers || {});
 
     if (format === 'claude-desktop') {
       return this.generateClaudeDesktopConfig(serverIds);
@@ -193,11 +221,11 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
 
     // For 'apex' or 'json' format, return the native MCPConfig
     const filteredConfig: MCPConfig = {
-      ...mcpConfig,
+      ...this.localMcpConfig,
       servers: Object.fromEntries(
         serverIds
-          .filter(id => mcpConfig.servers?.[id])
-          .map(id => [id, mcpConfig.servers![id]])
+          .filter(id => this.localMcpConfig.servers?.[id])
+          .map(id => [id, this.localMcpConfig.servers![id]])
       ),
     };
 
@@ -211,12 +239,11 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
    * @returns Claude Desktop compatible configuration
    */
   generateClaudeDesktopConfig(servers?: string[]): ClaudeDesktopConfig {
-    const mcpConfig = this.config.mcp || { enabled: true, servers: {} };
-    const serverIds = servers || Object.keys(mcpConfig.servers || {});
+    const serverIds = servers || Object.keys(this.localMcpConfig.servers || {});
     const mcpServers: Record<string, ClaudeDesktopServerConfig> = {};
 
     for (const serverId of serverIds) {
-      const serverConfig = mcpConfig.servers?.[serverId];
+      const serverConfig = this.localMcpConfig.servers?.[serverId];
       if (!serverConfig) continue;
 
       // Only include stdio servers (Claude Desktop only supports stdio)
@@ -323,10 +350,9 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
    * @returns Map of server ID to detection results
    */
   async detectAllEnvironmentVariables(): Promise<Map<string, EnvVarDetectionResult>> {
-    const mcpConfig = this.config.mcp || { enabled: true, servers: {} };
     const results = new Map<string, EnvVarDetectionResult>();
 
-    for (const [serverId, serverConfig] of Object.entries(mcpConfig.servers || {})) {
+    for (const [serverId, serverConfig] of Object.entries(this.localMcpConfig.servers || {})) {
       try {
         const result = await this.detectEnvironmentVariables(serverId);
         results.set(serverId, result);
@@ -609,12 +635,125 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
   }
 
   // =========================================================================
+  // Server Management Methods
+  // =========================================================================
+
+  /**
+   * Get the current MCP configuration
+   * @returns Current MCPConfig object
+   */
+  getConfig(): MCPConfig {
+    // Return a deep copy to prevent external mutations
+    return {
+      enabled: this.localMcpConfig.enabled,
+      servers: { ...this.localMcpConfig.servers },
+      marketplace: this.localMcpConfig.marketplace,
+      connection: this.localMcpConfig.connection,
+    };
+  }
+
+  /**
+   * Add a new MCP server to the configuration
+   * @param serverId - Unique identifier for the server
+   * @param config - Server configuration (MCPServerConfig)
+   * @param options - Optional settings
+   * @returns The updated MCPConfig
+   */
+  addServer(
+    serverId: string,
+    config: MCPServerConfig,
+    options: {
+      validate?: boolean;      // Validate config before adding (default: true)
+      overwrite?: boolean;     // Overwrite if exists (default: false)
+      persist?: boolean;       // Persist to disk (default: false)
+    } = {}
+  ): MCPConfig {
+    const { validate = true, overwrite = false, persist = false } = options;
+
+    // Check if server already exists
+    if (this.localMcpConfig.servers?.[serverId] && !overwrite) {
+      throw new MCPConfiguratorError(
+        `Server '${serverId}' already exists. Set overwrite=true to replace it.`,
+        'SERVER_EXISTS',
+        serverId
+      );
+    }
+
+    // Validate configuration if requested
+    if (validate) {
+      const validation = this.validateServerConfig(config);
+      if (!validation.valid) {
+        throw new MCPConfiguratorError(
+          `Server configuration validation failed: ${validation.errors.map(e => e.message).join(', ')}`,
+          'VALIDATION_FAILED',
+          serverId
+        );
+      }
+    }
+
+    // Initialize servers object if it doesn't exist
+    if (!this.localMcpConfig.servers) {
+      this.localMcpConfig.servers = {};
+    }
+
+    // Add the server
+    this.localMcpConfig.servers[serverId] = { ...config };
+
+    // Emit event
+    this.emit('server:added', { serverId, config: { ...config } });
+
+    // TODO: Implement persistence if requested
+    if (persist) {
+      console.warn('Persistence not yet implemented');
+    }
+
+    return this.getConfig();
+  }
+
+  /**
+   * Remove an MCP server from the configuration
+   * @param serverId - Server identifier to remove
+   * @param options - Optional settings
+   * @returns The updated MCPConfig or null if server not found
+   */
+  removeServer(
+    serverId: string,
+    options: {
+      persist?: boolean;       // Persist to disk (default: false)
+    } = {}
+  ): MCPConfig | null {
+    const { persist = false } = options;
+
+    // Check if server exists
+    if (!this.localMcpConfig.servers?.[serverId]) {
+      throw new MCPConfiguratorError(
+        `Server '${serverId}' not found`,
+        'SERVER_NOT_FOUND',
+        serverId
+      );
+    }
+
+    // Remove the server
+    delete this.localMcpConfig.servers[serverId];
+
+    // Emit event
+    this.emit('server:removed', { serverId });
+
+    // TODO: Implement persistence if requested
+    if (persist) {
+      console.warn('Persistence not yet implemented');
+    }
+
+    return this.getConfig();
+  }
+
+  // =========================================================================
   // Helper Methods
   // =========================================================================
 
   private getServerOrTemplateConfig(id: string): MCPServerConfig | undefined {
     // First try to get from configured servers
-    const serverConfig = this.config.mcp?.servers?.[id];
+    const serverConfig = this.localMcpConfig.servers?.[id];
     if (serverConfig) {
       return serverConfig;
     }

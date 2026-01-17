@@ -99,6 +99,7 @@ export {
 // MCP Configurator
 export {
   MCPConfigurator,
+  MCPConfiguratorError,
   type MCPConfiguratorOptions,
   type MCPConfiguratorEvents,
   type MCPConfigFormat,
