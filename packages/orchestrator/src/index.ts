@@ -3156,6 +3156,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
     try {
+    // Log MCP tool availability for observability
+    const mcpServers = this.buildQueryMcpServers();
+    const registryStats = this.mcpToolRegistry?.getStats();
+    if (mcpServers && Object.keys(mcpServers).length > 0) {
+      this.log(`MCP Integration: ${Object.keys(mcpServers).length} servers available: ${Object.keys(mcpServers).join(', ')}`);
+      if (registryStats && registryStats.totalTools > 0) {
+        this.log(`MCP Tools: ${registryStats.totalTools} tools discovered across ${registryStats.totalServers} servers`);
+      }
+
+      // Log connection status through MCPConnectionManager
+      const connections = this.mcpConnectionManager?.listConnections() ?? [];
+      const connectedServers = connections.filter(c => c.state === 'connected').map(c => c.serverId);
+      if (connectedServers.length > 0) {
+        this.log(`MCP Connections: ${connectedServers.length} active connections: ${connectedServers.join(', ')}`);
+      }
+    }
+
     for await (const message of query({
       prompt: stagePrompt,
       options: {
@@ -3163,7 +3180,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         permissionMode: 'acceptEdits',
         maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
-        mcpServers: this.buildQueryMcpServers(),
+        mcpServers: mcpServers,
         cwd: workingDirectory,
         env: {
           ...process.env,

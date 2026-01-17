@@ -2393,6 +2393,26 @@ export const MCPMarketplaceSourceSchema = z.object({
 export type MCPMarketplaceSource = z.infer<typeof MCPMarketplaceSourceSchema>;
 
 /**
+ * MCP Marketplace schema
+ * Represents a complete marketplace containing multiple MCP server entries
+ * and metadata about the marketplace itself
+ */
+export const MCPMarketplaceSchema = z.object({
+  /** Marketplace metadata */
+  name: z.string().min(1, 'Marketplace name is required'),
+  description: z.string().optional(),
+  version: z.string().optional(),
+  lastUpdated: z.string().optional(),
+
+  /** Array of available MCP server entries */
+  servers: z.array(MCPMarketplaceEntrySchema),
+
+  /** Marketplace source configuration */
+  source: MCPMarketplaceSourceSchema.optional(),
+});
+export type MCPMarketplace = z.infer<typeof MCPMarketplaceSchema>;
+
+/**
  * MCP Tools Configuration Schema (v0.5.0)
  * Configuration for managing MCP tool discovery, caching, and access control.
  * Controls how tools from MCP servers are registered and made available to agents.
@@ -2430,8 +2450,11 @@ export type MCPToolsConfig = z.infer<typeof MCPToolsConfigSchema>;
 export const MCPConfigSchema = z.object({
   /** Whether MCP is enabled globally */
   enabled: z.boolean().optional().default(true),
-  /** MCP server configurations keyed by server identifier */
-  servers: z.record(MCPServerConfigSchema).optional().default({}),
+  /** MCP server configurations - supports both array and record formats */
+  servers: z.union([
+    z.record(MCPServerConfigSchema),
+    z.array(MCPServerConfigSchema)
+  ]).optional().default({}),
   /** Marketplace source configuration for discovering MCP servers */
   marketplace: MCPMarketplaceSourceSchema.optional(),
   /** Global connection configuration applied to all MCP servers unless overridden */
@@ -2555,6 +2578,45 @@ export const MCPInstallationSchema = z.object({
   configPath: z.string().min(1, 'Config path is required'),
 });
 export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
+
+/**
+ * Installed MCP Server schema
+ * Represents an MCP server that has been installed and configured,
+ * combining server definition with installation configuration
+ */
+export const InstalledMCPServerSchema = z.object({
+  /** Unique identifier for the installed server */
+  id: z.string().min(1, 'Server ID is required'),
+
+  /** The base MCP server definition */
+  server: MCPServerSchema,
+
+  /** Installation-specific configuration */
+  config: MCPServerConfigSchema,
+
+  /** Current installation status */
+  status: MCPInstallationStatusSchema,
+
+  /** When the server was installed */
+  installedAt: z.date(),
+
+  /** When the server configuration was last updated */
+  updatedAt: z.date().optional(),
+
+  /** Whether the server is currently enabled */
+  enabled: z.boolean().default(true),
+
+  /** Installation metadata */
+  installation: z.object({
+    /** Path where the server is installed */
+    path: z.string().optional(),
+    /** Installation method used */
+    method: z.enum(['npm', 'yarn', 'pnpm', 'binary', 'docker']).optional(),
+    /** Package version that was installed */
+    installedVersion: z.string().optional(),
+  }).optional(),
+});
+export type InstalledMCPServer = z.infer<typeof InstalledMCPServerSchema>;
 
 // ============================================================================
 // MCP Connection Management Types (v0.5.0)

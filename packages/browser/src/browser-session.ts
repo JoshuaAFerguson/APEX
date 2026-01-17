@@ -617,11 +617,11 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   /**
    * Captures a screenshot of the full scrollable page
    *
-   * @param options - Screenshot capture options (format, quality, path)
+   * @param options - Screenshot options (format, quality, path)
    * @returns Buffer containing the screenshot image data
    */
   async captureFullPage(
-    options: ScreenshotCaptureOptions = {}
+    options: ScreenshotOptions = {}
   ): Promise<BrowserActionResult<Buffer>> {
     const startTime = Date.now();
 

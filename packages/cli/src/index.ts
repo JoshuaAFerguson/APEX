@@ -25,6 +25,7 @@ import {
   loadMCPTemplates,
   getMCPTemplate,
   type MCPServerConfig,
+  type MCPTemplate,
   validateMCPConfig,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
@@ -2635,8 +2636,8 @@ export const commands: Command[] = [
   {
     name: 'mcp',
     aliases: [],
-    description: 'Manage MCP (Model Context Protocol) server templates',
-    usage: '/mcp init | /mcp list | /mcp add <server-name> | /mcp validate',
+    description: 'Manage MCP (Model Context Protocol) marketplace and servers',
+    usage: '/mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate',
     handler: async (ctx, args) => {
       const [subcommand, serverName] = args;
 
@@ -2772,36 +2773,174 @@ export const commands: Command[] = [
       } else if (!subcommand || subcommand === 'list') {
         // Handle 'mcp list' subcommand
         try {
-          console.log(chalk.cyan('\n📦 Available MCP Server Templates:\n'));
+          console.log(chalk.cyan('\n📦 MCP Marketplace - Available Servers:\n'));
 
           const templates = await loadMCPTemplates();
 
           if (Object.keys(templates).length === 0) {
-            console.log(chalk.gray('No MCP templates found.'));
+            console.log(chalk.gray('No MCP servers found in marketplace.'));
             return;
           }
 
           // Calculate max name length for formatting
           const maxNameLength = Math.max(...Object.values(templates).map(t => t.name.length));
 
-          // Sort templates by name for consistent output
-          const sortedTemplates = Object.values(templates).sort((a, b) => a.name.localeCompare(b.name));
+          // Group templates by category for better browsing
+          const categorized: Record<string, MCPTemplate[]> = {};
+          const uncategorized: MCPTemplate[] = [];
 
-          for (const template of sortedTemplates) {
-            const padding = ' '.repeat(maxNameLength - template.name.length + 2);
-            console.log(`  ${chalk.yellow(template.name)}${padding}${chalk.gray(template.description)}`);
+          for (const template of Object.values(templates)) {
+            if (template.category) {
+              if (!categorized[template.category]) {
+                categorized[template.category] = [];
+              }
+              categorized[template.category].push(template);
+            } else {
+              uncategorized.push(template);
+            }
           }
 
-          console.log(chalk.gray(`\nTotal: ${Object.keys(templates).length} templates available\n`));
+          // Sort categories and templates within each category
+          const sortedCategories = Object.keys(categorized).sort();
+          for (const category of sortedCategories) {
+            categorized[category].sort((a, b) => a.name.localeCompare(b.name));
+          }
+          uncategorized.sort((a, b) => a.name.localeCompare(b.name));
+
+          // Display categorized templates
+          for (const category of sortedCategories) {
+            console.log(chalk.magenta(`📁 ${category.charAt(0).toUpperCase() + category.slice(1)}`));
+            for (const template of categorized[category]) {
+              const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+              const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+              console.log(`    ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+              // Show tags if available
+              if (template.tags && template.tags.length > 0) {
+                const tagDisplay = template.tags.map(tag => chalk.cyan(`#${tag}`)).join(' ');
+                console.log(`      ${chalk.gray('Tags:')} ${tagDisplay}`);
+              }
+            }
+            console.log(); // Empty line after each category
+          }
+
+          // Display uncategorized templates
+          if (uncategorized.length > 0) {
+            console.log(chalk.magenta('📁 Other'));
+            for (const template of uncategorized) {
+              const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+              const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+              console.log(`    ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+              // Show tags if available
+              if (template.tags && template.tags.length > 0) {
+                const tagDisplay = template.tags.map(tag => chalk.cyan(`#${tag}`)).join(' ');
+                console.log(`      ${chalk.gray('Tags:')} ${tagDisplay}`);
+              }
+            }
+            console.log();
+          }
+
+          // Summary and helpful commands
+          const totalServers = Object.keys(templates).length;
+          const verifiedCount = Object.values(templates).filter(t => t.verified).length;
+
+          console.log(chalk.gray(`📊 ${totalServers} server${totalServers === 1 ? '' : 's'} available`));
+          if (verifiedCount > 0) {
+            console.log(chalk.gray(`   ${verifiedCount} verified server${verifiedCount === 1 ? '' : 's'} ${chalk.blue('✓')}`));
+          }
+
+          console.log(chalk.gray('\n🔍 Marketplace commands:'));
+          console.log(chalk.gray('  • Search servers: /mcp search <query>'));
+          console.log(chalk.gray('  • Install server: /mcp install <server-name>'));
+          console.log(chalk.gray('  • View installed: /mcp installed'));
+          console.log(chalk.gray('  • Interactive setup: /mcp init\n'));
 
         } catch (error) {
-          console.log(chalk.red(`❌ Error loading MCP templates: ${(error as Error).message}`));
+          console.log(chalk.red(`❌ Error loading MCP marketplace: ${(error as Error).message}`));
         }
-      } else if (subcommand === 'add') {
-        // Handle 'mcp add <server-name>' subcommand
+      } else if (subcommand === 'search') {
+        // Handle 'mcp search <query>' subcommand
+        const query = serverName; // serverName is actually the search query in this context
+
+        if (!query) {
+          console.log(chalk.red('❌ Error: Search query is required'));
+          console.log(chalk.gray('Usage: /mcp search <query>'));
+          console.log(chalk.gray('Example: /mcp search filesystem'));
+          return;
+        }
+
+        try {
+          console.log(chalk.cyan(`\n🔍 Searching MCP marketplace for "${query}"...\n`));
+
+          const templates = await loadMCPTemplates();
+          const searchQuery = query.toLowerCase();
+
+          // Search through templates by name, description, tags, and category
+          const matchingTemplates = Object.values(templates).filter(template => {
+            const nameMatch = template.name.toLowerCase().includes(searchQuery);
+            const descMatch = template.description.toLowerCase().includes(searchQuery);
+            const categoryMatch = template.category?.toLowerCase().includes(searchQuery);
+            const tagsMatch = template.tags?.some(tag => tag.toLowerCase().includes(searchQuery));
+            const capabilitiesMatch = template.capabilities?.some(cap => cap.toLowerCase().includes(searchQuery));
+
+            return nameMatch || descMatch || categoryMatch || tagsMatch || capabilitiesMatch;
+          });
+
+          if (matchingTemplates.length === 0) {
+            console.log(chalk.yellow(`No MCP servers found matching "${query}"`));
+            console.log(chalk.gray('\nTry:'));
+            console.log(chalk.gray('  • Using broader search terms'));
+            console.log(chalk.gray('  • Running "/mcp list" to see all available servers'));
+            return;
+          }
+
+          // Calculate max name length for formatting
+          const maxNameLength = Math.max(...matchingTemplates.map(t => t.name.length));
+
+          // Sort results by relevance (exact name match first, then alphabetically)
+          const sortedResults = matchingTemplates.sort((a, b) => {
+            const aExactMatch = a.name.toLowerCase() === searchQuery;
+            const bExactMatch = b.name.toLowerCase() === searchQuery;
+
+            if (aExactMatch && !bExactMatch) return -1;
+            if (!aExactMatch && bExactMatch) return 1;
+
+            return a.name.localeCompare(b.name);
+          });
+
+          console.log(chalk.green(`Found ${matchingTemplates.length} matching server${matchingTemplates.length === 1 ? '' : 's'}:\n`));
+
+          for (const template of sortedResults) {
+            const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+            const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+
+            console.log(`  ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+            // Show additional details for search results
+            if (template.category) {
+              console.log(`    ${chalk.gray('Category:')} ${chalk.cyan(template.category)}`);
+            }
+            if (template.tags && template.tags.length > 0) {
+              console.log(`    ${chalk.gray('Tags:')} ${template.tags.map(tag => chalk.cyan(tag)).join(', ')}`);
+            }
+            if (template.capabilities && template.capabilities.length > 0) {
+              console.log(`    ${chalk.gray('Capabilities:')} ${template.capabilities.map(cap => chalk.cyan(cap)).join(', ')}`);
+            }
+            console.log(); // Empty line between results
+          }
+
+          console.log(chalk.gray(`\nTo install: /mcp install <server-name>`));
+          console.log(chalk.gray('To see all servers: /mcp list\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error searching MCP marketplace: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'add' || subcommand === 'install') {
+        // Handle 'mcp add <server-name>' or 'mcp install <server-name>' subcommand
         if (!serverName) {
           console.log(chalk.red('❌ Error: Server name is required'));
-          console.log(chalk.gray('Usage: /mcp add <server-name>'));
+          console.log(chalk.gray(`Usage: /mcp ${subcommand} <server-name>`));
           console.log(chalk.gray('Available servers: /mcp list'));
           return;
         }
@@ -2895,6 +3034,160 @@ export const commands: Command[] = [
         } catch (error) {
           console.log(chalk.red(`❌ Error adding MCP server: ${(error as Error).message}`));
         }
+      } else if (subcommand === 'uninstall') {
+        // Handle 'mcp uninstall <server-name>' subcommand
+        if (!serverName) {
+          console.log(chalk.red('❌ Error: Server name is required'));
+          console.log(chalk.gray('Usage: /mcp uninstall <server-name>'));
+          console.log(chalk.gray('Installed servers: /mcp installed'));
+          return;
+        }
+
+        try {
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          if (!config.mcp || !config.mcp.servers) {
+            console.log(chalk.yellow('⚠️  No MCP servers are currently installed.'));
+            console.log(chalk.gray('Use "/mcp list" to see available servers or "/mcp install <server>" to install one.'));
+            return;
+          }
+
+          // Find the server to uninstall (support both template ID and server name)
+          let serverKey: string | null = null;
+          let serverConfig: MCPServerConfig | null = null;
+
+          // First, try exact match by key
+          if (config.mcp.servers[serverName]) {
+            serverKey = serverName;
+            serverConfig = config.mcp.servers[serverName];
+          } else {
+            // Try to find by name
+            for (const [key, server] of Object.entries(config.mcp.servers)) {
+              if (server.name === serverName) {
+                serverKey = key;
+                serverConfig = server;
+                break;
+              }
+            }
+          }
+
+          if (!serverKey || !serverConfig) {
+            console.log(chalk.red(`❌ MCP server '${serverName}' is not installed`));
+            console.log(chalk.gray('Use "/mcp installed" to see installed servers'));
+            return;
+          }
+
+          // Confirm uninstallation
+          const { confirm } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'confirm',
+              message: `Are you sure you want to uninstall '${serverConfig.name}' (${serverKey})?`,
+              default: false,
+            },
+          ]);
+
+          if (!confirm) {
+            console.log(chalk.yellow('❌ Uninstallation cancelled'));
+            return;
+          }
+
+          // Remove the server from config
+          delete config.mcp.servers[serverKey];
+
+          // Save the updated config
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green(`✅ Successfully uninstalled MCP server '${serverConfig.name}' (${serverKey})`));
+          console.log(chalk.gray('   Server configuration has been removed from .apex/config.yaml'));
+          console.log(chalk.gray('   Restart APEX to apply the changes'));
+
+          // Show remaining servers if any
+          const remainingServers = Object.keys(config.mcp.servers || {});
+          if (remainingServers.length > 0) {
+            console.log(chalk.gray(`\nRemaining installed servers: ${remainingServers.length}`));
+          } else {
+            console.log(chalk.gray('\nNo MCP servers are currently installed.'));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error uninstalling MCP server: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'installed') {
+        // Handle 'mcp installed' subcommand to list installed servers
+        try {
+          console.log(chalk.cyan('\n📦 Installed MCP Servers:\n'));
+
+          const config = await loadConfig(ctx.cwd);
+
+          if (!config.mcp || !config.mcp.servers || Object.keys(config.mcp.servers).length === 0) {
+            console.log(chalk.gray('No MCP servers are currently installed.'));
+            console.log(chalk.gray('\nTo install servers:'));
+            console.log(chalk.gray('  • Browse available servers: /mcp list'));
+            console.log(chalk.gray('  • Search for servers: /mcp search <query>'));
+            console.log(chalk.gray('  • Install a server: /mcp install <server-name>'));
+            return;
+          }
+
+          // Calculate max name length for formatting
+          const serverEntries = Object.entries(config.mcp.servers);
+          const maxNameLength = Math.max(...serverEntries.map(([_, server]) => server.name.length));
+          const maxIdLength = Math.max(...serverEntries.map(([id]) => id.length));
+
+          // Sort servers alphabetically by name
+          const sortedServers = serverEntries.sort(([_a, a], [_b, b]) => a.name.localeCompare(b.name));
+
+          for (const [serverId, server] of sortedServers) {
+            const namePadding = ' '.repeat(maxNameLength - server.name.length + 2);
+            const idPadding = ' '.repeat(maxIdLength - serverId.length + 2);
+            const statusIcon = server.autoStart ? chalk.green('●') : chalk.gray('○');
+            const statusText = server.autoStart ? chalk.green('enabled') : chalk.gray('disabled');
+
+            console.log(`  ${chalk.yellow(server.name)}${namePadding}${chalk.gray(`[${serverId}]`)}${idPadding}${statusIcon} ${statusText}`);
+
+            // Show command and args if available
+            if (server.command) {
+              const commandDisplay = server.args && server.args.length > 0
+                ? `${server.command} ${server.args.join(' ')}`
+                : server.command;
+              console.log(`    ${chalk.gray('Command:')} ${chalk.cyan(commandDisplay)}`);
+            }
+
+            // Show capabilities if available
+            if (server.capabilities && server.capabilities.length > 0) {
+              console.log(`    ${chalk.gray('Capabilities:')} ${server.capabilities.map(cap => chalk.cyan(cap)).join(', ')}`);
+            }
+
+            // Show environment variables info if any
+            if (server.envVars && server.envVars.length > 0) {
+              const configuredVars = server.envVars.filter(env => env.value !== undefined).length;
+              const totalVars = server.envVars.length;
+              if (totalVars > configuredVars) {
+                console.log(`    ${chalk.yellow('⚠️  Environment:')} ${configuredVars}/${totalVars} variables configured`);
+              } else {
+                console.log(`    ${chalk.green('✓ Environment:')} ${configuredVars} variables configured`);
+              }
+            }
+
+            console.log(); // Empty line between servers
+          }
+
+          console.log(chalk.gray(`Total: ${serverEntries.length} server${serverEntries.length === 1 ? '' : 's'} installed`));
+          console.log(chalk.gray('\nMCP Status:'), config.mcp.enabled ? chalk.green('enabled') : chalk.red('disabled'));
+
+          if (!config.mcp.enabled) {
+            console.log(chalk.yellow('⚠️  MCP is disabled. Enable it with "/mcp init" to use installed servers.'));
+          }
+
+          console.log(chalk.gray('\nManagement commands:'));
+          console.log(chalk.gray('  • Uninstall: /mcp uninstall <server-name>'));
+          console.log(chalk.gray('  • Validate config: /mcp validate'));
+          console.log(chalk.gray('  • Configure servers: edit .apex/config.yaml\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error listing installed MCP servers: ${(error as Error).message}`));
+        }
       } else if (subcommand === 'validate') {
         // Handle MCP configuration validation
         try {
@@ -2986,7 +3279,7 @@ export const commands: Command[] = [
         }
       } else {
         console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
-        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp add <server-name> | /mcp validate'));
+        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate'));
       }
     },
   },

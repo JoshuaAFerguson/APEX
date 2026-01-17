@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { BrowserManager } from '../browser-manager.js';
 import { BrowserSession } from '../browser-session.js';
-import type { ScreenshotCaptureOptions, ElementScreenshotOptions } from '../types.js';
+import type { ScreenshotOptions, ScreenshotCaptureOptions, ElementScreenshotOptions } from '../types.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -480,7 +480,7 @@ describe('Screenshot Capture - Acceptance Criteria Validation', () => {
         const filePath = path.join(tempDir, `${test.name}.${test.format}`);
 
         let result;
-        const options: ScreenshotCaptureOptions | ElementScreenshotOptions = {
+        const options: ScreenshotOptions | ElementScreenshotOptions = {
           type: test.format as 'png' | 'jpeg',
           path: filePath,
           ...(test.quality && { quality: test.quality })
