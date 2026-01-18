@@ -962,6 +962,105 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   );
 
   // ============================================================================
+  // Confirmations API (v0.5.0)
+  // ============================================================================
+
+  // Respond to a confirmation request (POST and PUT for different response types)
+  app.post<{ Params: { id: string }; Body: { response: 'accept' | 'reject'; approver?: string; comments?: string } }>(
+    '/confirmations/:id/respond',
+    async (request, reply) => {
+      const { id: confirmationId } = request.params;
+      const { response, approver, comments } = request.body;
+
+      if (!confirmationId || !confirmationId.trim()) {
+        return reply.status(400).send({ error: 'Confirmation ID is required' });
+      }
+
+      if (!response || !['accept', 'reject'].includes(response)) {
+        return reply.status(400).send({
+          error: 'Response is required and must be either "accept" or "reject"'
+        });
+      }
+
+      try {
+        let result;
+        if (response === 'accept') {
+          // Forward acceptance to orchestrator
+          result = await orchestrator.grantApproval(confirmationId, approver || 'anonymous', comments);
+        } else {
+          // Forward rejection to orchestrator
+          if (!comments) {
+            return reply.status(400).send({
+              error: 'Comments are required when rejecting a confirmation'
+            });
+          }
+          result = await orchestrator.denyApproval(confirmationId, approver || 'anonymous', comments);
+        }
+
+        // Get updated confirmation state
+        const updatedState = await orchestrator.getApprovalStateById(confirmationId);
+
+        return {
+          success: true,
+          confirmationId,
+          response,
+          approver: approver || 'anonymous',
+          comments,
+          forwarded: true,
+          confirmationState: updatedState,
+          timestamp: new Date()
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to process confirmation response';
+        return reply.status(400).send({
+          error: message,
+          confirmationId,
+          response
+        });
+      }
+    }
+  );
+
+  // PUT endpoint for accepting confirmations
+  app.put<{ Params: { id: string }; Body: { approver?: string; comments?: string } }>(
+    '/confirmations/:id/respond',
+    async (request, reply) => {
+      const { id: confirmationId } = request.params;
+      const { approver, comments } = request.body;
+
+      if (!confirmationId || !confirmationId.trim()) {
+        return reply.status(400).send({ error: 'Confirmation ID is required' });
+      }
+
+      try {
+        // Forward acceptance to orchestrator
+        await orchestrator.grantApproval(confirmationId, approver || 'anonymous', comments);
+
+        // Get updated confirmation state
+        const updatedState = await orchestrator.getApprovalStateById(confirmationId);
+
+        return {
+          success: true,
+          confirmationId,
+          response: 'accept',
+          approver: approver || 'anonymous',
+          comments,
+          forwarded: true,
+          confirmationState: updatedState,
+          timestamp: new Date()
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to accept confirmation';
+        return reply.status(400).send({
+          error: message,
+          confirmationId,
+          response: 'accept'
+        });
+      }
+    }
+  );
+
+  // ============================================================================
   // Agents API
   // ============================================================================
 
@@ -2118,6 +2217,10 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /api/approvals            - List pending approvals`);
       console.log(`  POST   /api/approvals/:id/approve - Approve an approval request`);
       console.log(`  POST   /api/approvals/:id/deny  - Deny an approval request`);
+      console.log('');
+      console.log('Confirmation Endpoints:');
+      console.log(`  POST   /confirmations/:id/respond - Respond to a confirmation (accept/reject)`);
+      console.log(`  PUT    /confirmations/:id/respond - Accept a confirmation`);
       console.log('');
       console.log('Screenshot Endpoints:');
       console.log(`  POST   /screenshot/viewport      - Capture viewport screenshot`);
