@@ -8666,6 +8666,33 @@ Parent: ${parentTask.description}`;
     return this.mcpServerManager.getServerStatus(name);
   }
 
+  /**
+   * Get detailed MCP server information by ID
+   * @param id - The server ID/name
+   * @returns Full server details including tools, readme, and installation instructions
+   */
+  public async getMcpServerDetails(id: string): Promise<{
+    id: string;
+    name: string;
+    config: MCPServerConfig;
+    status: 'running' | 'stopped' | 'error';
+    tools?: string[];
+    readme?: string;
+    installationInstructions?: string;
+    metadata?: {
+      version?: string;
+      author?: string;
+      description?: string;
+      lastUpdated?: Date;
+    };
+  }> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    return this.mcpServerManager.getServerDetails(id);
+  }
+
   public async startMcpServer(name: string): Promise<void> {
     if (!this.mcpServerManager) {
       throw new Error('MCP server manager not initialized');

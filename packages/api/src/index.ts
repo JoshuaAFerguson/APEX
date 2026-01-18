@@ -1117,6 +1117,29 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   });
 
+  // Get detailed MCP server information by ID
+  app.get<{ Params: { id: string } }>(
+    '/mcp/servers/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      if (!id || !id.trim()) {
+        return reply.status(400).send({ error: 'Server ID is required' });
+      }
+
+      try {
+        const serverDetails = await orchestrator.getMcpServerDetails(id);
+        return serverDetails;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('not found')) {
+          return reply.status(404).send({ error: `MCP server '${id}' not found` });
+        }
+        const message = error instanceof Error ? error.message : `Failed to get MCP server details for '${id}'`;
+        return reply.status(500).send({ error: message });
+      }
+    }
+  );
+
   // Install an MCP server
   app.post<{ Params: { serverName: string } }>(
     '/mcp/servers/:serverName/install',

@@ -194,6 +194,60 @@ export class MCPServerManager {
     };
   }
 
+  /**
+   * Get detailed server information by ID/name including tools and metadata
+   */
+  async getServerDetails(id: string): Promise<{
+    id: string;
+    name: string;
+    config: MCPServerConfig;
+    status: 'running' | 'stopped' | 'error';
+    tools?: string[];
+    readme?: string;
+    installationInstructions?: string;
+    metadata?: {
+      version?: string;
+      author?: string;
+      description?: string;
+      lastUpdated?: Date;
+    };
+  }> {
+    const servers = getMCPServers(this.config);
+    const serverConfig = servers[id];
+
+    if (!serverConfig) {
+      throw new Error(`MCP server '${id}' not found`);
+    }
+
+    // Get basic status
+    const status = await this.getServerStatus(id);
+
+    // Try to get marketplace entry for additional details
+    let marketplaceEntry = null;
+    try {
+      const entries = await this.listMarketplaceEntries();
+      marketplaceEntry = entries.find(entry => entry.name === id || entry.serverName === id);
+    } catch (error) {
+      // Ignore marketplace errors, not critical for server details
+    }
+
+    return {
+      id,
+      name: serverConfig.name || id,
+      config: serverConfig,
+      status: status.status,
+      tools: marketplaceEntry?.tools || [],
+      readme: marketplaceEntry?.readme,
+      installationInstructions: marketplaceEntry?.installCommand,
+      metadata: {
+        version: marketplaceEntry?.version,
+        author: marketplaceEntry?.author,
+        description: marketplaceEntry?.description || serverConfig.description,
+        lastUpdated: marketplaceEntry?.lastUpdated ? new Date(marketplaceEntry.lastUpdated) : undefined,
+      },
+    };
+  }
+
   async startServer(name: string): Promise<void> {
     const servers = getMCPServers(this.config);
     const serverConfig = servers[name];

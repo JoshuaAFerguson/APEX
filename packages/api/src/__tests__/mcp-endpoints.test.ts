@@ -7,6 +7,7 @@ vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     listMcpMarketplaceEntries: vi.fn(),
     listMcpServers: vi.fn(),
+    getMcpServerDetails: vi.fn(),
     installMcpServer: vi.fn(),
     uninstallMcpServer: vi.fn(),
     getMcpServerStatus: vi.fn(),
@@ -53,6 +54,26 @@ async function createTestServer() {
       return servers;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to list MCP servers';
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  // Get detailed MCP server information by ID
+  fastify.get('/mcp/servers/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    if (!id || !id.trim()) {
+      return reply.code(400).send({ error: 'Server ID is required' });
+    }
+
+    try {
+      const serverDetails = await mockOrchestrator.getMcpServerDetails(id);
+      return serverDetails;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        return reply.code(404).send({ error: `MCP server '${id}' not found` });
+      }
+      const message = error instanceof Error ? error.message : `Failed to get MCP server details for '${id}'`;
       return reply.code(500).send({ error: message });
     }
   });
@@ -282,6 +303,140 @@ describe('MCP API Endpoints', () => {
       expect(response.statusCode).toBe(500);
       const body = JSON.parse(response.body);
       expect(body).toEqual({ error: errorMessage });
+    });
+  });
+
+  describe('GET /mcp/servers/:id', () => {
+    it('returns server details successfully', async () => {
+      const serverId = 'test-server';
+      const mockServerDetails = {
+        id: serverId,
+        name: 'Test MCP Server',
+        config: {
+          name: 'Test MCP Server',
+          type: 'stdio',
+          command: 'node',
+          args: ['server.js'],
+        },
+        status: 'stopped',
+        tools: ['read_file', 'write_file'],
+        readme: '# Test Server\nThis is a test MCP server.',
+        installationInstructions: 'npm install test-mcp-server',
+        metadata: {
+          version: '1.0.0',
+          author: 'Test Author',
+          description: 'A test MCP server for unit testing',
+          lastUpdated: new Date('2024-01-01'),
+        },
+      };
+
+      mockOrchestrator.getMcpServerDetails.mockResolvedValue(mockServerDetails);
+
+      const response = await server.inject({
+        method: 'GET',
+        url: `/mcp/servers/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual(mockServerDetails);
+      expect(mockOrchestrator.getMcpServerDetails).toHaveBeenCalledWith(serverId);
+    });
+
+    it('returns 404 for non-existent server', async () => {
+      const serverId = 'non-existent-server';
+      const errorMessage = `MCP server '${serverId}' not found`;
+
+      mockOrchestrator.getMcpServerDetails.mockRejectedValue(new Error(errorMessage));
+
+      const response = await server.inject({
+        method: 'GET',
+        url: `/mcp/servers/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: `MCP server '${serverId}' not found` });
+      expect(mockOrchestrator.getMcpServerDetails).toHaveBeenCalledWith(serverId);
+    });
+
+    it('handles server details fetch errors', async () => {
+      const serverId = 'error-server';
+      const errorMessage = 'Internal server error';
+
+      mockOrchestrator.getMcpServerDetails.mockRejectedValue(new Error(errorMessage));
+
+      const response = await server.inject({
+        method: 'GET',
+        url: `/mcp/servers/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: errorMessage });
+    });
+
+    it('validates server ID parameter', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/servers/', // Empty server ID
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('handles empty server ID parameter', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/servers/ ', // Space only
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: 'Server ID is required' });
+    });
+
+    it('handles non-Error exceptions', async () => {
+      const serverId = 'string-error-server';
+      mockOrchestrator.getMcpServerDetails.mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'GET',
+        url: `/mcp/servers/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: `Failed to get MCP server details for '${serverId}'` });
+    });
+
+    it('returns proper response structure with minimal data', async () => {
+      const serverId = 'minimal-server';
+      const mockMinimalDetails = {
+        id: serverId,
+        name: 'Minimal Server',
+        config: {
+          name: 'Minimal Server',
+          type: 'stdio',
+          command: 'node',
+        },
+        status: 'running',
+      };
+
+      mockOrchestrator.getMcpServerDetails.mockResolvedValue(mockMinimalDetails);
+
+      const response = await server.inject({
+        method: 'GET',
+        url: `/mcp/servers/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual(mockMinimalDetails);
+      expect(body).toHaveProperty('id');
+      expect(body).toHaveProperty('name');
+      expect(body).toHaveProperty('config');
+      expect(body).toHaveProperty('status');
     });
   });
 
@@ -585,6 +740,7 @@ describe('MCP API Endpoints', () => {
       const endpoints = [
         { method: 'GET', url: '/mcp/marketplace' },
         { method: 'GET', url: '/mcp/servers' },
+        { method: 'GET', url: '/mcp/servers/test' },
         { method: 'POST', url: '/mcp/servers/test/install' },
         { method: 'DELETE', url: '/mcp/servers/test' },
         { method: 'GET', url: '/mcp/servers/test/status' },
