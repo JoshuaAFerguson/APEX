@@ -1270,6 +1270,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private currentTaskId: string | null = null;
   private currentAgentName: string | null = null;
 
+  // Combined tools (built-in + MCP) for current task execution
+  private currentTaskTools: string[] = [];
+
   // CLI flags for current task
   private currentTaskCliFlags: { diffPreview?: boolean } | undefined = undefined;
 
@@ -1895,6 +1898,62 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Set current task for event tracking
     this.currentTaskId = taskId;
 
+    // Discover MCP tools at task start and merge with built-in tools
+    let discoveredMcpTools: string[] = [];
+    let builtInTools: string[] = [];
+
+    try {
+      // Refresh MCP tools to ensure we have the latest available tools
+      if (this.mcpToolRegistry) {
+        await this.mcpToolRegistry.refreshAllTools();
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: 'Refreshed MCP tool registry at task start',
+        });
+
+        // Get available MCP tool names
+        const mcpTools = this.mcpToolRegistry.getAvailableTools();
+        discoveredMcpTools = mcpTools.map(tool => tool.claudeTool.function.name);
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Discovered ${discoveredMcpTools.length} MCP tools: ${discoveredMcpTools.join(', ')}`,
+        });
+      }
+
+      // Define built-in tools that should always be available
+      // These are the core Claude Code tools that APEX workflows depend on
+      builtInTools = [
+        'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'LSP',
+        'Task', 'AskUserQuestion', 'TodoWrite', 'WebFetch', 'WebSearch',
+        'EnterPlanMode', 'ExitPlanMode'
+      ];
+
+      // Merge discovered MCP tools with built-in tools (remove duplicates)
+      const combinedTools = Array.from(new Set([...builtInTools, ...discoveredMcpTools]));
+
+      // Store combined tools for use during workflow execution
+      this.currentTaskTools = combinedTools;
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Task ${taskId} configured with ${combinedTools.length} total tools (${builtInTools.length} built-in + ${discoveredMcpTools.length} MCP)`,
+      });
+
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Failed to discover MCP tools: ${(error as Error).message}. Using built-in tools only.`,
+      });
+
+      // Fallback to built-in tools only
+      this.currentTaskTools = [
+        'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'LSP',
+        'Task', 'AskUserQuestion', 'TodoWrite', 'WebFetch', 'WebSearch',
+        'EnterPlanMode', 'ExitPlanMode'
+      ];
+    }
+
     // Resource tracking is initialized via the task's usage object
     // No separate initialization needed - usage is tracked incrementally
 
@@ -1935,6 +1994,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Clear current task tracking if this was the current task
           if (this.currentTaskId === taskId) {
             this.currentTaskId = null;
+            this.currentTaskTools = [];
           }
 
           // Handle git operations (push and PR creation) for parent tasks only
@@ -2010,6 +2070,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Clear current task tracking if this was the current task
           if (this.currentTaskId === taskId) {
             this.currentTaskId = null;
+            this.currentTaskTools = [];
           }
           throw lastError;
         }
@@ -3221,6 +3282,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
         mcpServers: mcpServers,
+        tools: this.currentTaskTools, // Combined built-in and MCP tools
         cwd: workingDirectory,
         env: {
           ...process.env,
