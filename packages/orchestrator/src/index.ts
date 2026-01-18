@@ -135,6 +135,7 @@ import { MCPInstaller } from './mcp-installer';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
 import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
+import { buildMCPProxyServer, type MCPProxyServer } from './mcp-proxy-server';
 import { type ClaudeSDKTool } from './schema-translator';
 import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
 import { browserTool } from './tools';
@@ -8603,6 +8604,18 @@ Parent: ${parentTask.description}`;
       servers[this.browserToolsServer.name] = this.browserToolsServer.config as unknown as McpServerConfig;
     }
 
+    // Add MCP proxy server for routing external MCP tool calls
+    if (this.mcpConnectionManager && this.mcpToolRegistry) {
+      const proxyServer = buildMCPProxyServer({
+        connectionManager: this.mcpConnectionManager,
+        toolRegistry: this.mcpToolRegistry,
+      });
+
+      if (proxyServer) {
+        servers[proxyServer.name] = proxyServer.config as unknown as McpServerConfig;
+      }
+    }
+
     return Object.keys(servers).length > 0 ? servers : undefined;
   }
 
@@ -9604,6 +9617,41 @@ Parent: ${parentTask.description}`;
         timestamp: new Date(),
       };
       this.emit('mcp:pool-change', eventData);
+    });
+
+    // Forward tool execution events
+    connManager.on('tool:start', (event) => {
+      this.emit('mcp:tool-start', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        timestamp: event.timestamp,
+      });
+    });
+
+    connManager.on('tool:complete', (event) => {
+      this.emit('mcp:tool-complete', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        durationMs: event.durationMs,
+        timestamp: event.timestamp,
+      });
+    });
+
+    connManager.on('tool:error', (event) => {
+      this.emit('mcp:tool-error', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        error: event.error,
+        errorCode: event.errorCode,
+        retriable: event.retriable,
+        timestamp: event.timestamp,
+      });
     });
   }
 

@@ -94,6 +94,74 @@ export interface MCPConnectionManagerEvents {
   'stateChange': (serverId: string, previousState: MCPConnectionState, newState: MCPConnectionState) => void;
   /** Emitted when connection pool size changes */
   'poolChange': (serverId: string, poolSize: number, activeConnections: number) => void;
+  /** Emitted when an MCP tool execution starts */
+  'tool:start': (event: MCPToolStartEvent) => void;
+  /** Emitted when an MCP tool execution completes */
+  'tool:complete': (event: MCPToolCompleteEvent) => void;
+  /** Emitted when an MCP tool execution fails */
+  'tool:error': (event: MCPToolErrorEvent) => void;
+}
+
+/**
+ * Tool execution start event data
+ */
+export interface MCPToolStartEvent {
+  /** Server ID where tool is executed */
+  serverId: string;
+  /** Server name for human-readable display */
+  serverName: string;
+  /** Name of the tool being executed */
+  toolName: string;
+  /** Arguments passed to the tool */
+  args: Record<string, unknown>;
+  /** Unique call ID for tracking this execution */
+  callId: string;
+  /** When the execution started */
+  timestamp: Date;
+}
+
+/**
+ * Tool execution complete event data
+ */
+export interface MCPToolCompleteEvent {
+  /** Server ID where tool was executed */
+  serverId: string;
+  /** Server name for human-readable display */
+  serverName: string;
+  /** Name of the tool that was executed */
+  toolName: string;
+  /** Unique call ID for tracking this execution */
+  callId: string;
+  /** Result returned by the tool */
+  result: unknown;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+  /** When the execution completed */
+  timestamp: Date;
+}
+
+/**
+ * Tool execution error event data
+ */
+export interface MCPToolErrorEvent {
+  /** Server ID where tool execution failed */
+  serverId: string;
+  /** Server name for human-readable display */
+  serverName: string;
+  /** Name of the tool that failed */
+  toolName: string;
+  /** Unique call ID for tracking this execution */
+  callId: string;
+  /** Error message */
+  error: string;
+  /** Error code for categorization */
+  errorCode?: string;
+  /** Execution duration until failure in milliseconds */
+  durationMs: number;
+  /** When the execution failed */
+  timestamp: Date;
+  /** Whether this error is retriable */
+  retriable: boolean;
 }
 
 /**
@@ -230,6 +298,20 @@ interface ConnectionContext {
   metrics: ConnectionMetrics;
   /** Connection pool (if pooling is enabled) */
   pool?: ConnectionPool;
+}
+
+/**
+ * Custom error class for MCP tool execution failures
+ */
+export class MCPToolExecutionError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly retriable: boolean
+  ) {
+    super(message);
+    this.name = 'MCPToolExecutionError';
+  }
 }
 
 // ============================================================================
@@ -832,6 +914,136 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
       this.emit('poolChange', serverId, context.pool.connections.size,
                 Array.from(context.pool.connections.values()).filter(c => c.inUse).length);
     }
+  }
+
+  /**
+   * Execute a tool on a connected MCP server
+   *
+   * Routes tool invocations through the connection manager for:
+   * - Centralized error handling
+   * - Event emission for observability
+   * - Connection state validation
+   * - Metrics tracking
+   *
+   * @param serverId - ID of the server to execute on
+   * @param toolName - Name of the tool to execute
+   * @param args - Arguments to pass to the tool
+   * @returns Tool execution result
+   * @throws MCPToolExecutionError if connection not found, not connected, or execution fails
+   */
+  async executeTool(
+    serverId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    const callId = this.generateCallId();
+    const startTime = Date.now();
+    const context = this.connections.get(serverId);
+
+    if (!context) {
+      throw new MCPToolExecutionError(
+        `Connection '${serverId}' not found`,
+        'CONNECTION_NOT_FOUND',
+        false
+      );
+    }
+
+    if (context.connection.state !== 'connected') {
+      throw new MCPToolExecutionError(
+        `Connection '${serverId}' is not connected (state: ${context.connection.state})`,
+        'CONNECTION_NOT_READY',
+        true // Retriable - connection may recover
+      );
+    }
+
+    // Emit tool start event
+    this.emit('tool:start', {
+      serverId,
+      serverName: context.connection.serverName,
+      toolName,
+      args,
+      callId,
+      timestamp: new Date(),
+    });
+
+    try {
+      // Execute via MCPClient
+      const result = await context.client.callTool(toolName, args);
+
+      const durationMs = Date.now() - startTime;
+
+      // Update metrics
+      context.metrics.totalRequests++;
+
+      // Emit success event
+      this.emit('tool:complete', {
+        serverId,
+        serverName: context.connection.serverName,
+        toolName,
+        callId,
+        result,
+        durationMs,
+        timestamp: new Date(),
+      });
+
+      return result;
+
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorCode = this.categorizeError(error);
+      const retriable = this.isRetriableError(errorCode);
+
+      // Update metrics
+      context.metrics.totalRequests++;
+      context.metrics.totalErrors++;
+      context.metrics.lastError = {
+        message: errorMessage,
+        timestamp: new Date(),
+        code: errorCode,
+      };
+
+      // Emit error event
+      this.emit('tool:error', {
+        serverId,
+        serverName: context.connection.serverName,
+        toolName,
+        callId,
+        error: errorMessage,
+        errorCode,
+        durationMs,
+        timestamp: new Date(),
+        retriable,
+      });
+
+      throw new MCPToolExecutionError(errorMessage, errorCode, retriable);
+    }
+  }
+
+  /**
+   * Generate a unique call ID for tracking tool executions
+   */
+  private generateCallId(): string {
+    return `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Categorize an error for consistent error handling
+   */
+  private categorizeError(error: unknown): string {
+    if (error instanceof Error) {
+      if (error.message.includes('timeout')) return 'TIMEOUT';
+      if (error.message.includes('disconnect')) return 'DISCONNECTED';
+      if (error.message.includes('not found')) return 'TOOL_NOT_FOUND';
+    }
+    return 'EXECUTION_ERROR';
+  }
+
+  /**
+   * Determine if an error is retriable
+   */
+  private isRetriableError(errorCode: string): boolean {
+    return ['TIMEOUT', 'DISCONNECTED'].includes(errorCode);
   }
 
   // ==========================================================================
