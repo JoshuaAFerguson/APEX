@@ -1131,7 +1131,8 @@ export class DaemonRunner {
         // @ts-ignore - __dirname is available at runtime in CommonJS
         const webuiPath = join(__dirname, '..', '..', 'web-ui');
 
-        this.webuiProcess = spawn('npx', ['next', 'start', '-p', String(webuiPort), '-H', webuiHost], {
+        // Use npm exec with -- separator for command arguments
+        this.webuiProcess = spawn('npm', ['exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost], {
           cwd: webuiPath,
           env: {
             ...process.env,
@@ -1202,6 +1203,16 @@ export class DaemonRunner {
       this.log('info', 'Capacity monitor stopped');
     }
 
+    // Shutdown orchestrator (disconnects MCP servers, etc.)
+    if (this.orchestrator) {
+      try {
+        await this.orchestrator.shutdown();
+        this.log('info', 'Orchestrator shutdown complete');
+      } catch (error) {
+        this.log('warn', `Orchestrator shutdown error: ${(error as Error).message}`);
+      }
+    }
+
     // Close log stream
     if (this.logStream && !this.logStream.destroyed) {
       await new Promise<void>((resolve) => {
@@ -1209,7 +1220,7 @@ export class DaemonRunner {
       });
     }
 
-    // Close store
+    // Close store (already closed by orchestrator.shutdown, but be safe)
     if (this.store) {
       this.store.close();
     }

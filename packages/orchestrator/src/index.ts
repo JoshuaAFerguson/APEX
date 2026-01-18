@@ -1520,25 +1520,63 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Discover available servers from config
     const servers = this.mcpConnectionManager.discoverServers();
 
-    // Connect to each server
-    const normalizedServers = getMCPServers(this.config);
-    for (const serverConfig of servers) {
-      const serverId = serverConfig.name ?? Object.keys(normalizedServers)
-        .find(key => normalizedServers[key] === serverConfig);
+    if (servers.length === 0) {
+      return;
+    }
 
-      if (!serverId) continue;
+    // Connect to servers in parallel with a timeout
+    const normalizedServers = getMCPServers(this.config);
+    const connectionTimeout = 5000; // 5 second timeout per connection
+
+    const connectionPromises = servers.map(async (serverConfig) => {
+      // Find the config key by matching the server name
+      const serverId = Object.keys(normalizedServers).find(key => {
+        const configEntry = normalizedServers[key];
+        return configEntry.name === serverConfig.name || key === serverConfig.name;
+      });
+
+      if (!serverId) return null;
 
       try {
-        const connection = await this.mcpConnectionManager.connect(serverId);
-        await this.mcpToolRegistry.addConnection(connection);
+        // Add timeout wrapper to prevent slow connections from blocking startup
+        const connection = await Promise.race([
+          this.mcpConnectionManager!.connect(serverId),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Connection timeout after ${connectionTimeout}ms`)), connectionTimeout)
+          )
+        ]);
+        return { serverId, connection };
       } catch (error) {
-        // Log error but continue with other servers
-        console.warn(`Failed to connect to MCP server '${serverId}':`, error);
+        console.warn(`Failed to connect to MCP server '${serverId}':`, error instanceof Error ? error.message : error);
+        return null;
+      }
+    });
+
+    // Wait for all connections to complete (or fail)
+    const results = await Promise.allSettled(connectionPromises);
+
+    // Add successful connections to registry
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value?.connection) {
+        try {
+          await this.mcpToolRegistry.addConnection(result.value.connection);
+        } catch (error) {
+          console.warn(`Failed to register MCP server '${result.value.serverId}':`, error);
+        }
       }
     }
 
-    // Refresh tools from all connected servers
-    await this.mcpToolRegistry.refreshAllTools();
+    // Refresh tools from all connected servers (with timeout)
+    try {
+      await Promise.race([
+        this.mcpToolRegistry.refreshAllTools(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Tool refresh timeout')), 10000)
+        )
+      ]);
+    } catch (error) {
+      console.warn('MCP tool refresh timed out or failed:', error instanceof Error ? error.message : error);
+    }
   }
 
   /**
@@ -11140,6 +11178,36 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     this.on('tool:complete', handler);
     return () => this.off('tool:complete', handler);
   }
+
+  /**
+   * Gracefully shutdown the orchestrator
+   * Disconnects all MCP servers and cleans up resources
+   */
+  async shutdown(): Promise<void> {
+    // Disconnect all MCP servers with timeout
+    if (this.mcpConnectionManager) {
+      try {
+        await Promise.race([
+          this.mcpConnectionManager.disconnectAll(),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)) // 5 second timeout
+        ]);
+      } catch (error) {
+        console.warn('Error disconnecting MCP servers:', error instanceof Error ? error.message : error);
+      }
+    }
+
+    // Clear tool registry
+    if (this.mcpToolRegistry) {
+      this.mcpToolRegistry.clear();
+    }
+
+    // Close store
+    if (this.store) {
+      this.store.close();
+    }
+
+    this.initialized = false;
+  }
 }
 
 export { TaskStore, ToolActionStore } from './store';
@@ -11507,3 +11575,15 @@ export { AliasResolver, AliasResolutionError } from './alias-resolver';
 
 // MCP Installer
 export { MCPInstaller, type MCPInstallationOptions } from './mcp-installer';
+
+// MCP Client Utility
+export {
+  MCPClientUtility,
+  createMCPClientUtility,
+  connectAndDiscoverMCPServer,
+  type MCPClientUtilityOptions,
+  type MCPServerConnection,
+  type MCPConnectionResult,
+  type MCPToolDiscoveryResult,
+  type MCPClientUtilityEvents,
+} from './mcp-client';
