@@ -2619,6 +2619,198 @@ export const InstalledMCPServerSchema = z.object({
 export type InstalledMCPServer = z.infer<typeof InstalledMCPServerSchema>;
 
 // ============================================================================
+// MCP Registry Types (v0.5.0)
+// ============================================================================
+
+/**
+ * MCP Server Category Schema
+ * Categories for organizing MCP servers in the registry/marketplace
+ */
+export const MCPServerCategorySchema = z.enum([
+  'productivity',    // Task management, notes, calendars
+  'development',     // Code tools, Git, CI/CD
+  'communication',   // Email, chat, notifications
+  'data',            // Databases, analytics, storage
+  'ai',              // AI/ML tools and integrations
+  'automation',      // Workflow automation, scripting
+  'security',        // Auth, encryption, scanning
+  'monitoring',      // Logging, metrics, alerting
+  'integration',     // Third-party API integrations
+  'utility',         // General-purpose utilities
+  'other',           // Uncategorized
+]);
+export type MCPServerCategory = z.infer<typeof MCPServerCategorySchema>;
+
+/**
+ * MCP Registry Server Schema
+ * Represents an MCP server as listed in a registry/marketplace
+ * Contains metadata for discovery, installation, and categorization
+ *
+ * This differs from MCPServerSchema which represents runtime/execution configuration.
+ * MCPRegistryServer is for marketplace listings; MCPServer is for running servers.
+ */
+export const MCPRegistryServerSchema = z.object({
+  /** Unique identifier for the server in the registry */
+  id: z.string().min(1, 'Server ID is required'),
+
+  /** Display name for the MCP server */
+  name: z.string().min(1, 'Server name is required'),
+
+  /** Detailed description of the server's functionality */
+  description: z.string().min(1, 'Description is required'),
+
+  /** Semantic version of the server */
+  version: z.string().min(1, 'Version is required'),
+
+  /** Author or maintainer of the server */
+  author: z.string().optional(),
+
+  /** URL to the source code repository (GitHub, GitLab, etc.) */
+  repository: z.string().url().optional(),
+
+  /** List of tools provided by this MCP server */
+  tools: z.array(z.string()).default([]),
+
+  /** Categories for organizing and filtering servers */
+  categories: z.array(MCPServerCategorySchema).default([]),
+
+  /** Number of times this server has been installed */
+  installCount: z.number().int().min(0).default(0),
+
+  /** Whether this server is verified/official */
+  verified: z.boolean().default(false),
+
+  /** Optional homepage URL */
+  homepage: z.string().url().optional(),
+
+  /** Optional license identifier (e.g., 'MIT', 'Apache-2.0') */
+  license: z.string().optional(),
+
+  /** Optional keywords for search */
+  keywords: z.array(z.string()).optional(),
+
+  /** When the server was first published to the registry */
+  publishedAt: z.date().optional(),
+
+  /** When the server was last updated in the registry */
+  updatedAt: z.date().optional(),
+});
+export type MCPRegistryServer = z.infer<typeof MCPRegistryServerSchema>;
+
+/**
+ * MCP Registry Installation Config Schema
+ * Configuration specific to an installed MCP server instance
+ */
+export const MCPRegistryInstallConfigSchema = z.object({
+  /** Environment variables configured for this installation */
+  env: z.record(z.string(), z.string()).optional(),
+
+  /** Custom arguments passed to the server */
+  args: z.array(z.string()).optional(),
+
+  /** Path to configuration file */
+  configPath: z.string().optional(),
+
+  /** Whether the server should auto-start */
+  autoStart: z.boolean().optional().default(true),
+
+  /** Custom name for this installation (allows multiple instances) */
+  instanceName: z.string().optional(),
+});
+export type MCPRegistryInstallConfig = z.infer<typeof MCPRegistryInstallConfigSchema>;
+
+/**
+ * MCP Registry Installation Schema
+ * Represents an installed MCP server from the registry
+ * Tracks installation metadata and configuration
+ */
+export const MCPRegistryInstallationSchema = z.object({
+  /** Reference to the MCPRegistryServer ID this installation is based on */
+  serverId: z.string().min(1, 'Server ID is required'),
+
+  /** Timestamp when the server was installed */
+  installedAt: z.date(),
+
+  /** Installation-specific configuration */
+  config: MCPRegistryInstallConfigSchema,
+
+  /** Current installation status */
+  status: MCPInstallationStatusSchema,
+
+  /** Unique installation instance ID (for multiple installations of same server) */
+  installationId: z.string().optional(),
+
+  /** Version that was installed */
+  installedVersion: z.string().optional(),
+
+  /** When the installation was last updated */
+  updatedAt: z.date().optional(),
+
+  /** Error message if status is 'failed' */
+  error: z.string().optional(),
+});
+export type MCPRegistryInstallation = z.infer<typeof MCPRegistryInstallationSchema>;
+
+/**
+ * MCP Install Progress Stage Schema
+ * Represents the various stages during MCP server installation
+ */
+export const MCPInstallStageSchema = z.enum([
+  'initializing',   // Setting up installation environment
+  'downloading',    // Downloading package/binary
+  'extracting',     // Extracting downloaded files
+  'installing',     // Running installation commands
+  'configuring',    // Setting up configuration
+  'verifying',      // Verifying installation
+  'completing',     // Finalizing installation
+  'completed',      // Installation finished successfully
+  'failed',         // Installation failed
+]);
+export type MCPInstallStage = z.infer<typeof MCPInstallStageSchema>;
+
+/**
+ * MCP Install Progress Schema
+ * Tracks the progress of an MCP server installation
+ * Used for real-time progress updates during installation
+ */
+export const MCPInstallProgressSchema = z.object({
+  /** Reference to the server being installed */
+  serverId: z.string().min(1, 'Server ID is required'),
+
+  /** Current installation stage */
+  stage: MCPInstallStageSchema,
+
+  /** Progress percentage (0-100) */
+  progress: z.number().min(0).max(100),
+
+  /** Human-readable status message */
+  message: z.string(),
+
+  /** Timestamp of this progress update */
+  timestamp: z.date().optional(),
+
+  /** Detailed log messages for this stage */
+  logs: z.array(z.string()).optional(),
+
+  /** Error details if stage is 'failed' */
+  error: z.object({
+    code: z.string().optional(),
+    message: z.string(),
+    stack: z.string().optional(),
+  }).optional(),
+
+  /** Estimated time remaining in seconds */
+  estimatedTimeRemaining: z.number().min(0).optional(),
+
+  /** Bytes downloaded (for download stage) */
+  bytesDownloaded: z.number().min(0).optional(),
+
+  /** Total bytes to download (for download stage) */
+  totalBytes: z.number().min(0).optional(),
+});
+export type MCPInstallProgress = z.infer<typeof MCPInstallProgressSchema>;
+
+// ============================================================================
 // MCP Connection Management Types (v0.5.0)
 // ============================================================================
 
@@ -3155,6 +3347,74 @@ export const MCPToolInvocationResponseSchema = z.object({
     .optional(),
 });
 export type MCPToolInvocationResponse = z.infer<typeof MCPToolInvocationResponseSchema>;
+
+// ============================================================================
+// MCP Types for v0.5.0 Feature Development
+// ============================================================================
+// These types satisfy the acceptance criteria requirements:
+// - MCPServer (id, name, description, version, author, repository, tools, categories, installCount, verified)
+// - MCPInstallation (serverId, installedAt, config, status)
+// - MCPInstallProgress (serverId, stage, progress, message)
+
+/**
+ * MCPServer Schema for v0.5.0 feature development
+ * Contains all required fields: id, name, description, version, author, repository, tools, categories, installCount, verified
+ */
+export const MCPServerV050Schema = z.object({
+  /** Unique identifier for the MCP server */
+  id: z.string().min(1, 'Server ID is required'),
+  /** Display name for the MCP server */
+  name: z.string().min(1, 'Server name is required'),
+  /** Detailed description of the server's functionality */
+  description: z.string().min(1, 'Description is required'),
+  /** Semantic version of the server */
+  version: z.string().min(1, 'Version is required'),
+  /** Author or maintainer of the server */
+  author: z.string().optional(),
+  /** URL to the source code repository */
+  repository: z.string().url().optional(),
+  /** List of tools provided by this MCP server */
+  tools: z.array(z.string()).default([]),
+  /** Categories for organizing servers */
+  categories: z.array(MCPServerCategorySchema).default([]),
+  /** Number of times this server has been installed */
+  installCount: z.number().int().min(0).default(0),
+  /** Whether this server is verified/official */
+  verified: z.boolean().default(false),
+});
+export type MCPServerV050 = z.infer<typeof MCPServerV050Schema>;
+
+/**
+ * MCPInstallation Schema for v0.5.0 feature development
+ * Contains all required fields: serverId, installedAt, config, status
+ */
+export const MCPInstallationV050Schema = z.object({
+  /** Reference to the MCP server ID */
+  serverId: z.string().min(1, 'Server ID is required'),
+  /** Timestamp when the server was installed */
+  installedAt: z.date(),
+  /** Installation-specific configuration */
+  config: MCPServerConfigSchema,
+  /** Current installation status */
+  status: MCPInstallationStatusSchema,
+});
+export type MCPInstallationV050 = z.infer<typeof MCPInstallationV050Schema>;
+
+/**
+ * MCPInstallProgress Schema for v0.5.0 feature development
+ * Contains all required fields: serverId, stage, progress, message
+ */
+export const MCPInstallProgressV050Schema = z.object({
+  /** Reference to the server being installed */
+  serverId: z.string().min(1, 'Server ID is required'),
+  /** Current installation stage */
+  stage: MCPInstallStageSchema,
+  /** Progress percentage (0-100) */
+  progress: z.number().min(0).max(100),
+  /** Human-readable status message */
+  message: z.string(),
+});
+export type MCPInstallProgressV050 = z.infer<typeof MCPInstallProgressV050Schema>;
 
 // ============================================================================
 // TDD Mode Configuration (v0.5.0)
