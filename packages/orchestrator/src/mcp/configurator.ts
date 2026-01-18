@@ -17,6 +17,7 @@ import {
   MCPEnvironmentVar,
   MCPConnectionConfig,
   ApexConfig,
+  getMCPServers,
 } from '@apexcli/core';
 import { BUILTIN_TEMPLATES } from './templates.js';
 import { EnvVarDetector } from './env-detector.js';
@@ -160,13 +161,20 @@ export class MCPConfiguratorError extends Error {
  * capabilities including support for Claude Desktop configuration format,
  * environment variable detection, and server template management.
  */
+/**
+ * Normalized MCP config where servers is always a Record (not array)
+ */
+type NormalizedMCPConfig = Omit<MCPConfig, 'servers'> & {
+  servers: Record<string, MCPServerConfig>;
+};
+
 export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
   private readonly projectPath: string;
   private readonly config: ApexConfig;
   private readonly templates: Map<string, MCPServerTemplate>;
   private readonly envDetector: EnvVarDetector;
   private readonly validator: ConfigValidator;
-  private localMcpConfig: MCPConfig;
+  private localMcpConfig: NormalizedMCPConfig;
 
   constructor(options: MCPConfiguratorOptions) {
     super();
@@ -176,9 +184,10 @@ export class MCPConfigurator extends EventEmitter<MCPConfiguratorEvents> {
     this.templates = new Map();
 
     // Initialize local MCP config from provided config
+    // Use getMCPServers to normalize array/record format to record
     this.localMcpConfig = {
       enabled: options.config.mcp?.enabled ?? true,
-      servers: { ...(options.config.mcp?.servers || {}) },
+      servers: { ...getMCPServers(options.config) },
       marketplace: options.config.mcp?.marketplace,
       connection: options.config.mcp?.connection,
     };

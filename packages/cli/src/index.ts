@@ -24,6 +24,7 @@ import {
   type ApprovalRequiredEventData,
   loadMCPTemplates,
   getMCPTemplate,
+  getMCPServers,
   type MCPServerConfig,
   type MCPTemplate,
   validateMCPConfig,
@@ -2637,9 +2638,21 @@ export const commands: Command[] = [
     name: 'mcp',
     aliases: [],
     description: 'Manage MCP (Model Context Protocol) marketplace and servers',
-    usage: '/mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate',
+    usage: '/mcp init | /mcp list [--json] | /mcp search <query> [--json] | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate',
     handler: async (ctx, args) => {
-      const [subcommand, serverName] = args;
+      // Parse flags
+      let outputJson = false;
+      const filteredArgs: string[] = [];
+
+      for (const arg of args) {
+        if (arg === '--json') {
+          outputJson = true;
+        } else {
+          filteredArgs.push(arg);
+        }
+      }
+
+      const [subcommand, serverName] = filteredArgs;
 
       if (subcommand === 'init') {
         // Handle 'mcp init' subcommand for interactive MCP setup
@@ -2714,12 +2727,15 @@ export const commands: Command[] = [
           if (selectedServers.length > 0 && !selectedServers.includes('none')) {
             console.log(chalk.cyan('\n📦 Adding selected MCP servers...\n'));
 
+            // Normalize servers to Record format
+            const normalizedServers = getMCPServers(config);
+
             for (const serverId of selectedServers) {
               const template = templates[serverId];
               if (!template) continue;
 
               // Check if server already exists
-              if (config.mcp.servers[template.id]) {
+              if (normalizedServers[template.id]) {
                 console.log(chalk.yellow(`⚠️  Server '${template.name}' already exists, skipping...`));
                 continue;
               }
@@ -2751,10 +2767,13 @@ export const commands: Command[] = [
                 serverConfig.autoStart = template.defaultEnabled;
               }
 
-              // Add the server to config
-              config.mcp.servers[template.id] = serverConfig;
+              // Add the server to normalized servers
+              normalizedServers[template.id] = serverConfig;
               console.log(chalk.green(`✓ Added MCP server: ${template.name}`));
             }
+
+            // Update config with normalized servers
+            config.mcp.servers = normalizedServers;
           }
 
           // Save the updated configuration
@@ -2773,14 +2792,25 @@ export const commands: Command[] = [
       } else if (!subcommand || subcommand === 'list') {
         // Handle 'mcp list' subcommand
         try {
-          console.log(chalk.cyan('\n📦 MCP Marketplace - Available Servers:\n'));
-
           const templates = await loadMCPTemplates();
 
           if (Object.keys(templates).length === 0) {
-            console.log(chalk.gray('No MCP servers found in marketplace.'));
+            if (outputJson) {
+              console.log(JSON.stringify([], null, 2));
+            } else {
+              console.log(chalk.gray('No MCP servers found in marketplace.'));
+            }
             return;
           }
+
+          // Output as JSON if flag present
+          if (outputJson) {
+            const templatesList = Object.values(templates);
+            console.log(JSON.stringify(templatesList, null, 2));
+            return;
+          }
+
+          console.log(chalk.cyan('\n📦 MCP Marketplace - Available Servers:\n'));
 
           // Calculate max name length for formatting
           const maxNameLength = Math.max(...Object.values(templates).map(t => t.name.length));
@@ -2871,8 +2901,6 @@ export const commands: Command[] = [
         }
 
         try {
-          console.log(chalk.cyan(`\n🔍 Searching MCP marketplace for "${query}"...\n`));
-
           const templates = await loadMCPTemplates();
           const searchQuery = query.toLowerCase();
 
@@ -2888,10 +2916,14 @@ export const commands: Command[] = [
           });
 
           if (matchingTemplates.length === 0) {
-            console.log(chalk.yellow(`No MCP servers found matching "${query}"`));
-            console.log(chalk.gray('\nTry:'));
-            console.log(chalk.gray('  • Using broader search terms'));
-            console.log(chalk.gray('  • Running "/mcp list" to see all available servers'));
+            if (outputJson) {
+              console.log(JSON.stringify([], null, 2));
+            } else {
+              console.log(chalk.yellow(`No MCP servers found matching "${query}"`));
+              console.log(chalk.gray('\nTry:'));
+              console.log(chalk.gray('  • Using broader search terms'));
+              console.log(chalk.gray('  • Running "/mcp list" to see all available servers'));
+            }
             return;
           }
 
@@ -2909,6 +2941,13 @@ export const commands: Command[] = [
             return a.name.localeCompare(b.name);
           });
 
+          // Output as JSON if flag present
+          if (outputJson) {
+            console.log(JSON.stringify(sortedResults, null, 2));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n🔍 Searching MCP marketplace for "${query}"...\n`));
           console.log(chalk.green(`Found ${matchingTemplates.length} matching server${matchingTemplates.length === 1 ? '' : 's'}:\n`));
 
           for (const template of sortedResults) {
@@ -2961,8 +3000,11 @@ export const commands: Command[] = [
           // Initialize MCP config if it doesn't exist
           config.mcp = config.mcp || { enabled: true, servers: {} };
 
+          // Normalize servers to Record format
+          const normalizedServers = getMCPServers(config);
+
           // Check if server already exists
-          if (config.mcp.servers[template.id]) {
+          if (normalizedServers[template.id]) {
             console.log(chalk.yellow(`⚠️  Server '${template.id}' already exists in configuration`));
             console.log(chalk.gray('Edit .apex/config.yaml to modify or remove existing servers'));
             return;
@@ -2996,7 +3038,8 @@ export const commands: Command[] = [
           }
 
           // Add the server to config
-          config.mcp!.servers[template.id] = serverConfig;
+          normalizedServers[template.id] = serverConfig;
+          config.mcp!.servers = normalizedServers;
 
           // Save the updated config
           await saveConfig(ctx.cwd, config);
@@ -3047,7 +3090,10 @@ export const commands: Command[] = [
           // Load current config
           const config = await loadConfig(ctx.cwd);
 
-          if (!config.mcp || !config.mcp.servers) {
+          // Normalize servers to Record format
+          const normalizedServers = getMCPServers(config);
+
+          if (Object.keys(normalizedServers).length === 0) {
             console.log(chalk.yellow('⚠️  No MCP servers are currently installed.'));
             console.log(chalk.gray('Use "/mcp list" to see available servers or "/mcp install <server>" to install one.'));
             return;
@@ -3058,12 +3104,12 @@ export const commands: Command[] = [
           let serverConfig: MCPServerConfig | null = null;
 
           // First, try exact match by key
-          if (config.mcp.servers[serverName]) {
+          if (normalizedServers[serverName]) {
             serverKey = serverName;
-            serverConfig = config.mcp.servers[serverName];
+            serverConfig = normalizedServers[serverName];
           } else {
             // Try to find by name
-            for (const [key, server] of Object.entries(config.mcp.servers)) {
+            for (const [key, server] of Object.entries(normalizedServers)) {
               if (server.name === serverName) {
                 serverKey = key;
                 serverConfig = server;
@@ -3094,7 +3140,9 @@ export const commands: Command[] = [
           }
 
           // Remove the server from config
-          delete config.mcp.servers[serverKey];
+          delete normalizedServers[serverKey];
+          config.mcp = config.mcp || { enabled: true, servers: {} };
+          config.mcp.servers = normalizedServers;
 
           // Save the updated config
           await saveConfig(ctx.cwd, config);

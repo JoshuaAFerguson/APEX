@@ -6,6 +6,7 @@ import {
   MCPMarketplaceEntrySchema,
   ApexConfig,
   saveConfig,
+  getMCPServers,
 } from '@apexcli/core';
 
 export interface MarketplaceCategory {
@@ -202,7 +203,7 @@ export class MCPMarketplaceService {
     for (const serverName of serversToInstall) {
       try {
         // Check if already installed
-        const currentServers = this.config.mcp?.servers || {};
+        const currentServers = getMCPServers(this.config);
         if (currentServers[serverName]) {
           skipped.push(serverName);
           continue;
@@ -220,7 +221,7 @@ export class MCPMarketplaceService {
         // Add to configuration
         const mcpConfig = this.config.mcp || { enabled: true, servers: {} };
         mcpConfig.servers = {
-          ...mcpConfig.servers,
+          ...currentServers,
           [serverName]: autoConfiguredServer,
         };
 

@@ -8,6 +8,7 @@ import {
   MCPConfig,
   type ApexConfig,
   saveConfig,
+  getMCPServers,
 } from '@apexcli/core';
 const execAsync = promisify(exec);
 
@@ -152,13 +153,14 @@ export class MCPServerManager {
 
   async uninstallServer(name: string): Promise<void> {
     const mcpConfig: MCPConfig = this.config.mcp || { enabled: true, servers: {} };
+    const normalizedServers = getMCPServers(this.config);
 
-    if (!mcpConfig.servers || !mcpConfig.servers[name]) {
+    if (!normalizedServers[name]) {
       throw new Error(`MCP server '${name}' is not installed`);
     }
 
     // Remove from configuration
-    const { [name]: _, ...remainingServers } = mcpConfig.servers;
+    const { [name]: _, ...remainingServers } = normalizedServers;
 
     const updatedConfig: ApexConfig = {
       ...this.config,
@@ -177,7 +179,7 @@ export class MCPServerManager {
     status: 'running' | 'stopped' | 'error';
     lastError?: string;
   }> {
-    const servers = this.config.mcp?.servers || {};
+    const servers = getMCPServers(this.config);
     const serverConfig = servers[name];
 
     if (!serverConfig) {
@@ -193,7 +195,7 @@ export class MCPServerManager {
   }
 
   async startServer(name: string): Promise<void> {
-    const servers = this.config.mcp?.servers || {};
+    const servers = getMCPServers(this.config);
     const serverConfig = servers[name];
 
     if (!serverConfig) {
@@ -206,7 +208,7 @@ export class MCPServerManager {
   }
 
   async stopServer(name: string): Promise<void> {
-    const servers = this.config.mcp?.servers || {};
+    const servers = getMCPServers(this.config);
     const serverConfig = servers[name];
 
     if (!serverConfig) {

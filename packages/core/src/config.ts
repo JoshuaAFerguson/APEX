@@ -424,9 +424,21 @@ export async function listScripts(projectPath: string): Promise<string[]> {
 
 /**
  * Load MCP server configurations from config
+ * Normalizes both array and record formats to a Record
  */
 export function getMCPServers(config: ApexConfig): Record<string, MCPServerConfig> {
-  return config.mcp?.servers || {};
+  const servers = config.mcp?.servers;
+  if (!servers) {
+    return {};
+  }
+  // Handle array format by converting to record using server name as key
+  if (Array.isArray(servers)) {
+    return servers.reduce((acc, server) => {
+      acc[server.name] = server;
+      return acc;
+    }, {} as Record<string, MCPServerConfig>);
+  }
+  return servers;
 }
 
 /**

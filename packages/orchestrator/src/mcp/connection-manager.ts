@@ -51,6 +51,7 @@ import type {
 import {
   ExponentialBackoffReconnector,
   ConnectionHealthManager,
+  getMCPServers,
   type HealthCheckConfig,
   type HealthCheckResult as UnifiedHealthCheckResult,
   type ConnectionHealthState,
@@ -914,7 +915,7 @@ export class MCPConnectionManager extends EventEmitter<MCPConnectionManagerEvent
    * Get server configuration from the config
    */
   private getServerConfig(serverId: string): MCPServerConfig | undefined {
-    const servers = this.config.mcp?.servers ?? {};
+    const servers = getMCPServers(this.config);
     const config = servers[serverId];
     if (!config) {
       return undefined;

@@ -94,6 +94,7 @@ import {
   VisualRegressionSummarySchema,
   TestVisualComparison,
   TestVisualComparisonSchema,
+  getMCPServers,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -1520,9 +1521,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const servers = this.mcpConnectionManager.discoverServers();
 
     // Connect to each server
+    const normalizedServers = getMCPServers(this.config);
     for (const serverConfig of servers) {
-      const serverId = serverConfig.name ?? Object.keys(this.config.mcp?.servers ?? {})
-        .find(key => this.config.mcp?.servers?.[key] === serverConfig);
+      const serverId = serverConfig.name ?? Object.keys(normalizedServers)
+        .find(key => normalizedServers[key] === serverConfig);
 
       if (!serverId) continue;
 
@@ -3156,20 +3158,20 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
     try {
-    // Log MCP tool availability for observability
+    // Log MCP tool availability for observability (debug level)
     const mcpServers = this.buildQueryMcpServers();
     const registryStats = this.mcpToolRegistry?.getStats();
-    if (mcpServers && Object.keys(mcpServers).length > 0) {
-      this.log(`MCP Integration: ${Object.keys(mcpServers).length} servers available: ${Object.keys(mcpServers).join(', ')}`);
+    if (mcpServers && Object.keys(mcpServers).length > 0 && process.env.DEBUG) {
+      console.log(`MCP Integration: ${Object.keys(mcpServers).length} servers available: ${Object.keys(mcpServers).join(', ')}`);
       if (registryStats && registryStats.totalTools > 0) {
-        this.log(`MCP Tools: ${registryStats.totalTools} tools discovered across ${registryStats.totalServers} servers`);
+        console.log(`MCP Tools: ${registryStats.totalTools} tools discovered across ${registryStats.activeConnections} connections`);
       }
 
       // Log connection status through MCPConnectionManager
       const connections = this.mcpConnectionManager?.listConnections() ?? [];
       const connectedServers = connections.filter(c => c.state === 'connected').map(c => c.serverId);
       if (connectedServers.length > 0) {
-        this.log(`MCP Connections: ${connectedServers.length} active connections: ${connectedServers.join(', ')}`);
+        console.log(`MCP Connections: ${connectedServers.length} active connections: ${connectedServers.join(', ')}`);
       }
     }
 
@@ -6771,6 +6773,12 @@ Parent: ${parentTask.description}`;
     const completedTask = await this.store.getTask(taskId);
     if (completedTask) {
       this.emit('task:completed', completedTask);
+
+      // If this is a subtask, check if all sibling subtasks are complete
+      // and update the parent task status accordingly
+      if (task.parentTaskId) {
+        await this.checkAndCompleteParentTask(task.parentTaskId);
+      }
     }
 
     return true;
