@@ -198,7 +198,11 @@ class IntegrationTestHarness {
     });
 
     // Initialize tool registry
-    this.toolRegistry = new MCPToolRegistry(this.connectionManager);
+    this.toolRegistry = new MCPToolRegistry({
+      operationTimeoutMs: 30000,
+      autoRefresh: false, // We'll manually refresh during execution
+    });
+    this.toolRegistry.setConnectionManager(this.connectionManager);
 
     // Setup event collection
     this.setupEventCollectors();
@@ -212,8 +216,11 @@ class IntegrationTestHarness {
     this.mockTransport = context.transport;
     this.mockClient = context.client;
 
-    // Add sample tools to registry
-    await this.addSampleTools();
+    // Add connection to tool registry so it can discover tools automatically
+    const connection = this.connectionManager.getConnection('test-server');
+    if (connection) {
+      await this.toolRegistry.addConnection(connection);
+    }
 
     // Setup SDK mocks
     this.setupSDKMocks();
@@ -261,61 +268,6 @@ class IntegrationTestHarness {
     });
   }
 
-  private async addSampleTools(): Promise<void> {
-    const tools: MCPToolRegistryEntry[] = [
-      {
-        mcpTool: {
-          name: 'file-reader',
-          description: 'Read files from filesystem',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              path: { type: 'string' },
-            },
-            required: ['path'],
-          },
-        },
-        claudeTool: {
-          name: 'file-reader',
-          description: 'Read files from filesystem',
-          parameters: z.object({
-            path: z.string(),
-          }),
-        },
-        connectionId: 'test-server',
-        serverName: 'Integration Test Server',
-      },
-      {
-        mcpTool: {
-          name: 'api-client',
-          description: 'Make HTTP requests',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              url: { type: 'string' },
-              method: { type: 'string' },
-            },
-            required: ['url'],
-          },
-        },
-        claudeTool: {
-          name: 'api-client',
-          description: 'Make HTTP requests',
-          parameters: z.object({
-            url: z.string(),
-            method: z.string().optional(),
-          }),
-        },
-        connectionId: 'test-server',
-        serverName: 'Integration Test Server',
-      },
-    ];
-
-    // Add tools to registry
-    for (const tool of tools) {
-      (this.toolRegistry as any).tools.set(tool.mcpTool.name, tool);
-    }
-  }
 
   private setupSDKMocks(): void {
     mockTool.mockImplementation((name, description, schema, handler) => ({
@@ -572,11 +524,12 @@ describe('MCP Tool Invocation Routing Integration', () => {
 
   describe('proxy server integration', () => {
     it('should register all available tools from registry', () => {
-      expect(mockTool).toHaveBeenCalledTimes(2);
+      expect(mockTool).toHaveBeenCalledTimes(3);
 
       const registeredTools = mockTool.mock.calls.map(call => call[0]);
       expect(registeredTools).toContain('file-reader');
       expect(registeredTools).toContain('api-client');
+      expect(registeredTools).toContain('db-query');
     });
 
     it('should create server with correct configuration', () => {
