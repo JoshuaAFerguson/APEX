@@ -76,6 +76,7 @@ import {
   ApexRule, // Added ApexRule
   MCPServerConfig,
   MCPMarketplaceEntry,
+  MCPInstallation,
   MCPConnection,
   HealthCheckResult,
   AutoFixStageResults,
@@ -8842,6 +8843,17 @@ Parent: ${parentTask.description}`;
       installedFrom: 'manual' as const,
       installedAt: installation.installedAt,
     }));
+  }
+
+  /**
+   * List installed MCP servers as MCPInstallation objects
+   */
+  public async listMcpInstallations(): Promise<MCPInstallation[]> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.listInstalled();
   }
 
   /**

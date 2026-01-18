@@ -21,6 +21,7 @@ import {
   ApprovalGrantedEventData,
   ApprovalDeniedEventData,
   AutoFixEvent,
+  MCPInstallation,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -1113,6 +1114,17 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       return servers;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to list MCP servers';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // List installed MCP servers as MCPInstallation objects
+  app.get('/mcp/installed', async (request, reply) => {
+    try {
+      const installations = await orchestrator.listMcpInstallations();
+      return { installations };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to list installed MCP servers';
       return reply.status(500).send({ error: message });
     }
   });

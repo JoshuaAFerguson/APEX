@@ -7,6 +7,7 @@ vi.mock('@apexcli/orchestrator', () => ({
   ApexOrchestrator: vi.fn().mockImplementation(() => ({
     listMcpMarketplaceEntries: vi.fn(),
     listMcpServers: vi.fn(),
+    listMcpInstallations: vi.fn(),
     getMcpServerDetails: vi.fn(),
     installMcpServer: vi.fn(),
     uninstallMcpServer: vi.fn(),
@@ -54,6 +55,17 @@ async function createTestServer() {
       return servers;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to list MCP servers';
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  // List installed MCP servers as MCPInstallation objects
+  fastify.get('/mcp/installed', async (request, reply) => {
+    try {
+      const installations = await mockOrchestrator.listMcpInstallations();
+      return { installations };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to list installed MCP servers';
       return reply.code(500).send({ error: message });
     }
   });
@@ -303,6 +315,86 @@ describe('MCP API Endpoints', () => {
       expect(response.statusCode).toBe(500);
       const body = JSON.parse(response.body);
       expect(body).toEqual({ error: errorMessage });
+    });
+  });
+
+  describe('GET /mcp/installed', () => {
+    it('returns installed MCP servers as MCPInstallation objects', async () => {
+      const mockInstallations = [
+        {
+          serverId: 'filesystem',
+          installedAt: new Date('2024-01-01T00:00:00.000Z'),
+          config: {
+            type: 'stdio',
+            command: 'node',
+            args: ['filesystem-server.js'],
+          },
+          status: 'installed',
+        },
+        {
+          serverId: 'database',
+          installedAt: new Date('2024-01-02T00:00:00.000Z'),
+          config: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['@example/database-server'],
+          },
+          status: 'running',
+        },
+      ];
+
+      mockOrchestrator.listMcpInstallations.mockResolvedValue(mockInstallations);
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/installed',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ installations: mockInstallations });
+      expect(mockOrchestrator.listMcpInstallations).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns empty array when no servers are installed', async () => {
+      mockOrchestrator.listMcpInstallations.mockResolvedValue([]);
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/installed',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ installations: [] });
+      expect(mockOrchestrator.listMcpInstallations).toHaveBeenCalledTimes(1);
+    });
+
+    it('handles errors when listing installations', async () => {
+      const errorMessage = 'Failed to list installations';
+      mockOrchestrator.listMcpInstallations.mockRejectedValue(new Error(errorMessage));
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/installed',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: errorMessage });
+    });
+
+    it('handles non-Error exceptions', async () => {
+      mockOrchestrator.listMcpInstallations.mockRejectedValue('String error');
+
+      const response = await server.inject({
+        method: 'GET',
+        url: '/mcp/installed',
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      expect(body).toEqual({ error: 'Failed to list installed MCP servers' });
     });
   });
 
@@ -740,6 +832,7 @@ describe('MCP API Endpoints', () => {
       const endpoints = [
         { method: 'GET', url: '/mcp/marketplace' },
         { method: 'GET', url: '/mcp/servers' },
+        { method: 'GET', url: '/mcp/installed' },
         { method: 'GET', url: '/mcp/servers/test' },
         { method: 'POST', url: '/mcp/servers/test/install' },
         { method: 'DELETE', url: '/mcp/servers/test' },
