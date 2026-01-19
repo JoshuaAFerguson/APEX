@@ -226,7 +226,7 @@ export class MCPServerManager {
     let marketplaceEntry = null;
     try {
       const entries = await this.listMarketplaceEntries();
-      marketplaceEntry = entries.find(entry => entry.name === id || entry.serverName === id);
+      marketplaceEntry = entries.find(entry => entry.name === id);
     } catch (error) {
       // Ignore marketplace errors, not critical for server details
     }
@@ -236,14 +236,14 @@ export class MCPServerManager {
       name: serverConfig.name || id,
       config: serverConfig,
       status: status.status,
-      tools: marketplaceEntry?.tools || [],
-      readme: marketplaceEntry?.readme,
+      tools: [], // Tools would come from MCP connection, not marketplace
+      readme: undefined,
       installationInstructions: marketplaceEntry?.installCommand,
       metadata: {
         version: marketplaceEntry?.version,
         author: marketplaceEntry?.author,
-        description: marketplaceEntry?.description || serverConfig.description,
-        lastUpdated: marketplaceEntry?.lastUpdated ? new Date(marketplaceEntry.lastUpdated) : undefined,
+        description: marketplaceEntry?.description,
+        lastUpdated: undefined,
       },
     };
   }

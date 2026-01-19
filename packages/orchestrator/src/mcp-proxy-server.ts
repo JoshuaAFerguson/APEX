@@ -90,8 +90,8 @@ function createProxiedTool(
     claudeTool.name,
     // Use translated description
     claudeTool.description,
-    // Use translated Zod schema
-    claudeTool.parameters,
+    // Use translated Zod schema - extract shape from ZodObject
+    claudeTool.parameters.shape,
     // Handler routes through MCPConnectionManager
     async (args: unknown) => {
       try {

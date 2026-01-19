@@ -354,6 +354,9 @@ export interface OrchestratorEvents {
   'mcp:health-check': (event: MCPHealthCheckEventData) => void;
   'mcp:state-change': (event: MCPStateChangeEventData) => void;
   'mcp:pool-change': (event: MCPPoolChangeEventData) => void;
+  'mcp:tool-start': (event: { serverId: string; serverName: string; toolName: string; callId: string; timestamp: Date }) => void;
+  'mcp:tool-complete': (event: { serverId: string; serverName: string; toolName: string; callId: string; durationMs: number; timestamp: Date }) => void;
+  'mcp:tool-error': (event: { serverId: string; serverName: string; toolName: string; callId: string; error: string; errorCode?: string; retriable: boolean; timestamp: Date }) => void;
 
   // Auto-fix events (v0.5.0)
   'autofix:requested': (event: AutoFixRequestedEventData) => void;
@@ -1915,7 +1918,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
         // Get available MCP tool names
         const mcpTools = this.mcpToolRegistry.getAvailableTools();
-        discoveredMcpTools = mcpTools.map(tool => tool.claudeTool.function.name);
+        discoveredMcpTools = mcpTools.map(tool => tool.claudeTool.name);
 
         await this.store.addLog(taskId, {
           level: 'info',
@@ -6799,10 +6802,26 @@ Parent: ${parentTask.description}`;
     const completedStageNames = (checkpoint.metadata?.completedStages as string[]) || [];
 
     // Reconstruct stage results from checkpoint
+    // Note: stageResults is saved as Object.fromEntries(stageResults) in the checkpoint metadata
+    const savedStageResults = checkpoint.metadata?.stageResults as Record<string, StageResult> | undefined;
     for (const stageName of completedStageNames) {
-      const stageData = checkpoint.metadata?.[`stage_${stageName}`] as StageResult | undefined;
+      const stageData = savedStageResults?.[stageName];
       if (stageData) {
         stageResults.set(stageName, stageData);
+      } else {
+        // If no stage data found, create a minimal completed result to satisfy dependency checks
+        const now = new Date();
+        stageResults.set(stageName, {
+          stageName,
+          agent: 'unknown',
+          status: 'completed',
+          outputs: {},
+          artifacts: [],
+          summary: 'Restored from checkpoint',
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
+          startedAt: now,
+          completedAt: now,
+        });
       }
     }
 

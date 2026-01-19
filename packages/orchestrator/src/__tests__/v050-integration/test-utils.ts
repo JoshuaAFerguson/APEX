@@ -521,3 +521,385 @@ test('greet function', () => {
 
   return { sourceFile, testFile, configFile };
 }
+
+// ============================================================================
+// Enhanced Test Utilities for Combined System Integration (ADR-051)
+// ============================================================================
+
+/**
+ * Multi-system workflow builder for complex integration testing
+ */
+export class IntegrationWorkflowBuilder {
+  private steps: WorkflowStep[] = [];
+
+  addBrowserStep(operation: BrowserOperation): this {
+    this.steps.push({
+      type: 'browser',
+      operation,
+      system: 'browser',
+    });
+    return this;
+  }
+
+  addFileStep(operation: FileOperation): this {
+    this.steps.push({
+      type: 'file',
+      operation,
+      system: 'tool',
+    });
+    return this;
+  }
+
+  addMCPStep(operation: MCPOperation): this {
+    this.steps.push({
+      type: 'mcp',
+      operation,
+      system: 'tool',
+    });
+    return this;
+  }
+
+  addPermissionGate(permission: PermissionConfig): this {
+    this.steps.push({
+      type: 'permission',
+      operation: permission,
+      system: 'permission',
+    });
+    return this;
+  }
+
+  async execute(testEnv: TestEnvironment): Promise<WorkflowResult> {
+    const results: StepResult[] = [];
+    let success = true;
+    let errorStep: number | null = null;
+
+    for (let i = 0; i < this.steps.length; i++) {
+      const step = this.steps[i];
+      try {
+        const result = await this.executeStep(step, testEnv);
+        results.push(result);
+
+        if (!result.success) {
+          success = false;
+          errorStep = i;
+          break;
+        }
+      } catch (error) {
+        results.push({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          stepIndex: i,
+        });
+        success = false;
+        errorStep = i;
+        break;
+      }
+    }
+
+    return {
+      success,
+      errorStep,
+      results,
+      completedSteps: results.length,
+      totalSteps: this.steps.length,
+    };
+  }
+
+  private async executeStep(step: WorkflowStep, testEnv: TestEnvironment): Promise<StepResult> {
+    switch (step.type) {
+      case 'browser':
+        return this.executeBrowserStep(step.operation as BrowserOperation, testEnv);
+      case 'file':
+        return this.executeFileStep(step.operation as FileOperation, testEnv);
+      case 'mcp':
+        return this.executeMCPStep(step.operation as MCPOperation, testEnv);
+      case 'permission':
+        return this.executePermissionStep(step.operation as PermissionConfig, testEnv);
+      default:
+        throw new Error(`Unknown step type: ${step.type}`);
+    }
+  }
+
+  private async executeBrowserStep(
+    operation: BrowserOperation,
+    testEnv: TestEnvironment
+  ): Promise<StepResult> {
+    const session = await testEnv.browserTool.createSession({
+      taskId: 'test-task',
+      url: operation.url,
+    });
+
+    let result;
+    switch (operation.action) {
+      case 'navigate':
+        result = await session.navigate(operation.url);
+        break;
+      case 'click':
+        result = await session.click(operation.selector!);
+        break;
+      case 'getText':
+        result = await session.getText(operation.selector!);
+        break;
+      case 'screenshot':
+        result = await session.screenshot(operation.filename);
+        break;
+      default:
+        throw new Error(`Unknown browser action: ${operation.action}`);
+    }
+
+    return {
+      success: result.success,
+      data: result,
+      stepIndex: 0, // Will be set by execute method
+    };
+  }
+
+  private async executeFileStep(
+    operation: FileOperation,
+    testEnv: TestEnvironment
+  ): Promise<StepResult> {
+    switch (operation.action) {
+      case 'read':
+        const content = await fs.readFile(operation.path, 'utf8');
+        return { success: true, data: { content }, stepIndex: 0 };
+      case 'write':
+        await fs.writeFile(operation.path, operation.content!, 'utf8');
+        return { success: true, data: { path: operation.path }, stepIndex: 0 };
+      default:
+        throw new Error(`Unknown file action: ${operation.action}`);
+    }
+  }
+
+  private async executeMCPStep(
+    operation: MCPOperation,
+    testEnv: TestEnvironment
+  ): Promise<StepResult> {
+    // Mock MCP execution for testing
+    return {
+      success: true,
+      data: { tool: operation.tool, result: 'mock-mcp-result' },
+      stepIndex: 0,
+    };
+  }
+
+  private async executePermissionStep(
+    permission: PermissionConfig,
+    testEnv: TestEnvironment
+  ): Promise<StepResult> {
+    await testEnv.permissionManager.grantPermission(
+      permission.tool,
+      permission.level,
+      permission.scope
+    );
+
+    return { success: true, data: { granted: true }, stepIndex: 0 };
+  }
+
+  async verify(expectations: WorkflowExpectations): Promise<void> {
+    // Verification logic would be implemented here
+    // For now, this is a placeholder for the interface
+  }
+}
+
+/**
+ * Cross-system event tracker for integration testing
+ */
+export class IntegrationEventTracker {
+  private events = new Map<string, IntegrationEvent[]>();
+
+  trackPermission(event: TestPermissionEvent): void {
+    this.addEvent('permission', {
+      type: event.type,
+      system: 'permission',
+      timestamp: Date.now(),
+      data: event,
+    });
+  }
+
+  trackPolicy(event: TestPolicyEvent): void {
+    this.addEvent('policy', {
+      type: event.type,
+      system: 'policy',
+      timestamp: Date.now(),
+      data: event,
+    });
+  }
+
+  trackToolAction(event: any): void {
+    this.addEvent('tool', {
+      type: event.type,
+      system: 'tool',
+      timestamp: Date.now(),
+      data: event,
+    });
+  }
+
+  trackBrowser(event: TestBrowserEvent): void {
+    this.addEvent('browser', {
+      type: event.type,
+      system: 'browser',
+      timestamp: Date.now(),
+      data: event,
+    });
+  }
+
+  private addEvent(category: string, event: IntegrationEvent): void {
+    if (!this.events.has(category)) {
+      this.events.set(category, []);
+    }
+    this.events.get(category)!.push(event);
+  }
+
+  getTimeline(): TimelineEvent[] {
+    const allEvents: TimelineEvent[] = [];
+
+    for (const [category, events] of this.events) {
+      for (const event of events) {
+        allEvents.push({
+          ...event,
+          category,
+        });
+      }
+    }
+
+    return allEvents.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  verifyEventOrder(expected: string[]): void {
+    const timeline = this.getTimeline();
+    const actualOrder = timeline.map(e => e.type);
+
+    for (let i = 0; i < expected.length; i++) {
+      if (actualOrder[i] !== expected[i]) {
+        throw new Error(
+          `Event order mismatch at position ${i}: expected ${expected[i]}, got ${actualOrder[i]}`
+        );
+      }
+    }
+  }
+
+  verifyEventContent(matcher: EventMatcher): void {
+    const timeline = this.getTimeline();
+    const matchingEvents = timeline.filter(event => {
+      return matcher.type ? event.type === matcher.type : true &&
+             matcher.system ? event.system === matcher.system : true;
+    });
+
+    if (matchingEvents.length === 0) {
+      throw new Error(`No events found matching: ${JSON.stringify(matcher)}`);
+    }
+
+    if (matcher.count !== undefined && matchingEvents.length !== matcher.count) {
+      throw new Error(
+        `Expected ${matcher.count} matching events, found ${matchingEvents.length}`
+      );
+    }
+  }
+
+  clear(): void {
+    this.events.clear();
+  }
+}
+
+// ============================================================================
+// Type Definitions for Enhanced Utilities
+// ============================================================================
+
+interface WorkflowStep {
+  type: 'browser' | 'file' | 'mcp' | 'permission';
+  operation: BrowserOperation | FileOperation | MCPOperation | PermissionConfig;
+  system: 'browser' | 'tool' | 'permission' | 'policy';
+}
+
+interface BrowserOperation {
+  action: 'navigate' | 'click' | 'getText' | 'screenshot';
+  url: string;
+  selector?: string;
+  filename?: string;
+}
+
+interface FileOperation {
+  action: 'read' | 'write';
+  path: string;
+  content?: string;
+}
+
+interface MCPOperation {
+  tool: string;
+  parameters: any;
+}
+
+interface PermissionConfig {
+  tool: string;
+  level: PermissionLevel;
+  scope?: string;
+}
+
+interface StepResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+  stepIndex: number;
+}
+
+interface WorkflowResult {
+  success: boolean;
+  errorStep: number | null;
+  results: StepResult[];
+  completedSteps: number;
+  totalSteps: number;
+}
+
+interface WorkflowExpectations {
+  successfulSteps?: number;
+  failureStep?: number;
+  expectedResults?: any[];
+}
+
+interface IntegrationEvent {
+  type: string;
+  system: 'permission' | 'browser' | 'tool' | 'policy';
+  timestamp: number;
+  data: any;
+}
+
+interface TimelineEvent extends IntegrationEvent {
+  category: string;
+}
+
+interface EventMatcher {
+  type?: string;
+  system?: 'permission' | 'browser' | 'tool' | 'policy';
+  count?: number;
+}
+
+interface TestEnvironment {
+  testDir: string;
+  taskStore: TaskStore;
+  permissionManager: PermissionManager;
+  policyEnforcer: PolicyEnforcer;
+  browserTool: BrowserTool;
+  toolActionStore: ToolActionStore;
+  autonomyController: AutonomyController;
+  cleanup: () => Promise<void>;
+}
+
+// Event type definitions for integration testing
+interface TestPermissionEvent {
+  type: string;
+  tool?: string;
+  scope?: string;
+  level?: PermissionLevel;
+}
+
+interface TestPolicyEvent {
+  type: string;
+  resource?: string;
+  violation?: PolicyViolation;
+}
+
+interface TestBrowserEvent {
+  type: string;
+  url?: string;
+  action?: string;
+}

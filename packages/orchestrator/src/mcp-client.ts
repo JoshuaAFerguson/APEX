@@ -208,8 +208,7 @@ export class MCPClientUtility extends EventEmitter<MCPClientUtilityEvents> {
         command: config.command!,
         args: config.args || [],
         env: this.buildEnvironmentVariables(config.envVars),
-        process: childProcess,
-      });
+      } as any);
 
       const client = new MCPClient({
         transport,
@@ -461,11 +460,14 @@ export class MCPClientUtility extends EventEmitter<MCPClientUtilityEvents> {
   }
 
   private getTimeoutFromConfig(config: MCPServerConfig): number {
-    return config.connection?.timeoutMs ?? this.options.defaultTimeoutMs;
+    return config.connection?.connectionTimeoutMs ?? this.options.defaultTimeoutMs;
   }
 
   private buildEnvironmentVariables(envVars?: MCPEnvironmentVar[]): Record<string, string> {
-    const env: Record<string, string> = { ...process.env };
+    // Filter out undefined values from process.env
+    const env: Record<string, string> = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+    );
 
     if (envVars) {
       for (const envVar of envVars) {

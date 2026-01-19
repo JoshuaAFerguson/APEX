@@ -1310,6 +1310,142 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   });
 
+  // Install an MCP server (acceptance criteria format)
+  app.post<{ Params: { id: string } }>(
+    '/mcp/install/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      if (!id || !id.trim()) {
+        return reply.status(400).send({ error: 'Server ID is required' });
+      }
+
+      try {
+        // Broadcast installation start event
+        broadcast('mcp-installation', {
+          type: 'mcp:install-start' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'starting',
+            progress: 0,
+            message: `Starting installation of MCP server '${id}'`
+          },
+        });
+
+        const serverConfig = await orchestrator.installMcpServer(id);
+
+        // Broadcast installation complete event
+        broadcast('mcp-installation', {
+          type: 'mcp:install-complete' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'complete',
+            progress: 100,
+            message: `MCP server '${id}' installed successfully`,
+            config: serverConfig
+          },
+        });
+
+        return {
+          ok: true,
+          message: `MCP server '${id}' installed successfully`,
+          serverConfig
+        };
+      } catch (error) {
+        // Broadcast installation error event
+        broadcast('mcp-installation', {
+          type: 'mcp:install-error' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'error',
+            progress: 0,
+            message: error instanceof Error ? error.message : `Failed to install MCP server '${id}'`,
+            error: error instanceof Error ? error.message : String(error)
+          },
+        });
+
+        const message = error instanceof Error ? error.message : `Failed to install MCP server '${id}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
+  // Uninstall an MCP server (acceptance criteria format)
+  app.delete<{ Params: { id: string } }>(
+    '/mcp/uninstall/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+
+      if (!id || !id.trim()) {
+        return reply.status(400).send({ error: 'Server ID is required' });
+      }
+
+      try {
+        // Broadcast uninstallation start event
+        broadcast('mcp-installation', {
+          type: 'mcp:uninstall-start' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'uninstalling',
+            progress: 0,
+            message: `Starting uninstallation of MCP server '${id}'`
+          },
+        });
+
+        await orchestrator.uninstallMcpServer(id);
+
+        // Broadcast uninstallation complete event
+        broadcast('mcp-installation', {
+          type: 'mcp:uninstall-complete' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'complete',
+            progress: 100,
+            message: `MCP server '${id}' uninstalled successfully`
+          },
+        });
+
+        return {
+          ok: true,
+          message: `MCP server '${id}' uninstalled successfully`
+        };
+      } catch (error) {
+        // Broadcast uninstallation error event
+        broadcast('mcp-installation', {
+          type: 'mcp:uninstall-error' as any,
+          taskId: 'mcp-installation',
+          timestamp: new Date(),
+          data: {
+            serverId: id,
+            stage: 'error',
+            progress: 0,
+            message: error instanceof Error ? error.message : `Failed to uninstall MCP server '${id}'`,
+            error: error instanceof Error ? error.message : String(error)
+          },
+        });
+
+        const message = error instanceof Error ? error.message : `Failed to uninstall MCP server '${id}'`;
+        return reply.status(500).send({
+          ok: false,
+          error: message
+        });
+      }
+    }
+  );
+
   // Auto-configure standard tools
   app.post<{ Body: { developmentTools?: boolean; productivityTools?: boolean; devopsTools?: boolean; customServers?: string[] } }>(
     '/mcp/auto-configure',
@@ -2263,6 +2399,14 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /screenshot/element       - Capture element screenshot`);
       console.log(`  GET    /screenshot/health        - Screenshot service health check`);
       console.log('');
+      console.log('MCP Marketplace Endpoints:');
+      console.log(`  GET    /mcp/servers              - List installed MCP servers`);
+      console.log(`  GET    /mcp/servers/:id          - Get MCP server details`);
+      console.log(`  POST   /mcp/install/:id          - Install MCP server (with WebSocket progress)`);
+      console.log(`  DELETE /mcp/uninstall/:id        - Uninstall MCP server (with WebSocket progress)`);
+      console.log(`  GET    /mcp/installed            - List installed servers as MCPInstallation objects`);
+      console.log(`  GET    /mcp/marketplace          - Browse MCP marketplace`);
+      console.log('');
       console.log('Other Endpoints:');
       console.log(`  GET    /health                   - Basic health check`);
       console.log(`  GET    /daemon/health            - Comprehensive daemon health metrics`);
@@ -2302,6 +2446,12 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`    • auto-fix-progress         - Standardized auto-fix progress (v0.5.0)`);
       console.log(`    • auto-fix-complete         - Standardized auto-fix complete (v0.5.0)`);
       console.log(`    • auto-fix-error            - Standardized auto-fix error (v0.5.0)`);
+      console.log(`    • mcp:install-start         - MCP server installation started (v0.5.0)`);
+      console.log(`    • mcp:install-complete      - MCP server installation completed (v0.5.0)`);
+      console.log(`    • mcp:install-error         - MCP server installation failed (v0.5.0)`);
+      console.log(`    • mcp:uninstall-start       - MCP server uninstallation started (v0.5.0)`);
+      console.log(`    • mcp:uninstall-complete    - MCP server uninstallation completed (v0.5.0)`);
+      console.log(`    • mcp:uninstall-error       - MCP server uninstallation failed (v0.5.0)`);
       console.log(`    • health:updated            - Health metrics changed significantly\n`);
     }
   } catch (error) {
