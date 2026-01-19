@@ -1,0 +1,407 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-01-19T00:00:00Z",
+  "description": "Official APEX MCP Server Catalog - Curated collection of MCP servers for enhanced agent capabilities",
+  "categories": {
+    "filesystem": {
+      "name": "File System",
+      "description": "Servers for file and directory operations"
+    },
+    "web": {
+      "name": "Web & HTTP",
+      "description": "Servers for web browsing, HTTP requests, and API interactions"
+    },
+    "development": {
+      "name": "Development Tools",
+      "description": "Servers for software development workflows and version control"
+    },
+    "database": {
+      "name": "Database",
+      "description": "Servers for database operations and data management"
+    },
+    "search": {
+      "name": "Search & Information",
+      "description": "Servers for searching and retrieving information"
+    },
+    "system": {
+      "name": "System & Infrastructure",
+      "description": "Servers for system administration and infrastructure management"
+    },
+    "ai": {
+      "name": "AI & Machine Learning",
+      "description": "Servers for AI/ML model interactions and data processing"
+    },
+    "productivity": {
+      "name": "Productivity",
+      "description": "Servers for productivity applications and workflow automation"
+    }
+  },
+  "servers": [
+    {
+      "name": "filesystem",
+      "description": "Direct filesystem access for reading, writing, and managing files and directories",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "homepage": "https://modelcontextprotocol.io/servers/filesystem",
+      "verified": true,
+      "category": "filesystem",
+      "capabilities": [
+        "file:read",
+        "file:write",
+        "file:create",
+        "file:delete",
+        "directory:list",
+        "directory:create",
+        "directory:search",
+        "file:move",
+        "file:copy"
+      ],
+      "serverConfig": {
+        "name": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"],
+        "env": {}
+      }
+    },
+    {
+      "name": "brave-search",
+      "description": "Web search capabilities using Brave Search API for current information retrieval",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+      "homepage": "https://modelcontextprotocol.io/servers/brave-search",
+      "verified": true,
+      "category": "search",
+      "capabilities": [
+        "search:web",
+        "search:current_events",
+        "search:real_time"
+      ],
+      "serverConfig": {
+        "name": "brave-search",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "env": {
+          "BRAVE_API_KEY": "required"
+        }
+      }
+    },
+    {
+      "name": "github",
+      "description": "GitHub integration for repository management, issues, pull requests, and code operations",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+      "homepage": "https://modelcontextprotocol.io/servers/github",
+      "verified": true,
+      "category": "development",
+      "capabilities": [
+        "git:repository_access",
+        "git:issue_management",
+        "git:pull_requests",
+        "code:read",
+        "code:search",
+        "project:management"
+      ],
+      "serverConfig": {
+        "name": "github",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "required"
+        }
+      }
+    },
+    {
+      "name": "postgres",
+      "description": "PostgreSQL database operations including queries, schema management, and data manipulation",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+      "homepage": "https://modelcontextprotocol.io/servers/postgres",
+      "verified": true,
+      "category": "database",
+      "capabilities": [
+        "db:query",
+        "db:schema_read",
+        "db:data_read",
+        "db:data_write",
+        "sql:execute"
+      ],
+      "serverConfig": {
+        "name": "postgres",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-postgres"],
+        "env": {
+          "POSTGRES_CONNECTION_STRING": "required"
+        }
+      }
+    },
+    {
+      "name": "sqlite",
+      "description": "SQLite database operations for local file-based database management",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite",
+      "homepage": "https://modelcontextprotocol.io/servers/sqlite",
+      "verified": true,
+      "category": "database",
+      "capabilities": [
+        "db:query",
+        "db:schema_read",
+        "db:data_read",
+        "db:data_write",
+        "sql:execute",
+        "file:database"
+      ],
+      "serverConfig": {
+        "name": "sqlite",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", "/path/to/database.db"],
+        "env": {}
+      }
+    },
+    {
+      "name": "puppeteer",
+      "description": "Web automation and scraping using Puppeteer for browser control and data extraction",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+      "homepage": "https://modelcontextprotocol.io/servers/puppeteer",
+      "verified": true,
+      "category": "web",
+      "capabilities": [
+        "browser:navigate",
+        "browser:interact",
+        "web:scrape",
+        "web:automation",
+        "browser:screenshot",
+        "form:fill"
+      ],
+      "serverConfig": {
+        "name": "puppeteer",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+        "env": {}
+      }
+    },
+    {
+      "name": "slack",
+      "description": "Slack integration for messaging, channel management, and workspace automation",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+      "homepage": "https://modelcontextprotocol.io/servers/slack",
+      "verified": true,
+      "category": "productivity",
+      "capabilities": [
+        "messaging:send",
+        "messaging:receive",
+        "channel:management",
+        "workspace:automation",
+        "notifications:send"
+      ],
+      "serverConfig": {
+        "name": "slack",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "env": {
+          "SLACK_BOT_TOKEN": "required"
+        }
+      }
+    },
+    {
+      "name": "gdrive",
+      "description": "Google Drive integration for file storage, sharing, and document management",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/gdrive",
+      "homepage": "https://modelcontextprotocol.io/servers/gdrive",
+      "verified": true,
+      "category": "productivity",
+      "capabilities": [
+        "cloud:storage",
+        "file:sync",
+        "document:management",
+        "sharing:files",
+        "collaboration:docs"
+      ],
+      "serverConfig": {
+        "name": "gdrive",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        "env": {
+          "GOOGLE_APPLICATION_CREDENTIALS": "required"
+        }
+      }
+    },
+    {
+      "name": "memory",
+      "description": "Persistent memory storage for maintaining context across conversations and sessions",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "homepage": "https://modelcontextprotocol.io/servers/memory",
+      "verified": true,
+      "category": "ai",
+      "capabilities": [
+        "memory:store",
+        "memory:retrieve",
+        "context:persist",
+        "session:memory"
+      ],
+      "serverConfig": {
+        "name": "memory",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "env": {}
+      }
+    },
+    {
+      "name": "fetch",
+      "description": "HTTP client for making web requests and API calls with flexible configuration",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "homepage": "https://modelcontextprotocol.io/servers/fetch",
+      "verified": true,
+      "category": "web",
+      "capabilities": [
+        "http:get",
+        "http:post",
+        "http:put",
+        "http:delete",
+        "api:call",
+        "web:request"
+      ],
+      "serverConfig": {
+        "name": "fetch",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],
+        "env": {}
+      }
+    },
+    {
+      "name": "everart",
+      "description": "AI image generation and manipulation using EverArt API for creative content",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/everart",
+      "homepage": "https://modelcontextprotocol.io/servers/everart",
+      "verified": true,
+      "category": "ai",
+      "capabilities": [
+        "image:generate",
+        "image:edit",
+        "ai:creative",
+        "art:creation"
+      ],
+      "serverConfig": {
+        "name": "everart",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-everart"],
+        "env": {
+          "EVERART_API_KEY": "required"
+        }
+      }
+    },
+    {
+      "name": "kubernetes",
+      "description": "Kubernetes cluster management and resource operations for container orchestration",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/kubernetes",
+      "homepage": "https://modelcontextprotocol.io/servers/kubernetes",
+      "verified": true,
+      "category": "system",
+      "capabilities": [
+        "k8s:deploy",
+        "k8s:scale",
+        "k8s:monitor",
+        "container:management",
+        "cluster:operations"
+      ],
+      "serverConfig": {
+        "name": "kubernetes",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-kubernetes"],
+        "env": {
+          "KUBECONFIG": "required"
+        }
+      }
+    },
+    {
+      "name": "sequential-thinking",
+      "description": "Enhanced reasoning capabilities with step-by-step thinking and problem solving",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+      "homepage": "https://modelcontextprotocol.io/servers/sequential-thinking",
+      "verified": true,
+      "category": "ai",
+      "capabilities": [
+        "reasoning:sequential",
+        "problem:solving",
+        "thinking:structured",
+        "analysis:step_by_step"
+      ],
+      "serverConfig": {
+        "name": "sequential-thinking",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        "env": {}
+      }
+    },
+    {
+      "name": "sentry",
+      "description": "Sentry integration for error tracking, performance monitoring, and debugging",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/sentry",
+      "homepage": "https://modelcontextprotocol.io/servers/sentry",
+      "verified": true,
+      "category": "development",
+      "capabilities": [
+        "error:tracking",
+        "performance:monitoring",
+        "debug:assistance",
+        "logging:analysis"
+      ],
+      "serverConfig": {
+        "name": "sentry",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sentry"],
+        "env": {
+          "SENTRY_DSN": "required"
+        }
+      }
+    },
+    {
+      "name": "aws-kb",
+      "description": "AWS Knowledge Base integration for cloud infrastructure documentation and guidance",
+      "version": "1.0.0",
+      "author": "ModelContextProtocol",
+      "repository": "https://github.com/modelcontextprotocol/servers/tree/main/src/aws-kb",
+      "homepage": "https://modelcontextprotocol.io/servers/aws-kb",
+      "verified": true,
+      "category": "system",
+      "capabilities": [
+        "cloud:aws",
+        "knowledge:base",
+        "documentation:search",
+        "infrastructure:guidance"
+      ],
+      "serverConfig": {
+        "name": "aws-kb",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-aws-kb"],
+        "env": {
+          "AWS_ACCESS_KEY_ID": "required",
+          "AWS_SECRET_ACCESS_KEY": "required",
+          "AWS_REGION": "required"
+        }
+      }
+    }
+  ]
+}

@@ -34,6 +34,12 @@
       "import": "./dist/tools/index.js",
       "require": "./dist/tools/index.js",
       "default": "./dist/tools/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.js",
+      "default": "./dist/mcp/index.js"
     }
   },
   "files": [
@@ -48,7 +54,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/mcp/catalog.json dist/mcp/catalog.json",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
