@@ -58,13 +58,10 @@ describe('MCPToolRegistry', () => {
   const mockTranslatedTool = {
     name: TEST_TOOL_NAME,
     description: 'A test tool',
-    input_schema: {
-      type: 'object',
-      properties: {
-        param1: { type: 'string' },
-        param2: { type: 'number' },
-      },
-      required: ['param1'],
+    parameters: {} as any, // Mock Zod schema
+    metadata: {
+      serverId: TEST_CONNECTION_ID,
+      serverName: TEST_SERVER_NAME,
     },
   };
 
@@ -541,11 +538,10 @@ describe('MCPToolRegistry', () => {
       const translatedToolWithDefaults = {
         name: 'no-schema-tool',
         description: 'Tool without schema',
-        input_schema: {
-          type: 'object',
-          properties: {},
-          required: [],
-          additionalProperties: true,
+        parameters: {} as any, // Mock Zod schema
+        metadata: {
+          serverId: TEST_CONNECTION_ID,
+          serverName: TEST_SERVER_NAME,
         },
       };
 
