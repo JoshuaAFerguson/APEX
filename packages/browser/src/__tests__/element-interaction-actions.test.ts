@@ -440,6 +440,154 @@ describe('Element Interaction Actions', () => {
     });
   });
 
+  describe('Element state verification', () => {
+    it('should verify element visibility states', async () => {
+      const html = `
+        <div>
+          <button id="visibleBtn" style="display: block;">Visible Button</button>
+          <button id="hiddenBtn" style="display: none;">Hidden Button</button>
+          <button id="invisibleBtn" style="visibility: hidden;">Invisible Button</button>
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      // Test visible element can be found
+      const visibleResult = await session.waitForElement('#visibleBtn', {
+        state: 'visible',
+        timeout: 3000
+      });
+      expect(visibleResult.success).toBe(true);
+
+      // Test hidden element cannot be found in visible state
+      const hiddenResult = await session.waitForElement('#hiddenBtn', {
+        state: 'visible',
+        timeout: 1000
+      });
+      expect(hiddenResult.success).toBe(false);
+    });
+
+    it('should verify element enabled/disabled states', async () => {
+      const html = `
+        <div>
+          <button id="enabledBtn">Enabled Button</button>
+          <button id="disabledBtn" disabled>Disabled Button</button>
+          <input id="enabledInput" type="text" />
+          <input id="disabledInput" type="text" disabled />
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      // Test clicking enabled vs disabled elements
+      const enabledClick = await session.click('#enabledBtn');
+      expect(enabledClick.success).toBe(true);
+
+      const disabledClick = await session.click('#disabledBtn');
+      expect(disabledClick.success).toBe(false);
+
+      // Test typing into enabled vs disabled inputs
+      const enabledType = await session.type('#enabledInput', 'test');
+      expect(enabledType.success).toBe(true);
+
+      const disabledType = await session.type('#disabledInput', 'test');
+      expect(disabledType.success).toBe(false);
+    });
+
+    it('should handle dynamic state changes', async () => {
+      const html = `
+        <div>
+          <button id="toggleBtn" onclick="
+            const target = document.getElementById('targetBtn');
+            target.disabled = !target.disabled;
+          ">Toggle State</button>
+          <button id="targetBtn">Target Button</button>
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      // Initial state - should be clickable
+      const initialClick = await session.click('#targetBtn');
+      expect(initialClick.success).toBe(true);
+
+      // Toggle to disabled
+      await session.click('#toggleBtn');
+
+      // Should now fail to click
+      const disabledClick = await session.click('#targetBtn');
+      expect(disabledClick.success).toBe(false);
+
+      // Toggle back to enabled
+      await session.click('#toggleBtn');
+
+      // Should be clickable again
+      const reenableddClick = await session.click('#targetBtn');
+      expect(reenableddClick.success).toBe(true);
+    });
+  });
+
+  describe('Select option functionality', () => {
+    it('should handle dropdown selections', async () => {
+      const html = `
+        <div>
+          <select id="dropdown">
+            <option value="">Select option</option>
+            <option value="option1">Option 1</option>
+            <option value="option2">Option 2</option>
+            <option value="option3">Option 3</option>
+          </select>
+          <div id="selected"></div>
+          <script>
+            document.getElementById('dropdown').onchange = function() {
+              document.getElementById('selected').textContent = this.value;
+            }
+          </script>
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      // Select option by evaluating JavaScript directly
+      await session.evaluate(`
+        const dropdown = document.getElementById('dropdown');
+        dropdown.value = 'option1';
+        dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+      `);
+
+      // Verify selection was made
+      const selectedValue = await session.evaluate(`
+        document.getElementById('dropdown').value
+      `);
+      expect(selectedValue.result).toBe('option1');
+    });
+
+    it('should handle checkbox state changes', async () => {
+      const html = `
+        <div>
+          <input type="checkbox" id="checkbox" onchange="
+            document.getElementById('status').textContent = this.checked ? 'checked' : 'unchecked';
+          " />
+          <label for="checkbox">Test Checkbox</label>
+          <div id="status">unchecked</div>
+        </div>
+      `;
+      await session.navigate(`data:text/html,${html}`);
+
+      // Check the checkbox
+      await session.click('#checkbox');
+
+      const checkedStatus = await session.evaluate(`
+        document.getElementById('status').textContent
+      `);
+      expect(checkedStatus.result).toBe('checked');
+
+      // Uncheck the checkbox
+      await session.click('#checkbox');
+
+      const uncheckedStatus = await session.evaluate(`
+        document.getElementById('status').textContent
+      `);
+      expect(uncheckedStatus.result).toBe('unchecked');
+    });
+  });
+
   describe('Integration tests for element interactions', () => {
     it('should perform complex interaction sequences', async () => {
       const html = `

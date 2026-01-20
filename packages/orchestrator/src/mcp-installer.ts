@@ -23,6 +23,8 @@ export interface MCPInstallationOptions {
   env?: Record<string, string>;
   /** Whether to install globally (npm -g flag) */
   global?: boolean;
+  /** Specific version to install (e.g., "1.2.3", "^1.0.0", "latest") */
+  version?: string;
 }
 
 /**
@@ -183,6 +185,160 @@ export class MCPInstaller {
     return this.store.listMcpMarketplaceEntries();
   }
 
+  /**
+   * Parse a semantic version string into its components
+   */
+  parseVersion(version: string): { major: number; minor: number; patch: number; prerelease?: string } {
+    // Remove leading 'v' if present
+    const cleanVersion = version.replace(/^v/, '');
+
+    // Handle version ranges and special cases
+    if (cleanVersion === 'latest' || cleanVersion === '*') {
+      return { major: Infinity, minor: Infinity, patch: Infinity };
+    }
+
+    // Remove range prefixes (^, ~, >=, etc.)
+    const versionCore = cleanVersion.replace(/^[\^~>=<]+/, '');
+
+    // Parse semantic version (major.minor.patch[-prerelease][+build])
+    // Build metadata is ignored for comparison per SemVer spec
+    const match = versionCore.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([a-zA-Z0-9\-.]+))?(?:\+.*)?$/);
+    if (!match) {
+      throw new Error(`Invalid version format: ${version}`);
+    }
+
+    const [, majorStr, minorStr = '0', patchStr = '0', prerelease] = match;
+
+    // Validate prerelease format if present
+    if (prerelease && (prerelease.endsWith('.') || prerelease.endsWith('-'))) {
+      throw new Error(`Invalid version format: ${version}`);
+    }
+
+    return {
+      major: parseInt(majorStr, 10),
+      minor: parseInt(minorStr, 10),
+      patch: parseInt(patchStr, 10),
+      prerelease: prerelease || undefined,
+    };
+  }
+
+  /**
+   * Compare two version strings using semantic versioning rules
+   */
+  compareVersions(version1: string, version2: string): number {
+    const v1 = this.parseVersion(version1);
+    const v2 = this.parseVersion(version2);
+
+    // Compare major versions
+    if (v1.major !== v2.major) {
+      return v1.major - v2.major;
+    }
+
+    // Compare minor versions
+    if (v1.minor !== v2.minor) {
+      return v1.minor - v2.minor;
+    }
+
+    // Compare patch versions
+    if (v1.patch !== v2.patch) {
+      return v1.patch - v2.patch;
+    }
+
+    // Compare prerelease versions
+    if (v1.prerelease && !v2.prerelease) {
+      return -1; // Prerelease versions are less than normal versions
+    }
+    if (!v1.prerelease && v2.prerelease) {
+      return 1;
+    }
+    if (v1.prerelease && v2.prerelease) {
+      return v1.prerelease.localeCompare(v2.prerelease);
+    }
+
+    return 0; // Versions are equal
+  }
+
+  /**
+   * Check if a version satisfies a version range
+   */
+  satisfiesRange(version: string, range: string): boolean {
+    if (range === 'latest' || range === '*') {
+      return true;
+    }
+
+    // Handle exact match
+    if (!range.match(/^[\^~>=<]/)) {
+      return this.compareVersions(version, range) === 0;
+    }
+
+    const rangeType = range.charAt(0);
+    const targetVersion = range.slice(1);
+    const comparison = this.compareVersions(version, targetVersion);
+
+    switch (rangeType) {
+      case '^': // Compatible release (same major version)
+        const targetMajor = this.parseVersion(targetVersion).major;
+        const versionMajor = this.parseVersion(version).major;
+        return versionMajor === targetMajor && comparison >= 0;
+
+      case '~': // Approximately equivalent (same major.minor)
+        const targetParsed = this.parseVersion(targetVersion);
+        const versionParsed = this.parseVersion(version);
+        return versionParsed.major === targetParsed.major &&
+               versionParsed.minor === targetParsed.minor &&
+               comparison >= 0;
+
+      case '>':
+        if (range.startsWith('>=')) {
+          const targetVersionForGte = range.slice(2);
+          return this.compareVersions(version, targetVersionForGte) >= 0;
+        }
+        return comparison > 0;
+
+      case '<':
+        if (range.startsWith('<=')) {
+          const targetVersionForLte = range.slice(2);
+          return this.compareVersions(version, targetVersionForLte) <= 0;
+        }
+        return comparison < 0;
+
+      default:
+        return comparison === 0;
+    }
+  }
+
+  /**
+   * Resolve the latest version for a package
+   */
+  async resolveLatestVersion(packageName: string): Promise<string> {
+    try {
+      const { stdout } = await execAsync(`npm view ${packageName} version --json`, {
+        cwd: this.projectPath,
+      });
+
+      const result = JSON.parse(stdout.trim());
+      return typeof result === 'string' ? result : result[result.length - 1];
+    } catch (error) {
+      throw new Error(`Failed to resolve latest version for ${packageName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Get available versions for a package
+   */
+  async getAvailableVersions(packageName: string): Promise<string[]> {
+    try {
+      const { stdout } = await execAsync(`npm view ${packageName} versions --json`, {
+        cwd: this.projectPath,
+      });
+
+      const result = JSON.parse(stdout.trim());
+      return Array.isArray(result) ? result : [result];
+    } catch (error) {
+      throw new Error(`Failed to get available versions for ${packageName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   // Private helper methods
 
   /**
@@ -206,7 +362,14 @@ export class MCPInstaller {
 
     // Use the command as package name if it looks like a package
     const packageName = this.extractPackageName(server);
-    parts.push(packageName);
+
+    // Add version specification if provided
+    const versionToInstall = options.version || server.version;
+    if (versionToInstall && versionToInstall !== 'latest' && versionToInstall.trim() !== '') {
+      parts.push(`${packageName}@${versionToInstall}`);
+    } else {
+      parts.push(packageName);
+    }
 
     if (options.args && options.args.length > 0) {
       parts.push(...options.args);
@@ -219,6 +382,11 @@ export class MCPInstaller {
    * Extract a package name from an MCP server definition
    */
   private extractPackageName(server: MCPServer): string {
+    // First priority: use the package field if available
+    if ('package' in server && server.package) {
+      return server.package;
+    }
+
     // If args are provided and command is npx, use first arg as package name
     if (server.command === 'npx' && server.args && server.args.length > 0) {
       return server.args[0];

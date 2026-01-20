@@ -5,7 +5,7 @@
  * MCP server configurations in an APEX project.
  */
 
-import { McpService } from './mcp-service';
+import { McpService } from './mcp-service.js';
 
 async function exampleUsage() {
   // Create service instance - defaults to current working directory

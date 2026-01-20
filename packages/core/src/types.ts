@@ -3484,6 +3484,31 @@ export const VisualRegressionConfigSchema = z.object({
 });
 export type VisualRegressionConfig = z.infer<typeof VisualRegressionConfigSchema>;
 
+/**
+ * Slack integration configuration (v0.7.0)
+ */
+export const SlackIntegrationConfigSchema = z.object({
+  /** Enable Slack integration */
+  enabled: z.boolean().optional().default(false),
+  /** Socket mode app-level token (xapp-...) */
+  appToken: z.string().optional(),
+  /** Bot token (xoxb-...) */
+  botToken: z.string().optional(),
+  /** Signing secret (required for HTTP mode, optional for socket mode) */
+  signingSecret: z.string().optional(),
+  /** Slack mode (socket is recommended for local/dev) */
+  mode: z.enum(['socket']).optional().default('socket'),
+  /** Default channel for notifications and command responses */
+  defaultChannel: z.string().optional().default('#apex'),
+  /** Additional notification channels */
+  notificationChannels: z.array(z.string()).optional().default([]),
+  /** Enable thread updates for task progress */
+  threadUpdates: z.boolean().optional().default(true),
+  /** Use Block Kit for responses */
+  useBlocks: z.boolean().optional().default(true),
+});
+export type SlackIntegrationConfig = z.infer<typeof SlackIntegrationConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -3547,6 +3572,8 @@ export const ApexConfigSchema = z.object({
   tdd: TDDModeConfigSchema.optional(),
   /** Visual regression configuration for screenshot comparison testing (v0.5.0) */
   visualRegression: VisualRegressionConfigSchema.optional(),
+  /** Slack integration configuration (v0.7.0) */
+  slack: SlackIntegrationConfigSchema.optional(),
   /** Project-specific rules defined in .apexrules (v0.4.0) */
   projectRules: z.lazy(() => z.array(ApexRuleSchema)).optional().default([]),
   /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */

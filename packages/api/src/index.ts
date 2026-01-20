@@ -33,6 +33,7 @@ import {
 } from '@apexcli/orchestrator';
 
 import { registerScreenshotRoutes } from './routes/screenshot.js';
+import { SlackService } from './services/slack-service.js';
 
 // Subtask API request types
 interface DecomposeTaskRequest {
@@ -102,6 +103,14 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // Initialize orchestrator
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
   await orchestrator.initialize();
+
+  const config = await orchestrator.getConfig();
+  const slackService = new SlackService({ orchestrator, config: config.slack, logger: app.log });
+  try {
+    await slackService.start();
+  } catch (error) {
+    app.log.error(`Slack integration failed to start: ${error instanceof Error ? error.message : error}`);
+  }
 
   // Initialize daemon manager and health monitor for health endpoint
   const daemonManager = new DaemonManager({ projectPath });
@@ -1777,6 +1786,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       clearInterval(healthMonitoringInterval);
       healthMonitoringInterval = null;
     }
+    await slackService.stop();
   });
 
   return app;

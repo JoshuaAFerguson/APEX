@@ -35,8 +35,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import type { MCPMarketplaceEntry, MCPServerConfig } from '../types.js';
 
 // ============================================================================
@@ -459,9 +458,7 @@ export class MCPRegistry {
    * @returns Absolute path to the catalog.json file
    */
   private getDefaultCatalogPath(): string {
-    // ES module equivalent of __dirname
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
+    // Use __dirname which is available in CommonJS output
     return resolve(__dirname, 'catalog.json');
   }
 

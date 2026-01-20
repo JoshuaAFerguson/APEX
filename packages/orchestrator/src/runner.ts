@@ -276,8 +276,14 @@ export class DaemonRunner {
       // Setup periodic check for paused tasks that can be resumed
       this.setupPeriodicPausedTaskCheck();
 
+      // Setup periodic stuck task auto-triage
+      this.setupPeriodicStuckTaskCheck();
+
       // Initial check for paused tasks on startup
       await this.checkAndResumePausedTasks();
+
+      // Initial auto-triage check on startup
+      await this.checkAndRepairStuckTasks();
 
       // Write initial state file
       await this.writeStateFile();
@@ -1535,5 +1541,138 @@ export class DaemonRunner {
     }, interval);
 
     this.log('info', `Periodic paused task check enabled (interval: ${interval}ms)`);
+  }
+
+  /**
+   * Auto-triage and repair stuck tasks.
+   *
+   * Detects and repairs tasks that are stuck due to:
+   * 1. Parent tasks waiting for pending subtasks but not progressing
+   * 2. Tasks stuck in checkpoint resume loops (resume_attempts >= max)
+   * 3. Tasks with workflow stages that failed due to recoverable errors
+   * 4. In-progress tasks that haven't been updated in a long time
+   */
+  private async checkAndRepairStuckTasks(): Promise<void> {
+    if (!this.store || !this.orchestrator) {
+      return;
+    }
+
+    try {
+      const allTasks = await this.store.getAllTasks();
+      const now = Date.now();
+      const stuckThresholdMs = 5 * 60 * 1000; // 5 minutes without update = potentially stuck
+      let repairedCount = 0;
+
+      for (const task of allTasks) {
+        // Skip non-in-progress tasks
+        if (task.status !== 'in-progress') {
+          continue;
+        }
+
+        const updatedAt = task.updatedAt ? new Date(task.updatedAt).getTime() : 0;
+        const timeSinceUpdate = now - updatedAt;
+        let needsRepair = false;
+        let repairReason = '';
+
+        // Check 1: Parent task with pending subtasks that's stuck
+        if (task.subtaskIds && task.subtaskIds.length > 0) {
+          const subtasks = allTasks.filter(t => task.subtaskIds!.includes(t.id));
+          const pendingSubtasks = subtasks.filter(t => t.status === 'pending');
+          const inProgressSubtasks = subtasks.filter(t => t.status === 'in-progress');
+          const failedSubtasks = subtasks.filter(t => t.status === 'failed');
+
+          // If there are pending subtasks but none in-progress and the task hasn't been updated
+          if (pendingSubtasks.length > 0 && inProgressSubtasks.length === 0 && timeSinceUpdate > stuckThresholdMs) {
+            // Check if we're not currently running this task
+            if (!this.runningTasks.has(task.id)) {
+              needsRepair = true;
+              repairReason = `Parent task stuck with ${pendingSubtasks.length} pending subtasks (${failedSubtasks.length} failed)`;
+            }
+          }
+        }
+
+        // Check 2: Task stuck in checkpoint resume loop
+        if (!needsRepair && task.resumeAttempts && task.resumeAttempts >= 3) {
+          if (timeSinceUpdate > stuckThresholdMs && !this.runningTasks.has(task.id)) {
+            needsRepair = true;
+            repairReason = `Task hit max resume attempts (${task.resumeAttempts})`;
+          }
+        }
+
+        // Check 3: Task with error in error field that looks like a checkpoint reference (not a real error)
+        if (!needsRepair && task.error && task.error.startsWith('Resuming from checkpoint:')) {
+          needsRepair = true;
+          repairReason = 'Task has checkpoint reference in error field';
+        }
+
+        // Check 4: Task stuck in planning/subtask-execution with workflow error
+        if (!needsRepair && task.error && timeSinceUpdate > stuckThresholdMs) {
+          const recoverableErrors = [
+            'Tests or build did not pass',
+            'Workflow stuck:',
+            'dependencies not met',
+          ];
+
+          if (recoverableErrors.some(e => task.error!.includes(e)) && !this.runningTasks.has(task.id)) {
+            needsRepair = true;
+            repairReason = `Task has recoverable workflow error: ${task.error.substring(0, 50)}...`;
+          }
+        }
+
+        // Apply repair if needed
+        if (needsRepair) {
+          this.log('info', `[AutoTriage] Repairing stuck task ${task.id}: ${repairReason}`);
+
+          // Determine the appropriate current_stage based on subtask status
+          let newStage = task.currentStage;
+          if (task.subtaskIds && task.subtaskIds.length > 0) {
+            const subtasks = allTasks.filter(t => task.subtaskIds!.includes(t.id));
+            const pendingSubtasks = subtasks.filter(t => t.status === 'pending');
+            if (pendingSubtasks.length > 0) {
+              newStage = 'subtask-execution';
+            }
+          }
+
+          // Reset the task
+          await this.store.updateTask(task.id, {
+            error: undefined,
+            resumeAttempts: 0,
+            currentStage: newStage,
+            updatedAt: new Date(),
+          });
+
+          this.log('info', `[AutoTriage] Repaired task ${task.id}, set stage to '${newStage}'`);
+          repairedCount++;
+        }
+      }
+
+      if (repairedCount > 0) {
+        this.log('info', `[AutoTriage] Repaired ${repairedCount} stuck task(s)`);
+      }
+    } catch (error) {
+      this.log('error', `[AutoTriage] Failed to check stuck tasks: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Setup periodic stuck task detection and repair
+   */
+  private setupPeriodicStuckTaskCheck(): void {
+    // Check every 2 minutes
+    const interval = 120000;
+
+    setInterval(async () => {
+      if (!this.isRunning || this.isShuttingDown) {
+        return;
+      }
+
+      try {
+        await this.checkAndRepairStuckTasks();
+      } catch (error) {
+        this.log('error', `Periodic stuck task check failed: ${(error as Error).message}`);
+      }
+    }, interval);
+
+    this.log('info', `Periodic stuck task auto-triage enabled (interval: ${interval}ms)`);
   }
 }

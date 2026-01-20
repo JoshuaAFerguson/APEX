@@ -1,22 +1,20 @@
-export { McpService } from './mcp-service';
-export { CompletionEngine } from './CompletionEngine';
-export { ConversationManager } from './ConversationManager';
-export { SessionAutoSaver } from './SessionAutoSaver';
-export { SessionStore } from './SessionStore';
-export { ShortcutManager } from './ShortcutManager';
+export { McpService } from './mcp-service.js';
+export { CompletionEngine } from './CompletionEngine.js';
+export { ConversationManager } from './ConversationManager.js';
+export { SessionAutoSaver } from './SessionAutoSaver.js';
+export { SessionStore } from './SessionStore.js';
+export { ShortcutManager } from './ShortcutManager.js';
 
 // Re-export types
 export type {
   CompletionProvider,
   CompletionSuggestion,
-  CompletionContext,
-  CompletionFilter
-} from './CompletionEngine';
+  CompletionContext
+} from './CompletionEngine.js';
 
 export type {
   Session,
   SessionMessage,
   SessionState,
-  SessionMetadata,
   ToolCallRecord
-} from './SessionStore';
+} from './SessionStore.js';

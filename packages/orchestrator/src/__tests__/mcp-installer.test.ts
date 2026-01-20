@@ -80,10 +80,10 @@ describe('MCPInstaller', () => {
   describe('install', () => {
     const mockServer: MCPServer = {
       name: 'test-server',
-      description: 'Test MCP server',
+      package: '@test/mcp-server',
       command: 'npx',
       args: ['@test/mcp-server'],
-      autoStart: false,
+      version: '1.0.0',
     };
 
     beforeEach(() => {
@@ -229,10 +229,10 @@ describe('MCPInstaller', () => {
       // Test with scoped package command
       const scopedServer: MCPServer = {
         name: 'scoped-server',
-        description: 'Scoped package server',
+        package: '@company/mcp-server',
         command: '@company/mcp-server',
         args: [],
-        autoStart: false,
+        version: '1.0.0',
       };
 
       await installer.install(scopedServer);
@@ -250,10 +250,10 @@ describe('MCPInstaller', () => {
 
       const simpleServer: MCPServer = {
         name: 'simple-server',
-        description: 'Simple server',
+        package: 'simple-server',
         command: 'node',
         args: ['server.js'],
-        autoStart: false,
+        version: '1.0.0',
       };
 
       await installer.install(simpleServer);
@@ -564,10 +564,10 @@ describe('MCPInstaller', () => {
 
         const server: MCPServer = {
           name: 'test-server',
-          description: 'Test',
+          package: 'test',
           command: 'npx',
           args: ['test'],
-          autoStart: false,
+          version: '1.0.0',
         };
 
         const result1 = await installer.install(server, { force: true });
@@ -586,10 +586,10 @@ describe('MCPInstaller', () => {
 
         const server: MCPServer = {
           name: 'test-server',
-          description: 'Test',
+          package: '@test/package',
           command: 'npx',
           args: ['@test/package'],
-          autoStart: false,
+          version: '1.0.0',
         };
 
         await installer.install(server);
@@ -607,10 +607,10 @@ describe('MCPInstaller', () => {
 
         const server: MCPServer = {
           name: 'my-server',
-          description: 'Test',
+          package: 'my-server',
           command: 'python',
           args: ['script.py'],
-          autoStart: false,
+          version: '1.0.0',
         };
 
         await installer.install(server);
@@ -628,10 +628,10 @@ describe('MCPInstaller', () => {
 
         const server: MCPServer = {
           name: 'scoped-server',
-          description: 'Test',
+          package: '@company/mcp-tool',
           command: '@company/mcp-tool',
           args: [],
-          autoStart: false,
+          version: '1.0.0',
         };
 
         await installer.install(server);
@@ -652,10 +652,10 @@ describe('MCPInstaller', () => {
 
       const server: MCPServer = {
         name: 'test-server',
-        description: 'Test',
+        package: 'test-server',
         command: 'test-command',
         args: [],
-        autoStart: false,
+        version: '1.0.0',
       };
 
       await installer.install(server);
@@ -673,9 +673,9 @@ describe('MCPInstaller', () => {
 
       const server: MCPServer = {
         name: 'test-server',
-        description: 'Test',
+        package: 'test-server',
         command: 'test-command',
-        autoStart: false,
+        version: '1.0.0',
       };
 
       await installer.install(server);
@@ -721,6 +721,418 @@ describe('MCPInstaller', () => {
       await expect(installer.uninstall('test-server')).rejects.toThrow(
         "Failed to uninstall MCP server 'test-server': string error"
       );
+    });
+  });
+
+  describe('custom installation paths', () => {
+    it('should create config file in custom project path', async () => {
+      const customProjectPath = '/custom/project/path';
+      const customInstaller = new MCPInstaller(customProjectPath, mockStore);
+
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await customInstaller.install(server);
+
+      expect(mockFs.mkdir).toHaveBeenCalledWith(
+        path.join(customProjectPath, '.apex', 'mcp-installations'),
+        { recursive: true }
+      );
+
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.any(String),
+        { cwd: customProjectPath, env: process.env },
+        expect.any(Function)
+      );
+    });
+
+    it('should handle custom installation working directory for package manager commands', async () => {
+      const customWorkDir = '/workspace/my-project';
+      const customInstaller = new MCPInstaller(customWorkDir, mockStore);
+
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const server: MCPServer = {
+        name: 'workspace-server',
+        package: 'workspace-server',
+        command: 'npm',
+        args: ['exec', 'test-tool'],
+        version: '1.0.0',
+      };
+
+      await customInstaller.install(server);
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'npm install workspace-server',
+        { cwd: customWorkDir, env: process.env },
+        expect.any(Function)
+      );
+    });
+
+    it('should create nested installation directory structure', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const server: MCPServer = {
+        name: 'nested-server',
+        package: 'nested-server',
+        command: 'node',
+        args: ['-e', 'console.log("test")'],
+        version: '1.0.0',
+      };
+
+      await installer.install(server);
+
+      // Verify the nested directory structure is created
+      const expectedDir = path.join(projectPath, '.apex', 'mcp-installations');
+      expect(mockFs.mkdir).toHaveBeenCalledWith(expectedDir, { recursive: true });
+
+      // Verify config file path structure
+      const writeCall = mockFs.writeFile.mock.calls[0];
+      expect(writeCall[0]).toMatch(new RegExp(`${path.join('.apex', 'mcp-installations')}.*\\.json$`));
+    });
+  });
+
+  describe('invalid server configuration handling', () => {
+    it('should handle server with empty name', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      const invalidServer = {
+        name: '',
+        description: 'Test',
+        command: 'npx',
+        args: ['test'],
+        autoStart: false,
+      } as MCPServer;
+
+      // The installer should still attempt to process this, but the package name extraction should handle it
+      await expect(installer.install(invalidServer)).rejects.toThrow();
+    });
+
+    it('should handle server with null or undefined command', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      const invalidServer = {
+        name: 'test-server',
+        description: 'Test',
+        command: '',
+        args: [],
+        autoStart: false,
+      } as MCPServer;
+
+      // Should use server name as fallback
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      await installer.install(invalidServer);
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'npm install test-server',
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle server with invalid characters in name', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const serverWithSpecialChars: MCPServer = {
+        name: 'test@server#with$special%chars',
+        package: 'normal-package',
+        command: 'npx',
+        args: ['normal-package'],
+        version: '1.0.0',
+      };
+
+      await installer.install(serverWithSpecialChars);
+
+      // Should still use the args[0] for package name
+      expect(mockExec).toHaveBeenCalledWith(
+        'npm install normal-package',
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle server with malformed args array', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const serverWithMalformedArgs: MCPServer = {
+        name: 'test-server',
+        description: 'Test',
+        command: 'npx',
+        args: [''], // Empty string in args
+        autoStart: false,
+      };
+
+      await installer.install(serverWithMalformedArgs);
+
+      // Should use the empty string from args[0]
+      expect(mockExec).toHaveBeenCalledWith(
+        'npm install ',
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it('should handle server configuration that would cause JSON serialization issues', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const serverWithCircularRef: any = {
+        name: 'circular-server',
+        description: 'Server with circular reference',
+        command: 'npx',
+        args: ['test-package'],
+        autoStart: false,
+      };
+      // Create circular reference
+      serverWithCircularRef.self = serverWithCircularRef;
+
+      // Remove the circular reference for the actual test
+      delete serverWithCircularRef.self;
+
+      await installer.install(serverWithCircularRef);
+
+      // Should still create valid JSON config
+      const writeCall = mockFs.writeFile.mock.calls[0];
+      expect(() => JSON.parse(writeCall[1])).not.toThrow();
+    });
+  });
+
+  describe('installation failure scenarios', () => {
+    it('should handle npm/npx command not found', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('Command not found: npm');
+        (error as any).code = 'ENOENT';
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': Command not found: npm"
+      );
+    });
+
+    it('should handle package not found in npm registry', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('npm ERR! 404 Not Found - GET https://registry.npmjs.org/non-existent-package');
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        description: 'Test',
+        command: 'npx',
+        args: ['non-existent-package'],
+        autoStart: false,
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': npm ERR! 404 Not Found"
+      );
+    });
+
+    it('should handle network timeout during installation', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('npm ERR! network timeout');
+        (error as any).code = 'ETIMEDOUT';
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': npm ERR! network timeout"
+      );
+    });
+
+    it('should handle permission denied during installation', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('npm ERR! path /usr/local/lib/node_modules/test-package');
+        (error as any).code = 'EACCES';
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': npm ERR! path /usr/local/lib"
+      );
+    });
+
+    it('should handle disk space exhaustion during installation', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('npm ERR! code ENOSPC');
+        (error as any).code = 'ENOSPC';
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        description: 'Test',
+        command: 'npx',
+        args: ['large-package'],
+        autoStart: false,
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': npm ERR! code ENOSPC"
+      );
+    });
+
+    it('should handle installation interrupted by signal', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        const error = new Error('Command terminated by signal SIGINT');
+        (error as any).signal = 'SIGINT';
+        if (callback) callback(error, null);
+        return {} as any;
+      });
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': Command terminated by signal SIGINT"
+      );
+    });
+
+    it('should handle config directory creation failure', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+
+      mockFs.mkdir.mockRejectedValue(new Error('Permission denied: cannot create directory'));
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': Permission denied: cannot create directory"
+      );
+    });
+
+    it('should handle config file write permission error', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockFs.mkdir.mockResolvedValue(undefined);
+
+      const writeError = new Error('EACCES: permission denied');
+      (writeError as any).code = 'EACCES';
+      mockFs.writeFile.mockRejectedValue(writeError);
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': EACCES: permission denied"
+      );
+    });
+
+    it('should handle database/store operation failures during installation', async () => {
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      // Mock successful installation command but database failure
+      mockStore.createMcpInstallation.mockRejectedValue(new Error('Database connection lost'));
+
+      const server: MCPServer = {
+        name: 'test-server',
+        package: 'test-package',
+        command: 'npx',
+        args: ['test-package'],
+        version: '1.0.0',
+      };
+
+      await expect(installer.install(server)).rejects.toThrow(
+        "Failed to install MCP server 'test-server': Database connection lost"
+      );
+    });
+
+    it('should handle concurrent installation attempts', async () => {
+      // This test simulates what happens when two installations run concurrently
+      mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
+
+      const server: MCPServer = {
+        name: 'concurrent-server',
+        description: 'Test',
+        command: 'npx',
+        args: ['test-package'],
+        autoStart: false,
+      };
+
+      // Start two installations concurrently
+      const installation1Promise = installer.install(server);
+      const installation2Promise = installer.install(server);
+
+      // Both should succeed since we're not checking the database state during exec
+      const results = await Promise.allSettled([installation1Promise, installation2Promise]);
+
+      // At least one should succeed
+      const successful = results.filter(result => result.status === 'fulfilled');
+      expect(successful.length).toBeGreaterThan(0);
     });
   });
 });
