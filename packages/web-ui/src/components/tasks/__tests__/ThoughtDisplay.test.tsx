@@ -1,8 +1,5 @@
-/**
- * @jest-environment jsdom
- */
-
 import React from 'react'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ThoughtDisplay } from '../ThoughtDisplay'
 
@@ -75,7 +72,7 @@ describe('ThoughtDisplay', () => {
   })
 
   it('calls onToggle callback when state changes', () => {
-    const mockOnToggle = jest.fn()
+    const mockOnToggle = vi.fn()
     render(<ThoughtDisplay {...defaultProps} onToggle={mockOnToggle} />)
 
     const button = screen.getByRole('button')

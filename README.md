@@ -146,6 +146,19 @@ $env:ANTHROPIC_API_KEY="your_key_here"
 apex run "Add user authentication with JWT tokens"
 ```
 
+### Slack Integration (Socket Mode)
+
+1. Create a Slack app using `docs/slack-app-manifest.yaml`.
+2. Enable Socket Mode and install the app to your workspace.
+3. Set the Slack tokens in your environment (see `.env.example`).
+
+Once the API is running, use `/apex` commands in Slack:
+
+```
+/apex run "task description"
+/apex status
+```
+
 ## Documentation
 
 | Document | Description |
@@ -153,6 +166,7 @@ apex run "Add user authentication with JWT tokens"
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Windows Installation Guide](docs/windows-installation.md) | Windows-specific setup and configuration |
 | [Configuration](docs/configuration.md) | Project configuration options |
+| [Slack Integration](docs/slack-integration.md) | Socket Mode Slack app setup and commands |
 | [Time-Based Usage Management](docs/time-based-usage-management.md) | Day/night modes, auto-pause/resume, capacity management |
 | [Service Management](docs/service-management.md) | Install and manage as system service |
 | [Agents](docs/agents.md) | Built-in agents and customization |

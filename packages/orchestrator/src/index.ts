@@ -11744,6 +11744,16 @@ export { AliasResolver, AliasResolutionError } from './alias-resolver';
 // MCP Installer
 export { MCPInstaller, type MCPInstallationOptions } from './mcp-installer';
 
+// MCP Dependency Resolver
+export {
+  MCPDependencyResolver,
+  type MCPDependency,
+  type MCPServerWithDependencies,
+  type DependencyResolutionResult,
+  type DependencyResolutionError,
+  type DependencyWarning,
+} from './mcp-dependency-resolver';
+
 // MCP Client Utility
 export {
   MCPClientUtility,

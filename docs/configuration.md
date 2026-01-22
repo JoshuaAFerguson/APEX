@@ -157,6 +157,16 @@ tools:
 api:
   url: "http://localhost:3000"
   port: 3000
+
+# Slack integration
+slack:
+  enabled: true
+  mode: socket
+  defaultChannel: "#apex"
+  notificationChannels:
+    - "#apex"
+  threadUpdates: true
+  useBlocks: true
 ```
 
 ## Configuration Sections
@@ -569,6 +579,19 @@ daemon:
 
 > **Complete Reference**: For detailed time-based usage configuration including day/night modes, auto-pause/resume, and capacity management, see the [Time-Based Usage Management Guide](./time-based-usage-management.md).
 
+### slack
+
+Slack integration for Socket Mode task management via `/apex`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | false | Enable Slack integration |
+| `mode` | string | `socket` | Socket Mode connection |
+| `defaultChannel` | string | `#apex` | Default channel for responses |
+| `notificationChannels` | string[] | `[]` | Additional channels for task updates |
+| `threadUpdates` | boolean | true | Post task updates in command threads |
+| `useBlocks` | boolean | true | Use Block Kit formatting |
+
 ## Environment Variables
 
 These override configuration file settings:
@@ -579,6 +602,12 @@ These override configuration file settings:
 | `APEX_PROJECT` | Project directory |
 | `APEX_API` | API server URL |
 | `GH_TOKEN` | GitHub token for PR creation |
+| `SLACK_APP_TOKEN` | Slack App-Level Token (Socket Mode) |
+| `SLACK_BOT_TOKEN` | Slack Bot Token |
+| `SLACK_DEFAULT_CHANNEL` | Default Slack channel |
+| `SLACK_NOTIFICATION_CHANNELS` | Comma-separated channel list |
+| `SLACK_THREAD_UPDATES` | Set `false` to disable thread updates |
+| `SLACK_USE_BLOCKS` | Set `false` to disable Block Kit |
 
 ## Per-Task Overrides
 

@@ -71,8 +71,25 @@ export class SlackService {
       return;
     }
 
+    this.logger.info('Starting Slack Socket Mode integration...');
     this.webClient = new WebClient(this.config.botToken);
     this.socketClient = new SocketModeClient({ appToken: this.config.appToken! });
+
+    this.socketClient.on('connecting', () => {
+      this.logger.info('Slack Socket Mode: Connecting...');
+    });
+
+    this.socketClient.on('connected', () => {
+      this.logger.info('Slack Socket Mode: Connected successfully!');
+    });
+
+    this.socketClient.on('disconnected', () => {
+      this.logger.warn('Slack Socket Mode: Disconnected');
+    });
+
+    this.socketClient.on('error', (error: Error) => {
+      this.logger.error(`Slack Socket Mode error: ${error.message}`);
+    });
 
     this.socketClient.on('slash_commands', async (event: any) => {
       const { body, ack } = event || {};

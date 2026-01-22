@@ -5,13 +5,12 @@
     "es2022": true
   },
   "extends": [
-    "@typescript-eslint/recommended"
+    "plugin:@typescript-eslint/recommended"
   ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaVersion": 2022,
-    "sourceType": "module",
-    "project": "./tsconfig.json"
+    "sourceType": "module"
   },
   "plugins": [
     "@typescript-eslint"
@@ -22,6 +21,10 @@
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-non-null-assertion": "warn",
+    "@typescript-eslint/ban-types": "warn",
+    "@typescript-eslint/no-var-requires": "warn",
+    "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/no-non-null-asserted-optional-chain": "warn",
     "prefer-const": "warn",
     "no-console": "off"
   },
@@ -30,6 +33,9 @@
     "dist/",
     ".next/",
     "coverage/",
-    "*.d.ts"
+    "*.d.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

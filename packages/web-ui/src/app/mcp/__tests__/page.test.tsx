@@ -66,12 +66,13 @@ const mockMarketplaceEntries = [
     description: 'Provides access to filesystem operations',
     version: '1.0.0',
     author: 'ModelContextProtocol',
-    category: 'filesystem',
-    tags: ['files', 'io', 'storage'],
+    verified: false,
     serverConfig: {
-      type: 'stdio',
+      name: 'filesystem-server',
+      type: 'stdio' as const,
       command: 'npx',
       args: ['@modelcontextprotocol/server-filesystem'],
+      autoStart: false,
     },
   },
   {
@@ -79,13 +80,14 @@ const mockMarketplaceEntries = [
     description: 'Web browsing and content fetching capabilities',
     version: '2.1.0',
     author: 'Community',
-    category: 'web',
-    tags: ['http', 'browser', 'fetch'],
+    verified: false,
     installCommand: 'npm install @mcp/web-server',
     serverConfig: {
-      type: 'stdio',
+      name: 'web-server',
+      type: 'stdio' as const,
       command: 'node',
       args: ['web-server.js'],
+      autoStart: false,
     },
   },
   {
@@ -93,11 +95,12 @@ const mockMarketplaceEntries = [
     description: 'Database operations and query execution',
     version: '1.5.2',
     author: 'Database Team',
-    category: 'database',
-    tags: ['sql', 'query', 'data'],
+    verified: false,
     serverConfig: {
-      type: 'http',
+      name: 'database-server',
+      type: 'http' as const,
       url: 'http://localhost:8080',
+      autoStart: false,
     },
   },
 ];
@@ -105,9 +108,10 @@ const mockMarketplaceEntries = [
 const mockInstalledServers = [
   {
     name: 'filesystem-server',
-    type: 'stdio',
+    type: 'stdio' as const,
     command: 'npx',
     args: ['@modelcontextprotocol/server-filesystem'],
+    autoStart: false,
   },
 ];
 

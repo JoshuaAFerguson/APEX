@@ -27,12 +27,14 @@ export function createMockTask(overrides?: Partial<Task>): Task {
     id: 'task_123_456',
     description: 'Test task description',
     workflow: 'feature-development',
-    autonomy: 'review-before-merge' as AutonomyLevel,
+    autonomy: 'review-before-commit' as AutonomyLevel,
     status: 'pending' as TaskStatus,
     priority: 'normal' as TaskPriority,
+    effort: 'medium' as const,
     projectPath: '/test/project',
     retryCount: 0,
     maxRetries: 3,
+    resumeAttempts: 0,
     createdAt: now,
     updatedAt: now,
     usage: createMockTaskUsage(),
@@ -51,6 +53,8 @@ export function createMockTaskUsage(overrides?: Partial<TaskUsage>): TaskUsage {
     outputTokens: 500,
     totalTokens: 1500,
     estimatedCost: 0.0225,
+    totalCostCents: 2,
+    executionTimeMs: 1000,
     ...overrides,
   };
 }
@@ -78,11 +82,11 @@ export function createMockTaskArtifact(
   overrides?: Partial<TaskArtifact>
 ): TaskArtifact {
   return {
+    name: 'test-artifact',
     type: 'file',
     path: '/test/file.ts',
-    description: 'Test artifact',
     content: 'test content',
-    metadata: {},
+    createdAt: new Date(),
     ...overrides,
   };
 }
@@ -117,9 +121,11 @@ export function createMockConfig(
       testCommand: 'npm test',
       lintCommand: 'npm run lint',
       buildCommand: 'npm run build',
+      typecheckCommand: 'npm run typecheck',
     },
     autonomy: {
-      default: 'review-before-merge',
+      level: 'review-before-commit',
+      rejectionBehavior: 'abort',
     },
     models: {
       planning: 'opus',

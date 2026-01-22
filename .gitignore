@@ -13,9 +13,8 @@ coverage/
 .apex-worktrees/
 
 # Environment
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
 
 # IDE
 .idea/
@@ -30,9 +29,20 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Turbo
 .turbo/
+
+# Test artifacts
+test_artifacts/
+
+# Caches
+.cache/
+.eslintcache
+.vitest/
 
 #AI Tools
 CLAUDE.md

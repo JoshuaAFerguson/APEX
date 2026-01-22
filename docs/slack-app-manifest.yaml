@@ -1,0 +1,26 @@
+display_information:
+  name: APEX
+  description: APEX task orchestration via Slack commands
+  background_color: "#0D0F12"
+features:
+  bot_user:
+    display_name: APEX
+    always_online: true
+  slash_commands:
+    - command: /apex
+      url: https://example.com/slack/commands
+      description: Manage APEX tasks and status
+      usage_hint: 'run "task", think "idea", status, report <taskId>, cancel <taskId>'
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      - channels:read
+settings:
+  socket_mode_enabled: true
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  token_rotation_enabled: false

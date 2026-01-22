@@ -70,7 +70,7 @@ describe('ApexApiClient', () => {
       const request: CreateTaskRequest = {
         description: 'Test task',
         workflow: 'feature-development',
-        autonomy: 'review-before-merge',
+        autonomy: 'review-before-commit',
         priority: 'normal',
       };
 
@@ -282,7 +282,7 @@ describe('ApexApiClient', () => {
   describe('approveGate', () => {
     it('should approve a gate', async () => {
       const request: ApproveGateRequest = {
-        approved: true,
+        approver: 'test-user',
         comment: 'Looks good',
       };
 
@@ -306,7 +306,7 @@ describe('ApexApiClient', () => {
   describe('rejectGate', () => {
     it('should reject a gate', async () => {
       const request: ApproveGateRequest = {
-        approved: false,
+        approver: 'test-user',
         comment: 'Need changes',
       };
 
@@ -386,6 +386,7 @@ describe('ApexApiClient', () => {
           testCommand: 'npm test',
           lintCommand: 'npm run lint',
           buildCommand: 'npm run build',
+          typecheckCommand: 'npm run typecheck',
         },
       };
 
@@ -408,14 +409,16 @@ describe('ApexApiClient', () => {
     it('should update project configuration', async () => {
       const configUpdate: Partial<ApexConfig> = {
         autonomy: {
-          default: 'full',
+          level: 'full-auto',
+          rejectionBehavior: 'abort',
         },
       };
 
       const mockResponse: Partial<ApexConfig> = {
         version: '1.0',
         autonomy: {
-          default: 'full',
+          level: 'full-auto',
+          rejectionBehavior: 'abort',
         },
       };
 

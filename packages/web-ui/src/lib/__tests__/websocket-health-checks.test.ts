@@ -144,7 +144,7 @@ describe('WebSocket Health Check Tests', () => {
 
       // Wait for connection
       await vi.advanceTimersByTimeAsync(20);
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       expect(mockWs.readyState).toBe(MockWebSocket.OPEN);
 
       // Clear initial messages
@@ -174,7 +174,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
 
       await vi.advanceTimersByTimeAsync(20);
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.clearSentMessages();
 
       // Should not send ping before custom interval
@@ -196,7 +196,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
 
       await vi.advanceTimersByTimeAsync(20);
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.clearSentMessages();
 
       // Advance through multiple intervals
@@ -220,7 +220,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
 
       await vi.advanceTimersByTimeAsync(20);
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.clearSentMessages();
 
       // Wait longer than interval
@@ -249,7 +249,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false; // Disable auto-response to simulate timeout
       mockWs.clearSentMessages();
 
@@ -286,7 +286,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
       mockWs.pingResponseDelay = 50; // Respond within timeout
       mockWs.clearSentMessages();
@@ -322,7 +322,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
       mockWs.pingResponseDelay = 100;
 
@@ -360,7 +360,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false; // Simulate ping failures
 
       // Trigger multiple failed health checks
@@ -393,7 +393,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
 
       // First, simulate a failure
       mockWs.autoRespondToPing = false;
@@ -430,7 +430,7 @@ describe('WebSocket Health Check Tests', () => {
       const initialHealthState = client.getHealthState();
       const initialHealthyAt = initialHealthState.lastHealthyAt;
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
 
       // Wait a bit then trigger health check
@@ -464,7 +464,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       // Spy on WebSocket close method
@@ -500,7 +500,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       const closeSpy = vi.spyOn(mockWs, 'close');
@@ -533,7 +533,7 @@ describe('WebSocket Health Check Tests', () => {
       // Disable reconnection
       client['shouldReconnect'] = false;
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       const closeSpy = vi.spyOn(mockWs, 'close');
@@ -588,7 +588,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       // Clear initial events
@@ -624,7 +624,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
 
       // First cause a failure
       mockWs.autoRespondToPing = false;
@@ -663,7 +663,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
 
       healthEvents.length = 0; // Clear initial events
@@ -729,7 +729,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
       mockWs.clearSentMessages();
 
@@ -773,7 +773,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false; // Don't respond to ping
 
       // Trigger manual health check
@@ -800,7 +800,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.clearSentMessages();
 
       // Disconnect
@@ -825,7 +825,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       // Trigger health check
@@ -857,7 +857,7 @@ describe('WebSocket Health Check Tests', () => {
       expect(client.isHealthy()).toBe(true);
 
       // Simulate connection close
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.close(1006, 'Connection lost');
 
       // Should be marked as unhealthy
@@ -881,7 +881,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
 
       // Mock send to throw error
       vi.spyOn(mockWs, 'send').mockImplementation(() => {
@@ -912,7 +912,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = false;
 
       // Trigger health check
@@ -951,7 +951,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
       mockWs.pingResponseDelay = 50;
 
@@ -979,7 +979,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.clearSentMessages();
 
       // Simulate server sending a ping
@@ -1016,7 +1016,7 @@ describe('WebSocket Health Check Tests', () => {
         await vi.advanceTimersByTimeAsync(50);
 
         if (client['ws']) {
-          (client['ws'] as MockWebSocket).close(1006, 'Rapid disconnect');
+          (client['ws'] as unknown as MockWebSocket).close(1006, 'Rapid disconnect');
         }
         await vi.advanceTimersByTimeAsync(20);
       }
@@ -1066,7 +1066,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
 
       // Trigger health check
@@ -1099,7 +1099,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
       mockWs.pingResponseDelay = 1;
 
@@ -1135,7 +1135,7 @@ describe('WebSocket Health Check Tests', () => {
       client.connect();
       await vi.advanceTimersByTimeAsync(20);
 
-      mockWs = client['ws'] as MockWebSocket;
+      mockWs = client['ws'] as unknown as MockWebSocket;
       mockWs.autoRespondToPing = true;
 
       // Run for many cycles to test memory usage
