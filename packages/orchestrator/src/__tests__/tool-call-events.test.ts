@@ -18,11 +18,13 @@ import { writeFile, mkdir } from 'fs/promises';
 import { ApexOrchestrator, ToolCallStartEvent, ToolCallCompleteEvent, ToolCallProgressEvent } from '../index';
 
 // Mock the Claude Agent SDK
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   Agent: vi.fn().mockImplementation(() => ({
     query: mockQuery,
   })),
+  tool: vi.fn((name, desc, schema, fn) => ({ name, description: desc, schema, execute: fn })),
+  createSdkMcpServer: vi.fn(() => ({ connect: vi.fn(), close: vi.fn() })),
 }));
 
 describe('Tool Call Events - ApexOrchestrator', () => {
@@ -67,7 +69,7 @@ git:
 
     await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
 
     // Set up event capturing

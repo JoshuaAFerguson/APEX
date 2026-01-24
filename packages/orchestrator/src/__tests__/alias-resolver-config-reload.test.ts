@@ -83,7 +83,7 @@ workflows:
 
       await writeConfig(initialAliases);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.getAvailableAliases()).toEqual(['initial-alias']);
@@ -105,7 +105,7 @@ workflows:
 
       await writeConfig(initialAliases);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.getAvailableAliases()).toEqual(['old-alias']);
@@ -149,7 +149,7 @@ workflows:
     it('should handle empty aliases in config', async () => {
       await writeConfig([]);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.getAvailableAliases()).toEqual([]);
@@ -173,7 +173,7 @@ workflows:
 
       await fs.writeFile(path.join(testDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.getAvailableAliases()).toEqual([]);
@@ -198,7 +198,7 @@ workflows:
 
       await writeConfig([workingAlias]);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Test alias resolution before reload
@@ -256,7 +256,7 @@ workflows:
       };
 
       await writeConfig([originalAlias]);
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Test original alias
@@ -315,7 +315,7 @@ workflows:
       };
 
       await writeConfig([enabledAlias]);
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.hasAlias('test-alias')).toBe(true);
@@ -341,7 +341,7 @@ workflows:
 
   describe('Concurrent Config Changes', () => {
     it('should handle rapid config reloads gracefully', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
       // Start with empty config
       await writeConfig([]);
@@ -378,7 +378,7 @@ workflows:
       };
 
       await writeConfig([baseAlias]);
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Continuously test resolution while config is being updated
@@ -429,14 +429,14 @@ workflows:
         'invalid: yaml: content: [unmatched brackets'
       );
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
       // Should not throw, but handle gracefully
       await expect(orchestrator.initialize()).rejects.toThrow();
     });
 
     it('should handle missing config file', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
       // Should not throw when config doesn't exist
       await expect(orchestrator.initialize()).resolves.not.toThrow();
@@ -470,7 +470,7 @@ workflows:
 
       await fs.writeFile(path.join(testDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
 
       // Should handle validation errors gracefully
       await expect(orchestrator.initialize()).rejects.toThrow();

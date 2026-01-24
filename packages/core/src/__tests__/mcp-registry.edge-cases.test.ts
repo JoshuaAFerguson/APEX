@@ -9,7 +9,13 @@ import {
 } from '../mcp/mcp-registry.js';
 
 // Mock fs to control file system operations
-vi.mock('fs');
+vi.mock('fs', () => {
+  const readFileSyncMock = vi.fn();
+  return {
+    readFileSync: readFileSyncMock,
+    default: { readFileSync: readFileSyncMock },
+  };
+});
 const mockReadFileSync = vi.mocked(readFileSync);
 
 /**
@@ -486,7 +492,7 @@ describe('MCPRegistry Edge Cases and Error Handling', () => {
     it('should handle special characters in search', () => {
       const registry = MCPRegistry.getInstance();
 
-      const servers = registry.listServers({ search: 'server-with' });
+      const servers = registry.listServers({ search: 'with-caps' });
 
       expect(servers).toHaveLength(1);
       expect(servers[0].name).toBe('server-with-caps');
@@ -522,9 +528,10 @@ describe('MCPRegistry Edge Cases and Error Handling', () => {
 
       const registry = MCPRegistry.getInstance();
 
-      // Should categorize based on first matching capability category
-      const filesystemServers = registry.getServersByCategory('filesystem');
-      expect(filesystemServers).toHaveLength(1);
+      // Servers with capabilities spanning multiple categories go to 'uncategorized'
+      const uncategorizedServers = registry.getServersByCategory('uncategorized');
+      expect(uncategorizedServers).toHaveLength(1);
+      expect(uncategorizedServers[0].name).toBe('multi-capability-server');
     });
 
     it('should handle servers with unknown capability patterns', () => {

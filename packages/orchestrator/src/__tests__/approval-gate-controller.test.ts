@@ -64,7 +64,8 @@ describe('ApprovalGateController', () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-gate-test-'));
 
     // Initialize test store
-    store = new TaskStore(path.join(testDir, 'test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
 
     // Create parent emitter for event testing
     parentEmitter = new EventEmitter();
@@ -97,7 +98,7 @@ describe('ApprovalGateController', () => {
 
       controller = new ApprovalGateController(createTestOptions(config));
 
-      expect(controller.id).toMatch(/^approval_[a-z0-9]+$/);
+      expect(controller.id).toMatch(/^apr_[a-z0-9]+_[a-f0-9]+$/);
     });
 
     it('should forward events to parent emitter when provided', async () => {
@@ -190,6 +191,7 @@ describe('ApprovalGateController', () => {
 
     it('should throw error if called multiple times', async () => {
       const promise1 = controller.requestApproval();
+      await new Promise(resolve => setTimeout(resolve, 20)); // Wait for first call to set up
 
       await expect(controller.requestApproval()).rejects.toThrow(
         'Approval already requested for this gate'
@@ -201,8 +203,10 @@ describe('ApprovalGateController', () => {
     });
 
     it('should throw error if already resolved', async () => {
-      await controller.requestApproval();
+      const promise = controller.requestApproval();
+      await new Promise(resolve => setTimeout(resolve, 20)); // Wait for setup
       await controller.grant('test-user', 'test');
+      await promise;
 
       await expect(controller.requestApproval()).rejects.toThrow(
         'Approval gate is already resolved'
@@ -386,22 +390,22 @@ describe('ApprovalGateController', () => {
   });
 
   describe('cancel', () => {
+    let approvalPromise: Promise<ApprovalResult>;
+
     beforeEach(async () => {
       controller = new ApprovalGateController(createTestOptions());
-      controller.requestApproval(); // Don't await
-      await new Promise(resolve => setTimeout(resolve, 10));
+      approvalPromise = controller.requestApproval(); // Don't await
+      await new Promise(resolve => setTimeout(resolve, 20));
     });
 
     it('should cancel pending approval', async () => {
-      const promise = controller.requestApproval();
-
       await controller.cancel();
 
       expect(controller.isResolved).toBe(true);
       expect(controller.approvalState.status).toBe('denied');
       expect(controller.approvalState.comment).toBe('Cancelled');
 
-      await expect(promise).rejects.toThrow('Approval was cancelled');
+      await expect(approvalPromise).rejects.toThrow('Approval was cancelled');
     });
 
     it('should do nothing if already resolved', async () => {

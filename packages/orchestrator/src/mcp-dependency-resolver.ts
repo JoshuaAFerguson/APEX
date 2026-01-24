@@ -468,11 +468,17 @@ export class MCPDependencyResolver {
             details: [`Required by: ${serverName}`],
           });
         } else {
-          warnings.push({
-            type: 'optional_missing',
-            message: `Optional dependency '${dep.name}' not found`,
-            dependency: dep,
-          });
+          // Only add warning if not already warned (resolveVersionConflicts may have added one)
+          const alreadyWarned = warnings.some(
+            w => w.type === 'optional_missing' && w.dependency.name === dep.name
+          );
+          if (!alreadyWarned) {
+            warnings.push({
+              type: 'optional_missing',
+              message: `Optional dependency '${dep.name}' not found`,
+              dependency: dep,
+            });
+          }
         }
         continue;
       }

@@ -28,7 +28,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       totalTokens: 150,
     },
   }),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 // Mock MCPConnectionManager with event simulation
 const mockMCPConnectionManager = {
@@ -210,7 +211,7 @@ describe('MCP Task Lifecycle Integration', () => {
     };
     MockTaskStore.mockImplementation(() => mockStore as any);
 
-    orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
   });
 
   afterEach(async () => {

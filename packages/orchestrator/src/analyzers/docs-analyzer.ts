@@ -7,7 +7,7 @@
  * - Outdated or incomplete documentation
  */
 
-import { BaseAnalyzer, TaskCandidate } from './index';
+import { BaseAnalyzer, TaskCandidate } from './base-analyzer';
 import type { ProjectAnalysis } from '../idle-processor';
 import type { OutdatedDocumentation, UndocumentedExport, MissingReadmeSection, APICompleteness } from '@apexcli/core';
 

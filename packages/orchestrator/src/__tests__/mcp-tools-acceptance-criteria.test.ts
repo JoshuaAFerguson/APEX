@@ -14,15 +14,24 @@ import { ApexOrchestrator } from '../index';
 import type { ApexConfig, Task, Agent, WorkflowStage } from '@apexcli/core';
 
 // Mock Claude Agent SDK to capture query calls
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Mock other dependencies
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');
@@ -144,7 +153,7 @@ stages:
       yield { type: 'text', content: 'Task executed with MCP tools' };
     });
 
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
   });
 
   afterEach(async () => {

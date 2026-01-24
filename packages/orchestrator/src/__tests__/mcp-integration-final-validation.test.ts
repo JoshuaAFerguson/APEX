@@ -24,18 +24,22 @@ import type { MCPToolDefinition } from '../mcp/client.js';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 // Mock Claude Agent SDK
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
 }));
 
 // Mock child_process for git operations
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
-    const cb = (typeof opts === 'function' ? opts : callback) as (error: Error | null, result?: { stdout: string }) => void;
-    cb(null, { stdout: '' });
-  }),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 describe('MCP Tool Integration - Final Validation', () => {
   let tempDir: string;
@@ -56,7 +60,7 @@ describe('MCP Tool Integration - Final Validation', () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-mcp-final-validation-'));
     await initializeApex(tempDir);
 
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
   });
 
   afterEach(async () => {

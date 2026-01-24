@@ -42,7 +42,7 @@ describe('Permission Preset Hooks Integration (Full Workflow)', () => {
     );
 
     // Initialize orchestrator
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
     await orchestrator.initialize();
 
     // Capture events
@@ -406,7 +406,7 @@ describe('Permission Preset Hooks Integration (Full Workflow)', () => {
         );
 
         // Initialize new orchestrator
-        const invalidOrchestrator = new ApexOrchestrator(invalidTempDir);
+        const invalidOrchestrator = new ApexOrchestrator({ projectPath: invalidTempDir });
         await invalidOrchestrator.initialize();
 
         // Even with potential permission store issues, orchestrator should work

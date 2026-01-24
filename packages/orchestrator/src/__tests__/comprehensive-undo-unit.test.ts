@@ -46,7 +46,7 @@ agents: []
 workflows: []
 `);
 
-    orchestrator = new ApexOrchestrator();
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
     await orchestrator.init(tempDir);
 
     // Create test file

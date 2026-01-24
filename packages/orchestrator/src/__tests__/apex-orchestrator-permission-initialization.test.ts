@@ -66,7 +66,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should not throw during initialization
       await expect(orchestrator.initialize()).resolves.not.toThrow();
@@ -103,7 +103,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify the preset was loaded correctly
@@ -133,7 +133,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify default preset is applied
@@ -169,7 +169,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
     });
 
@@ -235,7 +235,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const currentPreset = await orchestrator.getCurrentPreset();
@@ -270,13 +270,13 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
     });
 
     it('should ensure initialized state before permission operations', async () => {
       // Create a new orchestrator without initializing
-      const uninitializedOrchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // These calls should trigger initialization internally
       await expect(uninitializedOrchestrator.getCurrentPreset()).resolves.toBeDefined();
@@ -305,7 +305,7 @@ git:
   describe('Error Handling', () => {
     it('should handle missing config gracefully', async () => {
       // Don't create config file
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should still initialize with defaults
       await expect(orchestrator.initialize()).resolves.not.toThrow();
@@ -341,7 +341,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should handle invalid config gracefully
       await expect(orchestrator.initialize()).resolves.not.toThrow();
@@ -375,7 +375,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Mock the permission store to verify initialization order
       const initSpy = vi.fn();
@@ -422,7 +422,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // All permission operations should work immediately
@@ -470,7 +470,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify preset was loaded
@@ -506,7 +506,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should use default preset

@@ -66,13 +66,31 @@ const createMockBrowser = () => {
   };
 };
 
-// Mock Playwright
+// Mock Playwright - define mock inline to avoid hoisting issues
+vi.mock('playwright', () => {
+  const mockBrowserType = {
+    launch: vi.fn(() => Promise.resolve({
+      newContext: vi.fn(() => Promise.resolve({
+        newPage: vi.fn(() => Promise.resolve({
+          on: vi.fn(), off: vi.fn(),
+          url: vi.fn(() => 'https://e2e-test.example.com'),
+          title: vi.fn(() => 'E2E Test Application'),
+          evaluate: vi.fn(() => Promise.resolve('Mozilla/5.0')),
+          viewportSize: vi.fn(() => ({ width: 1440, height: 900 })),
+          goto: vi.fn(() => Promise.resolve({ status: () => 200 })),
+          click: vi.fn(() => Promise.resolve()),
+          screenshot: vi.fn(() => Promise.resolve(Buffer.from('screenshot'))),
+        })),
+        on: vi.fn(), close: vi.fn(),
+      })),
+      version: vi.fn(() => '1.40.0'),
+      isConnected: vi.fn(() => true),
+      close: vi.fn(), on: vi.fn(),
+    })),
+  };
+  return { chromium: mockBrowserType, firefox: mockBrowserType, webkit: mockBrowserType };
+});
 const mockBrowserSetup = createMockBrowser();
-vi.mock('playwright', () => ({
-  chromium: mockBrowserSetup.browserType,
-  firefox: mockBrowserSetup.browserType,
-  webkit: mockBrowserSetup.browserType,
-}));
 
 describe('Browser Automation E2E Acceptance Test', () => {
   let browserTool: BrowserTool;

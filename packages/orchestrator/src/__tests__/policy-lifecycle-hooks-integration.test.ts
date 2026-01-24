@@ -224,7 +224,7 @@ describe('ApexOrchestrator - Policy Lifecycle Hooks Integration', () => {
       policyEngine: mockPolicyEngine,
     };
 
-    orchestrator = new ApexOrchestrator(testProjectPath, options);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     // Wire up event collector to the orchestrator
     (orchestrator as any).eventEmitter = eventCollector;
@@ -429,7 +429,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       policyEngine: strictPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();
@@ -541,7 +541,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       policyEngine: warnPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();
@@ -658,7 +658,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       policyEngine: auditPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();
@@ -767,7 +767,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       policyEngine: multiViolationEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();
@@ -890,7 +890,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       policyEngine: disabledPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();
@@ -952,7 +952,7 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
   it('should work correctly when PolicyEngine is not provided', async () => {
     const options: OrchestratorOptions = {};
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     (orchestrator as any).eventEmitter = eventCollector;
 
     const task = createMockTask();

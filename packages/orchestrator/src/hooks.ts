@@ -239,6 +239,13 @@ async function checkToolPermissions(
     return {};
   }
 
+  // Fast-path: if preset is 'autonomous', all tools are allowed without any further checks.
+  // This is a safety net to ensure the autonomous preset always grants full access,
+  // regardless of any edge cases in individual permission checks.
+  if (context.permissionPresetManager.getCurrentPreset() === 'autonomous') {
+    return {};
+  }
+
   const toolName = getToolName(input);
   const toolInput = getToolInput(input);
 

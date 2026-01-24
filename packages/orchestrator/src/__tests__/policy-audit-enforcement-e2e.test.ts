@@ -205,7 +205,7 @@ describe('Policy Audit Enforcement Mode - End-to-End Tests', () => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    orchestrator = new ApexOrchestrator(testProjectDir, {
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectDir,
       policyEngine,
     });
   });

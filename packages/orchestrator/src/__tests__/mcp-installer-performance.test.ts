@@ -6,9 +6,16 @@ import { TaskStore } from '../store';
 import { MCPMarketplaceEntry, MCPServerConfig } from '@apexcli/core';
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 const { exec } = await import('child_process');
 const execMock = vi.mocked(exec);
@@ -222,13 +229,13 @@ describe('MCPInstaller Performance and Stress Tests', () => {
     });
 
     it('should maintain performance with large datasets', async () => {
-      // Pre-populate with large dataset
+      // Pre-populate with large dataset using installation records
       const largeDatasetSize = 1000;
 
       console.log(`Populating database with ${largeDatasetSize} entries...`);
 
       for (let i = 0; i < largeDatasetSize; i++) {
-        const config: MCPServerConfig = {
+        const serverConfig: MCPServerConfig = {
           name: `large-dataset-${i}`,
           type: 'stdio',
           command: `command-${i}`,
@@ -238,7 +245,15 @@ describe('MCPInstaller Performance and Stress Tests', () => {
           ),
           autoStart: i % 2 === 0,
         };
-        await store.upsertMcpServerConfig(config.name, config);
+        await store.createMcpInstallation({
+          id: `install-${i}`,
+          serverId: `large-dataset-${i}`,
+          installedAt: new Date(),
+          status: 'installed' as any,
+          configPath: `/test/configs/${i}.json`,
+          installedFrom: 'npm',
+          configJson: JSON.stringify(serverConfig),
+        });
       }
 
       // Measure query performance on large dataset
@@ -282,9 +297,17 @@ describe('MCPInstaller Performance and Stress Tests', () => {
         autoStart: false,
       }));
 
-      // Store all configurations
+      // Store all configurations as installation records
       for (const config of largeConfigs) {
-        await store.upsertMcpServerConfig(config.name, config);
+        await store.createMcpInstallation({
+          id: `install-mem-${config.name}`,
+          serverId: config.name,
+          installedAt: new Date(),
+          status: 'installed' as any,
+          configPath: `/test/configs/${config.name}.json`,
+          installedFrom: 'npm',
+          configJson: JSON.stringify(config),
+        });
       }
 
       // Read back all configurations multiple times

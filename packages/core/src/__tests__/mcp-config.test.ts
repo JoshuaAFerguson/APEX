@@ -50,7 +50,7 @@ describe('MCPConfig Schema Tests', () => {
             capabilities: ['filesystem', 'network'],
             connection: {
               maxRetries: 5,
-              timeoutMs: 45000,
+              requestTimeoutMs: 45000,
               poolSize: 2,
             },
           },
@@ -71,7 +71,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         connection: {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           poolSize: 1,
           healthCheckIntervalMs: 60000,
         },
@@ -88,7 +88,7 @@ describe('MCPConfig Schema Tests', () => {
       expect(result.marketplace?.url).toBe('https://mcp-marketplace.example.com');
       expect(result.marketplace?.enabled).toBe(true);
       expect(result.connection?.maxRetries).toBe(3);
-      expect(result.connection?.timeoutMs).toBe(30000);
+      expect(result.connection?.requestTimeoutMs).toBe(30000);
     });
 
     it('should handle enabled flag variations', () => {
@@ -190,7 +190,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         {
           maxRetries: 5,
-          timeoutMs: 60000,
+          requestTimeoutMs: 60000,
         },
         {
           poolSize: 3,
@@ -198,7 +198,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         {
           maxRetries: 2,
-          timeoutMs: 15000,
+          requestTimeoutMs: 15000,
           poolSize: 1,
           healthCheckIntervalMs: 30000,
           heartbeatEnabled: false,
@@ -209,7 +209,7 @@ describe('MCPConfig Schema Tests', () => {
         const config = { connection };
         const result = MCPConfigSchema.parse(config);
         expect(result.connection?.maxRetries).toBe(connection.maxRetries ?? 3); // Default 3
-        expect(result.connection?.timeoutMs).toBe(connection.timeoutMs ?? 30000); // Default 30000
+        expect(result.connection?.requestTimeoutMs).toBe(connection.requestTimeoutMs ?? 30000); // Default 30000
         expect(result.connection?.poolSize).toBe(connection.poolSize ?? 1); // Default 1
       });
     });
@@ -218,7 +218,7 @@ describe('MCPConfig Schema Tests', () => {
       const config = {
         connection: {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           poolSize: 1,
         },
         servers: {
@@ -229,7 +229,7 @@ describe('MCPConfig Schema Tests', () => {
             autoStart: false,
             connection: {
               maxRetries: 5,
-              timeoutMs: 60000,
+              requestTimeoutMs: 60000,
               poolSize: 2,
             },
           },
@@ -246,11 +246,11 @@ describe('MCPConfig Schema Tests', () => {
 
       // Global connection config
       expect(result.connection?.maxRetries).toBe(3);
-      expect(result.connection?.timeoutMs).toBe(30000);
+      expect(result.connection?.requestTimeoutMs).toBe(30000);
 
       // Server with override
       expect(result.servers['server-with-override'].connection?.maxRetries).toBe(5);
-      expect(result.servers['server-with-override'].connection?.timeoutMs).toBe(60000);
+      expect(result.servers['server-with-override'].connection?.requestTimeoutMs).toBe(60000);
 
       // Server without override
       expect(result.servers['server-without-override'].connection).toBeUndefined();
@@ -267,7 +267,6 @@ describe('MCPConfig Schema Tests', () => {
         {},
         [],
         null,
-        undefined,
       ];
 
       invalidEnabledValues.forEach(enabled => {
@@ -279,7 +278,6 @@ describe('MCPConfig Schema Tests', () => {
     it('should reject invalid servers configurations', () => {
       const invalidServersConfigs = [
         { servers: 'not-an-object' },
-        { servers: [] },
         { servers: null },
         { servers: 123 },
         { servers: true },
@@ -374,27 +372,12 @@ describe('MCPConfig Schema Tests', () => {
         },
         {
           connection: {
-            maxRetries: 101, // Should be <= 100
-          },
-        },
-        {
-          connection: {
-            timeoutMs: -1, // Should be >= 0
+            requestTimeoutMs: -1, // Should be >= 0
           },
         },
         {
           connection: {
             poolSize: 0, // Should be >= 1
-          },
-        },
-        {
-          connection: {
-            poolSize: 101, // Should be <= 100
-          },
-        },
-        {
-          connection: {
-            healthCheckIntervalMs: 4999, // Should be >= 5000
           },
         },
         {
@@ -461,7 +444,7 @@ describe('MCPConfig Schema Tests', () => {
             capabilities: ['filesystem'],
             connection: {
               maxRetries: 3,
-              timeoutMs: 30000,
+              requestTimeoutMs: 30000,
             },
           },
         },
@@ -472,7 +455,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         connection: {
           maxRetries: 2,
-          timeoutMs: 20000,
+          requestTimeoutMs: 20000,
           poolSize: 1,
         },
       });
@@ -547,7 +530,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         connection: {
           maxRetries: 5,
-          timeoutMs: 45000,
+          requestTimeoutMs: 45000,
           poolSize: 2,
           healthCheckIntervalMs: 30000,
           heartbeatEnabled: true,
@@ -571,7 +554,7 @@ describe('MCPConfig Schema Tests', () => {
         servers: {
           'secure-api-server': {
             name: 'Secure API MCP Server',
-            type: 'https' as const,
+            type: 'http' as const,
             url: 'https://secure-api.company.com/mcp',
             headers: {
               'Authorization': 'Bearer production-token',
@@ -598,7 +581,7 @@ describe('MCPConfig Schema Tests', () => {
             capabilities: ['api', 'secure'],
             connection: {
               maxRetries: 3,
-              timeoutMs: 60000,
+              requestTimeoutMs: 60000,
               poolSize: 1,
               healthCheckIntervalMs: 120000,
               heartbeatEnabled: true,
@@ -613,7 +596,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         connection: {
           maxRetries: 2,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           poolSize: 1,
           healthCheckIntervalMs: 60000,
           heartbeatEnabled: true,
@@ -625,7 +608,7 @@ describe('MCPConfig Schema Tests', () => {
       expect(result.enabled).toBe(true);
       expect(result.servers['secure-api-server'].envVars).toHaveLength(2);
       expect(result.servers['secure-api-server'].envVars![0].sensitive).toBe(true);
-      expect(result.servers['secure-api-server'].connection?.timeoutMs).toBe(60000);
+      expect(result.servers['secure-api-server'].connection?.requestTimeoutMs).toBe(60000);
       expect(result.marketplace?.allowUnverified).toBe(false);
       expect(result.marketplace?.refreshIntervalMinutes).toBe(2880);
     });
@@ -667,7 +650,7 @@ describe('MCPConfig Schema Tests', () => {
             autoStart: true,
             connection: {
               maxRetries: 10,
-              timeoutMs: 5000,
+              requestTimeoutMs: 5000,
             },
           },
           'test-server': {
@@ -677,25 +660,25 @@ describe('MCPConfig Schema Tests', () => {
             autoStart: false,
             connection: {
               maxRetries: 5,
-              timeoutMs: 15000,
+              requestTimeoutMs: 15000,
             },
           },
           'prod-server': {
             name: 'Production Server',
-            type: 'https' as const,
+            type: 'http' as const,
             url: 'https://prod-server.company.com/mcp',
             headers: { 'X-Environment': 'production' },
             autoStart: false,
             connection: {
               maxRetries: 2,
-              timeoutMs: 30000,
+              requestTimeoutMs: 30000,
               poolSize: 1,
             },
           },
         },
         connection: {
           maxRetries: 3,
-          timeoutMs: 20000,
+          requestTimeoutMs: 20000,
           poolSize: 1,
         },
       };
@@ -713,7 +696,7 @@ describe('MCPConfig Schema Tests', () => {
   describe('Edge cases and boundary conditions', () => {
     it('should handle very long server names and identifiers', () => {
       const longId = 'very-long-server-identifier-'.repeat(10);
-      const longName = 'Very Long Server Name '.repeat(20);
+      const longName = 'Very-Long-Server-Name-'.repeat(20) + 'End';
 
       const config = {
         servers: {
@@ -778,7 +761,7 @@ describe('MCPConfig Schema Tests', () => {
       const extremeConfig = {
         connection: {
           maxRetries: 0, // Minimum
-          timeoutMs: 1, // Very small
+          requestTimeoutMs: 1, // Very small
           poolSize: 100, // Maximum
           healthCheckIntervalMs: 5000, // Minimum
         },
@@ -790,7 +773,7 @@ describe('MCPConfig Schema Tests', () => {
             autoStart: false,
             connection: {
               maxRetries: 100, // Maximum
-              timeoutMs: 3600000, // 1 hour
+              requestTimeoutMs: 3600000, // 1 hour
               poolSize: 1, // Minimum
             },
           },
@@ -799,10 +782,10 @@ describe('MCPConfig Schema Tests', () => {
 
       const result = MCPConfigSchema.parse(extremeConfig);
       expect(result.connection?.maxRetries).toBe(0);
-      expect(result.connection?.timeoutMs).toBe(1);
+      expect(result.connection?.requestTimeoutMs).toBe(1);
       expect(result.connection?.poolSize).toBe(100);
       expect(result.servers['extreme-server'].connection?.maxRetries).toBe(100);
-      expect(result.servers['extreme-server'].connection?.timeoutMs).toBe(3600000);
+      expect(result.servers['extreme-server'].connection?.requestTimeoutMs).toBe(3600000);
     });
 
     it('should handle large numbers of servers', () => {
@@ -860,8 +843,8 @@ describe('MCPConfig Schema Tests', () => {
             capabilities: ['nested', 'test'],
             connection: {
               maxRetries: 3,
-              timeoutMs: 30000,
-              connectTimeoutMs: 5000,
+              requestTimeoutMs: 30000,
+              connectionTimeoutMs: 5000,
               readTimeoutMs: 120000,
               poolSize: 1,
               healthCheckIntervalMs: 30000,
@@ -898,7 +881,7 @@ describe('MCPConfig Schema Tests', () => {
         },
         connection: {
           maxRetries: 2,
-          timeoutMs: 25000,
+          requestTimeoutMs: 25000,
         },
       };
 

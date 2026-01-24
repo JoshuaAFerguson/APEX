@@ -36,10 +36,15 @@ import { type ContainerConfig, type ResourceLimits, type ContainerStats } from '
 // Mock Setup
 // =============================================================================
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 vi.mock('../container-runtime');
 

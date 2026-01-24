@@ -56,9 +56,9 @@ const mockBrowserType = {
 };
 
 vi.mock('playwright', () => ({
-  chromium: mockBrowserType,
-  firefox: mockBrowserType,
-  webkit: mockBrowserType,
+  chromium: { launch: vi.fn(() => Promise.resolve({ isConnected: vi.fn(() => true), version: vi.fn(() => '1.40.0'), newContext: vi.fn(), close: vi.fn(), on: vi.fn() })) },
+  firefox: { launch: vi.fn(() => Promise.resolve({ isConnected: vi.fn(() => true), close: vi.fn(), on: vi.fn() })) },
+  webkit: { launch: vi.fn(() => Promise.resolve({ isConnected: vi.fn(() => true), close: vi.fn(), on: vi.fn() })) },
 }));
 
 describe('BrowserManager Event Integration', () => {

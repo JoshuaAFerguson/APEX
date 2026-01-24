@@ -7,20 +7,39 @@ import { TaskStore } from '../store';
 import { ApexConfig, MCPMarketplaceEntry } from '@apexcli/core';
 
 // Mock modules with comprehensive error scenarios
-vi.mock('fs', () => ({
-  promises: {
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-    rmdir: vi.fn(),
-  },
-  existsSync: vi.fn(),
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+      rmdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  execSync: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');

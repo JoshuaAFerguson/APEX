@@ -73,7 +73,7 @@ mcp:
       capabilities: ["filesystem"]
       connection:
         maxRetries: 5
-        timeoutMs: 45000
+        requestTimeoutMs: 45000
         poolSize: 2
         healthCheckIntervalMs: 60000
     weather:
@@ -91,8 +91,8 @@ mcp:
     allowUnverified: false
   connection:
     maxRetries: 3
-    timeoutMs: 30000
-    connectTimeoutMs: 5000
+    requestTimeoutMs: 30000
+    connectionTimeoutMs: 5000
     readTimeoutMs: 120000
     writeTimeoutMs: 30000
     idleTimeoutMs: 300000
@@ -126,7 +126,7 @@ mcp:
       expect(filesystemServer?.autoStart).toBe(true);
       expect(filesystemServer?.capabilities).toEqual(['filesystem']);
       expect(filesystemServer?.connection?.maxRetries).toBe(5);
-      expect(filesystemServer?.connection?.timeoutMs).toBe(45000);
+      expect(filesystemServer?.connection?.requestTimeoutMs).toBe(45000);
       expect(filesystemServer?.connection?.poolSize).toBe(2);
 
       // Validate weather server
@@ -148,8 +148,8 @@ mcp:
       // Validate global connection config
       expect(config.mcp?.connection).toBeDefined();
       expect(config.mcp?.connection?.maxRetries).toBe(3);
-      expect(config.mcp?.connection?.timeoutMs).toBe(30000);
-      expect(config.mcp?.connection?.connectTimeoutMs).toBe(5000);
+      expect(config.mcp?.connection?.requestTimeoutMs).toBe(30000);
+      expect(config.mcp?.connection?.connectionTimeoutMs).toBe(5000);
       expect(config.mcp?.connection?.poolSize).toBe(1);
       expect(config.mcp?.connection?.healthCheckIntervalMs).toBe(30000);
       expect(config.mcp?.connection?.heartbeatEnabled).toBe(true);
@@ -324,7 +324,7 @@ mcp:
   servers: {}
   connection:
     maxRetries: 5
-    timeoutMs: 60000
+    requestTimeoutMs: 60000
     poolSize: 3
     healthCheckIntervalMs: 45000
     heartbeatEnabled: false
@@ -336,7 +336,7 @@ mcp:
       const connection = config.mcp?.connection;
 
       expect(connection?.maxRetries).toBe(5);
-      expect(connection?.timeoutMs).toBe(60000);
+      expect(connection?.requestTimeoutMs).toBe(60000);
       expect(connection?.poolSize).toBe(3);
       expect(connection?.healthCheckIntervalMs).toBe(45000);
       expect(connection?.heartbeatEnabled).toBe(false);
@@ -353,7 +353,7 @@ mcp:
   enabled: true
   connection:
     maxRetries: 3
-    timeoutMs: 30000
+    requestTimeoutMs: 30000
     poolSize: 1
   servers:
     fast-server:
@@ -363,7 +363,7 @@ mcp:
       autoStart: true
       connection:
         maxRetries: 1
-        timeoutMs: 10000
+        requestTimeoutMs: 10000
         poolSize: 2
     slow-server:
       name: slow-server
@@ -372,7 +372,7 @@ mcp:
       autoStart: false
       connection:
         maxRetries: 10
-        timeoutMs: 120000
+        requestTimeoutMs: 120000
         poolSize: 5
         healthCheckIntervalMs: 60000
 `;
@@ -383,19 +383,19 @@ mcp:
 
       // Global connection config
       expect(config.mcp?.connection?.maxRetries).toBe(3);
-      expect(config.mcp?.connection?.timeoutMs).toBe(30000);
+      expect(config.mcp?.connection?.requestTimeoutMs).toBe(30000);
       expect(config.mcp?.connection?.poolSize).toBe(1);
 
       // Fast server overrides
       const fastServer = config.mcp?.servers?.['fast-server'];
       expect(fastServer?.connection?.maxRetries).toBe(1);
-      expect(fastServer?.connection?.timeoutMs).toBe(10000);
+      expect(fastServer?.connection?.requestTimeoutMs).toBe(10000);
       expect(fastServer?.connection?.poolSize).toBe(2);
 
       // Slow server overrides
       const slowServer = config.mcp?.servers?.['slow-server'];
       expect(slowServer?.connection?.maxRetries).toBe(10);
-      expect(slowServer?.connection?.timeoutMs).toBe(120000);
+      expect(slowServer?.connection?.requestTimeoutMs).toBe(120000);
       expect(slowServer?.connection?.poolSize).toBe(5);
       expect(slowServer?.connection?.healthCheckIntervalMs).toBe(60000);
     });
@@ -526,7 +526,7 @@ mcp:
       capabilities: ["filesystem", "network"]
       connection:
         maxRetries: 3
-        timeoutMs: 30000
+        requestTimeoutMs: 30000
         poolSize: 2
         healthCheckIntervalMs: 60000
         heartbeatEnabled: true
@@ -537,8 +537,8 @@ mcp:
     allowUnverified: false
   connection:
     maxRetries: 5
-    timeoutMs: 45000
-    connectTimeoutMs: 8000
+    requestTimeoutMs: 45000
+    connectionTimeoutMs: 8000
     readTimeoutMs: 180000
     writeTimeoutMs: 45000
     idleTimeoutMs: 600000
@@ -589,7 +589,7 @@ mcp:
       capabilities: ["filesystem"]
       connection:
         maxRetries: 1
-        timeoutMs: 10000
+        requestTimeoutMs: 10000
 
     git:
       name: git-dev
@@ -619,7 +619,7 @@ mcp:
 
   connection:
     maxRetries: 2
-    timeoutMs: 15000
+    requestTimeoutMs: 15000
     poolSize: 1
     healthCheckIntervalMs: 15000
     heartbeatEnabled: true
@@ -674,7 +674,7 @@ mcp:
       capabilities: ["filesystem"]
       connection:
         maxRetries: 5
-        timeoutMs: 60000
+        requestTimeoutMs: 60000
         poolSize: 3
         healthCheckIntervalMs: 120000
 
@@ -689,7 +689,7 @@ mcp:
       capabilities: ["database", "sql"]
       connection:
         maxRetries: 10
-        timeoutMs: 180000
+        requestTimeoutMs: 180000
         poolSize: 5
         healthCheckIntervalMs: 60000
 
@@ -701,8 +701,8 @@ mcp:
 
   connection:
     maxRetries: 3
-    timeoutMs: 30000
-    connectTimeoutMs: 10000
+    requestTimeoutMs: 30000
+    connectionTimeoutMs: 10000
     readTimeoutMs: 300000
     writeTimeoutMs: 60000
     idleTimeoutMs: 900000
@@ -741,8 +741,7 @@ mcp:
       expect(config.mcp?.marketplace?.refreshIntervalMinutes).toBe(1440);
 
       // Verify production connection timeouts
-      expect(config.mcp?.connection?.connectTimeoutMs).toBe(10000);
-      expect(config.mcp?.connection?.readTimeoutMs).toBe(300000);
+      expect(config.mcp?.connection?.connectionTimeoutMs).toBe(10000);
       expect(config.mcp?.connection?.idleTimeoutMs).toBe(900000);
     });
   });
@@ -780,7 +779,7 @@ mcp:
       autoStart: true
   connection:
     maxRetries: 3
-    timeoutMs: 30000
+    requestTimeoutMs: 30000
 `;
 
       await fs.writeFile(path.join(apexDir, 'config.yaml'), configYaml);

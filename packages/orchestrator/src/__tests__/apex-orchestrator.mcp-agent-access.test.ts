@@ -147,7 +147,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
     };
     MockTaskStore.mockImplementation(() => mockStore as any);
 
-    orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
   });
 
   afterEach(async () => {
@@ -282,7 +282,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
       const { MCPConnectionManager } = require('../mcp/connection-manager.js');
       vi.mocked(MCPConnectionManager).mockImplementationOnce(() => null as any);
 
-      const uninitializedOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Test that error is thrown when MCPConnectionManager is not initialized
       await expect(uninitializedOrchestrator.connectMCPServer('test-server'))
@@ -294,7 +294,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
       const { MCPConnectionManager } = require('../mcp/connection-manager.js');
       vi.mocked(MCPConnectionManager).mockImplementationOnce(() => null as any);
 
-      const uninitializedOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Test that error is thrown when MCPConnectionManager is not initialized
       await expect(uninitializedOrchestrator.disconnectMCPServer('test-server'))
@@ -306,7 +306,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
       const { MCPConnectionManager } = require('../mcp/connection-manager.js');
       vi.mocked(MCPConnectionManager).mockImplementationOnce(() => null as any);
 
-      const uninitializedOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Test that error is thrown when MCPConnectionManager is not initialized
       await expect(uninitializedOrchestrator.checkMCPServerHealth('test-server'))
@@ -318,7 +318,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
       const { MCPConnectionManager } = require('../mcp/connection-manager.js');
       vi.mocked(MCPConnectionManager).mockImplementationOnce(() => null as any);
 
-      const uninitializedOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Should return empty array when MCPConnectionManager is not initialized
       const connections = uninitializedOrchestrator.getMCPConnections();
@@ -330,7 +330,7 @@ describe('ApexOrchestrator - MCP Agent Access', () => {
       const { MCPConnectionManager } = require('../mcp/connection-manager.js');
       vi.mocked(MCPConnectionManager).mockImplementationOnce(() => null as any);
 
-      const uninitializedOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Should return undefined when MCPConnectionManager is not initialized
       const connection = uninitializedOrchestrator.getMCPConnection('test-server');

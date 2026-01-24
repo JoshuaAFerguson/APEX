@@ -144,7 +144,7 @@ export class PermissionStore {
       id,
       toolName: permission.tool,
       scope: permission.scope || null,
-      level: permission.level,
+      level: permission.level || 'allow-once',
       expiresAt: permission.expiry ? permission.expiry.toISOString() : null,
       createdAt: permission.createdAt.toISOString(),
       config: permission.config ? JSON.stringify(permission.config) : null,

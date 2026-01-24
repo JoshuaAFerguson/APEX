@@ -5,14 +5,28 @@ import { MCPMarketplaceService, MarketplaceMetadata, AutoConfigurationOptions } 
 import { ApexConfig, MCPMarketplaceEntry, MCPServerConfig, saveConfig } from '@apexcli/core';
 
 // Mock fs promises
-vi.mock('fs', () => ({
-  promises: {
-    readFile: vi.fn(),
-    mkdir: vi.fn(),
-    rmdir: vi.fn(),
-  },
-  existsSync: vi.fn(),
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+      rmdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
 // Mock saveConfig
 vi.mock('@apexcli/core', async () => {
@@ -24,9 +38,16 @@ vi.mock('@apexcli/core', async () => {
 });
 
 // Mock child_process for Docker detection
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 const mockSaveConfig = vi.mocked(saveConfig);
 const mockReadFile = vi.mocked(fs.readFile);

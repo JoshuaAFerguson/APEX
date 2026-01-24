@@ -24,7 +24,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     // Mock implementation for testing
     yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Mock dry-run response' }] } };
   }),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 /**
  * File system snapshot for comparing before/after state
@@ -244,7 +245,7 @@ Test file system changes
       description: 'Test project for file system integrity testing',
     }, null, 2));
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
 
     mockQuery.mockClear();

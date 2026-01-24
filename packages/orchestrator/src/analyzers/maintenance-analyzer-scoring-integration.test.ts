@@ -16,7 +16,7 @@ import type {
   DeprecatedPackage,
   UpdateType
 } from '../idle-processor';
-import type { TaskCandidate } from './index';
+import type { TaskCandidate } from './base-analyzer';
 
 describe('MaintenanceAnalyzer - Scoring and Prioritization Integration', () => {
   let analyzer: MaintenanceAnalyzer;

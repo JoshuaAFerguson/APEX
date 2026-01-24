@@ -24,6 +24,7 @@ import {
   MCPConfig,
   MCPConfigSchema,
   MCPServerConfig,
+  RepairLoopConfigSchema,
 } from './types';
 import { containerRuntime, ContainerRuntimeType } from './container-runtime';
 import { normalizePath } from './path-utils';
@@ -1188,6 +1189,7 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       metadata: {},
     },
     aliases: config.aliases || [],
+    repair: config.repair ?? RepairLoopConfigSchema.parse({}),
     logging: config.logging ? {
       level: config.logging.level || 'info',
       format: config.logging.format || 'auto',

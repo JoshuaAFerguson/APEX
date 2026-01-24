@@ -12,7 +12,7 @@ import { tmpdir } from 'os';
 import { writeFile, mkdir } from 'fs/promises';
 
 import { ApexOrchestrator } from '../index';
-import { loadApexConfig } from '@apexcli/core';
+import { loadConfig } from '@apexcli/core';
 
 describe('ApexOrchestrator Linter Configuration Loading', () => {
   let tempDir: string;
@@ -65,7 +65,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
       // Test that config loads without error
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter?.global?.enabled).toBe(true);
       expect(config.linter?.global?.timeoutMs).toBe(30000);
       expect(config.linter?.global?.maxConcurrency).toBe(2);
@@ -94,7 +94,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
       // Test that config loads without error even without linter section
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter).toBeUndefined();
     });
 
@@ -123,7 +123,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
       // Test that config loads without error with empty linter section
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter).toEqual({});
     });
 
@@ -155,7 +155,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(typeof config.linter?.global?.enabled).toBe('boolean');
       expect(typeof config.linter?.global?.timeoutMs).toBe('number');
       expect(typeof config.linter?.global?.maxConcurrency).toBe('number');
@@ -195,7 +195,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter?.plugins?.eslint?.enabled).toBe(true);
       expect(config.linter?.plugins?.eslint?.config).toBe('.eslintrc.js');
       expect(config.linter?.plugins?.prettier?.enabled).toBe(false);
@@ -231,7 +231,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter?.global?.enabled).toBe(true);
       expect(config.linter?.global?.timeoutMs).toBeUndefined(); // Should be undefined for optional fields
       expect(config.linter?.global?.maxConcurrency).toBeUndefined(); // Should be undefined for optional fields
@@ -263,7 +263,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter?.global?.enabled).toBe(false);
     });
 
@@ -295,7 +295,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      const config = await loadApexConfig(tempDir);
+      const config = await loadConfig(tempDir);
       expect(config.linter?.global?.timeoutMs).toBe(0);
       expect(config.linter?.global?.maxConcurrency).toBe(1);
     });
@@ -329,7 +329,7 @@ git:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await expect(orchestrator.initialize()).resolves.not.toThrow();
 
@@ -367,7 +367,7 @@ git:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent1);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       let config = await orchestrator.getConfig();
@@ -402,7 +402,7 @@ git:
 
       // Create new orchestrator instance to load updated config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       config = await orchestrator.getConfig();
@@ -436,7 +436,7 @@ git:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -459,7 +459,7 @@ project:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), malformedConfig);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await expect(orchestrator.initialize()).rejects.toThrow();
     });
@@ -490,7 +490,7 @@ git:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), invalidConfig);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should either validate and throw schema error or handle gracefully
       try {
@@ -506,7 +506,7 @@ git:
     });
 
     it('should handle missing config file', async () => {
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should handle missing config file gracefully
       await expect(orchestrator.initialize()).rejects.toThrow();
@@ -556,7 +556,7 @@ git:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), comprehensiveConfig);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 

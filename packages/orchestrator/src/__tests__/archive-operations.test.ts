@@ -24,7 +24,7 @@ workflows: {}
 `
     );
 
-    orchestrator = new ApexOrchestrator();
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
     await orchestrator.initialize(testDir);
   });
 

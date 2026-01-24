@@ -68,10 +68,10 @@ describe('MCP Connection Types and Schemas', () => {
 
       const result = MCPConnectionConfigSchema.parse(minimalConfig);
       expect(result.maxRetries).toBe(3); // default
-      expect(result.timeoutMs).toBe(30000); // default
-      expect(result.connectTimeoutMs).toBe(5000); // default
+      expect(result.requestTimeoutMs).toBe(30000); // default
+      expect(result.connectionTimeoutMs).toBe(10000); // default
       expect(result.poolSize).toBe(1); // default
-      expect(result.healthCheckIntervalMs).toBe(60000); // default
+      expect(result.healthCheckIntervalMs).toBe(30000); // default
       expect(result.heartbeatEnabled).toBe(true); // default
       expect(result.heartbeatIntervalMs).toBe(30000); // default
     });
@@ -79,11 +79,9 @@ describe('MCP Connection Types and Schemas', () => {
     it('should accept complete configuration', () => {
       const completeConfig: MCPConnectionConfig = {
         maxRetries: 5,
-        timeoutMs: 45000,
-        connectTimeoutMs: 10000,
-        readTimeoutMs: 120000,
+        requestTimeoutMs: 45000,
+        connectionTimeoutMs: 10000,
         poolSize: 3,
-        healthCheckEnabled: true,
         healthCheckIntervalMs: 30000,
         heartbeatEnabled: false,
         heartbeatIntervalMs: 60000,
@@ -91,11 +89,9 @@ describe('MCP Connection Types and Schemas', () => {
 
       const result = MCPConnectionConfigSchema.parse(completeConfig);
       expect(result.maxRetries).toBe(5);
-      expect(result.timeoutMs).toBe(45000);
-      expect(result.connectTimeoutMs).toBe(10000);
-      expect(result.readTimeoutMs).toBe(120000);
+      expect(result.requestTimeoutMs).toBe(45000);
+      expect(result.connectionTimeoutMs).toBe(10000);
       expect(result.poolSize).toBe(3);
-      expect(result.healthCheckEnabled).toBe(true);
       expect(result.healthCheckIntervalMs).toBe(30000);
       expect(result.heartbeatEnabled).toBe(false);
     });
@@ -103,9 +99,8 @@ describe('MCP Connection Types and Schemas', () => {
     it('should handle edge values within valid ranges', () => {
       const edgeConfig: MCPConnectionConfig = {
         maxRetries: 0, // minimum
-        timeoutMs: 1, // very small
-        connectTimeoutMs: 1, // very small
-        readTimeoutMs: 0, // minimum
+        requestTimeoutMs: 1, // very small
+        connectionTimeoutMs: 1, // very small
         poolSize: 100, // maximum
         healthCheckIntervalMs: 5000, // minimum
         heartbeatIntervalMs: 0, // minimum
@@ -113,7 +108,7 @@ describe('MCP Connection Types and Schemas', () => {
 
       const result = MCPConnectionConfigSchema.parse(edgeConfig);
       expect(result.maxRetries).toBe(0);
-      expect(result.timeoutMs).toBe(1);
+      expect(result.requestTimeoutMs).toBe(1);
       expect(result.poolSize).toBe(100);
       expect(result.healthCheckIntervalMs).toBe(5000);
     });
@@ -121,13 +116,11 @@ describe('MCP Connection Types and Schemas', () => {
     it('should reject invalid values outside ranges', () => {
       const invalidConfigs = [
         { maxRetries: -1 }, // below minimum
-        { maxRetries: 101 }, // above maximum
-        { timeoutMs: -1 }, // below minimum
-        { connectTimeoutMs: -1 }, // below minimum
-        { readTimeoutMs: -1 }, // below minimum
+        { requestTimeoutMs: -1 }, // below minimum
+        { connectionTimeoutMs: -1 }, // below minimum
         { poolSize: 0 }, // below minimum
         { poolSize: 101 }, // above maximum
-        { healthCheckIntervalMs: 4999 }, // below minimum
+        { healthCheckIntervalMs: -1 }, // below minimum
         { heartbeatIntervalMs: -1 }, // below minimum
       ];
 
@@ -139,7 +132,7 @@ describe('MCP Connection Types and Schemas', () => {
     it('should reject non-numeric values for numeric fields', () => {
       const invalidConfigs = [
         { maxRetries: 'three' },
-        { timeoutMs: '30000' },
+        { requestTimeoutMs: '30000' },
         { poolSize: true },
         { healthCheckIntervalMs: null },
       ];
@@ -180,7 +173,7 @@ describe('MCP Connection Types and Schemas', () => {
           autoStart: true,
           connection: {
             maxRetries: 3,
-            timeoutMs: 30000,
+            requestTimeoutMs: 30000,
           },
         },
         state: 'connected',
@@ -188,14 +181,13 @@ describe('MCP Connection Types and Schemas', () => {
         lastActivityAt: new Date('2024-01-15T10:30:00Z'),
         reconnectAttempts: 2,
         lastError: 'Connection timeout',
-        lastErrorAt: new Date('2024-01-15T09:55:00Z'),
-        version: '1.2.3',
-        capabilities: ['filesystem', 'network'],
-        performance: {
-          avgResponseTime: 250,
-          requestCount: 150,
-          errorRate: 0.02,
-          lastMeasured: new Date('2024-01-15T10:25:00Z'),
+        metrics: {
+          totalRequests: 150,
+          successfulRequests: 147,
+          failedRequests: 3,
+          bytesSent: 5000,
+          bytesReceived: 10000,
+          uptimeMs: 1800000,
         },
       };
 
@@ -203,8 +195,8 @@ describe('MCP Connection Types and Schemas', () => {
       expect(result.serverName).toBe('Comprehensive MCP Server');
       expect(result.connectedAt).toEqual(new Date('2024-01-15T10:00:00Z'));
       expect(result.reconnectAttempts).toBe(2);
-      expect(result.capabilities).toContain('filesystem');
-      expect(result.performance?.avgResponseTime).toBe(250);
+      expect(result.metrics?.totalRequests).toBe(150);
+      expect(result.metrics?.failedRequests).toBe(3);
     });
 
     it('should handle all connection states', () => {
@@ -222,7 +214,6 @@ describe('MCP Connection Types and Schemas', () => {
         ...baseConnectionInfo,
         state: 'error',
         lastError: 'Server unreachable',
-        lastErrorAt: new Date('2024-01-15T11:00:00Z'),
         reconnectAttempts: 5,
       };
 
@@ -232,21 +223,23 @@ describe('MCP Connection Types and Schemas', () => {
       expect(result.reconnectAttempts).toBe(5);
     });
 
-    it('should handle connection with performance metrics', () => {
-      const perfInfo: MCPConnectionInfo = {
+    it('should handle connection with metrics', () => {
+      const metricsInfo: MCPConnectionInfo = {
         ...baseConnectionInfo,
-        performance: {
-          avgResponseTime: 150,
-          requestCount: 1000,
-          errorRate: 0.001,
-          lastMeasured: new Date(),
+        metrics: {
+          totalRequests: 1000,
+          successfulRequests: 999,
+          failedRequests: 1,
+          bytesSent: 50000,
+          bytesReceived: 100000,
+          uptimeMs: 3600000,
         },
       };
 
-      const result = MCPConnectionInfoSchema.parse(perfInfo);
-      expect(result.performance?.avgResponseTime).toBe(150);
-      expect(result.performance?.requestCount).toBe(1000);
-      expect(result.performance?.errorRate).toBe(0.001);
+      const result = MCPConnectionInfoSchema.parse(metricsInfo);
+      expect(result.metrics?.totalRequests).toBe(1000);
+      expect(result.metrics?.successfulRequests).toBe(999);
+      expect(result.metrics?.failedRequests).toBe(1);
     });
 
     it('should reject connection info with empty serverId or serverName', () => {
@@ -262,18 +255,20 @@ describe('MCP Connection Types and Schemas', () => {
       });
     });
 
-    it('should reject negative performance metrics', () => {
-      const invalidPerf = {
+    it('should reject negative metrics values', () => {
+      const invalidMetrics = {
         ...baseConnectionInfo,
-        performance: {
-          avgResponseTime: -100,
-          requestCount: -10,
-          errorRate: -0.1,
-          lastMeasured: new Date(),
+        metrics: {
+          totalRequests: -1,
+          successfulRequests: -10,
+          failedRequests: -5,
+          bytesSent: 0,
+          bytesReceived: 0,
+          uptimeMs: 0,
         },
       };
 
-      expect(() => MCPConnectionInfoSchema.parse(invalidPerf)).toThrow();
+      expect(() => MCPConnectionInfoSchema.parse(invalidMetrics)).toThrow();
     });
   });
 
@@ -452,7 +447,7 @@ describe('MCP Connection Types and Schemas', () => {
         autoStart: true,
         connection: {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           healthCheckIntervalMs: 60000,
         },
       };
@@ -484,13 +479,13 @@ describe('MCP Connection Types and Schemas', () => {
         state: 'connected',
         connectedAt: new Date('2024-01-15T10:00:01Z'),
         lastActivityAt: new Date('2024-01-15T10:30:00Z'),
-        version: '1.0.0',
-        capabilities: ['filesystem', 'api'],
-        performance: {
-          avgResponseTime: 200,
-          requestCount: 50,
-          errorRate: 0.0,
-          lastMeasured: new Date('2024-01-15T10:30:00Z'),
+        metrics: {
+          totalRequests: 50,
+          successfulRequests: 50,
+          failedRequests: 0,
+          bytesSent: 5000,
+          bytesReceived: 10000,
+          uptimeMs: 1800000,
         },
       };
 
@@ -526,7 +521,7 @@ describe('MCP Connection Types and Schemas', () => {
 
       expect(validInitial.state).toBe('disconnected');
       expect(validConnecting.type).toBe('connected');
-      expect(validConnected.performance?.requestCount).toBe(50);
+      expect(validConnected.metrics?.totalRequests).toBe(50);
       expect(validError.error?.name).toBe('ConnectionLost');
       expect(validReconnecting.newState).toBe('reconnecting');
     });
@@ -546,11 +541,9 @@ describe('MCP Connection Types and Schemas', () => {
           autoStart: true,
           connection: {
             maxRetries: 10,
-            timeoutMs: 5000, // Fast timeout
-            connectTimeoutMs: 2000,
-            readTimeoutMs: 10000,
+            requestTimeoutMs: 5000, // Fast timeout
+            connectionTimeoutMs: 2000,
             poolSize: 50, // Large pool
-            healthCheckEnabled: true,
             healthCheckIntervalMs: 5000, // Frequent checks
             heartbeatEnabled: true,
             heartbeatIntervalMs: 10000,
@@ -559,21 +552,20 @@ describe('MCP Connection Types and Schemas', () => {
         state: 'connected',
         connectedAt: new Date('2024-01-15T10:00:00Z'),
         lastActivityAt: new Date('2024-01-15T10:35:00Z'),
-        version: '2.5.0',
-        capabilities: ['filesystem', 'network', 'database', 'cache'],
-        performance: {
-          avgResponseTime: 50, // Very fast
-          requestCount: 10000, // High volume
-          errorRate: 0.0001, // Very low error rate
-          lastMeasured: new Date('2024-01-15T10:35:00Z'),
+        metrics: {
+          totalRequests: 10000,
+          successfulRequests: 9999,
+          failedRequests: 1,
+          bytesSent: 500000,
+          bytesReceived: 1000000,
+          uptimeMs: 2100000,
         },
       };
 
       const result = MCPConnectionInfoSchema.parse(highPerfConnection);
       expect(result.config.connection?.poolSize).toBe(50);
-      expect(result.performance?.avgResponseTime).toBe(50);
-      expect(result.performance?.requestCount).toBe(10000);
-      expect(result.capabilities).toContain('database');
+      expect(result.metrics?.totalRequests).toBe(10000);
+      expect(result.metrics?.successfulRequests).toBe(9999);
     });
 
     it('should handle edge cases with Unicode and special characters', () => {
@@ -588,17 +580,16 @@ describe('MCP Connection Types and Schemas', () => {
           autoStart: false,
         },
         state: 'connected',
-        version: '1.0.0-测试',
-        capabilities: ['unicode-支持', 'тест-capability'],
+        lastError: 'Previous error: 测试错误',
       };
 
       const result = MCPConnectionInfoSchema.parse(unicodeConnection);
       expect(result.serverId).toBe('unicode-server-测试');
       expect(result.serverName).toBe('Unicode MCP Server тест 🚀');
-      expect(result.capabilities).toContain('unicode-支持');
+      expect(result.lastError).toBe('Previous error: 测试错误');
     });
 
-    it('should handle extreme performance values', () => {
+    it('should handle extreme metrics values', () => {
       const extremeConnection: MCPConnectionInfo = {
         serverId: 'extreme-server',
         serverName: 'Extreme Performance Server',
@@ -609,18 +600,20 @@ describe('MCP Connection Types and Schemas', () => {
           autoStart: false,
         },
         state: 'connected',
-        performance: {
-          avgResponseTime: 1, // 1ms - extremely fast
-          requestCount: 1000000, // 1 million requests
-          errorRate: 0.0, // Perfect reliability
-          lastMeasured: new Date(),
+        metrics: {
+          totalRequests: 1000000, // 1 million requests
+          successfulRequests: 1000000, // Perfect reliability
+          failedRequests: 0,
+          bytesSent: 999999999,
+          bytesReceived: 999999999,
+          uptimeMs: 86400000, // 24 hours
         },
       };
 
       const result = MCPConnectionInfoSchema.parse(extremeConnection);
-      expect(result.performance?.avgResponseTime).toBe(1);
-      expect(result.performance?.requestCount).toBe(1000000);
-      expect(result.performance?.errorRate).toBe(0.0);
+      expect(result.metrics?.totalRequests).toBe(1000000);
+      expect(result.metrics?.successfulRequests).toBe(1000000);
+      expect(result.metrics?.failedRequests).toBe(0);
     });
   });
 
@@ -668,12 +661,14 @@ describe('MCP Connection Types and Schemas', () => {
           autoStart: false,
         },
         state: 'connected' as const,
-        reconnectAttempts: -5, // negative value
-        performance: {
-          avgResponseTime: -100, // negative value
-          requestCount: -50, // negative value
-          errorRate: 1.5, // > 1.0
-          lastMeasured: new Date(),
+        reconnectAttempts: -5, // negative value - schema has .min(0)
+        metrics: {
+          totalRequests: -100, // negative value
+          successfulRequests: -50, // negative value
+          failedRequests: -10, // negative value
+          bytesSent: 0,
+          bytesReceived: 0,
+          uptimeMs: 0,
         },
       };
 

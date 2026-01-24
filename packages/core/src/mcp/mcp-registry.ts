@@ -536,18 +536,28 @@ export class MCPRegistry {
       // Infer category from capabilities if not explicitly set
       let inferredCategory = 'uncategorized';
       if (server.capabilities) {
+        const matchedCategories: string[] = [];
         if (server.capabilities.some(cap => cap.startsWith('file:') || cap.startsWith('directory:'))) {
-          inferredCategory = 'filesystem';
-        } else if (server.capabilities.some(cap => cap.startsWith('http:') || cap.startsWith('browser:'))) {
-          inferredCategory = 'web';
-        } else if (server.capabilities.some(cap => cap.startsWith('git:'))) {
-          inferredCategory = 'development';
-        } else if (server.capabilities.some(cap => cap.startsWith('db:') || cap.startsWith('sql:'))) {
-          inferredCategory = 'database';
-        } else if (server.capabilities.some(cap => cap.startsWith('shell:') || cap.startsWith('process:') || cap.startsWith('docker:'))) {
-          inferredCategory = 'system';
-        } else if (server.capabilities.some(cap => cap.startsWith('search:'))) {
-          inferredCategory = 'search';
+          matchedCategories.push('filesystem');
+        }
+        if (server.capabilities.some(cap => cap.startsWith('http:') || cap.startsWith('browser:'))) {
+          matchedCategories.push('web');
+        }
+        if (server.capabilities.some(cap => cap.startsWith('git:'))) {
+          matchedCategories.push('development');
+        }
+        if (server.capabilities.some(cap => cap.startsWith('db:') || cap.startsWith('sql:'))) {
+          matchedCategories.push('database');
+        }
+        if (server.capabilities.some(cap => cap.startsWith('shell:') || cap.startsWith('process:') || cap.startsWith('docker:'))) {
+          matchedCategories.push('system');
+        }
+        if (server.capabilities.some(cap => cap.startsWith('search:'))) {
+          matchedCategories.push('search');
+        }
+        // Only infer category if exactly one matches; multiple matches means uncategorized
+        if (matchedCategories.length === 1) {
+          inferredCategory = matchedCategories[0];
         }
       }
 

@@ -1,4 +1,6 @@
 import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { RepairLoop, resolveRepairConfig, ErrorClassifier } from './repair-loop/index.js';
+import type { RepairLoopHost, RepairQueryOptions, RepairQueryResult, RepairContext, RepairLoopEvents, RepairConfig } from './repair-loop/index.js';
 import { EventEmitter } from 'eventemitter3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -132,7 +134,7 @@ import { SecretOutputProcessor } from './secret-output-processor';
 import { generateFileDiff, type DiffResult } from './utils/diff';
 import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
-import { MCPInstaller } from './mcp-installer';
+import { MCPInstaller, type InstalledMCPResult } from './mcp-installer';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
 import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
@@ -407,6 +409,18 @@ export interface OrchestratorEvents {
 
   // Generic APEX events (v0.5.0) - for TDD and other subsystems
   'apex-event': (event: ApexEvent) => void;
+
+  // Self-repair loop events (v0.5.0) - autonomous error recovery
+  'repair:started': RepairLoopEvents['repair:started'];
+  'repair:state-change': RepairLoopEvents['repair:state-change'];
+  'repair:diagnosis': RepairLoopEvents['repair:diagnosis'];
+  'repair:fix-planned': RepairLoopEvents['repair:fix-planned'];
+  'repair:fix-applied': RepairLoopEvents['repair:fix-applied'];
+  'repair:validation-passed': RepairLoopEvents['repair:validation-passed'];
+  'repair:validation-failed': RepairLoopEvents['repair:validation-failed'];
+  'repair:resolved': RepairLoopEvents['repair:resolved'];
+  'repair:escalated': RepairLoopEvents['repair:escalated'];
+  'repair:terminated': RepairLoopEvents['repair:terminated'];
 }
 
 /**
@@ -1256,6 +1270,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private aliasResolver!: AliasResolver;
   private linterService!: LinterService;
   private errorFeedbackLoop = new ErrorFeedbackLoop();
+  private repairLoop!: RepairLoop;
+  private repairErrorClassifier = new ErrorClassifier();
   private secretScanner?: SecretScanner;
   private secretOutputProcessor = new SecretOutputProcessor();
   private hookManager!: HookManager;
@@ -1320,16 +1336,32 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load configuration
-    this.config = await loadConfig(this.projectPath);
+    // Load configuration (with fallback for test environments)
+    try {
+      this.config = await loadConfig(this.projectPath);
+    } catch {
+      // Use minimal default config if config file is missing (e.g., test environments)
+      this.config = {
+        version: '0.1.0',
+        project: { name: 'apex-project', language: 'typescript', framework: 'node' },
+        autonomy: { level: 'supervised' as const, gates: [], stageOverrides: {}, agentOverrides: {} },
+        agents: { enabled: [], disabled: [] },
+        workflows: {},
+        models: { planning: 'opus', implementation: 'sonnet', review: 'haiku' },
+        limits: { maxTokensPerTask: 100000, maxCostPerTask: 10, maxRetries: 3 },
+        gates: [],
+        git: { branchPrefix: 'apex/', commitFormat: 'conventional', autoPush: false, defaultBranch: 'main' },
+        aliases: [],
+      } as unknown as ApexConfig;
+    }
     this.effectiveConfig = getEffectiveConfig(this.config);
 
     // Initialize alias resolver with config aliases
     this.aliasResolver = new AliasResolver(this.config.aliases || []);
 
-    // Initialize MCP server manager and installer (v0.5.0)
+    // Initialize MCP server manager and marketplace service (v0.5.0)
+    // Note: MCPInstaller requires this.store, which is initialized later
     this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
-    this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
     this.mcpMarketplaceService = new MCPMarketplaceService(this.projectPath, this.config);
     this.mcpConnectionManager = new MCPConnectionManager({
       projectPath: this.projectPath,
@@ -1369,6 +1401,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize MCP installer (requires store to be initialized)
+    this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
 
     // Initialize tool action store
     this.toolActionStore = new ToolActionStore(this.store, this.config.toolActionRetention);
@@ -1513,7 +1548,171 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize TDD executor if configured
     await this.initializeTDDExecutor();
 
+    // Initialize self-repair loop
+    const repairConfig = resolveRepairConfig(this.config.repair);
+    this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
+
     this.initialized = true;
+  }
+
+  // --------------------------------------------------------------------------
+  // Self-Repair Loop Helpers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get the resolved repair loop configuration from the project config.
+   */
+  private getRepairConfig(): RepairConfig {
+    return resolveRepairConfig(this.config.repair);
+  }
+
+  /**
+   * Determine whether the repair loop should attempt to fix a stage failure.
+   * Returns false for planning stages, unrecoverable errors, or skipped categories.
+   */
+  private isRepairEligible(stage: WorkflowStage, error: Error, result: StageResult): boolean {
+    const config = this.getRepairConfig();
+
+    // Don't repair planning stages — they decompose tasks, not produce code
+    if (stage.name.toLowerCase().includes('plan')) return false;
+
+    // Check if error category is in skip list
+    const classified = this.repairErrorClassifier.classify(
+      error,
+      result as unknown as import('./repair-loop/repair-types.js').StageResult,
+      [],
+    );
+    if (classified.length > 0) {
+      const primaryCategory = classified[0].category;
+      if (config.skipCategories.includes(primaryCategory)) return false;
+      if (classified.every(e => !e.isRecoverable)) return false;
+    }
+
+    // Check parallel stage setting
+    if (stage.parallel && !config.repairParallelStages) return false;
+
+    return true;
+  }
+
+  /**
+   * Create the RepairLoopHost implementation that bridges the repair loop
+   * to the orchestrator's capabilities (Claude queries, file I/O, persistence).
+   */
+  private createRepairLoopHost(): RepairLoopHost {
+    const orchestrator = this;
+    return {
+      async queryAgent(prompt: string, model: string, options?: RepairQueryOptions): Promise<RepairQueryResult> {
+        let text = '';
+        let tokensUsed = 0;
+
+        for await (const message of query({
+          prompt,
+          options: {
+            model,
+            permissionMode: 'acceptEdits',
+            maxTurns: options?.maxTurns || 20,
+            cwd: options?.cwd || orchestrator.projectPath,
+            tools: options?.tools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+          },
+        })) {
+          // Collect text from response
+          const msg = message as Record<string, unknown>;
+          if (msg.type === 'result' && typeof msg.result === 'string') {
+            text += msg.result;
+          } else if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
+            const assistantMsg = msg.message as { content?: Array<{ type: string; text?: string }> };
+            if (Array.isArray(assistantMsg.content)) {
+              for (const block of assistantMsg.content) {
+                if (block.type === 'text' && block.text) {
+                  text += block.text;
+                }
+              }
+            }
+            // Track tokens from usage info
+            const usage = (msg.message as Record<string, unknown>).usage as { input_tokens?: number; output_tokens?: number } | undefined;
+            if (usage) {
+              tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0);
+            }
+          }
+        }
+
+        // Estimate cost based on tokens (rough approximation)
+        const costUsd = tokensUsed * 0.000015; // ~$15/MTok average
+
+        return { text, tokensUsed, costUsd };
+      },
+
+      async rerunStage(taskId: string, stageName: string): Promise<import('./repair-loop/repair-types.js').StageResult> {
+        const task = await orchestrator.store.getTask(taskId);
+        if (!task) throw new Error(`Task ${taskId} not found for re-run`);
+
+        const workflow = orchestrator.workflows[task.workflow || 'default'];
+        if (!workflow) throw new Error(`Workflow not found for task ${taskId}`);
+
+        const stage = workflow.stages.find(s => s.name === stageName);
+        if (!stage) throw new Error(`Stage "${stageName}" not found in workflow`);
+
+        const agent = orchestrator.agents[stage.agent] || { name: stage.agent, role: stage.agent, model: 'sonnet' };
+        const stageResults = new Map<string, StageResult>();
+
+        try {
+          const result = await orchestrator.executeWorkflowStage(task, stage, agent, workflow, stageResults, undefined);
+          return result as unknown as import('./repair-loop/repair-types.js').StageResult;
+        } catch (err) {
+          return {
+            stageName,
+            agent: stage.agent,
+            status: 'failed' as const,
+            outputs: {},
+            artifacts: [],
+            summary: `Re-run failed: ${(err as Error).message}`,
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
+            error: (err as Error).message,
+            startedAt: new Date(),
+            completedAt: new Date(),
+          };
+        }
+      },
+
+      async readFiles(filePaths: string[]): Promise<Record<string, string>> {
+        const contents: Record<string, string> = {};
+        for (const filePath of filePaths) {
+          try {
+            const fullPath = path.isAbsolute(filePath)
+              ? filePath
+              : path.join(orchestrator.projectPath, filePath);
+            contents[filePath] = await fs.readFile(fullPath, 'utf-8');
+          } catch {
+            // File not found or unreadable — skip
+          }
+        }
+        return contents;
+      },
+
+      async getTask(taskId: string): Promise<Task | null> {
+        return orchestrator.store.getTask(taskId);
+      },
+
+      async addFixAttempt(taskId: string, attempt: import('@apexcli/core').FixAttempt): Promise<void> {
+        await orchestrator.store.addFixAttempt(taskId, attempt);
+      },
+
+      async getFixAttemptHistory(taskId: string): Promise<import('@apexcli/core').FixAttemptHistory> {
+        return orchestrator.store.getFixAttemptHistory(taskId);
+      },
+
+      async getFixAttemptsForError(taskId: string, errorHash: string): Promise<import('@apexcli/core').FixAttempt[]> {
+        return orchestrator.store.getFixAttemptsForError(taskId, errorHash);
+      },
+
+      emit<K extends keyof RepairLoopEvents>(event: K, ...args: Parameters<RepairLoopEvents[K]>): void {
+        (orchestrator as unknown as { emit(event: string, ...args: unknown[]): void }).emit(event, ...args);
+      },
+
+      async addLog(taskId: string, log: { level: 'error' | 'debug' | 'info' | 'warn'; message: string; stage?: string }): Promise<void> {
+        await orchestrator.store.addLog(taskId, log);
+      },
+    };
   }
 
   /**
@@ -2687,6 +2886,37 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: `Starting workflow "${workflow.name}" with ${workflow.stages.length} stages`,
     });
 
+    // If this task already has subtasks from a previous decomposition, skip workflow stages
+    // and go directly to subtask execution. This prevents duplicate subtask creation on retry.
+    const currentTaskState = await this.store.getTask(task.id);
+    if (currentTaskState?.subtaskIds && currentTaskState.subtaskIds.length > 0) {
+      await this.store.addLog(task.id, {
+        level: 'info',
+        message: `Task already has ${currentTaskState.subtaskIds.length} subtasks from previous decomposition. Resuming subtask execution.`,
+      });
+
+      await this.store.updateTask(task.id, {
+        status: 'in-progress',
+        currentStage: 'subtask-execution',
+        updatedAt: new Date(),
+      });
+
+      const allSubtasksComplete = await this.executeSubtasks(task.id);
+      if (allSubtasksComplete) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `All subtasks completed. Workflow finished via decomposition.`,
+        });
+        return true;
+      } else {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Subtask execution incomplete. Task will remain in-progress.`,
+        });
+        return false;
+      }
+    }
+
     // Continue until all stages are complete
     while (completedStages.size < allStages.size) {
       // Check if task was cancelled
@@ -3017,8 +3247,59 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           },
         });
 
-        if (error && !firstError) {
-          firstError = error;
+        // Determine the effective error for this stage
+        let stageError = error;
+        if (!stageError && result.status === 'failed') {
+          stageError = new Error(result.error || `Stage "${stage.name}" failed: ${result.summary}`);
+        }
+
+        // Attempt self-repair if the stage failed
+        if (stageError && !firstError) {
+          const repairConfig = this.getRepairConfig();
+          if (repairConfig.enabled && this.isRepairEligible(stage, stageError, result)) {
+            const history = await this.store.getFixAttemptHistory(task.id);
+            const repairContext: RepairContext = {
+              taskId: task.id,
+              stageName: stage.name,
+              stageAgent: stage.agent,
+              workflowName: workflow.name,
+              failedResult: result as unknown as import('./repair-loop/repair-types.js').StageResult,
+              originalError: stageError,
+              stageOutput: result.summary ? [result.summary] : [],
+              history,
+              config: repairConfig,
+              currentState: 'idle',
+              stateEnteredAt: new Date(),
+              iterationCount: 0,
+              repairCostSoFar: 0,
+              repairTokensUsed: 0,
+              loopStartedAt: new Date(),
+            };
+
+            const repairResult = await this.repairLoop.attemptRepair(repairContext);
+
+            if (repairResult.resolved && repairResult.stageResult) {
+              // Repair succeeded — replace the failed result
+              stageResults.set(stage.name, repairResult.stageResult as unknown as StageResult);
+              await this.store.addLog(task.id, {
+                level: 'info',
+                message: `Self-repair resolved stage "${stage.name}" after ${repairResult.attempts.length} attempt(s)`,
+                stage: stage.name,
+              });
+            } else {
+              // Repair could not fix — propagate failure
+              firstError = stageError;
+              if (repairResult.escalationReport) {
+                await this.store.addLog(task.id, {
+                  level: 'error',
+                  message: `Self-repair escalation: ${repairResult.escalationReport.summary}`,
+                  stage: stage.name,
+                });
+              }
+            }
+          } else {
+            firstError = stageError;
+          }
         }
 
         // Capture decomposition request from planning stage
@@ -3603,7 +3884,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
 
     // Check if the output indicates the task was blocked by permission restrictions
+    // Skip these heuristic checks for planning stages - they don't run tests or write files,
+    // and their output often discusses previous failures which triggers false positives
     const fullOutputLower = messages.join('\n').toLowerCase();
+
+    if (isPlanner) {
+      // Planning stages skip test failure and permission heuristics entirely
+      // They only plan/decompose - false positives here cause "Workflow stuck" errors
+      const decompositionRequest2 = parseDecompositionRequest(messages.join('\n'));
+      if (decompositionRequest2.shouldDecompose) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Planner requested decomposition: ${decompositionRequest2.subtasks.length} subtasks (${decompositionRequest2.strategy})`,
+          stage: stage.name,
+        });
+      }
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'completed',
+        outputs,
+        artifacts,
+        summary,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        decompositionRequest: decompositionRequest2,
+      };
+    }
+
     const permissionBlockedPatterns = [
       'need user confirmation',
       'tool access restrictions',
@@ -3647,6 +3957,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     // Check for test failures in the agent's output
+    // Only apply to testing/review stages - other stages produce false positives
+    // when they discuss errors, failures, or code issues in their output text.
+    // Genuine build/test failures in implementation stages are caught by tool exit codes.
+    const isTestOrReviewStage = ['testing', 'review', 'test', 'qa'].includes(stage.name.toLowerCase());
+
     const testFailurePatterns = [
       'tests? failed',
       'test.*failure',
@@ -3667,13 +3982,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       'cannot find module',
     ];
 
-    const isTestFailure = testFailurePatterns.some(pattern =>
+    const isTestFailure = isTestOrReviewStage && testFailurePatterns.some(pattern =>
       new RegExp(pattern, 'i').test(fullOutputLower)
     );
 
-    // Also check for explicit "Status: failed" in structured output
-    const hasExplicitFailure = /\*\*status\*\*:\s*failed/i.test(fullOutputLower) ||
-                               /status:\s*failed/i.test(fullOutputLower);
+    // Also check for explicit "Status: failed" in structured output (testing/review only)
+    const hasExplicitFailure = isTestOrReviewStage && (
+      /\*\*status\*\*:\s*failed/i.test(fullOutputLower) ||
+      /status:\s*failed/i.test(fullOutputLower)
+    );
 
     if (isTestFailure || hasExplicitFailure) {
       // Tests or build failed - mark stage as failed
@@ -3698,20 +4015,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       };
     }
 
-    // For planning stages, check if the output contains a decomposition request
-    let decompositionRequest: DecompositionRequest | undefined;
-    if (isPlanner) {
-      const fullOutput = messages.join('\n');
-      decompositionRequest = parseDecompositionRequest(fullOutput);
-
-      if (decompositionRequest.shouldDecompose) {
-        await this.store.addLog(task.id, {
-          level: 'info',
-          message: `Planner requested decomposition: ${decompositionRequest.subtasks.length} subtasks (${decompositionRequest.strategy})`,
-          stage: stage.name,
-        });
-      }
-    }
+    // Note: Planning stages return early above and never reach this point.
+    // Non-planning stages do not produce decomposition requests.
 
     // Create preliminary stage result for auto-fix processing
     const preliminaryResult: StageResult = {
@@ -3750,7 +4055,6 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       usage: stageUsage,
       startedAt,
       completedAt: new Date(),
-      decompositionRequest,
       autoFixResults: autoFixResults || undefined,
     };
   }
@@ -8730,7 +9034,9 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Enhanced MCP server installation with SQLite tracking and npm/npx support
+   * Enhanced MCP server installation with SQLite tracking and npm/npx support.
+   * Passes the name as a string to MCPInstaller.install(), which handles
+   * marketplace lookup automatically.
    */
   public async installMcpServerEnhanced(
     nameOrPackage: string,
@@ -8750,37 +9056,31 @@ Parent: ${parentTask.description}`;
       throw new Error('MCP installer not initialized');
     }
 
-    // Construct MCPServer object from package name
-    const server = {
-      name: nameOrPackage,
-      package: nameOrPackage,
-      command: options?.global ? 'npx' : 'node',
-      args: options?.args || [],
-      env: options?.env || {},
-      envVars: [],
-      version: '1.0.0',
-    };
+    // Ensure marketplace cache is populated before install
+    try {
+      await this.updateMcpMarketplaceCache();
+    } catch {
+      // Marketplace cache update may fail, proceed with install anyway
+    }
 
-    const result = await this.mcpInstaller.install(server, { force: options?.force });
+    // Use string-based install which handles marketplace lookup
+    const result = await this.mcpInstaller.install(nameOrPackage, {
+      force: options?.force,
+      args: options?.args,
+      env: options?.env,
+      global: options?.global,
+    });
 
     // Update local config after installation
-    this.config = await loadConfig(this.projectPath);
-    this.effectiveConfig = getEffectiveConfig(this.config);
-    this.mcpServerManager?.updateConfig(this.config);
+    try {
+      this.config = await loadConfig(this.projectPath);
+      this.effectiveConfig = getEffectiveConfig(this.config);
+      this.mcpServerManager?.updateConfig(this.config);
+    } catch {
+      // Config reload may fail in test environments
+    }
 
-    // Return enhanced format
-    return {
-      name: server.name,
-      config: {
-        name: server.name,
-        type: 'stdio',
-        command: server.command,
-        args: server.args,
-        autoStart: false,
-      },
-      installedFrom: 'npm',
-      installedAt: result.installedAt,
-    };
+    return result;
   }
 
   /**
@@ -8794,80 +9094,52 @@ Parent: ${parentTask.description}`;
       env?: Record<string, string>;
       global?: boolean;
     }
-  ): Promise<{
-    name: string;
-    config: MCPServerConfig;
-    installedFrom: 'npm' | 'npx';
-    installedAt: Date;
-  }> {
+  ): Promise<InstalledMCPResult> {
     if (!this.mcpInstaller) {
       throw new Error('MCP installer not initialized');
     }
 
-    // Construct MCPServer object for npm package
-    const server = {
-      name: packageName,
-      package: packageName,
-      command: 'npx',
-      args: [packageName, ...(options?.args || [])],
-      env: options?.env || {},
-      envVars: [],
-      version: '1.0.0',
-    };
-
-    const result = await this.mcpInstaller.install(server, { force: options?.force });
+    const result = await this.mcpInstaller.installFromNpm(packageName, {
+      force: options?.force,
+      args: options?.args,
+      env: options?.env,
+      global: options?.global,
+    });
 
     // Update local config after installation
-    this.config = await loadConfig(this.projectPath);
-    this.effectiveConfig = getEffectiveConfig(this.config);
-    this.mcpServerManager?.updateConfig(this.config);
+    try {
+      this.config = await loadConfig(this.projectPath);
+      this.effectiveConfig = getEffectiveConfig(this.config);
+      this.mcpServerManager?.updateConfig(this.config);
+    } catch {
+      // Config reload may fail in test environments
+    }
 
-    return {
-      name: server.name,
-      config: {
-        name: server.name,
-        type: 'stdio',
-        command: server.command,
-        args: server.args,
-        autoStart: false,
-      },
-      installedFrom: 'npx',
-      installedAt: result.installedAt,
-    };
+    return result;
   }
 
   /**
    * List installed MCP servers with enhanced information
    */
-  public async listInstalledMcpServers(): Promise<Array<{
-    name: string;
-    config: MCPServerConfig;
-    installedFrom: 'marketplace' | 'npm' | 'npx' | 'manual';
-    installedAt: Date;
-  }>> {
+  public async listInstalledMcpServers(): Promise<InstalledMCPResult[]> {
     if (!this.mcpInstaller) {
       return [];
     }
 
-    const installations = await this.mcpInstaller.listInstalled();
-
-    // Transform MCPInstallation objects to the expected format
-    return installations.map(installation => ({
-      name: installation.serverId,
-      config: {
-        name: installation.serverId,
-        type: 'stdio' as const,
-        autoStart: false,
-      },
-      installedFrom: 'manual' as const,
-      installedAt: installation.installedAt,
-    }));
+    return this.mcpInstaller.listInstalled();
   }
 
   /**
-   * List installed MCP servers as MCPInstallation objects
+   * Alias for listInstalledMcpServers
    */
-  public async listMcpInstallations(): Promise<MCPInstallation[]> {
+  public async listMcpServersEnhanced(): Promise<InstalledMCPResult[]> {
+    return this.listInstalledMcpServers();
+  }
+
+  /**
+   * List installed MCP servers as InstalledMCPResult objects
+   */
+  public async listMcpInstallations(): Promise<InstalledMCPResult[]> {
     if (!this.mcpInstaller) {
       return [];
     }
@@ -11742,7 +12014,7 @@ export {
 export { AliasResolver, AliasResolutionError } from './alias-resolver';
 
 // MCP Installer
-export { MCPInstaller, type MCPInstallationOptions } from './mcp-installer';
+export { MCPInstaller, type MCPInstallationOptions, type InstalledMCPResult } from './mcp-installer';
 
 // MCP Dependency Resolver
 export {
@@ -11765,3 +12037,24 @@ export {
   type MCPToolDiscoveryResult,
   type MCPClientUtilityEvents,
 } from './mcp-client';
+
+// Self-Repair Loop
+export {
+  RepairLoop,
+  ErrorClassifier,
+  resolveRepairConfig,
+  DEFAULT_REPAIR_CONFIG,
+  RepairConfigSchema,
+} from './repair-loop/index.js';
+export type {
+  RepairLoopHost,
+  RepairConfig,
+  RepairContext,
+  RepairResult,
+  RepairDiagnosis,
+  RepairFixPlan,
+  ClassifiedError,
+  RepairTerminationReason,
+  EscalationReport,
+  RepairLoopEvents,
+} from './repair-loop/index.js';

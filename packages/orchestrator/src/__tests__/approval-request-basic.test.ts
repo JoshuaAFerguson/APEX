@@ -17,6 +17,8 @@ import type { ApprovalRequest } from '@apexcli/core';
 // Mock the claude-agent-sdk
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 describe('Basic Approval Request Event Tests', () => {

@@ -11,15 +11,24 @@ import { ApexOrchestrator } from '../index';
 import type { ApexConfig, Task, Agent, WorkflowStage } from '@apexcli/core';
 
 // Mock Claude Agent SDK
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Mock other dependencies
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');
@@ -141,7 +150,7 @@ stages:
       yield { type: 'text', content: 'Test completed successfully' };
     });
 
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
   });
 
   afterEach(async () => {
@@ -231,7 +240,7 @@ stages:
         },
       }));
 
-      orchestrator = new ApexOrchestrator(tempDir);
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir });
       await orchestrator.initialize();
 
       // Mock server manager
@@ -328,7 +337,7 @@ stages:
       const { loadConfig } = await import('@apexcli/core');
       vi.mocked(loadConfig).mockResolvedValue(createTestConfig({}));
 
-      orchestrator = new ApexOrchestrator(tempDir);
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir });
       await orchestrator.initialize();
 
       // Mock server manager to return empty config

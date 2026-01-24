@@ -159,7 +159,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     });
 
     it('should handle very complex brace patterns', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.{js,ts,jsx,tsx,json,{test,spec}.{js,ts}}',
         path: tempDir,
       });
@@ -175,7 +175,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     });
 
     it('should handle complex negation patterns', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/!(*.{test,spec}.*)',
         path: tempDir,
       });
@@ -191,7 +191,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     it('should handle patterns with multiple globstars', async () => {
       await createTestFile(tempDir, 'deep/nested/very/deep/file.txt', 'content');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/deep/**/file.txt',
         path: tempDir,
       });
@@ -207,7 +207,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'test9.txt', '9');
       await createTestFile(tempDir, 'testa.txt', 'a');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'test[1-3].txt',
         path: tempDir,
       });
@@ -226,7 +226,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'test22.txt', '22');
       await createTestFile(tempDir, 'test333.txt', '333');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'test?.txt',
         path: tempDir,
       });
@@ -237,7 +237,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
 
     it('should handle empty patterns and edge case patterns', async () => {
       // Pattern that matches nothing
-      const emptyResult = await globTool.execute({
+      const emptyResult = await globTool.run({
         pattern: 'definitely-does-not-exist-*.xyz',
         path: tempDir,
       });
@@ -258,7 +258,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     });
 
     it('should handle files with unicode names', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -279,7 +279,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
 
     it('should handle patterns with unicode characters', async () => {
       try {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*测试*',
           path: tempDir,
         });
@@ -294,7 +294,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     });
 
     it('should handle files with emoji in names', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*😀*',
         path: tempDir,
       });
@@ -305,7 +305,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     });
 
     it('should handle files with spaces and special characters', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*with*spaces*',
         path: tempDir,
       });
@@ -323,7 +323,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     it('should handle very deep nested directories', async () => {
       await createDeepStructure(tempDir, 20, 2);
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.txt',
         path: tempDir,
       });
@@ -339,7 +339,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createDeepStructure(tempDir, 15, 3);
 
       const startTime = Date.now();
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/level*/file*.txt',
         path: tempDir,
       });
@@ -358,7 +358,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       try {
         await createTestFile(tempDir, path.join(nestedPath, fileName), 'long path content');
 
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '**/*.txt',
           path: tempDir,
         });
@@ -383,7 +383,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     it('should handle large file sets without memory issues', async () => {
       await createLargeFileSet(tempDir, 2000);
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.txt',
         path: tempDir,
       });
@@ -407,10 +407,10 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'file3.ts', 'content3');
 
       const operations = [
-        globTool.execute({ pattern: '*.txt', path: tempDir }),
-        globTool.execute({ pattern: '*.js', path: tempDir }),
-        globTool.execute({ pattern: '*.ts', path: tempDir }),
-        globTool.execute({ pattern: '**/*', path: tempDir }),
+        globTool.run({ pattern: '*.txt', path: tempDir }),
+        globTool.run({ pattern: '*.js', path: tempDir }),
+        globTool.run({ pattern: '*.ts', path: tempDir }),
+        globTool.run({ pattern: '**/*', path: tempDir }),
       ];
 
       const results = await Promise.all(operations);
@@ -431,7 +431,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       }
       await Promise.all(promises);
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'flat_file_*.txt',
         path: tempDir,
       });
@@ -455,7 +455,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
     it('should handle permissions issues gracefully', async () => {
       // Note: Permission tests are platform-dependent and may not work in all environments
       try {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*',
           path: '/root', // Typically restricted directory
         });
@@ -473,7 +473,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
 
       // This test is tricky - we'd need to simulate filesystem errors
       // For now, just verify that the tool handles normal cases properly
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.txt',
         path: tempDir,
       });
@@ -491,7 +491,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       };
 
       // Start operation and cancel quickly
-      const promise = globTool.execute({
+      const promise = globTool.run({
         pattern: '**/*',
         path: tempDir,
       }, context);
@@ -513,7 +513,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
 
       for (const pattern of malformedPatterns) {
         try {
-          const result = await globTool.execute({
+          const result = await globTool.run({
             pattern,
             path: tempDir,
           });
@@ -537,7 +537,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'empty.txt', '');
       await createTestFile(tempDir, 'nonempty.txt', 'content');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.txt',
         path: tempDir,
       });
@@ -556,7 +556,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'LICENSE', 'license content');
       await createTestFile(tempDir, 'Makefile', 'makefile content');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*',
         path: tempDir,
       });
@@ -575,7 +575,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
       await createTestFile(tempDir, 'backup.sql.bak', 'backup');
       await createTestFile(tempDir, 'config.json.template', 'template');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.*',
         path: tempDir,
       });
@@ -597,7 +597,7 @@ describe('GlobTool Edge Cases and Stress Tests', () => {
 
       const file2 = await createTestFile(tempDir, 'second.txt', 'second');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.txt',
         path: tempDir,
       });

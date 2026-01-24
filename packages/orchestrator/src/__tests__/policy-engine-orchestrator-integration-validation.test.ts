@@ -15,7 +15,7 @@ import type {
   ApexConfig,
   PolicyCheckResult,
   PolicyEngine as IPolicyEngine,
-  ApexOrchestratorOptions,
+  OrchestratorOptions,
 } from '@apexcli/core';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -100,13 +100,13 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
       // Should not throw when PolicyEngine is provided
       expect(() => {
-        const orchestrator = new ApexOrchestrator(testProjectPath, options);
+        const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
         expect(orchestrator).toBeDefined();
       }).not.toThrow();
     });
@@ -124,11 +124,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       // Access the private field for testing purposes
       const storedPolicyEngine = (orchestrator as any).policyEngine;
@@ -136,10 +136,10 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
     });
 
     it('should work when PolicyEngine is not provided (optional)', () => {
-      const options: ApexOrchestratorOptions = {};
+      const options: OrchestratorOptions = {};
 
       expect(() => {
-        const orchestrator = new ApexOrchestrator(testProjectPath, options);
+        const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
         expect(orchestrator).toBeDefined();
 
         const policyEngine = (orchestrator as any).policyEngine;
@@ -162,12 +162,12 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
 
       const realPolicyEngine = new PolicyEngine(config);
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: realPolicyEngine,
       };
 
       expect(() => {
-        const orchestrator = new ApexOrchestrator(testProjectPath, options);
+        const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
         expect(orchestrator).toBeDefined();
 
         const storedEngine = (orchestrator as any).policyEngine;
@@ -203,11 +203,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       // Mock the Claude query method to track execution order
       const mockQuery = vi.fn().mockResolvedValue({
@@ -263,11 +263,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       const mockQuery = vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: 'Context test response' }],
@@ -338,11 +338,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       const mockQuery = vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: 'This should not execute' }],
@@ -400,11 +400,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       const mockQuery = vi.fn().mockImplementation(async () => {
         executionOrder.push('claude-query');
@@ -472,11 +472,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       const mockQuery = vi.fn().mockImplementation(async () => {
         hookEvents.push({ event: 'claude-query-start', timestamp: Date.now() });
@@ -538,11 +538,11 @@ describe('PolicyEngine Integration - Acceptance Criteria Validation', () => {
         clearPolicies: vi.fn(),
       };
 
-      const options: ApexOrchestratorOptions = {
+      const options: OrchestratorOptions = {
         policyEngine: mockPolicyEngine,
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
       const mockQuery = vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: 'Should not execute due to policy hook failure' }],

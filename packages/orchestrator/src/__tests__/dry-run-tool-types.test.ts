@@ -75,7 +75,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       }
     };
   }),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 describe('Dry-Run Tool Types Behavior Tests', () => {
   let tempDir: string;
@@ -167,7 +168,7 @@ Implement solutions using various tools
 `;
     await writeFile(join(apexDir, 'agents', 'developer.md'), developerAgentContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
 
     // Get reference to the mocked function

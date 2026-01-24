@@ -7,9 +7,16 @@ import { MCPServerManager } from '../mcp/server-manager';
 import type { ApexConfig } from '@apexcli/core';
 
 // Mock external dependencies
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');
@@ -27,7 +34,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     off: vi.fn(),
     destroy: vi.fn(),
   })),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 const createTestConfig = (mcpConfig?: any): ApexConfig => ({
   version: '1.0',
@@ -87,7 +95,7 @@ describe('MCP Integration Tests', () => {
       },
     }));
 
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
   });
 
   afterEach(async () => {
@@ -194,7 +202,7 @@ describe('MCP Integration Tests', () => {
         },
       }));
 
-      const newOrchestrator = new ApexOrchestrator(tempDir);
+      const newOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       await expect(newOrchestrator.listMcpMarketplaceEntries()).rejects.toThrow();
     });
@@ -216,7 +224,7 @@ describe('MCP Integration Tests', () => {
       await orchestrator.installMcpServer('persistent-server');
 
       // Create new orchestrator instance
-      const newOrchestrator = new ApexOrchestrator(tempDir);
+      const newOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       // Should see the installed server
       const installedServers = await newOrchestrator.listMcpServers();
@@ -259,7 +267,7 @@ describe('MCP Integration Tests', () => {
         },
       }));
 
-      const shortCacheOrchestrator = new ApexOrchestrator(tempDir);
+      const shortCacheOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       const initialServers = [createMockMarketplaceEntry('refresh-test-1')];
       await fs.writeFile(marketplacePath, JSON.stringify(initialServers), 'utf-8');
@@ -444,7 +452,7 @@ describe('MCP Integration Tests', () => {
         servers: {},
       }));
 
-      const disabledOrchestrator = new ApexOrchestrator(tempDir);
+      const disabledOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       // Should return empty arrays when disabled
       expect(await disabledOrchestrator.listMcpServers()).toEqual([]);
@@ -462,7 +470,7 @@ describe('MCP Integration Tests', () => {
         },
       }));
 
-      const enabledOrchestrator = new ApexOrchestrator(tempDir);
+      const enabledOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       // Create marketplace
       const mockServers = [createMockMarketplaceEntry('enable-test')];

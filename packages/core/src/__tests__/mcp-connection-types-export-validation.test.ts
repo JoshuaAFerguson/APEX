@@ -30,10 +30,8 @@ describe('MCP Connection Types Export Validation', () => {
 
       const testConfig: MCPConnectionConfig = {
         maxRetries: 5,
-        timeoutMs: 30000,
-        connectTimeoutMs: 5000,
-        readTimeoutMs: 120000,
-        writeTimeoutMs: 30000,
+        requestTimeoutMs: 30000,
+        connectionTimeoutMs: 5000,
         idleTimeoutMs: 300000,
         poolSize: 2,
         healthCheckIntervalMs: 60000,
@@ -52,13 +50,13 @@ describe('MCP Connection Types Export Validation', () => {
     it('should handle partial configuration with defaults', () => {
       const partialConfig = MCPConnectionConfigSchema.parse({
         maxRetries: 2,
-        timeoutMs: 15000,
+        requestTimeoutMs: 15000,
       });
 
       // Type should be assignable
       const typedConfig: MCPConnectionConfig = partialConfig;
       expect(typedConfig.maxRetries).toBe(2);
-      expect(typedConfig.timeoutMs).toBe(15000);
+      expect(typedConfig.requestTimeoutMs).toBe(15000);
       expect(typedConfig.poolSize).toBe(1); // Default value
     });
   });
@@ -119,10 +117,9 @@ describe('MCP Connection Types Export Validation', () => {
         lastActivityAt: new Date(),
         reconnectAttempts: 1,
         metrics: {
-          requestCount: 42,
-          errorCount: 1,
-          averageResponseTimeMs: 150,
-          bytesTransferred: 1024,
+          totalRequests: 42,
+          successfulRequests: 41,
+          failedRequests: 1,
           bytesSent: 512,
           bytesReceived: 512,
           uptimeMs: 60000,
@@ -132,7 +129,7 @@ describe('MCP Connection Types Export Validation', () => {
       const result = createConnectionInfo(testInfo);
       expect(result.serverId).toBe('export-test-server');
       expect(result.state).toBe('connected');
-      expect(result.metrics?.requestCount).toBe(42);
+      expect(result.metrics?.totalRequests).toBe(42);
     });
 
     it('should support backwards compatibility alias MCPConnection', () => {
@@ -217,7 +214,7 @@ describe('MCP Connection Types Export Validation', () => {
       // Test connection config
       const configData = {
         maxRetries: 3,
-        timeoutMs: 30000,
+        requestTimeoutMs: 30000,
         poolSize: 2,
         healthCheckIntervalMs: 60000,
       };
@@ -313,7 +310,7 @@ describe('MCP Connection Types Export Validation', () => {
     it('should provide meaningful error messages for invalid connection config', () => {
       const invalidConfig = {
         maxRetries: -1, // Invalid: negative retries
-        timeoutMs: 30000,
+        requestTimeoutMs: 30000,
         poolSize: 0, // Invalid: zero pool size
       };
 
@@ -398,9 +395,9 @@ describe('MCP Connection Types Export Validation', () => {
         },
         state: 'connected',
         metrics: {
-          requestCount: -1, // Invalid: negative count
-          errorCount: 2.5, // Invalid: non-integer
-          averageResponseTimeMs: 150,
+          totalRequests: -1, // Invalid: negative count
+          failedRequests: 2.5, // Invalid: non-integer
+          successfulRequests: 150,
         },
       };
 
@@ -409,11 +406,11 @@ describe('MCP Connection Types Export Validation', () => {
       const result = MCPConnectionInfoSchema.safeParse(invalidInfo);
       expect(result.success).toBe(false);
       if (!result.success) {
-        const hasRequestCountError = result.error.issues.some(issue =>
-          issue.path.includes('requestCount'));
-        const hasErrorCountError = result.error.issues.some(issue =>
-          issue.path.includes('errorCount'));
-        expect(hasRequestCountError || hasErrorCountError).toBe(true);
+        const hasTotalRequestsError = result.error.issues.some(issue =>
+          issue.path.includes('totalRequests'));
+        const hasFailedRequestsError = result.error.issues.some(issue =>
+          issue.path.includes('failedRequests'));
+        expect(hasTotalRequestsError || hasFailedRequestsError).toBe(true);
       }
     });
   });
@@ -424,10 +421,8 @@ describe('MCP Connection Types Export Validation', () => {
 
       // Verify all expected defaults
       expect(config.maxRetries).toBe(3);
-      expect(config.timeoutMs).toBe(30000);
-      expect(config.connectTimeoutMs).toBe(5000);
-      expect(config.readTimeoutMs).toBe(120000);
-      expect(config.writeTimeoutMs).toBe(30000);
+      expect(config.requestTimeoutMs).toBe(30000);
+      expect(config.connectionTimeoutMs).toBe(10000);
       expect(config.idleTimeoutMs).toBe(300000);
       expect(config.poolSize).toBe(1);
       expect(config.healthCheckIntervalMs).toBe(30000);

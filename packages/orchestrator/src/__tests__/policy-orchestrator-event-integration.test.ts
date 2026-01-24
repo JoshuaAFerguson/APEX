@@ -124,7 +124,7 @@ describe('Policy Orchestrator Event Integration', () => {
     const options: OrchestratorOptions = {
       projectPath,
     };
-    orchestrator = new ApexOrchestrator(options);
+    orchestrator = new ApexOrchestrator({ projectPath: options });
     await orchestrator.initialize();
   });
 

@@ -21,7 +21,7 @@ import {
   loadValidToolFixtures,
   loadEdgeCaseFixtures,
   validateToolConfig,
-} from '@apexcli/core/src/__tests__/fixtures/custom-tools/index.js';
+} from '../../../core/src/__tests__/fixtures/custom-tools/index.js';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs/promises';

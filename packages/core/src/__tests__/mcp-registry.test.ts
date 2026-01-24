@@ -16,7 +16,13 @@ import {
 import type { MCPMarketplaceEntry, MCPServerConfig } from '../types.js';
 
 // Mock fs to control file system operations
-vi.mock('fs');
+vi.mock('fs', () => {
+  const readFileSyncMock = vi.fn();
+  return {
+    readFileSync: readFileSyncMock,
+    default: { readFileSync: readFileSyncMock },
+  };
+});
 const mockReadFileSync = vi.mocked(readFileSync);
 
 describe('MCPRegistry', () => {

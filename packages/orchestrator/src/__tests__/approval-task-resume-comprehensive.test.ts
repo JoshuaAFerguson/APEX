@@ -23,19 +23,36 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Mock the query function
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Mock fs operations
-vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
-  mkdirSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  readFileSync: vi.fn(() => ''),
-  readdirSync: vi.fn(() => []),
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+      rmdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
 describe('Approval Resolution and Task Resume - Comprehensive Tests', () => {
   let orchestrator: ApexOrchestrator;

@@ -208,7 +208,7 @@ describe('GlobTool Integration Tests', () => {
       const registry = getToolRegistry();
       const tool = registry.get('Glob') as GlobTool;
 
-      const result = await tool.execute({
+      const result = await tool.run({
         pattern: '*.json',
         path: tempDir,
       });
@@ -287,7 +287,7 @@ describe('GlobTool Integration Tests', () => {
       const readTool = registry.get('Read') as ReadTool;
 
       // First, find TypeScript files
-      const globResult = await globTool.execute({
+      const globResult = await globTool.run({
         pattern: 'src/**/*.ts',
         path: tempDir,
       });
@@ -296,7 +296,7 @@ describe('GlobTool Integration Tests', () => {
 
       // Then read the contents of the first found file
       const firstFile = globResult.files[0];
-      const readResult = await readTool.execute({
+      const readResult = await readTool.run({
         file_path: firstFile.path,
       });
 
@@ -323,7 +323,7 @@ describe('GlobTool Integration Tests', () => {
       });
 
       // Find it using glob
-      const globResult = await globTool.execute({
+      const globResult = await globTool.run({
         pattern: '*.ts',
         path: tempDir,
       });
@@ -345,7 +345,7 @@ describe('GlobTool Integration Tests', () => {
         workingDirectory: tempDir,
       };
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.json',
         path: '.',  // Relative path
       }, context);
@@ -364,19 +364,19 @@ describe('GlobTool Integration Tests', () => {
       const globTool = new GlobTool();
 
       // Step 1: Find all source files
-      const sourceFiles = await globTool.execute({
+      const sourceFiles = await globTool.run({
         pattern: 'src/**/*.ts',
         path: tempDir,
       });
 
       // Step 2: Find all test files
-      const testFiles = await globTool.execute({
+      const testFiles = await globTool.run({
         pattern: 'tests/**/*.test.ts',
         path: tempDir,
       });
 
       // Step 3: Find all documentation files
-      const docFiles = await globTool.execute({
+      const docFiles = await globTool.run({
         pattern: 'docs/**/*.md',
         path: tempDir,
       });
@@ -398,7 +398,7 @@ describe('GlobTool Integration Tests', () => {
       const globTool = new GlobTool();
 
       // Find TypeScript implementation files (exclude tests)
-      const implFiles = await globTool.execute({
+      const implFiles = await globTool.run({
         pattern: 'src/**/*.ts',
         path: tempDir,
       });
@@ -408,7 +408,7 @@ describe('GlobTool Integration Tests', () => {
         const relativeImplPath = path.relative(path.join(tempDir, 'src'), implFile.path);
         const testPattern = `**/${path.basename(implFile.basename)}.test.ts`;
 
-        return globTool.execute({
+        return globTool.run({
           pattern: testPattern,
           path: path.join(tempDir, 'tests'),
         });
@@ -429,19 +429,19 @@ describe('GlobTool Integration Tests', () => {
       const globTool = new GlobTool();
 
       // Find source files
-      const sourceFiles = await globTool.execute({
+      const sourceFiles = await globTool.run({
         pattern: 'src/**/*.ts',
         path: tempDir,
       });
 
       // Find corresponding build outputs
-      const buildFiles = await globTool.execute({
+      const buildFiles = await globTool.run({
         pattern: 'dist/**/*.js',
         path: tempDir,
       });
 
       // Find configuration files
-      const configFiles = await globTool.execute({
+      const configFiles = await globTool.run({
         pattern: '{*.json,config/**/*.json}',
         path: tempDir,
       });
@@ -476,7 +476,7 @@ describe('GlobTool Integration Tests', () => {
       await Promise.all(additionalFiles);
 
       const startTime = Date.now();
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.ts',
         path: tempDir,
       });
@@ -492,7 +492,7 @@ describe('GlobTool Integration Tests', () => {
       const globTool = new GlobTool();
 
       // Test with very broad pattern on a large directory
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -512,7 +512,7 @@ describe('GlobTool Integration Tests', () => {
       const times: number[] = [];
 
       for (let i = 0; i < executions; i++) {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern,
           path: tempDir,
         });

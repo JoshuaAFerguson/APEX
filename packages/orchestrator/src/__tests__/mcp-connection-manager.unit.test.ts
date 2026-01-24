@@ -38,7 +38,7 @@ describe('MCPConnectionManager', () => {
   const TEST_PROJECT_PATH = '/test/project';
   const TEST_SERVER_ID = 'test-server';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset mocks
     vi.clearAllMocks();
 

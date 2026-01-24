@@ -12,15 +12,16 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 // Mock child_process for git/gh commands
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
-    if (typeof opts === 'function') {
-      callback = opts;
-    }
-    const cb = callback as (error: Error | null, result?: { stdout: string }) => void;
-    cb(null, { stdout: '' });
-  }),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 describe('Tool Execution Timing Edge Cases', () => {
   let orchestrator: ApexOrchestrator;

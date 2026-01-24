@@ -409,7 +409,6 @@ describe('MCPServerConfig Schema Tests', () => {
         {},
         [],
         null,
-        undefined,
         true,
         false,
       ];
@@ -624,9 +623,9 @@ describe('MCPServerConfig Schema Tests', () => {
         null,
         true,
         false,
-        { maxRetries: -1 }, // Invalid connection config
-        { timeoutMs: -5000 }, // Invalid connection config
-        { poolSize: 0 }, // Invalid connection config
+        { maxRetries: -1 }, // Invalid: min(0)
+        { connectionTimeoutMs: -5000 }, // Invalid: min(0)
+        { poolSize: 0 }, // Invalid: min(1)
       ];
 
       invalidConnections.forEach(connection => {
@@ -1079,10 +1078,8 @@ describe('MCPServerConfig Schema Tests', () => {
         url: 'https://api.example.com',
         connection: {
           maxRetries: 5,
-          timeoutMs: 45000,
-          connectTimeoutMs: 10000,
-          readTimeoutMs: 120000,
-          writeTimeoutMs: 60000,
+          requestTimeoutMs: 45000,
+          connectionTimeoutMs: 10000,
           idleTimeoutMs: 300000,
           poolSize: 2,
           healthCheckIntervalMs: 60000,
@@ -1098,7 +1095,7 @@ describe('MCPServerConfig Schema Tests', () => {
 
       // Verify connection is properly parsed according to MCPConnectionConfigSchema
       expect(result.connection?.maxRetries).toBe(5);
-      expect(result.connection?.timeoutMs).toBe(45000);
+      expect(result.connection?.requestTimeoutMs).toBe(45000);
       expect(result.connection?.poolSize).toBe(2);
       expect(result.connection?.heartbeatEnabled).toBe(true);
     });

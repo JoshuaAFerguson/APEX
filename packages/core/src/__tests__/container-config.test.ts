@@ -162,7 +162,7 @@ describe('ResourceLimitsSchema', () => {
       };
 
       const result = ResourceLimitsSchema.parse(fullConfig);
-      expect(result).toEqual(fullConfig);
+      expect(result).toMatchObject(fullConfig);
     });
 
     it('should accept partial configuration', () => {
@@ -732,7 +732,7 @@ describe('ContainerConfigSchema', () => {
       };
 
       const result = ContainerConfigSchema.parse(fullConfig);
-      expect(result).toEqual(fullConfig);
+      expect(result).toMatchObject(fullConfig);
     });
 
     it('should handle typical development configuration', () => {

@@ -14,9 +14,13 @@ import { ImageBuilder, type ImageBuildResult } from '../image-builder';
 import { ContainerConfig } from '../types';
 
 // Mock modules
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  return {
+    exec: execMock,
+    default: { exec: execMock },
+  };
+});
 
 vi.mock('fs/promises', () => ({
   access: vi.fn(),

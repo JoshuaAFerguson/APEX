@@ -437,8 +437,8 @@ describe('PermissionStore Extended Features', () => {
       expect(retrievedAccess).toEqual(newDirAccess);
 
       // Verify other config properties were preserved
-      const permission = await store.getExtendedPermission({ tool: 'Write' });
-      const config = permission?.config as FilesystemToolConfig;
+      const retrieved = await store.getExtendedPermission({ tool: 'Write' });
+      const config = retrieved?.config as FilesystemToolConfig;
       expect(config?.maxFileSize).toBe(1024);
       expect(config?.enabled).toBe(true);
     });

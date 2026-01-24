@@ -69,7 +69,7 @@ describe('Snapshot Tool Integration Tests', () => {
     testDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'apex-snapshot-tool-test-'));
 
     // Initialize orchestrator (this will create stores)
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
 
     // Get store references

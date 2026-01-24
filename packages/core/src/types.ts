@@ -2314,7 +2314,7 @@ export type MCPConnectionConfig = z.infer<typeof MCPConnectionConfigSchema>;
  */
 export const MCPEnvironmentVarSchema = z.object({
   /** Name of the environment variable (e.g., 'OPENAI_API_KEY') */
-  name: z.string().min(1, 'Environment variable name is required'),
+  name: z.string().trim().min(1, 'Environment variable name is required'),
   /** Human-readable description of the variable's purpose */
   description: z.string().optional(),
   /** Whether the variable is required for the server to function */
@@ -2338,11 +2338,11 @@ export type MCPEnvironmentVar = z.infer<typeof MCPEnvironmentVarSchema>;
  */
 export const MCPServerConfigSchema = z.object({
   /** Display name for the server */
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   /** Connection type: stdio (subprocess), http, sse (server-sent events), or sdk (direct) */
   type: z.enum(['stdio', 'http', 'sse', 'sdk']).optional().default('stdio'),
   /** Command to execute for stdio connections */
-  command: z.string().optional(),
+  command: z.string().trim().min(1).optional(),
   /** Arguments to pass to the command */
   args: z.array(z.string()).optional(),
   /** Environment variables for the server process (simple key-value pairs) */
@@ -2350,7 +2350,7 @@ export const MCPServerConfigSchema = z.object({
   /** Structured environment variable definitions with metadata */
   envVars: z.array(MCPEnvironmentVarSchema).optional(),
   /** URL for http/sse connections */
-  url: z.string().optional(),
+  url: z.string().trim().min(1).optional(),
   /** HTTP headers for http/sse connections */
   headers: z.record(z.string()).optional(),
   /** Whether to start this server automatically when MCP is initialized */
@@ -2491,13 +2491,13 @@ export type MCPConfig = z.infer<typeof MCPConfigSchema>;
  */
 export const MCPTemplateSchema = z.object({
   /** Unique identifier for the template (e.g., 'filesystem', 'github', 'postgres') */
-  id: z.string().min(1, 'Template ID is required'),
+  id: z.string().trim().min(1, 'Template ID is required'),
   /** Human-readable display name for the template */
-  name: z.string().min(1, 'Template name is required'),
+  name: z.string().trim().min(1, 'Template name is required'),
   /** Description of what the MCP server does */
-  description: z.string().min(1, 'Template description is required'),
+  description: z.string().trim().min(1, 'Template description is required'),
   /** NPM package name for the MCP server (e.g., '@modelcontextprotocol/server-filesystem') */
-  package: z.string().min(1, 'Package name is required'),
+  package: z.string().trim().min(1, 'Package name is required'),
   /** Base server configuration with pre-filled defaults */
   config: MCPServerConfigSchema.partial(),
   /** Environment variables required or used by this server template */
@@ -2532,11 +2532,11 @@ export type MCPServerTemplate = MCPTemplate;
  */
 export const MCPServerSchema = z.object({
   /** Unique name identifier for the MCP server */
-  name: z.string().min(1, 'MCP server name is required'),
+  name: z.string().trim().min(1, 'MCP server name is required'),
   /** NPM package name or installation source */
-  package: z.string().min(1, 'Package name is required'),
+  package: z.string().trim().min(1, 'Package name is required'),
   /** Command to execute the MCP server (e.g., 'npx', 'node', path to binary) */
-  command: z.string().min(1, 'Command is required'),
+  command: z.string().trim().min(1, 'Command is required'),
   /** Arguments to pass to the command */
   args: z.array(z.string()).optional().default([]),
   /** Environment variables required by the server (simple key-value pairs) */
@@ -2544,7 +2544,7 @@ export const MCPServerSchema = z.object({
   /** Structured environment variable definitions with metadata */
   envVars: z.array(MCPEnvironmentVarSchema).optional().default([]),
   /** Semantic version of the MCP server package */
-  version: z.string().min(1, 'Version is required'),
+  version: z.string().trim().min(1, 'Version is required'),
 });
 export type MCPServer = z.infer<typeof MCPServerSchema>;
 
@@ -2567,15 +2567,15 @@ export type MCPInstallationStatus = z.infer<typeof MCPInstallationStatusSchema>;
  */
 export const MCPInstallationSchema = z.object({
   /** Unique identifier for this installation instance */
-  id: z.string().min(1, 'Installation ID is required'),
+  id: z.string().trim().min(1, 'Installation ID is required'),
   /** Reference to the MCPServer this installation is based on */
-  serverId: z.string().min(1, 'Server ID is required'),
+  serverId: z.string().trim().min(1, 'Server ID is required'),
   /** Timestamp when the server was installed */
   installedAt: z.date(),
   /** Current installation status */
   status: MCPInstallationStatusSchema,
   /** Path to the installation's configuration file */
-  configPath: z.string().min(1, 'Config path is required'),
+  configPath: z.string().trim().min(1, 'Config path is required'),
 });
 export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
 
@@ -2835,9 +2835,9 @@ export type MCPConnectionState = z.infer<typeof MCPConnectionStateSchema>;
  */
 export const MCPConnectionInfoSchema = z.object({
   /** Server identifier (config key name) */
-  serverId: z.string().min(1),
+  serverId: z.string().trim().min(1),
   /** Server name from config */
-  serverName: z.string().min(1),
+  serverName: z.string().trim().min(1),
   /** Server configuration */
   config: MCPServerConfigSchema,
   /** Current connection state */
@@ -2916,8 +2916,8 @@ export type MCPConnectionEventType = z.infer<typeof MCPConnectionEventTypeSchema
  */
 export const MCPConnectionEventSchema = z.object({
   type: MCPConnectionEventTypeSchema,
-  serverId: z.string().min(1),
-  serverName: z.string().min(1),
+  serverId: z.string().trim().min(1),
+  serverName: z.string().trim().min(1),
   previousState: MCPConnectionStateSchema,
   newState: MCPConnectionStateSchema,
   timestamp: z.date(),
@@ -3371,8 +3371,11 @@ export const MCPServerV050Schema = z.object({
   version: z.string().min(1, 'Version is required'),
   /** Author or maintainer of the server */
   author: z.string().optional(),
-  /** URL to the source code repository */
-  repository: z.string().url().optional(),
+  /** URL to the source code repository (must be http or https) */
+  repository: z.string().url().refine(
+    (url) => url.startsWith('http://') || url.startsWith('https://'),
+    { message: 'Repository URL must use http or https protocol' }
+  ).optional(),
   /** List of tools provided by this MCP server */
   tools: z.array(z.string()).default([]),
   /** Categories for organizing servers */
@@ -3580,6 +3583,8 @@ export const ApexConfigSchema = z.object({
   guardrails: z.lazy(() => GuardrailConfigSchema).optional(),
   /** Tool aliases for reusable tool configurations (v0.5.0) */
   aliases: z.array(ToolAliasSchema).optional().default([]),
+  /** Self-repair loop configuration for autonomous error recovery (v0.5.0) */
+  repair: z.lazy(() => RepairLoopConfigSchema).optional(),
 });
 export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 
@@ -4213,15 +4218,15 @@ export type ApprovalAction = z.infer<typeof ApprovalActionSchema>;
  */
 export const ApprovalRequestSchema = z.object({
   /** Unique identifier for this approval request (new field) */
-  requestId: z.string().min(1, 'Request ID is required'),
+  requestId: z.string().min(1).optional(),
   /** ID of the task requiring approval */
   taskId: z.string().min(1, 'Task ID is required'),
   /** Description of what this approval is for */
-  description: z.string().min(1, 'Description is required'),
+  description: z.string().optional(),
   /** Impact on resources (e.g., high, medium, low) */
   resourceImpact: z.string().optional(),
   /** Reason for requiring approval */
-  reason: z.string().min(1, 'Reason is required'),
+  reason: z.string().optional(),
 
   // Legacy fields for backward compatibility
   /** Unique identifier for this approval request (legacy field - use requestId) */
@@ -4250,6 +4255,10 @@ export const ApprovalRequestSchema = z.object({
   changesSummary: z.string().optional(),
   /** Files affected by the pending changes */
   affectedFiles: z.array(z.string()).optional(),
+  /** Priority of the approval request */
+  priority: z.string().optional(),
+  /** Additional metadata about the approval request */
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
 
@@ -4259,11 +4268,11 @@ export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
  */
 export const ApprovalResponseSchema = z.object({
   /** Unique identifier for this approval request (new field) */
-  requestId: z.string().min(1, 'Request ID is required'),
+  requestId: z.string().min(1).optional(),
   /** ID of the task that received the approval response */
   taskId: z.string().min(1, 'Task ID is required'),
   /** Response status (approved, denied, info-requested) */
-  response: z.enum(['approved', 'denied', 'info-requested']),
+  response: z.enum(['approved', 'denied', 'info-requested']).optional(),
   /** Optional message explaining the decision */
   message: z.string().optional(),
 
@@ -4278,14 +4287,24 @@ export const ApprovalResponseSchema = z.object({
   approver: z.string().min(1, 'Approver is required'),
   /** Comment or reason for the decision */
   comment: z.string().optional(),
+  /** Reason for the decision */
+  reason: z.string().optional(),
   /** Timestamp when the response was provided */
   timestamp: z.date(),
   /** Timestamp when the approval was originally requested */
-  requestedAt: z.date(),
+  requestedAt: z.date().optional(),
   /** Duration in milliseconds between request and response */
   responseTimeMs: z.number().int().min(0).optional(),
   /** Current workflow stage */
   stage: z.string().optional(),
+  /** Agent that handled the approval */
+  agent: z.string().optional(),
+  /** Priority of the approval response */
+  priority: z.string().optional(),
+  /** Additional context */
+  context: z.record(z.string(), z.unknown()).optional(),
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
   /** Number of approvals received so far */
   approvalsReceived: z.number().int().min(0).optional(),
   /** Number of approvals required */
@@ -4323,9 +4342,9 @@ export const ApprovalStateSchema = z.object({
   /** Agent that triggered the approval request */
   agent: z.string().optional(),
   /** Number of approvals received (for multi-approval gates) */
-  approvalsReceived: z.number().int().min(0).optional().default(0),
+  approvalsReceived: z.number().int().min(0).optional(),
   /** Number of approvals required */
-  approvalsRequired: z.number().int().min(1).optional().default(1),
+  approvalsRequired: z.number().int().min(1).optional(),
   /** Timeout configuration (in minutes, undefined = no timeout) */
   timeoutMinutes: z.number().min(1).optional(),
   /** When the approval will timeout (calculated from requestedAt + timeoutMinutes) */
@@ -4491,11 +4510,19 @@ export const ApprovalDecisionRequestSchema = z.object({
   approvalId: z.string().min(1, 'Approval ID is required'),
   /** Who is making the decision */
   approver: z.string().min(1, 'Approver is required'),
-  /** Decision: approved, denied, or info-requested */
-  decision: z.enum(['approved', 'denied', 'info-requested']),
+  /** Decision: approved, denied, or info-requested (derived from approved if not set) */
+  decision: z.enum(['approved', 'denied', 'info-requested']).optional(),
+  /** Whether the request is approved */
+  approved: z.boolean(),
   /** Optional comments explaining the decision */
   comments: z.string().optional(),
-});
+  /** Legacy singular comment field */
+  comment: z.string().optional(),
+}).transform(data => ({
+  ...data,
+  decision: data.decision || (data.approved ? 'approved' as const : 'denied' as const),
+  comments: data.comments || data.comment,
+}));
 export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequestSchema>;
 
 /**
@@ -4509,7 +4536,9 @@ export const ApprovalDecisionResponseSchema = z.object({
   /** Error message if the decision failed */
   error: z.string().optional(),
   /** Whether the task will now proceed (all approvals received) */
-  willProceed: z.boolean(),
+  willProceed: z.boolean().optional(),
+  /** Whether the task will now proceed (alias) */
+  taskWillProceed: z.boolean().optional(),
 });
 export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponseSchema>;
 
@@ -7836,6 +7865,41 @@ export const FixAttemptConfigSchema = z.object({
   similarityThreshold: z.number().min(0).max(1).default(0.8),
 });
 export type FixAttemptConfig = z.infer<typeof FixAttemptConfigSchema>;
+
+// ============================================================================
+// Self-Repair Loop Configuration (v0.5.0)
+// ============================================================================
+
+/**
+ * Configuration for the autonomous self-repair loop.
+ * When a workflow stage fails, the repair loop diagnoses the error,
+ * generates a fix, applies it, and validates the result.
+ */
+export const RepairLoopConfigSchema = z.object({
+  /** Whether the self-repair loop is enabled (default: true) */
+  enabled: z.boolean().default(true),
+  /** Fix attempt configuration (retry limits, backoff, similarity) */
+  fixAttempts: FixAttemptConfigSchema.default({}),
+  /** Maximum total repair time per stage in milliseconds (default: 300000 = 5 min) */
+  maxRepairTimeMs: z.number().min(0).default(300000),
+  /** Maximum cost in USD for repair attempts per stage (default: 2.0) */
+  maxRepairCostPerStage: z.number().min(0).default(2.0),
+  /** Model to use for diagnosis queries (default: 'sonnet') */
+  diagnosisModel: AgentModelSchema.default('sonnet'),
+  /** Model to use for repair agent queries (default: 'sonnet') */
+  repairModel: AgentModelSchema.default('sonnet'),
+  /** Whether to capture file snapshots before/after each repair attempt (default: true) */
+  captureSnapshots: z.boolean().default(true),
+  /** Whether to re-run the failed stage as validation after each fix (default: true) */
+  validateAfterFix: z.boolean().default(true),
+  /** Error categories that the repair loop should NOT attempt to fix */
+  skipCategories: z.array(z.string()).default(['permission', 'network', 'config']),
+  /** Whether to attempt repair on stages that ran in parallel (default: true) */
+  repairParallelStages: z.boolean().default(true),
+  /** Maximum number of files modifiable in a single repair cycle (default: 10) */
+  maxFilesPerRepair: z.number().min(1).default(10),
+});
+export type RepairLoopConfig = z.infer<typeof RepairLoopConfigSchema>;
 
 /**
  * Unique identifier for an error instance

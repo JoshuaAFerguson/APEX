@@ -110,9 +110,10 @@ describe('Approval Timeout and Error Scenarios - Acceptance Criteria Validation'
       console.log('✓ Concurrent approval attempts are handled correctly');
     });
 
-    it('should verify TaskStore methods for orphaned approval handling exist', () => {
+    it('should verify TaskStore methods for orphaned approval handling exist', async () => {
       const TaskStore = require('../store').TaskStore;
-      const store = new TaskStore(':memory:');
+      const store = new TaskStore('/tmp/test-acceptance');
+      await store.initialize();
 
       // Verify methods exist
       expect(typeof store.getOrphanedApprovalStates).toBe('function');

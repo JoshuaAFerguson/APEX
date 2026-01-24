@@ -50,7 +50,7 @@ git:
 
     await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
   });
 

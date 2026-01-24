@@ -18,7 +18,7 @@ import type {
   PolicyCheckResult,
   PolicyCheckContext,
   PolicyEngine as IPolicyEngine,
-  ApexOrchestratorOptions,
+  OrchestratorOptions,
   Task,
   PolicyViolation,
 } from '@apexcli/core';
@@ -279,11 +279,11 @@ describe('PolicyEngine - Error Handling and Recovery', () => {
   it('should handle policy engine timeouts gracefully', async () => {
     const timeoutPolicyEngine = createFailurePronePolicyEngine('timeout');
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: timeoutPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     // Mock query with timeout to prevent hanging tests
     const mockQuery = vi.fn().mockResolvedValue({
@@ -320,11 +320,11 @@ describe('PolicyEngine - Error Handling and Recovery', () => {
   it('should recover from policy engine errors', async () => {
     const errorPolicyEngine = createFailurePronePolicyEngine('error');
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: errorPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Response after policy error' }],
@@ -353,11 +353,11 @@ describe('PolicyEngine - Error Handling and Recovery', () => {
   it('should handle intermittent policy engine failures', async () => {
     const intermittentPolicyEngine = createFailurePronePolicyEngine('intermittent');
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: intermittentPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Intermittent test response' }],
@@ -393,11 +393,11 @@ describe('PolicyEngine - Error Handling and Recovery', () => {
   it('should handle slow policy engine responses', async () => {
     const slowPolicyEngine = createFailurePronePolicyEngine('slow');
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: slowPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Slow response test' }],
@@ -447,11 +447,11 @@ describe('PolicyEngine - Resource Management and Performance', () => {
   it('should handle high concurrency policy checks efficiently', async () => {
     const resourceTracker = createResourceTrackingPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: resourceTracker,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Concurrent test response' }],
@@ -498,11 +498,11 @@ describe('PolicyEngine - Resource Management and Performance', () => {
   it('should cleanup resources properly after policy checks', async () => {
     const resourceTracker = createResourceTrackingPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: resourceTracker,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Cleanup test response' }],
@@ -542,11 +542,11 @@ describe('PolicyEngine - Resource Management and Performance', () => {
   it('should maintain performance under stress conditions', async () => {
     const resourceTracker = createResourceTrackingPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: resourceTracker,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Stress test response' }],
@@ -693,11 +693,11 @@ describe('PolicyEngine - Real-world Workflow Scenarios', () => {
       clearPolicies: vi.fn(),
     };
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: workflowPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Workflow test response' }],
@@ -807,11 +807,11 @@ describe('PolicyEngine - Real-world Workflow Scenarios', () => {
       clearPolicies: vi.fn(),
     };
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: lifecyclePolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Lifecycle test response' }],

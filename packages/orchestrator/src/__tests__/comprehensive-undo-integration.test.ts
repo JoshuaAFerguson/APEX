@@ -71,7 +71,7 @@ agents: []
 workflows: []
 `);
 
-    orchestrator = new ApexOrchestrator();
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
     await orchestrator.init(tempDir);
   });
 
@@ -335,7 +335,7 @@ workflows: []
       // Restart orchestrator (destroy and reinitialize)
       await orchestrator.destroy();
 
-      const newOrchestrator = new ApexOrchestrator();
+      const newOrchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       await newOrchestrator.init(tempDir);
 
       // Check that undo information persisted

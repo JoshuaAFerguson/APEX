@@ -6,17 +6,39 @@ import { TaskStore } from '../store';
 import { MCPServer } from '@apexcli/core';
 
 // Mock dependencies
-vi.mock('fs', () => ({
-  promises: {
-    mkdir: vi.fn(),
-    writeFile: vi.fn(),
-    unlink: vi.fn(),
-  },
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+      rmdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('../store');
 
@@ -626,7 +648,8 @@ describe('MCPInstaller - Version Management', () => {
     it('should handle satisfiesRange with complex ranges', () => {
       expect(installer.satisfiesRange('1.2.3-alpha', '^1.0.0')).toBe(true);
       expect(installer.satisfiesRange('2.0.0-alpha', '^1.0.0')).toBe(false);
-      expect(installer.satisfiesRange('1.5.0-beta', '~1.5.0')).toBe(true);
+      // 1.5.0-beta is less than 1.5.0 per semver, so it doesn't satisfy ~1.5.0
+      expect(installer.satisfiesRange('1.5.0-beta', '~1.5.0')).toBe(false);
     });
   });
 });

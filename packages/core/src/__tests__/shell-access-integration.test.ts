@@ -17,10 +17,15 @@ import { exec, spawn, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 const mockExec = vi.mocked(exec);
 const mockSpawn = vi.mocked(spawn);

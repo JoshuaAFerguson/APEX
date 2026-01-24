@@ -245,7 +245,7 @@ describe('APEX Orchestrator Browser Integration', () => {
   beforeEach(async () => {
     mockEvents = [];
 
-    orchestrator = new ApexOrchestrator(testBrowserConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testBrowserConfig });
 
     // Set up event listeners to capture orchestrator events
     orchestrator.on('task:created', (data) => mockEvents.push({ type: 'task:created', data }));

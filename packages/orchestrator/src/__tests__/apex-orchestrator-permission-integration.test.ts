@@ -69,7 +69,7 @@ git:
     it('should correctly apply autonomous preset configuration', async () => {
       await createConfigWithPreset('autonomous');
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const currentPreset = await orchestrator.getCurrentPreset();
@@ -79,7 +79,7 @@ git:
     it('should correctly apply review-all preset configuration', async () => {
       await createConfigWithPreset('review-all');
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const currentPreset = await orchestrator.getCurrentPreset();
@@ -89,7 +89,7 @@ git:
     it('should correctly apply read-only preset configuration', async () => {
       await createConfigWithPreset('read-only');
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const currentPreset = await orchestrator.getCurrentPreset();
@@ -101,7 +101,7 @@ git:
     beforeEach(async () => {
       await createConfigWithPreset('autonomous');
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
     });
 
@@ -145,7 +145,7 @@ git:
     beforeEach(async () => {
       await createConfigWithPreset('review-all');
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
     });
 
@@ -208,7 +208,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should correctly load the base preset
@@ -243,7 +243,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should use default preset
@@ -262,11 +262,11 @@ git:
       await createConfigWithPreset('autonomous');
 
       // Create first orchestrator
-      const orchestrator1 = new ApexOrchestrator(tempDir, 'localhost:8080');
+      const orchestrator1 = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator1.initialize();
 
       // Create second orchestrator (different port)
-      const orchestrator2 = new ApexOrchestrator(tempDir, 'localhost:8081');
+      const orchestrator2 = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8081' });
       await orchestrator2.initialize();
 
       try {

@@ -7,7 +7,7 @@
  * - Linting issues that indicate code quality problems
  */
 
-import { BaseAnalyzer, TaskCandidate } from './index';
+import { BaseAnalyzer, TaskCandidate } from './base-analyzer';
 import type { ProjectAnalysis } from '../idle-processor';
 import type { ComplexityHotspot, TaskPriority, CodeSmell, DuplicatePattern } from '@apexcli/core';
 

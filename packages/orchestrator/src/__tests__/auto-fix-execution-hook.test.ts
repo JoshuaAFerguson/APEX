@@ -82,7 +82,7 @@ codeQuality:
       }
     };
 
-    orchestrator = new ApexOrchestrator(projectPath, config);
+    orchestrator = new ApexOrchestrator({ projectPath: projectPath, ...config });
     await orchestrator.initialize();
     mockStore = (orchestrator as any).store;
   });
@@ -167,7 +167,7 @@ codeQuality:
         }
       };
 
-      const disabledOrchestrator = new ApexOrchestrator(projectPath, disabledConfig);
+      const disabledOrchestrator = new ApexOrchestrator({ projectPath: projectPath, ...disabledConfig });
       await disabledOrchestrator.initialize();
 
       const task = await createTestTask(disabledOrchestrator);
@@ -462,7 +462,7 @@ codeQuality:
         }
       };
 
-      const limitedOrchestrator = new ApexOrchestrator(projectPath, limitedConfig);
+      const limitedOrchestrator = new ApexOrchestrator({ projectPath: projectPath, ...limitedConfig });
       await limitedOrchestrator.initialize();
 
       const task = await createTestTask(limitedOrchestrator);

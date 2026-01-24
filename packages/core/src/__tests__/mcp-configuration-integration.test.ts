@@ -80,8 +80,8 @@ describe('MCP Configuration Integration Tests', () => {
       // 2. Define global connection configuration
       const globalConnection = MCPConnectionConfigSchema.parse({
         maxRetries: 3,
-        timeoutMs: 30000,
-        connectTimeoutMs: 10000,
+        requestTimeoutMs: 30000,
+        connectionTimeoutMs: 10000,
         poolSize: 1,
         healthCheckIntervalMs: 60000,
         heartbeatEnabled: true,
@@ -103,7 +103,7 @@ describe('MCP Configuration Integration Tests', () => {
         capabilities: filesystemTemplate.capabilities,
         connection: {
           maxRetries: 5, // Override global setting for filesystem
-          timeoutMs: 45000,
+          requestTimeoutMs: 45000,
           poolSize: 1,
         },
       });
@@ -217,7 +217,7 @@ describe('MCP Configuration Integration Tests', () => {
         autoStart: true,
         connection: {
           maxRetries: 5,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           healthCheckIntervalMs: 60000,
           heartbeatEnabled: true,
         },
@@ -234,14 +234,14 @@ describe('MCP Configuration Integration Tests', () => {
         reconnectAttempts: 0,
         lastError: undefined,
         health: {
-          status: 'healthy',
-          lastCheck: new Date('2024-01-15T10:30:00Z'),
-          responseTimeMs: 250,
+          healthy: true,
+          lastCheckAt: new Date('2024-01-15T10:30:00Z'),
+          latencyMs: 250,
         },
         metrics: {
-          requestsSent: 45,
-          responsesReceived: 45,
-          errorsCount: 0,
+          totalRequests: 45,
+          successfulRequests: 45,
+          failedRequests: 0,
           bytesSent: 12345,
           bytesReceived: 67890,
           uptimeMs: 1800000, // 30 minutes
@@ -252,8 +252,8 @@ describe('MCP Configuration Integration Tests', () => {
       expect(connectionInfo.serverId).toBe('api-server');
       expect(connectionInfo.state).toBe('connected');
       expect(connectionInfo.config.type).toBe('http');
-      expect(connectionInfo.health?.status).toBe('healthy');
-      expect(connectionInfo.metrics?.requestsSent).toBe(45);
+      expect(connectionInfo.health?.healthy).toBe(true);
+      expect(connectionInfo.metrics?.totalRequests).toBe(45);
       expect(connectionInfo.reconnectAttempts).toBe(0);
     });
 
@@ -322,7 +322,7 @@ describe('MCP Configuration Integration Tests', () => {
       // Global connection settings
       const globalConnection = MCPConnectionConfigSchema.parse({
         maxRetries: 3,
-        timeoutMs: 30000,
+        requestTimeoutMs: 30000,
         poolSize: 1,
         healthCheckIntervalMs: 60000,
         heartbeatEnabled: false,
@@ -335,7 +335,7 @@ describe('MCP Configuration Integration Tests', () => {
         command: 'node',
         connection: {
           maxRetries: 10, // Override global
-          timeoutMs: 5000, // Override global
+          requestTimeoutMs: 5000, // Override global
           poolSize: 5, // Override global
           // healthCheckIntervalMs not specified - should inherit global
           heartbeatEnabled: true, // Override global
@@ -575,7 +575,7 @@ describe('MCP Configuration Integration Tests', () => {
           capabilities: [`capability-${i}`, `shared-capability`],
           connection: {
             maxRetries: Math.min(i + 1, 10),
-            timeoutMs: 30000 + (i * 1000),
+            requestTimeoutMs: 30000 + (i * 1000),
             poolSize: Math.max(1, Math.floor(i / 10) + 1),
           },
         });
@@ -589,7 +589,7 @@ describe('MCP Configuration Integration Tests', () => {
         servers,
         connection: {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           poolSize: 1,
         },
       });
@@ -653,8 +653,8 @@ describe('MCP Configuration Integration Tests', () => {
         ],
         connection: {
           maxRetries: 5,
-          timeoutMs: 60000,
-          connectTimeoutMs: 15000,
+          requestTimeoutMs: 60000,
+          connectionTimeoutMs: 15000,
           readTimeoutMs: 45000,
           writeTimeoutMs: 30000,
           idleTimeoutMs: 600000,
@@ -713,7 +713,7 @@ describe('MCP Configuration Integration Tests', () => {
         capabilities: ['modern-features'],
         connection: {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
         },
       });
 

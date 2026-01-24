@@ -77,7 +77,7 @@ describe('Audit Logging Complete Integration', () => {
     };
 
     // Initialize orchestrator
-    orchestrator = new ApexOrchestrator(config, {
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir,
       workingDirectory: tempDir,
       silent: true,
       skipGitOps: true

@@ -46,7 +46,7 @@ describe('Tool Action Store Snapshot Integration', () => {
 
   beforeEach(async () => {
     testDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'apex-tool-action-test-'));
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
 
     taskStore = (orchestrator as any).store;

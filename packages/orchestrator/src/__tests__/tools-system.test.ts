@@ -39,11 +39,28 @@ vi.mock('playwright', () => ({
   }
 }));
 
-vi.mock('fs', () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => Buffer.from('mock-image-data')),
-  writeFileSync: vi.fn()
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+      rmdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('pixelmatch', () => ({
   default: vi.fn(() => 5) // Mock 5 different pixels

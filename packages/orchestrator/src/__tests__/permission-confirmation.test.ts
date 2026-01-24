@@ -65,7 +65,7 @@ git:
 
     await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
 
     // Set up event spy
@@ -439,7 +439,7 @@ git:
 
   describe('Error Handling', () => {
     it('should handle missing orchestrator initialization gracefully', async () => {
-      const uninitializedOrchestrator = new ApexOrchestrator(tempDir);
+      const uninitializedOrchestrator = new ApexOrchestrator({ projectPath: tempDir });
 
       // Should throw or handle gracefully when not initialized
       await expect(

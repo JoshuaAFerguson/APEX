@@ -111,7 +111,7 @@ describe('GlobTool', () => {
 
   describe('basic functionality', () => {
     it('should match all files with **/*', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -124,7 +124,7 @@ describe('GlobTool', () => {
     });
 
     it('should match TypeScript files with **/*.ts', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.ts',
         path: tempDir,
       });
@@ -139,7 +139,7 @@ describe('GlobTool', () => {
     });
 
     it('should match JavaScript files with **/*.js', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.js',
         path: tempDir,
       });
@@ -154,7 +154,7 @@ describe('GlobTool', () => {
     });
 
     it('should match test files with specific pattern', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.test.{js,ts}',
         path: tempDir,
       });
@@ -167,7 +167,7 @@ describe('GlobTool', () => {
     });
 
     it('should match files in specific directory', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'src/**/*.ts',
         path: tempDir,
       });
@@ -185,7 +185,7 @@ describe('GlobTool', () => {
 
   describe('file metadata', () => {
     it('should provide complete file metadata', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'package.json',
         path: tempDir,
       });
@@ -208,7 +208,7 @@ describe('GlobTool', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       const file2 = await createTestFile(tempDir, 'file2.txt', 'content2');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'file*.txt',
         path: tempDir,
       });
@@ -227,7 +227,7 @@ describe('GlobTool', () => {
 
   describe('pattern matching', () => {
     it('should handle glob patterns with braces', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.{ts,tsx}',
         path: tempDir,
       });
@@ -243,7 +243,7 @@ describe('GlobTool', () => {
       await createTestFile(tempDir, 'test2.txt', 'test');
       await createTestFile(tempDir, 'test3.txt', 'test');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'test[12].txt',
         path: tempDir,
       });
@@ -256,7 +256,7 @@ describe('GlobTool', () => {
     });
 
     it('should handle negation patterns', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/!(node_modules)/**/*.js',
         path: tempDir,
       });
@@ -280,7 +280,7 @@ describe('GlobTool', () => {
         // Change to temp directory
         process.chdir(tempDir);
 
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*.json',
         });
 
@@ -294,7 +294,7 @@ describe('GlobTool', () => {
     it('should resolve relative paths', async () => {
       const subDir = path.join(tempDir, 'src');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.ts',
         path: path.relative(process.cwd(), subDir),
       });
@@ -304,7 +304,7 @@ describe('GlobTool', () => {
     });
 
     it('should handle absolute paths', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.json',
         path: tempDir,
       });
@@ -320,7 +320,7 @@ describe('GlobTool', () => {
 
   describe('error handling', () => {
     it('should throw error for non-existent directory', async () => {
-      await expect(globTool.execute({
+      await expect(globTool.run({
         pattern: '*',
         path: '/non/existent/directory',
       })).rejects.toThrow('Search directory not found');
@@ -329,14 +329,14 @@ describe('GlobTool', () => {
     it('should throw error when path is a file not directory', async () => {
       const filePath = testFiles['package.json'];
 
-      await expect(globTool.execute({
+      await expect(globTool.run({
         pattern: '*',
         path: filePath,
       })).rejects.toThrow('Search path is not a directory');
     });
 
     it('should handle invalid glob patterns gracefully', async () => {
-      await expect(globTool.execute({
+      await expect(globTool.run({
         pattern: '**[invalid',
         path: tempDir,
       })).rejects.toThrow('Glob pattern matching failed');
@@ -414,7 +414,7 @@ describe('GlobTool', () => {
         workingDirectory: tempDir,
       };
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.json',
         path: '.',
       }, context);
@@ -432,7 +432,7 @@ describe('GlobTool', () => {
       // Cancel immediately
       controller.abort();
 
-      await expect(globTool.execute({
+      await expect(globTool.run({
         pattern: '**/*',
         path: tempDir,
       }, context)).rejects.toThrow('Glob operation was cancelled');
@@ -459,7 +459,7 @@ describe('GlobTool', () => {
 
   describe('performance and limits', () => {
     it('should track search time', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -469,7 +469,7 @@ describe('GlobTool', () => {
     });
 
     it('should indicate if results were truncated', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -489,7 +489,7 @@ describe('GlobTool', () => {
       const emptyDir = await createTempDir();
 
       try {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*',
           path: emptyDir,
         });
@@ -502,7 +502,7 @@ describe('GlobTool', () => {
     });
 
     it('should handle patterns that match no files', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.nonexistent',
         path: tempDir,
       });
@@ -516,7 +516,7 @@ describe('GlobTool', () => {
       const longPath = 'a'.repeat(50) + '/' + 'b'.repeat(50) + '/' + 'c'.repeat(50);
       await createTestFile(tempDir, longPath + '/test.txt', 'content');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*.txt',
         path: tempDir,
       });
@@ -539,7 +539,7 @@ describe('GlobTool', () => {
         await createTestFile(tempDir, filename, 'test');
       }
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*.txt',
         path: tempDir,
       });

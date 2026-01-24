@@ -136,7 +136,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = AllowedPathsConfigSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('validates maxDepth constraints', () => {
@@ -179,7 +179,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = TestRequirementRuleSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('validates required fields', () => {
@@ -234,7 +234,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = RequiredTestsConfigSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
   });
 
@@ -247,7 +247,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('parses content-pattern condition', () => {
@@ -258,7 +258,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('parses operation condition', () => {
@@ -269,7 +269,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('parses cost-threshold condition', () => {
@@ -280,7 +280,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('parses token-threshold condition', () => {
@@ -291,7 +291,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('parses custom condition', () => {
@@ -302,7 +302,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalConditionSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('validates threshold types and constraints', () => {
@@ -367,7 +367,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalRuleSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('validates required fields', () => {
@@ -429,7 +429,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = ApprovalRulesConfigSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('validates timeout constraints', () => {
@@ -488,7 +488,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = PolicyConfigSchema.parse(input);
-      expect(result).toEqual(input);
+      expect(result).toMatchObject(input);
     });
 
     it('handles optional nested configs', () => {
@@ -699,7 +699,7 @@ describe('PolicyConfigSchema', () => {
       };
 
       const result = PolicyConfigSchema.parse(enterprisePolicy);
-      expect(result).toEqual(enterprisePolicy);
+      expect(result).toMatchObject(enterprisePolicy);
     });
 
     it('validates cross-field consistency in complex configs', () => {

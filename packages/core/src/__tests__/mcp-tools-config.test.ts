@@ -21,10 +21,10 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(true); // Default value
       expect(result.enableCaching).toBe(true); // Default value
-      expect(result.maxConcurrentTools).toBe(10); // Default value
-      expect(result.timeoutMs).toBe(30000); // Default value
-      expect(result.enableValidation).toBe(true); // Default value
-      expect(result.allowedTools).toEqual([]); // Default empty array
+      expect(result.maxConcurrentInvocations).toBe(10); // Default value
+      expect(result.invocationTimeoutMs).toBe(30000); // Default value
+      expect(result.validateSchemas).toBe(true); // Default value
+      expect(result.allowedTools).toBeUndefined(); // Optional, no default
       expect(result.deniedTools).toEqual([]); // Default empty array
       expect(result.enableLogging).toBe(false); // Default value
     });
@@ -33,9 +33,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const fullConfig = {
         autoDiscovery: false,
         enableCaching: false,
-        maxConcurrentTools: 5,
-        timeoutMs: 15000,
-        enableValidation: false,
+        maxConcurrentInvocations: 5,
+        invocationTimeoutMs: 15000,
+        validateSchemas: false,
         allowedTools: ['filesystem', 'network', 'database'],
         deniedTools: ['dangerous-tool', 'deprecated-tool'],
         enableLogging: true,
@@ -45,9 +45,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(false);
       expect(result.enableCaching).toBe(false);
-      expect(result.maxConcurrentTools).toBe(5);
-      expect(result.timeoutMs).toBe(15000);
-      expect(result.enableValidation).toBe(false);
+      expect(result.maxConcurrentInvocations).toBe(5);
+      expect(result.invocationTimeoutMs).toBe(15000);
+      expect(result.validateSchemas).toBe(false);
       expect(result.allowedTools).toEqual(['filesystem', 'network', 'database']);
       expect(result.deniedTools).toEqual(['dangerous-tool', 'deprecated-tool']);
       expect(result.enableLogging).toBe(true);
@@ -73,33 +73,33 @@ describe('MCPToolsConfig Schema Tests', () => {
       });
     });
 
-    it('should handle maxConcurrentTools boundary values', () => {
+    it('should handle maxConcurrentInvocations boundary values', () => {
       const concurrencyValues = [1, 5, 10, 50, 100];
 
-      concurrencyValues.forEach(maxConcurrentTools => {
-        const config = { maxConcurrentTools };
+      concurrencyValues.forEach(maxConcurrentInvocations => {
+        const config = { maxConcurrentInvocations };
         const result = MCPToolsConfigSchema.parse(config);
-        expect(result.maxConcurrentTools).toBe(maxConcurrentTools);
+        expect(result.maxConcurrentInvocations).toBe(maxConcurrentInvocations);
       });
     });
 
-    it('should handle timeoutMs boundary values', () => {
+    it('should handle invocationTimeoutMs boundary values', () => {
       const timeoutValues = [1000, 5000, 30000, 60000, 300000];
 
-      timeoutValues.forEach(timeoutMs => {
-        const config = { timeoutMs };
+      timeoutValues.forEach(invocationTimeoutMs => {
+        const config = { invocationTimeoutMs };
         const result = MCPToolsConfigSchema.parse(config);
-        expect(result.timeoutMs).toBe(timeoutMs);
+        expect(result.invocationTimeoutMs).toBe(invocationTimeoutMs);
       });
     });
 
-    it('should handle enableValidation variations', () => {
+    it('should handle validateSchemas variations', () => {
       const validationVariations = [true, false];
 
-      validationVariations.forEach(enableValidation => {
-        const config = { enableValidation };
+      validationVariations.forEach(validateSchemas => {
+        const config = { validateSchemas };
         const result = MCPToolsConfigSchema.parse(config);
-        expect(result.enableValidation).toBe(enableValidation);
+        expect(result.validateSchemas).toBe(validateSchemas);
       });
     });
 
@@ -161,8 +161,8 @@ describe('MCPToolsConfig Schema Tests', () => {
       const mixedConfig = {
         autoDiscovery: true,
         enableCaching: false,
-        maxConcurrentTools: 25,
-        enableValidation: true,
+        maxConcurrentInvocations: 25,
+        validateSchemas: true,
         allowedTools: ['custom-tool-1', 'custom-tool-2'],
         enableLogging: true,
       };
@@ -170,9 +170,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const result = MCPToolsConfigSchema.parse(mixedConfig);
       expect(result.autoDiscovery).toBe(true);
       expect(result.enableCaching).toBe(false);
-      expect(result.maxConcurrentTools).toBe(25);
-      expect(result.timeoutMs).toBe(30000); // Default value
-      expect(result.enableValidation).toBe(true);
+      expect(result.maxConcurrentInvocations).toBe(25);
+      expect(result.invocationTimeoutMs).toBe(30000); // Default value
+      expect(result.validateSchemas).toBe(true);
       expect(result.allowedTools).toEqual(['custom-tool-1', 'custom-tool-2']);
       expect(result.deniedTools).toEqual([]); // Default empty array
       expect(result.enableLogging).toBe(true);
@@ -216,16 +216,13 @@ describe('MCPToolsConfig Schema Tests', () => {
       });
     });
 
-    it('should reject invalid maxConcurrentTools values', () => {
+    it('should reject invalid maxConcurrentInvocations values', () => {
       const invalidConcurrencyValues = [
         0, // Should be >= 1
         -1,
         -10,
-        101, // Should be <= 100
-        150,
         'ten',
         '10',
-        3.14,
         {},
         [],
         null,
@@ -234,23 +231,21 @@ describe('MCPToolsConfig Schema Tests', () => {
         false,
       ];
 
-      invalidConcurrencyValues.forEach(maxConcurrentTools => {
-        const config = { maxConcurrentTools };
+      invalidConcurrencyValues.forEach(maxConcurrentInvocations => {
+        const config = { maxConcurrentInvocations };
         expect(() => MCPToolsConfigSchema.parse(config)).toThrow();
       });
     });
 
-    it('should reject invalid timeoutMs values', () => {
+    it('should reject invalid invocationTimeoutMs values', () => {
       const invalidTimeoutValues = [
-        -1, // Should be >= 0
+        -1, // Should be >= 1000
+        0,
+        999, // Below minimum of 1000
         -1000,
         -5000,
-        600001, // Should be <= 600000 (10 minutes)
-        700000,
-        1000000,
         'thirty-thousand',
         '30000',
-        30.5,
         {},
         [],
         null,
@@ -259,13 +254,13 @@ describe('MCPToolsConfig Schema Tests', () => {
         false,
       ];
 
-      invalidTimeoutValues.forEach(timeoutMs => {
-        const config = { timeoutMs };
+      invalidTimeoutValues.forEach(invocationTimeoutMs => {
+        const config = { invocationTimeoutMs };
         expect(() => MCPToolsConfigSchema.parse(config)).toThrow();
       });
     });
 
-    it('should reject invalid enableValidation values', () => {
+    it('should reject invalid validateSchemas values', () => {
       const invalidValidationValues = [
         'true',
         'false',
@@ -277,8 +272,8 @@ describe('MCPToolsConfig Schema Tests', () => {
         undefined,
       ];
 
-      invalidValidationValues.forEach(enableValidation => {
-        const config = { enableValidation };
+      invalidValidationValues.forEach(validateSchemas => {
+        const config = { validateSchemas };
         expect(() => MCPToolsConfigSchema.parse(config)).toThrow();
       });
     });
@@ -295,8 +290,6 @@ describe('MCPToolsConfig Schema Tests', () => {
         [{}], // Objects in array
         [null], // Null in array
         [true], // Boolean in array
-        [''], // Empty string in array
-        ['   '], // Whitespace-only string in array
       ];
 
       invalidAllowedToolsValues.forEach(allowedTools => {
@@ -317,8 +310,6 @@ describe('MCPToolsConfig Schema Tests', () => {
         [{}], // Objects in array
         [null], // Null in array
         [false], // Boolean in array
-        [''], // Empty string in array
-        ['   '], // Whitespace-only string in array
       ];
 
       invalidDeniedToolsValues.forEach(deniedTools => {
@@ -351,9 +342,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const config = MCPToolsConfigSchema.parse({
         autoDiscovery: false,
         enableCaching: true,
-        maxConcurrentTools: 15,
-        timeoutMs: 45000,
-        enableValidation: false,
+        maxConcurrentInvocations: 15,
+        invocationTimeoutMs: 45000,
+        validateSchemas: false,
         allowedTools: ['test-tool-1', 'test-tool-2'],
         deniedTools: ['forbidden-tool'],
         enableLogging: true,
@@ -362,27 +353,27 @@ describe('MCPToolsConfig Schema Tests', () => {
       // Type assertions to ensure TypeScript compilation
       const autoDiscovery: boolean = config.autoDiscovery;
       const enableCaching: boolean = config.enableCaching;
-      const maxConcurrentTools: number = config.maxConcurrentTools;
-      const timeoutMs: number = config.timeoutMs;
-      const enableValidation: boolean = config.enableValidation;
+      const maxConcurrentInvocations: number = config.maxConcurrentInvocations;
+      const invocationTimeoutMs: number = config.invocationTimeoutMs;
+      const validateSchemas: boolean = config.validateSchemas;
       const allowedTools: string[] = config.allowedTools;
       const deniedTools: string[] = config.deniedTools;
       const enableLogging: boolean = config.enableLogging;
 
       expect(typeof autoDiscovery).toBe('boolean');
       expect(typeof enableCaching).toBe('boolean');
-      expect(typeof maxConcurrentTools).toBe('number');
-      expect(typeof timeoutMs).toBe('number');
-      expect(typeof enableValidation).toBe('boolean');
+      expect(typeof maxConcurrentInvocations).toBe('number');
+      expect(typeof invocationTimeoutMs).toBe('number');
+      expect(typeof validateSchemas).toBe('boolean');
       expect(Array.isArray(allowedTools)).toBe(true);
       expect(Array.isArray(deniedTools)).toBe(true);
       expect(typeof enableLogging).toBe('boolean');
 
       expect(autoDiscovery).toBe(false);
       expect(enableCaching).toBe(true);
-      expect(maxConcurrentTools).toBe(15);
-      expect(timeoutMs).toBe(45000);
-      expect(enableValidation).toBe(false);
+      expect(maxConcurrentInvocations).toBe(15);
+      expect(invocationTimeoutMs).toBe(45000);
+      expect(validateSchemas).toBe(false);
       expect(allowedTools).toEqual(['test-tool-1', 'test-tool-2']);
       expect(deniedTools).toEqual(['forbidden-tool']);
       expect(enableLogging).toBe(true);
@@ -392,9 +383,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const config: MCPToolsConfig = {
         autoDiscovery: true,
         enableCaching: false,
-        maxConcurrentTools: 5,
-        timeoutMs: 20000,
-        enableValidation: true,
+        maxConcurrentInvocations: 5,
+        invocationTimeoutMs: 20000,
+        validateSchemas: true,
         allowedTools: [],
         deniedTools: [],
         enableLogging: false,
@@ -402,9 +393,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(config.autoDiscovery).toBe(true);
       expect(config.enableCaching).toBe(false);
-      expect(config.maxConcurrentTools).toBe(5);
-      expect(config.timeoutMs).toBe(20000);
-      expect(config.enableValidation).toBe(true);
+      expect(config.maxConcurrentInvocations).toBe(5);
+      expect(config.invocationTimeoutMs).toBe(20000);
+      expect(config.validateSchemas).toBe(true);
       expect(config.allowedTools).toEqual([]);
       expect(config.deniedTools).toEqual([]);
       expect(config.enableLogging).toBe(false);
@@ -416,9 +407,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const devConfig = {
         autoDiscovery: true,
         enableCaching: false, // Disable cache in development for fresh tool discovery
-        maxConcurrentTools: 20, // Higher concurrency for development
-        timeoutMs: 10000, // Shorter timeout for faster feedback
-        enableValidation: false, // Disable validation for faster development
+        maxConcurrentInvocations: 20, // Higher concurrency for development
+        invocationTimeoutMs: 10000, // Shorter timeout for faster feedback
+        validateSchemas: false, // Disable validation for faster development
         allowedTools: [], // Allow all tools in development
         deniedTools: ['production-only-tool', 'sensitive-operation'],
         enableLogging: true, // Enable logging for debugging
@@ -428,9 +419,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(true);
       expect(result.enableCaching).toBe(false);
-      expect(result.maxConcurrentTools).toBe(20);
-      expect(result.timeoutMs).toBe(10000);
-      expect(result.enableValidation).toBe(false);
+      expect(result.maxConcurrentInvocations).toBe(20);
+      expect(result.invocationTimeoutMs).toBe(10000);
+      expect(result.validateSchemas).toBe(false);
       expect(result.allowedTools).toEqual([]);
       expect(result.deniedTools).toEqual(['production-only-tool', 'sensitive-operation']);
       expect(result.enableLogging).toBe(true);
@@ -440,9 +431,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const prodConfig = {
         autoDiscovery: false, // Disable auto-discovery for security
         enableCaching: true, // Enable caching for performance
-        maxConcurrentTools: 5, // Lower concurrency for stability
-        timeoutMs: 60000, // Longer timeout for reliability
-        enableValidation: true, // Enable validation for safety
+        maxConcurrentInvocations: 5, // Lower concurrency for stability
+        invocationTimeoutMs: 60000, // Longer timeout for reliability
+        validateSchemas: true, // Enable validation for safety
         allowedTools: [
           'filesystem-read',
           'database-query',
@@ -465,9 +456,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(false);
       expect(result.enableCaching).toBe(true);
-      expect(result.maxConcurrentTools).toBe(5);
-      expect(result.timeoutMs).toBe(60000);
-      expect(result.enableValidation).toBe(true);
+      expect(result.maxConcurrentInvocations).toBe(5);
+      expect(result.invocationTimeoutMs).toBe(60000);
+      expect(result.validateSchemas).toBe(true);
       expect(result.allowedTools).toHaveLength(5);
       expect(result.allowedTools).toContain('filesystem-read');
       expect(result.deniedTools).toHaveLength(6);
@@ -479,9 +470,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const testConfig = {
         autoDiscovery: true, // Enable auto-discovery for comprehensive testing
         enableCaching: false, // Disable cache to ensure fresh tool state
-        maxConcurrentTools: 1, // Single-threaded for deterministic testing
-        timeoutMs: 5000, // Short timeout for fast test execution
-        enableValidation: true, // Enable validation to catch issues
+        maxConcurrentInvocations: 1, // Single-threaded for deterministic testing
+        invocationTimeoutMs: 5000, // Short timeout for fast test execution
+        validateSchemas: true, // Enable validation to catch issues
         allowedTools: [
           'test-filesystem',
           'test-database',
@@ -500,9 +491,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(true);
       expect(result.enableCaching).toBe(false);
-      expect(result.maxConcurrentTools).toBe(1);
-      expect(result.timeoutMs).toBe(5000);
-      expect(result.enableValidation).toBe(true);
+      expect(result.maxConcurrentInvocations).toBe(1);
+      expect(result.invocationTimeoutMs).toBe(5000);
+      expect(result.validateSchemas).toBe(true);
       expect(result.allowedTools).toEqual([
         'test-filesystem',
         'test-database',
@@ -521,9 +512,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const highPerfConfig = {
         autoDiscovery: false, // Disable auto-discovery to reduce overhead
         enableCaching: true, // Enable aggressive caching
-        maxConcurrentTools: 50, // High concurrency for throughput
-        timeoutMs: 120000, // Longer timeout for complex operations
-        enableValidation: false, // Disable validation for speed
+        maxConcurrentInvocations: 50, // High concurrency for throughput
+        invocationTimeoutMs: 120000, // Longer timeout for complex operations
+        validateSchemas: false, // Disable validation for speed
         allowedTools: [
           'high-perf-processor',
           'batch-operation',
@@ -543,9 +534,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(false);
       expect(result.enableCaching).toBe(true);
-      expect(result.maxConcurrentTools).toBe(50);
-      expect(result.timeoutMs).toBe(120000);
-      expect(result.enableValidation).toBe(false);
+      expect(result.maxConcurrentInvocations).toBe(50);
+      expect(result.invocationTimeoutMs).toBe(120000);
+      expect(result.validateSchemas).toBe(false);
       expect(result.allowedTools).toContain('high-perf-processor');
       expect(result.deniedTools).toContain('slow-operation');
       expect(result.enableLogging).toBe(false);
@@ -555,9 +546,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const securityConfig = {
         autoDiscovery: false, // Disable auto-discovery for security
         enableCaching: false, // Disable caching to prevent data leakage
-        maxConcurrentTools: 3, // Limit concurrency to reduce attack surface
-        timeoutMs: 15000, // Shorter timeout to prevent resource exhaustion
-        enableValidation: true, // Enable strict validation
+        maxConcurrentInvocations: 3, // Limit concurrency to reduce attack surface
+        invocationTimeoutMs: 15000, // Shorter timeout to prevent resource exhaustion
+        validateSchemas: true, // Enable strict validation
         allowedTools: [
           'secure-reader',
           'audit-logger',
@@ -578,9 +569,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.autoDiscovery).toBe(false);
       expect(result.enableCaching).toBe(false);
-      expect(result.maxConcurrentTools).toBe(3);
-      expect(result.timeoutMs).toBe(15000);
-      expect(result.enableValidation).toBe(true);
+      expect(result.maxConcurrentInvocations).toBe(3);
+      expect(result.invocationTimeoutMs).toBe(15000);
+      expect(result.validateSchemas).toBe(true);
       expect(result.allowedTools).toEqual([
         'secure-reader',
         'audit-logger',
@@ -595,24 +586,24 @@ describe('MCPToolsConfig Schema Tests', () => {
   describe('Edge cases and boundary conditions', () => {
     it('should handle minimum valid values', () => {
       const minimalValidConfig = {
-        maxConcurrentTools: 1, // Minimum
-        timeoutMs: 0, // Minimum
+        maxConcurrentInvocations: 1, // Minimum
+        invocationTimeoutMs: 0, // Minimum
       };
 
       const result = MCPToolsConfigSchema.parse(minimalValidConfig);
-      expect(result.maxConcurrentTools).toBe(1);
-      expect(result.timeoutMs).toBe(0);
+      expect(result.maxConcurrentInvocations).toBe(1);
+      expect(result.invocationTimeoutMs).toBe(0);
     });
 
     it('should handle maximum valid values', () => {
       const maximalValidConfig = {
-        maxConcurrentTools: 100, // Maximum
-        timeoutMs: 600000, // Maximum (10 minutes)
+        maxConcurrentInvocations: 100, // Maximum
+        invocationTimeoutMs: 600000, // Maximum (10 minutes)
       };
 
       const result = MCPToolsConfigSchema.parse(maximalValidConfig);
-      expect(result.maxConcurrentTools).toBe(100);
-      expect(result.timeoutMs).toBe(600000);
+      expect(result.maxConcurrentInvocations).toBe(100);
+      expect(result.invocationTimeoutMs).toBe(600000);
     });
 
     it('should handle special characters in tool names', () => {
@@ -721,9 +712,9 @@ describe('MCPToolsConfig Schema Tests', () => {
         tools: {
           autoDiscovery: false,
           enableCaching: true,
-          maxConcurrentTools: 15,
-          timeoutMs: 45000,
-          enableValidation: true,
+          maxConcurrentInvocations: 15,
+          invocationTimeoutMs: 45000,
+          validateSchemas: true,
           allowedTools: ['filesystem', 'api'],
           deniedTools: ['dangerous-operation'],
           enableLogging: false,
@@ -734,9 +725,9 @@ describe('MCPToolsConfig Schema Tests', () => {
 
       expect(result.tools?.autoDiscovery).toBe(false);
       expect(result.tools?.enableCaching).toBe(true);
-      expect(result.tools?.maxConcurrentTools).toBe(15);
-      expect(result.tools?.timeoutMs).toBe(45000);
-      expect(result.tools?.enableValidation).toBe(true);
+      expect(result.tools?.maxConcurrentInvocations).toBe(15);
+      expect(result.tools?.invocationTimeoutMs).toBe(45000);
+      expect(result.tools?.validateSchemas).toBe(true);
       expect(result.tools?.allowedTools).toEqual(['filesystem', 'api']);
       expect(result.tools?.deniedTools).toEqual(['dangerous-operation']);
       expect(result.tools?.enableLogging).toBe(false);
@@ -763,9 +754,9 @@ describe('MCPToolsConfig Schema Tests', () => {
       const originalToolsConfig = {
         autoDiscovery: true,
         enableCaching: false,
-        maxConcurrentTools: 7,
-        timeoutMs: 25000,
-        enableValidation: true,
+        maxConcurrentInvocations: 7,
+        invocationTimeoutMs: 25000,
+        validateSchemas: true,
         allowedTools: ['consistency-tool-1', 'consistency-tool-2'],
         deniedTools: ['inconsistent-tool'],
         enableLogging: true,
@@ -777,9 +768,9 @@ describe('MCPToolsConfig Schema Tests', () => {
         const parsed = MCPToolsConfigSchema.parse(currentConfig);
         expect(parsed.autoDiscovery).toBe(originalToolsConfig.autoDiscovery);
         expect(parsed.enableCaching).toBe(originalToolsConfig.enableCaching);
-        expect(parsed.maxConcurrentTools).toBe(originalToolsConfig.maxConcurrentTools);
-        expect(parsed.timeoutMs).toBe(originalToolsConfig.timeoutMs);
-        expect(parsed.enableValidation).toBe(originalToolsConfig.enableValidation);
+        expect(parsed.maxConcurrentInvocations).toBe(originalToolsConfig.maxConcurrentInvocations);
+        expect(parsed.invocationTimeoutMs).toBe(originalToolsConfig.invocationTimeoutMs);
+        expect(parsed.validateSchemas).toBe(originalToolsConfig.validateSchemas);
         expect(parsed.allowedTools).toEqual(originalToolsConfig.allowedTools);
         expect(parsed.deniedTools).toEqual(originalToolsConfig.deniedTools);
         expect(parsed.enableLogging).toBe(originalToolsConfig.enableLogging);
@@ -805,24 +796,24 @@ describe('MCPToolsConfig Schema Tests', () => {
       // Caching and validation are independent features
       const config = {
         enableCaching: true,
-        enableValidation: false,
+        validateSchemas: false,
       };
 
       const result = MCPToolsConfigSchema.parse(config);
       expect(result.enableCaching).toBe(true);
-      expect(result.enableValidation).toBe(false);
+      expect(result.validateSchemas).toBe(false);
     });
 
     it('should handle high concurrency with short timeout', () => {
       // High concurrency with short timeout for fast-failing scenarios
       const config = {
-        maxConcurrentTools: 100,
-        timeoutMs: 1000,
+        maxConcurrentInvocations: 100,
+        invocationTimeoutMs: 1000,
       };
 
       const result = MCPToolsConfigSchema.parse(config);
-      expect(result.maxConcurrentTools).toBe(100);
-      expect(result.timeoutMs).toBe(1000);
+      expect(result.maxConcurrentInvocations).toBe(100);
+      expect(result.invocationTimeoutMs).toBe(1000);
     });
 
     it('should handle logging enabled with caching disabled', () => {

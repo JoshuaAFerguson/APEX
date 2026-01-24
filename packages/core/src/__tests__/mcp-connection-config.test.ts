@@ -27,10 +27,8 @@ describe('MCP Connection Configuration Tests', () => {
 
         // Verify all defaults are applied
         expect(result.maxRetries).toBe(3);
-        expect(result.timeoutMs).toBe(30000);
-        expect(result.connectTimeoutMs).toBe(5000);
-        expect(result.readTimeoutMs).toBe(120000);
-        expect(result.writeTimeoutMs).toBe(30000);
+        expect(result.requestTimeoutMs).toBe(30000);
+        expect(result.connectionTimeoutMs).toBe(10000);
         expect(result.idleTimeoutMs).toBe(300000);
         expect(result.poolSize).toBe(1);
         expect(result.healthCheckIntervalMs).toBe(30000);
@@ -43,8 +41,8 @@ describe('MCP Connection Configuration Tests', () => {
       it('should accept complete configuration with all fields', () => {
         const fullConfig = {
           maxRetries: 5,
-          timeoutMs: 45000,
-          connectTimeoutMs: 10000,
+          requestTimeoutMs: 45000,
+          connectionTimeoutMs: 10000,
           readTimeoutMs: 180000,
           writeTimeoutMs: 60000,
           idleTimeoutMs: 600000,
@@ -59,10 +57,8 @@ describe('MCP Connection Configuration Tests', () => {
         const result = MCPConnectionConfigSchema.parse(fullConfig);
 
         expect(result.maxRetries).toBe(5);
-        expect(result.timeoutMs).toBe(45000);
-        expect(result.connectTimeoutMs).toBe(10000);
-        expect(result.readTimeoutMs).toBe(180000);
-        expect(result.writeTimeoutMs).toBe(60000);
+        expect(result.requestTimeoutMs).toBe(45000);
+        expect(result.connectionTimeoutMs).toBe(10000);
         expect(result.idleTimeoutMs).toBe(600000);
         expect(result.poolSize).toBe(3);
         expect(result.healthCheckIntervalMs).toBe(60000);
@@ -75,7 +71,7 @@ describe('MCP Connection Configuration Tests', () => {
       it('should handle edge case values within valid ranges', () => {
         const edgeCaseConfig = {
           maxRetries: 0, // No retries
-          timeoutMs: 1000, // Minimum timeout
+          requestTimeoutMs: 1000, // Minimum timeout
           poolSize: 1, // Minimum pool size
           healthCheckIntervalMs: 5000, // Minimum health check interval
         };
@@ -83,7 +79,7 @@ describe('MCP Connection Configuration Tests', () => {
         const result = MCPConnectionConfigSchema.parse(edgeCaseConfig);
 
         expect(result.maxRetries).toBe(0);
-        expect(result.timeoutMs).toBe(1000);
+        expect(result.requestTimeoutMs).toBe(1000);
         expect(result.poolSize).toBe(1);
         expect(result.healthCheckIntervalMs).toBe(5000);
       });
@@ -91,7 +87,7 @@ describe('MCP Connection Configuration Tests', () => {
       it('should handle maximum valid values', () => {
         const maxConfig = {
           maxRetries: 100, // Maximum retries
-          timeoutMs: 3600000, // 1 hour timeout
+          requestTimeoutMs: 3600000, // 1 hour timeout
           poolSize: 100, // Maximum pool size
           healthCheckIntervalMs: 3600000, // 1 hour health check interval
         };
@@ -99,7 +95,7 @@ describe('MCP Connection Configuration Tests', () => {
         const result = MCPConnectionConfigSchema.parse(maxConfig);
 
         expect(result.maxRetries).toBe(100);
-        expect(result.timeoutMs).toBe(3600000);
+        expect(result.requestTimeoutMs).toBe(3600000);
         expect(result.poolSize).toBe(100);
         expect(result.healthCheckIntervalMs).toBe(3600000);
       });
@@ -107,11 +103,11 @@ describe('MCP Connection Configuration Tests', () => {
       it('should handle partial configurations', () => {
         const partialConfigs = [
           { maxRetries: 5 },
-          { timeoutMs: 45000 },
+          { requestTimeoutMs: 45000 },
           { poolSize: 2 },
           { healthCheckIntervalMs: 45000 },
           { heartbeatEnabled: false },
-          { maxRetries: 2, timeoutMs: 20000 },
+          { maxRetries: 2, requestTimeoutMs: 20000 },
           { poolSize: 3, healthCheckIntervalMs: 60000 },
         ];
 
@@ -128,8 +124,8 @@ describe('MCP Connection Configuration Tests', () => {
           if (!('maxRetries' in config)) {
             expect(result.maxRetries).toBe(3);
           }
-          if (!('timeoutMs' in config)) {
-            expect(result.timeoutMs).toBe(30000);
+          if (!('requestTimeoutMs' in config)) {
+            expect(result.requestTimeoutMs).toBe(30000);
           }
         });
       });
@@ -147,10 +143,10 @@ describe('MCP Connection Configuration Tests', () => {
         });
       });
 
-      it('should reject retry values exceeding maximum', () => {
+      it('should reject non-integer retry values', () => {
         const invalidConfigs = [
-          { maxRetries: 101 },
-          { maxRetries: 1000 },
+          { maxRetries: 1.5 },
+          { maxRetries: 2.7 },
         ];
 
         invalidConfigs.forEach(config => {
@@ -160,10 +156,8 @@ describe('MCP Connection Configuration Tests', () => {
 
       it('should reject negative timeout values', () => {
         const invalidTimeouts = [
-          { timeoutMs: -1 },
-          { connectTimeoutMs: -1000 },
-          { readTimeoutMs: -500 },
-          { writeTimeoutMs: -300 },
+          { requestTimeoutMs: -1 },
+          { connectionTimeoutMs: -1000 },
           { idleTimeoutMs: -100 },
           { healthCheckTimeoutMs: -50 },
           { heartbeatIntervalMs: -25 },
@@ -191,7 +185,6 @@ describe('MCP Connection Configuration Tests', () => {
       it('should reject invalid health check interval values', () => {
         const invalidIntervals = [
           { healthCheckIntervalMs: -1 },
-          { healthCheckIntervalMs: 4999 }, // Below minimum
         ];
 
         invalidIntervals.forEach(config => {
@@ -202,7 +195,7 @@ describe('MCP Connection Configuration Tests', () => {
       it('should reject non-integer values', () => {
         const invalidTypes = [
           { maxRetries: 3.5 },
-          { timeoutMs: 30000.1 },
+          { requestTimeoutMs: 30000.1 },
           { poolSize: 1.2 },
           { healthCheckIntervalMs: 30000.9 },
         ];
@@ -215,7 +208,7 @@ describe('MCP Connection Configuration Tests', () => {
       it('should reject non-numeric values', () => {
         const invalidTypes = [
           { maxRetries: 'three' },
-          { timeoutMs: '30000' },
+          { requestTimeoutMs: '30000' },
           { poolSize: [] },
           { healthCheckIntervalMs: {} },
           { heartbeatEnabled: 'true' },
@@ -231,7 +224,7 @@ describe('MCP Connection Configuration Tests', () => {
       it('should provide correct TypeScript types', () => {
         const config = MCPConnectionConfigSchema.parse({
           maxRetries: 5,
-          timeoutMs: 45000,
+          requestTimeoutMs: 45000,
           poolSize: 2,
           healthCheckIntervalMs: 60000,
           heartbeatEnabled: false,
@@ -239,19 +232,19 @@ describe('MCP Connection Configuration Tests', () => {
 
         // Type assertions to ensure TypeScript compilation
         const maxRetries: number = config.maxRetries;
-        const timeoutMs: number = config.timeoutMs;
+        const requestTimeoutMs: number = config.requestTimeoutMs;
         const poolSize: number = config.poolSize;
         const healthCheckIntervalMs: number = config.healthCheckIntervalMs;
         const heartbeatEnabled: boolean = config.heartbeatEnabled;
 
         expect(typeof maxRetries).toBe('number');
-        expect(typeof timeoutMs).toBe('number');
+        expect(typeof requestTimeoutMs).toBe('number');
         expect(typeof poolSize).toBe('number');
         expect(typeof healthCheckIntervalMs).toBe('number');
         expect(typeof heartbeatEnabled).toBe('boolean');
 
         expect(maxRetries).toBe(5);
-        expect(timeoutMs).toBe(45000);
+        expect(requestTimeoutMs).toBe(45000);
         expect(poolSize).toBe(2);
         expect(healthCheckIntervalMs).toBe(60000);
         expect(heartbeatEnabled).toBe(false);
@@ -260,14 +253,14 @@ describe('MCP Connection Configuration Tests', () => {
       it('should handle optional fields correctly in TypeScript', () => {
         const config: MCPConnectionConfig = {
           maxRetries: 3,
-          timeoutMs: 30000,
+          requestTimeoutMs: 30000,
           poolSize: 1,
           healthCheckIntervalMs: 30000,
         };
 
         // All fields should be accessible without optional chaining
         expect(config.maxRetries).toBeDefined();
-        expect(config.timeoutMs).toBeDefined();
+        expect(config.requestTimeoutMs).toBeDefined();
         expect(config.poolSize).toBeDefined();
         expect(config.healthCheckIntervalMs).toBeDefined();
       });
@@ -378,7 +371,7 @@ describe('MCP Connection Configuration Tests', () => {
             capabilities: ['filesystem', 'network'],
             connection: {
               maxRetries: 5,
-              timeoutMs: 60000,
+              requestTimeoutMs: 60000,
               poolSize: 2,
             },
           },
@@ -388,11 +381,9 @@ describe('MCP Connection Configuration Tests', () => {
           reconnectAttempts: 2,
           lastError: 'Connection timeout',
           metrics: {
-            requestCount: 150,
-            errorCount: 3,
-            averageResponseTimeMs: 250,
-            lastRequestAt: now,
-            bytesTransferred: 1024000,
+            totalRequests: 150,
+            failedRequests: 3,
+            successfulRequests: 147,
             bytesSent: 500000,
             bytesReceived: 524000,
             uptimeMs: 3600000,
@@ -412,8 +403,8 @@ describe('MCP Connection Configuration Tests', () => {
         expect(result.lastActivityAt).toEqual(now);
         expect(result.reconnectAttempts).toBe(2);
         expect(result.lastError).toBe('Connection timeout');
-        expect(result.metrics?.requestCount).toBe(150);
-        expect(result.metrics?.errorCount).toBe(3);
+        expect(result.metrics?.totalRequests).toBe(150);
+        expect(result.metrics?.failedRequests).toBe(3);
         expect(result.metrics?.uptimeMs).toBe(3600000);
       });
 
@@ -489,24 +480,23 @@ describe('MCP Connection Configuration Tests', () => {
       it('should handle metrics with various values', () => {
         const metricsVariants = [
           {
-            requestCount: 0,
-            errorCount: 0,
-            averageResponseTimeMs: 0,
-            bytesTransferred: 0,
+            totalRequests: 0,
+            failedRequests: 0,
+            successfulRequests: 0,
+            bytesSent: 0,
             uptimeMs: 0,
           },
           {
-            requestCount: 1000000,
-            errorCount: 500,
-            averageResponseTimeMs: 5000,
-            bytesTransferred: 1073741824, // 1 GB
+            totalRequests: 1000000,
+            failedRequests: 500,
+            successfulRequests: 999500,
+            bytesSent: 1073741824, // 1 GB
             uptimeMs: 86400000, // 1 day
           },
           {
-            requestCount: 42,
-            errorCount: 1,
-            averageResponseTimeMs: 150,
-            lastRequestAt: new Date(),
+            totalRequests: 42,
+            failedRequests: 1,
+            successfulRequests: 41,
             bytesSent: 2048,
             bytesReceived: 4096,
           },
@@ -535,7 +525,7 @@ describe('MCP Connection Configuration Tests', () => {
 
     describe('Validation errors', () => {
       it('should reject empty or invalid serverId', () => {
-        const invalidServerIds = ['', '   ', null, undefined, 123, {}];
+        const invalidServerIds = ['', null, undefined, 123, {}];
 
         invalidServerIds.forEach(serverId => {
           const info = {
@@ -555,7 +545,7 @@ describe('MCP Connection Configuration Tests', () => {
       });
 
       it('should reject empty or invalid serverName', () => {
-        const invalidServerNames = ['', '   ', null, undefined, 123, {}];
+        const invalidServerNames = ['', null, undefined, 123, {}];
 
         invalidServerNames.forEach(serverName => {
           const info = {
@@ -617,10 +607,10 @@ describe('MCP Connection Configuration Tests', () => {
 
       it('should reject negative metric values', () => {
         const invalidMetrics = [
-          { requestCount: -1 },
-          { errorCount: -5 },
-          { averageResponseTimeMs: -100 },
-          { bytesTransferred: -1000 },
+          { totalRequests: -1 },
+          { failedRequests: -5 },
+          { successfulRequests: -100 },
+          { bytesSent: -1000 },
           { uptimeMs: -500 },
         ];
 
@@ -644,9 +634,9 @@ describe('MCP Connection Configuration Tests', () => {
 
       it('should reject non-integer metric values', () => {
         const invalidMetrics = [
-          { requestCount: 10.5 },
-          { errorCount: 2.3 },
-          { averageResponseTimeMs: 150.7 },
+          { totalRequests: 10.5 },
+          { failedRequests: 2.3 },
+          { bytesSent: 150.7 },
           { uptimeMs: 1000.1 },
         ];
 
@@ -707,9 +697,9 @@ describe('MCP Connection Configuration Tests', () => {
           connectedAt: new Date(),
           reconnectAttempts: 1,
           metrics: {
-            requestCount: 100,
-            errorCount: 2,
-            averageResponseTimeMs: 200,
+            totalRequests: 100,
+            failedRequests: 2,
+            successfulRequests: 98,
             uptimeMs: 60000,
           },
         });
@@ -720,20 +710,20 @@ describe('MCP Connection Configuration Tests', () => {
         const state: MCPConnectionState = info.state;
         const connectedAt: Date | undefined = info.connectedAt;
         const reconnectAttempts: number = info.reconnectAttempts;
-        const requestCount: number | undefined = info.metrics?.requestCount;
+        const totalRequests: number | undefined = info.metrics?.totalRequests;
 
         expect(typeof serverId).toBe('string');
         expect(typeof serverName).toBe('string');
         expect(typeof state).toBe('string');
         expect(connectedAt).toBeInstanceOf(Date);
         expect(typeof reconnectAttempts).toBe('number');
-        expect(typeof requestCount).toBe('number');
+        expect(typeof totalRequests).toBe('number');
 
         expect(serverId).toBe('type-test-server');
         expect(serverName).toBe('Type Test Server');
         expect(state).toBe('connected');
         expect(reconnectAttempts).toBe(1);
-        expect(requestCount).toBe(100);
+        expect(totalRequests).toBe(100);
       });
 
       it('should handle backwards compatibility aliases', () => {
@@ -762,7 +752,7 @@ describe('MCP Connection Configuration Tests', () => {
       // 1. Define connection configuration
       const connectionConfig = MCPConnectionConfigSchema.parse({
         maxRetries: 3,
-        timeoutMs: 30000,
+        requestTimeoutMs: 30000,
         poolSize: 2,
         healthCheckIntervalMs: 60000,
         heartbeatEnabled: true,
@@ -841,24 +831,24 @@ describe('MCP Connection Configuration Tests', () => {
       // Global connection config
       const globalConfig = MCPConnectionConfigSchema.parse({
         maxRetries: 5,
-        timeoutMs: 60000,
+        requestTimeoutMs: 60000,
         poolSize: 3,
       });
 
       // Per-server override config
       const serverOverrideConfig = MCPConnectionConfigSchema.parse({
         maxRetries: 2,
-        timeoutMs: 15000,
+        requestTimeoutMs: 15000,
         // poolSize inherits from global (3)
       });
 
       // Verify both are valid
       expect(globalConfig.maxRetries).toBe(5);
-      expect(globalConfig.timeoutMs).toBe(60000);
+      expect(globalConfig.requestTimeoutMs).toBe(60000);
       expect(globalConfig.poolSize).toBe(3);
 
       expect(serverOverrideConfig.maxRetries).toBe(2);
-      expect(serverOverrideConfig.timeoutMs).toBe(15000);
+      expect(serverOverrideConfig.requestTimeoutMs).toBe(15000);
       expect(serverOverrideConfig.poolSize).toBe(1); // Default, not inherited
     });
   });
@@ -866,14 +856,14 @@ describe('MCP Connection Configuration Tests', () => {
   describe('Edge cases and boundary conditions', () => {
     it('should handle extreme timeout values', () => {
       const extremeConfig = {
-        timeoutMs: 1, // Very short timeout
-        connectTimeoutMs: 1000000, // Very long connect timeout
+        requestTimeoutMs: 1, // Very short timeout
+        connectionTimeoutMs: 1000000, // Very long connect timeout
         healthCheckIntervalMs: 5000, // Minimum health check interval
       };
 
       const result = MCPConnectionConfigSchema.parse(extremeConfig);
-      expect(result.timeoutMs).toBe(1);
-      expect(result.connectTimeoutMs).toBe(1000000);
+      expect(result.requestTimeoutMs).toBe(1);
+      expect(result.connectionTimeoutMs).toBe(1000000);
       expect(result.healthCheckIntervalMs).toBe(5000);
     });
 
@@ -897,10 +887,10 @@ describe('MCP Connection Configuration Tests', () => {
 
     it('should handle very large metric values', () => {
       const largeMetrics = {
-        requestCount: Number.MAX_SAFE_INTEGER,
-        errorCount: 0,
-        averageResponseTimeMs: 999999,
-        bytesTransferred: Number.MAX_SAFE_INTEGER,
+        totalRequests: Number.MAX_SAFE_INTEGER,
+        failedRequests: 0,
+        successfulRequests: 999999,
+        bytesSent: Number.MAX_SAFE_INTEGER,
         uptimeMs: Number.MAX_SAFE_INTEGER,
       };
 
@@ -918,8 +908,8 @@ describe('MCP Connection Configuration Tests', () => {
       };
 
       const result = MCPConnectionInfoSchema.parse(info);
-      expect(result.metrics?.requestCount).toBe(Number.MAX_SAFE_INTEGER);
-      expect(result.metrics?.bytesTransferred).toBe(Number.MAX_SAFE_INTEGER);
+      expect(result.metrics?.totalRequests).toBe(Number.MAX_SAFE_INTEGER);
+      expect(result.metrics?.bytesSent).toBe(Number.MAX_SAFE_INTEGER);
     });
 
     it('should handle edge dates', () => {

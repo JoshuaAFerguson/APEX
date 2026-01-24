@@ -9,13 +9,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApexOrchestrator } from '../index';
 
 // Mock Claude Agent SDK
-const mockQuery = vi.fn();
+const mockQuery = vi.hoisted(() => vi.fn());
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Mock dependencies
-vi.mock('child_process', () => ({ exec: vi.fn() }));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual('@apexcli/core');
   return {
@@ -48,7 +59,7 @@ describe('MCP Integration Summary', () => {
 
   it('demonstrates MCP tools are passed to Claude Agent SDK query() calls', async () => {
     // Create orchestrator in memory (no temp directory needed for this test)
-    orchestrator = new ApexOrchestrator('/tmp/test');
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/test' });
 
     // Mock buildQueryMcpServers to return test MCP servers
     const mockServers = {
@@ -81,7 +92,7 @@ describe('MCP Integration Summary', () => {
   });
 
   it('confirms MCP integration architecture is correctly implemented', () => {
-    orchestrator = new ApexOrchestrator('/tmp/test');
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/test' });
 
     // Verify that the orchestrator has the necessary MCP integration methods
     expect(typeof (orchestrator as any).buildQueryMcpServers).toBe('function');

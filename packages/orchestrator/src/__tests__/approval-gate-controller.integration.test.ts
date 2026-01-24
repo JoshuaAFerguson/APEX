@@ -54,7 +54,8 @@ describe('ApprovalGateController - Integration', () => {
 
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-integration-'));
-    store = new TaskStore(path.join(testDir, 'integration.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
     parentEmitter = new EventEmitter();
   });
 

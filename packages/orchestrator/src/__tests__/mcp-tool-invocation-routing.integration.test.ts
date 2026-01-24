@@ -148,8 +148,8 @@ vi.mock('../mcp/client.js', () => ({
 }));
 
 // Mock Claude Agent SDK for integration testing
-const mockTool = vi.fn();
-const mockCreateSdkMcpServer = vi.fn();
+const mockTool = vi.hoisted(() => vi.fn());
+const mockCreateSdkMcpServer = vi.hoisted(() => vi.fn());
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   tool: mockTool,

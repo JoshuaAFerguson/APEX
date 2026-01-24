@@ -16,6 +16,8 @@ vi.mock('../store.js');
 vi.mock('fs/promises');
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Simple mock MCPConnectionManager
@@ -101,7 +103,7 @@ describe('MCP Event Setup', () => {
 
   describe('Event Listener Setup', () => {
     it('should register event listeners for all MCP events during initialization', () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Verify that MCPConnectionManager.on() was called for all expected events
       const expectedEvents = [
@@ -126,7 +128,7 @@ describe('MCP Event Setup', () => {
     });
 
     it('should create event listeners that are functions', () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Get all the listener functions that were registered
       const listenerCalls = mockMCPManager.on.mock.calls;
@@ -146,7 +148,7 @@ describe('MCP Event Setup', () => {
         }
       };
 
-      orchestrator = new ApexOrchestrator(testProjectPath, configWithDisabledMCP);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...configWithDisabledMCP });
 
       // Even with MCP disabled, the manager should be created and event listeners set up
       // This ensures that if MCP gets enabled later, events will work
@@ -162,7 +164,7 @@ describe('MCP Event Setup', () => {
 
       // This should not throw an error
       expect(() => {
-        orchestrator = new ApexOrchestrator(testProjectPath, configWithoutMCP);
+        orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...configWithoutMCP });
       }).not.toThrow();
 
       // Event listeners should still be set up
@@ -172,7 +174,7 @@ describe('MCP Event Setup', () => {
 
   describe('Event Handler Registration', () => {
     it('should verify orchestrator has emit method for forwarding events', () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // ApexOrchestrator should be an EventEmitter (or have emit method)
       expect(typeof orchestrator.emit).toBe('function');
@@ -181,7 +183,7 @@ describe('MCP Event Setup', () => {
     });
 
     it('should allow adding listeners to forwarded MCP events', () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // These should not throw errors
       expect(() => {
@@ -238,7 +240,7 @@ describe('MCP Event Setup', () => {
 
       // Orchestrator creation should handle this gracefully or throw a clear error
       expect(() => {
-        orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+        orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       }).toThrow('MCP Manager initialization failed');
     });
   });

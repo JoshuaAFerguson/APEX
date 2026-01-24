@@ -34,7 +34,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     query: vi.fn(),
     abortQuery: vi.fn(),
   })),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 // Mock dependencies
 vi.mock('../import-auto-fixer/import-auto-fixer');

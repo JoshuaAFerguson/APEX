@@ -246,7 +246,7 @@ Third: EDGE_CASE_CCC333
         new SecretScanner({
           customPatterns: [{
             name: 'invalid-regex',
-            regex: /[invalid regex(/g, // Invalid regex
+            regex: new RegExp('[invalid'), // Invalid regex
             secretType: 'invalid',
             confidence: 1.0,
             severity: 'medium',

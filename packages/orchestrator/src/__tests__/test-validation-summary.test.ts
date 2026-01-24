@@ -90,12 +90,13 @@ describe('Test Validation Summary - Approval Timeout and Error Scenarios', () =>
   });
 
   describe('Implementation Coverage Verification', () => {
-    it('should verify TaskStore has required methods for orphaned approval handling', () => {
+    it('should verify TaskStore has required methods for orphaned approval handling', async () => {
       // Import the TaskStore to verify methods exist
       const { TaskStore } = require('../store');
 
       // Create a test instance
-      const store = new TaskStore(':memory:');
+      const store = new TaskStore('/tmp/test-validation');
+      await store.initialize();
 
       // Verify required methods exist
       expect(typeof store.getOrphanedApprovalStates).toBe('function');

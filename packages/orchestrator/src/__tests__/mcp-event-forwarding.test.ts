@@ -28,30 +28,34 @@ vi.mock('../store.js');
 vi.mock('fs/promises');
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
-// Create a mock MCPConnectionManager that extends EventEmitter
-class MockMCPConnectionManager extends EventEmitter {
-  public discoverServers = vi.fn().mockReturnValue([]);
-  public connect = vi.fn().mockResolvedValue({});
-  public disconnect = vi.fn().mockResolvedValue(undefined);
-  public disconnectAll = vi.fn().mockResolvedValue(undefined);
-  public listConnections = vi.fn().mockReturnValue([]);
-  public getConnection = vi.fn().mockReturnValue(undefined);
-  public getClient = vi.fn().mockReturnValue(undefined);
-  public updateConfig = vi.fn();
+// Mock the MCPConnectionManager module - class defined inline to avoid hoisting issues
+const { MockMCPConnectionManager } = vi.hoisted(() => {
+  const { EventEmitter } = require('events');
+  class MockMCPConnectionManager extends EventEmitter {
+    public discoverServers = vi.fn().mockReturnValue([]);
+    public connect = vi.fn().mockResolvedValue({});
+    public disconnect = vi.fn().mockResolvedValue(undefined);
+    public disconnectAll = vi.fn().mockResolvedValue(undefined);
+    public listConnections = vi.fn().mockReturnValue([]);
+    public getConnection = vi.fn().mockReturnValue(undefined);
+    public getClient = vi.fn().mockReturnValue(undefined);
+    public updateConfig = vi.fn();
 
-  constructor() {
-    super();
+    constructor() {
+      super();
+    }
+
+    public simulateEvent(eventName: string, ...args: any[]) {
+      this.emit(eventName, ...args);
+    }
   }
+  return { MockMCPConnectionManager };
+});
 
-  // Helper method to simulate MCP events for testing
-  public simulateEvent(eventName: string, ...args: any[]) {
-    this.emit(eventName, ...args);
-  }
-}
-
-// Mock the MCPConnectionManager module
 vi.mock('../mcp/connection-manager.js', () => ({
   MCPConnectionManager: MockMCPConnectionManager
 }));
@@ -118,7 +122,7 @@ describe('MCP Event Forwarding', () => {
     MockTaskStore.mockImplementation(() => mockStore as any);
 
     // Create orchestrator and get the mock MCP manager
-    orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
     // Access the mock through the constructor call
     mockMCPManager = (MockMCPConnectionManager as any).mock.results[0]?.value;
 

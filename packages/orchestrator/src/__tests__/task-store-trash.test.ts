@@ -59,7 +59,7 @@ describe('TaskStore Trash Operations', () => {
   let mockListTrashedStmt: any;
   let mockDeleteStmt: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
 
     // Setup mock statements
@@ -85,7 +85,8 @@ describe('TaskStore Trash Operations', () => {
       return { run: vi.fn(), get: vi.fn(), all: vi.fn() };
     });
 
-    store = new TaskStore('/test/path');
+    store = new TaskStore('/tmp/test-trash');
+    await store.initialize();
   });
 
   afterEach(() => {

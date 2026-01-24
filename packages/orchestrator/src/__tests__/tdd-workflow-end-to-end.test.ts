@@ -15,7 +15,11 @@ import { TaskStore } from '../store';
 import type { ApexConfig, AgentDefinition, WorkflowDefinition } from '@apexcli/core';
 
 // Mock external dependencies
-vi.mock('@anthropic-ai/claude-agent-sdk');
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn(),
+  tool: vi.fn((config: any) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
+}));
 vi.mock('fs/promises');
 vi.mock('child_process');
 

@@ -167,7 +167,7 @@ workflows:
 
   describe('ApexOrchestrator AliasResolver Integration', () => {
     it('should initialize AliasResolver from config', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Test that the resolver is properly initialized
@@ -180,7 +180,7 @@ workflows:
     });
 
     it('should identify valid aliases', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       expect(orchestrator.aliasResolver.hasAlias('find-files')).toBe(true);
@@ -189,7 +189,7 @@ workflows:
     });
 
     it('should resolve aliases to actual tool calls', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       const result = orchestrator.aliasResolver.resolve('find-files', {
@@ -212,7 +212,7 @@ workflows:
     });
 
     it('should handle config reloading and update aliases', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Initially should have 3 aliases
@@ -488,7 +488,7 @@ workflows:
 
   describe('Integration with Orchestrator Task Execution', () => {
     it('should pass aliasResolver to hook context during task execution', async () => {
-      orchestrator = new ApexOrchestrator(testDir);
+      orchestrator = new ApexOrchestrator({ projectPath: testDir });
       await orchestrator.initialize();
 
       // Create a mock hook to capture context

@@ -18,7 +18,7 @@ import {
   initializeApex,
   loadConfig,
 } from '@apexcli/core';
-import { createTestToolConfig } from '@apexcli/core/src/__tests__/fixtures/custom-tools/index.js';
+import { createTestToolConfig } from '../../../core/src/__tests__/fixtures/custom-tools/index.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';

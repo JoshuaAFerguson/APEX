@@ -349,8 +349,14 @@ export class SlackService {
       payload.thread_ts = options.threadTs;
     }
 
-    const result = await this.webClient.chat.postMessage(payload);
-    return { ts: result.ts };
+    try {
+      const result = await this.webClient.chat.postMessage(payload);
+      return { ts: result.ts };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Slack postMessage failed for channel "${channel}": ${errMsg}`);
+      return undefined;
+    }
   }
 
   private buildHelpBlocks(): any[] {

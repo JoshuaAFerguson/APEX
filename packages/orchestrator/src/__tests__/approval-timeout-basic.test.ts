@@ -19,7 +19,8 @@ describe('Approval Timeout - Basic Unit Tests', () => {
 
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-basic-test-'));
-    store = new TaskStore(path.join(testDir, 'test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
     vi.clearAllMocks();
   });
 

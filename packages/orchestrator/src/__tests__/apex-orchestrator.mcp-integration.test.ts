@@ -108,7 +108,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should create MCPConnectionManager in ApexOrchestrator constructor', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Verify MCPConnectionManager was instantiated
       expect(MCPConnectionManager).toHaveBeenCalledWith({
@@ -120,7 +120,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should create MCPConnectionManager with correct configuration', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       expect(MCPConnectionManager).toHaveBeenCalledWith({
         projectPath: testProjectPath,
@@ -137,7 +137,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
 
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, configWithoutMCP);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...configWithoutMCP });
 
       // Should still create MCPConnectionManager even without MCP config
       expect(MCPConnectionManager).toHaveBeenCalledWith({
@@ -149,7 +149,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
 
   describe('MCPConnectionManager Accessibility', () => {
     it('should make MCPConnectionManager accessible for orchestrator operations', async () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Since MCPConnectionManager is private, we test indirectly by verifying
       // that it was created and can be used by checking if the mock was called
@@ -168,7 +168,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should properly initialize MCPConnectionManager during startup', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Verify MCPConnectionManager was created during construction
       expect(MCPConnectionManager).toHaveBeenCalledTimes(1);
@@ -184,7 +184,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should handle MCPConnectionManager cleanup during orchestrator shutdown', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       const mcpManagerInstance = vi.mocked(MCPConnectionManager).mock.results[0]?.value;
 
       // Verify disconnectAll is available for cleanup
@@ -197,7 +197,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     });
 
     it('should properly handle config updates to MCPConnectionManager', async () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
       const mcpManagerInstance = vi.mocked(MCPConnectionManager).mock.results[0]?.value;
 
@@ -231,7 +231,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
 
       // The orchestrator should handle the error without crashing
       expect(() => {
-        orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+        orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       }).toThrow('MCP initialization failed');
     });
 
@@ -247,7 +247,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
 
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, minimalConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...minimalConfig });
 
       expect(MCPConnectionManager).toHaveBeenCalledWith({
         projectPath: testProjectPath,
@@ -260,7 +260,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should verify MCPConnectionManager accepts the expected constructor arguments', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       const constructorCall = vi.mocked(MCPConnectionManager).mock.calls[0];
       expect(constructorCall).toBeDefined();
@@ -271,7 +271,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     });
 
     it('should verify MCPConnectionManager instance has all required methods', async () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
       const mcpManagerInstance = vi.mocked(MCPConnectionManager).mock.results[0]?.value;
 
@@ -296,7 +296,7 @@ describe('ApexOrchestrator - MCP Integration', () => {
     it('should maintain MCPConnectionManager throughout orchestrator lifecycle', async () => {
       const { MCPConnectionManager } = await import('../mcp/connection-manager.js');
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
 
       // Verify MCPConnectionManager was created exactly once
       expect(MCPConnectionManager).toHaveBeenCalledTimes(1);

@@ -12,7 +12,7 @@ describe('ApexOrchestrator - Template CRUD Validation', () => {
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-template-validation-test-'));
     await fs.mkdir(path.join(testDir, '.apex'), { recursive: true });
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
   });
 

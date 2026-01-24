@@ -134,7 +134,7 @@ describe('Policy Configuration Comprehensive Tests', () => {
       };
 
       const parsed = PolicyConfigSchema.parse(fullPolicy);
-      expect(parsed).toEqual(fullPolicy);
+      expect(parsed).toMatchObject(fullPolicy);
     });
 
     it('should reject invalid policy config structures', () => {

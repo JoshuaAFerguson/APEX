@@ -137,12 +137,12 @@ export class ApprovalGateController extends EventEmitter<ApprovalGateEvents> {
    * @throws Error if approval is already requested or resolved
    */
   async requestApproval(): Promise<ApprovalResult> {
-    if (this.waitingPromise) {
-      throw new Error('Approval already requested for this gate');
-    }
-
     if (this.isResolved) {
       throw new Error('Approval gate is already resolved');
+    }
+
+    if (this.waitingPromise) {
+      throw new Error('Approval already requested for this gate');
     }
 
     // Check for auto-approval

@@ -53,7 +53,7 @@ describe('ApexOrchestrator Pre-Action Autonomy Integration', () => {
       debug: false,
     };
 
-    orchestrator = new ApexOrchestrator(options);
+    orchestrator = new ApexOrchestrator({ projectPath: options });
     await orchestrator.initialize();
 
     // Add test task to store

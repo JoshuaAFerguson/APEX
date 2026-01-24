@@ -23,7 +23,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     // Mock implementation that yields test messages
     yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Mock response for dry-run test' }] } };
   }),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 describe('ApexOrchestrator Dry-Run Execution', () => {
   let tempDir: string;
@@ -114,7 +115,7 @@ Implement solutions
 `;
     await writeFile(join(apexDir, 'agents', 'developer.md'), agentContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
     await orchestrator.initialize();
 
     // Reset the mock before each test

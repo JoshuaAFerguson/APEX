@@ -79,7 +79,7 @@ codeQuality:
       }
     };
 
-    orchestrator = new ApexOrchestrator(projectPath, config);
+    orchestrator = new ApexOrchestrator({ projectPath: projectPath, ...config });
     await orchestrator.initialize();
 
     // Set up comprehensive event capture

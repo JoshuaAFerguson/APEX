@@ -661,8 +661,8 @@ describe('MCP Connection Event Types and Schemas', () => {
 
     describe('Edge cases and boundary conditions', () => {
       it('should handle very long server identifiers and names', () => {
-        const longServerId = 'very-long-server-identifier-'.repeat(20);
-        const longServerName = 'Very Long Server Name '.repeat(30);
+        const longServerId = 'very-long-server-identifier-'.repeat(20).slice(0, -1);
+        const longServerName = 'Very Long Server Name '.repeat(30).trimEnd();
 
         const event = {
           type: 'connected' as const,

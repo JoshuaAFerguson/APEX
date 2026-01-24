@@ -21,7 +21,13 @@ import {
 import type { MCPMarketplaceEntry } from '../types.js';
 
 // Mock fs to control file system operations
-vi.mock('fs');
+vi.mock('fs', () => {
+  const readFileSyncMock = vi.fn();
+  return {
+    readFileSync: readFileSyncMock,
+    default: { readFileSync: readFileSyncMock },
+  };
+});
 const mockReadFileSync = vi.mocked(readFileSync);
 
 describe('MCPRegistry - listServers() and Filtering', () => {
@@ -362,7 +368,7 @@ describe('MCPRegistry - listServers() and Filtering', () => {
       const registry = MCPRegistry.getInstance();
       const verifiedServers = registry.listServers({ verified: true });
 
-      expect(verifiedServers).toHaveLength(6);
+      expect(verifiedServers).toHaveLength(7);
       const verifiedNames = verifiedServers.map(s => s.name).sort();
       expect(verifiedNames).toEqual([
         'fetch',

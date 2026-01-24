@@ -194,7 +194,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
 
   describe('unicode and international character handling', () => {
     it('should distinguish between ASCII and fullwidth special characters', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -215,7 +215,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should handle combining characters in patterns correctly', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*',
         path: tempDir,
       });
@@ -232,7 +232,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should handle directional marks and invisible characters', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -253,7 +253,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should handle mathematical Unicode brackets correctly', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*',
         path: tempDir,
       });
@@ -271,7 +271,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should handle zero-width characters securely', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[hidden]*',
         path: tempDir,
       });
@@ -301,7 +301,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should safely handle filenames that look like command injection', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*$(*)*.js',
         path: tempDir,
       });
@@ -322,7 +322,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should handle regex-like patterns in filenames safely', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*',
         path: tempDir,
       });
@@ -342,7 +342,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
     });
 
     it('should safely handle path traversal patterns in filenames', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[../*]*',
         path: tempDir,
       });
@@ -390,7 +390,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
 
       const startTime = Date.now();
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: 'stress*[*]*',
         path: tempDir,
       });
@@ -418,7 +418,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
       const startTime = Date.now();
 
       try {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: complexPattern,
           path: tempDir,
         });
@@ -449,7 +449,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
       ];
 
       const operations = patterns.map(pattern =>
-        globTool.execute({ pattern, path: tempDir })
+        globTool.run({ pattern, path: tempDir })
       );
 
       const startTime = Date.now();
@@ -486,7 +486,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
         try {
           await createTestFile(tempDir, name, 'test content');
 
-          const result = await globTool.execute({
+          const result = await globTool.run({
             pattern: '**/*',
             path: tempDir,
           });
@@ -509,7 +509,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
       try {
         await createTestFile(tempDir, longName, 'long filename test');
 
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*[*]*{*}**',
           path: tempDir,
         });
@@ -531,7 +531,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
       await createTestFile(tempDir, 'test[abc].txt', 'lowercase');
       await createTestFile(tempDir, 'TEST[123].TXT', 'all caps');
 
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*',
         path: tempDir,
       });
@@ -565,7 +565,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
       const problematicPattern = '**/*[*]*{*}*';
 
       try {
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: problematicPattern,
           path: tempDir,
         });
@@ -590,7 +590,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
         signal: controller.signal,
       };
 
-      const promise = globTool.execute({
+      const promise = globTool.run({
         pattern: '**/*[*]*{*}*',
         path: tempDir,
       }, context);
@@ -612,7 +612,7 @@ describe('GlobTool Special Characters - Advanced Edge Cases', () => {
 
       for (const pattern of malformedPatterns) {
         try {
-          await globTool.execute({
+          await globTool.run({
             pattern,
             path: tempDir,
           });

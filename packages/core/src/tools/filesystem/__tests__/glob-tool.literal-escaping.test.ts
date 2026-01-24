@@ -181,7 +181,7 @@ describe('GlobTool Literal Character Escaping', () => {
   describe('literal bracket matching', () => {
     it('should match files with literal brackets using wildcard patterns', async () => {
       // Use wildcards to find files containing literal brackets
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*',
         path: tempDir,
       });
@@ -204,7 +204,7 @@ describe('GlobTool Literal Character Escaping', () => {
       await createPatternTestFiles(tempDir);
 
       // Test bracket pattern matching (should match single characters)
-      const patternResult = await globTool.execute({
+      const patternResult = await globTool.run({
         pattern: 'test[abc].txt',
         path: tempDir,
       });
@@ -217,7 +217,7 @@ describe('GlobTool Literal Character Escaping', () => {
       expect(patternMatches).not.toContain('file[abc]'); // This has literal [abc]
 
       // Test literal bracket matching
-      const literalResult = await globTool.execute({
+      const literalResult = await globTool.run({
         pattern: '*[abc]*',
         path: tempDir,
       });
@@ -228,7 +228,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle nested and complex literal brackets', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*[*]*]*',
         path: tempDir,
       });
@@ -245,7 +245,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle empty brackets correctly', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[]*',
         path: tempDir,
       });
@@ -267,7 +267,7 @@ describe('GlobTool Literal Character Escaping', () => {
 
   describe('literal brace matching', () => {
     it('should match files with literal braces using wildcard patterns', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*{*}*',
         path: tempDir,
       });
@@ -288,7 +288,7 @@ describe('GlobTool Literal Character Escaping', () => {
       await createPatternTestFiles(tempDir);
 
       // Test brace pattern matching (alternation)
-      const patternResult = await globTool.execute({
+      const patternResult = await globTool.run({
         pattern: 'script.{js,ts}',
         path: tempDir,
       });
@@ -300,7 +300,7 @@ describe('GlobTool Literal Character Escaping', () => {
       expect(patternMatches).not.toContain('config{js,ts}'); // This has literal {js,ts}
 
       // Test literal brace matching
-      const literalResult = await globTool.execute({
+      const literalResult = await globTool.run({
         pattern: '*{js,ts}*',
         path: tempDir,
       });
@@ -311,7 +311,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle nested and complex literal braces', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*{*{*}*}*',
         path: tempDir,
       });
@@ -327,7 +327,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle empty braces correctly', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*{}*',
         path: tempDir,
       });
@@ -349,7 +349,7 @@ describe('GlobTool Literal Character Escaping', () => {
 
   describe('real-world file naming scenarios', () => {
     it('should handle JavaScript library files with version brackets', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*].min.js',
         path: tempDir,
       });
@@ -365,7 +365,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle Angular/React component naming patterns', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*{*}*',
         path: tempDir,
       });
@@ -383,7 +383,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle mathematical notation in filenames', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*',
         path: tempDir,
       });
@@ -400,7 +400,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle programming language construct names', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '**/*{*}*',
         path: tempDir,
       });
@@ -424,7 +424,7 @@ describe('GlobTool Literal Character Escaping', () => {
 
   describe('complex literal character combinations', () => {
     it('should handle files with multiple literal special character types', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*{*}**',
         path: tempDir,
       });
@@ -447,7 +447,7 @@ describe('GlobTool Literal Character Escaping', () => {
       await createPatternTestFiles(tempDir);
 
       // This should find files that have literal {js} in the name AND end with .txt
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*{js}*.txt',
         path: tempDir,
       });
@@ -463,7 +463,7 @@ describe('GlobTool Literal Character Escaping', () => {
     });
 
     it('should handle extremely complex literal combinations', async () => {
-      const result = await globTool.execute({
+      const result = await globTool.run({
         pattern: '*[*]*{*}*+*?*',
         path: tempDir,
       });
@@ -498,7 +498,7 @@ describe('GlobTool Literal Character Escaping', () => {
         await createTestFile(tempDir, '{}[].js', 'reversed special chars');
         await createTestFile(tempDir, '*?+.log', 'wildcard chars');
 
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '**/*',
           path: tempDir,
         });
@@ -522,7 +522,7 @@ describe('GlobTool Literal Character Escaping', () => {
       try {
         await createTestFile(tempDir, longName, 'long name test');
 
-        const result = await globTool.execute({
+        const result = await globTool.run({
           pattern: '*[*]*{*}*',
           path: tempDir,
         });
@@ -552,7 +552,7 @@ describe('GlobTool Literal Character Escaping', () => {
         const startTime = Date.now();
 
         try {
-          const result = await globTool.execute({
+          const result = await globTool.run({
             pattern,
             path: tempDir,
           });

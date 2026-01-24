@@ -25,16 +25,21 @@ import {
 } from '../types';
 
 // Mock child_process for Docker/Podman command execution
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  spawn: vi.fn(() => ({
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn(() => ({
     stdout: { on: vi.fn() },
     stderr: { on: vi.fn() },
     on: vi.fn(),
     kill: vi.fn(),
     pid: 12345,
-  })),
-}));
+  }));
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 // Mock ContainerRuntime
 vi.mock('../container-runtime');

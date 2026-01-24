@@ -13,6 +13,17 @@ import { TaskStore } from './store';
 
 const execAsync = promisify(exec);
 
+/**
+ * Tracks the state of a partial installation for rollback purposes
+ */
+interface RollbackState {
+  /** Whether the npm package was successfully installed */
+  packageInstalled: boolean;
+  /** Path to the config file if it was successfully created */
+  configPath?: string;
+  /** Installation ID if it was stored in the database */
+  installationId?: string;
+}
 
 export interface MCPInstallationOptions {
   /** Force reinstallation even if already installed */
@@ -25,6 +36,20 @@ export interface MCPInstallationOptions {
   global?: boolean;
   /** Specific version to install (e.g., "1.2.3", "^1.0.0", "latest") */
   version?: string;
+}
+
+/**
+ * Result returned from install operations, providing server details and config
+ */
+export interface InstalledMCPResult {
+  /** Server name */
+  name: string;
+  /** Server configuration (command, args, env, etc.) */
+  config: MCPServerConfig;
+  /** How the server was installed */
+  installedFrom: 'marketplace' | 'npx' | 'npm';
+  /** When the server was installed */
+  installedAt: Date;
 }
 
 /**
@@ -41,41 +66,228 @@ export class MCPInstaller {
   }
 
   /**
-   * Install an MCP server from various sources
+   * Install an MCP server from various sources.
+   * Accepts either an MCPServer object or a string name (for marketplace lookup).
    */
   async install(
-    server: MCPServer,
+    serverOrName: MCPServer | string,
     options: MCPInstallationOptions = {}
-  ): Promise<MCPInstallation> {
+  ): Promise<InstalledMCPResult> {
+    let server: MCPServer;
+    let installedFrom: 'marketplace' | 'npx' | 'npm' = 'npm';
+
+    if (typeof serverOrName === 'string') {
+      // Lookup from marketplace
+      const entry = await this.store.getMcpMarketplaceEntry(serverOrName);
+      if (entry) {
+        server = {
+          name: entry.name,
+          package: entry.serverConfig.command || entry.name,
+          command: entry.serverConfig.command || 'npx',
+          args: entry.serverConfig.args || [],
+          env: entry.serverConfig.env || {},
+          envVars: [],
+          version: entry.version,
+        };
+        installedFrom = 'marketplace';
+      } else {
+        // Treat as npx package name
+        server = {
+          name: serverOrName,
+          package: serverOrName,
+          command: 'npx',
+          args: [serverOrName],
+          env: {},
+          envVars: [],
+          version: 'latest',
+        };
+        installedFrom = 'npx';
+      }
+    } else {
+      server = serverOrName;
+      installedFrom = 'npm';
+    }
+
     // Check if already installed
     const existing = await this.getInstallation(server.name);
     if (existing && !options.force) {
       throw new Error(`MCP server '${server.name}' is already installed. Use force option to reinstall.`);
     }
 
-    // Generate installation ID and install server
     const installationId = this.generateInstallationId();
+    const rollbackState: RollbackState = {
+      packageInstalled: false,
+      configPath: undefined,
+      installationId: undefined,
+    };
+
+    const serverConfig: MCPServerConfig = {
+      name: server.name,
+      type: 'stdio',
+      command: server.command,
+      args: server.args,
+      autoStart: false,
+    };
 
     try {
-      // Execute the installation command based on server config
+      // Step 1: Execute npm install
       await this.executeInstallation(server, options);
+      rollbackState.packageInstalled = true;
 
-      // Create the installation record
-      const installation: MCPInstallation = {
+      // Step 2: Create config file
+      const configPath = await this.createConfigFile(server, installationId);
+      rollbackState.configPath = configPath;
+
+      // Step 3: Store installation record
+      const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
         id: installationId,
         serverId: server.name,
         installedAt: new Date(),
         status: 'installed' as MCPInstallationStatus,
-        configPath: await this.createConfigFile(server, installationId),
+        configPath,
+        installedFrom,
+        configJson: JSON.stringify(serverConfig),
       };
-
-      // Store the installation record
       await this.store.createMcpInstallation(installation);
+      rollbackState.installationId = installationId;
 
-      return installation;
+      return {
+        name: server.name,
+        config: serverConfig,
+        installedFrom,
+        installedAt: installation.installedAt,
+      };
     } catch (error) {
-      throw new Error(`Failed to install MCP server '${server.name}': ${error instanceof Error ? error.message : String(error)}`);
+      // Rollback any partial state
+      await this.rollbackInstallation(server, options, rollbackState);
+      throw new Error(
+        `Failed to install MCP server '${server.name}': ${error instanceof Error ? error.message : String(error)}`
+      );
     }
+  }
+
+  /**
+   * Install an MCP server directly from an npm package name.
+   * Creates the server definition and installs via npx.
+   */
+  async installFromNpm(
+    packageName: string,
+    options: MCPInstallationOptions = {}
+  ): Promise<InstalledMCPResult> {
+    const serverName = this.extractServerName(packageName);
+    const installedFrom: 'npm' | 'npx' = options.global ? 'npm' : 'npx';
+
+    const server: MCPServer = {
+      name: serverName,
+      package: packageName,
+      command: 'npx',
+      args: [packageName],
+      env: {},
+      envVars: [],
+      version: options.version || 'latest',
+    };
+
+    // Check if already installed
+    const existing = await this.getInstallation(serverName);
+    if (existing && !options.force) {
+      throw new Error(`MCP server '${serverName}' is already installed. Use force option to reinstall.`);
+    }
+
+    const installationId = this.generateInstallationId();
+    const rollbackState: RollbackState = {
+      packageInstalled: false,
+      configPath: undefined,
+      installationId: undefined,
+    };
+
+    const serverConfig: MCPServerConfig = {
+      name: serverName,
+      type: 'stdio',
+      command: 'npx',
+      args: [packageName],
+      autoStart: false,
+    };
+
+    try {
+      await this.executeInstallation(server, options);
+      rollbackState.packageInstalled = true;
+
+      const configPath = await this.createConfigFile(server, installationId);
+      rollbackState.configPath = configPath;
+
+      const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
+        id: installationId,
+        serverId: serverName,
+        installedAt: new Date(),
+        status: 'installed' as MCPInstallationStatus,
+        configPath,
+        installedFrom,
+        configJson: JSON.stringify(serverConfig),
+      };
+      await this.store.createMcpInstallation(installation);
+      rollbackState.installationId = installationId;
+
+      return {
+        name: serverName,
+        config: serverConfig,
+        installedFrom,
+        installedAt: installation.installedAt,
+      };
+    } catch (error) {
+      await this.rollbackInstallation(server, options, rollbackState);
+      throw new Error(
+        `Failed to install MCP server '${serverName}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Extract a short server name from a package name.
+   * E.g., "@modelcontextprotocol/server-filesystem" → "filesystem"
+   */
+  private extractServerName(packageName: string): string {
+    let name = packageName;
+    // Remove scope (e.g., @scope/package → package)
+    if (name.startsWith('@') && name.includes('/')) {
+      name = name.split('/').pop()!;
+    }
+    // Remove common "server-" prefix
+    if (name.startsWith('server-')) {
+      name = name.substring('server-'.length);
+    }
+    // Remove common "mcp-server-" prefix
+    if (name.startsWith('mcp-server-')) {
+      name = name.substring('mcp-server-'.length);
+    }
+    return name;
+  }
+
+  /**
+   * Get details about an installed server by name.
+   */
+  async getInstalledServer(name: string): Promise<InstalledMCPResult | null> {
+    const installation = await this.store.getMcpInstallation(name);
+    if (!installation) return null;
+
+    let config: MCPServerConfig;
+    if (installation.configJson) {
+      config = JSON.parse(installation.configJson);
+    } else {
+      // Fallback: read from config file
+      try {
+        const content = await fs.readFile(installation.configPath, 'utf-8');
+        config = JSON.parse(content);
+      } catch {
+        config = { name, type: 'stdio', command: name, autoStart: false };
+      }
+    }
+
+    return {
+      name: installation.serverId,
+      config,
+      installedFrom: (installation.installedFrom || 'npm') as 'marketplace' | 'npx' | 'npm',
+      installedAt: installation.installedAt,
+    };
   }
 
   /**
@@ -150,8 +362,22 @@ export class MCPInstaller {
   /**
    * List all installed MCP servers
    */
-  async listInstalled(): Promise<MCPInstallation[]> {
-    return this.store.listMcpInstallations();
+  async listInstalled(): Promise<InstalledMCPResult[]> {
+    const installations = await this.store.listMcpInstallations();
+    return installations.map((inst) => {
+      let config: MCPServerConfig;
+      if (inst.configJson) {
+        config = JSON.parse(inst.configJson);
+      } else {
+        config = { name: inst.serverId, type: 'stdio', command: inst.serverId, autoStart: false };
+      }
+      return {
+        name: inst.serverId,
+        config,
+        installedFrom: (inst.installedFrom || 'npm') as 'marketplace' | 'npx' | 'npm',
+        installedAt: inst.installedAt,
+      };
+    });
   }
 
   /**
@@ -167,6 +393,26 @@ export class MCPInstaller {
   async isInstalled(serverId: string): Promise<boolean> {
     const installation = await this.getInstallation(serverId);
     return installation !== null;
+  }
+
+  /**
+   * Verify that an installation is in a consistent state:
+   * - Installation record exists in database
+   * - Config file exists on disk
+   * - Config file contains valid JSON
+   */
+  async verifyInstallation(serverId: string): Promise<boolean> {
+    const installation = await this.getInstallation(serverId);
+    if (!installation) return false;
+
+    try {
+      await fs.access(installation.configPath);
+      const content = await fs.readFile(installation.configPath, 'utf-8');
+      JSON.parse(content); // Verify valid JSON
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -399,6 +645,74 @@ export class MCPInstaller {
 
     // Default to server name
     return server.name;
+  }
+
+  /**
+   * Rollback a partial installation by cleaning up state in reverse order.
+   * This is best-effort: individual rollback steps may fail without
+   * preventing other rollback steps from executing.
+   */
+  private async rollbackInstallation(
+    server: MCPServer,
+    options: MCPInstallationOptions,
+    state: RollbackState
+  ): Promise<void> {
+    const errors: Error[] = [];
+
+    // Step 3 rollback: Remove database record (reverse of step 4)
+    if (state.installationId) {
+      try {
+        await this.store.removeMcpInstallation(state.installationId);
+      } catch (e) {
+        errors.push(e as Error);
+      }
+    }
+
+    // Step 2 rollback: Remove config file (reverse of step 3)
+    if (state.configPath) {
+      try {
+        await this.removeConfigFile(state.configPath);
+      } catch (e) {
+        errors.push(e as Error);
+      }
+    }
+
+    // Step 1 rollback: Uninstall npm package (reverse of step 2)
+    if (state.packageInstalled) {
+      try {
+        await this.executeUninstallCommand(server, options);
+      } catch (e) {
+        errors.push(e as Error);
+      }
+    }
+
+    // Rollback errors are logged but not thrown - this is best-effort cleanup
+    if (errors.length > 0) {
+      // Future: could emit a warning event
+      // For now, we silently swallow rollback errors to ensure original error propagates
+    }
+  }
+
+  /**
+   * Execute npm uninstall for the given server package.
+   * Used during rollback to remove packages that were installed
+   * before a subsequent step failed.
+   */
+  private async executeUninstallCommand(
+    server: MCPServer,
+    options: MCPInstallationOptions
+  ): Promise<void> {
+    const packageName = this.extractPackageName(server);
+    const parts = ['npm', 'uninstall'];
+    if (options.global) {
+      parts.push('-g');
+    }
+    parts.push(packageName);
+
+    await execAsync(parts.join(' '), {
+      cwd: this.projectPath,
+      env: { ...process.env, ...options.env },
+    });
   }
 
   /**

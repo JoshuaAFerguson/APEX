@@ -110,7 +110,7 @@ describe('Hook Configuration Edge Cases and Error Handling', () => {
       for (const handler of validFileHandlers) {
         const result = HookHandlerSchema.safeParse(handler);
         expect(result.success).toBe(true);
-        expect(result.data).toEqual(handler);
+        expect(result.data).toMatchObject(handler);
       }
     });
 

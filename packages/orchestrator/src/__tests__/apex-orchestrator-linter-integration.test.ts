@@ -60,7 +60,7 @@ git:
 
     await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
   });
 
   afterEach(async () => {
@@ -140,7 +140,7 @@ git:
 
       // Create fresh orchestrator with updated config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const linterService = orchestrator.getLinterService();
@@ -180,7 +180,7 @@ git:
 
       // Create fresh orchestrator with updated config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const linterService = orchestrator.getLinterService();
@@ -376,7 +376,7 @@ git:
 
       // Create fresh orchestrator with complex config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const linterService = orchestrator.getLinterService();
@@ -463,7 +463,7 @@ git:
 
       // Create fresh orchestrator with malformed config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should handle gracefully or throw specific config error
       await expect(orchestrator.initialize()).rejects.toThrow();

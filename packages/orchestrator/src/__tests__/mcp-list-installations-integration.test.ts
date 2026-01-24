@@ -130,7 +130,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
   describe('Basic Functionality', () => {
     it('should return empty array when no MCP installer is available', async () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       // Simulate no MCP installer available
@@ -162,7 +162,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(mockInstallations);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       const result = await orchestrator.listMcpInstallations();
@@ -174,7 +174,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
     it('should handle MCP installer errors gracefully', async () => {
       mockMcpInstaller.listInstalled.mockRejectedValue(new Error('Database connection failed'));
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       await expect(orchestrator.listMcpInstallations()).rejects.toThrow('Database connection failed');
@@ -196,7 +196,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(mockInstallations);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       const result = await orchestrator.listMcpInstallations();
@@ -243,7 +243,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(mockInstallations);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       const result = await orchestrator.listMcpInstallations();
@@ -271,7 +271,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(mockInstallations);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       const startTime = process.hrtime.bigint();
@@ -298,7 +298,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(mockInstallations);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       // Make 5 concurrent calls
@@ -325,7 +325,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
   describe('Error Scenarios', () => {
     it('should handle orchestrator not initialized properly', async () => {
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       // Don't call initialize()
 
       // Should still work but return empty array if no installer
@@ -337,7 +337,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
       const dbError = new Error('SQLite database is locked');
       mockMcpInstaller.listInstalled.mockRejectedValue(dbError);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       await expect(orchestrator.listMcpInstallations()).rejects.toThrow('SQLite database is locked');
@@ -354,7 +354,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockMcpInstaller.listInstalled.mockResolvedValue(corruptedData as any);
 
-      orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       await orchestrator.initialize();
 
       // Should either handle gracefully or throw meaningful error
@@ -382,7 +382,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockFS.readFile.mockResolvedValue(JSON.stringify(configWithMcpDisabled));
 
-      orchestrator = new ApexOrchestrator(testProjectPath, configWithMcpDisabled);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...configWithMcpDisabled });
       await orchestrator.initialize();
 
       const result = await orchestrator.listMcpInstallations();
@@ -400,7 +400,7 @@ describe('ApexOrchestrator - listMcpInstallations Integration', () => {
 
       mockFS.readFile.mockResolvedValue(JSON.stringify(configWithoutMcp));
 
-      orchestrator = new ApexOrchestrator(testProjectPath, configWithoutMcp);
+      orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...configWithoutMcp });
       await orchestrator.initialize();
 
       const result = await orchestrator.listMcpInstallations();

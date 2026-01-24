@@ -29,7 +29,8 @@ describe('Edge Cases - Limit Recovery and Approval Timeout', () => {
 
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-edge-cases-test-'));
-    store = new TaskStore(path.join(testDir, 'test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
     parentEmitter = new EventEmitter();
     vi.clearAllMocks();
   });

@@ -18,29 +18,34 @@ vi.mock('../store.js');
 vi.mock('fs/promises');
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
-// Create a mock MCPConnectionManager that extends EventEmitter
-class MockMCPConnectionManager extends EventEmitter {
-  public discoverServers = vi.fn().mockReturnValue([]);
-  public connect = vi.fn().mockResolvedValue({});
-  public disconnect = vi.fn().mockResolvedValue(undefined);
-  public disconnectAll = vi.fn().mockResolvedValue(undefined);
-  public listConnections = vi.fn().mockReturnValue([]);
-  public getConnection = vi.fn().mockReturnValue(undefined);
-  public getClient = vi.fn().mockReturnValue(undefined);
-  public updateConfig = vi.fn();
+// Mock the MCPConnectionManager module - class defined via vi.hoisted to avoid hoisting issues
+const { MockMCPConnectionManager } = vi.hoisted(() => {
+  const { EventEmitter } = require('events');
+  class MockMCPConnectionManager extends EventEmitter {
+    public discoverServers = vi.fn().mockReturnValue([]);
+    public connect = vi.fn().mockResolvedValue({});
+    public disconnect = vi.fn().mockResolvedValue(undefined);
+    public disconnectAll = vi.fn().mockResolvedValue(undefined);
+    public listConnections = vi.fn().mockReturnValue([]);
+    public getConnection = vi.fn().mockReturnValue(undefined);
+    public getClient = vi.fn().mockReturnValue(undefined);
+    public updateConfig = vi.fn();
 
-  constructor() {
-    super();
+    constructor() {
+      super();
+    }
+
+    public simulateEvent(eventName: string, ...args: any[]) {
+      this.emit(eventName, ...args);
+    }
   }
+  return { MockMCPConnectionManager };
+});
 
-  public simulateEvent(eventName: string, ...args: any[]) {
-    this.emit(eventName, ...args);
-  }
-}
-
-// Mock the MCPConnectionManager module
 vi.mock('../mcp/connection-manager.js', () => ({
   MCPConnectionManager: MockMCPConnectionManager
 }));
@@ -98,7 +103,7 @@ describe('MCP Event Forwarding - Edge Cases', () => {
     };
     MockTaskStore.mockImplementation(() => mockStore as any);
 
-    orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
     mockMCPManager = (MockMCPConnectionManager as any).mock.results[0]?.value;
   });
 
@@ -340,7 +345,7 @@ describe('MCP Event Forwarding - Edge Cases', () => {
       const earlyEventListener = vi.fn();
 
       // Create new orchestrator and immediately listen for events
-      const newOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+      const newOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
       newOrchestrator.on('mcp:connected', earlyEventListener);
 
       const newMockManager = (MockMCPConnectionManager as any).mock.results[1]?.value;
@@ -369,7 +374,7 @@ describe('MCP Event Forwarding - Edge Cases', () => {
 
       // Create and destroy multiple orchestrator instances
       for (let i = 0; i < 10; i++) {
-        const tempOrchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+        const tempOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
         const listener = vi.fn();
         tempOrchestrator.on('mcp:connected', listener);
         listeners.push(listener);

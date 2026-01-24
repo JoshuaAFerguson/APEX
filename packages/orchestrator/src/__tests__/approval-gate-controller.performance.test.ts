@@ -49,7 +49,8 @@ describe('ApprovalGateController - Performance', () => {
 
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-perf-test-'));
-    store = new TaskStore(path.join(testDir, 'performance.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
     parentEmitter = new EventEmitter();
   });
 

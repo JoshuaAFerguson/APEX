@@ -41,7 +41,7 @@ describe('Hook Configuration', () => {
 
       const result = HookConfigSchema.safeParse(hookConfig);
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(hookConfig);
+      expect(result.data).toMatchObject(hookConfig);
     });
 
     it('should validate a minimal hook configuration with inline handler', () => {

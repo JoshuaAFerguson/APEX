@@ -6,7 +6,15 @@ import { ImageBuilder, ImageBuildConfig } from '../image-builder';
 
 // Mock dependencies
 vi.mock('fs/promises');
-vi.mock('child_process');
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 vi.mock('../container-runtime', () => ({
   detectContainerRuntime: vi.fn().mockResolvedValue('docker'),
 }));

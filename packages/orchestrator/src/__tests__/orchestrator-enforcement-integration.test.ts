@@ -73,7 +73,7 @@ describe('Orchestrator Enforcement Mode Integration', () => {
 
     mockPolicyEngine = new MockPolicyEngine();
 
-    orchestrator = new ApexOrchestrator(tempDir, {
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir,
       policyEngine: mockPolicyEngine,
     });
   });

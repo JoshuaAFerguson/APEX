@@ -80,7 +80,7 @@ describe('ApexOrchestrator Audit Logging Method Calls', () => {
     };
 
     // Initialize orchestrator
-    orchestrator = new ApexOrchestrator(config, {
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir,
       workingDirectory: tempDir,
       silent: true,
       skipGitOps: true

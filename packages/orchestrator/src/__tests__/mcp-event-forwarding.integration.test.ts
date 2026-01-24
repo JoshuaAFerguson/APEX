@@ -17,6 +17,8 @@ vi.mock('../store.js');
 vi.mock('fs/promises');
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() })),
 }));
 
 // Create a realistic mock MCPConnectionManager with state management
@@ -212,7 +214,7 @@ describe('MCP Event Forwarding - Integration Tests', () => {
     };
     MockTaskStore.mockImplementation(() => mockStore as any);
 
-    orchestrator = new ApexOrchestrator(testProjectPath, testConfig);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...testConfig });
     mockMCPManager = (RealisticMCPConnectionManager as any).mock.results[0]?.value;
   });
 

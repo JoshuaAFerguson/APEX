@@ -40,7 +40,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       },
     }),
   })),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 describe('Approval Gate Flow Integration Tests', () => {
   let testDir: string;
@@ -128,7 +129,8 @@ describe('Approval Gate Flow Integration Tests', () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-flow-test-'));
 
     // Initialize test store
-    store = new TaskStore(path.join(testDir, 'test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
 
     // Initialize orchestrator
     orchestrator = new ApexOrchestrator({

@@ -52,7 +52,7 @@ git:
 
     await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
 
-    orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
   });
 
   afterEach(async () => {
@@ -126,7 +126,7 @@ git:
 
       // Create fresh orchestrator with updated config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const loadedPreset = await orchestrator.getCurrentPreset();
@@ -158,7 +158,7 @@ git:
 
       // Create fresh orchestrator with updated config
       await orchestrator.shutdown();
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const loadedPreset = await orchestrator.getCurrentPreset();

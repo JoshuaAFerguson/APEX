@@ -89,7 +89,7 @@ describe('Policy Audit Enforcement Mode - Unit Tests', () => {
     mockPolicyEngine = new EdgeCaseAuditPolicyEngine();
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    orchestrator = new ApexOrchestrator('/tmp/test', {
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/test',
       policyEngine: mockPolicyEngine,
     });
   });

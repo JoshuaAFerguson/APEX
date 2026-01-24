@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DocsAnalyzer } from './docs-analyzer';
 import type { ProjectAnalysis } from '../idle-processor';
-import type { TaskCandidate } from './index';
+import type { TaskCandidate } from './base-analyzer';
 import type {
   EnhancedDocumentationAnalysis,
   UndocumentedExport,

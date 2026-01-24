@@ -19,7 +19,7 @@ describe('TDD Configuration Validation', () => {
       const result = TDDModeConfigSchema.safeParse(validConfig);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toEqual(validConfig);
+        expect(result.data).toMatchObject(validConfig);
       }
     });
 

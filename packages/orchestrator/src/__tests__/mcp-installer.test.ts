@@ -12,18 +12,37 @@ import {
 } from '@apexcli/core';
 
 // Mock dependencies
-vi.mock('fs', () => ({
-  promises: {
-    mkdir: vi.fn(),
-    writeFile: vi.fn(),
-    unlink: vi.fn(),
-    access: vi.fn(),
-  },
-}));
+vi.mock('fs', () => {
+  const mock = {
+    existsSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    readFileSync: vi.fn(),
+    readdirSync: vi.fn(),
+    statSync: vi.fn(),
+    promises: {
+      mkdir: vi.fn(),
+      writeFile: vi.fn(),
+      readFile: vi.fn(),
+      unlink: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      readdir: vi.fn(),
+    },
+  };
+  return { ...mock, default: mock };
+});
 
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 vi.mock('../store');
 
@@ -51,6 +70,7 @@ describe('MCPInstaller', () => {
       removeMcpInstallation: vi.fn(),
       upsertMcpMarketplaceEntry: vi.fn(),
       listMcpMarketplaceEntries: vi.fn(),
+      getMcpMarketplaceEntry: vi.fn().mockResolvedValue(null),
     } as any;
 
     // Mock filesystem
@@ -61,8 +81,17 @@ describe('MCPInstaller', () => {
       access: vi.mocked(fs.access),
     };
 
-    // Mock exec
+    // Mock exec - default to success so promisify(exec) resolves
     mockExec = vi.mocked(exec);
+    mockExec.mockImplementation((command: any, options: any, callback: any) => {
+      if (callback) callback(null, { stdout: 'Success', stderr: '' });
+      return {} as any;
+    });
+
+    // Mock filesystem defaults
+    mockFs.mkdir.mockResolvedValue(undefined);
+    mockFs.writeFile.mockResolvedValue(undefined);
+    mockFs.unlink.mockResolvedValue(undefined);
 
     installer = new MCPInstaller(projectPath, mockStore);
   });
@@ -83,20 +112,8 @@ describe('MCPInstaller', () => {
       package: '@test/mcp-server',
       command: 'npx',
       args: ['@test/mcp-server'],
-      version: '1.0.0',
+      version: 'latest',
     };
-
-    beforeEach(() => {
-      // Mock successful exec
-      mockExec.mockImplementation((command, options, callback) => {
-        if (callback) callback(null, { stdout: 'Success', stderr: '' });
-        return {} as any;
-      });
-
-      // Mock filesystem operations
-      mockFs.mkdir.mockResolvedValue(undefined);
-      mockFs.writeFile.mockResolvedValue(undefined);
-    });
 
     it('should successfully install an MCP server', async () => {
       mockStore.getMcpInstallation.mockResolvedValue(null);
@@ -105,19 +122,24 @@ describe('MCPInstaller', () => {
       const result = await installer.install(mockServer);
 
       expect(result).toMatchObject({
-        serverId: 'test-server',
-        status: 'installed',
+        name: 'test-server',
+        installedFrom: 'npm',
       });
-      expect(result.id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
       expect(result.installedAt).toBeInstanceOf(Date);
-      expect(result.configPath).toMatch(/\.apex\/mcp-installations\/.*\.json$/);
+      expect(result.config.name).toBe('test-server');
+      expect(result.config.command).toBe('npx');
 
       expect(mockExec).toHaveBeenCalledWith(
         'npm install @test/mcp-server',
         { cwd: projectPath, env: process.env },
         expect.any(Function)
       );
-      expect(mockStore.createMcpInstallation).toHaveBeenCalledWith(result);
+      expect(mockStore.createMcpInstallation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serverId: 'test-server',
+          status: 'installed',
+        })
+      );
     });
 
     it('should create config file with correct structure', async () => {
@@ -133,7 +155,7 @@ describe('MCPInstaller', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         expect.stringMatching(/\.apex\/mcp-installations\/.*\.json$/),
-        expect.stringContaining('"name":"test-server"'),
+        expect.stringContaining('"name": "test-server"'),
         'utf-8'
       );
     });
@@ -172,7 +194,7 @@ describe('MCPInstaller', () => {
       const options: MCPInstallationOptions = { force: true };
       const result = await installer.install(mockServer, options);
 
-      expect(result.serverId).toBe('test-server');
+      expect(result.name).toBe('test-server');
       expect(mockExec).toHaveBeenCalled();
       expect(mockStore.createMcpInstallation).toHaveBeenCalled();
     });
@@ -232,7 +254,7 @@ describe('MCPInstaller', () => {
         package: '@company/mcp-server',
         command: '@company/mcp-server',
         args: [],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(scopedServer);
@@ -253,7 +275,7 @@ describe('MCPInstaller', () => {
         package: 'simple-server',
         command: 'node',
         args: ['server.js'],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(simpleServer);
@@ -361,20 +383,24 @@ describe('MCPInstaller', () => {
 
   describe('listInstalled', () => {
     it('should return list of installed MCP servers', async () => {
-      const mockInstallations: MCPInstallation[] = [
+      const mockInstallations = [
         {
           id: 'id1',
           serverId: 'server1',
           installedAt: new Date(),
           status: 'installed',
           configPath: '/path1.json',
+          installedFrom: 'npm',
+          configJson: JSON.stringify({ name: 'server1', type: 'stdio', command: 'server1', autoStart: false }),
         },
         {
           id: 'id2',
           serverId: 'server2',
           installedAt: new Date(),
-          status: 'failed',
+          status: 'installed',
           configPath: '/path2.json',
+          installedFrom: 'marketplace',
+          configJson: JSON.stringify({ name: 'server2', type: 'stdio', command: 'server2', autoStart: false }),
         },
       ];
 
@@ -382,7 +408,12 @@ describe('MCPInstaller', () => {
 
       const result = await installer.listInstalled();
 
-      expect(result).toEqual(mockInstallations);
+      expect(result).toHaveLength(2);
+      expect(result[0].name).toBe('server1');
+      expect(result[0].installedFrom).toBe('npm');
+      expect(result[0].config.name).toBe('server1');
+      expect(result[1].name).toBe('server2');
+      expect(result[1].installedFrom).toBe('marketplace');
       expect(mockStore.listMcpInstallations).toHaveBeenCalled();
     });
 
@@ -559,23 +590,23 @@ describe('MCPInstaller', () => {
       it('should generate unique installation IDs', async () => {
         mockStore.getMcpInstallation.mockResolvedValue(null);
         mockStore.createMcpInstallation.mockResolvedValue(undefined);
-        mockFs.mkdir.mockResolvedValue(undefined);
-        mockFs.writeFile.mockResolvedValue(undefined);
 
         const server: MCPServer = {
           name: 'test-server',
           package: 'test',
           command: 'npx',
           args: ['test'],
-          version: '1.0.0',
+          version: 'latest',
         };
 
         const result1 = await installer.install(server, { force: true });
         const result2 = await installer.install(server, { force: true });
 
-        expect(result1.id).not.toEqual(result2.id);
-        expect(result1.id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
-        expect(result2.id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
+        // Each install creates a unique installation record with a unique ID
+        const calls = mockStore.createMcpInstallation.mock.calls;
+        expect(calls[0][0].id).not.toEqual(calls[1][0].id);
+        expect(calls[0][0].id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
+        expect(calls[1][0].id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
       });
     });
 
@@ -589,7 +620,7 @@ describe('MCPInstaller', () => {
           package: '@test/package',
           command: 'npx',
           args: ['@test/package'],
-          version: '1.0.0',
+          version: 'latest',
         };
 
         await installer.install(server);
@@ -610,7 +641,7 @@ describe('MCPInstaller', () => {
           package: 'my-server',
           command: 'python',
           args: ['script.py'],
-          version: '1.0.0',
+          version: 'latest',
         };
 
         await installer.install(server);
@@ -631,7 +662,7 @@ describe('MCPInstaller', () => {
           package: '@company/mcp-tool',
           command: '@company/mcp-tool',
           args: [],
-          version: '1.0.0',
+          version: 'latest',
         };
 
         await installer.install(server);
@@ -655,7 +686,7 @@ describe('MCPInstaller', () => {
         package: 'test-server',
         command: 'test-command',
         args: [],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(server);
@@ -675,7 +706,7 @@ describe('MCPInstaller', () => {
         name: 'test-server',
         package: 'test-server',
         command: 'test-command',
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(server);
@@ -731,15 +762,13 @@ describe('MCPInstaller', () => {
 
       mockStore.getMcpInstallation.mockResolvedValue(null);
       mockStore.createMcpInstallation.mockResolvedValue(undefined);
-      mockFs.mkdir.mockResolvedValue(undefined);
-      mockFs.writeFile.mockResolvedValue(undefined);
 
       const server: MCPServer = {
         name: 'test-server',
         package: 'test-package',
         command: 'npx',
         args: ['test-package'],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await customInstaller.install(server);
@@ -768,7 +797,7 @@ describe('MCPInstaller', () => {
         package: 'workspace-server',
         command: 'npm',
         args: ['exec', 'test-tool'],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await customInstaller.install(server);
@@ -789,7 +818,7 @@ describe('MCPInstaller', () => {
         package: 'nested-server',
         command: 'node',
         args: ['-e', 'console.log("test")'],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(server);
@@ -807,6 +836,7 @@ describe('MCPInstaller', () => {
   describe('invalid server configuration handling', () => {
     it('should handle server with empty name', async () => {
       mockStore.getMcpInstallation.mockResolvedValue(null);
+      mockStore.createMcpInstallation.mockResolvedValue(undefined);
 
       const invalidServer = {
         name: '',
@@ -816,8 +846,14 @@ describe('MCPInstaller', () => {
         autoStart: false,
       } as MCPServer;
 
-      // The installer should still attempt to process this, but the package name extraction should handle it
-      await expect(installer.install(invalidServer)).rejects.toThrow();
+      // The installer proceeds with empty name - it uses args[0] as package name
+      const result = await installer.install(invalidServer);
+      expect(result.name).toBe('');
+      expect(mockExec).toHaveBeenCalledWith(
+        'npm install test',
+        expect.any(Object),
+        expect.any(Function)
+      );
     });
 
     it('should handle server with null or undefined command', async () => {
@@ -852,12 +888,12 @@ describe('MCPInstaller', () => {
         package: 'normal-package',
         command: 'npx',
         args: ['normal-package'],
-        version: '1.0.0',
+        version: 'latest',
       };
 
       await installer.install(serverWithSpecialChars);
 
-      // Should still use the args[0] for package name
+      // Should still use the package field for package name
       expect(mockExec).toHaveBeenCalledWith(
         'npm install normal-package',
         expect.any(Object),

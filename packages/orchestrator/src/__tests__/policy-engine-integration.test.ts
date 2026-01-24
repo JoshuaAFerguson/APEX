@@ -20,10 +20,10 @@ import type {
   PolicyCheckContext,
   PolicyEnforcementMode,
   PolicyEngine as IPolicyEngine,
-  ApexOrchestratorOptions,
+  OrchestratorOptions,
   Task,
 } from '@apexcli/core';
-import { loadApexConfig } from '@apexcli/core/config';
+import { loadConfig } from '@apexcli/core';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import fs from 'node:fs/promises';
@@ -222,32 +222,32 @@ describe('ApexOrchestrator - PolicyEngine Constructor Injection', () => {
   it('should accept PolicyEngine in constructor options', async () => {
     const mockPolicyEngine = createMockPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: mockPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     // Access private policyEngine field through type assertion for testing
     expect((orchestrator as any).policyEngine).toBe(mockPolicyEngine);
   });
 
   it('should work without PolicyEngine when not provided', async () => {
-    const options: ApexOrchestratorOptions = {};
+    const options: OrchestratorOptions = {};
 
     expect(() => {
-      const orchestrator = new ApexOrchestrator(testProjectPath, options);
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
       expect((orchestrator as any).policyEngine).toBeUndefined();
     }).not.toThrow();
   });
 
   it('should create PolicyEngine from config when not provided', async () => {
-    const options: ApexOrchestratorOptions = {};
+    const options: OrchestratorOptions = {};
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     // Check that the orchestrator has access to policy configuration
-    const config = await loadApexConfig(testProjectPath);
+    const config = await loadConfig(testProjectPath);
     expect(config.policy).toBeDefined();
     expect(config.policy?.enabled).toBe(true);
   });
@@ -275,11 +275,11 @@ describe('ApexOrchestrator - PolicyEngine Constructor Injection', () => {
       durationMs: 50,
     });
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: customPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     expect((orchestrator as any).policyEngine).toBe(customPolicyEngine);
   });
@@ -298,11 +298,11 @@ describe('ApexOrchestrator - Pre-execution Policy Checks', () => {
     testProjectPath = await createTestProject();
     mockPolicyEngine = createMockPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: mockPolicyEngine,
     };
 
-    orchestrator = new ApexOrchestrator(testProjectPath, options);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
   });
 
   afterEach(async () => {
@@ -549,11 +549,11 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       metadata: {},
     });
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: strictPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn();
@@ -592,11 +592,11 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       metadata: {},
     });
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: warnPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -640,11 +640,11 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       metadata: {},
     });
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: auditPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -678,11 +678,11 @@ describe('ApexOrchestrator - Policy Enforcement Modes', () => {
       metadata: { disabled: true },
     });
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: disabledPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -728,11 +728,11 @@ describe('ApexOrchestrator - PolicyEngine Edge Cases', () => {
   it('should handle missing policy context gracefully', async () => {
     const mockPolicyEngine = createMockPolicyEngine();
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: mockPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask({ id: '' }); // Invalid task ID
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -771,11 +771,11 @@ describe('ApexOrchestrator - PolicyEngine Edge Cases', () => {
       clearPolicies: vi.fn(),
     };
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: timeoutPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -815,11 +815,11 @@ describe('ApexOrchestrator - PolicyEngine Edge Cases', () => {
       clearPolicies: vi.fn(),
     };
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: malformedPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -839,9 +839,9 @@ describe('ApexOrchestrator - PolicyEngine Edge Cases', () => {
   });
 
   it('should work without PolicyEngine when undefined', async () => {
-    const options: ApexOrchestratorOptions = {};
+    const options: OrchestratorOptions = {};
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
     const task = createMockTask();
 
     const mockQuery = vi.fn().mockResolvedValue({
@@ -889,11 +889,11 @@ describe('ApexOrchestrator - PolicyEngine Edge Cases', () => {
       }
     );
 
-    const options: ApexOrchestratorOptions = {
+    const options: OrchestratorOptions = {
       policyEngine: concurrentPolicyEngine,
     };
 
-    const orchestrator = new ApexOrchestrator(testProjectPath, options);
+    const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     const mockQuery = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'Concurrent test response' }],

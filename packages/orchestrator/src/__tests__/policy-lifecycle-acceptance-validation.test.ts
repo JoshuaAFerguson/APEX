@@ -254,7 +254,7 @@ describe('Policy Lifecycle Hooks - Acceptance Criteria Validation', () => {
       policyEngine: policyEngine as IPolicyEngine,
     };
 
-    orchestrator = new ApexOrchestrator(testProjectPath, options);
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath, ...options });
 
     // Wire up event collector to orchestrator
     (orchestrator as any).eventEmitter = eventCollector;
@@ -777,7 +777,7 @@ describe('Policy Lifecycle Hooks - Acceptance Criteria Validation', () => {
   describe('AC6: PolicyEngine can be disabled/optional', () => {
     it('should work correctly when PolicyEngine is not provided', async () => {
       // Create orchestrator without policy engine
-      const orchestratorWithoutPolicy = new ApexOrchestrator(testProjectPath, {});
+      const orchestratorWithoutPolicy = new ApexOrchestrator({ projectPath: testProjectPath,});
       (orchestratorWithoutPolicy as any).eventEmitter = eventCollector;
 
       const task = createTestTask();

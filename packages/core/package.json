@@ -40,6 +40,12 @@
       "import": "./dist/mcp/index.js",
       "require": "./dist/mcp/index.js",
       "default": "./dist/mcp/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "require": "./dist/config.js",
+      "default": "./dist/config.js"
     }
   },
   "files": [

@@ -563,6 +563,28 @@ export abstract class BaseTool<
   }
 
   /**
+   * Execute the tool and return the raw output directly.
+   *
+   * Unlike execute() which returns ToolResult<TOutput>, this method
+   * returns TOutput directly and throws on failure.
+   *
+   * @param params - The input parameters for the tool
+   * @param context - Optional execution context
+   * @returns The raw tool output
+   * @throws Error if validation fails or execution errors
+   */
+  async run(
+    params: TInput,
+    context?: ToolExecutionContext
+  ): Promise<TOutput> {
+    const result = await this.execute(params, context);
+    if (!result.success) {
+      throw new Error(result.error || 'Tool execution failed');
+    }
+    return result.output as TOutput;
+  }
+
+  /**
    * Abstract method that subclasses must implement.
    *
    * This is where the actual tool logic lives. The method receives

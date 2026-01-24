@@ -123,7 +123,7 @@ describe('MCPInstaller Database Operations and Persistence', () => {
       const complexServer = servers.find(s => s.name === 'complex-server');
 
       expect(complexServer!.config).toEqual(complexConfig);
-      expect(complexServer!.config.args).toHaveLength(6);
+      expect(complexServer!.config.args).toHaveLength(7);
       expect(complexServer!.config.env!['SPECIAL-VAR']).toBe('value with spaces and symbols !@#$%');
     });
 
@@ -355,7 +355,17 @@ describe('MCPInstaller Database Operations and Persistence', () => {
         autoStart: false,
       };
 
-      await store.upsertMcpServerConfig('multi-instance-test', config1);
+      // Create an installation record (not just a server config)
+      const configPath = path.join(tempDir, '.apex', 'mcp-installations', 'multi-inst.json');
+      await store.createMcpInstallation({
+        id: 'multi-inst',
+        serverId: 'multi-instance-test',
+        installedAt: new Date(),
+        status: 'installed' as any,
+        configPath,
+        installedFrom: 'npm',
+        configJson: JSON.stringify(config1),
+      });
 
       // Create second installer instance with same store
       const installer2 = new MCPInstaller(tempDir, store);
@@ -367,7 +377,7 @@ describe('MCPInstaller Database Operations and Persistence', () => {
       expect(isInstalled1).toBe(true);
       expect(isInstalled2).toBe(true);
 
-      // Update through second instance
+      // Uninstall through second instance
       await installer2.uninstall('multi-instance-test');
 
       // Both should reflect the change

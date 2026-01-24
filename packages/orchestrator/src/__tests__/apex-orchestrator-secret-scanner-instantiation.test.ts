@@ -91,7 +91,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner constructor was called
@@ -131,7 +131,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithoutScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner constructor was NOT called
@@ -177,7 +177,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithCompleteScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner constructor was called with complete config
@@ -232,7 +232,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithEmptyScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should call constructor with empty config object
@@ -274,7 +274,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithSpecificValues);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify exact configuration is passed through
@@ -315,7 +315,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithPartialScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should pass only the configured values
@@ -365,7 +365,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithCustomPatterns);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const constructorCall = MockedSecretScanner.mock.calls[0];
@@ -407,7 +407,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       expect(consoleSpy).toHaveBeenCalledWith('SecretScanner initialized with configuration');
@@ -439,7 +439,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithoutScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       expect(consoleSpy).toHaveBeenCalledWith('SecretScanner not configured - scanner will be disabled');
@@ -474,7 +474,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       const enabledLogs = consoleSpy.mock.calls.filter(call =>
@@ -524,7 +524,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await expect(orchestrator.initialize()).rejects.toThrow('SecretScanner construction failed');
     });
@@ -558,7 +558,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Initialize multiple times
       await orchestrator.initialize();
@@ -601,7 +601,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithNullValues);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should pass config as-is, let SecretScanner handle null values
@@ -641,7 +641,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should only pass defined values

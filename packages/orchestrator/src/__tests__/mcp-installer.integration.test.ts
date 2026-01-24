@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
-import { exec } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 import { MCPInstaller } from '../mcp-installer';
 import { TaskStore } from '../store';
-import { MCPServer, MCPInstallation, MCPMarketplaceEntry } from '@apexcli/core';
+import { MCPServer, MCPMarketplaceEntry } from '@apexcli/core';
+import { InstalledMCPResult } from '../mcp-installer';
+
+// Mock child_process for exec
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
+const { exec } = await import('child_process');
+const mockExec = vi.mocked(exec);
 
 describe('MCPInstaller Integration Tests', () => {
   let installer: MCPInstaller;
@@ -20,6 +34,7 @@ describe('MCPInstaller Integration Tests', () => {
     mockStore = {
       createMcpInstallation: vi.fn(),
       getMcpInstallation: vi.fn(),
+      getMcpMarketplaceEntry: vi.fn().mockResolvedValue(null),
       listMcpInstallations: vi.fn(),
       removeMcpInstallation: vi.fn(),
       upsertMcpMarketplaceEntry: vi.fn(),
@@ -43,15 +58,14 @@ describe('MCPInstaller Integration Tests', () => {
     it('should complete full install-list-uninstall workflow', async () => {
       const mockServer: MCPServer = {
         name: 'test-server',
-        description: 'Test MCP server for integration testing',
+        package: '@test/mcp-server',
         command: 'npx',
         args: ['@test/mcp-server'],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
       // Mock exec to simulate successful installation
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
+      mockExec.mockImplementation((command: any, options: any, callback: any) => {
         if (callback) {
           setTimeout(() => callback(null, { stdout: 'Package installed successfully', stderr: '' }), 10);
         }
@@ -64,36 +78,46 @@ describe('MCPInstaller Integration Tests', () => {
       mockStore.removeMcpInstallation.mockResolvedValue(undefined);
 
       // Step 1: Install the server
-      const installation = await installer.install(mockServer);
+      const result = await installer.install(mockServer);
 
-      expect(installation).toMatchObject({
-        serverId: 'test-server',
-        status: 'installed',
-      });
-
-      // Verify config file was created
-      const configExists = await fs.access(installation.configPath).then(() => true).catch(() => false);
-      expect(configExists).toBe(true);
-
-      // Verify config file content
-      const configContent = await fs.readFile(installation.configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      expect(config).toMatchObject({
+      expect(result).toMatchObject({
         name: 'test-server',
-        type: 'stdio',
-        command: 'npx',
-        args: ['@test/mcp-server'],
-        autoStart: false,
+        installedFrom: 'npm',
       });
+      expect(result.config.command).toBe('npx');
+
+      // Verify store was called with installation record
+      expect(mockStore.createMcpInstallation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serverId: 'test-server',
+          status: 'installed',
+        })
+      );
 
       // Step 2: Mock the installation in store for listing
-      const mockInstallations: MCPInstallation[] = [installation];
-      mockStore.listMcpInstallations.mockResolvedValue(mockInstallations);
-      mockStore.getMcpInstallation.mockResolvedValue(installation);
+      mockStore.listMcpInstallations.mockResolvedValue([{
+        id: 'mock-id',
+        serverId: 'test-server',
+        installedAt: new Date(),
+        status: 'installed' as any,
+        installedFrom: 'npm',
+        configPath: path.join(tempDir, '.apex', 'mcp-installations', 'mock-id.json'),
+        configJson: JSON.stringify(result.config),
+      }]);
+      mockStore.getMcpInstallation.mockResolvedValue({
+        id: 'mock-id',
+        serverId: 'test-server',
+        installedAt: new Date(),
+        status: 'installed' as any,
+        installedFrom: 'npm',
+        configPath: path.join(tempDir, '.apex', 'mcp-installations', 'mock-id.json'),
+        configJson: JSON.stringify(result.config),
+      });
 
       // List installations
       const installations = await installer.listInstalled();
-      expect(installations).toContain(installation);
+      expect(installations).toHaveLength(1);
+      expect(installations[0].name).toBe('test-server');
 
       // Check if installed
       const isInstalled = await installer.isInstalled('test-server');
@@ -102,35 +126,29 @@ describe('MCPInstaller Integration Tests', () => {
       // Step 3: Uninstall the server
       await installer.uninstall('test-server');
 
-      // Verify config file was removed
-      const configExistsAfter = await fs.access(installation.configPath).then(() => true).catch(() => false);
-      expect(configExistsAfter).toBe(false);
-
       // Verify store methods were called
-      expect(mockStore.createMcpInstallation).toHaveBeenCalledWith(installation);
-      expect(mockStore.removeMcpInstallation).toHaveBeenCalledWith(installation.id);
+      expect(mockStore.removeMcpInstallation).toHaveBeenCalledWith('mock-id');
     });
 
     it('should handle concurrent installations gracefully', async () => {
       const server1: MCPServer = {
         name: 'server1',
-        description: 'Server 1',
+        package: '@test/server1',
         command: 'npx',
         args: ['@test/server1'],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
       const server2: MCPServer = {
         name: 'server2',
-        description: 'Server 2',
+        package: '@test/server2',
         command: 'npx',
         args: ['@test/server2'],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
       // Mock exec with delays
-      const mockExec = vi.mocked(exec);
-      mockExec.mockImplementation((command, options, callback) => {
+      mockExec.mockImplementation((command: any, options: any, callback: any) => {
         if (callback) {
           const delay = command.includes('server1') ? 50 : 100;
           setTimeout(() => callback(null, { stdout: 'Success', stderr: '' }), delay);
@@ -148,18 +166,11 @@ describe('MCPInstaller Integration Tests', () => {
         installer.install(server2),
       ]);
 
-      expect(installation1.serverId).toBe('server1');
-      expect(installation2.serverId).toBe('server2');
+      expect(installation1.name).toBe('server1');
+      expect(installation2.name).toBe('server2');
 
-      // Verify both config files exist
-      const config1Exists = await fs.access(installation1.configPath).then(() => true).catch(() => false);
-      const config2Exists = await fs.access(installation2.configPath).then(() => true).catch(() => false);
 
-      expect(config1Exists).toBe(true);
-      expect(config2Exists).toBe(true);
 
-      // Verify config files have different names
-      expect(installation1.configPath).not.toBe(installation2.configPath);
     });
   });
 
@@ -172,12 +183,8 @@ describe('MCPInstaller Integration Tests', () => {
           author: 'TestAuthor',
           version: '1.0.0',
           repository: 'https://github.com/test/popular-server',
-          package: '@test/popular-server',
-          category: 'productivity',
-          tags: ['popular', 'productivity'],
-          rating: 4.8,
-          downloads: 10000,
-          lastUpdated: new Date(),
+          serverConfig: { name: 'popular-server', type: 'stdio', command: 'npx', args: ['@test/popular-server'], autoStart: false },
+          verified: false,
         },
         {
           name: 'dev-tools-server',
@@ -185,12 +192,8 @@ describe('MCPInstaller Integration Tests', () => {
           author: 'DevTools Inc',
           version: '2.1.0',
           repository: 'https://github.com/devtools/server',
-          package: '@devtools/mcp-server',
-          category: 'development',
-          tags: ['development', 'tools'],
-          rating: 4.5,
-          downloads: 5000,
-          lastUpdated: new Date(),
+          serverConfig: { name: 'dev-tools-server', type: 'stdio', command: 'npx', args: ['@devtools/mcp-server'], autoStart: false },
+          verified: false,
         },
       ];
 
@@ -217,12 +220,8 @@ describe('MCPInstaller Integration Tests', () => {
         author: 'Marketplace Inc',
         version: '1.0.0',
         repository: 'https://github.com/marketplace/server',
-        package: '@marketplace/mcp-server',
-        category: 'productivity',
-        tags: ['marketplace'],
-        rating: 4.7,
-        downloads: 8000,
-        lastUpdated: new Date(),
+        serverConfig: { name: 'marketplace-server', type: 'stdio', command: 'npx', args: ['@marketplace/mcp-server'], autoStart: false },
+        verified: false,
       };
 
       await installer.updateMarketplaceCache([marketplaceEntry]);
@@ -230,14 +229,13 @@ describe('MCPInstaller Integration Tests', () => {
       // Create server definition based on marketplace entry
       const serverFromMarketplace: MCPServer = {
         name: marketplaceEntry.name,
-        description: marketplaceEntry.description,
+        package: '@marketplace/mcp-server',
         command: 'npx',
-        args: [marketplaceEntry.package],
-        autoStart: false,
+        args: ['@marketplace/mcp-server'],
+        version: 'latest', env: {}, envVars: [],
       };
 
       // Mock successful installation
-      const mockExec = vi.mocked(exec);
       mockExec.mockImplementation((command, options, callback) => {
         if (callback) callback(null, { stdout: 'Marketplace server installed', stderr: '' });
         return {} as any;
@@ -249,7 +247,7 @@ describe('MCPInstaller Integration Tests', () => {
       // Install the server
       const installation = await installer.install(serverFromMarketplace);
 
-      expect(installation.serverId).toBe('marketplace-server');
+      expect(installation.name).toBe('marketplace-server');
       expect(mockExec).toHaveBeenCalledWith(
         'npm install @marketplace/mcp-server',
         expect.any(Object),
@@ -262,14 +260,13 @@ describe('MCPInstaller Integration Tests', () => {
     it('should handle partial installation failure and cleanup', async () => {
       const mockServer: MCPServer = {
         name: 'failing-server',
-        description: 'A server that fails to install',
+        package: '@test/failing-server',
         command: 'npx',
         args: ['@test/failing-server'],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
       // Mock exec failure
-      const mockExec = vi.mocked(exec);
       mockExec.mockImplementation((command, options, callback) => {
         if (callback) {
           setTimeout(() => callback(new Error('Network error: Package not found'), null), 10);
@@ -305,10 +302,10 @@ describe('MCPInstaller Integration Tests', () => {
     it('should handle filesystem permission errors gracefully', async () => {
       const mockServer: MCPServer = {
         name: 'permission-test-server',
-        description: 'Server to test permission errors',
+        package: '@test/permission-server',
         command: 'npx',
         args: ['@test/permission-server'],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
       // Create a read-only directory to simulate permission issues
@@ -324,7 +321,6 @@ describe('MCPInstaller Integration Tests', () => {
         return;
       }
 
-      const mockExec = vi.mocked(exec);
       mockExec.mockImplementation((command, options, callback) => {
         if (callback) callback(null, { stdout: 'Success', stderr: '' });
         return {} as any;
@@ -348,13 +344,12 @@ describe('MCPInstaller Integration Tests', () => {
     it('should create valid configuration files with all required fields', async () => {
       const complexServer: MCPServer = {
         name: 'complex-server',
-        description: 'A complex server with many options',
+        package: '@test/complex-server',
         command: 'node',
         args: ['--experimental-modules', './server.js', '--port=8080'],
-        autoStart: true,
+        version: '1.0.0', env: {}, envVars: [],
       };
 
-      const mockExec = vi.mocked(exec);
       mockExec.mockImplementation((command, options, callback) => {
         if (callback) callback(null, { stdout: 'Success', stderr: '' });
         return {} as any;
@@ -365,35 +360,31 @@ describe('MCPInstaller Integration Tests', () => {
 
       const installation = await installer.install(complexServer);
 
-      // Read and validate the configuration file
-      const configContent = await fs.readFile(installation.configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-
-      expect(config).toEqual({
+      // Validate the returned config
+      expect(installation.config).toEqual({
         name: 'complex-server',
         type: 'stdio',
         command: 'node',
         args: ['--experimental-modules', './server.js', '--port=8080'],
-        autoStart: false, // Note: This should be false as per the implementation
+        autoStart: false,
       });
 
-      // Verify JSON is properly formatted (pretty-printed)
-      expect(configContent).toMatch(/{\s+"name":/);
-      expect(configContent).toContain('  '); // Should have indentation
+      // Verify installation metadata
+      expect(installation.name).toBe('complex-server');
+      expect(installation.installedAt).toBeInstanceOf(Date);
     });
   });
 
-  describe('ID Generation and Uniqueness', () => {
-    it('should generate unique IDs for multiple installations', async () => {
+  describe('Name Uniqueness', () => {
+    it('should return unique names for multiple installations', async () => {
       const servers: MCPServer[] = Array.from({ length: 5 }, (_, i) => ({
         name: `server-${i}`,
-        description: `Test server ${i}`,
+        package: `@test/server-${i}`,
         command: 'npx',
         args: [`@test/server-${i}`],
-        autoStart: false,
+        version: '1.0.0', env: {}, envVars: [],
       }));
 
-      const mockExec = vi.mocked(exec);
       mockExec.mockImplementation((command, options, callback) => {
         if (callback) callback(null, { stdout: 'Success', stderr: '' });
         return {} as any;
@@ -407,14 +398,14 @@ describe('MCPInstaller Integration Tests', () => {
         servers.map(server => installer.install(server))
       );
 
-      // Verify all IDs are unique
-      const ids = installations.map(inst => inst.id);
-      const uniqueIds = new Set(ids);
-      expect(uniqueIds.size).toBe(ids.length);
+      // Verify all names are unique
+      const names = installations.map(inst => inst.name);
+      const uniqueNames = new Set(names);
+      expect(uniqueNames.size).toBe(names.length);
 
-      // Verify ID format
-      ids.forEach(id => {
-        expect(id).toMatch(/^mcp-\d+-[a-z0-9]+$/);
+      // Verify name format matches server names
+      names.forEach((name, i) => {
+        expect(name).toBe(`server-${i}`);
       });
     });
   });

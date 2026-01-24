@@ -77,7 +77,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner was initialized with proper configuration logging
@@ -122,7 +122,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithCustomPatterns);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner was initialized
@@ -158,7 +158,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithMinimalScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await expect(orchestrator.initialize()).resolves.not.toThrow();
 
       // Verify SecretScanner was initialized with minimal config
@@ -194,7 +194,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Count how many times SecretScanner initialization was logged
@@ -233,7 +233,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithoutScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await expect(orchestrator.initialize()).resolves.not.toThrow();
 
       // Verify graceful handling was logged
@@ -262,7 +262,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), minimalConfig);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Should initialize successfully without scanner
@@ -300,7 +300,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithNullScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await expect(orchestrator.initialize()).resolves.not.toThrow();
 
       // Should handle null gracefully
@@ -339,7 +339,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify initialization success is logged
@@ -372,7 +372,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithoutScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify disabled state is logged
@@ -408,7 +408,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Check for exactly one SecretScanner log message
@@ -462,7 +462,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithDetailedScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Verify SecretScanner constructor was called with expected config
@@ -521,7 +521,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), complexScannerConfig);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await expect(orchestrator.initialize()).resolves.not.toThrow();
 
       // Verify successful initialization with complex config
@@ -561,7 +561,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithInvalidScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should either gracefully handle or throw config validation error
       try {
@@ -607,7 +607,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
       // Initialize orchestrator
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       expect(consoleSpy).toHaveBeenCalledWith('SecretScanner initialized with configuration');
@@ -648,7 +648,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
       // First initialization
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       expect(consoleSpy).toHaveBeenCalledWith('SecretScanner initialized with configuration');
@@ -699,7 +699,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithMultipleServices);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
       await orchestrator.initialize();
 
       // Both services should be initialized
@@ -752,7 +752,7 @@ git:
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
       try {
-        orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+        orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
         // Should either handle gracefully or propagate the error
         await expect(orchestrator.initialize()).rejects.toThrow();
       } finally {
@@ -792,7 +792,7 @@ git:
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configWithScanner);
 
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // If SecretScanner initialization is wrapped in try-catch,
       // orchestrator should still initialize other services

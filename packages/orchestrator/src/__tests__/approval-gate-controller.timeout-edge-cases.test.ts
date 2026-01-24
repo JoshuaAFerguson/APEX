@@ -51,7 +51,8 @@ describe('ApprovalGateController - Timeout Edge Cases', () => {
 
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-approval-timeout-edge-test-'));
-    store = new TaskStore(path.join(testDir, 'timeout-edge-test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
     parentEmitter = new EventEmitter();
     vi.clearAllMocks();
   });

@@ -86,7 +86,8 @@ describe('Autonomy Controls Edge Cases', () => {
   beforeEach(async () => {
     // Create temporary directory for test database
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-autonomy-edge-test-'));
-    store = new TaskStore(path.join(testDir, 'test.db'));
+    store = new TaskStore(testDir);
+    await store.initialize();
 
     mockOrchestrator = createMockOrchestrator();
     mockOrchestrator.store = store as any;

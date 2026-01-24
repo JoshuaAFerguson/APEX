@@ -24,12 +24,16 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
-    const cb = (typeof opts === 'function' ? opts : callback) as (error: Error | null, result?: { stdout: string }) => void;
-    cb(null, { stdout: '' });
-  }),
-}));
+vi.mock('child_process', () => {
+  const mock = {
+    exec: vi.fn(),
+    execSync: vi.fn(),
+    spawn: vi.fn(),
+    execFile: vi.fn(),
+    fork: vi.fn(),
+  };
+  return { ...mock, default: mock };
+});
 
 describe('MCP Tool Discovery Error Handling', () => {
   let tempDir: string;
@@ -97,7 +101,7 @@ stages:
 `);
 
     // Initialize orchestrator
-    orchestrator = new ApexOrchestrator(tempDir);
+    orchestrator = new ApexOrchestrator({ projectPath: tempDir });
     await orchestrator.initialize();
   });
 

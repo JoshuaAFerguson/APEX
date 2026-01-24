@@ -119,7 +119,7 @@ describe('TaskStore - Audit Logs Edge Cases', () => {
         success: true,
         metadata: {
           unicode: specialChars,
-          symbols: '™®©¿¡§¶•…–—""''‚„‹›«»',
+          symbols: '\u2122\u00AE\u00A9\u00BF\u00A1\u00A7\u00B6\u2022\u2026\u2013\u2014\u201C\u201D\u2018\u2019\u201A\u201E\u2039\u203A\u00AB\u00BB',
           emoji: '🔥💯✨🎯🚀⭐️💖🎉🌟💫'
         }
       };

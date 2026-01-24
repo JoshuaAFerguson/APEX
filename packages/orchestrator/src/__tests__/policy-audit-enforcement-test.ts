@@ -84,7 +84,7 @@ describe('Policy Audit Enforcement Mode', () => {
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    orchestrator = new ApexOrchestrator('/tmp/test-project', {
+    orchestrator = new ApexOrchestrator({ projectPath: '/tmp/test-project',
       policyEngine: mockPolicyEngine,
     });
   });

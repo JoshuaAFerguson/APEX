@@ -37,7 +37,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   AgentSDK: vi.fn(() => ({
     query: vi.fn(),
   })),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 // Mock config loading
 vi.mock('@apexcli/core', async () => {

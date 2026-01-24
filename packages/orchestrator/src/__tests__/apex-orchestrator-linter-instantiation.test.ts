@@ -87,7 +87,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -117,7 +117,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -147,7 +147,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -176,7 +176,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -203,7 +203,7 @@ autonomy:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -238,7 +238,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -274,7 +274,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -308,7 +308,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -338,7 +338,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await expect(orchestrator.initialize()).rejects.toThrow('LinterService init failed');
     });
@@ -360,7 +360,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -391,7 +391,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent1);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -428,7 +428,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       await orchestrator.initialize();
 
@@ -456,7 +456,7 @@ linter:
 `;
 
       await writeFile(join(tempDir, '.apex', 'config.yaml'), configContent);
-      orchestrator = new ApexOrchestrator(tempDir, 'localhost:8080');
+      orchestrator = new ApexOrchestrator({ projectPath: tempDir, apiUrl: 'localhost:8080' });
 
       // Should either initialize successfully or throw a config validation error
       try {

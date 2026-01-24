@@ -8,9 +8,13 @@ import {
 } from '../container-runtime';
 
 // Mock child_process.exec for integration tests
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  return {
+    exec: execMock,
+    default: { exec: execMock },
+  };
+});
 
 const mockExec = vi.mocked(exec);
 

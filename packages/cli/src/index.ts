@@ -2794,7 +2794,7 @@ export const commands: Command[] = [
         try {
           const templates = await loadMCPTemplates();
 
-          if (Object.keys(templates).length === 0) {
+          if (!templates || Object.keys(templates).length === 0) {
             if (outputJson) {
               console.log(JSON.stringify([], null, 2));
             } else {

@@ -15,7 +15,7 @@ import type {
   ApexConfig,
   PolicyCheckResult,
   PolicyEngine as IPolicyEngine,
-  ApexOrchestratorOptions,
+  OrchestratorOptions,
   PolicyViolation,
   PolicyEnforcementMode,
 } from '@apexcli/core';
@@ -127,7 +127,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -168,7 +168,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation2 = { ...createMockPolicyViolation(), rule: 'test-warn-rule-2' };
       const mockPolicyEngine = createWarnModePolicyEngine([violation1, violation2]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -199,7 +199,7 @@ describe('Policy Warn Enforcement Mode', () => {
     it('should not emit policy:warned event when no violations exist', async () => {
       const mockPolicyEngine = createWarnModePolicyEngine([]); // No violations
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -229,7 +229,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -272,7 +272,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -314,7 +314,7 @@ describe('Policy Warn Enforcement Mode', () => {
       };
       const mockPolicyEngine = createWarnModePolicyEngine([violation1, violation2]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -347,7 +347,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -387,7 +387,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -425,7 +425,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation2 = { ...createMockPolicyViolation(), rule: 'test-warn-rule-2' };
       const mockPolicyEngine = createWarnModePolicyEngine([violation1, violation2]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -476,7 +476,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -522,7 +522,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -565,7 +565,7 @@ describe('Policy Warn Enforcement Mode', () => {
       const violation = createMockPolicyViolation();
       const mockPolicyEngine = createWarnModePolicyEngine([violation]);
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -609,7 +609,7 @@ describe('Policy Warn Enforcement Mode', () => {
         clearPolicies: vi.fn(),
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 
@@ -670,7 +670,7 @@ describe('Policy Warn Enforcement Mode', () => {
         clearPolicies: vi.fn(),
       };
 
-      const orchestrator = new ApexOrchestrator(testProjectPath, {
+      const orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
         policyEngine: mockPolicyEngine,
       });
 

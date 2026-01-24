@@ -100,7 +100,7 @@ describe('Policy Warn Enforcement Integration', () => {
     policyEngine = new PolicyEngine(config);
 
     // Create orchestrator with real policy engine
-    orchestrator = new ApexOrchestrator(testProjectPath, {
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectPath,
       policyEngine,
     });
 
@@ -397,7 +397,7 @@ describe('Policy Warn Enforcement Integration', () => {
 
     it('should gracefully handle policy engine unavailability in warn mode', async () => {
       // Create orchestrator without policy engine
-      const noPolicyOrchestrator = new ApexOrchestrator(testProjectPath);
+      const noPolicyOrchestrator = new ApexOrchestrator({ projectPath: testProjectPath });
       await noPolicyOrchestrator.initialize();
 
       const mockQuery = vi.fn().mockResolvedValue({

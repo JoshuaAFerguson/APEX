@@ -5,10 +5,15 @@ import { ContainerManager, DockerEventsMonitorOptions } from '../container-manag
 import { ContainerRuntime } from '../container-runtime';
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 // Mock container runtime
 vi.mock('../container-runtime', () => ({

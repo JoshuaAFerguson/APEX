@@ -160,7 +160,7 @@ describe('Policy Audit Enforcement Mode - Integration Tests', () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     // Initialize orchestrator with mock policy engine
-    orchestrator = new ApexOrchestrator(testProjectDir, {
+    orchestrator = new ApexOrchestrator({ projectPath: testProjectDir,
       policyEngine: mockPolicyEngine,
     });
   });

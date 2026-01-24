@@ -5,7 +5,7 @@ import type { Task } from '@apexcli/core';
 describe('Trash Operations Edge Cases', () => {
   describe('Event Parameter Validation', () => {
     it('should handle task:trashed event with all possible task states', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const receivedTasks: Task[] = [];
 
       orchestrator.on('task:trashed', (task: Task) => {
@@ -64,7 +64,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should handle trash:emptied event with various array sizes', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const emptyEvents: Array<{ count: number; ids: string[] }> = [];
 
       orchestrator.on('trash:emptied', (count: number, ids: string[]) => {
@@ -105,7 +105,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should handle task:restored event with complex task objects', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const restoredTasks: Task[] = [];
 
       orchestrator.on('task:restored', (task: Task) => {
@@ -198,7 +198,7 @@ describe('Trash Operations Edge Cases', () => {
 
   describe('Event Timing and Synchronization', () => {
     it('should handle rapid sequential event emissions', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const eventOrder: string[] = [];
 
       orchestrator.on('task:trashed', () => eventOrder.push('trashed'));
@@ -231,7 +231,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should handle concurrent event listener registration', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const handlers: Array<{ name: string; called: boolean }> = [];
 
       // Register multiple handlers concurrently
@@ -271,7 +271,7 @@ describe('Trash Operations Edge Cases', () => {
 
   describe('Memory and Performance', () => {
     it('should handle large task objects without memory issues', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       let receivedTask: Task | null = null;
 
       orchestrator.on('task:trashed', (task: Task) => {
@@ -323,7 +323,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should handle many small events efficiently', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const events: Array<{ type: string; id: string }> = [];
 
       orchestrator.on('task:trashed', (task: Task) => {
@@ -378,7 +378,7 @@ describe('Trash Operations Edge Cases', () => {
 
   describe('Error Recovery and Resilience', () => {
     it('should continue working after handler errors', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const successfulCalls: string[] = [];
 
       // Add a handler that throws an error
@@ -415,7 +415,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should handle undefined and null values gracefully', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
       const events: any[] = [];
 
       orchestrator.on('trash:emptied', (count: number, ids: string[]) => {
@@ -436,7 +436,7 @@ describe('Trash Operations Edge Cases', () => {
 
   describe('Type Safety Edge Cases', () => {
     it('should enforce Task type structure for trashed events', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
 
       // This test ensures TypeScript would catch type violations
       const validHandler = (task: Task) => {
@@ -472,7 +472,7 @@ describe('Trash Operations Edge Cases', () => {
     });
 
     it('should enforce correct parameter types for trash:emptied', () => {
-      const orchestrator = new ApexOrchestrator();
+      const orchestrator = new ApexOrchestrator({ projectPath: '/tmp/apex-test' });
 
       const validHandler = (deletedCount: number, taskIds: string[]) => {
         expect(typeof deletedCount).toBe('number');

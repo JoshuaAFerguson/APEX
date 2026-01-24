@@ -45,7 +45,7 @@ describe('Snapshot Capture Edge Cases', () => {
 
   beforeEach(async () => {
     testDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'apex-edge-cases-test-'));
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
     taskStore = (orchestrator as any).store;
 

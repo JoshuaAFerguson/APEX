@@ -9,7 +9,7 @@
  * - Testing anti-patterns that need remediation
  */
 
-import { BaseAnalyzer, TaskCandidate, RemediationSuggestion } from './index';
+import { BaseAnalyzer, TaskCandidate, RemediationSuggestion } from './base-analyzer';
 import type { ProjectAnalysis } from '../idle-processor';
 
 export class TestsAnalyzer extends BaseAnalyzer {

@@ -34,7 +34,7 @@ describe('Permission Flow Integration Tests', () => {
     presetManager = new PermissionPresetManager(store, 'review-all');
 
     // Create orchestrator for full integration testing
-    orchestrator = new ApexOrchestrator(testDir, {
+    orchestrator = new ApexOrchestrator({ projectPath: testDir,
       maxTasksPerHour: 100,
       maxCostPerTask: 10,
       maxConcurrentTasks: 5,

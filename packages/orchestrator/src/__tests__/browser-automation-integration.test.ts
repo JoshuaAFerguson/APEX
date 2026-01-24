@@ -52,11 +52,14 @@ const mockBrowserType = {
   launch: vi.fn(() => Promise.resolve(mockBrowser)),
 };
 
-// Mock Playwright
+// Mock Playwright - use vi.hoisted() for mock references in hoisted vi.mock()
+const hoistedMockBrowserType = vi.hoisted(() => ({
+  launch: vi.fn(() => Promise.resolve({ newContext: vi.fn(), version: vi.fn(() => '1.40.0'), isConnected: vi.fn(() => true), close: vi.fn(), on: vi.fn() })),
+}));
 vi.mock('playwright', () => ({
-  chromium: mockBrowserType,
-  firefox: mockBrowserType,
-  webkit: mockBrowserType,
+  chromium: hoistedMockBrowserType,
+  firefox: hoistedMockBrowserType,
+  webkit: hoistedMockBrowserType,
 }));
 
 describe('Browser Automation Integration', () => {

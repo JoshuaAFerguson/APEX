@@ -28,7 +28,8 @@ vi.mock('../store.js', () => {
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   AgentSDK: vi.fn(() => ({ query: vi.fn() })),
-}));
+  tool: vi.fn((config) => config),
+  createSdkMcpServer: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), close: vi.fn() }))}));
 
 vi.mock('@apexcli/core', async () => {
   const actual = await vi.importActual<typeof import('@apexcli/core')>('@apexcli/core');
@@ -69,28 +70,84 @@ vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock other required services
-['../policy.js', '../workspace-manager.js', '../worktree-manager.js', '../thought-capture.js',
- '../interaction-manager.js', '../permission-store.js', '../permission-manager.js',
- '../permission-preset-manager.js', '../linter.js', '../hook-manager.js', '../idle-processor.js'].forEach(module => {
-  vi.mock(module, () => ({
-    [module.includes('policy') ? 'createPolicyEnforcer' :
-     module.includes('workspace') ? 'WorkspaceManager' :
-     module.includes('worktree') ? 'WorktreeManager' :
-     module.includes('thought') ? 'ThoughtCaptureManager' :
-     module.includes('interaction') ? 'InteractionManager' :
-     module.includes('permission-store') ? 'PermissionStore' :
-     module.includes('permission-manager') ? 'PermissionManager' :
-     module.includes('permission-preset') ? 'PermissionPresetManager' :
-     module.includes('linter') ? 'LinterService' :
-     module.includes('hook-manager') ? 'HookManager' :
-     'IdleProcessor']: vi.fn(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      checkPath: vi.fn().mockReturnValue({ allowed: true }),
-      checkOperation: vi.fn().mockReturnValue({ allowed: true }),
-    })),
-  }));
-});
+// Mock other required services (individual calls since vi.mock is hoisted)
+vi.mock('../policy.js', () => ({
+  createPolicyEnforcer: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../workspace-manager.js', () => ({
+  WorkspaceManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../worktree-manager.js', () => ({
+  WorktreeManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../thought-capture.js', () => ({
+  ThoughtCaptureManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../interaction-manager.js', () => ({
+  InteractionManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../permission-store.js', () => ({
+  PermissionStore: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../permission-manager.js', () => ({
+  PermissionManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../permission-preset-manager.js', () => ({
+  PermissionPresetManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../linter.js', () => ({
+  LinterService: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../hook-manager.js', () => ({
+  HookManager: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
+vi.mock('../idle-processor.js', () => ({
+  IdleProcessor: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    checkPath: vi.fn().mockReturnValue({ allowed: true }),
+    checkOperation: vi.fn().mockReturnValue({ allowed: true }),
+  })),
+}));
 
 const createMockTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'test-task-12345678',

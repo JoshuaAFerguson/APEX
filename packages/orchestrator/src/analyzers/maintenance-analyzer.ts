@@ -7,7 +7,7 @@
  * - Outdated dependencies that need updates
  */
 
-import { BaseAnalyzer, TaskCandidate, RemediationSuggestion } from './index';
+import { BaseAnalyzer, TaskCandidate, RemediationSuggestion } from './base-analyzer';
 import type { ProjectAnalysis, SecurityVulnerability, VulnerabilitySeverity, DeprecatedPackage, OutdatedDependency, UpdateType } from '../idle-processor';
 
 export class MaintenanceAnalyzer extends BaseAnalyzer {
