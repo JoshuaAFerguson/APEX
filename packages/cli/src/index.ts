@@ -2638,7 +2638,7 @@ export const commands: Command[] = [
     name: 'mcp',
     aliases: [],
     description: 'Manage MCP (Model Context Protocol) marketplace and servers',
-    usage: '/mcp init | /mcp list [--json] | /mcp search <query> [--json] | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate',
+    usage: '/mcp init | /mcp list [--json] | /mcp search <query> [--json] | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate | /mcp status',
     handler: async (ctx, args) => {
       // Parse flags
       let outputJson = false;
@@ -3325,9 +3325,68 @@ export const commands: Command[] = [
         } catch (error) {
           console.log(chalk.red(`❌ Error validating MCP configuration: ${(error as Error).message}`));
         }
+      } else if (subcommand === 'status') {
+        // Handle 'mcp status' subcommand to show server status
+        try {
+          const config = await loadConfig(ctx.cwd);
+
+          console.log(chalk.cyan('\n📊 MCP Server Status:\n'));
+
+          if (!config.mcp || !config.mcp.enabled) {
+            console.log(chalk.gray('MCP Status:'), chalk.red('disabled'));
+            if (!config.mcp) {
+              console.log(chalk.gray('MCP is not configured.'));
+            } else {
+              console.log(chalk.gray('MCP is currently disabled.'));
+            }
+            console.log(chalk.gray('\n💡 To enable MCP, run /mcp init'));
+            return;
+          }
+
+          console.log(chalk.gray('MCP Status:'), chalk.green('enabled'));
+
+          const servers = config.mcp.servers || {};
+          const serverNames = Object.keys(servers);
+
+          if (serverNames.length === 0) {
+            console.log(chalk.gray('\nNo MCP servers are currently installed.'));
+            console.log(chalk.gray('  • Browse available servers: /mcp list'));
+            console.log(chalk.gray('  • Search for servers: /mcp search <query>'));
+            console.log(chalk.gray('  • Install a server: /mcp install <server-name>'));
+            return;
+          }
+
+          console.log(chalk.gray(`\nConfigured servers: ${serverNames.length}\n`));
+
+          // Display status for each server
+          for (const [serverId, serverConfig] of Object.entries(servers)) {
+            console.log(chalk.yellow(`${serverConfig.name || serverId}`));
+
+            // Determine server status
+            const status = (serverConfig as any).status || 'unknown';
+            const statusColor = status === 'running' ? chalk.green : chalk.red;
+            console.log(chalk.gray('  Status:'), statusColor(status));
+
+            // Show command
+            const commandParts = [serverConfig.command, ...(serverConfig.args || [])];
+            console.log(chalk.gray('  Command:'), chalk.cyan(commandParts.join(' ')));
+
+            // Show auto-start status
+            const autoStartColor = (serverConfig as any).autoStart ? chalk.green : chalk.red;
+            const autoStartText = (serverConfig as any).autoStart ? 'enabled' : 'disabled';
+            console.log(chalk.gray('  Auto-start:'), autoStartColor(autoStartText));
+
+            console.log(); // Empty line between servers
+          }
+
+          console.log(chalk.gray('Use /mcp installed to see more configuration details.'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error loading MCP status: ${(error as Error).message}`));
+        }
       } else {
         console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
-        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate'));
+        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate | /mcp status'));
       }
     },
   },
