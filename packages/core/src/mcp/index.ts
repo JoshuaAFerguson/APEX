@@ -23,3 +23,6 @@ export {
 
 // MCP Protocol Types
 export * from './protocol-types.js';
+
+// MCP Mock Server Types
+export * from './mock-types.js';
