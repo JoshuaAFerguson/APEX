@@ -39,7 +39,7 @@ vi.mock('@apexcli/core', async () => {
 });
 
 import inquirer from 'inquirer';
-import { getMCPTemplate, loadConfig, saveConfig, getMCPServers } from '@apexcli/core';
+import { getMCPTemplate, loadConfig, saveConfig, getMCPServers, ApexConfigSchema } from '@apexcli/core';
 
 // Mock console.log to capture output
 const mockConsoleLog = vi.spyOn(console, 'log');
@@ -496,6 +496,188 @@ describe('MCP Install/Uninstall Integration Tests', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining('RED:❌ Error: Server name is required')
       );
+    });
+  });
+
+  describe('Enhanced Test Coverage (Architecture Recommendations)', () => {
+    it('should handle concurrent uninstall requests safely', async () => {
+      // Setup: Config with multiple servers installed
+      const configWithMultipleServers = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'filesystem': filesystemTemplate.config,
+            'github': githubTemplate.config,
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithMultipleServers);
+      mockGetMCPServers.mockReturnValue(configWithMultipleServers.mcp.servers);
+
+      // Simulate concurrent uninstall requests
+      const uninstallPromise1 = mcpCommand.handler(mockContext, ['uninstall', 'filesystem']);
+      const uninstallPromise2 = mcpCommand.handler(mockContext, ['uninstall', 'github']);
+
+      await Promise.all([uninstallPromise1, uninstallPromise2]);
+
+      // Both should complete successfully
+      expect(mockSaveConfig).toHaveBeenCalledTimes(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('GREEN:✅ Successfully uninstalled MCP server')
+      );
+    });
+
+    it('should uninstall from array-format server config', async () => {
+      // Test the getMCPServers() function with array format
+      const configWithArrayServers = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: [
+            {
+              name: 'array-server-1',
+              type: 'stdio' as const,
+              command: 'test-array-1',
+              args: ['--arg1'],
+              autoStart: true
+            },
+            {
+              name: 'array-server-2',
+              type: 'stdio' as const,
+              command: 'test-array-2',
+              args: ['--arg2'],
+              autoStart: false
+            }
+          ],
+        },
+      };
+
+      // Mock getMCPServers to normalize array format to Record format
+      const normalizedServers = {
+        'array-server-1': {
+          name: 'array-server-1',
+          type: 'stdio' as const,
+          command: 'test-array-1',
+          args: ['--arg1'],
+          autoStart: true,
+        },
+        'array-server-2': {
+          name: 'array-server-2',
+          type: 'stdio' as const,
+          command: 'test-array-2',
+          args: ['--arg2'],
+          autoStart: false,
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithArrayServers);
+      mockGetMCPServers.mockReturnValue(normalizedServers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'array-server-1']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify getMCPServers normalized correctly and uninstall worked
+      expect(savedConfig.mcp.servers).toBeTypeOf('object');
+      expect(savedConfig.mcp.servers['array-server-1']).toBeUndefined();
+      expect(savedConfig.mcp.servers['array-server-2']).toEqual(normalizedServers['array-server-2']);
+    });
+
+    it('should produce valid ApexConfig after uninstall', async () => {
+      // Setup config with a server to uninstall
+      const configWithServer = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'filesystem': filesystemTemplate.config,
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithServer);
+      mockGetMCPServers.mockReturnValue(configWithServer.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'filesystem']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify the config written by saveConfig() passes Zod validation
+      expect(() => ApexConfigSchema.parse(savedConfig)).not.toThrow();
+
+      // Additional assertions about the saved config structure
+      expect(savedConfig.project).toBeDefined();
+      expect(savedConfig.mcp).toBeDefined();
+      expect(savedConfig.mcp.enabled).toBe(true);
+      expect(savedConfig.mcp.servers).toBeTypeOf('object');
+      expect(savedConfig.mcp.servers['filesystem']).toBeUndefined();
+    });
+
+    it('should handle config corruption during uninstall gracefully', async () => {
+      const partiallyCorruptedConfig = {
+        project: baseConfig.project,
+        mcp: {
+          enabled: true,
+          servers: {
+            'valid-server': filesystemTemplate.config,
+            'corrupted-server': {
+              // Missing required fields, but present in config
+              name: 'Corrupted Server',
+              // missing type, command, etc.
+            },
+          },
+        },
+        // Missing other required fields like agents, workflows, etc.
+      };
+
+      mockLoadConfig.mockResolvedValue(partiallyCorruptedConfig as any);
+      mockGetMCPServers.mockReturnValue(partiallyCorruptedConfig.mcp.servers as any);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'valid-server']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Should handle corruption gracefully and still complete uninstall
+      expect(savedConfig.mcp.servers['valid-server']).toBeUndefined();
+      expect(savedConfig.mcp.servers['corrupted-server']).toBeDefined(); // Preserved
+    });
+
+    it('should handle server names with mixed case properly', async () => {
+      const configWithMixedCaseServer = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'FileSystemServer': {
+              name: 'Advanced Filesystem Server',
+              type: 'stdio' as const,
+              command: 'npx',
+              args: ['-y', '@modelcontextprotocol/server-filesystem'],
+              autoStart: true,
+            },
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithMixedCaseServer);
+      mockGetMCPServers.mockReturnValue(configWithMixedCaseServer.mcp.servers);
+
+      // Test exact match by key
+      await mcpCommand.handler(mockContext, ['uninstall', 'FileSystemServer']);
+
+      expect(mockInquirerPrompt).toHaveBeenCalledWith([{
+        type: 'confirm',
+        name: 'confirm',
+        message: "Are you sure you want to uninstall 'Advanced Filesystem Server' (FileSystemServer)?",
+        default: false,
+      }]);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
     });
   });
 });

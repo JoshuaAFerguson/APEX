@@ -240,4 +240,5 @@ describe('MCP Uninstall Command', () => {
       expect.stringContaining('GRAY:   Restart APEX to apply the changes')
     );
   });
+
 });
