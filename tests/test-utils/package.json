@@ -1,0 +1,23 @@
+{
+  "name": "@apex/test-utils",
+  "version": "0.1.0",
+  "description": "Common test utilities for APEX testing",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./async": "./async.ts",
+    "./assertions": "./assertions.ts",
+    "./context": "./context.ts",
+    "./cleanup": "./cleanup.ts"
+  },
+  "dependencies": {
+    "vitest": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "workspace:*",
+    "typescript": "workspace:*"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
