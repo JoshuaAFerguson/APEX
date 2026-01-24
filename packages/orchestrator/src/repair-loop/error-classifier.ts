@@ -254,18 +254,25 @@ export class ErrorClassifier {
       ));
     }
 
-    // Look for assertion errors with locations
-    const assertRegex = /at\s+(?:Object\.<anonymous>|.+?)\s+\((.+?):(\d+):(\d+)\)/gm;
+    // Look for assertion errors with locations - be more specific to avoid false positives
+    // Only match lines that are actually part of test assertion failures, not general stack traces
+    const assertRegex = /(?:expect|assert|should).*\n.*at\s+(?:Object\.<anonymous>|.+?)\s+\((.+?):(\d+):(\d+)\)|at\s+(?:Object\.<anonymous>|.+?)\s+\((.+\.(?:test|spec)\.[jt]sx?):(\d+):(\d+)\)/gm;
     while ((match = assertRegex.exec(output)) !== null) {
-      const filePath = match[1];
-      // Only include if it's in a test file or source file (not node_modules)
-      if (!filePath.includes('node_modules')) {
-        const line = parseInt(match[2], 10);
-        const column = parseInt(match[3], 10);
-        results.push(this.buildClassifiedError(
-          `Test assertion failed at ${filePath}:${line}`, 'test',
-          filePath, line, column, undefined, 'tester',
-        ));
+      // Use the first matched group (assertion context) or the test file context
+      const filePath = match[1] || match[4];
+      const line = parseInt(match[2] || match[5], 10);
+      const column = parseInt(match[3] || match[6], 10);
+
+      // Only include if it's a test file or contains actual test assertion keywords
+      if (filePath && (filePath.includes('.test.') || filePath.includes('.spec.') ||
+          output.includes('expect') || output.includes('assert') || output.includes('should'))) {
+        // Skip dist/compiled files - focus on source files
+        if (!filePath.includes('/dist/') && !filePath.includes('node_modules')) {
+          results.push(this.buildClassifiedError(
+            `Test assertion failed at ${filePath}:${line}`, 'test',
+            filePath, line, column, undefined, 'tester',
+          ));
+        }
       }
     }
 
