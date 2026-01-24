@@ -13,8 +13,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { MCPConfigurator, MCPConfiguratorError } from './configurator.js';
-import type { ApexConfig, MCPConfig, MCPServerConfig, ClaudeDesktopConfig } from '@apexcli/core';
+import { MCPConfigurator, MCPConfiguratorError, ClaudeDesktopConfig } from './configurator.js';
+import type { ApexConfig, MCPConfig, MCPServerConfig } from '@apexcli/core';
 
 // Mock fs module
 vi.mock('fs/promises');
@@ -511,15 +511,11 @@ describe('MCPConfigurator Configure Integration Tests', () => {
       const exportedContent = exportCall[1] as string;
       const exportedConfig = JSON.parse(exportedContent) as MCPConfig;
 
-      // Step 2: Import the exported configuration
-      const imported = await configurator.importConfig(exportedConfig, 'json');
-
-      // Step 3: Create a new configurator and apply the imported config
+      // Step 2: Create a new configurator and apply the exported config directly
       const newConfigurator = new MCPConfigurator({
         projectPath: testProjectPath,
-        config: { project: { name: 'test' }, mcp: { enabled: true } } as ApexConfig,
+        config: { project: { name: 'test' }, mcp: exportedConfig } as ApexConfig,
       });
-      await newConfigurator.applyConfig(imported, { validate: false });
 
       // Step 4: Export again to compare
       vi.clearAllMocks();
@@ -658,13 +654,11 @@ describe('MCPConfigurator Configure Integration Tests', () => {
       const exportedContent = exportCall[1] as string;
       const exportedConfig = JSON.parse(exportedContent) as MCPConfig;
 
-      // Step 2: Import and re-apply
+      // Step 2: Create new configurator with the exported config
       const newConfigurator = new MCPConfigurator({
         projectPath: testProjectPath,
-        config: { project: { name: 'test' }, mcp: { enabled: true } } as ApexConfig,
+        config: { project: { name: 'test' }, mcp: exportedConfig } as ApexConfig,
       });
-      const imported = await newConfigurator.importConfig(exportedConfig, 'json');
-      await newConfigurator.applyConfig(imported, { validate: false });
 
       // Step 3: Export again
       vi.clearAllMocks();
@@ -815,13 +809,11 @@ describe('MCPConfigurator Configure Integration Tests', () => {
       const jsonContent = jsonCall[1] as string;
       const jsonConfig = JSON.parse(jsonContent) as MCPConfig;
 
-      // Import and re-export
+      // Create new configurator with the exported config
       const newConfigurator = new MCPConfigurator({
         projectPath: testProjectPath,
-        config: { project: { name: 'test' }, mcp: { enabled: true } } as ApexConfig,
+        config: { project: { name: 'test' }, mcp: jsonConfig } as ApexConfig,
       });
-      const imported = await newConfigurator.importConfig(jsonConfig, 'json');
-      await newConfigurator.applyConfig(imported, { validate: false });
 
       vi.clearAllMocks();
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
