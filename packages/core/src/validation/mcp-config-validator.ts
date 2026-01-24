@@ -204,8 +204,29 @@ export class MCPConfigValidator {
     const issues: MCPValidationIssue[] = [];
     const basePath = `servers.${serverId}`;
 
-    // Validate required fields
-    if (!config.command) {
+    // Validate required fields based on connection type
+    if (config.type === 'stdio' && !config.command) {
+      issues.push({
+        code: 'MISSING_COMMAND',
+        message: `Server '${serverId}' is missing required 'command' field for stdio connection`,
+        severity: 'error',
+        path: `${basePath}.command`,
+        suggestion: 'Specify the command to execute the MCP server (e.g., "npx", "node", or path to executable)',
+      });
+    }
+
+    if ((config.type === 'http' || config.type === 'sse') && !config.url) {
+      issues.push({
+        code: 'MISSING_URL',
+        message: `Server '${serverId}' is missing required 'url' field for ${config.type} connection`,
+        severity: 'error',
+        path: `${basePath}.url`,
+        suggestion: `Specify the ${config.type.toUpperCase()} URL to connect to the MCP server`,
+      });
+    }
+
+    // Legacy check for missing command (when type is not explicitly set, defaults to stdio)
+    if (!config.type && !config.command) {
       issues.push({
         code: 'MISSING_COMMAND',
         message: `Server '${serverId}' is missing required 'command' field`,
@@ -219,6 +240,12 @@ export class MCPConfigValidator {
     if (config.command && this.options.checkCommandExistence) {
       const commandIssues = await this.validateCommandExistence(config.command, `${basePath}.command`);
       issues.push(...commandIssues);
+    }
+
+    // Check for potentially unsafe commands
+    if (config.command) {
+      const unsafeIssues = this.validateCommandSafety(config.command, config.args, `${basePath}.command`);
+      issues.push(...unsafeIssues);
     }
 
     // Validate environment variables
@@ -382,6 +409,67 @@ export class MCPConfigValidator {
             path: `${configPath}.${issue.path.join('.')}`,
             suggestion: 'Check connection configuration against the schema',
           });
+        }
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Validate command safety and warn about potentially dangerous commands
+   */
+  private validateCommandSafety(command: string, args: string[] | undefined, configPath: string): MCPValidationIssue[] {
+    const issues: MCPValidationIssue[] = [];
+
+    // Check for potentially dangerous commands
+    const dangerousCommands = [
+      'rm', 'del', 'format', 'fdisk', 'mkfs', 'dd', 'shred',
+      'shutdown', 'reboot', 'halt', 'poweroff', 'init',
+      'chmod', 'chown', 'chgrp', 'passwd', 'su', 'sudo',
+    ];
+
+    const commandBaseName = command.split(/[/\\]/).pop()?.toLowerCase() || '';
+
+    if (dangerousCommands.includes(commandBaseName)) {
+      let severity: MCPValidationSeverity = 'warning';
+      let suggestion = 'Review this command carefully to ensure it is safe for MCP server execution';
+
+      // Escalate severity for particularly dangerous commands
+      if (['rm', 'del', 'format', 'fdisk', 'mkfs', 'dd', 'shutdown', 'reboot'].includes(commandBaseName)) {
+        severity = 'warning';
+        suggestion = 'This command can cause data loss or system disruption. Consider using a safer alternative or adding additional safeguards';
+      }
+
+      // Special handling for sudo
+      if (commandBaseName === 'sudo') {
+        suggestion = 'Running MCP servers with sudo privileges is generally not recommended for security reasons. Consider running without elevated privileges';
+      }
+
+      issues.push({
+        code: 'POTENTIALLY_UNSAFE_COMMAND',
+        message: `Command '${command}' is potentially dangerous`,
+        severity,
+        path: configPath,
+        suggestion,
+      });
+    }
+
+    // Check for dangerous argument patterns
+    if (args && args.length > 0) {
+      const dangerousArgs = ['-rf', '--force', '--recursive', '/', '/etc', '/bin', '/usr', '/var', '/home'];
+      const argString = args.join(' ');
+
+      for (const dangerousArg of dangerousArgs) {
+        if (argString.includes(dangerousArg)) {
+          issues.push({
+            code: 'POTENTIALLY_UNSAFE_ARGS',
+            message: `Command arguments contain potentially dangerous pattern: ${dangerousArg}`,
+            severity: 'warning',
+            path: configPath,
+            suggestion: 'Review command arguments to ensure they are safe and necessary for MCP server operation',
+          });
+          break; // Only warn once per command
         }
       }
     }
