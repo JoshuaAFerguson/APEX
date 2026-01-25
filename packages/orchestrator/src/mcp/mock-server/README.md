@@ -18,6 +18,11 @@ This directory contains a comprehensive mock MCP server implementation for testi
 - **`createErrorMockServer()`** - Pre-configured for error injection testing
 - **`createSlowMockServer()`** - Pre-configured for latency/timeout testing
 
+### Test Wrapper Functions
+
+- **`withMockMCP()`** - Test wrapper for automatic server lifecycle management
+- **`withMockMCPFacade()`** - Test wrapper for facade API with automatic cleanup
+
 ## Features
 
 ### ✅ Configurable Responses
@@ -50,6 +55,77 @@ This directory contains a comprehensive mock MCP server implementation for testi
 - Notification and event handling
 
 ## Usage Examples
+
+### Test Wrapper Functions (Recommended)
+
+The `withMockMCP()` and `withMockMCPFacade()` wrapper functions provide automatic server lifecycle management, ensuring proper setup and cleanup even when tests fail:
+
+```typescript
+import { withMockMCP, withMockMCPFacade } from '@apexcli/orchestrator';
+
+// Basic usage with builder configuration
+it('should handle tool calls', async () => {
+  await withMockMCP(
+    builder => builder
+      .withName('test-server')
+      .withTool('read_file')
+      .withStaticResponse([{ type: 'text', text: 'file content' }]),
+    async (server) => {
+      expect(server.isListening()).toBe(true);
+
+      const transport = server.createClientTransport();
+      const client = new MCPClient({ transport });
+      await client.connect();
+
+      const result = await client.callTool('read_file', { path: 'test.txt' });
+      expect(result.content[0].text).toBe('file content');
+
+      // Server automatically cleaned up
+      server.assertToolCalled('read_file', 1);
+    }
+  );
+});
+
+// Facade API for single-client convenience
+it('should work with facade API', async () => {
+  await withMockMCPFacade(
+    builder => builder
+      .withName('facade-server')
+      .withTool('ping')
+      .withStaticResponse([{ type: 'text', text: 'pong' }]),
+    async (facade) => {
+      const transport = facade.getTransport();
+      const client = new MCPClient({ transport });
+      await client.connect();
+
+      const result = await client.callTool('ping');
+      facade.assertMethodCalled('tools/call', 1);
+    }
+  );
+});
+
+// Custom options for advanced scenarios
+it('should support custom configuration', async () => {
+  await withMockMCP(
+    builder => builder.withName('custom-server').withTool('test').withStaticResponse([]),
+    async (server) => {
+      // Manual server control
+      expect(server.isListening()).toBe(false);
+      await server.start();
+      expect(server.isListening()).toBe(true);
+    },
+    {
+      autoStart: false,        // Don't auto-start server
+      resetOnCleanup: false,   // Preserve state after test
+      timeout: 10000,          // Custom timeout for operations
+      beforeCleanup: async (server) => {
+        // Custom cleanup logic
+        console.log('Final server state:', server.getStats());
+      }
+    }
+  );
+});
+```
 
 ### Basic Usage
 
@@ -178,8 +254,11 @@ import {
   createSimpleMockServer,
   createErrorMockServer,
   createSlowMockServer,
+  withMockMCP,
+  withMockMCPFacade,
   MockAssertionError,
   type MockServerStats,
+  type WithMockMCPOptions,
   // ... other types
 } from '@apexcli/orchestrator';
 ```
