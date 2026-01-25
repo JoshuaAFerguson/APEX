@@ -444,7 +444,7 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
       // Apply response delay
       await this.behaviorEngine.applyDelay(request.method);
 
-      // Check error injection
+      // Check error injection (legacy)
       const errorResult = this.behaviorEngine.checkErrorInjection(request.method);
       if (errorResult.shouldInject) {
         if (errorResult.delayMs && errorResult.delayMs > 0) {
@@ -465,8 +465,38 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
         return errorResponse;
       }
 
-      // Check state machine transition
+      // Check error simulation (ADR-072)
       const params = request.params as Record<string, unknown> | undefined;
+      const errorSimulationResult = this.checkErrorSimulation(request.method, clientId, params);
+      if (errorSimulationResult.shouldSimulate) {
+        // Apply error simulation delay if configured
+        if (errorSimulationResult.delayMs && errorSimulationResult.delayMs > 0) {
+          await this.delay(errorSimulationResult.delayMs);
+        }
+
+        const errorResponse = createJSONRPCErrorResponse(
+          request.id,
+          errorSimulationResult.errorCode ?? -32603,
+          errorSimulationResult.errorMessage ?? 'Simulated error',
+          errorSimulationResult.errorData
+        );
+
+        // Emit error:injected event for consistency (error simulation is a type of error injection)
+        this.emit('error:injected', request, {
+          shouldInject: true,
+          errorCode: errorSimulationResult.errorCode,
+          errorMessage: errorSimulationResult.errorMessage,
+          errorData: errorSimulationResult.errorData,
+          delayMs: errorSimulationResult.delayMs,
+        });
+
+        this.recordRequest(request, errorResponse, startTime, true, clientId);
+        this.emit('response', request, errorResponse);
+
+        return errorResponse;
+      }
+
+      // Check state machine transition
       const transitionResult = this.behaviorEngine.transition(request.method, params);
       if (transitionResult) {
         this.emit('state:change', transitionResult.from, transitionResult.to, request.method);
