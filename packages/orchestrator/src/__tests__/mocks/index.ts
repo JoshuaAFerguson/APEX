@@ -25,7 +25,9 @@ export type {
   MockMessage,
   MockOutput,
   MockHookInput,
-  MockQueryFunction
+  MockQueryFunction,
+  ResponseOptions,
+  DynamicResponseHandler
 } from './claude-agent-sdk.types';
 
 // Future mock exports can be added here

@@ -15,7 +15,9 @@ import type {
   StreamingEvent,
   QueryCallRecord,
   MockQueryFunction,
-  ContentBlock
+  ContentBlock,
+  ResponseOptions,
+  DynamicResponseHandler
 } from './claude-agent-sdk.types';
 import type {
   AgentDefinition as SDKAgentDefinition,
@@ -27,6 +29,9 @@ export class MockClaudeAgentSDK {
   private queryCallHistory: QueryCallRecord[] = [];
   private defaultResponse: MockQueryResponse | null = null;
   private queryMock: MockQueryFunction;
+  private dynamicHandler: DynamicResponseHandler | null = null;
+  private responseDelays: Map<number, number> = new Map(); // index -> delay
+  private consumedCount = 0;
 
   constructor() {
     this.queryMock = vi.fn() as MockQueryFunction;
@@ -75,6 +80,32 @@ export class MockClaudeAgentSDK {
   }
 
   /**
+   * Configure a mock response with delay
+   */
+  addResponseWithDelay(response: MockQueryResponse, delay: number): this {
+    const index = this.queryResponses.length;
+    this.queryResponses.push(response);
+    this.responseDelays.set(index, delay);
+    return this;
+  }
+
+  /**
+   * Set a dynamic response handler that can conditionally respond based on input
+   */
+  setDynamicHandler(handler: DynamicResponseHandler): this {
+    this.dynamicHandler = handler;
+    return this;
+  }
+
+  /**
+   * Clear the dynamic handler
+   */
+  clearDynamicHandler(): this {
+    this.dynamicHandler = null;
+    return this;
+  }
+
+  /**
    * Get the mock query function to use with vi.mock()
    */
   getQueryMock(): MockQueryFunction {
@@ -95,6 +126,9 @@ export class MockClaudeAgentSDK {
     this.queryResponses = [];
     this.queryCallHistory = [];
     this.defaultResponse = null;
+    this.dynamicHandler = null;
+    this.responseDelays.clear();
+    this.consumedCount = 0;
     vi.clearAllMocks();
     this.setupQueryMock();
   }
@@ -112,19 +146,34 @@ export class MockClaudeAgentSDK {
         options
       });
 
-      // Get the next response or use default
+      // 1. Try dynamic handler first
+      if (this.dynamicHandler) {
+        const dynamicResponse = await this.dynamicHandler(agent, message, options);
+        if (dynamicResponse !== null) {
+          return this.createAsyncIterator(dynamicResponse);
+        }
+      }
+
+      // 2. Try queued response
+      const responseIndex = this.consumedCount++;
       let response: MockQueryResponse | StreamingEvent[] | Error | undefined = this.queryResponses.shift();
 
       if (!response && this.defaultResponse) {
         response = this.defaultResponse;
       }
 
-      // If response is an Error, throw it
+      // 3. Apply delay if configured
+      const delay = this.responseDelays.get(responseIndex);
+      if (delay) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      // 4. Handle errors
       if (response instanceof Error) {
         throw response;
       }
 
-      // If no response configured, use a basic default
+      // 5. If no response configured, use a basic default
       if (!response) {
         response = { content: 'Mock response' };
       }
@@ -388,7 +437,9 @@ export type {
   MockUsage,
   StreamingEvent,
   QueryCallRecord,
-  ContentBlock
+  ContentBlock,
+  ResponseOptions,
+  DynamicResponseHandler
 } from './claude-agent-sdk.types';
 
 // Re-export common errors

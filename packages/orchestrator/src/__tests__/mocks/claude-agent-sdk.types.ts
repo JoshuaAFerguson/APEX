@@ -48,6 +48,18 @@ export interface MockQueryResponse {
   content?: string;  // Simplified text-only response
 }
 
+// Response Options for delays and other configurations
+export interface ResponseOptions {
+  delay?: number;  // Delay in milliseconds before returning
+}
+
+// Dynamic Response Handler Type
+export type DynamicResponseHandler = (
+  agent: SDKAgentDefinition,
+  message: string,
+  options?: QueryOptions
+) => MockQueryResponse | StreamingEvent[] | Error | null | Promise<MockQueryResponse | StreamingEvent[] | Error | null>;
+
 // Streaming Event Types
 export interface StreamingEvent {
   type: 'assistant' | 'text' | 'thinking' | 'tool_use' | 'usage' | 'error';
