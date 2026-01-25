@@ -281,6 +281,75 @@ export const ERROR_SIMULATION_PRESETS: Record<
     },
     description: 'Connection reset by peer',
   },
+
+  /**
+   * Wrong schema: response missing required id field.
+   * Simulates response without required JSON-RPC id field.
+   */
+  'wrong_schema_missing_id': {
+    mode: 'always_fail',
+    category: 'transport',
+    customError: {
+      code: -32700,
+      message: 'Response missing required field: id',
+      data: {
+        invalidResponse: { jsonrpc: '2.0', result: {} },
+        missingFields: ['id'],
+        specification: 'JSON-RPC 2.0',
+      },
+    },
+    description: 'Response missing required id field',
+  },
+
+  /**
+   * Wrong schema: response has invalid result structure.
+   * Simulates response with unexpected result structure.
+   */
+  'wrong_schema_invalid_result': {
+    mode: 'always_fail',
+    category: 'transport',
+    customError: {
+      code: -32700,
+      message: 'Response result field has invalid structure',
+      data: {
+        invalidResponse: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: 'should be object or null',
+        },
+        expectedTypes: ['object', 'null'],
+        receivedType: 'string',
+        specification: 'JSON-RPC 2.0',
+      },
+    },
+    description: 'Response has invalid result structure',
+  },
+
+  /**
+   * Wrong schema: response contains extra unexpected fields.
+   * Simulates response with additional unknown fields.
+   */
+  'wrong_schema_extra_fields': {
+    mode: 'always_fail',
+    category: 'transport',
+    customError: {
+      code: -32700,
+      message: 'Response contains unexpected fields',
+      data: {
+        invalidResponse: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {},
+          unexpectedField: 'not allowed',
+          anotherExtra: 123,
+        },
+        extraFields: ['unexpectedField', 'anotherExtra'],
+        allowedFields: ['jsonrpc', 'id', 'result', 'error'],
+        specification: 'JSON-RPC 2.0',
+      },
+    },
+    description: 'Response contains extra unexpected fields',
+  },
 };
 
 /**

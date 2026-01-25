@@ -42,6 +42,9 @@ describe('Error Presets Infrastructure', () => {
         'resource_access_denied',
         'request_timeout',
         'connection_reset',
+        'wrong_schema_missing_id',
+        'wrong_schema_invalid_result',
+        'wrong_schema_extra_fields',
       ];
 
       const availablePresets = Object.keys(ERROR_SIMULATION_PRESETS) as MockErrorScenarioPreset[];
@@ -121,6 +124,63 @@ describe('Error Presets Infrastructure', () => {
       expect(stack).toContain('Server.processRequest');
     });
 
+    it('should have proper structure for wrong_schema_missing_id preset', () => {
+      const preset = ERROR_SIMULATION_PRESETS.wrong_schema_missing_id;
+
+      expect(preset.mode).toBe('always_fail');
+      expect(preset.category).toBe('transport');
+      expect(preset.customError?.code).toBe(-32700);
+      expect(preset.customError?.message).toBe('Response missing required field: id');
+      expect(preset.customError?.data).toEqual({
+        invalidResponse: { jsonrpc: '2.0', result: {} },
+        missingFields: ['id'],
+        specification: 'JSON-RPC 2.0',
+      });
+      expect(preset.description).toBe('Response missing required id field');
+    });
+
+    it('should have proper structure for wrong_schema_invalid_result preset', () => {
+      const preset = ERROR_SIMULATION_PRESETS.wrong_schema_invalid_result;
+
+      expect(preset.mode).toBe('always_fail');
+      expect(preset.category).toBe('transport');
+      expect(preset.customError?.code).toBe(-32700);
+      expect(preset.customError?.message).toBe('Response result field has invalid structure');
+      expect(preset.customError?.data).toEqual({
+        invalidResponse: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: 'should be object or null',
+        },
+        expectedTypes: ['object', 'null'],
+        receivedType: 'string',
+        specification: 'JSON-RPC 2.0',
+      });
+      expect(preset.description).toBe('Response has invalid result structure');
+    });
+
+    it('should have proper structure for wrong_schema_extra_fields preset', () => {
+      const preset = ERROR_SIMULATION_PRESETS.wrong_schema_extra_fields;
+
+      expect(preset.mode).toBe('always_fail');
+      expect(preset.category).toBe('transport');
+      expect(preset.customError?.code).toBe(-32700);
+      expect(preset.customError?.message).toBe('Response contains unexpected fields');
+      expect(preset.customError?.data).toEqual({
+        invalidResponse: {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {},
+          unexpectedField: 'not allowed',
+          anotherExtra: 123,
+        },
+        extraFields: ['unexpectedField', 'anotherExtra'],
+        allowedFields: ['jsonrpc', 'id', 'result', 'error'],
+        specification: 'JSON-RPC 2.0',
+      });
+      expect(preset.description).toBe('Response contains extra unexpected fields');
+    });
+
     it('should define error categories correctly', () => {
       const jsonrpcPresets = getPresetsByCategory('jsonrpc');
       const protocolPresets = getPresetsByCategory('protocol');
@@ -139,6 +199,9 @@ describe('Error Presets Infrastructure', () => {
       expect(transportPresets).toContain('malformed_response');
       expect(transportPresets).toContain('partial_response');
       expect(transportPresets).toContain('connection_reset');
+      expect(transportPresets).toContain('wrong_schema_missing_id');
+      expect(transportPresets).toContain('wrong_schema_invalid_result');
+      expect(transportPresets).toContain('wrong_schema_extra_fields');
 
       // Application presets
       expect(applicationPresets).toContain('rate_limit');
@@ -193,6 +256,9 @@ describe('Error Presets Infrastructure', () => {
       expect(presets).toContain('tool_not_found');
       expect(presets).toContain('server_hang');
       expect(presets).toContain('connection_reset');
+      expect(presets).toContain('wrong_schema_missing_id');
+      expect(presets).toContain('wrong_schema_invalid_result');
+      expect(presets).toContain('wrong_schema_extra_fields');
 
       // Should have exactly the number of presets defined
       expect(presets.length).toBe(Object.keys(ERROR_SIMULATION_PRESETS).length);

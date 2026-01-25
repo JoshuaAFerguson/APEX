@@ -287,6 +287,12 @@ export const MockErrorScenarioPresetSchema = z.enum([
   'request_timeout',
   /** Connection reset by peer */
   'connection_reset',
+  /** Wrong schema: response missing required id field */
+  'wrong_schema_missing_id',
+  /** Wrong schema: response has invalid result structure */
+  'wrong_schema_invalid_result',
+  /** Wrong schema: response contains extra unexpected fields */
+  'wrong_schema_extra_fields',
 ]);
 export type MockErrorScenarioPreset = z.infer<typeof MockErrorScenarioPresetSchema>;
 
