@@ -161,3 +161,10 @@ export {
   createApiMockServer,
   createMinimalMockServer,
 } from './preset-factory.js';
+
+// Test Wrapper Utilities (ADR-081)
+export {
+  withMockMCP,
+  withMockMCPFacade,
+  type WithMockMCPOptions,
+} from './with-mock-mcp.js';

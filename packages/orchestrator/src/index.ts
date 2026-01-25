@@ -3221,7 +3221,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             completedAt: new Date(),
           };
 
-          return { stage, result: failedResult, error: rawError };
+          return { stage, result: failedResult, error: rawError, decompositionRequest: undefined };
         }
       });
 
@@ -11676,6 +11676,12 @@ export {
   createSimpleMockServer,
   createErrorMockServer,
   createSlowMockServer,
+  // Preset Factory (ADR-080)
+  createMockMCPServer,
+  createFileSystemMockServer,
+  createDatabaseMockServer,
+  createApiMockServer,
+  createMinimalMockServer,
   MockAssertionError,
   // Error Simulation Presets (ADR-072)
   ERROR_SIMULATION_PRESETS,
@@ -11683,9 +11689,15 @@ export {
   mergePresetWithOverrides,
   getAvailablePresets,
   getPresetsByCategory,
+  // Test Wrapper Utilities (ADR-081)
+  withMockMCP,
+  withMockMCPFacade,
   // Types
   type ConnectedClient,
   type MockServerState,
+  type MockServerPreset,
+  type ServerPresetConfig,
+  type CreateMockServerOptions,
   type RecordedRequest,
   type RecordedNotification,
   type MockTransportOptions,
@@ -11699,6 +11711,7 @@ export {
   type ErrorSimulationCheckResult,
   type ErrorSimulationState,
   type ErrorSimulationEvents,
+  type WithMockMCPOptions,
 } from './mcp/mock-server/index.js';
 
 export { PermissionManager } from './permission-manager';

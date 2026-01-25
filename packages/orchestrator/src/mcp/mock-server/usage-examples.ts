@@ -20,6 +20,13 @@ import {
   MockMCPServerBuilder,
   createMockServerBuilder,
 } from './mock-mcp-server-builder.js';
+import {
+  createMockMCPServer,
+  createFileSystemMockServer,
+  createDatabaseMockServer,
+  createApiMockServer,
+  createMinimalMockServer,
+} from './preset-factory.js';
 
 // ============================================================================
 // Basic Examples
@@ -349,4 +356,157 @@ export function createComprehensiveBuilderExample(): MockMCPServerFacade {
     )
 
     .build();
+}
+
+// ============================================================================
+// Preset Factory Examples (ADR-080)
+// ============================================================================
+
+/**
+ * Create servers using preset factory functions
+ *
+ * Demonstrates:
+ * - Simple preset usage
+ * - Preset customization with overrides
+ * - Behavior modifier combinations
+ * - Factory convenience functions
+ */
+
+/**
+ * Basic preset usage - filesystem server
+ */
+export function createFileSystemWithPreset(): MockMCPServerFacade {
+  return createMockMCPServer('filesystem');
+}
+
+/**
+ * Database server with custom configuration
+ */
+export function createCustomDatabaseServer(): MockMCPServerFacade {
+  return createMockMCPServer('database', {
+    name: 'my-test-database',
+    description: 'Custom database for integration tests',
+    additionalTools: [
+      {
+        toolName: 'backup',
+        response: {
+          content: [{ type: 'text', text: 'Database backup completed' }],
+          isError: false,
+        },
+        priority: 50,
+      },
+    ],
+    delay: { min: 100, max: 300 }, // Variable latency
+  });
+}
+
+/**
+ * API server with error simulation
+ */
+export function createErrorProneApiServer(): MockMCPServerFacade {
+  return createMockMCPServer(['api', 'error-prone'], {
+    name: 'unstable-api-server',
+    errorSimulation: {
+      mode: 'fail_first_n',
+      failCount: 3,
+      category: 'jsonrpc',
+      customError: { code: -32603, message: 'Service starting up, please retry' },
+      affectedClients: 'all',
+    },
+  });
+}
+
+/**
+ * Slow filesystem server for timeout testing
+ */
+export function createSlowFileSystemServer(): MockMCPServerFacade {
+  return createMockMCPServer(['filesystem', 'slow'], {
+    name: 'slow-fs-server',
+    toolOverrides: {
+      read_file: {
+        response: {
+          content: [{ type: 'text', text: 'File read after long delay' }],
+          isError: false,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Minimal server with custom tools and scenarios
+ */
+export function createMinimalServerWithScenarios(): MockMCPServerFacade {
+  return createMockMCPServer('minimal', {
+    name: 'test-scenario-server',
+    additionalTools: [
+      {
+        toolName: 'ping',
+        response: {
+          content: [{ type: 'text', text: 'pong' }],
+          isError: false,
+        },
+        priority: 50,
+      },
+    ],
+    scenarios: [
+      {
+        name: 'maintenance-mode',
+        behaviorPreset: 'error-prone',
+        errorPreset: 'service_unavailable',
+      },
+      {
+        name: 'performance-test',
+        behaviorPreset: 'slow',
+      },
+    ],
+    capabilities: {
+      tools: { listChanged: true },
+      resources: { subscribe: false },
+    },
+  });
+}
+
+/**
+ * Convenience function examples
+ */
+export function demonstrateConvenienceFunctions(): {
+  fsServer: MockMCPServerFacade;
+  dbServer: MockMCPServerFacade;
+  apiServer: MockMCPServerFacade;
+  minimalServer: MockMCPServerFacade;
+} {
+  return {
+    // Use convenience functions for quick setup
+    fsServer: createFileSystemMockServer({
+      name: 'convenient-fs-server',
+      delay: 50,
+    }),
+
+    dbServer: createDatabaseMockServer({
+      name: 'convenient-db-server',
+      additionalTools: [
+        {
+          toolName: 'migrate',
+          response: {
+            content: [{ type: 'text', text: 'Migration completed successfully' }],
+            isError: false,
+          },
+          priority: 50,
+        },
+      ],
+    }),
+
+    apiServer: createApiMockServer({
+      name: 'convenient-api-server',
+      behaviorPreset: 'slow',
+      errorPreset: 'rate_limit',
+    }),
+
+    minimalServer: createMinimalMockServer({
+      name: 'convenient-minimal-server',
+      transport: 'http',
+      maxConnections: 5,
+    }),
+  };
 }
