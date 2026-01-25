@@ -18,6 +18,7 @@ import type {
   MockResponseDelay,
   MockScenario,
   MockErrorSimulationConfig,
+  MockMalformedResponseConfig,
   MockErrorScenarioPreset,
 } from '@apexcli/core';
 import type {
@@ -37,6 +38,8 @@ import type {
   MockAssertionError as MockAssertionErrorType,
   MockTransportOptions,
   ErrorSimulationState,
+  MalformedResponseInterceptorConfig,
+  MalformedBytesInjectionConfig,
 } from './types.js';
 import { MockAssertionError } from './types.js';
 import {
@@ -94,6 +97,9 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
 
   /** Error simulation configuration (ADR-072) */
   private errorSimulationConfig?: MockErrorSimulationConfig;
+
+  /** Malformed response configuration */
+  private malformedResponseConfig?: MockMalformedResponseConfig;
 
   /** Error simulation state tracking */
   private errorSimulationState: ErrorSimulationState = {
@@ -530,6 +536,121 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
       category: presetConfig.category ?? 'jsonrpc',
       affectedClients: 'all',
     } as MockErrorSimulationConfig);
+  }
+
+  // ==========================================================================
+  // Malformed Response Simulation
+  // ==========================================================================
+
+  /**
+   * Set the malformed response mode for transport-level malformed response testing.
+   *
+   * This enables simulation of various transport-level malformed responses that help
+   * test client resilience against protocol violations and corrupted data.
+   * This operates at the transport layer, simulating actual byte-level corruption
+   * rather than just JSON-RPC error responses.
+   *
+   * @param config - Malformed response configuration
+   *
+   * @example
+   * ```typescript
+   * // Simulate truncated JSON responses
+   * server.setMalformedResponseMode({
+   *   type: 'truncated_json',
+   *   truncateAt: '50%',
+   *   affectedMethods: ['tools/call'],
+   *   probability: 1.0,
+   * });
+   *
+   * // Simulate invalid JSON
+   * server.setMalformedResponseMode({
+   *   type: 'invalid_json',
+   *   invalidJsonContent: '{"result": undefined}',
+   *   affectedMethods: [],
+   *   probability: 0.5,
+   * });
+   *
+   * // Simulate wrong schema responses
+   * server.setMalformedResponseMode({
+   *   type: 'wrong_schema',
+   *   wrongSchemaPayload: { unexpected: 'structure', missing: 'required fields' },
+   * });
+   * ```
+   */
+  setMalformedResponseMode(config: MockMalformedResponseConfig): void {
+    this.malformedResponseConfig = config;
+
+    // Convert to transport-level configuration and delegate to transport
+    const transportConfig = this.convertToTransportConfig(config);
+    this.transport.setMalformedResponseInjection(transportConfig);
+
+    // Emit event for monitoring
+    this.emit('scenario:activated', `malformed:${config.type}`);
+  }
+
+  /**
+   * Clear the malformed response mode, returning to normal response generation.
+   *
+   * This removes any active malformed response simulation and restores
+   * standard JSON-RPC response formatting.
+   */
+  clearMalformedResponseMode(): void {
+    this.malformedResponseConfig = undefined;
+
+    // Clear all malformed response interceptors from transport
+    this.transport.clearMalformedInterceptors();
+  }
+
+  /**
+   * Convert MockMalformedResponseConfig to transport-level MalformedResponseInterceptorConfig.
+   */
+  private convertToTransportConfig(config: MockMalformedResponseConfig): MalformedResponseInterceptorConfig {
+    // Convert the high-level config to transport-level injection config
+    const injection: MalformedBytesInjectionConfig = {
+      type: this.convertMalformedType(config.type),
+      truncateAt: config.truncateAt,
+      customData: config.invalidJsonContent,
+    };
+
+    // Handle wrong_schema type by converting to custom data
+    if (config.type === 'wrong_schema' && config.wrongSchemaPayload) {
+      injection.type = 'custom';
+      injection.customData = JSON.stringify(config.wrongSchemaPayload);
+    }
+
+    return {
+      targetMethods: config.affectedMethods,
+      injection,
+      probability: config.probability,
+      maxInjections: 0, // Unlimited by default
+    };
+  }
+
+  /**
+   * Convert MockMalformedResponseConfig type to transport-level type.
+   */
+  private convertMalformedType(type: string): 'invalid_json' | 'truncated_json' | 'empty_response' | 'binary_data' | 'custom' {
+    switch (type) {
+      case 'invalid_json':
+        return 'invalid_json';
+      case 'truncated_json':
+        return 'truncated_json';
+      case 'empty_response':
+        return 'empty_response';
+      case 'wrong_schema':
+        return 'custom'; // Will be handled in convertToTransportConfig
+      default:
+        return 'custom';
+    }
+  }
+
+  /**
+   * Get the current malformed response configuration.
+   *
+   * @returns The current malformed response config, or undefined if not set
+   */
+  getMalformedResponseMode(): MockMalformedResponseConfig | undefined {
+    return this.malformedResponseConfig;
   }
 
   // ==========================================================================

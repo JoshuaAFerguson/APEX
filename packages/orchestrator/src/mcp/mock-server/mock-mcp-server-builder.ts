@@ -24,6 +24,7 @@ import type {
   MockTransportType,
   MCPServerCapabilities,
   MockErrorSimulationConfig,
+  MockMalformedResponseConfig,
   MockNetworkConditions,
   MockErrorScenarioPreset,
 } from '@apexcli/core';
@@ -66,6 +67,9 @@ export class MockMCPServerBuilder {
 
   /** Error simulation configuration (ADR-072) */
   private errorSimulationConfig?: MockErrorSimulationConfig;
+
+  /** Malformed response configuration */
+  private malformedResponseConfig?: MockMalformedResponseConfig;
 
   // Current tool being configured (for fluent tool configuration)
   private currentTool?: {
@@ -481,6 +485,53 @@ export class MockMCPServerBuilder {
   }
 
   /**
+   * Configure malformed response simulation for transport-level testing.
+   *
+   * Enables simulation of various transport-level malformed responses that help
+   * test client resilience against protocol violations and corrupted data.
+   * This operates at the transport layer, simulating actual byte-level corruption
+   * rather than just JSON-RPC error responses.
+   *
+   * @param config - Malformed response configuration
+   * @returns This builder instance for chaining
+   *
+   * @example
+   * ```typescript
+   * // Simulate truncated JSON responses
+   * builder.withMalformedResponse({
+   *   type: 'truncated_json',
+   *   truncateAt: '50%',
+   *   affectedMethods: ['tools/call'],
+   *   probability: 1.0,
+   * });
+   *
+   * // Simulate invalid JSON
+   * builder.withMalformedResponse({
+   *   type: 'invalid_json',
+   *   invalidJsonContent: '{"result": undefined}',
+   *   affectedMethods: [],
+   *   probability: 0.5,
+   * });
+   *
+   * // Simulate wrong schema responses
+   * builder.withMalformedResponse({
+   *   type: 'wrong_schema',
+   *   wrongSchemaPayload: { unexpected: 'structure', missing: 'required fields' },
+   * });
+   *
+   * // Simulate empty responses
+   * builder.withMalformedResponse({
+   *   type: 'empty_response',
+   *   description: 'Test connection drop simulation'
+   * });
+   * ```
+   */
+  withMalformedResponse(config: MockMalformedResponseConfig): this {
+    this.malformedResponseConfig = config;
+    return this;
+  }
+
+  /**
    * Add a named scenario with specific configuration overrides.
    * Scenarios allow switching behavior during tests.
    *
@@ -587,6 +638,11 @@ export class MockMCPServerBuilder {
       facade.setErrorMode(this.errorSimulationConfig);
     }
 
+    // Apply malformed response configuration if configured
+    if (this.malformedResponseConfig) {
+      facade.setMalformedResponseMode(this.malformedResponseConfig);
+    }
+
     return facade;
   }
 
@@ -613,6 +669,11 @@ export class MockMCPServerBuilder {
     // Apply error simulation if configured
     if (this.errorSimulationConfig) {
       server.setErrorMode(this.errorSimulationConfig);
+    }
+
+    // Apply malformed response configuration if configured
+    if (this.malformedResponseConfig) {
+      server.setMalformedResponseMode(this.malformedResponseConfig);
     }
 
     return server;

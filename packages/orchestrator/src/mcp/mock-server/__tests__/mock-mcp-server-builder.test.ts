@@ -295,6 +295,200 @@ describe('MockMCPServerBuilder', () => {
     });
   });
 
+  describe('Malformed Response Configuration', () => {
+    it('should configure truncated JSON malformed responses', () => {
+      const malformedConfig = {
+        type: 'truncated_json' as const,
+        truncateAt: '50%' as const,
+        affectedMethods: ['tools/call'],
+        probability: 0.8,
+        description: 'Test truncated JSON responses',
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+      // The config should be stored internally for use by the facade
+    });
+
+    it('should configure invalid JSON malformed responses', () => {
+      const malformedConfig = {
+        type: 'invalid_json' as const,
+        invalidJsonContent: '{"result": undefined}',
+        affectedMethods: [],
+        probability: 1.0,
+        description: 'Test invalid JSON content',
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should configure wrong schema malformed responses', () => {
+      const malformedConfig = {
+        type: 'wrong_schema' as const,
+        wrongSchemaPayload: {
+          unexpected: 'structure',
+          missing: 'required fields'
+        },
+        probability: 0.5,
+        description: 'Test wrong schema responses',
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should configure empty response malformed responses', () => {
+      const malformedConfig = {
+        type: 'empty_response' as const,
+        affectedMethods: ['initialize'],
+        probability: 1.0,
+        description: 'Test connection drop simulation',
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should configure truncated JSON with byte position', () => {
+      const malformedConfig = {
+        type: 'truncated_json' as const,
+        truncateAt: 100,
+        affectedMethods: ['tools/list', 'tools/call'],
+        probability: 0.3,
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should configure with minimal required options', () => {
+      const malformedConfig = {
+        type: 'invalid_json' as const,
+        invalidJsonContent: '{"broken": json}',
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should configure all malformed response types', () => {
+      // Test that each malformed response type can be configured
+      const types: Array<{
+        type: 'invalid_json' | 'truncated_json' | 'wrong_schema' | 'empty_response';
+        config: any;
+      }> = [
+        {
+          type: 'invalid_json',
+          config: { type: 'invalid_json', invalidJsonContent: 'invalid' }
+        },
+        {
+          type: 'truncated_json',
+          config: { type: 'truncated_json', truncateAt: '75%' }
+        },
+        {
+          type: 'wrong_schema',
+          config: { type: 'wrong_schema', wrongSchemaPayload: { wrong: 'data' } }
+        },
+        {
+          type: 'empty_response',
+          config: { type: 'empty_response' }
+        }
+      ];
+
+      types.forEach(({ type, config }) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-${type}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should work with buildServer() method', () => {
+      const malformedConfig = {
+        type: 'truncated_json' as const,
+        truncateAt: '25%' as const,
+        probability: 0.7,
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .buildServer();
+
+      expect(server).toBeInstanceOf(MockMCPServer);
+    });
+
+    it('should work in combination with other configurations', () => {
+      const malformedConfig = {
+        type: 'invalid_json' as const,
+        invalidJsonContent: '{"incomplete":',
+        affectedMethods: ['tools/call'],
+        probability: 0.8,
+      };
+
+      const definition = builder
+        .withName('complex-malformed-test')
+        .withTransport('http')
+        .withTool('test-tool')
+        .withStaticResponse([{ type: 'text', text: 'test response' }])
+        .withDelay(100, 200)
+        .withErrorInjection({
+          enabled: true,
+          probability: 0.1,
+        })
+        .withMalformedResponse(malformedConfig)
+        .buildDefinition();
+
+      expect(definition.serverConfig.name).toBe('complex-malformed-test');
+      expect(definition.serverConfig.transport).toBe('http');
+      expect(definition.defaultBehavior.toolHandlers).toHaveLength(1);
+      expect(definition.defaultBehavior.responseDelay?.minMs).toBe(100);
+      expect(definition.defaultBehavior.errorInjection?.enabled).toBe(true);
+    });
+
+    it('should support fluent chaining after malformed response configuration', () => {
+      const result = builder
+        .withName('chain-test')
+        .withMalformedResponse({ type: 'empty_response' })
+        .withTransport('stdio')
+        .withDelay(50);
+
+      expect(result).toBeInstanceOf(MockMCPServerBuilder);
+
+      const definition = result.buildDefinition();
+      expect(definition.serverConfig.name).toBe('chain-test');
+      expect(definition.serverConfig.transport).toBe('stdio');
+      expect(definition.defaultBehavior.responseDelay?.fixedMs).toBe(50);
+    });
+  });
+
   describe('Scenarios', () => {
     it('should configure scenarios', () => {
       const definition = builder
@@ -439,6 +633,288 @@ describe('MockMCPServerBuilder', () => {
       expect(transport1).not.toBe(transport2);
 
       await mockServer.stop();
+    });
+
+    it('should apply malformed response configuration to built facade', async () => {
+      server = builder
+        .withName('malformed-test')
+        .withTool('test-tool')
+        .withStaticResponse([{ type: 'text', text: 'normal response' }])
+        .withMalformedResponse({
+          type: 'truncated_json',
+          truncateAt: '50%',
+          probability: 1.0,
+          description: 'Test malformed response integration',
+        })
+        .build();
+
+      await server.start();
+      expect(server.isStarted()).toBe(true);
+
+      // The malformed response config should be applied internally
+      // We can't easily test the actual malformed response behavior without
+      // making actual calls, but we can verify the server starts correctly
+    });
+
+    it('should apply malformed response configuration to built server', async () => {
+      const mockServer = builder
+        .withName('malformed-server-test')
+        .withTool('ping')
+        .withStaticResponse([{ type: 'text', text: 'pong' }])
+        .withMalformedResponse({
+          type: 'invalid_json',
+          invalidJsonContent: '{"broken": json}',
+          affectedMethods: ['tools/call'],
+          probability: 0.8,
+        })
+        .buildServer();
+
+      await mockServer.start();
+      expect(mockServer.isListening()).toBe(true);
+
+      await mockServer.stop();
+    });
+
+    it('should handle complex configuration with malformed responses', async () => {
+      server = builder
+        .withName('complex-integration-test')
+        .withTransport('stdio')
+        .withTool('complex-tool')
+        .withDynamicHandler(async (toolName, args) => ({
+          content: [{ type: 'text', text: `Processed: ${JSON.stringify(args)}` }],
+          isError: false,
+        }))
+        .withDelay(10, 50)
+        .withErrorInjection({
+          enabled: true,
+          probability: 0.1,
+        })
+        .withMalformedResponse({
+          type: 'wrong_schema',
+          wrongSchemaPayload: {
+            unexpected: 'structure',
+            missing_required: true,
+          },
+          probability: 0.2,
+        })
+        .withScenario('error-mode', scenario =>
+          scenario
+            .withErrorInjection({ enabled: true, probability: 1.0 })
+            .withMalformedResponse({
+              type: 'empty_response',
+              probability: 1.0,
+            })
+        )
+        .build();
+
+      await server.start();
+      expect(server.isStarted()).toBe(true);
+
+      // Test scenario switching
+      server.activateScenario('error-mode');
+      expect(server.getActiveScenario()).toBe('error-mode');
+
+      server.resetToDefault();
+      expect(server.getActiveScenario()).toBeUndefined();
+    });
+  });
+
+  describe('Malformed Response Edge Cases and Validation', () => {
+    it('should handle malformed response configuration with default values', () => {
+      // Test minimal configuration where defaults should be applied
+      const malformedConfig = {
+        type: 'empty_response' as const,
+      };
+
+      const server = builder
+        .withName('test-server')
+        .withMalformedResponse(malformedConfig)
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+    });
+
+    it('should handle percentage-based truncation patterns', () => {
+      const configs = [
+        { type: 'truncated_json' as const, truncateAt: '0%' as const },
+        { type: 'truncated_json' as const, truncateAt: '25%' as const },
+        { type: 'truncated_json' as const, truncateAt: '50%' as const },
+        { type: 'truncated_json' as const, truncateAt: '75%' as const },
+        { type: 'truncated_json' as const, truncateAt: '100%' as const },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-percentage-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle various byte position truncation values', () => {
+      const configs = [
+        { type: 'truncated_json' as const, truncateAt: 0 },
+        { type: 'truncated_json' as const, truncateAt: 1 },
+        { type: 'truncated_json' as const, truncateAt: 100 },
+        { type: 'truncated_json' as const, truncateAt: 1000 },
+        { type: 'truncated_json' as const, truncateAt: 10000 },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-bytes-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle various probability values', () => {
+      const configs = [
+        { type: 'invalid_json' as const, invalidJsonContent: 'test', probability: 0.0 },
+        { type: 'invalid_json' as const, invalidJsonContent: 'test', probability: 0.25 },
+        { type: 'invalid_json' as const, invalidJsonContent: 'test', probability: 0.5 },
+        { type: 'invalid_json' as const, invalidJsonContent: 'test', probability: 0.75 },
+        { type: 'invalid_json' as const, invalidJsonContent: 'test', probability: 1.0 },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-probability-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle various affected methods configurations', () => {
+      const configs = [
+        { type: 'empty_response' as const, affectedMethods: [] }, // All methods
+        { type: 'empty_response' as const, affectedMethods: ['initialize'] },
+        { type: 'empty_response' as const, affectedMethods: ['tools/call', 'tools/list'] },
+        { type: 'empty_response' as const, affectedMethods: ['initialize', 'tools/call', 'tools/list', 'resources/read'] },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-methods-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle complex wrong schema payloads', () => {
+      const configs = [
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: null,
+        },
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: undefined,
+        },
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: "string instead of object",
+        },
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: 42,
+        },
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: [],
+        },
+        {
+          type: 'wrong_schema' as const,
+          wrongSchemaPayload: {
+            deeply: {
+              nested: {
+                object: {
+                  with: {
+                    many: {
+                      levels: "test"
+                    }
+                  }
+                }
+              }
+            }
+          },
+        },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-schema-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle various invalid JSON content', () => {
+      const configs = [
+        { type: 'invalid_json' as const, invalidJsonContent: '' },
+        { type: 'invalid_json' as const, invalidJsonContent: '{' },
+        { type: 'invalid_json' as const, invalidJsonContent: '{"key":}' },
+        { type: 'invalid_json' as const, invalidJsonContent: '{"key": undefined}' },
+        { type: 'invalid_json' as const, invalidJsonContent: '{broken json content}' },
+        { type: 'invalid_json' as const, invalidJsonContent: 'not json at all' },
+        { type: 'invalid_json' as const, invalidJsonContent: '{"unicode": "test\u0000invalid"}' },
+      ];
+
+      configs.forEach((config, index) => {
+        const server = new MockMCPServerBuilder()
+          .withName(`test-invalid-json-${index}`)
+          .withMalformedResponse(config)
+          .build();
+
+        expect(server).toBeInstanceOf(MockMCPServerFacade);
+      });
+    });
+
+    it('should handle malformed response overwriting', () => {
+      const server = builder
+        .withName('test-overwrite')
+        .withMalformedResponse({
+          type: 'invalid_json',
+          invalidJsonContent: 'first',
+        })
+        .withMalformedResponse({
+          type: 'truncated_json',
+          truncateAt: '50%',
+        })
+        .build();
+
+      expect(server).toBeInstanceOf(MockMCPServerFacade);
+      // The second configuration should override the first
+    });
+
+    it('should handle malformed response in combination with scenarios', () => {
+      const definition = builder
+        .withName('test-with-scenarios')
+        .withMalformedResponse({
+          type: 'empty_response',
+          description: 'Base malformed response'
+        })
+        .withScenario('malformed-scenario', scenario =>
+          scenario.withMalformedResponse({
+            type: 'invalid_json',
+            invalidJsonContent: '{"scenario": broken}',
+          })
+        )
+        .buildDefinition();
+
+      expect(definition.serverConfig.name).toBe('test-with-scenarios');
+      expect(definition.scenarios).toHaveLength(1);
+      expect(definition.scenarios[0].name).toBe('malformed-scenario');
     });
   });
 
