@@ -275,6 +275,132 @@ export const MockToolResultContentSchema = z.discriminatedUnion('type', [
 export type MockToolResultContent = z.infer<typeof MockToolResultContentSchema>;
 
 /**
+ * Dynamic handler function signature for callback-based responses.
+ * Allows generating responses based on the actual request parameters.
+ *
+ * @param toolName - The name of the tool being invoked
+ * @param args - The arguments passed to the tool
+ * @param context - Additional context about the request
+ * @returns Promise resolving to the response content and error status
+ */
+export type MockDynamicHandlerFunction = (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: {
+    requestId: string;
+    invocationCount: number;
+    timestamp: Date;
+  }
+) => Promise<{
+  content: MockToolResultContent[];
+  isError: boolean;
+}>;
+
+/**
+ * Configuration for a dynamic mock tool handler that generates responses via callback.
+ *
+ * Dynamic handlers provide maximum flexibility by allowing custom JavaScript functions
+ * to generate responses based on the actual request parameters and context.
+ *
+ * @example
+ * ```typescript
+ * const dynamicHandler: MockDynamicHandler = {
+ *   toolName: 'search',
+ *   handler: async (toolName, args, context) => {
+ *     const query = args.query as string;
+ *     return {
+ *       content: [{ type: 'text', text: `Results for: ${query}` }],
+ *       isError: false,
+ *     };
+ *   },
+ *   matchArgs: { type: 'web' },
+ *   priority: 100,
+ * };
+ * ```
+ */
+export const MockDynamicHandlerSchema = z.object({
+  /** Name of the tool this handler responds to */
+  toolName: z.string().min(1),
+
+  /** Dynamic handler function that generates responses */
+  handler: z.function().args(
+    z.string(),
+    z.record(z.string(), z.unknown()),
+    z.object({
+      requestId: z.string(),
+      invocationCount: z.number(),
+      timestamp: z.date(),
+    })
+  ).returns(z.promise(z.object({
+    content: z.array(MockToolResultContentSchema),
+    isError: z.boolean(),
+  }))),
+
+  /** Optional argument matching: only apply this handler when arguments match */
+  matchArgs: z.record(z.string(), z.unknown()).optional(),
+
+  /** Optional delay before executing the handler (ms) */
+  delayMs: z.number().int().min(0).optional(),
+
+  /** Maximum number of times this handler should be invoked (0 = unlimited) */
+  maxInvocations: z.number().int().min(0).default(0),
+
+  /** Priority level for handler resolution (higher = preferred, default: 50) */
+  priority: z.number().int().min(0).default(50),
+});
+export type MockDynamicHandler = z.infer<typeof MockDynamicHandlerSchema>;
+
+/**
+ * Configuration for sequential responses that cycle through predefined responses.
+ *
+ * Response sequences are useful for testing scenarios where a tool should return
+ * different responses on successive calls, such as paginated results or state changes.
+ *
+ * @example
+ * ```typescript
+ * const responseSequence: MockResponseSequence = {
+ *   toolName: 'get_status',
+ *   responses: [
+ *     { content: [{ type: 'text', text: 'initializing' }], isError: false },
+ *     { content: [{ type: 'text', text: 'ready' }], isError: false },
+ *     { content: [{ type: 'text', text: 'complete' }], isError: false },
+ *   ],
+ *   cycleMode: 'stop_at_end',
+ *   priority: 75,
+ * };
+ * ```
+ */
+export const MockResponseSequenceSchema = z.object({
+  /** Name of the tool this sequence responds to */
+  toolName: z.string().min(1),
+
+  /** Ordered array of responses to cycle through */
+  responses: z.array(z.object({
+    /** Content items to return */
+    content: z.array(MockToolResultContentSchema),
+    /** Whether to mark the response as an error */
+    isError: z.boolean().default(false),
+    /** Optional delay before returning this specific response */
+    delayMs: z.number().int().min(0).optional(),
+  })).min(1),
+
+  /** Optional argument matching: only apply this sequence when arguments match */
+  matchArgs: z.record(z.string(), z.unknown()).optional(),
+
+  /**
+   * Behavior after reaching the end of the response sequence:
+   * - 'cycle': Start over from the beginning (default)
+   * - 'repeat_last': Keep returning the last response
+   * - 'stop_at_end': Stop handling (falls back to other handlers)
+   */
+  cycleMode: z.enum(['cycle', 'repeat_last', 'stop_at_end']).default('cycle'),
+
+  /** Priority level for handler resolution (higher = preferred, default: 50) */
+  priority: z.number().int().min(0).default(50),
+});
+export type MockResponseSequence = z.infer<typeof MockResponseSequenceSchema>;
+
+/**
  * Defines a custom handler for a specific tool in the mock server.
  * Specifies what the mock server should return when a tool is called.
  *
@@ -287,6 +413,7 @@ export type MockToolResultContent = z.infer<typeof MockToolResultContentSchema>;
  *     isError: false,
  *   },
  *   matchArgs: { path: '/test/file.txt' },
+ *   priority: 75,
  * };
  * ```
  */
@@ -310,6 +437,9 @@ export const MockToolHandlerSchema = z.object({
 
   /** Maximum number of times this handler should be invoked (0 = unlimited) */
   maxInvocations: z.number().int().min(0).default(0),
+
+  /** Priority level for handler resolution (higher = preferred, default: 50) */
+  priority: z.number().int().min(0).default(50),
 });
 export type MockToolHandler = z.infer<typeof MockToolHandlerSchema>;
 
@@ -410,6 +540,12 @@ export const MockStateBehaviorSchema = z.object({
 
   /** Tool handlers active only in this state */
   toolHandlers: z.array(MockToolHandlerSchema).default([]),
+
+  /** Dynamic tool handlers active only in this state */
+  dynamicHandlers: z.array(MockDynamicHandlerSchema).default([]),
+
+  /** Response sequences active only in this state */
+  responseSequences: z.array(MockResponseSequenceSchema).default([]),
 
   /** Error injection config active only in this state */
   errorInjection: MockErrorInjectionSchema.optional(),
@@ -571,6 +707,12 @@ export const MockBehaviorConfigSchema = z.object({
 
   /** Custom tool handlers defining mock responses for specific tools */
   toolHandlers: z.array(MockToolHandlerSchema).default([]),
+
+  /** Dynamic tool handlers with callback-based response generation */
+  dynamicHandlers: z.array(MockDynamicHandlerSchema).default([]),
+
+  /** Response sequences for tools that return different responses on successive calls */
+  responseSequences: z.array(MockResponseSequenceSchema).default([]),
 
   /** Notification triggers for server-to-client notifications */
   notificationTriggers: z.array(MockNotificationTriggerSchema).default([]),

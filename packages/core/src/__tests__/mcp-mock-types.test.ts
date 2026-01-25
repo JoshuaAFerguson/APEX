@@ -18,6 +18,8 @@ import {
   // Custom tool handlers
   MockToolResultContentSchema,
   MockToolHandlerSchema,
+  MockDynamicHandlerSchema,
+  MockResponseSequenceSchema,
 
   // Notification triggers
   MockNotificationTriggerConditionSchema,
@@ -52,6 +54,9 @@ import {
   type MockErrorInjection,
   type MockToolResultContent,
   type MockToolHandler,
+  type MockDynamicHandler,
+  type MockDynamicHandlerFunction,
+  type MockResponseSequence,
   type MockNotificationTriggerCondition,
   type MockNotificationTrigger,
   type MockStateTransition,
@@ -439,6 +444,187 @@ describe('Mock MCP Server Types', () => {
           response: { content: [] },
         })).toThrow();
       });
+
+      it('validates priority field', () => {
+        const handler = {
+          toolName: 'prioritized_tool',
+          response: {
+            content: [{ type: 'text' as const, text: 'test' }],
+          },
+          priority: 75,
+        };
+        const result = MockToolHandlerSchema.parse(handler);
+        expect(result.priority).toBe(75);
+      });
+
+      it('applies default priority', () => {
+        const handler = {
+          toolName: 'default_priority_tool',
+          response: {
+            content: [{ type: 'text' as const, text: 'test' }],
+          },
+        };
+        const result = MockToolHandlerSchema.parse(handler);
+        expect(result.priority).toBe(50);
+      });
+    });
+
+    describe('MockDynamicHandlerSchema', () => {
+      it('validates basic dynamic handler', () => {
+        const handler: MockDynamicHandler = {
+          toolName: 'dynamic_tool',
+          handler: async (toolName, args, context) => ({
+            content: [{ type: 'text', text: `Dynamic response for ${toolName}` }],
+            isError: false,
+          }),
+        };
+        expect(MockDynamicHandlerSchema.parse(handler)).toEqual(handler);
+      });
+
+      it('validates dynamic handler with all options', () => {
+        const handler: MockDynamicHandler = {
+          toolName: 'complex_dynamic',
+          handler: async (toolName, args, context) => ({
+            content: [
+              { type: 'text', text: `Invocation #${context.invocationCount}` },
+              { type: 'text', text: `Args: ${JSON.stringify(args)}` },
+            ],
+            isError: false,
+          }),
+          matchArgs: { type: 'advanced' },
+          delayMs: 200,
+          maxInvocations: 5,
+          priority: 100,
+        };
+        expect(MockDynamicHandlerSchema.parse(handler)).toEqual(handler);
+      });
+
+      it('applies default values for dynamic handler', () => {
+        const handler = {
+          toolName: 'default_dynamic',
+          handler: async () => ({
+            content: [{ type: 'text' as const, text: 'test' }],
+            isError: false,
+          }),
+        };
+        const result = MockDynamicHandlerSchema.parse(handler);
+        expect(result.maxInvocations).toBe(0);
+        expect(result.priority).toBe(50);
+      });
+
+      it('validates tool name requirements for dynamic handler', () => {
+        expect(() => MockDynamicHandlerSchema.parse({
+          toolName: '',
+          handler: async () => ({ content: [], isError: false }),
+        })).toThrow();
+      });
+    });
+
+    describe('MockResponseSequenceSchema', () => {
+      it('validates basic response sequence', () => {
+        const sequence: MockResponseSequence = {
+          toolName: 'paginated_tool',
+          responses: [
+            { content: [{ type: 'text', text: 'Page 1' }], isError: false },
+            { content: [{ type: 'text', text: 'Page 2' }], isError: false },
+            { content: [{ type: 'text', text: 'End of results' }], isError: false },
+          ],
+        };
+        expect(MockResponseSequenceSchema.parse(sequence)).toEqual(sequence);
+      });
+
+      it('validates response sequence with all options', () => {
+        const sequence: MockResponseSequence = {
+          toolName: 'status_sequence',
+          responses: [
+            {
+              content: [{ type: 'text', text: 'Initializing' }],
+              isError: false,
+              delayMs: 100,
+            },
+            {
+              content: [{ type: 'text', text: 'Processing' }],
+              isError: false,
+              delayMs: 200,
+            },
+            {
+              content: [{ type: 'text', text: 'Complete' }],
+              isError: false,
+            },
+          ],
+          matchArgs: { operation: 'status_check' },
+          cycleMode: 'repeat_last',
+          priority: 75,
+        };
+        expect(MockResponseSequenceSchema.parse(sequence)).toEqual(sequence);
+      });
+
+      it('validates cycle modes', () => {
+        const validModes: Array<'cycle' | 'repeat_last' | 'stop_at_end'> = ['cycle', 'repeat_last', 'stop_at_end'];
+
+        validModes.forEach(mode => {
+          const sequence = {
+            toolName: `test_${mode}`,
+            responses: [
+              { content: [{ type: 'text' as const, text: 'test' }], isError: false },
+            ],
+            cycleMode: mode,
+          };
+          expect(MockResponseSequenceSchema.parse(sequence)).toEqual(expect.objectContaining({ cycleMode: mode }));
+        });
+
+        // Test invalid mode
+        expect(() => MockResponseSequenceSchema.parse({
+          toolName: 'invalid_mode',
+          responses: [{ content: [], isError: false }],
+          cycleMode: 'invalid',
+        })).toThrow();
+      });
+
+      it('applies default values for response sequence', () => {
+        const sequence = {
+          toolName: 'default_sequence',
+          responses: [
+            { content: [{ type: 'text' as const, text: 'response' }] },
+          ],
+        };
+        const result = MockResponseSequenceSchema.parse(sequence);
+        expect(result.cycleMode).toBe('cycle');
+        expect(result.priority).toBe(50);
+        expect(result.responses[0].isError).toBe(false);
+      });
+
+      it('validates minimum responses requirement', () => {
+        expect(() => MockResponseSequenceSchema.parse({
+          toolName: 'empty_sequence',
+          responses: [],
+        })).toThrow();
+      });
+
+      it('validates response delays in sequence', () => {
+        const sequence = {
+          toolName: 'delayed_sequence',
+          responses: [
+            {
+              content: [{ type: 'text' as const, text: 'delayed' }],
+              delayMs: 1000,
+            },
+          ],
+        };
+        expect(MockResponseSequenceSchema.parse(sequence)).toEqual(expect.objectContaining({
+          responses: expect.arrayContaining([
+            expect.objectContaining({ delayMs: 1000 }),
+          ]),
+        }));
+
+        // Test negative delay
+        expect(() => MockResponseSequenceSchema.parse({
+          toolName: 'invalid_delay',
+          responses: [
+            { content: [], delayMs: -100 },
+          ],
+        })).toThrow();
+      });
     });
   });
 
@@ -580,6 +766,27 @@ describe('Mock MCP Server Types', () => {
                 content: [{ type: 'text', text: 'Server in error mode' }],
                 isError: true,
               },
+              priority: 90,
+            },
+          ],
+          dynamicHandlers: [
+            {
+              toolName: 'dynamic_error',
+              handler: async (toolName, args) => ({
+                content: [{ type: 'text', text: `Error handling ${toolName}` }],
+                isError: true,
+              }),
+              priority: 85,
+            },
+          ],
+          responseSequences: [
+            {
+              toolName: 'error_sequence',
+              responses: [
+                { content: [{ type: 'text', text: 'Error 1' }], isError: true },
+                { content: [{ type: 'text', text: 'Error 2' }], isError: true },
+              ],
+              priority: 80,
             },
           ],
           errorInjection: {
@@ -741,6 +948,8 @@ describe('Mock MCP Server Types', () => {
         const config = {};
         const result = MockBehaviorConfigSchema.parse(config);
         expect(result.toolHandlers).toEqual([]);
+        expect(result.dynamicHandlers).toEqual([]);
+        expect(result.responseSequences).toEqual([]);
         expect(result.notificationTriggers).toEqual([]);
         expect(result.expectations).toEqual([]);
         expect(result.recordRequests).toBe(true);
@@ -770,6 +979,29 @@ describe('Mock MCP Server Types', () => {
                 content: [{ type: 'text', text: 'Mock file content' }],
               },
               matchArgs: { path: '/test/file.txt' },
+              priority: 60,
+            },
+          ],
+          dynamicHandlers: [
+            {
+              toolName: 'search',
+              handler: async (toolName, args, context) => ({
+                content: [{ type: 'text', text: `Search results for: ${args.query}` }],
+                isError: false,
+              }),
+              priority: 80,
+            },
+          ],
+          responseSequences: [
+            {
+              toolName: 'get_status',
+              responses: [
+                { content: [{ type: 'text', text: 'starting' }], isError: false },
+                { content: [{ type: 'text', text: 'running' }], isError: false },
+                { content: [{ type: 'text', text: 'complete' }], isError: false },
+              ],
+              cycleMode: 'stop_at_end',
+              priority: 70,
             },
           ],
           notificationTriggers: [
@@ -804,6 +1036,30 @@ describe('Mock MCP Server Types', () => {
           enableDebugLogging: true,
         };
         expect(MockBehaviorConfigSchema.parse(config)).toEqual(config);
+      });
+
+      it('validates behavior configuration with new handler types only', () => {
+        const config = {
+          dynamicHandlers: [
+            {
+              toolName: 'dynamic_only',
+              handler: async () => ({
+                content: [{ type: 'text' as const, text: 'dynamic response' }],
+                isError: false,
+              }),
+            },
+          ],
+          responseSequences: [
+            {
+              toolName: 'sequence_only',
+              responses: [
+                { content: [{ type: 'text' as const, text: 'seq1' }] },
+                { content: [{ type: 'text' as const, text: 'seq2' }] },
+              ],
+            },
+          ],
+        };
+        expect(MockBehaviorConfigSchema.parse(config)).toEqual(expect.objectContaining(config));
       });
 
       it('validates default tool response', () => {
@@ -1226,6 +1482,179 @@ describe('Mock MCP Server Types', () => {
         scenarios: [scenario],
       };
       expect(definition.scenarios).toHaveLength(1);
+
+      // Test new types
+      const dynamicHandler: MockDynamicHandler = {
+        toolName: 'test_dynamic',
+        handler: async (toolName, args, context) => ({
+          content: [{ type: 'text', text: `Dynamic ${toolName}` }],
+          isError: false,
+        }),
+        priority: 80,
+      };
+      expect(dynamicHandler.toolName).toBe('test_dynamic');
+
+      const responseSequence: MockResponseSequence = {
+        toolName: 'test_sequence',
+        responses: [
+          { content: [{ type: 'text', text: 'first' }], isError: false },
+          { content: [{ type: 'text', text: 'second' }], isError: false },
+        ],
+        cycleMode: 'repeat_last',
+        priority: 70,
+      };
+      expect(responseSequence.cycleMode).toBe('repeat_last');
+
+      const handlerFunction: MockDynamicHandlerFunction = async (toolName, args, context) => ({
+        content: [{ type: 'text', text: `Handler for ${toolName}` }],
+        isError: false,
+      });
+      expect(typeof handlerFunction).toBe('function');
+    });
+  });
+
+  describe('Integration Tests for New Handler Types', () => {
+    it('validates handler priority ordering in behavior config', () => {
+      const config: MockBehaviorConfig = {
+        toolHandlers: [
+          {
+            toolName: 'shared_tool',
+            response: { content: [{ type: 'text', text: 'static' }] },
+            priority: 30,
+          },
+        ],
+        dynamicHandlers: [
+          {
+            toolName: 'shared_tool',
+            handler: async () => ({
+              content: [{ type: 'text', text: 'dynamic' }],
+              isError: false,
+            }),
+            priority: 70,
+          },
+        ],
+        responseSequences: [
+          {
+            toolName: 'shared_tool',
+            responses: [
+              { content: [{ type: 'text', text: 'sequence' }] },
+            ],
+            priority: 50,
+          },
+        ],
+      };
+      expect(MockBehaviorConfigSchema.parse(config)).toEqual(config);
+    });
+
+    it('validates complex scenario with all handler types', () => {
+      const scenario: MockScenario = {
+        name: 'comprehensive-handler-test',
+        description: 'Tests all handler types together',
+        serverConfig: { name: 'comprehensive-server' },
+        behaviorConfig: {
+          toolHandlers: [
+            {
+              toolName: 'static_tool',
+              response: {
+                content: [{ type: 'text', text: 'Static response' }],
+              },
+              priority: 40,
+            },
+          ],
+          dynamicHandlers: [
+            {
+              toolName: 'context_tool',
+              handler: async (toolName, args, context) => ({
+                content: [
+                  { type: 'text', text: `Request ${context.requestId}` },
+                  { type: 'text', text: `Call #${context.invocationCount}` },
+                  { type: 'text', text: `Time: ${context.timestamp.toISOString()}` },
+                ],
+                isError: false,
+              }),
+              matchArgs: { needsContext: true },
+              delayMs: 100,
+              maxInvocations: 10,
+              priority: 90,
+            },
+          ],
+          responseSequences: [
+            {
+              toolName: 'lifecycle_tool',
+              responses: [
+                {
+                  content: [{ type: 'text', text: 'initializing' }],
+                  isError: false,
+                  delayMs: 50,
+                },
+                {
+                  content: [{ type: 'text', text: 'ready' }],
+                  isError: false,
+                  delayMs: 25,
+                },
+                {
+                  content: [{ type: 'text', text: 'complete' }],
+                  isError: false,
+                },
+              ],
+              cycleMode: 'stop_at_end',
+              priority: 60,
+            },
+          ],
+        },
+        tags: ['comprehensive', 'handler-types'],
+      };
+      expect(MockScenarioSchema.parse(scenario)).toEqual(scenario);
+    });
+
+    it('validates state behavior with mixed handler types', () => {
+      const statefulBehavior: MockStatefulBehaviorConfig = {
+        initialState: 'init',
+        transitions: [
+          { from: 'init', to: 'active', onMethod: 'tools/call' },
+          { from: 'active', to: 'complete', onMethod: 'tools/call', whenArgs: { finish: true } },
+        ],
+        stateBehaviors: [
+          {
+            state: 'init',
+            toolHandlers: [
+              {
+                toolName: 'init_tool',
+                response: { content: [{ type: 'text', text: 'initializing' }] },
+                priority: 100,
+              },
+            ],
+          },
+          {
+            state: 'active',
+            dynamicHandlers: [
+              {
+                toolName: 'process_tool',
+                handler: async (toolName, args, context) => ({
+                  content: [{ type: 'text', text: `Processing: ${JSON.stringify(args)}` }],
+                  isError: false,
+                }),
+                priority: 80,
+              },
+            ],
+          },
+          {
+            state: 'complete',
+            responseSequences: [
+              {
+                toolName: 'final_tool',
+                responses: [
+                  { content: [{ type: 'text', text: 'finalizing' }] },
+                  { content: [{ type: 'text', text: 'done' }] },
+                ],
+                cycleMode: 'repeat_last',
+                priority: 90,
+              },
+            ],
+          },
+        ],
+      };
+      expect(MockStatefulBehaviorConfigSchema.parse(statefulBehavior)).toEqual(statefulBehavior);
     });
   });
 });

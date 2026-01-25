@@ -11663,6 +11663,32 @@ export {
   type MCPToolRegistryOptions,
   type MCPConnectionManager as MCPConnectionManagerInterface
 } from './mcp-tool-registry';
+
+// Mock MCP Server Components for Testing
+export {
+  MockMCPServer,
+  MockMCPServerFacade,
+  MockTransport,
+  MockBehaviorEngine,
+  MockMCPProtocolHandler,
+  createSimpleMockServer,
+  createErrorMockServer,
+  createSlowMockServer,
+  MockAssertionError,
+  type ConnectedClient,
+  type MockServerState,
+  type RecordedRequest,
+  type RecordedNotification,
+  type MockTransportOptions,
+  type ProtocolState,
+  type MethodHandler,
+  type RegisteredHandler,
+  type ErrorInjectionResult,
+  type ComputedDelay,
+  type MockServerFacadeEvents,
+  type MockServerStats,
+} from './mcp/mock-server/index.js';
+
 export { PermissionManager } from './permission-manager';
 export { PermissionPresetManager } from './permission-preset-manager';
 export {

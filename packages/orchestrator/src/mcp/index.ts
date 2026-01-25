@@ -133,3 +133,23 @@ export {
   findTemplateByPackage,
   searchTemplatesByCapabilities,
 } from './templates.js';
+
+// Mock MCP Server (for testing)
+export {
+  MockTransport,
+  MockBehaviorEngine,
+  MockMCPProtocolHandler,
+  MockMCPServerFacade,
+  MockAssertionError,
+  createSimpleMockServer,
+  createErrorMockServer,
+  createSlowMockServer,
+  type RecordedRequest,
+  type RecordedNotification,
+  type MockTransportOptions,
+  type ProtocolState,
+  type ErrorInjectionResult,
+  type ComputedDelay,
+  type MockServerFacadeEvents,
+  type MockServerStats,
+} from './mock-server/index.js';

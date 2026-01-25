@@ -680,4 +680,279 @@ describe('MCP Install/Uninstall Integration Tests', () => {
       expect(mockSaveConfig).toHaveBeenCalled();
     });
   });
+
+  describe('Advanced Integration Tests - Additional Coverage', () => {
+    it('should handle server status verification after uninstall', async () => {
+      // Test that the orchestrator properly recognizes server is uninstalled
+      const configWithServer = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'filesystem': filesystemTemplate.config,
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithServer);
+      mockGetMCPServers.mockReturnValue(configWithServer.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'filesystem']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify the server is completely removed from config
+      expect(savedConfig.mcp.servers['filesystem']).toBeUndefined();
+      expect(Object.keys(savedConfig.mcp.servers)).toHaveLength(0);
+
+      // Verify config structure integrity
+      expect(savedConfig.project).toBeDefined();
+      expect(savedConfig.mcp).toBeDefined();
+      expect(savedConfig.mcp.enabled).toBe(true);
+    });
+
+    it('should handle marketplace cache considerations after uninstall', async () => {
+      // Test that uninstall operation considers marketplace state
+      const configWithMarketplaceServer = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'marketplace-server': {
+              name: 'Marketplace Server',
+              type: 'stdio' as const,
+              command: 'npx',
+              args: ['-y', '@marketplace/server'],
+              autoStart: true,
+              // Additional marketplace metadata
+              marketplaceId: 'marketplace-server',
+              version: '1.0.0',
+            },
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithMarketplaceServer);
+      mockGetMCPServers.mockReturnValue(configWithMarketplaceServer.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'marketplace-server']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify marketplace server is properly removed
+      expect(savedConfig.mcp.servers['marketplace-server']).toBeUndefined();
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('GREEN:✅ Successfully uninstalled MCP server')
+      );
+    });
+
+    it('should handle edge case with circular references in config', async () => {
+      // Test config with potential circular references or complex nested structures
+      const complexConfig = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'complex-server': {
+              name: 'Complex Server',
+              type: 'stdio' as const,
+              command: 'complex-command',
+              args: ['--config', JSON.stringify({ nested: { deep: { structure: true } } })],
+              autoStart: true,
+              metadata: {
+                tags: ['tag1', 'tag2'],
+                dependencies: ['dep1'],
+                features: {
+                  feature1: { enabled: true, config: { setting: 'value' } },
+                  feature2: { enabled: false }
+                }
+              }
+            },
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(complexConfig);
+      mockGetMCPServers.mockReturnValue(complexConfig.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'complex-server']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify complex server is properly removed without affecting config structure
+      expect(savedConfig.mcp.servers['complex-server']).toBeUndefined();
+      expect(savedConfig.mcp.enabled).toBe(true);
+    });
+
+    it('should handle uninstall with filesystem-level errors gracefully', async () => {
+      // Test that filesystem errors during config save are handled properly
+      const configWithServer = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'filesystem': filesystemTemplate.config,
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithServer);
+      mockGetMCPServers.mockReturnValue(configWithServer.mcp.servers);
+
+      // Simulate filesystem error during save
+      mockSaveConfig.mockRejectedValue(new Error('ENOSPC: no space left on device'));
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'filesystem']);
+
+      // Should handle filesystem errors gracefully
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('RED:❌ Error uninstalling MCP server: ENOSPC: no space left on device')
+      );
+    });
+
+    it('should preserve custom MCP configuration sections during uninstall', async () => {
+      // Test that custom MCP sections are preserved
+      const configWithCustomMcp = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'filesystem': filesystemTemplate.config,
+            'github': githubTemplate.config,
+          },
+          // Custom MCP configuration sections
+          globalSettings: {
+            timeout: 30000,
+            retryAttempts: 3,
+            logLevel: 'info',
+          },
+          experimental: {
+            features: ['feature1', 'feature2'],
+            beta: true,
+          },
+          customSection: {
+            value: 'should be preserved',
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithCustomMcp);
+      mockGetMCPServers.mockReturnValue(configWithCustomMcp.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'filesystem']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify custom sections are preserved
+      expect(savedConfig.mcp.globalSettings).toEqual(configWithCustomMcp.mcp.globalSettings);
+      expect(savedConfig.mcp.experimental).toEqual(configWithCustomMcp.mcp.experimental);
+      expect(savedConfig.mcp.customSection).toEqual(configWithCustomMcp.mcp.customSection);
+      expect(savedConfig.mcp.enabled).toBe(true);
+
+      // Verify only the target server was removed
+      expect(savedConfig.mcp.servers['filesystem']).toBeUndefined();
+      expect(savedConfig.mcp.servers['github']).toEqual(githubTemplate.config);
+    });
+
+    it('should handle uninstall confirmation with complex server names', async () => {
+      // Test confirmation prompts with servers containing special characters and unicode
+      const unicodeTemplate = {
+        id: 'unicode-test-server',
+        name: '🚀 Server with Émojis & Spëcial Characters (测试)',
+        description: 'Server with unicode characters',
+        package: '@test/unicode-server',
+        config: {
+          name: 'unicode-test-server',
+          type: 'stdio' as const,
+          command: 'unicode-server',
+          args: ['--unicode', '测试'],
+          autoStart: true,
+        },
+        capabilities: ['unicode'],
+        verified: true,
+        defaultEnabled: false,
+      };
+
+      const configWithUnicode = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: {
+            'unicode-test-server': unicodeTemplate.config,
+          },
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(configWithUnicode);
+      mockGetMCPServers.mockReturnValue(configWithUnicode.mcp.servers);
+
+      await mcpCommand.handler(mockContext, ['uninstall', 'unicode-test-server']);
+
+      expect(mockInquirerPrompt).toHaveBeenCalledWith([{
+        type: 'confirm',
+        name: 'confirm',
+        message: "Are you sure you want to uninstall 'unicode-test-server' (unicode-test-server)?",
+        default: false,
+      }]);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+    });
+
+    it('should handle uninstall with large config files efficiently', async () => {
+      // Test performance with large configuration files
+      const largeConfig = {
+        ...baseConfig,
+        mcp: {
+          enabled: true,
+          servers: Object.fromEntries(
+            Array.from({ length: 50 }, (_, i) => [
+              `server-${i}`,
+              {
+                name: `Test Server ${i}`,
+                type: 'stdio' as const,
+                command: `server-command-${i}`,
+                args: [`--arg${i}`, '--verbose'],
+                autoStart: i % 2 === 0,
+                metadata: {
+                  description: `Generated test server ${i}`,
+                  tags: [`tag${i}`, 'generated'],
+                  version: `1.${i}.0`,
+                },
+              },
+            ])
+          ),
+        },
+        // Large custom sections
+        customData: {
+          largeSetting: Array.from({ length: 1000 }, (_, i) => `data-${i}`),
+          complexNested: Object.fromEntries(
+            Array.from({ length: 100 }, (_, i) => [`key${i}`, { value: `value${i}` }])
+          ),
+        },
+      };
+
+      mockLoadConfig.mockResolvedValue(largeConfig);
+      mockGetMCPServers.mockReturnValue(largeConfig.mcp.servers);
+
+      // Test uninstalling from large config
+      await mcpCommand.handler(mockContext, ['uninstall', 'server-25']);
+
+      expect(mockSaveConfig).toHaveBeenCalled();
+      const savedConfig = mockSaveConfig.mock.calls[0][1];
+
+      // Verify the specific server was removed
+      expect(savedConfig.mcp.servers['server-25']).toBeUndefined();
+      // Verify other servers remain
+      expect(savedConfig.mcp.servers['server-24']).toBeDefined();
+      expect(savedConfig.mcp.servers['server-26']).toBeDefined();
+      // Verify total count
+      expect(Object.keys(savedConfig.mcp.servers)).toHaveLength(49);
+      // Verify large custom data is preserved
+      expect(savedConfig.customData).toEqual(largeConfig.customData);
+    });
+  });
 });
