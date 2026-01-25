@@ -11,7 +11,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MockMCPServer } from './mock-mcp-server.js';
+import { MockTransport } from './mock-transport.js';
 import type { MockMCPServerDefinition, MockMalformedResponseConfig } from '@apexcli/core';
+import type { MalformedResponseInterceptorConfig, MalformedBytesInjectionConfig } from './types.js';
 
 describe('MockMCPServer - Malformed Response Mode Methods', () => {
   let server: MockMCPServer;
@@ -550,6 +552,334 @@ describe('MockMCPServer - Malformed Response Mode Methods', () => {
       if (retrievedConfig!.description !== undefined) {
         expect(typeof retrievedConfig!.description).toBe('string');
       }
+    });
+  });
+
+  describe('Client Error Handling Integration Tests', () => {
+    let clientTransport: MockTransport;
+
+    beforeEach(async () => {
+      await server.start();
+      clientTransport = server.createClientTransport();
+      await clientTransport.connect();
+    });
+
+    afterEach(async () => {
+      if (clientTransport && clientTransport.isConnected()) {
+        await clientTransport.disconnect();
+      }
+    });
+
+    describe('Invalid JSON Response Handling', () => {
+      it('should configure and verify invalid JSON malformed response mode', async () => {
+        // Test the server configuration for invalid JSON responses
+        const config: MockMalformedResponseConfig = {
+          type: 'invalid_json',
+          invalidJsonContent: '{"result": undefined, "broken": json}',
+          affectedMethods: ['tools/call'],
+          probability: 1.0,
+          description: 'Test invalid JSON response handling',
+        };
+
+        server.setMalformedResponseMode(config);
+
+        // Verify configuration was set
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+
+      it('should handle transport-level invalid JSON injection', () => {
+        // Test that transport can inject invalid JSON responses
+        let capturedError: Error | undefined;
+        clientTransport.on('error', (error: Error) => {
+          capturedError = error;
+        });
+
+        // Directly inject malformed bytes to test client error handling
+        clientTransport.injectMalformedBytes({
+          type: 'invalid_json',
+          invalidContent: '{"broken": json syntax}',
+        });
+
+        // Verify that an error was captured
+        expect(capturedError).toBeDefined();
+        expect(capturedError!.message).toContain('Malformed data received');
+      });
+
+    });
+
+    describe('Truncated JSON Response Handling', () => {
+      it('should configure truncated JSON malformed response mode', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'truncated_json',
+          truncateAt: '50%',
+          affectedMethods: ['ping'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+
+      it('should handle transport-level truncated JSON injection', () => {
+        let capturedError: Error | undefined;
+        let rawDataReceived: string | undefined;
+
+        clientTransport.on('error', (error: Error) => {
+          capturedError = error;
+        });
+
+        clientTransport.on('rawData', (data: string) => {
+          rawDataReceived = data;
+        });
+
+        // Inject truncated JSON directly
+        clientTransport.injectMalformedBytes({
+          type: 'truncated_json',
+          truncateAt: '50%',
+        });
+
+        // Verify that truncated data and error were captured
+        expect(rawDataReceived).toBeDefined();
+        expect(capturedError).toBeDefined();
+        expect(capturedError!.message).toContain('Malformed data received');
+      });
+
+      it('should handle numeric truncateAt values', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'truncated_json',
+          truncateAt: 25,
+          affectedMethods: ['tools/list'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+    });
+
+    describe('Wrong Schema Response Handling', () => {
+      it('should configure wrong schema malformed response mode', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'wrong_schema',
+          wrongSchemaPayload: {
+            unexpected: 'structure',
+            missing: 'required fields',
+            extraField: 'should not be here',
+          },
+          affectedMethods: ['resources/list'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+
+      it('should handle complex nested wrong schema payloads', () => {
+        const complexPayload = {
+          level1: {
+            level2: {
+              array: [1, 2, { nested: 'object' }],
+              boolean: true,
+              null_value: null,
+            },
+          },
+          unexpectedRoot: 'value',
+        };
+
+        const config: MockMalformedResponseConfig = {
+          type: 'wrong_schema',
+          wrongSchemaPayload: complexPayload,
+          affectedMethods: ['prompts/list'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+        expect(retrievedConfig!.wrongSchemaPayload).toEqual(complexPayload);
+      });
+    });
+
+    describe('Empty Response Handling', () => {
+      it('should configure empty response malformed mode', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'empty_response',
+          affectedMethods: ['ping'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+
+      it('should handle transport-level empty response injection', () => {
+        let capturedError: Error | undefined;
+        let rawDataReceived: any;
+
+        clientTransport.on('error', (error: Error) => {
+          capturedError = error;
+        });
+
+        clientTransport.on('rawData', (data: any) => {
+          rawDataReceived = data;
+        });
+
+        // Inject empty response directly
+        clientTransport.injectMalformedBytes({
+          type: 'empty_response',
+        });
+
+        // Should receive empty data and trigger error
+        expect(rawDataReceived).toBeDefined();
+        expect(rawDataReceived).toBe('');
+        expect(capturedError).toBeDefined();
+        expect(capturedError!.message).toContain('Malformed data received');
+      });
+    });
+
+    describe('Binary Garbage Response Handling', () => {
+      it('should configure binary garbage malformed response mode', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'binary_garbage',
+          affectedMethods: ['tools/call'],
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+      });
+
+      it('should handle transport-level binary garbage injection', () => {
+        let capturedError: Error | undefined;
+        let rawDataReceived: any;
+
+        clientTransport.on('error', (error: Error) => {
+          capturedError = error;
+        });
+
+        clientTransport.on('rawData', (data: any) => {
+          rawDataReceived = data;
+        });
+
+        // Inject binary data directly
+        clientTransport.injectMalformedBytes({
+          type: 'binary_data',
+        });
+
+        // Should receive binary data and trigger error
+        expect(rawDataReceived).toBeDefined();
+        expect(capturedError).toBeDefined();
+        expect(capturedError!.message).toContain('Malformed data received');
+      });
+    });
+
+    describe('Probability-based Malformed Response Configuration', () => {
+      it('should configure malformed responses with various probability values', () => {
+        const probabilityConfigs = [
+          { probability: 0.0, description: 'zero probability' },
+          { probability: 0.5, description: 'fifty percent probability' },
+          { probability: 1.0, description: 'full probability' },
+        ];
+
+        for (const { probability, description } of probabilityConfigs) {
+          const config: MockMalformedResponseConfig = {
+            type: 'invalid_json',
+            invalidJsonContent: '{"broken": json}',
+            affectedMethods: ['ping'],
+            probability,
+            description,
+          };
+
+          server.setMalformedResponseMode(config);
+
+          const retrievedConfig = server.getMalformedResponseMode();
+          expect(retrievedConfig).toEqual(config);
+          expect(retrievedConfig!.probability).toBe(probability);
+        }
+      });
+    });
+
+    describe('Method-specific Malformed Response Targeting', () => {
+      it('should configure method-specific targeting', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'invalid_json',
+          invalidJsonContent: '{"broken": json}',
+          affectedMethods: ['tools/call'], // Only affect tools/call
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+        expect(retrievedConfig!.affectedMethods).toEqual(['tools/call']);
+      });
+
+      it('should handle empty affected methods array', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'truncated_json',
+          truncateAt: '25%',
+          affectedMethods: [], // Empty array affects all methods
+          probability: 1.0,
+        };
+
+        server.setMalformedResponseMode(config);
+
+        const retrievedConfig = server.getMalformedResponseMode();
+        expect(retrievedConfig).toEqual(config);
+        expect(retrievedConfig!.affectedMethods).toEqual([]);
+      });
+    });
+
+    describe('Configuration Management', () => {
+      it('should allow clearing malformed mode configuration', () => {
+        const config: MockMalformedResponseConfig = {
+          type: 'invalid_json',
+          invalidJsonContent: '{"broken": json}',
+          affectedMethods: ['ping'],
+          probability: 1.0,
+        };
+
+        // Set configuration
+        server.setMalformedResponseMode(config);
+        expect(server.getMalformedResponseMode()).toEqual(config);
+
+        // Clear configuration
+        server.clearMalformedResponseMode();
+        expect(server.getMalformedResponseMode()).toBeUndefined();
+      });
+
+      it('should allow transport-level malformed injection cleanup', () => {
+        const config: MalformedBytesInjectionConfig = {
+          type: 'invalid_json',
+          invalidContent: '{"broken": json}',
+        };
+
+        // Configure injection
+        clientTransport.setMalformedResponseInjection({
+          targetMethods: ['ping'],
+          injection: config,
+          probability: 1.0,
+        });
+
+        // Clear injection
+        clientTransport.clearMalformedResponseInjection();
+
+        // Should not throw error when cleared
+        expect(() => clientTransport.clearMalformedResponseInjection()).not.toThrow();
+      });
     });
   });
 });
