@@ -251,3 +251,55 @@ export interface ErrorSimulationEvents {
   /** Emitted when a request passes through without error simulation */
   'error:passed': (method: string, requestCount: number) => void;
 }
+
+// ============================================================================
+// Malformed Bytes Injection Types (ADR-073)
+// ============================================================================
+
+/**
+ * Configuration for injecting malformed bytes at the transport layer.
+ *
+ * Unlike MockMalformedResponseConfig which operates at the protocol level,
+ * this configuration enables injection of actual malformed data that
+ * simulates transport-level corruption.
+ */
+export interface MalformedBytesInjectionConfig {
+  /** Type of malformed data to inject */
+  type: 'invalid_json' | 'truncated_json' | 'empty_response' | 'binary_data' | 'custom';
+
+  /**
+   * For truncated_json: position to truncate at.
+   * - number: absolute byte position
+   * - string with %: percentage of full response (e.g., '50%')
+   */
+  truncateAt?: number | string;
+
+  /** For custom type: exact raw bytes to inject */
+  rawBytes?: Buffer | string;
+
+  /** For invalid_json: specific invalid JSON content to inject */
+  invalidContent?: string;
+
+  /** Delay before injection (ms) */
+  delayMs?: number;
+
+  /** Optional description for test documentation */
+  description?: string;
+}
+
+/**
+ * Configuration for automatic malformed response interception.
+ */
+export interface MalformedResponseInterceptorConfig {
+  /** Request method(s) to target (empty array = all methods) */
+  targetMethods?: string[];
+
+  /** Malformed injection configuration */
+  injection: MalformedBytesInjectionConfig;
+
+  /** Probability of injection (0.0 to 1.0, default 1.0) */
+  probability?: number;
+
+  /** Maximum number of injections (0 = unlimited) */
+  maxInjections?: number;
+}

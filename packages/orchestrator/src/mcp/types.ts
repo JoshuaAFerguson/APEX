@@ -175,6 +175,12 @@ export interface MCPTransportEvents {
 
   /** Emitted when stderr output is received (stdio transport only) */
   'stderr': (data: string) => void;
+
+  /**
+   * Emitted when raw data is received before JSON parsing.
+   * Used for testing transport-level error handling.
+   */
+  'rawData': (data: Buffer | string) => void;
 }
 
 // ============================================================================

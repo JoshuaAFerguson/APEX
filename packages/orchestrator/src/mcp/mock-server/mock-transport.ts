@@ -9,7 +9,11 @@
 
 import { JSONRPCMessage, MCPTransportError } from '../types.js';
 import { MCPTransport } from '../transports/transport.js';
-import type { MockTransportOptions } from './types.js';
+import type {
+  MockTransportOptions,
+  MalformedBytesInjectionConfig,
+  MalformedResponseInterceptorConfig
+} from './types.js';
 
 // ============================================================================
 // MockTransport Implementation
@@ -42,11 +46,23 @@ import type { MockTransportOptions } from './types.js';
  * const tools = await client.listTools(); // Returns []
  * ```
  */
+/**
+ * Internal type for tracking malformed response interception
+ */
+interface MalformedResponseInterceptor {
+  targetMethods: string[];
+  injection: MalformedBytesInjectionConfig;
+  probability: number;
+  maxInjections: number;
+  currentInjections: number;
+}
+
 export class MockTransport extends MCPTransport {
   private options: Required<MockTransportOptions>;
   private requestHandler?: (message: JSONRPCMessage) => Promise<JSONRPCMessage | undefined>;
   private sentMessages: JSONRPCMessage[] = [];
   private connected = false;
+  private malformedInterceptors: MalformedResponseInterceptor[] = [];
 
   constructor(options: MockTransportOptions = {}) {
     super({
@@ -149,8 +165,14 @@ export class MockTransport extends MCPTransport {
       try {
         const response = await this.requestHandler(message);
         if (response) {
-          // Emit the response as a received message (simulates server response)
-          this.emit('message', response);
+          // Check if we should inject malformed response
+          const interceptor = this.shouldInjectMalformed(message);
+          if (interceptor) {
+            await this.injectMalformedForRequest(message, response, interceptor);
+          } else {
+            // Emit the response as a received message (simulates server response)
+            this.emit('message', response);
+          }
         }
       } catch (error) {
         this.emit('error', new MCPTransportError(
@@ -159,6 +181,93 @@ export class MockTransport extends MCPTransport {
           error as Error
         ));
       }
+    }
+  }
+
+  // ==========================================================================
+  // Private Helper Methods
+  // ==========================================================================
+
+  /**
+   * Truncate data at the specified position.
+   *
+   * @param data - Data to truncate
+   * @param truncateAt - Position to truncate (number or percentage string)
+   */
+  private truncateData(data: string, truncateAt: number | string): string {
+    let position: number;
+
+    if (typeof truncateAt === 'string' && truncateAt.endsWith('%')) {
+      const percentage = parseFloat(truncateAt.slice(0, -1)) / 100;
+      position = Math.floor(data.length * percentage);
+    } else {
+      position = typeof truncateAt === 'number' ? truncateAt : parseInt(String(truncateAt));
+    }
+
+    return data.slice(0, Math.max(0, position));
+  }
+
+  /**
+   * Check if malformed injection should occur for a given request.
+   */
+  private shouldInjectMalformed(request: JSONRPCMessage): MalformedResponseInterceptor | null {
+    const method = 'method' in request ? request.method : '';
+
+    for (const interceptor of this.malformedInterceptors) {
+      // Check if we've exceeded max injections
+      if (interceptor.maxInjections > 0 &&
+          interceptor.currentInjections >= interceptor.maxInjections) {
+        continue;
+      }
+
+      // Check method match
+      const methodMatch = interceptor.targetMethods.length === 0 ||
+                         interceptor.targetMethods.includes(method);
+
+      // Check probability match
+      const probabilityMatch = Math.random() < interceptor.probability;
+
+      if (methodMatch && probabilityMatch) {
+        return interceptor;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Inject malformed response for a specific request.
+   */
+  private async injectMalformedForRequest(
+    request: JSONRPCMessage,
+    originalResponse: JSONRPCMessage,
+    interceptor: MalformedResponseInterceptor
+  ): Promise<void> {
+    // Increment injection count
+    interceptor.currentInjections++;
+
+    // Apply delay if specified
+    if (interceptor.injection.delayMs && interceptor.injection.delayMs > 0) {
+      await this.delay(interceptor.injection.delayMs);
+    }
+
+    const config = interceptor.injection;
+
+    if (config.type === 'truncated_json') {
+      // Truncate the actual response that would have been sent
+      const fullResponse = JSON.stringify(originalResponse);
+      const truncated = this.truncateData(fullResponse, config.truncateAt ?? '50%');
+
+      // Emit as raw data first
+      this.emit('rawData', truncated);
+
+      // Then emit parse error since truncated JSON can't be parsed
+      this.emit('error', new MCPTransportError(
+        'Truncated response received',
+        'PARSE_ERROR'
+      ));
+    } else {
+      // Use the general injectMalformedBytes method for other types
+      this.injectMalformedBytes(config);
     }
   }
 
@@ -249,6 +358,7 @@ export class MockTransport extends MCPTransport {
     this._state = 'disconnected';
     this.reconnectAttempts = 0;
     this.requestHandler = undefined;
+    this.malformedInterceptors = [];
   }
 
   /**
@@ -256,5 +366,116 @@ export class MockTransport extends MCPTransport {
    */
   override isConnected(): boolean {
     return this.connected;
+  }
+
+  // ==========================================================================
+  // Malformed Bytes Injection Methods (ADR-073)
+  // ==========================================================================
+
+  /**
+   * Inject raw malformed bytes at the transport layer.
+   * This bypasses normal message handling to simulate transport corruption.
+   *
+   * @param config - Configuration for the malformed data injection
+   */
+  injectMalformedBytes(config: MalformedBytesInjectionConfig): void {
+    if (!this.connected) {
+      throw new MCPTransportError(
+        'Cannot inject bytes when not connected',
+        'NOT_CONNECTED'
+      );
+    }
+
+    let data: string | Buffer;
+
+    switch (config.type) {
+      case 'invalid_json':
+        data = config.invalidContent ?? '{"result": undefined, broken json here}';
+        break;
+
+      case 'truncated_json':
+        // Generate a valid response then truncate it
+        const fullResponse = JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: { data: 'some response data that will be truncated' }
+        });
+        data = this.truncateData(fullResponse, config.truncateAt ?? '50%');
+        break;
+
+      case 'empty_response':
+        data = '';
+        break;
+
+      case 'binary_data':
+        data = Buffer.from([0x00, 0x01, 0xFF, 0xFE, 0x89, 0x50, 0x4E, 0x47]);
+        break;
+
+      case 'custom':
+        data = config.rawBytes ?? '';
+        break;
+
+      default:
+        throw new MCPTransportError(
+          `Unknown malformed data type: ${(config as any).type}`,
+          'INVALID_PARAMS'
+        );
+    }
+
+    // Apply delay if specified
+    if (config.delayMs && config.delayMs > 0) {
+      setTimeout(() => {
+        this.performMalformedInjection(data);
+      }, config.delayMs);
+    } else {
+      this.performMalformedInjection(data);
+    }
+  }
+
+  /**
+   * Configure automatic malformed response injection for specific requests.
+   * When a matching request is received, the response will be malformed.
+   *
+   * @param config - Configuration for automatic malformed injection
+   */
+  setMalformedResponseInjection(config: MalformedResponseInterceptorConfig): void {
+    this.malformedInterceptors.push({
+      targetMethods: config.targetMethods ?? [],
+      injection: config.injection,
+      probability: config.probability ?? 1.0,
+      maxInjections: config.maxInjections ?? 0,
+      currentInjections: 0,
+    });
+  }
+
+  /**
+   * Clear all malformed response injection configurations.
+   */
+  clearMalformedResponseInjection(): void {
+    this.malformedInterceptors = [];
+  }
+
+  /**
+   * Perform the actual malformed data injection and emit appropriate events.
+   *
+   * @param data - The malformed data to inject
+   */
+  private performMalformedInjection(data: string | Buffer): void {
+    // Emit raw data event for clients that handle raw transport data
+    this.emit('rawData', data);
+
+    // Also try to emit as 'message' to trigger normal error handling
+    // This allows testing both raw data handlers and JSON parse error handling
+    try {
+      const message = JSON.parse(typeof data === 'string' ? data : data.toString());
+      this.emit('message', message);
+    } catch (parseError) {
+      // Emit as transport error since the data couldn't be parsed
+      this.emit('error', new MCPTransportError(
+        `Malformed data received: ${(parseError as Error).message}`,
+        'PARSE_ERROR',
+        parseError as Error
+      ));
+    }
   }
 }

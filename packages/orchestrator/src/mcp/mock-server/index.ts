@@ -83,6 +83,8 @@ export type {
   ErrorSimulationCheckResult,
   ErrorSimulationState,
   ErrorSimulationEvents,
+  MalformedBytesInjectionConfig,
+  MalformedResponseInterceptorConfig,
 } from './types.js';
 
 export { MockAssertionError } from './types.js';
