@@ -429,6 +429,92 @@ export const MockErrorSimulationConfigSchema = z.object({
 export type MockErrorSimulationConfig = z.infer<typeof MockErrorSimulationConfigSchema>;
 
 // ============================================================================
+// Malformed Response Simulation (ADR-072 Extension)
+// ============================================================================
+
+/**
+ * Types of malformed responses that can be simulated.
+ *
+ * These types provide fine-grained control over malformed response testing,
+ * enabling verification of client resilience against various protocol violations.
+ *
+ * @see ADR-072 for error simulation architecture
+ */
+export const MalformedResponseTypeSchema = z.enum([
+  /** Response is not valid JSON (causes JSON.parse to throw) */
+  'invalid_json',
+  /** Response is valid JSON but cut off mid-stream (simulates connection drop) */
+  'truncated_json',
+  /** Response is valid JSON but doesn't match expected MCP schema */
+  'wrong_schema',
+  /** Response body is empty (zero bytes) */
+  'empty_response',
+]);
+export type MalformedResponseType = z.infer<typeof MalformedResponseTypeSchema>;
+
+/**
+ * Configuration for simulating malformed responses.
+ *
+ * Provides detailed control over how malformed responses are generated,
+ * allowing testing of client error handling for various protocol violations.
+ *
+ * @example
+ * ```typescript
+ * // Simulate truncated JSON responses
+ * const config: MockMalformedResponseConfig = {
+ *   type: 'truncated_json',
+ *   truncateAt: '50%',
+ *   affectedMethods: ['tools/call'],
+ *   probability: 1.0,
+ * };
+ *
+ * // Simulate invalid JSON
+ * const config: MockMalformedResponseConfig = {
+ *   type: 'invalid_json',
+ *   invalidJsonContent: '{"result": undefined}',
+ *   affectedMethods: [],
+ *   probability: 0.5,
+ * };
+ *
+ * // Simulate wrong schema responses
+ * const config: MockMalformedResponseConfig = {
+ *   type: 'wrong_schema',
+ *   wrongSchemaPayload: { unexpected: 'structure', missing: 'required fields' },
+ * };
+ * ```
+ */
+export const MockMalformedResponseConfigSchema = z.object({
+  /** Type of malformed response to simulate */
+  type: MalformedResponseTypeSchema,
+
+  /**
+   * For truncated_json: position where to truncate the response.
+   * - Number: byte position (e.g., 100 = truncate at byte 100)
+   * - String with %: percentage of response (e.g., '50%' = truncate at halfway point)
+   */
+  truncateAt: z.union([
+    z.number().int().min(0),
+    z.string().regex(/^\d+%$/),
+  ]).optional(),
+
+  /** For wrong_schema: the invalid payload structure to return instead of valid response */
+  wrongSchemaPayload: z.unknown().optional(),
+
+  /** For invalid_json: specific invalid JSON content to return (e.g., '{"key": undefined}') */
+  invalidJsonContent: z.string().optional(),
+
+  /** Which MCP methods to apply this malformation to (empty array = all methods) */
+  affectedMethods: z.array(z.string()).default([]),
+
+  /** Probability of returning malformed response (0.0 to 1.0, default 1.0 = always) */
+  probability: z.number().min(0).max(1).default(1.0),
+
+  /** Optional description for test documentation */
+  description: z.string().optional(),
+});
+export type MockMalformedResponseConfig = z.infer<typeof MockMalformedResponseConfigSchema>;
+
+// ============================================================================
 // Error Injection Configuration (Legacy - Probability-Based)
 // ============================================================================
 
