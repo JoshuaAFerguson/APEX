@@ -422,6 +422,135 @@ apex/
 └── examples/           # Example projects
 ```
 
+## Utility Functions
+
+APEX includes a comprehensive set of utility functions in the `@apex/core` package for common development tasks:
+
+### Formatting Functions
+
+#### `formatDuration(ms: number): string`
+Formats duration in milliseconds to human-readable format.
+
+```typescript
+import { formatDuration } from '@apex/core';
+
+formatDuration(500);       // "500ms"
+formatDuration(2500);      // "2.5s"
+formatDuration(125000);    // "2m 5s"
+formatDuration(3725000);   // "1h 2m"
+```
+
+#### `formatElapsed(startTime: Date, currentTime?: Date): string`
+Formats elapsed time from a start date to current time in human-readable format.
+
+```typescript
+import { formatElapsed } from '@apex/core';
+
+const startTime = new Date('2024-01-01T10:00:00Z');
+const currentTime = new Date('2024-01-01T10:02:30Z');
+
+formatElapsed(startTime, currentTime);  // "2m 30s"
+formatElapsed(startTime);               // Calculates from current time
+formatElapsed(new Date(Date.now() - 5000));  // "5s"
+```
+
+#### `formatTokens(tokens: number): string`
+Formats token count with commas for readability.
+
+```typescript
+import { formatTokens } from '@apex/core';
+
+formatTokens(1234);      // "1,234"
+formatTokens(5678901);   // "5,678,901"
+formatTokens(42);        // "42"
+```
+
+#### `formatCost(cost: number): string`
+Formats cost as USD with 4 decimal places.
+
+```typescript
+import { formatCost } from '@apex/core';
+
+formatCost(0.0042);    // "$0.0042"
+formatCost(1.2345);    // "$1.2345"
+formatCost(10);        // "$10.0000"
+```
+
+### Truncation Functions
+
+#### `truncate(str: string, maxLength: number, suffix?: string): string`
+Truncates a string to a maximum length with optional suffix.
+
+```typescript
+import { truncate } from '@apex/core';
+
+truncate("This is a long string", 10);          // "This is..."
+truncate("Short", 10);                          // "Short"
+truncate("Long content", 8, " [more]");         // "Lo [more]"
+```
+
+#### `truncateToolOutput(output: string, options?: TruncateOptions): TruncateResult`
+Truncates tool output while preserving readability and JSON structure.
+
+```typescript
+import { truncateToolOutput } from '@apex/core';
+
+// Basic truncation
+const result = truncateToolOutput("Very long output...", { maxLength: 50 });
+// result.output: truncated string
+// result.truncated: boolean indicating if truncation occurred
+// result.originalLength: original string length
+// result.truncatedLength: final string length
+
+// JSON-aware truncation
+const jsonOutput = JSON.stringify({ items: [1, 2, 3, 4, 5] });
+const truncated = truncateToolOutput(jsonOutput, {
+  maxLength: 30,
+  preserveJson: true
+});
+// Preserves JSON structure while truncating
+```
+
+### ID Generation Functions
+
+#### `generateTaskId(): string`
+Generates a unique task identifier.
+
+```typescript
+import { generateTaskId } from '@apex/core';
+
+generateTaskId();  // "task_lx2n8p_a1b2c3d4"
+```
+
+#### `generateIdleTaskId(): string`
+Generates a unique idle task identifier.
+
+```typescript
+import { generateIdleTaskId } from '@apex/core';
+
+generateIdleTaskId();  // "idle_lx2n8p_e5f6g7h8"
+```
+
+#### `generateTaskTemplateId(): string`
+Generates a unique task template identifier.
+
+```typescript
+import { generateTaskTemplateId } from '@apex/core';
+
+generateTaskTemplateId();  // "template_lx2n8p_i9j0k1l2"
+```
+
+#### `generateApprovalId(): string`
+Generates a unique approval identifier.
+
+```typescript
+import { generateApprovalId } from '@apex/core';
+
+generateApprovalId();  // "apr_lx2n8p_m3n4o5p6"
+```
+
+All ID generation functions create unique identifiers using timestamps and cryptographic randomness for collision-free operation across distributed systems.
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
