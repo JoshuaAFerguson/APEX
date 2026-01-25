@@ -12,6 +12,9 @@ import type {
   MockResponseDelay,
   MockErrorInjection,
   MockToolHandler,
+  MockDynamicHandler,
+  MockDynamicHandlerFunction,
+  MockResponseSequence,
   MockNotificationTrigger,
   MockStatefulBehaviorConfig,
   MockStateTransition,
@@ -447,6 +450,326 @@ describe('MockBehaviorEngine', () => {
         flags: ['verbose', 'strict'],
       });
       expect(partialMismatch).toBeUndefined();
+    });
+  });
+
+  describe('dynamic handlers', () => {
+    const mockDynamicHandler: MockDynamicHandler = {
+      toolName: 'dynamic_tool',
+      handler: vi.fn(async (toolName, args, context) => {
+        return {
+          content: [{ type: 'text', text: `Dynamic response for ${toolName} with args ${JSON.stringify(args)} (call #${context.invocationCount})` }],
+          isError: false
+        };
+      }),
+      priority: 75,
+    };
+
+    const mockDynamicHandlerWithArgs: MockDynamicHandler = {
+      toolName: 'conditional_dynamic',
+      handler: vi.fn(async (toolName, args, context) => {
+        const mode = args.mode as string;
+        return {
+          content: [{ type: 'text', text: `Mode: ${mode}` }],
+          isError: false
+        };
+      }),
+      matchArgs: { mode: 'advanced' },
+      priority: 60,
+    };
+
+    const mockLimitedDynamicHandler: MockDynamicHandler = {
+      toolName: 'limited_dynamic',
+      handler: vi.fn(async (toolName, args, context) => {
+        return {
+          content: [{ type: 'text', text: 'Limited response' }],
+          isError: false
+        };
+      }),
+      maxInvocations: 2,
+      priority: 50,
+    };
+
+    beforeEach(() => {
+      const config: MockBehaviorConfig = {
+        ...baseConfig,
+        dynamicHandlers: [mockDynamicHandler, mockDynamicHandlerWithArgs, mockLimitedDynamicHandler],
+      };
+      engine = new MockBehaviorEngine(config);
+
+      // Reset mocks
+      vi.mocked(mockDynamicHandler.handler).mockClear();
+      vi.mocked(mockDynamicHandlerWithArgs.handler).mockClear();
+      vi.mocked(mockLimitedDynamicHandler.handler).mockClear();
+    });
+
+    it('finds and executes dynamic handler', async () => {
+      const handler = engine.findDynamicHandler('dynamic_tool');
+      expect(handler).toEqual(mockDynamicHandler);
+
+      const result = await engine.executeDynamicHandler(handler!, 'dynamic_tool', { test: 'value' });
+      expect(result.content).toEqual([{ type: 'text', text: `Dynamic response for dynamic_tool with args {"test":"value"} (call #1)` }]);
+      expect(result.isError).toBe(false);
+
+      expect(mockDynamicHandler.handler).toHaveBeenCalledWith(
+        'dynamic_tool',
+        { test: 'value' },
+        expect.objectContaining({
+          requestId: expect.any(String),
+          invocationCount: 1,
+          timestamp: expect.any(Date)
+        })
+      );
+    });
+
+    it('finds dynamic handler with matching args', async () => {
+      const handler = engine.findDynamicHandler('conditional_dynamic', { mode: 'advanced' });
+      expect(handler).toEqual(mockDynamicHandlerWithArgs);
+
+      const result = await engine.executeDynamicHandler(handler!, 'conditional_dynamic', { mode: 'advanced' });
+      expect(result.content).toEqual([{ type: 'text', text: 'Mode: advanced' }]);
+    });
+
+    it('does not find dynamic handler with non-matching args', () => {
+      const handler = engine.findDynamicHandler('conditional_dynamic', { mode: 'basic' });
+      expect(handler).toBeUndefined();
+    });
+
+    it('respects maxInvocations for dynamic handlers', async () => {
+      // First two calls should work
+      const first = engine.findDynamicHandler('limited_dynamic');
+      expect(first).toEqual(mockLimitedDynamicHandler);
+
+      const second = engine.findDynamicHandler('limited_dynamic');
+      expect(second).toEqual(mockLimitedDynamicHandler);
+
+      // Execute them to increment counters
+      await engine.executeDynamicHandler(first!, 'limited_dynamic');
+      await engine.executeDynamicHandler(second!, 'limited_dynamic');
+
+      // Third should be blocked
+      const third = engine.findDynamicHandler('limited_dynamic');
+      expect(third).toBeUndefined();
+    });
+
+    it('tracks invocation counts correctly', async () => {
+      const handler = engine.findDynamicHandler('dynamic_tool');
+      await engine.executeDynamicHandler(handler!, 'dynamic_tool', {});
+
+      // Second call should have incremented count
+      await engine.executeDynamicHandler(handler!, 'dynamic_tool', {});
+
+      expect(mockDynamicHandler.handler).toHaveBeenCalledTimes(2);
+      expect(mockDynamicHandler.handler).toHaveBeenLastCalledWith(
+        'dynamic_tool',
+        {},
+        expect.objectContaining({
+          invocationCount: 2
+        })
+      );
+    });
+
+    it('applies delay before executing dynamic handler', async () => {
+      const handlerWithDelay: MockDynamicHandler = {
+        toolName: 'slow_dynamic',
+        handler: vi.fn(async () => ({ content: [], isError: false })),
+        delayMs: 50,
+      };
+
+      const start = Date.now();
+      await engine.executeDynamicHandler(handlerWithDelay, 'slow_dynamic', {});
+      const elapsed = Date.now() - start;
+
+      expect(elapsed).toBeGreaterThanOrEqual(45); // Allow for timing variance
+    });
+  });
+
+  describe('response sequences', () => {
+    const mockResponseSequence: MockResponseSequence = {
+      toolName: 'sequence_tool',
+      responses: [
+        { content: [{ type: 'text', text: 'First response' }], isError: false },
+        { content: [{ type: 'text', text: 'Second response' }], isError: false },
+        { content: [{ type: 'text', text: 'Third response' }], isError: false },
+      ],
+      cycleMode: 'cycle',
+      priority: 80,
+    };
+
+    const mockLimitedSequence: MockResponseSequence = {
+      toolName: 'limited_sequence',
+      responses: [
+        { content: [{ type: 'text', text: 'Only response' }], isError: false },
+      ],
+      cycleMode: 'stop_at_end',
+      priority: 50,
+    };
+
+    const mockRepeatSequence: MockResponseSequence = {
+      toolName: 'repeat_sequence',
+      responses: [
+        { content: [{ type: 'text', text: 'Initial' }], isError: false },
+        { content: [{ type: 'text', text: 'Final' }], isError: false },
+      ],
+      cycleMode: 'repeat_last',
+      priority: 60,
+    };
+
+    beforeEach(() => {
+      const config: MockBehaviorConfig = {
+        ...baseConfig,
+        responseSequences: [mockResponseSequence, mockLimitedSequence, mockRepeatSequence],
+      };
+      engine = new MockBehaviorEngine(config);
+    });
+
+    it('finds response sequence', () => {
+      const sequence = engine.findResponseSequence('sequence_tool');
+      expect(sequence).toEqual(mockResponseSequence);
+    });
+
+    it('executes sequence responses in order', async () => {
+      const sequence = engine.findResponseSequence('sequence_tool')!;
+
+      const first = await engine.executeResponseSequence(sequence, 'sequence_tool');
+      expect(first?.content).toEqual([{ type: 'text', text: 'First response' }]);
+
+      const second = await engine.executeResponseSequence(sequence, 'sequence_tool');
+      expect(second?.content).toEqual([{ type: 'text', text: 'Second response' }]);
+
+      const third = await engine.executeResponseSequence(sequence, 'sequence_tool');
+      expect(third?.content).toEqual([{ type: 'text', text: 'Third response' }]);
+    });
+
+    it('cycles through responses when using cycle mode', async () => {
+      const sequence = engine.findResponseSequence('sequence_tool')!;
+
+      // Go through all responses
+      await engine.executeResponseSequence(sequence, 'sequence_tool');
+      await engine.executeResponseSequence(sequence, 'sequence_tool');
+      await engine.executeResponseSequence(sequence, 'sequence_tool');
+
+      // Fourth call should cycle back to first
+      const fourth = await engine.executeResponseSequence(sequence, 'sequence_tool');
+      expect(fourth?.content).toEqual([{ type: 'text', text: 'First response' }]);
+    });
+
+    it('stops at end when using stop_at_end mode', async () => {
+      const sequence = engine.findResponseSequence('limited_sequence')!;
+
+      // First call should work
+      const first = await engine.executeResponseSequence(sequence, 'limited_sequence');
+      expect(first?.content).toEqual([{ type: 'text', text: 'Only response' }]);
+
+      // Second call should return undefined
+      const second = await engine.executeResponseSequence(sequence, 'limited_sequence');
+      expect(second).toBeUndefined();
+    });
+
+    it('repeats last response when using repeat_last mode', async () => {
+      const sequence = engine.findResponseSequence('repeat_sequence')!;
+
+      await engine.executeResponseSequence(sequence, 'repeat_sequence'); // Initial
+      await engine.executeResponseSequence(sequence, 'repeat_sequence'); // Final
+
+      // Third and fourth calls should repeat the last response
+      const third = await engine.executeResponseSequence(sequence, 'repeat_sequence');
+      expect(third?.content).toEqual([{ type: 'text', text: 'Final' }]);
+
+      const fourth = await engine.executeResponseSequence(sequence, 'repeat_sequence');
+      expect(fourth?.content).toEqual([{ type: 'text', text: 'Final' }]);
+    });
+
+    it('applies response-specific delay', async () => {
+      const sequenceWithDelay: MockResponseSequence = {
+        toolName: 'slow_sequence',
+        responses: [
+          { content: [{ type: 'text', text: 'Slow response' }], isError: false, delayMs: 50 },
+        ],
+        cycleMode: 'cycle',
+      };
+
+      const start = Date.now();
+      await engine.executeResponseSequence(sequenceWithDelay, 'slow_sequence');
+      const elapsed = Date.now() - start;
+
+      expect(elapsed).toBeGreaterThanOrEqual(45); // Allow for timing variance
+    });
+  });
+
+  describe('priority-based handler resolution', () => {
+    const lowPriorityStatic: MockToolHandler = {
+      toolName: 'multi_handler',
+      response: { content: [{ type: 'text', text: 'Static handler' }], isError: false },
+      priority: 30,
+    };
+
+    const highPriorityDynamic: MockDynamicHandler = {
+      toolName: 'multi_handler',
+      handler: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'Dynamic handler' }],
+        isError: false
+      })),
+      priority: 80,
+    };
+
+    const mediumPrioritySequence: MockResponseSequence = {
+      toolName: 'multi_handler',
+      responses: [
+        { content: [{ type: 'text', text: 'Sequence handler' }], isError: false },
+      ],
+      cycleMode: 'cycle',
+      priority: 60,
+    };
+
+    beforeEach(() => {
+      const config: MockBehaviorConfig = {
+        ...baseConfig,
+        toolHandlers: [lowPriorityStatic],
+        dynamicHandlers: [highPriorityDynamic],
+        responseSequences: [mediumPrioritySequence],
+      };
+      engine = new MockBehaviorEngine(config);
+      vi.mocked(highPriorityDynamic.handler).mockClear();
+    });
+
+    it('finds best handler based on priority', () => {
+      const best = engine.findBestToolHandler('multi_handler');
+
+      expect(best).toEqual({
+        type: 'dynamic',
+        handler: highPriorityDynamic
+      });
+    });
+
+    it('executes highest priority handler', async () => {
+      const result = await engine.executeToolHandler('multi_handler');
+
+      expect(result?.content).toEqual([{ type: 'text', text: 'Dynamic handler' }]);
+      expect(highPriorityDynamic.handler).toHaveBeenCalled();
+    });
+
+    it('falls back to lower priority when high priority is unavailable', async () => {
+      // Make the dynamic handler unavailable by exceeding maxInvocations
+      const limitedDynamic: MockDynamicHandler = {
+        ...highPriorityDynamic,
+        maxInvocations: 1,
+      };
+
+      const config: MockBehaviorConfig = {
+        ...baseConfig,
+        toolHandlers: [lowPriorityStatic],
+        dynamicHandlers: [limitedDynamic],
+        responseSequences: [mediumPrioritySequence],
+      };
+      engine = new MockBehaviorEngine(config);
+
+      // First call should use dynamic
+      await engine.executeToolHandler('multi_handler');
+
+      // Second call should fall back to sequence
+      const result = await engine.executeToolHandler('multi_handler');
+      expect(result?.content).toEqual([{ type: 'text', text: 'Sequence handler' }]);
     });
   });
 

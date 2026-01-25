@@ -13,6 +13,9 @@ import type {
   MockResponseDelay,
   MockErrorInjection,
   MockToolHandler,
+  MockDynamicHandler,
+  MockDynamicHandlerFunction,
+  MockResponseSequence,
   MockNotificationTrigger,
   MockStatefulBehaviorConfig,
   MockStateTransition,
@@ -70,6 +73,8 @@ export class MockBehaviorEngine {
   private errorCount = 0;
   private recordedRequests: RecordedRequest[] = [];
   private toolInvocationCounts: Map<string, number> = new Map();
+  private dynamicHandlerInvocationCounts: Map<string, number> = new Map();
+  private responseSequenceInvocationCounts: Map<string, number> = new Map();
   private firedTriggers: Set<string> = new Set();
   private startTime: number;
 
@@ -235,6 +240,299 @@ export class MockBehaviorEngine {
     }
 
     return undefined;
+  }
+
+  /**
+   * Find a static tool handler without incrementing the invocation count.
+   * Used internally for priority comparison.
+   */
+  private findStaticToolHandler(
+    toolName: string,
+    args?: Record<string, unknown>
+  ): MockToolHandler | undefined {
+    const handlers = this.getActiveToolHandlers();
+
+    for (const handler of handlers) {
+      if (handler.toolName !== toolName) {
+        continue;
+      }
+
+      // Check maxInvocations
+      if (handler.maxInvocations > 0) {
+        const count = this.toolInvocationCounts.get(toolName) ?? 0;
+        if (count >= handler.maxInvocations) {
+          continue;
+        }
+      }
+
+      // Check argument matching
+      if (handler.matchArgs && args) {
+        const matches = this.matchArgs(handler.matchArgs, args);
+        if (!matches) {
+          continue;
+        }
+      } else if (handler.matchArgs && !args) {
+        continue; // Handler requires args but none provided
+      }
+
+      return handler;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find the best matching handler across all handler types (static, dynamic, sequence).
+   * Handlers are prioritized by their priority value (higher = preferred).
+   * Returns an object indicating the type and handler found.
+   */
+  findBestToolHandler(
+    toolName: string,
+    args?: Record<string, unknown>
+  ): {
+    type: 'static' | 'dynamic' | 'sequence';
+    handler: MockToolHandler | MockDynamicHandler | MockResponseSequence;
+  } | undefined {
+    const candidates: Array<{
+      type: 'static' | 'dynamic' | 'sequence';
+      handler: MockToolHandler | MockDynamicHandler | MockResponseSequence;
+      priority: number;
+    }> = [];
+
+    // Check static handlers (without incrementing count)
+    const staticHandler = this.findStaticToolHandler(toolName, args);
+    if (staticHandler) {
+      candidates.push({
+        type: 'static',
+        handler: staticHandler,
+        priority: staticHandler.priority || 50
+      });
+    }
+
+    // Check dynamic handlers
+    const dynamicHandler = this.findDynamicHandler(toolName, args);
+    if (dynamicHandler) {
+      candidates.push({
+        type: 'dynamic',
+        handler: dynamicHandler,
+        priority: dynamicHandler.priority || 50
+      });
+    }
+
+    // Check response sequences
+    const responseSequence = this.findResponseSequence(toolName, args);
+    if (responseSequence) {
+      candidates.push({
+        type: 'sequence',
+        handler: responseSequence,
+        priority: responseSequence.priority || 50
+      });
+    }
+
+    if (candidates.length === 0) {
+      return undefined;
+    }
+
+    // Sort by priority (highest first) and return the best match
+    candidates.sort((a, b) => b.priority - a.priority);
+    const best = candidates[0];
+
+    return {
+      type: best.type,
+      handler: best.handler
+    };
+  }
+
+  /**
+   * Find a matching dynamic handler for the given tool name and arguments.
+   * Dynamic handlers can generate responses programmatically.
+   */
+  findDynamicHandler(
+    toolName: string,
+    args?: Record<string, unknown>
+  ): MockDynamicHandler | undefined {
+    const handlers = this.getActiveDynamicHandlers();
+
+    for (const handler of handlers) {
+      if (handler.toolName !== toolName) {
+        continue;
+      }
+
+      // Check maxInvocations
+      if (handler.maxInvocations > 0) {
+        const count = this.dynamicHandlerInvocationCounts.get(toolName) ?? 0;
+        if (count >= handler.maxInvocations) {
+          continue;
+        }
+      }
+
+      // Check argument matching
+      if (handler.matchArgs && args) {
+        const matches = this.matchArgs(handler.matchArgs, args);
+        if (!matches) {
+          continue;
+        }
+      } else if (handler.matchArgs && !args) {
+        continue; // Handler requires args but none provided
+      }
+
+      return handler;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Execute a dynamic handler and return the response.
+   */
+  async executeDynamicHandler(
+    handler: MockDynamicHandler,
+    toolName: string,
+    args: Record<string, unknown> = {}
+  ): Promise<{ content: any[], isError: boolean }> {
+    // Track invocation before execution
+    const currentCount = this.dynamicHandlerInvocationCounts.get(toolName) ?? 0;
+    this.dynamicHandlerInvocationCounts.set(toolName, currentCount + 1);
+
+    // Apply delay if specified
+    if (handler.delayMs && handler.delayMs > 0) {
+      await this.sleep(handler.delayMs);
+    }
+
+    // Get invocation context
+    const context = {
+      requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      invocationCount: currentCount + 1,
+      timestamp: new Date()
+    };
+
+    // Execute the handler
+    return await handler.handler(toolName, args, context);
+  }
+
+  /**
+   * Find a matching response sequence for the given tool name and arguments.
+   * Response sequences return different responses on successive calls.
+   */
+  findResponseSequence(
+    toolName: string,
+    args?: Record<string, unknown>
+  ): MockResponseSequence | undefined {
+    const sequences = this.getActiveResponseSequences();
+
+    for (const sequence of sequences) {
+      if (sequence.toolName !== toolName) {
+        continue;
+      }
+
+      // Check argument matching
+      if (sequence.matchArgs && args) {
+        const matches = this.matchArgs(sequence.matchArgs, args);
+        if (!matches) {
+          continue;
+        }
+      } else if (sequence.matchArgs && !args) {
+        continue; // Sequence requires args but none provided
+      }
+
+      return sequence;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Execute a response sequence and return the appropriate response based on call count.
+   */
+  async executeResponseSequence(
+    sequence: MockResponseSequence,
+    toolName: string
+  ): Promise<{ content: any[], isError: boolean } | undefined> {
+    // Get current call count for this specific tool
+    const callCount = this.responseSequenceInvocationCounts.get(toolName) ?? 0;
+    this.responseSequenceInvocationCounts.set(toolName, callCount + 1);
+
+    // Determine which response to use
+    let responseIndex: number;
+
+    if (callCount < sequence.responses.length) {
+      // Still within the initial sequence
+      responseIndex = callCount;
+    } else {
+      // Handle cycle mode for calls beyond the sequence length
+      switch (sequence.cycleMode) {
+        case 'cycle':
+          responseIndex = callCount % sequence.responses.length;
+          break;
+        case 'repeat_last':
+          responseIndex = sequence.responses.length - 1;
+          break;
+        case 'stop_at_end':
+          return undefined; // Let other handlers take over
+        default:
+          responseIndex = callCount % sequence.responses.length;
+      }
+    }
+
+    const response = sequence.responses[responseIndex];
+
+    // Apply response-specific delay if specified
+    if (response.delayMs && response.delayMs > 0) {
+      await this.sleep(response.delayMs);
+    }
+
+    return {
+      content: response.content,
+      isError: response.isError
+    };
+  }
+
+  /**
+   * Execute the best matching handler for a tool call.
+   * This is the main entry point for executing tool handlers with priority support.
+   */
+  async executeToolHandler(
+    toolName: string,
+    args?: Record<string, unknown>
+  ): Promise<{ content: any[], isError: boolean } | undefined> {
+    const bestHandler = this.findBestToolHandler(toolName, args);
+
+    if (!bestHandler) {
+      return undefined;
+    }
+
+    switch (bestHandler.type) {
+      case 'static': {
+        const handler = bestHandler.handler as MockToolHandler;
+
+        // Track invocation for static handler
+        const count = this.toolInvocationCounts.get(toolName) ?? 0;
+        this.toolInvocationCounts.set(toolName, count + 1);
+
+        // Apply delay if specified
+        if (handler.delayMs && handler.delayMs > 0) {
+          await this.sleep(handler.delayMs);
+        }
+
+        return {
+          content: handler.response.content,
+          isError: handler.response.isError
+        };
+      }
+
+      case 'dynamic': {
+        const handler = bestHandler.handler as MockDynamicHandler;
+        return await this.executeDynamicHandler(handler, toolName, args || {});
+      }
+
+      case 'sequence': {
+        const handler = bestHandler.handler as MockResponseSequence;
+        return await this.executeResponseSequence(handler, toolName);
+      }
+
+      default:
+        return undefined;
+    }
   }
 
   // ==========================================================================
@@ -437,6 +735,8 @@ export class MockBehaviorEngine {
     this.errorCount = 0;
     this.recordedRequests = [];
     this.toolInvocationCounts.clear();
+    this.dynamicHandlerInvocationCounts.clear();
+    this.responseSequenceInvocationCounts.clear();
     this.firedTriggers.clear();
     this.currentState = this.config.statefulBehavior?.initialState ?? 'default';
     this.startTime = Date.now();
@@ -473,6 +773,32 @@ export class MockBehaviorEngine {
       return stateBehavior.toolHandlers;
     }
     return this.config.toolHandlers;
+  }
+
+  /**
+   * Get the active dynamic handlers considering state-specific overrides.
+   * State-specific handlers take priority over base handlers.
+   */
+  private getActiveDynamicHandlers(): MockDynamicHandler[] {
+    const stateBehavior = this.getCurrentStateBehavior();
+    if (stateBehavior && stateBehavior.dynamicHandlers.length > 0) {
+      // State-specific handlers override base handlers
+      return stateBehavior.dynamicHandlers;
+    }
+    return this.config.dynamicHandlers || [];
+  }
+
+  /**
+   * Get the active response sequences considering state-specific overrides.
+   * State-specific sequences take priority over base sequences.
+   */
+  private getActiveResponseSequences(): MockResponseSequence[] {
+    const stateBehavior = this.getCurrentStateBehavior();
+    if (stateBehavior && stateBehavior.responseSequences.length > 0) {
+      // State-specific sequences override base sequences
+      return stateBehavior.responseSequences;
+    }
+    return this.config.responseSequences || [];
   }
 
   /**
