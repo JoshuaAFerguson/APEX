@@ -11671,6 +11671,8 @@ export {
   MockTransport,
   MockBehaviorEngine,
   MockMCPProtocolHandler,
+  MockMCPServerBuilder,
+  createMockServerBuilder,
   createSimpleMockServer,
   createErrorMockServer,
   createSlowMockServer,

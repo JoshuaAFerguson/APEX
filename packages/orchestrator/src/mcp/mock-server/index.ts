@@ -13,6 +13,34 @@
  *
  * ## Usage
  *
+ * ### Option 1: Fluent Builder API (Recommended)
+ *
+ * ```typescript
+ * import { MockMCPServerBuilder } from '@apexcli/orchestrator/mcp/mock-server';
+ * import { MCPClient } from '@apexcli/orchestrator/mcp';
+ *
+ * // Fluent API for easy configuration
+ * const server = new MockMCPServerBuilder()
+ *   .withName('test-server')
+ *   .withTool('read_file')
+ *     .withStaticResponse([{ type: 'text', text: 'file content' }])
+ *   .withTool('write_file')
+ *     .withDynamicHandler(async (toolName, args) => ({
+ *       content: [{ type: 'text', text: `Wrote to ${args.path}` }],
+ *       isError: false,
+ *     }))
+ *   .withDelay(100, 200) // Random delay between 100-200ms
+ *   .build();
+ *
+ * const client = new MCPClient({ transport: server.getTransport() });
+ * await client.connect();
+ * const tools = await client.listTools();
+ *
+ * server.assertMethodCalled('tools/list', 1);
+ * ```
+ *
+ * ### Option 2: Factory Functions
+ *
  * ```typescript
  * import {
  *   MockMCPServerFacade,
@@ -79,3 +107,9 @@ export {
   createErrorMockServer,
   createSlowMockServer,
 } from './mock-server-facade.js';
+
+// MockMCPServerBuilder (fluent API for server configuration)
+export {
+  MockMCPServerBuilder,
+  createMockServerBuilder,
+} from './mock-mcp-server-builder.js';
