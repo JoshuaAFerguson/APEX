@@ -7,6 +7,9 @@ export * from './config';
 // Utilities
 export * from './utils';
 
+// Type Validation (for enhanced complexity metrics)
+export * from './type-validation';
+
 // JSDoc/TSDoc Detection
 export * from './jsdoc-detector';
 
@@ -81,6 +84,9 @@ export * from './mcp';
 
 // Test Fixtures
 export * from './test-fixtures';
+
+// Logging
+export * from './logger';
 
 // Note: test-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files
