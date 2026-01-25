@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MockMCPServer, type ConnectedClient, type MockServerState } from './mock-mcp-server.js';
-import type { MockMCPServerDefinition, MockMCPServerConfig, MockBehaviorConfig } from '@apexcli/core';
+import type { MockMCPServerDefinition, MockMCPServerConfig, MockBehaviorConfig, MockMalformedResponseConfig } from '@apexcli/core';
 import type { JSONRPCRequest, JSONRPCResponse, JSONRPCNotification } from '../types.js';
 
 describe('MockMCPServer', () => {
@@ -577,6 +577,117 @@ describe('MockMCPServer', () => {
       });
 
       expect(httpServer.getTransportType()).toBe('http');
+    });
+  });
+
+  describe('Malformed Response Mode Integration', () => {
+    beforeEach(async () => {
+      await server.start();
+    });
+
+    it('should integrate malformed response mode with server lifecycle', async () => {
+      const config = {
+        type: 'truncated_json' as const,
+        truncateAt: '50%' as const,
+        affectedMethods: ['tools/call'],
+        probability: 1.0,
+      };
+
+      // Set malformed mode before creating transport
+      server.setMalformedResponseMode(config);
+      expect(server.getMalformedResponseMode()).toEqual(config);
+
+      const transport = server.createClientTransport();
+      await transport.connect();
+
+      // Configuration should persist through client connections
+      expect(server.getMalformedResponseMode()).toEqual(config);
+
+      await server.stop();
+      await server.start();
+
+      // Configuration should persist through server restart
+      expect(server.getMalformedResponseMode()).toEqual(config);
+    });
+
+    it('should allow malformed response mode changes during operation', async () => {
+      const transport = server.createClientTransport();
+      await transport.connect();
+
+      // Initially no malformed response mode
+      expect(server.getMalformedResponseMode()).toBeUndefined();
+
+      // Set malformed response mode while running
+      const config = {
+        type: 'wrong_schema' as const,
+        wrongSchemaPayload: { invalid: 'structure' },
+        probability: 1.0,
+      };
+
+      server.setMalformedResponseMode(config);
+      expect(server.getMalformedResponseMode()).toEqual({
+        ...config,
+        affectedMethods: [],
+      });
+
+      // Clear malformed response mode while running
+      server.clearMalformedResponseMode();
+      expect(server.getMalformedResponseMode()).toBeUndefined();
+    });
+
+    it('should emit scenario:activated event when setting malformed response mode', async () => {
+      const scenarioSpy = vi.fn();
+      server.on('scenario:activated', scenarioSpy);
+
+      const config = {
+        type: 'invalid_json' as const,
+        invalidJsonContent: '{"broken": json}',
+        probability: 1.0,
+      };
+
+      server.setMalformedResponseMode(config);
+
+      expect(scenarioSpy).toHaveBeenCalledWith('malformed:invalid_json');
+    });
+
+    it('should not interfere with normal server operations when not configured', async () => {
+      expect(server.getMalformedResponseMode()).toBeUndefined();
+
+      const transport = server.createClientTransport();
+      await transport.connect();
+
+      // Normal requests should work fine
+      const response = await transport.send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'ping',
+      });
+
+      expect(response).toBeDefined();
+      expect((response as any).result).toEqual({});
+      expect(server.getMalformedResponseMode()).toBeUndefined();
+    });
+
+    it('should work with multiple clients when malformed response mode is set', async () => {
+      const config = {
+        type: 'empty_response' as const,
+        affectedMethods: [] as string[],
+        probability: 1.0,
+      };
+
+      server.setMalformedResponseMode(config);
+
+      const transport1 = server.createClientTransport();
+      const transport2 = server.createClientTransport();
+
+      await transport1.connect();
+      await transport2.connect();
+
+      expect(server.getConnectionCount()).toBe(2);
+      expect(server.getMalformedResponseMode()).toEqual(config);
+
+      // Both clients should see the same malformed response configuration
+      // (Even though they won't actually use malformed responses since that's transport-level)
     });
   });
 });

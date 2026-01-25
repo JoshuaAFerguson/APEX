@@ -23,6 +23,7 @@ import type {
   MockTransportType,
   MockErrorSimulationConfig,
   MockErrorScenarioPreset,
+  MockMalformedResponseConfig,
 } from '@apexcli/core';
 import { MockTransport } from './mock-transport.js';
 import { MockBehaviorEngine } from './mock-behavior-engine.js';
@@ -174,6 +175,9 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
     successCount: 0,
     startTime: 0,
   };
+
+  /** Malformed response simulation configuration (ADR-072 Extension) */
+  private malformedResponseConfig?: MockMalformedResponseConfig;
 
   /**
    * Create a new MockMCPServer instance
@@ -1192,6 +1196,69 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
     }
 
     return JSON.stringify(current) === JSON.stringify(value);
+  }
+
+  // ==========================================================================
+  // Malformed Response Simulation (ADR-072 Extension)
+  // ==========================================================================
+
+  /**
+   * Set the malformed response mode for transport-level malformed response testing.
+   *
+   * This enables simulation of various transport-level malformed responses that help
+   * test client resilience against protocol violations and corrupted data.
+   *
+   * @param config - Malformed response configuration
+   *
+   * @example
+   * ```typescript
+   * // Simulate truncated JSON responses
+   * server.setMalformedResponseMode({
+   *   type: 'truncated_json',
+   *   truncateAt: '50%',
+   *   affectedMethods: ['tools/call'],
+   *   probability: 1.0,
+   * });
+   *
+   * // Simulate invalid JSON
+   * server.setMalformedResponseMode({
+   *   type: 'invalid_json',
+   *   invalidJsonContent: '{"result": undefined}',
+   *   affectedMethods: [],
+   *   probability: 0.5,
+   * });
+   *
+   * // Simulate wrong schema responses
+   * server.setMalformedResponseMode({
+   *   type: 'wrong_schema',
+   *   wrongSchemaPayload: { unexpected: 'structure', missing: 'required fields' },
+   * });
+   * ```
+   */
+  setMalformedResponseMode(config: MockMalformedResponseConfig): void {
+    this.malformedResponseConfig = config;
+
+    // Emit event for monitoring
+    this.emit('scenario:activated', `malformed:${config.type}`);
+  }
+
+  /**
+   * Clear the malformed response mode, returning to normal response generation.
+   *
+   * This removes any active malformed response simulation and restores
+   * standard JSON-RPC response formatting.
+   */
+  clearMalformedResponseMode(): void {
+    this.malformedResponseConfig = undefined;
+  }
+
+  /**
+   * Get the current malformed response configuration.
+   *
+   * @returns The current malformed response config, or undefined if not set
+   */
+  getMalformedResponseMode(): MockMalformedResponseConfig | undefined {
+    return this.malformedResponseConfig;
   }
 
   // ==========================================================================
