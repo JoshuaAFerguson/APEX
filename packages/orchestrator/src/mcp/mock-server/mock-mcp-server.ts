@@ -21,6 +21,8 @@ import type {
   MockMCPServerDefinition,
   MockBehaviorConfig,
   MockTransportType,
+  MockErrorSimulationConfig,
+  MockErrorScenarioPreset,
 } from '@apexcli/core';
 import { MockTransport } from './mock-transport.js';
 import { MockBehaviorEngine } from './mock-behavior-engine.js';
@@ -28,7 +30,12 @@ import type {
   MockTransportOptions,
   MockServerFacadeEvents,
   MockServerStats,
+  ErrorSimulationState,
 } from './types.js';
+import {
+  getErrorPreset,
+  mergePresetWithOverrides,
+} from './error-presets.js';
 import type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -155,6 +162,18 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
 
   /** Shutdown timeout in milliseconds */
   private readonly shutdownTimeoutMs: number;
+
+  /** Error simulation configuration (ADR-072) */
+  private errorSimulationConfig?: MockErrorSimulationConfig;
+
+  /** Error simulation state tracking */
+  private errorSimulationState: ErrorSimulationState = {
+    requestCount: 0,
+    sequenceIndex: 0,
+    errorCount: 0,
+    successCount: 0,
+    startTime: 0,
+  };
 
   /**
    * Create a new MockMCPServer instance
@@ -851,6 +870,298 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
    */
   resetBehavior(): void {
     this.behaviorEngine.reset();
+  }
+
+  // ==========================================================================
+  // Error Simulation (ADR-072)
+  // ==========================================================================
+
+  /**
+   * Set the error simulation mode for deterministic error testing.
+   *
+   * Unlike probability-based error injection, error simulation modes provide
+   * predictable, repeatable error patterns for testing specific scenarios.
+   *
+   * @param config - Error simulation configuration
+   *
+   * @example
+   * ```typescript
+   * // All requests fail with timeout
+   * server.setErrorMode({
+   *   mode: 'always_fail',
+   *   preset: 'request_timeout'
+   * });
+   *
+   * // First 3 requests fail, then succeed
+   * server.setErrorMode({
+   *   mode: 'fail_first_n',
+   *   failCount: 3,
+   *   customError: { code: -32603, message: 'Service starting up' }
+   * });
+   *
+   * // Use a specific error sequence
+   * server.setErrorMode({
+   *   mode: 'sequence',
+   *   sequence: [
+   *     { outcome: 'error', error: { code: -32603, message: 'First failure' } },
+   *     { outcome: 'success' },
+   *     { outcome: 'error', error: { code: -32603, message: 'Second failure' } },
+   *     { outcome: 'success' },
+   *   ]
+   * });
+   * ```
+   */
+  setErrorMode(config: MockErrorSimulationConfig): void {
+    // If a preset is specified, merge preset defaults with custom config
+    if (config.preset) {
+      const mergedConfig = mergePresetWithOverrides(config.preset, config);
+      this.errorSimulationConfig = {
+        ...mergedConfig,
+        mode: config.mode ?? mergedConfig.mode ?? 'always_fail',
+        category: config.category ?? mergedConfig.category ?? 'jsonrpc',
+        affectedClients: config.affectedClients ?? 'all',
+      } as MockErrorSimulationConfig;
+    } else {
+      this.errorSimulationConfig = config;
+    }
+
+    // Reset simulation state
+    this.errorSimulationState = {
+      requestCount: 0,
+      sequenceIndex: 0,
+      errorCount: 0,
+      successCount: 0,
+      startTime: Date.now(),
+    };
+
+    // Emit event for monitoring
+    this.emit('scenario:activated', `error:${config.mode}`);
+  }
+
+  /**
+   * Clear the error simulation mode, returning to normal operation.
+   *
+   * This removes any active error simulation and resets the simulation state.
+   */
+  clearErrorMode(): void {
+    this.errorSimulationConfig = undefined;
+    this.errorSimulationState = {
+      requestCount: 0,
+      sequenceIndex: 0,
+      errorCount: 0,
+      successCount: 0,
+      startTime: 0,
+    };
+  }
+
+  /**
+   * Get the current error simulation configuration.
+   *
+   * @returns The current error simulation config, or undefined if not set
+   */
+  getErrorMode(): MockErrorSimulationConfig | undefined {
+    return this.errorSimulationConfig;
+  }
+
+  /**
+   * Get the current error simulation state.
+   *
+   * @returns Statistics about the current error simulation session
+   */
+  getErrorSimulationState(): ErrorSimulationState {
+    return { ...this.errorSimulationState };
+  }
+
+  /**
+   * Apply a preset error scenario for common test cases.
+   *
+   * This is a convenience method that sets the error mode using a
+   * predefined preset configuration.
+   *
+   * @param preset - Predefined error scenario name
+   *
+   * @example
+   * ```typescript
+   * // Simulate connection drop during initialization
+   * server.applyErrorPreset('init_connection_drop');
+   *
+   * // Simulate rate limiting
+   * server.applyErrorPreset('rate_limit');
+   * ```
+   */
+  applyErrorPreset(preset: MockErrorScenarioPreset): void {
+    const presetConfig = getErrorPreset(preset);
+    if (!presetConfig) {
+      throw new Error(`Unknown error preset: ${preset}`);
+    }
+
+    this.setErrorMode({
+      ...presetConfig,
+      preset,
+      mode: presetConfig.mode ?? 'always_fail',
+      category: presetConfig.category ?? 'jsonrpc',
+      affectedClients: 'all',
+    } as MockErrorSimulationConfig);
+  }
+
+  /**
+   * Check if error simulation should trigger for a given request.
+   *
+   * This is the internal hook called during request processing to
+   * determine whether to simulate an error based on the current
+   * error simulation configuration.
+   *
+   * @param method - The MCP method name
+   * @param clientId - The ID of the client making the request
+   * @param args - The request arguments (for argument_pattern mode)
+   * @returns Whether to simulate an error and the error details
+   *
+   * @internal
+   */
+  protected checkErrorSimulation(
+    method: string,
+    clientId: string,
+    args?: Record<string, unknown>
+  ): {
+    shouldSimulate: boolean;
+    errorCode?: number;
+    errorMessage?: string;
+    errorData?: unknown;
+    delayMs?: number;
+  } {
+    const config = this.errorSimulationConfig;
+    if (!config || config.mode === 'none') {
+      return { shouldSimulate: false };
+    }
+
+    // Check if this client is affected
+    if (config.affectedClients !== 'all') {
+      if (!config.affectedClients.includes(clientId)) {
+        return { shouldSimulate: false };
+      }
+    }
+
+    // Track request for simulation state
+    this.errorSimulationState.requestCount++;
+
+    // Determine if we should simulate an error based on mode
+    let shouldSimulate = false;
+
+    switch (config.mode) {
+      case 'always_fail':
+        shouldSimulate = true;
+        break;
+
+      case 'periodic_fail':
+        if (config.failPeriod && config.failPeriod > 0) {
+          shouldSimulate = this.errorSimulationState.requestCount % config.failPeriod === 0;
+        }
+        break;
+
+      case 'fail_first_n':
+        shouldSimulate = this.errorSimulationState.requestCount <= (config.failCount ?? 0);
+        break;
+
+      case 'fail_after_n':
+        shouldSimulate = this.errorSimulationState.successCount >= (config.succeedCount ?? 0);
+        break;
+
+      case 'fail_until':
+        shouldSimulate = this.errorSimulationState.requestCount <= (config.failCount ?? 0);
+        break;
+
+      case 'method_pattern':
+        if (config.methodPattern) {
+          try {
+            const regex = new RegExp(config.methodPattern);
+            shouldSimulate = regex.test(method);
+          } catch {
+            // Invalid regex, don't simulate
+            shouldSimulate = false;
+          }
+        }
+        break;
+
+      case 'argument_pattern':
+        if (config.argumentMatcher && args) {
+          shouldSimulate = this.matchArgumentPattern(
+            args,
+            config.argumentMatcher.path,
+            config.argumentMatcher.value
+          );
+        }
+        break;
+
+      case 'sequence':
+        if (config.sequence && config.sequence.length > 0) {
+          const index = this.errorSimulationState.sequenceIndex % config.sequence.length;
+          const item = config.sequence[index];
+          shouldSimulate = item.outcome === 'error';
+          this.errorSimulationState.sequenceIndex++;
+
+          if (shouldSimulate && item.error) {
+            return {
+              shouldSimulate: true,
+              errorCode: item.error.code,
+              errorMessage: item.error.message,
+              errorData: item.error.data,
+              delayMs: item.delayMs,
+            };
+          }
+        }
+        break;
+    }
+
+    // Track success/error counts
+    if (shouldSimulate) {
+      this.errorSimulationState.errorCount++;
+    } else {
+      this.errorSimulationState.successCount++;
+    }
+
+    if (!shouldSimulate) {
+      return { shouldSimulate: false };
+    }
+
+    // Get error details from custom error or preset
+    const errorDetails = config.customError ?? {
+      code: -32603,
+      message: 'Simulated error',
+    };
+
+    return {
+      shouldSimulate: true,
+      errorCode: errorDetails.code,
+      errorMessage: errorDetails.message,
+      errorData: errorDetails.data,
+      delayMs: config.networkConditions?.latencyMs,
+    };
+  }
+
+  /**
+   * Match an argument pattern against request arguments.
+   *
+   * @param args - The request arguments
+   * @param path - JSON path to check (e.g., 'name', 'options.verbose')
+   * @param value - Expected value at the path
+   * @returns Whether the pattern matches
+   */
+  private matchArgumentPattern(
+    args: Record<string, unknown>,
+    path: string,
+    value: unknown
+  ): boolean {
+    const parts = path.split('.');
+    let current: unknown = args;
+
+    for (const part of parts) {
+      if (current === null || current === undefined || typeof current !== 'object') {
+        return false;
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+
+    return JSON.stringify(current) === JSON.stringify(value);
   }
 
   // ==========================================================================

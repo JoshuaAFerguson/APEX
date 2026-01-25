@@ -23,6 +23,9 @@ import type {
   MockDynamicHandlerFunction,
   MockTransportType,
   MCPServerCapabilities,
+  MockErrorSimulationConfig,
+  MockNetworkConditions,
+  MockErrorScenarioPreset,
 } from '@apexcli/core';
 import { MockMCPServerFacade } from './mock-server-facade.js';
 import { MockMCPServer } from './mock-mcp-server.js';
@@ -60,6 +63,9 @@ export class MockMCPServerBuilder {
   private defaultBehavior: Partial<MockBehaviorConfig> = {};
   private scenarios: MockScenario[] = [];
   private activeScenario?: string;
+
+  /** Error simulation configuration (ADR-072) */
+  private errorSimulationConfig?: MockErrorSimulationConfig;
 
   // Current tool being configured (for fluent tool configuration)
   private currentTool?: {
@@ -334,6 +340,8 @@ export class MockMCPServerBuilder {
    * @param config - Error injection configuration
    * @returns This builder instance for chaining
    *
+   * @note For deterministic error testing, prefer withErrorSimulation() instead.
+   *
    * @example
    * ```typescript
    * builder.withErrorInjection({
@@ -356,6 +364,118 @@ export class MockMCPServerBuilder {
       simulateConnectionFailure: false,
       errorDelayMs: 0,
       ...config,
+    };
+    return this;
+  }
+
+  // ==========================================================================
+  // Error Simulation (ADR-072)
+  // ==========================================================================
+
+  /**
+   * Configure error simulation for deterministic error testing.
+   *
+   * Unlike probability-based error injection, error simulation modes provide
+   * predictable, repeatable error patterns for testing specific scenarios.
+   *
+   * @param config - Error simulation configuration
+   * @returns This builder instance for chaining
+   *
+   * @example
+   * ```typescript
+   * // Fail first 3 requests, then succeed
+   * builder.withErrorSimulation({
+   *   mode: 'fail_first_n',
+   *   failCount: 3,
+   *   customError: { code: -32603, message: 'Service starting up' }
+   * });
+   *
+   * // Periodic failures (every 3rd request)
+   * builder.withErrorSimulation({
+   *   mode: 'periodic_fail',
+   *   failPeriod: 3,
+   *   preset: 'internal_error_with_details'
+   * });
+   *
+   * // Specific error sequence
+   * builder.withErrorSimulation({
+   *   mode: 'sequence',
+   *   sequence: [
+   *     { outcome: 'error', error: { code: -32603, message: 'Retry' } },
+   *     { outcome: 'success' },
+   *   ]
+   * });
+   * ```
+   */
+  withErrorSimulation(config: MockErrorSimulationConfig): this {
+    this.errorSimulationConfig = config;
+    return this;
+  }
+
+  /**
+   * Configure network condition simulation.
+   *
+   * Enables simulation of various network conditions for testing
+   * resilience, retry logic, and timeout handling.
+   *
+   * @param conditions - Network conditions to simulate
+   * @returns This builder instance for chaining
+   *
+   * @example
+   * ```typescript
+   * // Simulate slow network with jitter
+   * builder.withNetworkConditions({
+   *   latencyMs: 500,
+   *   latencyJitter: 100,
+   * });
+   *
+   * // Simulate unreliable network
+   * builder.withNetworkConditions({
+   *   latencyMs: 100,
+   *   packetLoss: 0.05, // 5% packet loss
+   * });
+   * ```
+   */
+  withNetworkConditions(conditions: MockNetworkConditions): this {
+    if (!this.errorSimulationConfig) {
+      this.errorSimulationConfig = {
+        mode: 'none',
+        category: 'network',
+        networkConditions: conditions,
+        affectedClients: 'all',
+      };
+    } else {
+      this.errorSimulationConfig.networkConditions = conditions;
+    }
+    return this;
+  }
+
+  /**
+   * Apply a preset error scenario.
+   *
+   * This is a convenience method for common error testing scenarios.
+   *
+   * @param preset - The preset scenario to apply
+   * @returns This builder instance for chaining
+   *
+   * @example
+   * ```typescript
+   * // Simulate initialization failure
+   * builder.withErrorPreset('init_connection_drop');
+   *
+   * // Simulate rate limiting
+   * builder.withErrorPreset('rate_limit');
+   *
+   * // Simulate authentication failure
+   * builder.withErrorPreset('auth_failure');
+   * ```
+   */
+  withErrorPreset(preset: MockErrorScenarioPreset): this {
+    this.errorSimulationConfig = {
+      mode: 'always_fail',
+      category: 'jsonrpc',
+      preset,
+      affectedClients: 'all',
     };
     return this;
   }
@@ -460,7 +580,14 @@ export class MockMCPServerBuilder {
    * ```
    */
   build(): MockMCPServerFacade {
-    return new MockMCPServerFacade(this.buildDefinition());
+    const facade = new MockMCPServerFacade(this.buildDefinition());
+
+    // Apply error simulation if configured
+    if (this.errorSimulationConfig) {
+      facade.setErrorMode(this.errorSimulationConfig);
+    }
+
+    return facade;
   }
 
   /**
@@ -481,7 +608,14 @@ export class MockMCPServerBuilder {
    * ```
    */
   buildServer(): MockMCPServer {
-    return new MockMCPServer(this.buildDefinition());
+    const server = new MockMCPServer(this.buildDefinition());
+
+    // Apply error simulation if configured
+    if (this.errorSimulationConfig) {
+      server.setErrorMode(this.errorSimulationConfig);
+    }
+
+    return server;
   }
 
   /**

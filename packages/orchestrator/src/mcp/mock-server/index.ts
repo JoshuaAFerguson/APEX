@@ -80,9 +80,21 @@ export type {
   ComputedDelay,
   MockServerFacadeEvents,
   MockServerStats,
+  ErrorSimulationCheckResult,
+  ErrorSimulationState,
+  ErrorSimulationEvents,
 } from './types.js';
 
 export { MockAssertionError } from './types.js';
+
+// Error Presets (ADR-072)
+export {
+  ERROR_SIMULATION_PRESETS,
+  getErrorPreset,
+  mergePresetWithOverrides,
+  getAvailablePresets,
+  getPresetsByCategory,
+} from './error-presets.js';
 
 // MockTransport
 export { MockTransport } from './mock-transport.js';

@@ -11677,6 +11677,13 @@ export {
   createErrorMockServer,
   createSlowMockServer,
   MockAssertionError,
+  // Error Simulation Presets (ADR-072)
+  ERROR_SIMULATION_PRESETS,
+  getErrorPreset,
+  mergePresetWithOverrides,
+  getAvailablePresets,
+  getPresetsByCategory,
+  // Types
   type ConnectedClient,
   type MockServerState,
   type RecordedRequest,
@@ -11689,6 +11696,9 @@ export {
   type ComputedDelay,
   type MockServerFacadeEvents,
   type MockServerStats,
+  type ErrorSimulationCheckResult,
+  type ErrorSimulationState,
+  type ErrorSimulationEvents,
 } from './mcp/mock-server/index.js';
 
 export { PermissionManager } from './permission-manager';

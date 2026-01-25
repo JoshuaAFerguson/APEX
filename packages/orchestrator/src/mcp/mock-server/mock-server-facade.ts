@@ -17,6 +17,8 @@ import type {
   MockErrorInjection,
   MockResponseDelay,
   MockScenario,
+  MockErrorSimulationConfig,
+  MockErrorScenarioPreset,
 } from '@apexcli/core';
 import type {
   JSONRPCMessage,
@@ -34,8 +36,13 @@ import type {
   RecordedRequest,
   MockAssertionError as MockAssertionErrorType,
   MockTransportOptions,
+  ErrorSimulationState,
 } from './types.js';
 import { MockAssertionError } from './types.js';
+import {
+  getErrorPreset,
+  mergePresetWithOverrides,
+} from './error-presets.js';
 
 // ============================================================================
 // MockMCPServerFacade
@@ -84,6 +91,18 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
   private activeScenario?: string;
   private started = false;
   private startTime = 0;
+
+  /** Error simulation configuration (ADR-072) */
+  private errorSimulationConfig?: MockErrorSimulationConfig;
+
+  /** Error simulation state tracking */
+  private errorSimulationState: ErrorSimulationState = {
+    requestCount: 0,
+    sequenceIndex: 0,
+    errorCount: 0,
+    successCount: 0,
+    startTime: 0,
+  };
 
   constructor(definition: MockMCPServerDefinition) {
     super();
@@ -398,6 +417,119 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
     const notification = createJSONRPCNotification(method, params);
     this.transport.injectMessage(notification);
     this.emit('notification:sent', notification);
+  }
+
+  // ==========================================================================
+  // Error Simulation (ADR-072)
+  // ==========================================================================
+
+  /**
+   * Set the error simulation mode for deterministic error testing.
+   *
+   * Unlike probability-based error injection, error simulation modes provide
+   * predictable, repeatable error patterns for testing specific scenarios.
+   *
+   * @param config - Error simulation configuration
+   *
+   * @example
+   * ```typescript
+   * // All requests fail with timeout
+   * server.setErrorMode({
+   *   mode: 'always_fail',
+   *   preset: 'request_timeout'
+   * });
+   *
+   * // First 3 requests fail, then succeed
+   * server.setErrorMode({
+   *   mode: 'fail_first_n',
+   *   failCount: 3,
+   *   customError: { code: -32603, message: 'Service starting up' }
+   * });
+   * ```
+   */
+  setErrorMode(config: MockErrorSimulationConfig): void {
+    // If a preset is specified, merge preset defaults with custom config
+    if (config.preset) {
+      const mergedConfig = mergePresetWithOverrides(config.preset, config);
+      this.errorSimulationConfig = {
+        ...mergedConfig,
+        mode: config.mode ?? mergedConfig.mode ?? 'always_fail',
+        category: config.category ?? mergedConfig.category ?? 'jsonrpc',
+        affectedClients: config.affectedClients ?? 'all',
+      } as MockErrorSimulationConfig;
+    } else {
+      this.errorSimulationConfig = config;
+    }
+
+    // Reset simulation state
+    this.errorSimulationState = {
+      requestCount: 0,
+      sequenceIndex: 0,
+      errorCount: 0,
+      successCount: 0,
+      startTime: Date.now(),
+    };
+
+    // Emit event for monitoring
+    this.emit('scenario:activated', `error:${config.mode}`);
+  }
+
+  /**
+   * Clear the error simulation mode, returning to normal operation.
+   */
+  clearErrorMode(): void {
+    this.errorSimulationConfig = undefined;
+    this.errorSimulationState = {
+      requestCount: 0,
+      sequenceIndex: 0,
+      errorCount: 0,
+      successCount: 0,
+      startTime: 0,
+    };
+  }
+
+  /**
+   * Get the current error simulation configuration.
+   *
+   * @returns The current error simulation config, or undefined if not set
+   */
+  getErrorMode(): MockErrorSimulationConfig | undefined {
+    return this.errorSimulationConfig;
+  }
+
+  /**
+   * Get the current error simulation state.
+   *
+   * @returns Statistics about the current error simulation session
+   */
+  getErrorSimulationState(): ErrorSimulationState {
+    return { ...this.errorSimulationState };
+  }
+
+  /**
+   * Apply a preset error scenario for common test cases.
+   *
+   * @param preset - Predefined error scenario name
+   *
+   * @example
+   * ```typescript
+   * server.applyErrorPreset('init_connection_drop');
+   * server.applyErrorPreset('rate_limit');
+   * ```
+   */
+  applyErrorPreset(preset: MockErrorScenarioPreset): void {
+    const presetConfig = getErrorPreset(preset);
+    if (!presetConfig) {
+      throw new Error(`Unknown error preset: ${preset}`);
+    }
+
+    this.setErrorMode({
+      ...presetConfig,
+      preset,
+      mode: presetConfig.mode ?? 'always_fail',
+      category: presetConfig.category ?? 'jsonrpc',
+      affectedClients: 'all',
+    } as MockErrorSimulationConfig);
   }
 
   // ==========================================================================

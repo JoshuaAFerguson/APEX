@@ -199,11 +199,245 @@ export const MockResponseDelaySchema = z.object({
 export type MockResponseDelay = z.infer<typeof MockResponseDelaySchema>;
 
 // ============================================================================
-// Error Injection Configuration
+// Error Simulation Configuration Types (ADR-072)
+// ============================================================================
+
+/**
+ * Error simulation modes for deterministic testing.
+ *
+ * Unlike probability-based error injection, these modes provide
+ * predictable, repeatable error patterns for testing specific scenarios.
+ *
+ * @see ADR-072 for detailed architecture documentation
+ */
+export const MockErrorModeSchema = z.enum([
+  /** No error simulation (default behavior) */
+  'none',
+  /** All requests fail with configured error */
+  'always_fail',
+  /** Requests fail in a repeating pattern (e.g., fail every 3rd request) */
+  'periodic_fail',
+  /** Requests fail until a specific request count is reached */
+  'fail_until',
+  /** First N requests fail, then succeed */
+  'fail_first_n',
+  /** Succeed first N requests, then fail */
+  'fail_after_n',
+  /** Requests fail based on method name pattern (regex) */
+  'method_pattern',
+  /** Requests fail based on argument content matching */
+  'argument_pattern',
+  /** Custom error sequence with specific outcomes per request */
+  'sequence',
+]);
+export type MockErrorMode = z.infer<typeof MockErrorModeSchema>;
+
+/**
+ * Categories of errors that can be simulated.
+ *
+ * Helps organize error presets and enables appropriate error
+ * handling testing at different protocol layers.
+ */
+export const MockErrorCategorySchema = z.enum([
+  /** JSON-RPC level errors (parse error, invalid request, method not found) */
+  'jsonrpc',
+  /** MCP protocol errors (initialization failure, capability mismatch) */
+  'protocol',
+  /** Transport level errors (connection lost, timeout, malformed data) */
+  'transport',
+  /** Application level errors (tool execution failure, resource not found) */
+  'application',
+  /** Network level errors (latency spikes, intermittent connectivity) */
+  'network',
+]);
+export type MockErrorCategory = z.infer<typeof MockErrorCategorySchema>;
+
+/**
+ * Predefined error scenarios for common test cases.
+ *
+ * These presets encapsulate realistic error conditions that MCP clients
+ * should handle, making it easy to test against known failure modes.
+ */
+export const MockErrorScenarioPresetSchema = z.enum([
+  /** Server rejects initialization with invalid protocol version */
+  'init_protocol_mismatch',
+  /** Server rejects initialization with capability negotiation failure */
+  'init_capability_rejection',
+  /** Server drops connection during initialization handshake */
+  'init_connection_drop',
+  /** Server sends malformed JSON in response */
+  'malformed_response',
+  /** Server sends response with mismatched request ID */
+  'response_id_mismatch',
+  /** Server sends partial response then disconnects */
+  'partial_response',
+  /** Server becomes unresponsive (infinite delay) */
+  'server_hang',
+  /** Server rate limits requests */
+  'rate_limit',
+  /** Server authentication/authorization failure */
+  'auth_failure',
+  /** Server internal error with stack trace */
+  'internal_error_with_details',
+  /** Tool not found error */
+  'tool_not_found',
+  /** Resource access denied */
+  'resource_access_denied',
+  /** Request timeout */
+  'request_timeout',
+  /** Connection reset by peer */
+  'connection_reset',
+]);
+export type MockErrorScenarioPreset = z.infer<typeof MockErrorScenarioPresetSchema>;
+
+/**
+ * Network condition simulation configuration.
+ *
+ * Enables simulation of various network conditions for testing
+ * resilience, retry logic, and timeout handling.
+ */
+export const MockNetworkConditionsSchema = z.object({
+  /** Base latency to add to all responses (ms) */
+  latencyMs: z.number().int().min(0).optional(),
+
+  /** Latency variance for jitter simulation (ms, +/- from base) */
+  latencyJitter: z.number().int().min(0).optional(),
+
+  /** Packet loss probability (0.0 to 1.0) */
+  packetLoss: z.number().min(0).max(1).optional(),
+
+  /** Bandwidth throttle in bytes per second (0 = unlimited) */
+  bandwidth: z.number().int().min(0).optional(),
+
+  /** Connection timeout in milliseconds (0 = infinite, simulates hang) */
+  connectionTimeout: z.number().int().min(0).optional(),
+});
+export type MockNetworkConditions = z.infer<typeof MockNetworkConditionsSchema>;
+
+/**
+ * A single outcome in an error sequence.
+ *
+ * Used with 'sequence' error mode to define exactly what happens
+ * on each successive request.
+ */
+export const MockErrorSequenceItemSchema = z.object({
+  /** Whether this request should succeed or fail */
+  outcome: z.enum(['success', 'error']),
+
+  /** Error details if outcome is 'error' */
+  error: z.object({
+    code: z.number(),
+    message: z.string(),
+    data: z.unknown().optional(),
+  }).optional(),
+
+  /** Optional delay before returning this outcome (ms) */
+  delayMs: z.number().int().min(0).optional(),
+});
+export type MockErrorSequenceItem = z.infer<typeof MockErrorSequenceItemSchema>;
+
+/**
+ * Complete error simulation configuration.
+ *
+ * Provides comprehensive control over error behavior for deterministic
+ * testing of error handling, recovery, and retry logic.
+ *
+ * @example
+ * ```typescript
+ * // Fail first 3 requests, then succeed
+ * const config: MockErrorSimulationConfig = {
+ *   mode: 'fail_first_n',
+ *   failCount: 3,
+ *   category: 'network',
+ *   customError: { code: -32000, message: 'Connection refused' },
+ * };
+ *
+ * // Use a preset for common scenarios
+ * const config: MockErrorSimulationConfig = {
+ *   mode: 'method_pattern',
+ *   methodPattern: 'initialize',
+ *   preset: 'init_protocol_mismatch',
+ * };
+ *
+ * // Define a specific sequence of outcomes
+ * const config: MockErrorSimulationConfig = {
+ *   mode: 'sequence',
+ *   sequence: [
+ *     { outcome: 'error', error: { code: -32603, message: 'First failure' } },
+ *     { outcome: 'success' },
+ *     { outcome: 'error', error: { code: -32603, message: 'Retry once more' } },
+ *     { outcome: 'success' },
+ *   ],
+ * };
+ * ```
+ */
+export const MockErrorSimulationConfigSchema = z.object({
+  /** Error simulation mode (determines how errors are triggered) */
+  mode: MockErrorModeSchema.default('none'),
+
+  /** Error category for classification and preset defaults */
+  category: MockErrorCategorySchema.default('jsonrpc'),
+
+  /** Use a predefined error scenario preset (sets default error values) */
+  preset: MockErrorScenarioPresetSchema.optional(),
+
+  /** Custom error configuration (overrides preset defaults) */
+  customError: z.object({
+    /** JSON-RPC error code */
+    code: z.number(),
+    /** Error message */
+    message: z.string(),
+    /** Additional error data (stack traces, details, etc.) */
+    data: z.unknown().optional(),
+  }).optional(),
+
+  /** For periodic_fail mode: fail every Nth request (1 = all, 2 = every other, etc.) */
+  failPeriod: z.number().int().min(1).optional(),
+
+  /** For fail_first_n and fail_until modes: number of initial failures */
+  failCount: z.number().int().min(0).optional(),
+
+  /** For fail_after_n mode: number of successful requests before failing */
+  succeedCount: z.number().int().min(0).optional(),
+
+  /** For method_pattern mode: regex pattern to match method names */
+  methodPattern: z.string().optional(),
+
+  /** For argument_pattern mode: JSON path and value to match in request args */
+  argumentMatcher: z.object({
+    /** JSON path expression (e.g., 'name', 'options.verbose') */
+    path: z.string(),
+    /** Value to match at the path */
+    value: z.unknown(),
+  }).optional(),
+
+  /** For sequence mode: ordered list of outcomes for successive requests */
+  sequence: z.array(MockErrorSequenceItemSchema).optional(),
+
+  /** Network condition simulation (latency, jitter, packet loss) */
+  networkConditions: MockNetworkConditionsSchema.optional(),
+
+  /** Which clients are affected ('all' or specific client IDs) */
+  affectedClients: z.union([
+    z.literal('all'),
+    z.array(z.string()),
+  ]).default('all'),
+
+  /** Optional description for test documentation */
+  description: z.string().optional(),
+});
+export type MockErrorSimulationConfig = z.infer<typeof MockErrorSimulationConfigSchema>;
+
+// ============================================================================
+// Error Injection Configuration (Legacy - Probability-Based)
 // ============================================================================
 
 /**
  * Defines how errors should be injected into mock server responses.
+ *
+ * @note For deterministic error testing, prefer MockErrorSimulationConfig.
+ * This probability-based configuration is retained for backward compatibility
+ * and scenarios where random error injection is desired.
  */
 export const MockErrorInjectionSchema = z.object({
   /** Whether error injection is enabled */

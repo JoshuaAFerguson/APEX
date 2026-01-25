@@ -193,3 +193,61 @@ export class MockAssertionError extends Error {
     this.name = 'MockAssertionError';
   }
 }
+
+// ============================================================================
+// Error Simulation Internal Types (ADR-072)
+// ============================================================================
+
+/**
+ * Result of checking whether an error should be simulated.
+ * Used internally by the error simulation decision logic.
+ */
+export interface ErrorSimulationCheckResult {
+  /** Whether to simulate an error */
+  shouldSimulate: boolean;
+  /** The error category being simulated */
+  category?: string;
+  /** The error code to use */
+  errorCode?: number;
+  /** The error message */
+  errorMessage?: string;
+  /** Optional error data */
+  errorData?: unknown;
+  /** Delay before returning the error (ms) */
+  delayMs?: number;
+  /** Whether this is a transport-level error (should affect connection) */
+  isTransportError?: boolean;
+  /** Description of the error scenario being simulated */
+  scenarioDescription?: string;
+}
+
+/**
+ * State tracking for error simulation.
+ * Tracks request counts and sequence position for deterministic modes.
+ */
+export interface ErrorSimulationState {
+  /** Total number of requests processed since error mode was set */
+  requestCount: number;
+  /** Current position in the sequence (for 'sequence' mode) */
+  sequenceIndex: number;
+  /** Number of errors that have been simulated */
+  errorCount: number;
+  /** Number of successful responses returned */
+  successCount: number;
+  /** Timestamp when error mode was set */
+  startTime: number;
+}
+
+/**
+ * Events emitted by error simulation hooks
+ */
+export interface ErrorSimulationEvents {
+  /** Emitted when error simulation mode is set */
+  'error:mode:set': (mode: string, description?: string) => void;
+  /** Emitted when error simulation mode is cleared */
+  'error:mode:clear': () => void;
+  /** Emitted when an error is simulated */
+  'error:simulated': (result: ErrorSimulationCheckResult) => void;
+  /** Emitted when a request passes through without error simulation */
+  'error:passed': (method: string, requestCount: number) => void;
+}
