@@ -127,3 +127,37 @@ export {
   MockMCPServerBuilder,
   createMockServerBuilder,
 } from './mock-mcp-server-builder.js';
+
+// Server Presets (ADR-080)
+export type {
+  MockServerPreset,
+  ServerPresetConfig,
+} from './server-presets.js';
+
+export {
+  getServerPreset,
+  getAvailablePresets,
+  isValidPreset,
+  isBehaviorModifier,
+  getBasePresets,
+  SERVER_PRESETS,
+  FILESYSTEM_PRESET,
+  DATABASE_PRESET,
+  API_PRESET,
+  MINIMAL_PRESET,
+  ERROR_PRONE_MODIFIER,
+  SLOW_MODIFIER,
+} from './server-presets.js';
+
+// Preset Factory (ADR-080)
+export type {
+  CreateMockServerOptions,
+} from './preset-factory.js';
+
+export {
+  createMockMCPServer,
+  createFileSystemMockServer,
+  createDatabaseMockServer,
+  createApiMockServer,
+  createMinimalMockServer,
+} from './preset-factory.js';

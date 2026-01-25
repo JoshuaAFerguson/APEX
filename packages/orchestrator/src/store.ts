@@ -1896,18 +1896,43 @@ export class TaskStore {
   }
 
   /**
-   * Get tasks that are ready to run (pending with no blockers)
+   * Get tasks that are ready to run:
+   * 1. Pending tasks with no blockers
+   * 2. In-progress parent tasks with pending subtasks (but no in-progress subtasks)
+   *    These need to be picked up to continue their subtask execution
    */
   async getReadyTasks(options?: { limit?: number; orderByPriority?: boolean }): Promise<Task[]> {
     let sql = `
       SELECT t.*
       FROM tasks t
-      WHERE t.status = 'pending'
-      AND NOT EXISTS (
-        SELECT 1 FROM task_dependencies d
-        JOIN tasks dep ON dep.id = d.depends_on_task_id
-        WHERE d.task_id = t.id
-        AND dep.status NOT IN ('completed', 'cancelled')
+      WHERE (
+        -- Case 1: Pending tasks with no blockers
+        (t.status = 'pending'
+         AND NOT EXISTS (
+           SELECT 1 FROM task_dependencies d
+           JOIN tasks dep ON dep.id = d.depends_on_task_id
+           WHERE d.task_id = t.id
+           AND dep.status NOT IN ('completed', 'cancelled')
+         ))
+        OR
+        -- Case 2: In-progress parent tasks with pending subtasks that need continued execution
+        -- These are parents where subtask execution was interrupted (e.g., paused subtask resumed)
+        -- and need to be re-picked up to continue processing remaining subtasks
+        (t.status = 'in-progress'
+         AND t.subtask_ids IS NOT NULL
+         AND t.subtask_ids != '[]'
+         -- Has pending subtasks
+         AND EXISTS (
+           SELECT 1 FROM tasks sub, json_each(t.subtask_ids) je
+           WHERE je.value = sub.id
+           AND sub.status = 'pending'
+         )
+         -- But no in-progress subtasks (otherwise it's actively being worked on)
+         AND NOT EXISTS (
+           SELECT 1 FROM tasks sub, json_each(t.subtask_ids) je
+           WHERE je.value = sub.id
+           AND sub.status = 'in-progress'
+         ))
       )
     `;
 

@@ -191,6 +191,106 @@ describe('MockMCPServer - Error Simulation Infrastructure', () => {
         expect(errorState.errorCount).toBe(1);
         expect(errorState.successCount).toBe(2);
       });
+
+      it('should not fail when failPeriod is not provided', async () => {
+        server.setErrorMode({
+          mode: 'periodic_fail',
+          // Omit failPeriod to test edge case
+          category: 'jsonrpc',
+          customError: { code: -32603, message: 'Should not fail' },
+        });
+
+        const request: JSONRPCRequest = {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'ping',
+        };
+
+        // All requests should succeed when failPeriod is not set
+        for (let i = 1; i <= 5; i++) {
+          const response = await transport.send({ ...request, id: i }) as JSONRPCResponse;
+          expect(response.result).toBeDefined();
+          expect(response.error).toBeUndefined();
+        }
+
+        const errorState = server.getErrorSimulationState();
+        expect(errorState.requestCount).toBe(5);
+        expect(errorState.errorCount).toBe(0);
+        expect(errorState.successCount).toBe(5);
+      });
+
+      it('should fail every request when failPeriod is 1', async () => {
+        server.setErrorMode({
+          mode: 'periodic_fail',
+          failPeriod: 1, // Fail every request
+          category: 'jsonrpc',
+          customError: { code: -32603, message: 'Every request fails' },
+        });
+
+        const request: JSONRPCRequest = {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'ping',
+        };
+
+        // All requests should fail when failPeriod is 1
+        for (let i = 1; i <= 3; i++) {
+          const response = await transport.send({ ...request, id: i }) as JSONRPCResponse;
+          expect(response.result).toBeUndefined();
+          expect(response.error).toBeDefined();
+          expect(response.error!.message).toBe('Every request fails');
+        }
+
+        const errorState = server.getErrorSimulationState();
+        expect(errorState.requestCount).toBe(3);
+        expect(errorState.errorCount).toBe(3);
+        expect(errorState.successCount).toBe(0);
+      });
+
+      it('should work with different error categories', async () => {
+        // Test with application category error
+        server.setErrorMode({
+          mode: 'periodic_fail',
+          failPeriod: 2,
+          category: 'application',
+          customError: { code: -32001, message: 'Application error' },
+        });
+
+        const request: JSONRPCRequest = {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'ping',
+        };
+
+        // First request succeeds, second fails (application error)
+        const response1 = await transport.send(request) as JSONRPCResponse;
+        expect(response1.result).toBeDefined();
+
+        const response2 = await transport.send({ ...request, id: 2 }) as JSONRPCResponse;
+        expect(response2.error).toBeDefined();
+        expect(response2.error!.code).toBe(-32001);
+        expect(response2.error!.message).toBe('Application error');
+
+        // Reset and test with network category
+        server.resetErrorSimulation();
+        server.setErrorMode({
+          mode: 'periodic_fail',
+          failPeriod: 3,
+          category: 'network',
+          customError: { code: -32000, message: 'Network timeout' },
+        });
+
+        // First two requests succeed, third fails (network error)
+        for (let i = 1; i <= 2; i++) {
+          const response = await transport.send({ ...request, id: i }) as JSONRPCResponse;
+          expect(response.result).toBeDefined();
+        }
+
+        const networkFailResponse = await transport.send({ ...request, id: 3 }) as JSONRPCResponse;
+        expect(networkFailResponse.error).toBeDefined();
+        expect(networkFailResponse.error!.code).toBe(-32000);
+        expect(networkFailResponse.error!.message).toBe('Network timeout');
+      });
     });
 
     describe('fail_first_n mode', () => {

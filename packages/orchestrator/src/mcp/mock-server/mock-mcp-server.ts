@@ -989,6 +989,14 @@ export class MockMCPServer extends EventEmitter<MockServerFacadeEvents> {
   }
 
   /**
+   * Reset error simulation state and clear any active error simulation.
+   * This is an alias for clearErrorMode() for backward compatibility.
+   */
+  resetErrorSimulation(): void {
+    this.clearErrorMode();
+  }
+
+  /**
    * Get the current error simulation configuration.
    *
    * @returns The current error simulation config, or undefined if not set
