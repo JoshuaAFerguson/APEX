@@ -347,6 +347,319 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
   }
 
   // ==========================================================================
+  // Enhanced Assertions
+  // ==========================================================================
+
+  /**
+   * Assert that a specific tool was called with specific parameters.
+   *
+   * This enhanced assertion allows validation of both the tool name and the
+   * parameters passed to it, providing more precise testing capabilities.
+   *
+   * @param toolName - The tool name to check
+   * @param expectedParams - Expected parameters object (partial matching supported)
+   * @param times - Expected number of calls with these parameters (undefined = at least once)
+   * @throws MockAssertionError if assertion fails
+   *
+   * @example
+   * ```typescript
+   * // Assert read_file was called with specific filename
+   * server.assertToolCalledWith('read_file', { path: '/test/file.txt' });
+   *
+   * // Assert write_file was called exactly twice with content containing 'hello'
+   * server.assertToolCalledWith('write_file',
+   *   { content: expect.stringContaining('hello') }, 2);
+   *
+   * // Partial parameter matching
+   * server.assertToolCalledWith('complex_tool', { mode: 'test' }); // ignores other params
+   * ```
+   */
+  assertToolCalledWith(
+    toolName: string,
+    expectedParams: Record<string, unknown>,
+    times?: number
+  ): void {
+    const history = this.getRequestHistory();
+    const toolCalls = history.filter(r => {
+      if (r.request.method !== 'tools/call') return false;
+
+      const callParams = r.request.params as Record<string, unknown>;
+      if (callParams?.name !== toolName) return false;
+
+      // Check if the tool arguments match the expected parameters
+      const toolArguments = callParams.arguments as Record<string, unknown> || {};
+
+      return this.matchesPartialObject(toolArguments, expectedParams);
+    });
+
+    if (times !== undefined) {
+      if (toolCalls.length !== times) {
+        throw new MockAssertionError(
+          `Expected tool '${toolName}' to be called ${times} times with parameters ${JSON.stringify(expectedParams)}, but was called ${toolCalls.length} times`,
+          times,
+          toolCalls.length
+        );
+      }
+    } else {
+      if (toolCalls.length === 0) {
+        throw new MockAssertionError(
+          `Expected tool '${toolName}' to be called at least once with parameters ${JSON.stringify(expectedParams)}, but it was never called with those parameters`,
+          'at least 1',
+          0
+        );
+      }
+    }
+  }
+
+  /**
+   * Assert that requests were made in a specific order.
+   *
+   * This assertion validates the sequence of method calls, which is crucial for
+   * testing workflows that require specific ordering (e.g., initialize before tools/list).
+   *
+   * @param expectedOrder - Array of method names in expected order
+   * @param mode - 'strict' (exact sequence) or 'contains' (subsequence within larger sequence)
+   * @throws MockAssertionError if the order doesn't match
+   *
+   * @example
+   * ```typescript
+   * // Assert strict initialization sequence
+   * server.assertCallOrder(['initialize', 'initialized', 'tools/list'], 'strict');
+   *
+   * // Assert that these calls happened in order, but other calls may be interspersed
+   * server.assertCallOrder(['tools/list', 'tools/call', 'tools/call'], 'contains');
+   *
+   * // Default is 'contains' mode
+   * server.assertCallOrder(['initialize', 'tools/list']);
+   * ```
+   */
+  assertCallOrder(expectedOrder: string[], mode: 'strict' | 'contains' = 'contains'): void {
+    const history = this.getRequestHistory();
+    const actualOrder = history.map(r => r.request.method);
+
+    if (mode === 'strict') {
+      if (actualOrder.length !== expectedOrder.length) {
+        throw new MockAssertionError(
+          `Expected exactly ${expectedOrder.length} calls in strict order, but got ${actualOrder.length} calls`,
+          expectedOrder.length,
+          actualOrder.length
+        );
+      }
+
+      for (let i = 0; i < expectedOrder.length; i++) {
+        if (actualOrder[i] !== expectedOrder[i]) {
+          throw new MockAssertionError(
+            `Expected call ${i + 1} to be '${expectedOrder[i]}', but was '${actualOrder[i]}'`,
+            expectedOrder[i],
+            actualOrder[i]
+          );
+        }
+      }
+    } else {
+      // Contains mode: check if expectedOrder is a subsequence of actualOrder
+      let expectedIndex = 0;
+
+      for (const method of actualOrder) {
+        if (expectedIndex < expectedOrder.length && method === expectedOrder[expectedIndex]) {
+          expectedIndex++;
+        }
+      }
+
+      if (expectedIndex < expectedOrder.length) {
+        throw new MockAssertionError(
+          `Expected method sequence [${expectedOrder.join(', ')}] was not found in actual call order [${actualOrder.join(', ')}]`,
+          expectedOrder,
+          actualOrder
+        );
+      }
+    }
+  }
+
+  /**
+   * Assert that responses contain specific content.
+   *
+   * This assertion validates response content using flexible matching patterns,
+   * useful for testing tool outputs and server responses.
+   *
+   * @param method - The method whose responses to check
+   * @param expectedContent - Content to match (string, object, or matcher function)
+   * @param options - Additional matching options
+   * @throws MockAssertionError if no responses contain the expected content
+   *
+   * @example
+   * ```typescript
+   * // Assert tool response contains specific text
+   * server.assertResponseContains('tools/call', {
+   *   content: [{ type: 'text', text: expect.stringContaining('success') }]
+   * });
+   *
+   * // Assert multiple responses contain expected content
+   * server.assertResponseContains('tools/list', { tools: expect.any(Array) }, {
+   *   matchCount: 'all'
+   * });
+   *
+   * // Custom matcher function
+   * server.assertResponseContains('initialize', (response) =>
+   *   response.result?.protocolVersion === '2024-11-05'
+   * );
+   * ```
+   */
+  assertResponseContains(
+    method: string,
+    expectedContent: unknown | ((response: unknown) => boolean),
+    options: {
+      /** How many responses must match: 'any' (default), 'all', or specific number */
+      matchCount?: 'any' | 'all' | number;
+      /** Search in result, error, or both parts of response */
+      searchIn?: 'result' | 'error' | 'both';
+    } = {}
+  ): void {
+    const { matchCount = 'any', searchIn = 'result' } = options;
+
+    const history = this.getRequestHistory();
+    const methodCalls = history.filter(r => r.request.method === method);
+
+    if (methodCalls.length === 0) {
+      throw new MockAssertionError(
+        `No calls found for method '${method}' to check response content`,
+        'at least 1 call',
+        0
+      );
+    }
+
+    const responses = methodCalls
+      .map(r => r.response)
+      .filter((response): response is NonNullable<typeof response> => response !== undefined);
+
+    if (responses.length === 0) {
+      throw new MockAssertionError(
+        `No responses found for method '${method}' to check content`,
+        'at least 1 response',
+        0
+      );
+    }
+
+    const matchingResponses = responses.filter(response => {
+      const searchTargets = [];
+
+      if (searchIn === 'result' || searchIn === 'both') {
+        searchTargets.push((response as any).result);
+      }
+      if (searchIn === 'error' || searchIn === 'both') {
+        searchTargets.push((response as any).error);
+      }
+
+      return searchTargets.some(target => {
+        if (typeof expectedContent === 'function') {
+          return expectedContent(target);
+        }
+
+        return this.matchesPartialObject(target, expectedContent);
+      });
+    });
+
+    const requiredMatches = matchCount === 'any' ? 1 :
+                          matchCount === 'all' ? responses.length :
+                          matchCount;
+
+    if (matchingResponses.length < requiredMatches) {
+      throw new MockAssertionError(
+        `Expected ${requiredMatches} responses for '${method}' to contain ${JSON.stringify(expectedContent)}, but only ${matchingResponses.length} matched`,
+        requiredMatches,
+        matchingResponses.length
+      );
+    }
+  }
+
+  /**
+   * Assert that no unexpected method calls were made.
+   *
+   * This assertion helps ensure test isolation by verifying that only expected
+   * methods were called during the test. Useful for detecting unintended side effects.
+   *
+   * @param expectedMethods - Array of method names that were expected to be called
+   * @param options - Additional validation options
+   * @throws MockAssertionError if unexpected calls were found
+   *
+   * @example
+   * ```typescript
+   * // Only allow these specific method calls
+   * server.assertNoUnhandledCalls(['initialize', 'tools/list', 'tools/call']);
+   *
+   * // Allow any method, but track occurrences for specific ones
+   * server.assertNoUnhandledCalls(['tools/call'], {
+   *   mode: 'track',
+   *   maxOccurrences: { 'tools/call': 5 }
+   * });
+   *
+   * // Ignore certain methods (like ping/health checks)
+   * server.assertNoUnhandledCalls(['initialize', 'tools/list'], {
+   *   ignore: ['ping', 'health']
+   * });
+   * ```
+   */
+  assertNoUnhandledCalls(
+    expectedMethods: string[],
+    options: {
+      /** Validation mode: 'strict' (only expected calls) or 'track' (count occurrences) */
+      mode?: 'strict' | 'track';
+      /** Methods to ignore completely */
+      ignore?: string[];
+      /** Maximum allowed occurrences for tracked methods */
+      maxOccurrences?: Record<string, number>;
+    } = {}
+  ): void {
+    const { mode = 'strict', ignore = [], maxOccurrences = {} } = options;
+
+    const history = this.getRequestHistory();
+    const actualMethods = history.map(r => r.request.method);
+
+    // Filter out ignored methods
+    const filteredMethods = actualMethods.filter(method => !ignore.includes(method));
+
+    if (mode === 'strict') {
+      const unexpectedMethods = filteredMethods.filter(method => !expectedMethods.includes(method));
+
+      if (unexpectedMethods.length > 0) {
+        const unexpectedCounts: Record<string, number> = {};
+        unexpectedMethods.forEach(method => {
+          unexpectedCounts[method] = (unexpectedCounts[method] || 0) + 1;
+        });
+
+        throw new MockAssertionError(
+          `Unexpected method calls found: ${Object.entries(unexpectedCounts)
+            .map(([method, count]) => `'${method}' (${count}x)`)
+            .join(', ')}. Expected only: [${expectedMethods.join(', ')}]`,
+          expectedMethods,
+          Object.keys(unexpectedCounts)
+        );
+      }
+    } else if (mode === 'track') {
+      // Count occurrences and check against maxOccurrences
+      const methodCounts: Record<string, number> = {};
+      filteredMethods.forEach(method => {
+        methodCounts[method] = (methodCounts[method] || 0) + 1;
+      });
+
+      const violations: string[] = [];
+      for (const [method, maxCount] of Object.entries(maxOccurrences)) {
+        const actualCount = methodCounts[method] || 0;
+        if (actualCount > maxCount) {
+          violations.push(`'${method}' called ${actualCount} times (max: ${maxCount})`);
+        }
+      }
+
+      if (violations.length > 0) {
+        throw new MockAssertionError(
+          `Method call limits exceeded: ${violations.join(', ')}`,
+          maxOccurrences,
+          methodCounts
+        );
+      }
+    }
+  }
+
+  // ==========================================================================
   // Request History
   // ==========================================================================
 
@@ -781,6 +1094,54 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
       }
     }
     return this.definition.defaultBehavior;
+  }
+
+  /**
+   * Check if an actual object matches the expected partial object structure.
+   * Supports Jest-style matchers like expect.any(), expect.stringContaining(), etc.
+   *
+   * @param actual - The actual object to check
+   * @param expected - The expected partial object/matcher
+   * @returns True if the actual object matches the expected structure
+   */
+  private matchesPartialObject(actual: unknown, expected: unknown): boolean {
+    // Handle Jest-style matchers (they have asymmetricMatch method)
+    if (expected && typeof expected === 'object' && 'asymmetricMatch' in (expected as any)) {
+      return (expected as any).asymmetricMatch(actual);
+    }
+
+    // Handle null/undefined cases
+    if (expected === null || expected === undefined) {
+      return actual === expected;
+    }
+
+    // Handle primitive types
+    if (typeof expected !== 'object') {
+      return actual === expected;
+    }
+
+    // Handle arrays
+    if (Array.isArray(expected)) {
+      if (!Array.isArray(actual)) {
+        return false;
+      }
+
+      // For arrays, check if every expected element has a corresponding match
+      return expected.every(expectedItem =>
+        actual.some(actualItem => this.matchesPartialObject(actualItem, expectedItem))
+      );
+    }
+
+    // Handle objects
+    if (actual === null || actual === undefined || typeof actual !== 'object') {
+      return false;
+    }
+
+    // Check if all expected properties match
+    return Object.entries(expected).every(([key, expectedValue]) => {
+      const actualValue = (actual as any)[key];
+      return this.matchesPartialObject(actualValue, expectedValue);
+    });
   }
 }
 
