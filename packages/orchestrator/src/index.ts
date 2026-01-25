@@ -3962,24 +3962,26 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Genuine build/test failures in implementation stages are caught by tool exit codes.
     const isTestOrReviewStage = ['testing', 'review', 'test', 'qa'].includes(stage.name.toLowerCase());
 
+    // These patterns are designed to match ACTUAL test runner output, not discussions about code.
+    // Be specific to avoid false positives when agents discuss potential issues.
     const testFailurePatterns = [
-      'tests? failed',
-      'test.*failure',
-      'failing tests?',
-      'npm test.*failed',
-      'npm test.*error',
-      'vitest.*failed',
-      'jest.*failed',
-      '\\d+ failed',
-      'exit code [1-9]',
-      'exited with code [1-9]',
-      'error: tests? did not pass',
-      'test suite failed',
-      'some tests failed',
-      'build failed',
-      'compilation error',
-      'type error',
-      'cannot find module',
+      // Specific test runner output patterns
+      'FAIL\\s+[\\w/]+\\.test\\.',     // Jest/Vitest FAIL output
+      '✗\\s+\\d+\\s+test',              // Test runner failure symbols
+      '×\\s+\\d+\\s+test',              // Test runner failure symbols
+      'npm test.*exited.*code [1-9]',   // npm test with exit code
+      'vitest.*exited.*code [1-9]',     // vitest with exit code
+      'jest.*exited.*code [1-9]',       // jest with exit code
+      '[1-9]\\d*\\s+failed,?\\s+\\d+\\s+passed', // "X failed, Y passed" pattern (excludes "0 failed")
+      'error:\\s+tests? did not pass',  // Explicit error message
+      'test suite failed',              // Jest test suite failure
+      'Tests:\\s+[1-9]\\d*\\s+failed',  // Jest summary with failures
+      'npm ERR!.*test',                 // npm test errors
+      'Error:\\s+Command failed',       // Build command failures
+      'error TS\\d+:',                  // TypeScript compiler errors (specific format)
+      'SyntaxError:',                   // JavaScript syntax errors
+      'ReferenceError:',                // JavaScript reference errors
+      'ENOENT.*package\\.json',         // Missing package.json
     ];
 
     const isTestFailure = isTestOrReviewStage && testFailurePatterns.some(pattern =>

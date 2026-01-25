@@ -593,6 +593,9 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
  */
 export type { Database };
 
+// Re-export MCP test utilities for convenience
+export * from './test-utils-mcp.js';
+
 // ============================================================================
 // Permission Test Database Utilities
 // ============================================================================
