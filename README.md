@@ -658,6 +658,271 @@ const pathCmd = createShellCommand(['cp', '/path/with spaces/file.txt', '/dest']
 // On Unix: "cp '/path/with spaces/file.txt' /dest"
 ```
 
+### Syntax Highlighting Utilities
+
+APEX includes comprehensive syntax highlighting utilities for displaying code and tool outputs with ANSI color support in terminal environments.
+
+#### `highlightSyntax(content: string, options?: SyntaxHighlightOptions): HighlightResult`
+Applies syntax highlighting to code or text content with automatic language detection.
+
+```typescript
+import { highlightSyntax } from '@apex/core';
+
+// Auto-detect content type and highlight
+const result = highlightSyntax('const message = "Hello World";');
+// result.content: highlighted JavaScript code with ANSI colors
+// result.contentType: 'javascript'
+// result.highlighted: true
+
+// Specify content type explicitly
+const tsResult = highlightSyntax('interface User { name: string; }', {
+  contentType: 'typescript',
+  showLineNumbers: true
+});
+
+// Highlight with file extension detection
+const pyResult = highlightSyntax('def hello():\n    print("Hello")', {
+  fileExtension: '.py',
+  maxLines: 10
+});
+
+// Use light theme
+const lightResult = highlightSyntax(jsonData, {
+  contentType: 'json',
+  theme: LIGHT_THEME,
+  colors: true
+});
+```
+
+#### `highlightToolOutput(output: string, options?: HighlightOptions): HighlightResult`
+Convenience function for highlighting tool output with combined truncation and syntax highlighting.
+
+```typescript
+import { highlightToolOutput } from '@apex/core';
+
+// Highlight and truncate long output
+const result = highlightToolOutput(longJsonOutput, {
+  contentType: 'json',
+  maxLength: 5000,
+  showLineNumbers: true
+});
+
+// Auto-detect from file context
+const tsOutput = highlightToolOutput(compilerOutput, {
+  fileName: 'src/index.ts',
+  maxLines: 50,
+  colors: true
+});
+
+// result.content: highlighted and potentially truncated output
+// result.originalLength: original string length
+// result.truncated: boolean indicating if truncation occurred
+```
+
+#### `detectContentType(content: string, options?: DetectionOptions): ContentType`
+Automatically detects the content type of text for appropriate syntax highlighting.
+
+```typescript
+import { detectContentType } from '@apex/core';
+
+// Detect from content
+detectContentType('{ "name": "value" }');           // 'json'
+detectContentType('function test() { return true; }'); // 'javascript'
+detectContentType('def main():\n    pass');         // 'python'
+detectContentType('error: file not found');         // 'error'
+
+// Detect from file extension
+detectContentType('', { fileExtension: '.rs' });    // 'rust'
+detectContentType('', { fileName: 'Dockerfile' });  // 'dockerfile'
+
+// Override with explicit type
+detectContentType('some text', { contentType: 'yaml' }); // 'yaml'
+```
+
+Supported content types include: `javascript`, `typescript`, `python`, `go`, `rust`, `java`, `c`, `cpp`, `csharp`, `php`, `ruby`, `shell`, `bash`, `powershell`, `sql`, `json`, `yaml`, `xml`, `html`, `css`, `scss`, `diff`, `markdown`, `dockerfile`, `ini`, `toml`, `log`, `error`, and `plain`.
+
+#### Additional Syntax Highlighting Functions
+
+```typescript
+import { stripColors, supportsColors, ANSI_COLORS, DARK_THEME, LIGHT_THEME } from '@apex/core';
+
+// Remove ANSI color codes from text
+const plain = stripColors('\x1b[32mGreen text\x1b[0m'); // 'Green text'
+
+// Check if terminal supports colors
+if (supportsColors()) {
+  console.log('Terminal supports colors');
+}
+
+// Access color constants and themes
+const coloredText = `${ANSI_COLORS.brightGreen}Success!${ANSI_COLORS.reset}`;
+
+// Use predefined themes
+const darkThemed = highlightSyntax(code, { theme: DARK_THEME });
+const lightThemed = highlightSyntax(code, { theme: LIGHT_THEME });
+```
+
+### Error Formatting Utilities
+
+APEX provides two comprehensive ErrorFormatter classes for parsing, grouping, and formatting errors from various development tools.
+
+#### Core ErrorFormatter (`@apex/core`)
+Structured error parsing and formatting with Zod validation.
+
+```typescript
+import { ErrorFormatter, createStructuredError, ErrorSeverity, ErrorCategory } from '@apex/core';
+
+// Create formatter with options
+const formatter = new ErrorFormatter({
+  parse: { deduplicate: true, maxErrors: 100 },
+  group: { groupBy: 'file', sortBySeverity: true },
+  format: { format: 'ansi', colors: true, showSuggestions: true }
+});
+
+// Create structured errors
+const error = createStructuredError('Type error in function', {
+  severity: 'error' as ErrorSeverity,
+  category: 'type' as ErrorCategory,
+  location: { file: 'src/index.ts', line: 42, column: 15 },
+  code: 'TS2339',
+  suggestion: 'Add type annotation or import missing type'
+});
+
+// Parse raw error output (extensible for different tools)
+const errors = formatter.parse(rawErrorOutput, {
+  defaultContext: { tool: 'typescript', stage: 'compilation' }
+});
+
+// Group errors for organized display
+const groups = formatter.group(errors, { groupBy: 'category' });
+
+// Format for output
+const formattedOutput = formatter.format(groups, {
+  format: 'ansi',
+  includeContext: true,
+  showStackTraces: false
+});
+
+// All-in-one convenience method
+const output = formatter.formatErrors(rawErrorText, {
+  parse: { extractLocation: true },
+  group: { groupBy: 'file' },
+  format: { colors: true, showCodes: true }
+});
+```
+
+#### CLI ErrorFormatter (`@apex/cli`)
+Styled error formatting for CLI output with TypeScript and ESLint parsing.
+
+```typescript
+import {
+  ErrorFormatter,
+  ErrorVerbosity,
+  ErrorType,
+  parseTypeScriptErrors,
+  parseESLintErrors,
+  formatError
+} from '@apex/cli';
+
+// Create formatter with verbosity level
+const formatter = new ErrorFormatter(ErrorVerbosity.VERBOSE);
+
+// Format structured errors with context and suggestions
+const formattedError = formatter.format({
+  type: ErrorType.SYSTEM,
+  message: 'Database connection failed',
+  context: {
+    file: 'src/database.ts',
+    line: 25,
+    function: 'connectToDatabase',
+    description: 'Failed to establish connection after 3 retries'
+  },
+  suggestions: [
+    {
+      title: 'Check database credentials',
+      description: 'Verify username, password, and host are correct',
+      command: 'cat .env | grep DB_'
+    },
+    {
+      title: 'Check network connectivity',
+      description: 'Ensure the database server is reachable',
+      command: 'ping database.example.com'
+    }
+  ]
+});
+
+// Parse TypeScript compiler errors
+const tscErrors = parseTypeScriptErrors(`
+src/index.ts(42,15): error TS2339: Property 'foo' does not exist on type 'User'.
+src/utils.ts(18,3): error TS2304: Cannot find name 'logger'.
+`);
+
+// Parse ESLint errors
+const eslintErrors = parseESLintErrors(`
+/path/to/file.js
+  10:5   error    'x' is defined but never used   no-unused-vars
+  15:3   warning  Unexpected console statement     no-console
+`);
+
+// Format multiple errors
+const multipleErrors = formatter.formatMultiple([...tscErrors, ...eslintErrors]);
+
+// Quick formatting with convenience functions
+const systemError = formatError.system('Critical system failure', {
+  file: 'src/app.ts',
+  line: 1,
+  description: 'Application startup failed'
+});
+
+const validationError = formatError.validation('Invalid configuration', {
+  file: '.apex/config.yaml',
+  line: 15
+}, [
+  {
+    title: 'Fix configuration syntax',
+    description: 'Check YAML syntax and required fields',
+    command: 'apex config validate'
+  }
+]);
+```
+
+#### Error Types and Severity Levels
+
+```typescript
+// Error Types (CLI formatter)
+enum ErrorType {
+  SYSTEM = 'system',        // Critical system errors (💥)
+  VALIDATION = 'validation', // User input validation (⚠️)
+  CONFIG = 'config',        // Configuration errors (⚙️)
+  NETWORK = 'network',      // Network/API errors (🌐)
+  FILESYSTEM = 'filesystem', // File system errors (📁)
+  APPLICATION = 'application' // Generic app errors (❌)
+}
+
+// Error Severity (Core formatter)
+enum ErrorSeverity {
+  ERROR = 'error',      // Critical errors that prevent execution
+  WARNING = 'warning',  // Non-critical issues to address
+  INFO = 'info',       // Informational messages
+  HINT = 'hint'        // Suggestions or recommendations
+}
+
+// Error Categories (Core formatter)
+enum ErrorCategory {
+  SYNTAX = 'syntax',       // Parsing/compilation errors
+  TYPE = 'type',          // Type checking errors
+  LINT = 'lint',          // Linting errors
+  TEST = 'test',          // Test failures
+  RUNTIME = 'runtime',    // Runtime errors
+  BUILD = 'build',        // Build/compilation errors
+  DEPENDENCY = 'dependency', // Dependency resolution
+  CONFIG = 'config',      // Configuration errors
+  PERMISSION = 'permission', // Access/permission errors
+  NETWORK = 'network',    // Network-related errors
+  UNKNOWN = 'unknown'     // Unclassified errors
+}
+```
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
