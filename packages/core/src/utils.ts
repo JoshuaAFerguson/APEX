@@ -1,7 +1,15 @@
 import * as crypto from 'crypto';
 
 /**
- * Generate a unique task ID
+ * Generate a unique task ID with timestamp and random components
+ *
+ * @returns A unique task ID string in the format 'task_{timestamp}_{random}'
+ *
+ * @example
+ * ```typescript
+ * const taskId = generateTaskId();
+ * console.log(taskId); // 'task_lx2k4m_a1b2c3d4'
+ * ```
  */
 export function generateTaskId(): string {
   const timestamp = Date.now().toString(36);
@@ -10,7 +18,15 @@ export function generateTaskId(): string {
 }
 
 /**
- * Generate a unique idle task ID
+ * Generate a unique idle task ID with timestamp and random components
+ *
+ * @returns A unique idle task ID string in the format 'idle_{timestamp}_{random}'
+ *
+ * @example
+ * ```typescript
+ * const idleTaskId = generateIdleTaskId();
+ * console.log(idleTaskId); // 'idle_lx2k4m_a1b2c3d4'
+ * ```
  */
 export function generateIdleTaskId(): string {
   const timestamp = Date.now().toString(36);
@@ -19,7 +35,15 @@ export function generateIdleTaskId(): string {
 }
 
 /**
- * Generate a unique task template ID
+ * Generate a unique task template ID with timestamp and random components
+ *
+ * @returns A unique task template ID string in the format 'template_{timestamp}_{random}'
+ *
+ * @example
+ * ```typescript
+ * const templateId = generateTaskTemplateId();
+ * console.log(templateId); // 'template_lx2k4m_a1b2c3d4'
+ * ```
  */
 export function generateTaskTemplateId(): string {
   const timestamp = Date.now().toString(36);
@@ -28,7 +52,15 @@ export function generateTaskTemplateId(): string {
 }
 
 /**
- * Generate a unique approval ID
+ * Generate a unique approval ID with timestamp and random components
+ *
+ * @returns A unique approval ID string in the format 'apr_{timestamp}_{random}'
+ *
+ * @example
+ * ```typescript
+ * const approvalId = generateApprovalId();
+ * console.log(approvalId); // 'apr_lx2k4m_a1b2c3d4'
+ * ```
  */
 export function generateApprovalId(): string {
   const timestamp = Date.now().toString(36);
@@ -37,7 +69,20 @@ export function generateApprovalId(): string {
 }
 
 /**
- * Generate a slug from a string
+ * Convert a string into a URL-friendly slug by removing special characters,
+ * replacing spaces with hyphens, and normalizing to lowercase
+ *
+ * @param text - The input text to convert to a slug
+ * @returns A URL-friendly slug string (max 50 characters)
+ *
+ * @example
+ * ```typescript
+ * const slug = slugify('Hello World! This is a Test');
+ * console.log(slug); // 'hello-world-this-is-a-test'
+ *
+ * const longSlug = slugify('A very long title that exceeds the maximum length limit');
+ * console.log(longSlug); // 'a-very-long-title-that-exceeds-the-maximum-len'
+ * ```
  */
 export function slugify(text: string): string {
   return text
@@ -49,7 +94,21 @@ export function slugify(text: string): string {
 }
 
 /**
- * Generate a branch name for a task
+ * Generate a Git branch name combining a prefix, task ID, and description
+ *
+ * @param prefix - The branch prefix (e.g., 'feature/', 'bugfix/')
+ * @param taskId - The task ID to extract a short identifier from
+ * @param description - The task description to slugify
+ * @returns A formatted branch name string
+ *
+ * @example
+ * ```typescript
+ * const branchName = generateBranchName('feature/', 'task_lx2k4m_a1b2c3d4', 'Add user authentication');
+ * console.log(branchName); // 'feature/lx2k4m-add-user-authentication'
+ *
+ * const bugfixBranch = generateBranchName('bugfix/', 'bug_123', 'Fix login issue');
+ * console.log(bugfixBranch); // 'bugfix/bug_123-fix-login-issue'
+ * ```
  */
 export function generateBranchName(
   prefix: string,
@@ -62,8 +121,20 @@ export function generateBranchName(
 }
 
 /**
- * Calculate estimated cost from token usage
- * Based on Claude Sonnet 4 pricing (adjust as needed)
+ * Calculate estimated cost from token usage based on Claude Sonnet 4 pricing
+ *
+ * @param inputTokens - Number of input tokens consumed
+ * @param outputTokens - Number of output tokens generated
+ * @returns The estimated cost in USD, rounded to 4 decimal places
+ *
+ * @example
+ * ```typescript
+ * const cost = calculateCost(1000, 500);
+ * console.log(cost); // 0.0105 (based on Sonnet 4 pricing: $3/1M input, $15/1M output)
+ *
+ * const largeCost = calculateCost(50000, 25000);
+ * console.log(largeCost); // 0.525
+ * ```
  */
 export function calculateCost(inputTokens: number, outputTokens: number): number {
   // Sonnet 4 pricing (per million tokens)
@@ -77,7 +148,18 @@ export function calculateCost(inputTokens: number, outputTokens: number): number
 }
 
 /**
- * Format a duration in milliseconds to human readable
+ * Format a duration in milliseconds to a human-readable string
+ *
+ * @param ms - Duration in milliseconds
+ * @returns Formatted duration string (e.g., '500ms', '2.5s', '1m 30s', '2h 15m')
+ *
+ * @example
+ * ```typescript
+ * console.log(formatDuration(500)); // '500ms'
+ * console.log(formatDuration(2500)); // '2.5s'
+ * console.log(formatDuration(90000)); // '1m 30s'
+ * console.log(formatDuration(7800000)); // '2h 10m'
+ * ```
  */
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -130,14 +212,34 @@ export function formatElapsed(startTime: Date, currentTime: Date = new Date()): 
 }
 
 /**
- * Format token count with commas
+ * Format token count with thousands separators for readability
+ *
+ * @param tokens - Number of tokens to format
+ * @returns Formatted token count string with locale-appropriate separators
+ *
+ * @example
+ * ```typescript
+ * console.log(formatTokens(1234)); // '1,234'
+ * console.log(formatTokens(1000000)); // '1,000,000'
+ * console.log(formatTokens(42)); // '42'
+ * ```
  */
 export function formatTokens(tokens: number): string {
   return tokens.toLocaleString();
 }
 
 /**
- * Format cost as USD
+ * Format cost as USD currency string with 4 decimal places
+ *
+ * @param cost - Cost amount in USD
+ * @returns Formatted cost string with dollar sign and 4 decimal places
+ *
+ * @example
+ * ```typescript
+ * console.log(formatCost(0.1234)); // '$0.1234'
+ * console.log(formatCost(1.5)); // '$1.5000'
+ * console.log(formatCost(25)); // '$25.0000'
+ * ```
  */
 export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
@@ -171,9 +273,30 @@ export interface SemVer {
 export type UpdateType = 'major' | 'minor' | 'patch' | 'prerelease' | 'none' | 'downgrade';
 
 /**
- * Parse a semantic version string into components
+ * Parse a semantic version string into structured components
+ *
  * @param version - Version string to parse (e.g., "1.2.3", "v1.0.0-alpha.1+build.123")
- * @returns Parsed SemVer object or null if invalid
+ * @returns Parsed SemVer object with major/minor/patch numbers and optional prerelease/build metadata, or null if invalid
+ *
+ * @example
+ * ```typescript
+ * const version = parseSemver('1.2.3-alpha.1+build.123');
+ * console.log(version);
+ * // {
+ * //   major: 1,
+ * //   minor: 2,
+ * //   patch: 3,
+ * //   prerelease: ['alpha', '1'],
+ * //   build: ['build', '123'],
+ * //   raw: '1.2.3-alpha.1+build.123'
+ * // }
+ *
+ * const simple = parseSemver('v2.0.0');
+ * console.log(simple); // { major: 2, minor: 0, patch: 0, raw: 'v2.0.0' }
+ *
+ * const invalid = parseSemver('not.a.version');
+ * console.log(invalid); // null
+ * ```
  */
 export function parseSemver(version: string): SemVer | null {
   if (typeof version !== 'string' || !version.trim()) {
@@ -200,9 +323,21 @@ export function parseSemver(version: string): SemVer | null {
 }
 
 /**
- * Check if a version is a prerelease
- * @param version - Version string or parsed SemVer
- * @returns true if the version has prerelease identifiers
+ * Check if a version is a prerelease (contains prerelease identifiers)
+ *
+ * @param version - Version string or parsed SemVer object to check
+ * @returns true if the version has prerelease identifiers, false otherwise
+ *
+ * @example
+ * ```typescript
+ * console.log(isPreRelease('1.0.0-alpha.1')); // true
+ * console.log(isPreRelease('1.0.0-beta')); // true
+ * console.log(isPreRelease('1.0.0')); // false
+ * console.log(isPreRelease('2.1.3+build.456')); // false (build metadata doesn't make it prerelease)
+ *
+ * const parsed = parseSemver('1.0.0-rc.1');
+ * console.log(isPreRelease(parsed)); // true
+ * ```
  */
 export function isPreRelease(version: string | SemVer): boolean {
   const parsed = typeof version === 'string' ? parseSemver(version) : version;
@@ -213,10 +348,21 @@ export function isPreRelease(version: string | SemVer): boolean {
 }
 
 /**
- * Compare two identifiers according to semver precedence rules
- * @param a - First identifier
- * @param b - Second identifier
+ * Compare two identifiers according to semantic versioning precedence rules
+ * Numeric identifiers are compared numerically, non-numeric identifiers lexically.
+ * Numeric identifiers always have lower precedence than non-numeric identifiers.
+ *
+ * @param a - First identifier to compare
+ * @param b - Second identifier to compare
  * @returns -1 if a < b, 0 if a === b, 1 if a > b
+ *
+ * @example
+ * ```typescript
+ * console.log(compareIdentifiers('1', '2')); // -1 (numeric comparison)
+ * console.log(compareIdentifiers('alpha', 'beta')); // -1 (lexical comparison)
+ * console.log(compareIdentifiers('1', 'alpha')); // -1 (numeric < non-numeric)
+ * console.log(compareIdentifiers('beta', '2')); // 1 (non-numeric > numeric)
+ * ```
  */
 function compareIdentifiers(a: string, b: string): -1 | 0 | 1 {
   const aNum = parseInt(a, 10);
@@ -233,10 +379,27 @@ function compareIdentifiers(a: string, b: string): -1 | 0 | 1 {
 }
 
 /**
- * Compare two semantic versions
- * @param a - First version (string or SemVer)
- * @param b - Second version (string or SemVer)
+ * Compare two semantic versions according to semver precedence rules
+ * Handles major.minor.patch comparison, prerelease precedence, and invalid versions
+ *
+ * @param a - First version (string or SemVer object)
+ * @param b - Second version (string or SemVer object)
  * @returns -1 if a < b, 0 if a === b, 1 if a > b
+ *
+ * @example
+ * ```typescript
+ * console.log(compareVersions('1.0.0', '1.0.1')); // -1
+ * console.log(compareVersions('2.0.0', '1.9.9')); // 1
+ * console.log(compareVersions('1.0.0', '1.0.0')); // 0
+ *
+ * // Prerelease handling
+ * console.log(compareVersions('1.0.0-alpha', '1.0.0')); // -1 (prerelease < stable)
+ * console.log(compareVersions('1.0.0-alpha.1', '1.0.0-alpha.2')); // -1
+ * console.log(compareVersions('1.0.0-alpha', '1.0.0-beta')); // -1 (lexical order)
+ *
+ * // Invalid versions treated as 0.0.0
+ * console.log(compareVersions('invalid', '1.0.0')); // -1
+ * ```
  */
 export function compareVersions(a: string | SemVer, b: string | SemVer): -1 | 0 | 1 {
   const parsedA = typeof a === 'string' ? parseSemver(a) : a;
@@ -285,10 +448,26 @@ export function compareVersions(a: string | SemVer, b: string | SemVer): -1 | 0 
 }
 
 /**
- * Determine the type of update between two versions
- * @param current - Current version
- * @param latest - Latest/target version
- * @returns The type of update required
+ * Determine the type of update between two versions (major, minor, patch, prerelease, etc.)
+ *
+ * @param current - Current version (string or SemVer object)
+ * @param latest - Latest/target version to compare against
+ * @returns The type of update required: 'major', 'minor', 'patch', 'prerelease', 'none', or 'downgrade'
+ *
+ * @example
+ * ```typescript
+ * console.log(getUpdateType('1.0.0', '2.0.0')); // 'major'
+ * console.log(getUpdateType('1.0.0', '1.1.0')); // 'minor'
+ * console.log(getUpdateType('1.0.0', '1.0.1')); // 'patch'
+ * console.log(getUpdateType('1.0.0', '1.0.0-beta')); // 'downgrade'
+ * console.log(getUpdateType('1.0.0-alpha', '1.0.0-beta')); // 'prerelease'
+ * console.log(getUpdateType('1.0.0', '1.0.0')); // 'none'
+ *
+ * // With parsed objects
+ * const current = parseSemver('1.2.3');
+ * const latest = parseSemver('1.3.0');
+ * console.log(getUpdateType(current, latest)); // 'minor'
+ * ```
  */
 export function getUpdateType(current: string | SemVer, latest: string | SemVer): UpdateType {
   const parsedCurrent = typeof current === 'string' ? parseSemver(current) : current;
@@ -346,6 +525,23 @@ export interface ConventionalCommit {
   breaking: boolean;
 }
 
+/**
+ * Parse a conventional commit message into its components
+ *
+ * @param message - The commit message to parse
+ * @returns Parsed ConventionalCommit object or null if invalid format
+ *
+ * @example
+ * ```typescript
+ * const commit = parseConventionalCommit('feat(auth): add user login');
+ * console.log(commit);
+ * // { type: 'feat', scope: 'auth', description: 'add user login', breaking: false }
+ *
+ * const breaking = parseConventionalCommit('feat!: major API change\n\nThis is a breaking change');
+ * console.log(breaking);
+ * // { type: 'feat', description: 'major API change', body: 'This is a breaking change', breaking: true }
+ * ```
+ */
 export function parseConventionalCommit(message: string): ConventionalCommit | null {
   const match = message.match(
     /^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
@@ -365,7 +561,30 @@ export function parseConventionalCommit(message: string): ConventionalCommit | n
 }
 
 /**
- * Create a conventional commit message
+ * Create a conventional commit message from components
+ *
+ * @param type - The commit type (feat, fix, docs, etc.)
+ * @param description - Brief description of the change
+ * @param options - Optional configuration
+ * @param options.scope - Scope of the change (e.g., 'auth', 'api')
+ * @param options.body - Extended description of the change
+ * @param options.breaking - Whether this is a breaking change
+ * @returns Formatted conventional commit message
+ *
+ * @example
+ * ```typescript
+ * const commit = createConventionalCommit('feat', 'add user login', {
+ *   scope: 'auth',
+ *   body: 'Implements OAuth 2.0 authentication flow'
+ * });
+ * console.log(commit); // 'feat(auth): add user login\n\nImplements OAuth 2.0 authentication flow'
+ *
+ * const breaking = createConventionalCommit('feat', 'remove deprecated API', {
+ *   breaking: true,
+ *   body: 'BREAKING CHANGE: Old API endpoints no longer supported'
+ * });
+ * console.log(breaking); // 'feat!: remove deprecated API\n\nBREAKING CHANGE: ...'
+ * ```
  */
 export function createConventionalCommit(
   type: string,
@@ -396,7 +615,23 @@ export function createConventionalCommit(
 }
 
 /**
- * Safely parse JSON with a fallback
+ * Safely parse JSON with a fallback value if parsing fails
+ *
+ * @param json - JSON string to parse
+ * @param fallback - Value to return if parsing fails
+ * @returns Parsed JSON object or fallback value
+ *
+ * @example
+ * ```typescript
+ * const validJson = safeJsonParse('{"name": "John"}', {});
+ * console.log(validJson); // { name: 'John' }
+ *
+ * const invalidJson = safeJsonParse('invalid json', { default: true });
+ * console.log(invalidJson); // { default: true }
+ *
+ * const arrayFallback = safeJsonParse('malformed', []);
+ * console.log(arrayFallback); // []
+ * ```
  */
 export function safeJsonParse<T>(json: string, fallback: T): T {
   try {
@@ -407,7 +642,27 @@ export function safeJsonParse<T>(json: string, fallback: T): T {
 }
 
 /**
- * Deep merge two objects
+ * Deep merge two objects, recursively merging nested objects while preserving types
+ *
+ * @param target - The target object to merge into
+ * @param source - The source object to merge from
+ * @returns A new object with deeply merged properties
+ *
+ * @example
+ * ```typescript
+ * const target = { a: 1, b: { x: 1, y: 2 }, c: 'original' };
+ * const source = { b: { y: 3, z: 4 }, d: 'new' };
+ *
+ * const merged = deepMerge(target, source);
+ * console.log(merged);
+ * // { a: 1, b: { x: 1, y: 3, z: 4 }, c: 'original', d: 'new' }
+ *
+ * // Arrays are replaced, not merged
+ * const config = { items: [1, 2] };
+ * const update = { items: [3, 4, 5] };
+ * const result = deepMerge(config, update);
+ * console.log(result.items); // [3, 4, 5]
+ * ```
  */
 export function deepMerge<T extends Record<string, unknown>>(
   target: T,
@@ -440,7 +695,33 @@ export function deepMerge<T extends Record<string, unknown>>(
 }
 
 /**
- * Retry a function with exponential backoff
+ * Retry a function with exponential backoff strategy
+ *
+ * @param fn - The async function to retry
+ * @param options - Retry configuration options
+ * @param options.maxAttempts - Maximum number of retry attempts (default: 3)
+ * @param options.initialDelay - Initial delay between retries in milliseconds (default: 1000)
+ * @param options.maxDelay - Maximum delay between retries in milliseconds (default: 30000)
+ * @param options.backoffFactor - Factor to multiply delay by each attempt (default: 2)
+ * @returns Promise that resolves with the function result or rejects with the last error
+ *
+ * @example
+ * ```typescript
+ * const fetchWithRetry = async () => {
+ *   const response = await fetch('https://api.example.com/data');
+ *   if (!response.ok) throw new Error('Network error');
+ *   return response.json();
+ * };
+ *
+ * const data = await retry(fetchWithRetry, {
+ *   maxAttempts: 5,
+ *   initialDelay: 500,
+ *   maxDelay: 10000
+ * });
+ *
+ * // Custom backoff with different factor
+ * await retry(someOperation, { backoffFactor: 1.5 }); // Slower exponential growth
+ * ```
  */
 export async function retry<T>(
   fn: () => Promise<T>,
@@ -488,6 +769,28 @@ export interface Deferred<T> {
   reject: (reason?: unknown) => void;
 }
 
+/**
+ * Create a deferred promise with external resolve/reject control
+ *
+ * @returns Deferred object containing promise, resolve, and reject functions
+ *
+ * @example
+ * ```typescript
+ * const deferred = createDeferred<string>();
+ *
+ * // Use the promise elsewhere
+ * deferred.promise.then(value => console.log('Got:', value));
+ *
+ * // Resolve from external code
+ * setTimeout(() => {
+ *   deferred.resolve('Hello World');
+ * }, 1000);
+ *
+ * // Error handling
+ * const errorDeferred = createDeferred<number>();
+ * errorDeferred.reject(new Error('Something went wrong'));
+ * ```
+ */
 export function createDeferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -501,7 +804,22 @@ export function createDeferred<T>(): Deferred<T> {
 }
 
 /**
- * Truncate a string to a maximum length
+ * Truncate a string to a maximum length with optional suffix
+ *
+ * @param str - The string to truncate
+ * @param maxLength - Maximum allowed length
+ * @param suffix - Suffix to append when truncated (default: '...')
+ * @returns Truncated string with suffix if needed
+ *
+ * @example
+ * ```typescript
+ * const long = 'This is a very long string that needs truncation';
+ * console.log(truncate(long, 20)); // 'This is a very lo...'
+ * console.log(truncate(long, 20, ' [more]')); // 'This is a [more]'
+ *
+ * const short = 'Short text';
+ * console.log(truncate(short, 20)); // 'Short text' (unchanged)
+ * ```
  */
 export function truncate(str: string, maxLength: number, suffix = '...'): string {
   if (str.length <= maxLength) return str;
@@ -509,13 +827,33 @@ export function truncate(str: string, maxLength: number, suffix = '...'): string
 }
 
 /**
- * Extract code blocks from markdown
+ * Extract code blocks from markdown text
+ *
+ * @param markdown - Markdown text containing code blocks
+ * @returns Array of CodeBlock objects with language and code content
+ *
+ * @example
+ * ```typescript
+ * const markdown = `
+ * Here is some JavaScript:
+ * \`\`\`javascript
+ * console.log('Hello World');
+ * \`\`\`
+ *
+ * And some Python:
+ * \`\`\`python
+ * print("Hello World")
+ * \`\`\`
+ * `;
+ *
+ * const blocks = extractCodeBlocks(markdown);
+ * console.log(blocks);
+ * // [
+ * //   { language: 'javascript', code: "console.log('Hello World');" },
+ * //   { language: 'python', code: 'print("Hello World")' }
+ * // ]
+ * ```
  */
-export interface CodeBlock {
-  language: string;
-  code: string;
-}
-
 export function extractCodeBlocks(markdown: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
   const regex = /```(\w*)\n([\s\S]*?)```/g;
@@ -569,7 +907,29 @@ export interface ConflictMarker {
 }
 
 /**
- * Detect merge conflicts in a file's content
+ * Detect merge conflicts in a file's content by parsing Git conflict markers
+ *
+ * @param fileContent - The file content to analyze for conflicts
+ * @param filePath - The path of the file being analyzed
+ * @returns ConflictInfo object with details about conflicts found, or null if none
+ *
+ * @example
+ * ```typescript
+ * const conflictedContent = `
+ * function hello() {
+ * <<<<<<< HEAD
+ *   console.log('Hello from main');
+ * =======
+ *   console.log('Hello from feature');
+ * >>>>>>> feature-branch
+ * }
+ * `;
+ *
+ * const conflicts = detectConflicts(conflictedContent, 'src/hello.js');
+ * console.log(conflicts?.conflictMarkers.length); // 1
+ * console.log(conflicts?.baseBranch); // 'HEAD'
+ * console.log(conflicts?.incomingBranch); // 'feature-branch'
+ * ```
  */
 export function detectConflicts(fileContent: string, filePath: string): ConflictInfo | null {
   const lines = fileContent.split('\n');
@@ -664,7 +1024,25 @@ export interface ConflictSuggestion {
 }
 
 /**
- * Suggest resolution for a conflict marker
+ * Suggest resolution strategies for a conflict marker based on content analysis
+ *
+ * @param marker - The conflict marker to analyze
+ * @returns Array of ConflictSuggestion objects with different resolution strategies
+ *
+ * @example
+ * ```typescript
+ * const marker: ConflictMarker = {
+ *   startLine: 5,
+ *   endLine: 9,
+ *   currentContent: 'console.log("Hello");',
+ *   incomingContent: 'console.log("Hello"); // Added comment'
+ * };
+ *
+ * const suggestions = suggestConflictResolution(marker);
+ * console.log(suggestions[0].type); // 'keep-incoming'
+ * console.log(suggestions[0].confidence); // 'medium'
+ * console.log(suggestions[0].reason); // 'Incoming changes include all current content with additions'
+ * ```
  */
 export function suggestConflictResolution(marker: ConflictMarker): ConflictSuggestion[] {
   const suggestions: ConflictSuggestion[] = [];
@@ -743,7 +1121,30 @@ export function suggestConflictResolution(marker: ConflictMarker): ConflictSugge
 }
 
 /**
- * Format conflict detection results for display
+ * Format conflict detection results into a human-readable report
+ *
+ * @param conflicts - Array of ConflictInfo objects to format
+ * @returns Formatted string report with conflict details and suggestions
+ *
+ * @example
+ * ```typescript
+ * const conflicts = [
+ *   {
+ *     file: 'src/main.js',
+ *     baseBranch: 'main',
+ *     incomingBranch: 'feature',
+ *     conflictMarkers: [{ startLine: 5, endLine: 10, currentContent: '...', incomingContent: '...' }]
+ *   }
+ * ];
+ *
+ * const report = formatConflictReport(conflicts);
+ * console.log(report);
+ * // "Found 1 file(s) with conflicts:
+ * //  📄 src/main.js
+ * //     Branches: main ← feature
+ * //     Conflicts: 1
+ * //     ..."
+ * ```
  */
 export function formatConflictReport(conflicts: ConflictInfo[]): string {
   if (conflicts.length === 0) {
@@ -787,7 +1188,31 @@ export interface GitLogEntry {
 }
 
 /**
- * Parse git log output into structured entries
+ * Parse git log output into structured entries with conventional commit analysis
+ *
+ * @param logOutput - Raw git log output string
+ * @returns Array of GitLogEntry objects with parsed commit information
+ *
+ * @example
+ * ```typescript
+ * const logOutput = `
+ * commit a1b2c3d4e5f6789
+ * Author: John Doe <john@example.com>
+ * Date: Mon Jan 15 10:30:00 2024 -0500
+ *
+ * feat(auth): add user login functionality
+ *
+ * commit 9876543210abcdef
+ * Author: Jane Smith <jane@example.com>
+ * Date: Sun Jan 14 15:45:00 2024 -0500
+ *
+ * fix: resolve memory leak in parser
+ * `;
+ *
+ * const entries = parseGitLog(logOutput);
+ * console.log(entries[0].conventional?.type); // 'feat'
+ * console.log(entries[1].shortHash); // '9876543'
+ * ```
  */
 export function parseGitLog(logOutput: string): GitLogEntry[] {
   const entries: GitLogEntry[] = [];
@@ -812,14 +1237,26 @@ export function parseGitLog(logOutput: string): GitLogEntry[] {
 }
 
 /**
- * Group commits by type for changelog generation
+ * Group commits by their conventional commit type for changelog generation
+ *
+ * @param entries - Array of GitLogEntry objects to group
+ * @returns Array of ChangelogGroup objects organized by commit type
+ *
+ * @example
+ * ```typescript
+ * const commits = [
+ *   { hash: 'abc123', message: 'feat: add new feature', conventional: { type: 'feat' } },
+ *   { hash: 'def456', message: 'fix: resolve bug', conventional: { type: 'fix' } },
+ *   { hash: 'ghi789', message: 'feat: another feature', conventional: { type: 'feat' } }
+ * ];
+ *
+ * const groups = groupCommitsByType(commits);
+ * console.log(groups[0].type); // 'feat'
+ * console.log(groups[0].commits.length); // 2
+ * console.log(groups[1].type); // 'fix'
+ * console.log(groups[1].commits.length); // 1
+ * ```
  */
-export interface ChangelogGroup {
-  type: CommitType | 'other';
-  title: string;
-  commits: GitLogEntry[];
-}
-
 export function groupCommitsByType(entries: GitLogEntry[]): ChangelogGroup[] {
   const groups = new Map<CommitType | 'other', GitLogEntry[]>();
 
@@ -861,7 +1298,41 @@ export function groupCommitsByType(entries: GitLogEntry[]): ChangelogGroup[] {
 }
 
 /**
- * Generate changelog markdown from grouped commits
+ * Generate changelog markdown from grouped commits with customizable formatting
+ *
+ * @param version - Version string for the changelog section
+ * @param date - Release date
+ * @param groups - Array of ChangelogGroup objects with commits by type
+ * @param options - Optional formatting configuration
+ * @param options.includeHashes - Whether to include commit hashes (default: true)
+ * @param options.includeAuthors - Whether to include commit authors (default: false)
+ * @param options.repoUrl - Repository URL for creating commit links
+ * @returns Formatted markdown changelog string
+ *
+ * @example
+ * ```typescript
+ * const groups = [
+ *   {
+ *     type: 'feat',
+ *     title: 'Features',
+ *     commits: [
+ *       { shortHash: 'abc123', conventional: { description: 'add user login' } }
+ *     ]
+ *   }
+ * ];
+ *
+ * const changelog = generateChangelogMarkdown('1.2.0', new Date('2024-01-15'), groups, {
+ *   includeHashes: true,
+ *   repoUrl: 'https://github.com/user/repo'
+ * });
+ *
+ * console.log(changelog);
+ * // ## [1.2.0] - 2024-01-15
+ * //
+ * // ### ✨ Features
+ * //
+ * // - add user login ([abc123](https://github.com/user/repo/commit/abc123...))
+ * ```
  */
 export function generateChangelogMarkdown(
   version: string,
@@ -912,7 +1383,25 @@ export function generateChangelogMarkdown(
 }
 
 /**
- * Suggest commit type based on file changes
+ * Suggest conventional commit type based on file paths and patterns
+ *
+ * @param files - Array of file paths that were changed
+ * @returns Suggested CommitType based on file patterns
+ *
+ * @example
+ * ```typescript
+ * const testFiles = ['src/utils.test.ts', 'src/api.spec.js'];
+ * console.log(suggestCommitType(testFiles)); // 'test'
+ *
+ * const docFiles = ['README.md', 'docs/api.md'];
+ * console.log(suggestCommitType(docFiles)); // 'docs'
+ *
+ * const mixedFiles = ['src/api.ts', 'package.json'];
+ * console.log(suggestCommitType(mixedFiles)); // 'build' (package.json detected)
+ *
+ * const newFeatureFiles = ['src/newComponent.tsx'];
+ * console.log(suggestCommitType(newFeatureFiles)); // 'feat'
+ * ```
  */
 export function suggestCommitType(files: string[]): CommitType {
   const patterns: Array<{ pattern: RegExp; type: CommitType }> = [
