@@ -92,7 +92,28 @@ export class SuggestionMatcher {
    * @returns SuggestionResult if a matching pattern is found, undefined otherwise
    */
   public getSuggestion(error: string | Error): SuggestionResult | undefined {
-    const errorMessage = typeof error === 'string' ? error : error.message;
+    // Handle null, undefined, or non-string/non-Error inputs gracefully
+    if (!error) {
+      return undefined;
+    }
+
+    let errorMessage: string;
+    if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error && typeof error === 'object' && 'message' in error) {
+      errorMessage = String(error.message || '');
+    } else {
+      // Handle non-string, non-Error inputs by converting to string
+      errorMessage = String(error);
+    }
+
+    // Return undefined for empty or whitespace-only messages
+    if (!errorMessage || !errorMessage.trim()) {
+      return undefined;
+    }
+
+    // Trim the message for consistent processing
+    errorMessage = errorMessage.trim();
 
     // First, try to match by TypeScript error code (highest confidence)
     const tsCodeMatch = errorMessage.match(/TS(\d{4,5})/);

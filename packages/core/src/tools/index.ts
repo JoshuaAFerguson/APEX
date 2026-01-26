@@ -125,3 +125,18 @@ export {
   webToolClasses,
   webTools,
 } from './web/index.js';
+
+// Browser tools
+export {
+  BrowserTool,
+  type BrowserToolInput,
+  type BrowserToolOutput,
+  type BrowserOperation,
+  type BrowserToolOptions,
+  registerBrowserTools,
+  registerBrowserToolsGlobal,
+  registerBrowserTool,
+  createBrowserTool,
+  browserToolClasses,
+  browserTools,
+} from './browser/index.js';

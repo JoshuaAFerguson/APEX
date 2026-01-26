@@ -74,6 +74,7 @@ export const ToolCategorySchema = z.enum([
   'search',      // Content/file searching (Grep, Glob)
   'shell',       // Command execution (Bash)
   'web',         // Web operations (WebFetch, WebSearch)
+  'browser',     // Browser automation (navigate, click, type, screenshot)
   'system',      // System-level operations
   'custom',      // User-defined tools
 ]);
@@ -359,6 +360,356 @@ export const BrowserErrorSchema = z.object({
   stackTrace: z.array(StackFrameSchema).optional(),
 });
 export type BrowserError = z.infer<typeof BrowserErrorSchema>;
+
+// ============================================================================
+// Browser Tool Operation Types
+// ============================================================================
+
+/**
+ * Browser operations supported by the BrowserTool
+ * Maps to MCP browser-tools operations
+ */
+export const BrowserOperationSchema = z.enum([
+  'navigate',           // Navigate to a URL
+  'click',              // Click on an element
+  'type',               // Type text into an element
+  'screenshot',         // Take a screenshot
+  'compareScreenshot',  // Compare screenshots for visual regression
+  'evaluate',           // Execute JavaScript in browser context
+  'submit',             // Submit a form
+  'waitForSelector',    // Wait for an element to appear
+  'getAttribute',       // Get element attribute value
+  'getText',            // Get element text content
+  'getHtml',            // Get element HTML content
+  'scroll',             // Scroll the page or element
+  'hover',              // Hover over an element
+]);
+export type BrowserOperation = z.infer<typeof BrowserOperationSchema>;
+
+/**
+ * Element state for waitForSelector operation
+ */
+export const ElementStateSchema = z.enum([
+  'attached',   // Element is in DOM
+  'detached',   // Element is not in DOM
+  'visible',    // Element is visible
+  'hidden',     // Element is hidden
+]);
+export type ElementState = z.infer<typeof ElementStateSchema>;
+
+/**
+ * Mouse button for click operation
+ */
+export const MouseButtonSchema = z.enum(['left', 'right', 'middle']);
+export type MouseButton = z.infer<typeof MouseButtonSchema>;
+
+/**
+ * Click options for the click operation
+ */
+export const ClickOptionsSchema = z.object({
+  /** Mouse button to use for click (default: 'left') */
+  button: MouseButtonSchema.optional(),
+  /** Number of clicks (default: 1, use 2 for double-click) */
+  clickCount: z.number().int().min(1).max(3).optional(),
+  /** Delay between mousedown and mouseup in milliseconds */
+  delay: z.number().int().min(0).optional(),
+  /** Position offset from element center */
+  position: z.object({
+    x: z.number(),
+    y: z.number(),
+  }).optional(),
+  /** Whether to force click even if element is hidden */
+  force: z.boolean().optional(),
+}).strict();
+export type ClickOptions = z.infer<typeof ClickOptionsSchema>;
+
+/**
+ * Type options for the type operation
+ */
+export const TypeOptionsSchema = z.object({
+  /** Delay between key presses in milliseconds */
+  delay: z.number().int().min(0).optional(),
+  /** Clear existing text before typing */
+  clear: z.boolean().optional(),
+}).strict();
+export type TypeOptions = z.infer<typeof TypeOptionsSchema>;
+
+/**
+ * Screenshot options for the screenshot operation
+ */
+export const ScreenshotOptionsSchema = z.object({
+  /** Capture full page screenshot */
+  fullPage: z.boolean().optional(),
+  /** Image format (default: 'png') */
+  format: z.enum(['png', 'jpeg']).optional(),
+  /** Quality for jpeg format (0-100) */
+  quality: z.number().int().min(0).max(100).optional(),
+  /** Omit background for transparent screenshots */
+  omitBackground: z.boolean().optional(),
+}).strict();
+export type ScreenshotOptions = z.infer<typeof ScreenshotOptionsSchema>;
+
+/**
+ * Wait options for waitForSelector operation
+ */
+export const WaitOptionsSchema = z.object({
+  /** Maximum time to wait in milliseconds (default: 30000) */
+  timeout: z.number().int().min(0).optional(),
+  /** Element state to wait for (default: 'visible') */
+  state: ElementStateSchema.optional(),
+}).strict();
+export type WaitOptions = z.infer<typeof WaitOptionsSchema>;
+
+/**
+ * Compare screenshot options for visual regression testing
+ */
+export const CompareScreenshotOptionsSchema = z.object({
+  /** Pixel difference threshold (0-1, default: 0.01) */
+  threshold: z.number().min(0).max(1).optional(),
+  /** Include anti-aliasing detection */
+  includeAA: z.boolean().optional(),
+}).strict();
+export type CompareScreenshotOptions = z.infer<typeof CompareScreenshotOptionsSchema>;
+
+/**
+ * Scroll options for the scroll operation
+ */
+export const ScrollOptionsSchema = z.object({
+  /** Horizontal scroll offset */
+  x: z.number().optional(),
+  /** Vertical scroll offset */
+  y: z.number().optional(),
+  /** Scroll behavior */
+  behavior: z.enum(['auto', 'smooth']).optional(),
+}).strict();
+export type ScrollOptions = z.infer<typeof ScrollOptionsSchema>;
+
+/**
+ * Parameters for navigate operation
+ */
+export const NavigateParamsSchema = z.object({
+  /** URL to navigate to */
+  url: z.string().url(),
+  /** Wait until navigation condition (default: 'load') */
+  waitUntil: z.enum(['load', 'domcontentloaded', 'networkidle']).optional(),
+  /** Navigation timeout in milliseconds */
+  timeout: z.number().int().min(0).optional(),
+}).strict();
+export type NavigateParams = z.infer<typeof NavigateParamsSchema>;
+
+/**
+ * Parameters for click operation
+ */
+export const ClickParamsSchema = z.object({
+  /** CSS selector for the element to click */
+  selector: z.string().min(1),
+  /** Click options */
+  options: ClickOptionsSchema.optional(),
+}).strict();
+export type ClickParams = z.infer<typeof ClickParamsSchema>;
+
+/**
+ * Parameters for type operation
+ */
+export const TypeParamsSchema = z.object({
+  /** CSS selector for the input element */
+  selector: z.string().min(1),
+  /** Text to type */
+  text: z.string(),
+  /** Type options */
+  options: TypeOptionsSchema.optional(),
+}).strict();
+export type TypeParams = z.infer<typeof TypeParamsSchema>;
+
+/**
+ * Parameters for screenshot operation
+ */
+export const ScreenshotParamsSchema = z.object({
+  /** CSS selector for element to screenshot (optional, defaults to page) */
+  selector: z.string().min(1).optional(),
+  /** File path to save screenshot (optional, returns base64 if not provided) */
+  path: z.string().optional(),
+  /** Screenshot options */
+  options: ScreenshotOptionsSchema.optional(),
+}).strict();
+export type ScreenshotParams = z.infer<typeof ScreenshotParamsSchema>;
+
+/**
+ * Parameters for compareScreenshot operation
+ */
+export const CompareScreenshotParamsSchema = z.object({
+  /** Path to baseline screenshot */
+  baseline: z.string().min(1),
+  /** Path to current screenshot (optional, takes new screenshot if not provided) */
+  current: z.string().optional(),
+  /** Comparison options */
+  options: CompareScreenshotOptionsSchema.optional(),
+}).strict();
+export type CompareScreenshotParams = z.infer<typeof CompareScreenshotParamsSchema>;
+
+/**
+ * Parameters for evaluate operation
+ */
+export const EvaluateParamsSchema = z.object({
+  /** JavaScript code to execute in browser context */
+  script: z.string().min(1),
+  /** Arguments to pass to the script function */
+  args: z.array(z.unknown()).optional(),
+}).strict();
+export type EvaluateParams = z.infer<typeof EvaluateParamsSchema>;
+
+/**
+ * Parameters for submit operation
+ */
+export const SubmitParamsSchema = z.object({
+  /** CSS selector for the form or submit button */
+  selector: z.string().min(1),
+}).strict();
+export type SubmitParams = z.infer<typeof SubmitParamsSchema>;
+
+/**
+ * Parameters for waitForSelector operation
+ */
+export const WaitForSelectorParamsSchema = z.object({
+  /** CSS selector to wait for */
+  selector: z.string().min(1),
+  /** Wait options */
+  options: WaitOptionsSchema.optional(),
+}).strict();
+export type WaitForSelectorParams = z.infer<typeof WaitForSelectorParamsSchema>;
+
+/**
+ * Parameters for getAttribute operation
+ */
+export const GetAttributeParamsSchema = z.object({
+  /** CSS selector for the element */
+  selector: z.string().min(1),
+  /** Attribute name to get */
+  attribute: z.string().min(1),
+}).strict();
+export type GetAttributeParams = z.infer<typeof GetAttributeParamsSchema>;
+
+/**
+ * Parameters for getText operation
+ */
+export const GetTextParamsSchema = z.object({
+  /** CSS selector for the element */
+  selector: z.string().min(1),
+}).strict();
+export type GetTextParams = z.infer<typeof GetTextParamsSchema>;
+
+/**
+ * Parameters for getHtml operation
+ */
+export const GetHtmlParamsSchema = z.object({
+  /** CSS selector for the element */
+  selector: z.string().min(1),
+  /** Whether to include outer HTML (default: true) */
+  outer: z.boolean().optional(),
+}).strict();
+export type GetHtmlParams = z.infer<typeof GetHtmlParamsSchema>;
+
+/**
+ * Parameters for scroll operation
+ */
+export const ScrollParamsSchema = z.object({
+  /** CSS selector for element to scroll (optional, defaults to page) */
+  selector: z.string().min(1).optional(),
+  /** Scroll options */
+  options: ScrollOptionsSchema.optional(),
+}).strict();
+export type ScrollParams = z.infer<typeof ScrollParamsSchema>;
+
+/**
+ * Parameters for hover operation
+ */
+export const HoverParamsSchema = z.object({
+  /** CSS selector for the element to hover over */
+  selector: z.string().min(1),
+  /** Position offset from element center */
+  position: z.object({
+    x: z.number(),
+    y: z.number(),
+  }).optional(),
+}).strict();
+export type HoverParams = z.infer<typeof HoverParamsSchema>;
+
+/**
+ * Discriminated union of all browser operation parameters
+ * Uses the 'operation' field as the discriminator
+ */
+export const BrowserToolInputSchema = z.discriminatedUnion('operation', [
+  z.object({ operation: z.literal('navigate'), params: NavigateParamsSchema }),
+  z.object({ operation: z.literal('click'), params: ClickParamsSchema }),
+  z.object({ operation: z.literal('type'), params: TypeParamsSchema }),
+  z.object({ operation: z.literal('screenshot'), params: ScreenshotParamsSchema.optional() }),
+  z.object({ operation: z.literal('compareScreenshot'), params: CompareScreenshotParamsSchema }),
+  z.object({ operation: z.literal('evaluate'), params: EvaluateParamsSchema }),
+  z.object({ operation: z.literal('submit'), params: SubmitParamsSchema }),
+  z.object({ operation: z.literal('waitForSelector'), params: WaitForSelectorParamsSchema }),
+  z.object({ operation: z.literal('getAttribute'), params: GetAttributeParamsSchema }),
+  z.object({ operation: z.literal('getText'), params: GetTextParamsSchema }),
+  z.object({ operation: z.literal('getHtml'), params: GetHtmlParamsSchema }),
+  z.object({ operation: z.literal('scroll'), params: ScrollParamsSchema.optional() }),
+  z.object({ operation: z.literal('hover'), params: HoverParamsSchema }),
+]);
+export type BrowserToolInput = z.infer<typeof BrowserToolInputSchema>;
+
+/**
+ * Screenshot comparison result
+ */
+export const ScreenshotComparisonResultSchema = z.object({
+  /** Whether the screenshots match within threshold */
+  match: z.boolean(),
+  /** Pixel difference percentage (0-1) */
+  diffPercentage: z.number().min(0).max(1),
+  /** Number of different pixels */
+  diffPixels: z.number().int().min(0),
+  /** Path to diff image (if generated) */
+  diffImagePath: z.string().optional(),
+  /** Dimensions of compared images */
+  dimensions: z.object({
+    width: z.number().int().min(0),
+    height: z.number().int().min(0),
+  }),
+});
+export type ScreenshotComparisonResult = z.infer<typeof ScreenshotComparisonResultSchema>;
+
+/**
+ * Output from the BrowserTool
+ * Contains operation-specific results
+ */
+export const BrowserToolOutputSchema = z.object({
+  /** Whether the operation succeeded */
+  success: z.boolean(),
+  /** The operation that was executed */
+  operation: BrowserOperationSchema,
+  /** Current page URL (after operation) */
+  url: z.string().optional(),
+  /** Current page title */
+  title: z.string().optional(),
+  /** Screenshot data (base64) or path */
+  screenshot: z.string().optional(),
+  /** Screenshot comparison result */
+  comparisonResult: ScreenshotComparisonResultSchema.optional(),
+  /** HTML content from getHtml operation */
+  html: z.string().optional(),
+  /** Text content from getText operation */
+  text: z.string().optional(),
+  /** Attribute value from getAttribute operation */
+  attributeValue: z.string().nullable().optional(),
+  /** Result from evaluate operation */
+  evaluationResult: z.unknown().optional(),
+  /** Operation duration in milliseconds */
+  duration: z.number().optional(),
+  /** Error message if operation failed */
+  error: z.string().optional(),
+  /** Console messages captured during operation */
+  consoleMessages: z.array(ConsoleMessageSchema).optional(),
+  /** Browser errors captured during operation */
+  browserErrors: z.array(BrowserErrorSchema).optional(),
+});
+export type BrowserToolOutput = z.infer<typeof BrowserToolOutputSchema>;
 
 /**
  * Configuration for search tools (Grep)

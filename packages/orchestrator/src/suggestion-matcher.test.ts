@@ -488,4 +488,83 @@ describe('SuggestionMatcher', () => {
       });
     });
   });
+
+  describe('Additional edge cases', () => {
+    test('should handle Error objects with stack traces', () => {
+      const error = new Error("TS2339: Property 'missing' does not exist");
+      error.stack = "Error: TS2339: Property 'missing' does not exist\n    at test.ts:10:5";
+      const result = matcher.getSuggestion(error);
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.code).toBe('TS2339');
+      expect(result?.confidence).toBe('high');
+    });
+
+    test('should handle very long error messages', () => {
+      const longMessage = "TS2345: ".repeat(100) + "Argument of type 'string' is not assignable to parameter of type 'number'";
+      const result = matcher.getSuggestion(longMessage);
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.code).toBe('TS2345');
+    });
+
+    test('should handle null and undefined inputs gracefully', () => {
+      expect(() => matcher.getSuggestion(null as any)).not.toThrow();
+      expect(() => matcher.getSuggestion(undefined as any)).not.toThrow();
+      expect(matcher.getSuggestion(null as any)).toBeUndefined();
+      expect(matcher.getSuggestion(undefined as any)).toBeUndefined();
+    });
+
+    test('should handle numbers and other non-string types', () => {
+      expect(() => matcher.getSuggestion(12345 as any)).not.toThrow();
+      expect(() => matcher.getSuggestion(true as any)).not.toThrow();
+      expect(() => matcher.getSuggestion({} as any)).not.toThrow();
+      expect(matcher.getSuggestion(12345 as any)).toBeUndefined();
+    });
+
+    test('should handle error messages with unicode characters', () => {
+      const result = matcher.getSuggestion("TS2304: Cannot find name '变量'");
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.code).toBe('TS2304');
+    });
+
+    test('should handle error messages with special characters and newlines', () => {
+      const multilineError = "TS2322: Type 'string' is not\nassignable to type 'number'\n  at line 42";
+      const result = matcher.getSuggestion(multilineError);
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.code).toBe('TS2322');
+    });
+
+    test('should handle error messages with leading/trailing whitespace', () => {
+      const result = matcher.getSuggestion("   TS2304: Cannot find name 'test'   \n\t");
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.code).toBe('TS2304');
+      expect(result?.confidence).toBe('high');
+    });
+
+    test('should prioritize exact TS code matches over similar patterns', () => {
+      // This message could potentially match multiple patterns, but should use TS code
+      const result = matcher.getSuggestion("TS2307: Cannot find module 'missing' or its type declarations");
+      expect(result?.code).toBe('TS2307');
+      expect(result?.confidence).toBe('high');
+      expect(result?.category).toBe('typescript');
+    });
+
+    test('should handle case where error message only contains pattern text', () => {
+      const result = matcher.getSuggestion("ENOENT");
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('filesystem');
+      expect(result?.confidence).toBe('medium');
+    });
+
+    test('should handle mixed case TypeScript error codes', () => {
+      const result = matcher.getSuggestion("ts2304: Cannot find name 'Test'");
+      expect(result).toBeDefined();
+      expect(result?.category).toBe('typescript');
+      expect(result?.confidence).toBe('medium'); // Should be medium since code is not uppercase
+    });
+  });
 });
