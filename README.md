@@ -551,6 +551,216 @@ generateApprovalId();  // "apr_lx2n8p_m3n4o5p6"
 
 All ID generation functions create unique identifiers using timestamps and cryptographic randomness for collision-free operation across distributed systems.
 
+### Connection Health Management
+
+APEX provides robust connection health monitoring with configurable health check methods and automatic reconnection triggers.
+
+#### `ConnectionHealthManager` class
+
+Unified health checking across different connection types (WebSocket, MCP, databases, APIs) with comprehensive monitoring and event emission.
+
+```typescript
+import { ConnectionHealthManager } from '@apex/core';
+
+// Create health manager with global configuration
+const healthManager = new ConnectionHealthManager({
+  enabled: true,
+  method: 'ping',
+  intervalMs: 30000,
+  timeoutMs: 5000,
+  failureThreshold: 3,
+  triggerReconnectOnFailure: true
+});
+
+// Register a connection for monitoring
+healthManager.register('websocket-connection', {
+  method: 'heartbeat',
+  intervalMs: 15000
+});
+
+// Listen to health events
+healthManager.on('health:healthy', (connectionId, state, result) => {
+  console.log(`Connection ${connectionId} is healthy`);
+});
+
+healthManager.on('health:unhealthy', (connectionId, state, result) => {
+  console.log(`Connection ${connectionId} is unhealthy`);
+});
+
+// Manual health check
+const healthResult = await healthManager.performHealthCheck('websocket-connection');
+
+// Get current health state and statistics
+const state = healthManager.getHealthState('websocket-connection');
+const stats = healthManager.getHealthStats('websocket-connection');
+```
+
+### Exponential Backoff Reconnection
+
+APEX includes a sophisticated exponential backoff reconnection manager for handling connection failures with configurable strategies.
+
+#### `ExponentialBackoffReconnector` class
+
+Implements configurable exponential backoff with jitter strategies to prevent thundering herd problems and provide reliable reconnection behavior.
+
+```typescript
+import { ExponentialBackoffReconnector } from '@apex/core';
+
+// Create reconnector with custom configuration
+const reconnector = new ExponentialBackoffReconnector({
+  baseDelayMs: 1000,       // Start with 1 second delay
+  backoffFactor: 2,        // Double the delay each retry
+  maxDelayMs: 30000,       // Cap at 30 seconds
+  maxRetries: 5,           // Maximum 5 attempts
+  jitterStrategy: 'equal'  // Add jitter to prevent thundering herd
+});
+
+// Listen to reconnection events
+reconnector.on('reconnect:attempt', (attempt, delayMs) => {
+  console.log(`Reconnection attempt ${attempt} in ${delayMs}ms`);
+});
+
+reconnector.on('reconnect:success', (attempt, totalTime) => {
+  console.log(`Reconnection succeeded after ${attempt} attempts`);
+});
+
+// Handle disconnection and schedule reconnection
+reconnector.notifyDisconnected('Connection lost');
+reconnector.scheduleReconnect(async () => {
+  // Your reconnection logic here
+  await connectToService();
+});
+
+// Check reconnection state
+const isReconnecting = reconnector.isReconnecting();
+const stats = reconnector.getStats();
+```
+
+### Additional Utility Functions
+
+APEX includes many other utility functions for common development tasks:
+
+#### Deep Object Merging
+
+```typescript
+import { deepMerge } from '@apex/core';
+
+const target = { a: 1, b: { x: 1, y: 2 } };
+const source = { b: { y: 3, z: 4 }, c: 5 };
+const merged = deepMerge(target, source);
+// Result: { a: 1, b: { x: 1, y: 3, z: 4 }, c: 5 }
+```
+
+#### Retry with Exponential Backoff
+
+```typescript
+import { retry } from '@apex/core';
+
+const result = await retry(
+  async () => {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error('Request failed');
+    return response.json();
+  },
+  {
+    maxAttempts: 3,
+    initialDelay: 1000,
+    maxDelay: 10000,
+    backoffFactor: 2
+  }
+);
+```
+
+#### Deferred Promises
+
+```typescript
+import { createDeferred } from '@apex/core';
+
+const deferred = createDeferred<string>();
+
+// Resolve later
+setTimeout(() => {
+  deferred.resolve('Hello World');
+}, 1000);
+
+const result = await deferred.promise; // "Hello World"
+```
+
+#### Safe JSON Parsing
+
+```typescript
+import { safeJsonParse } from '@apex/core';
+
+const data = safeJsonParse('{"valid": "json"}', {});
+const fallback = safeJsonParse('invalid json', { error: true });
+```
+
+### Security Scanning
+
+APEX provides comprehensive security scanning capabilities to detect sensitive information and prevent data leaks.
+
+#### `SecretScanner` class
+
+The SecretScanner utility identifies sensitive information in code and configuration files using configurable detection patterns.
+
+```typescript
+import { SecretScanner } from '@apex/core';
+
+// Create scanner with default settings
+const scanner = new SecretScanner();
+
+// Scan content for potential issues
+const content = 'const config = { value: "example_here" };';
+const detections = scanner.scan(content);
+
+// Add custom detection patterns
+scanner.addPattern({
+  name: 'Custom Pattern',
+  pattern: 'custom_[0-9]{8}',
+  severity: 'medium',
+  description: 'Custom system identifier'
+});
+
+// Manage scanner configuration
+scanner.updateOptions({
+  maxLineLength: 8000,
+  contextLength: 25
+});
+```
+
+#### Tool Output Truncation
+
+```typescript
+import { truncateToolOutput } from '@apex/core';
+
+// Truncate long output while preserving structure
+const result = truncateToolOutput(longOutput, {
+  maxLength: 5000,
+  preserveJson: true,
+  wordBoundary: true
+});
+
+// Result includes:
+// - output: truncated content
+// - truncated: boolean indicating if truncation occurred
+// - originalLength: original string length
+// - truncatedLength: final string length
+```
+
+#### Conflict Detection and Resolution
+
+```typescript
+import { detectConflicts, suggestConflictResolution } from '@apex/core';
+
+const conflicts = detectConflicts(fileContent, 'src/file.js');
+if (conflicts) {
+  for (const marker of conflicts.conflictMarkers) {
+    const suggestions = suggestConflictResolution(marker);
+    console.log('Resolution suggestions:', suggestions);
+  }
+}
+```
+
 ### Path Utilities
 
 APEX provides cross-platform path utility functions in the `@apex/core` package for handling file system paths across Windows, macOS, and Linux.
