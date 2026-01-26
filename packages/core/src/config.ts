@@ -38,34 +38,98 @@ const SCRIPTS_DIR = 'scripts';
 const TOOLS_DIR = 'tools';
 
 /**
- * Container workspace validation error types
+ * Represents validation errors that occur during container workspace configuration validation.
+ * These errors indicate critical issues that prevent container workspace functionality.
+ *
+ * @interface ContainerValidationError
+ * @example
+ * ```typescript
+ * const error: ContainerValidationError = {
+ *   type: 'missing_runtime',
+ *   message: 'Docker is not installed or not functional',
+ *   suggestion: 'Please install Docker Desktop'
+ * };
+ * ```
  */
 export interface ContainerValidationError {
+  /** The category of validation error that occurred */
   type: 'missing_runtime' | 'missing_image' | 'runtime_not_functional';
+  /** Human-readable error message describing the issue */
   message: string;
+  /** Optional suggestion for resolving the error */
   suggestion?: string;
 }
 
 /**
- * Container workspace validation warning types
+ * Represents validation warnings that occur during container workspace configuration validation.
+ * These warnings indicate potential issues that may affect functionality but don't prevent operation.
+ *
+ * @interface ContainerValidationWarning
+ * @example
+ * ```typescript
+ * const warning: ContainerValidationWarning = {
+ *   type: 'no_image_specified',
+ *   message: 'No default container image specified',
+ *   suggestion: 'Consider setting workspace.container.image to "node:20-alpine"'
+ * };
+ * ```
  */
 export interface ContainerValidationWarning {
+  /** The category of validation warning that occurred */
   type: 'no_image_specified';
+  /** Human-readable warning message describing the potential issue */
   message: string;
+  /** Optional suggestion for addressing the warning */
   suggestion?: string;
 }
 
 /**
- * Container workspace validation result
+ * Contains the complete results of container workspace configuration validation.
+ * Includes overall validity status and lists of any errors or warnings found.
+ *
+ * @interface ContainerValidationResult
+ * @example
+ * ```typescript
+ * const result: ContainerValidationResult = {
+ *   valid: false,
+ *   errors: [{
+ *     type: 'missing_runtime',
+ *     message: 'Docker not found',
+ *     suggestion: 'Install Docker Desktop'
+ *   }],
+ *   warnings: [{
+ *     type: 'no_image_specified',
+ *     message: 'No default image set',
+ *     suggestion: 'Set workspace.container.image'
+ *   }]
+ * };
+ * ```
  */
 export interface ContainerValidationResult {
+  /** Whether the container workspace configuration passed validation */
   valid: boolean;
+  /** Array of critical errors that prevent container workspace functionality */
   errors: ContainerValidationError[];
+  /** Array of warnings about potential configuration issues */
   warnings: ContainerValidationWarning[];
 }
 
 /**
- * Check if APEX is initialized in the given directory
+ * Checks if APEX is initialized in the specified project directory by verifying
+ * the existence of the .apex directory.
+ *
+ * @param projectPath - The absolute path to the project directory to check
+ * @returns Promise that resolves to true if APEX is initialized, false otherwise
+ * @throws {Error} Does not throw - returns false if directory access fails
+ * @example
+ * ```typescript
+ * const isInitialized = await isApexInitialized('/path/to/project');
+ * if (isInitialized) {
+ *   console.log('APEX is already initialized');
+ * } else {
+ *   console.log('Run "apex init" to initialize APEX');
+ * }
+ * ```
  */
 export async function isApexInitialized(projectPath: string): Promise<boolean> {
   const apexDir = normalizePath(path.join(projectPath, APEX_DIR));
@@ -78,7 +142,28 @@ export async function isApexInitialized(projectPath: string): Promise<boolean> {
 }
 
 /**
- * Validate container workspace configuration
+ * Validates container workspace configuration and checks for runtime availability.
+ * Ensures that container workspaces can function properly by verifying Docker/Podman
+ * installation and configuration completeness.
+ *
+ * @param config - The APEX configuration object to validate
+ * @returns Promise resolving to validation result with errors and warnings
+ * @throws {Error} Does not throw - captures runtime detection errors in result
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * const validation = await validateContainerWorkspaceConfig(config);
+ *
+ * if (!validation.valid) {
+ *   console.error('Container workspace validation failed:');
+ *   validation.errors.forEach(err => console.error(err.message));
+ * }
+ *
+ * if (validation.warnings.length > 0) {
+ *   console.warn('Container workspace warnings:');
+ *   validation.warnings.forEach(warn => console.warn(warn.message));
+ * }
+ * ```
  */
 export async function validateContainerWorkspaceConfig(config: ApexConfig): Promise<ContainerValidationResult> {
   const result: ContainerValidationResult = {
@@ -132,7 +217,25 @@ export async function validateContainerWorkspaceConfig(config: ApexConfig): Prom
 }
 
 /**
- * Load the APEX configuration from a project
+ * Loads and validates the APEX configuration from a project directory.
+ * Automatically merges tool aliases, hooks, and validates container workspace configuration.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns Promise resolving to the validated APEX configuration
+ * @throws {Error} When APEX is not initialized, config is invalid, or validation fails
+ * @example
+ * ```typescript
+ * try {
+ *   const config = await loadConfig('/path/to/project');
+ *   console.log(`Loaded config for project: ${config.project.name}`);
+ * } catch (error) {
+ *   if (error.message.includes('not initialized')) {
+ *     console.error('Run "apex init" first');
+ *   } else {
+ *     console.error('Config validation failed:', error.message);
+ *   }
+ * }
+ * ```
  */
 export async function loadConfig(projectPath: string): Promise<ApexConfig> {
   const configPath = normalizePath(path.join(projectPath, APEX_DIR, CONFIG_FILE));
@@ -209,7 +312,20 @@ export async function loadConfig(projectPath: string): Promise<ApexConfig> {
 }
 
 /**
- * Save the APEX configuration
+ * Saves the APEX configuration to the project's config.yaml file.
+ * Serializes the configuration object to YAML format with proper indentation.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param config - The APEX configuration object to save
+ * @returns Promise that resolves when the configuration is successfully saved
+ * @throws {Error} When the file cannot be written (permissions, disk space, etc.)
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * config.project.name = 'Updated Project Name';
+ * await saveConfig('/path/to/project', config);
+ * console.log('Configuration saved successfully');
+ * ```
  */
 export async function saveConfig(projectPath: string, config: ApexConfig): Promise<void> {
   const configPath = normalizePath(path.join(projectPath, APEX_DIR, CONFIG_FILE));
@@ -218,7 +334,20 @@ export async function saveConfig(projectPath: string, config: ApexConfig): Promi
 }
 
 /**
- * Load all agent definitions from the project
+ * Loads all agent definitions from the project's .apex/agents directory.
+ * Scans for .md files containing agent definitions with YAML frontmatter.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns Promise resolving to a record mapping agent names to their definitions
+ * @throws {Error} When agent files cannot be read or parsed (except ENOENT which is ignored)
+ * @example
+ * ```typescript
+ * const agents = await loadAgents('/path/to/project');
+ * Object.keys(agents).forEach(agentName => {
+ *   const agent = agents[agentName];
+ *   console.log(`Found agent: ${agent.name} - ${agent.description}`);
+ * });
+ * ```
  */
 export async function loadAgents(
   projectPath: string
@@ -250,7 +379,27 @@ export async function loadAgents(
 }
 
 /**
- * Parse agent definition from markdown with YAML frontmatter
+ * Parses an agent definition from markdown content with YAML frontmatter.
+ * Extracts metadata from the frontmatter and uses the markdown body as the agent prompt.
+ *
+ * @param content - The raw markdown content with YAML frontmatter
+ * @returns The parsed agent definition, or null if the content is invalid
+ * @throws {Error} When YAML parsing fails or agent definition validation fails
+ * @example
+ * ```typescript
+ * const markdown = `---
+ * name: developer
+ * description: Writes production code
+ * tools: Read,Write,Bash
+ * model: sonnet
+ * ---
+ * You are a senior developer...`;
+ *
+ * const agent = parseAgentMarkdown(markdown);
+ * if (agent) {
+ *   console.log(`Parsed agent: ${agent.name}`);
+ * }
+ * ```
  */
 export function parseAgentMarkdown(content: string): AgentDefinition | null {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
@@ -287,7 +436,20 @@ export function parseAgentMarkdown(content: string): AgentDefinition | null {
 }
 
 /**
- * Load all workflow definitions from the project
+ * Loads all workflow definitions from the project's .apex/workflows directory.
+ * Scans for .yaml and .yml files containing workflow definitions.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns Promise resolving to a record mapping workflow names to their definitions
+ * @throws {Error} When workflow files cannot be read or parsed (except ENOENT which is ignored)
+ * @example
+ * ```typescript
+ * const workflows = await loadWorkflows('/path/to/project');
+ * Object.keys(workflows).forEach(workflowName => {
+ *   const workflow = workflows[workflowName];
+ *   console.log(`Found workflow: ${workflow.name} with ${workflow.stages.length} stages`);
+ * });
+ * ```
  */
 export async function loadWorkflows(
   projectPath: string
@@ -316,7 +478,23 @@ export async function loadWorkflows(
 }
 
 /**
- * Load a specific workflow by name
+ * Loads a specific workflow definition by name from the project.
+ * Convenience function that loads all workflows and returns the specified one.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param workflowName - The name of the workflow to load
+ * @returns Promise resolving to the workflow definition, or null if not found
+ * @throws {Error} When workflow files cannot be read or parsed
+ * @example
+ * ```typescript
+ * const workflow = await loadWorkflow('/path/to/project', 'feature-development');
+ * if (workflow) {
+ *   console.log(`Loaded workflow: ${workflow.name}`);
+ *   workflow.stages.forEach(stage => console.log(`- Stage: ${stage.name}`));
+ * } else {
+ *   console.log('Workflow not found');
+ * }
+ * ```
  */
 export async function loadWorkflow(
   projectPath: string,
@@ -327,7 +505,20 @@ export async function loadWorkflow(
 }
 
 /**
- * Load all tool aliases from the .apex/tools/ directory
+ * Loads all tool aliases from the project's .apex/tools directory.
+ * Scans for .yaml and .yml files containing tool alias definitions.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns Promise resolving to a record mapping alias names to their definitions
+ * @throws {Error} When alias files cannot be read or parsed (except ENOENT which is ignored)
+ * @example
+ * ```typescript
+ * const aliases = await loadToolAliases('/path/to/project');
+ * Object.keys(aliases).forEach(aliasName => {
+ *   const alias = aliases[aliasName];
+ *   console.log(`Found alias: ${alias.name} -> ${alias.command}`);
+ * });
+ * ```
  */
 export async function loadToolAliases(
   projectPath: string
@@ -356,8 +547,22 @@ export async function loadToolAliases(
 }
 
 /**
- * Get merged tool aliases from both config.yaml and .apex/tools/ directory
- * File-based aliases take precedence over config.yaml aliases
+ * Merges tool aliases from config.yaml and .apex/tools directory.
+ * File-based aliases take precedence over config.yaml aliases when there are naming conflicts.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param configAliases - Array of aliases from config.yaml (defaults to empty array)
+ * @returns Promise resolving to a record of merged aliases with file-based aliases prioritized
+ * @throws {Error} When alias files cannot be loaded or parsed
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * const mergedAliases = await getMergedAliases('/path/to/project', config.aliases);
+ *
+ * Object.values(mergedAliases).forEach(alias => {
+ *   console.log(`Alias: ${alias.name} - ${alias.command}`);
+ * });
+ * ```
  */
 export async function getMergedAliases(
   projectPath: string,
@@ -383,14 +588,45 @@ export async function getMergedAliases(
 }
 
 /**
- * Get the path to a skill directory
+ * Constructs the file path to a specific skill's SKILL.md file.
+ * Skills are stored in .apex/skills/{skillName}/SKILL.md format.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param skillName - The name of the skill to get the path for
+ * @returns The absolute path to the skill's SKILL.md file
+ * @throws Does not throw - path construction is always successful
+ * @example
+ * ```typescript
+ * const skillPath = getSkillPath('/path/to/project', 'typescript-testing');
+ * // Returns: "/path/to/project/.apex/skills/typescript-testing/SKILL.md"
+ *
+ * const content = await loadSkill('/path/to/project', 'typescript-testing');
+ * if (content) {
+ *   console.log('Skill content loaded from:', skillPath);
+ * }
+ * ```
  */
 export function getSkillPath(projectPath: string, skillName: string): string {
   return normalizePath(path.join(projectPath, APEX_DIR, SKILLS_DIR, skillName, 'SKILL.md'));
 }
 
 /**
- * Load a skill's content
+ * Loads the content of a specific skill from its SKILL.md file.
+ * Skills contain reusable knowledge and procedures for agents.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param skillName - The name of the skill to load
+ * @returns Promise resolving to the skill content as a string, or null if not found
+ * @throws Does not throw - returns null if file cannot be read
+ * @example
+ * ```typescript
+ * const skillContent = await loadSkill('/path/to/project', 'typescript-testing');
+ * if (skillContent) {
+ *   console.log('Loaded skill content:', skillContent.substring(0, 100) + '...');
+ * } else {
+ *   console.log('Skill not found or could not be loaded');
+ * }
+ * ```
  */
 export async function loadSkill(projectPath: string, skillName: string): Promise<string | null> {
   const skillPath = getSkillPath(projectPath, skillName);
@@ -403,14 +639,44 @@ export async function loadSkill(projectPath: string, skillName: string): Promise
 }
 
 /**
- * Get the scripts directory path
+ * Constructs the path to the project's scripts directory.
+ * Scripts are stored in .apex/scripts for project automation.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns The absolute path to the .apex/scripts directory
+ * @throws Does not throw - path construction is always successful
+ * @example
+ * ```typescript
+ * const scriptsDir = getScriptsDir('/path/to/project');
+ * // Returns: "/path/to/project/.apex/scripts"
+ *
+ * const scripts = await listScripts('/path/to/project');
+ * scripts.forEach(script => {
+ *   console.log('Available script:', script);
+ * });
+ * ```
  */
 export function getScriptsDir(projectPath: string): string {
   return normalizePath(path.join(projectPath, APEX_DIR, SCRIPTS_DIR));
 }
 
 /**
- * List available scripts
+ * Lists all available scripts in the project's .apex/scripts directory.
+ * Filters for shell (.sh), JavaScript (.js), and TypeScript (.ts) files.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @returns Promise resolving to an array of script filenames (without paths)
+ * @throws Does not throw - returns empty array if directory cannot be read
+ * @example
+ * ```typescript
+ * const scripts = await listScripts('/path/to/project');
+ * if (scripts.length > 0) {
+ *   console.log('Available scripts:');
+ *   scripts.forEach(script => console.log(`- ${script}`));
+ * } else {
+ *   console.log('No scripts found');
+ * }
+ * ```
  */
 export async function listScripts(projectPath: string): Promise<string[]> {
   const scriptsDir = getScriptsDir(projectPath);
@@ -424,8 +690,23 @@ export async function listScripts(projectPath: string): Promise<string[]> {
 }
 
 /**
- * Load MCP server configurations from config
- * Normalizes both array and record formats to a Record
+ * Extracts and normalizes MCP server configurations from the APEX configuration.
+ * Converts both array and record formats to a consistent Record format for easier access.
+ *
+ * @param config - The APEX configuration object containing MCP settings
+ * @returns A record mapping server names to their configurations
+ * @throws Does not throw - returns empty object if no MCP servers configured
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * const servers = getMCPServers(config);
+ *
+ * Object.entries(servers).forEach(([name, serverConfig]) => {
+ *   console.log(`MCP Server: ${name}`);
+ *   console.log(`Command: ${serverConfig.command}`);
+ *   if (serverConfig.args) console.log(`Args: ${serverConfig.args.join(' ')}`);
+ * });
+ * ```
  */
 export function getMCPServers(config: ApexConfig): Record<string, MCPServerConfig> {
   const servers = config.mcp?.servers;
@@ -443,7 +724,23 @@ export function getMCPServers(config: ApexConfig): Record<string, MCPServerConfi
 }
 
 /**
- * Get MCP configuration with defaults applied
+ * Extracts MCP configuration from APEX config with default values applied.
+ * Ensures all MCP settings have sensible defaults even if not explicitly configured.
+ *
+ * @param config - The APEX configuration object to extract MCP settings from
+ * @returns Complete MCP configuration with defaults applied
+ * @throws Does not throw - always returns valid configuration object
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * const mcpConfig = getMCPConfig(config);
+ *
+ * console.log(`MCP enabled: ${mcpConfig.enabled}`);
+ * console.log(`Server count: ${Object.keys(mcpConfig.servers || {}).length}`);
+ * if (mcpConfig.connection) {
+ *   console.log(`Max retries: ${mcpConfig.connection.maxRetries}`);
+ * }
+ * ```
  */
 export function getMCPConfig(config: ApexConfig): MCPConfig {
   return {
@@ -456,14 +753,50 @@ export function getMCPConfig(config: ApexConfig): MCPConfig {
 }
 
 /**
- * Check if MCP is enabled in the configuration
+ * Checks whether MCP (Model Context Protocol) is enabled in the configuration.
+ * MCP is enabled by default if not explicitly configured.
+ *
+ * @param config - The APEX configuration object to check
+ * @returns True if MCP is enabled, false otherwise (defaults to true)
+ * @throws Does not throw - always returns a boolean value
+ * @example
+ * ```typescript
+ * const config = await loadConfig('/path/to/project');
+ * if (isMCPEnabled(config)) {
+ *   console.log('MCP is enabled - loading server configurations...');
+ *   const servers = getMCPServers(config);
+ * } else {
+ *   console.log('MCP is disabled - skipping server initialization');
+ * }
+ * ```
  */
 export function isMCPEnabled(config: ApexConfig): boolean {
   return config.mcp?.enabled ?? true;
 }
 
 /**
- * Initialize APEX in a project directory
+ * Initializes APEX in a project directory by creating the .apex structure and default configuration.
+ * Creates directories for agents, workflows, skills, scripts, and tools, then generates a default config.yaml.
+ *
+ * @param projectPath - The absolute path to the project directory to initialize
+ * @param options - Configuration options for initialization
+ * @param options.projectName - The name of the project for the configuration
+ * @param options.language - Optional primary programming language
+ * @param options.framework - Optional framework being used
+ * @returns Promise that resolves when initialization is complete
+ * @throws {Error} When directories cannot be created or config cannot be saved
+ * @example
+ * ```typescript
+ * await initializeApex('/path/to/project', {
+ *   projectName: 'my-awesome-project',
+ *   language: 'typescript',
+ *   framework: 'react'
+ * });
+ *
+ * console.log('APEX initialized successfully!');
+ * const config = await loadConfig('/path/to/project');
+ * console.log(`Project: ${config.project.name}`);
+ * ```
  */
 export async function initializeApex(
   projectPath: string,
@@ -722,11 +1055,23 @@ async function copyDirectory(source: string, destination: string): Promise<void>
 }
 
 /**
- * Get effective configuration by merging defaults with project config
+ * Creates a complete configuration object by merging the provided config with comprehensive defaults.
+ * Ensures all optional fields have sensible default values for consistent behavior across the system.
+ * This includes policy configuration, workspace settings, permissions, limits, and all other sections.
  *
- * This function ensures all optional fields have default values, including:
- * - Policy configuration with sensible defaults for file access, test requirements, and approval rules
- * - Workspace, permissions, limits, and other configuration sections
+ * @param config - The base APEX configuration to extend with defaults
+ * @returns A complete configuration object with all optional fields populated with defaults
+ * @throws Does not throw - always returns a valid complete configuration
+ * @example
+ * ```typescript
+ * const baseConfig = await loadConfig('/path/to/project');
+ * const completeConfig = getEffectiveConfig(baseConfig);
+ *
+ * // All fields are now guaranteed to have values
+ * console.log(`Max cost per task: ${completeConfig.limits.maxCostPerTask}`);
+ * console.log(`Policy enforcement: ${completeConfig.policy.enforcement}`);
+ * console.log(`MCP enabled: ${completeConfig.mcp.enabled}`);
+ * ```
  */
 export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
   return {
