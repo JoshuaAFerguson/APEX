@@ -2,6 +2,45 @@
 
 This directory contains end-to-end tests for APEX CLI commands using real git repositories and orchestrator integration.
 
+## Infrastructure
+
+The E2E test infrastructure provides:
+
+### Global Setup and Teardown
+- **`setup.ts`**: Global setup hooks for temporary directory management, git repository scaffolding, and resource cleanup
+- **`teardown.ts`**: Global teardown for final resource cleanup and orphaned process management
+- **`infrastructure-verification.test.ts`**: Verification tests for the E2E testing infrastructure itself
+
+### Test Configuration
+- **Root vitest.e2e.config.ts**: Optimized for E2E tests with extended timeouts, global setup/teardown, and proper test isolation
+- **Environment**: Node.js environment for backend/CLI testing
+- **Timeouts**: 60s for tests, 30s for hooks to handle real-world operations
+- **Process Pool**: Forked processes for test isolation
+- **Retry Policy**: 2 retries in CI for flaky real-world operations
+
+### Global Test Helpers
+Available via `globalThis.apexE2EHelpers`:
+- `createTempDir(prefix)`: Create isolated temporary directories
+- `createTempGitRepo(prefix)`: Create initialized git repositories
+- `createBareGitRepo(prefix)`: Create bare git repositories for remote simulation
+- `createApexProject(path, options)`: Create complete APEX project structures
+- `waitFor(condition, options)`: Extended timeout waiting utility
+- `registerOrchestrator/Server/Store(resource)`: Resource cleanup registration
+- `cleanupAll()`: Force cleanup of all registered resources
+
+### Usage
+```bash
+npm run test:e2e              # Run E2E tests once
+npm run test:e2e:watch        # Watch mode
+```
+
+All E2E tests automatically get:
+- Temporary directory isolation
+- Git repository management
+- Resource cleanup (orchestrators, servers, databases)
+- Extended timeouts for real-world operations
+- Global helper utilities
+
 ## Browse MCP Marketplace E2E Tests
 
 ### File: `browse-marketplace.e2e.test.ts`

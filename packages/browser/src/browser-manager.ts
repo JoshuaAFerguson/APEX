@@ -34,6 +34,30 @@ import {
  * - Resource monitoring and limits
  * - Automatic cleanup of idle instances
  * - Context isolation
+ *
+ * @fires BrowserManager#browserCreated - When a new browser instance is created
+ * @fires BrowserManager#contextCreated - When a new browser context is created
+ * @fires BrowserManager#contextClosed - When a browser context is closed
+ * @fires BrowserManager#browserClosed - When a browser instance is closed
+ * @fires BrowserManager#resourceLimitExceeded - When resource limits are exceeded
+ *
+ * @example
+ * ```typescript
+ * const manager = new BrowserManager({
+ *   maxInstances: 10,
+ *   reuseInstances: true,
+ *   resourceLimits: { maxMemoryMB: 1024 }
+ * });
+ *
+ * manager.on('browserCreated', (instance) => {
+ *   console.log(`Browser created: ${instance.id}`);
+ * });
+ *
+ * const result = await manager.launchBrowser({ browserType: 'chromium' });
+ * if (result.success) {
+ *   console.log('Browser launched successfully');
+ * }
+ * ```
  */
 export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
   private config: BrowserManagerConfig;
@@ -43,6 +67,20 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
   private resourceMonitorInterval?: NodeJS.Timeout;
   private isShutdown = false;
 
+  /**
+   * Creates a new BrowserManager instance
+   *
+   * @param config - Partial configuration to override defaults
+   *
+   * @example
+   * ```typescript
+   * const manager = new BrowserManager({
+   *   maxInstances: 5,
+   *   instanceIdleTimeout: 300000, // 5 minutes
+   *   reuseInstances: true
+   * });
+   * ```
+   */
   constructor(config: Partial<BrowserManagerConfig> = {}) {
     super();
     this.config = { ...defaultManagerConfig, ...config };
@@ -51,6 +89,33 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Launch a new browser instance or reuse existing one
+   *
+   * Attempts to reuse an existing idle browser instance if reuse is enabled,
+   * otherwise creates a new browser instance. Enforces instance limits.
+   *
+   * @param sessionConfig - Partial session configuration for browser launch
+   * @returns Promise resolving to browser instance information or error
+   *
+   * @throws Will return error result if manager is shutdown
+   * @throws Will return error result if maximum instances exceeded
+   * @throws Will return error result if browser launch fails
+   *
+   * @fires BrowserManager#browserCreated
+   *
+   * @example
+   * ```typescript
+   * const result = await manager.launchBrowser({
+   *   browserType: 'chromium',
+   *   headless: true,
+   *   viewport: { width: 1920, height: 1080 }
+   * });
+   *
+   * if (result.success) {
+   *   console.log(`Browser launched: ${result.data.id}`);
+   * } else {
+   *   console.error(`Launch failed: ${result.error}`);
+   * }
+   * ```
    */
   async launchBrowser(
     sessionConfig: Partial<BrowserSessionConfig> = {}
@@ -120,6 +185,31 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Create a new browser context for a browser instance
+   *
+   * Creates an isolated browser context with the specified configuration.
+   * Contexts provide isolation between different sessions on the same browser.
+   *
+   * @param instanceId - ID of the browser instance to create context in
+   * @param sessionConfig - Partial session configuration for context options
+   * @returns Promise resolving to browser context information or error
+   *
+   * @throws Will return error result if browser instance not found
+   * @throws Will return error result if context creation fails
+   *
+   * @fires BrowserManager#contextCreated
+   *
+   * @example
+   * ```typescript
+   * const contextResult = await manager.createContext(browserInstance.id, {
+   *   viewport: { width: 1280, height: 720 },
+   *   userAgent: 'custom-agent',
+   *   ignoreHTTPSErrors: true
+   * });
+   *
+   * if (contextResult.success) {
+   *   console.log(`Context created: ${contextResult.data.id}`);
+   * }
+   * ```
    */
   async createContext(
     instanceId: string,
@@ -174,6 +264,20 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Get browser context by ID
+   *
+   * Retrieves the Playwright BrowserContext object for direct manipulation.
+   * Returns undefined if context ID is not found.
+   *
+   * @param contextId - ID of the browser context to retrieve
+   * @returns BrowserContext instance or undefined if not found
+   *
+   * @example
+   * ```typescript
+   * const context = manager.getContext('context-id-123');
+   * if (context) {
+   *   const page = await context.newPage();
+   * }
+   * ```
    */
   getContext(contextId: string): BrowserContext | undefined {
     const contextData = this.contexts.get(contextId);
@@ -182,6 +286,20 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Get browser instance by ID
+   *
+   * Retrieves the Playwright Browser object for direct manipulation.
+   * Returns undefined if instance ID is not found.
+   *
+   * @param instanceId - ID of the browser instance to retrieve
+   * @returns Browser instance or undefined if not found
+   *
+   * @example
+   * ```typescript
+   * const browser = manager.getInstance('browser-id-123');
+   * if (browser) {
+   *   const contexts = browser.contexts();
+   * }
+   * ```
    */
   getInstance(instanceId: string): Browser | undefined {
     const instanceData = this.instances.get(instanceId);
@@ -190,6 +308,25 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Close a browser context
+   *
+   * Closes the specified browser context and cleans up associated resources.
+   * Updates instance statistics and may mark browser as available for reuse.
+   *
+   * @param contextId - ID of the context to close
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if context not found
+   * @throws Will return error result if context closing fails
+   *
+   * @fires BrowserManager#contextClosed
+   *
+   * @example
+   * ```typescript
+   * const result = await manager.closeContext('context-id-123');
+   * if (result.success) {
+   *   console.log('Context closed successfully');
+   * }
+   * ```
    */
   async closeContext(contextId: string): Promise<BrowserActionResult<void>> {
     const startTime = Date.now();
@@ -236,6 +373,26 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Close a browser instance and all its contexts
+   *
+   * Closes all contexts associated with the browser instance, then closes
+   * the browser itself. Cleans up all related resources.
+   *
+   * @param instanceId - ID of the browser instance to close
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if browser instance not found
+   * @throws Will return error result if browser closing fails
+   *
+   * @fires BrowserManager#browserClosed
+   * @fires BrowserManager#contextClosed - For each context being closed
+   *
+   * @example
+   * ```typescript
+   * const result = await manager.closeBrowser('browser-id-123');
+   * if (result.success) {
+   *   console.log('Browser and all contexts closed');
+   * }
+   * ```
    */
   async closeBrowser(instanceId: string): Promise<BrowserActionResult<void>> {
     const startTime = Date.now();
@@ -294,6 +451,18 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Get resource usage statistics
+   *
+   * Provides real-time statistics about browser resource usage including
+   * instance counts, estimated memory usage, and active browser metrics.
+   *
+   * @returns Promise resolving to resource usage statistics object
+   *
+   * @example
+   * ```typescript
+   * const usage = await manager.getResourceUsage();
+   * console.log(`Active browsers: ${usage.activeBrowsers}`);
+   * console.log(`Total memory: ${usage.memoryUsageMB}MB`);
+   * ```
    */
   async getResourceUsage(): Promise<{
     totalInstances: number;
@@ -322,6 +491,23 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
 
   /**
    * Shutdown the browser manager and close all instances
+   *
+   * Gracefully shuts down the browser manager by:
+   * - Stopping all monitoring intervals
+   * - Closing all browser contexts
+   * - Closing all browser instances
+   * - Cleaning up internal state
+   *
+   * @returns Promise that resolves when shutdown is complete
+   *
+   * @example
+   * ```typescript
+   * // Clean shutdown at application exit
+   * process.on('SIGTERM', async () => {
+   *   await manager.shutdown();
+   *   process.exit(0);
+   * });
+   * ```
    */
   async shutdown(): Promise<void> {
     this.isShutdown = true;

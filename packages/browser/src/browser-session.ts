@@ -65,6 +65,29 @@ declare global {
  * - Screenshot capture
  * - Console and error monitoring
  * - Resource cleanup
+ *
+ * @fires BrowserSession#consoleMessage - When a console message is captured
+ * @fires BrowserSession#javascriptError - When a JavaScript error is captured
+ * @fires BrowserSession#pageError - When a page error occurs
+ *
+ * @example
+ * ```typescript
+ * const manager = new BrowserManager();
+ * const session = new BrowserSession(manager, {
+ *   browserType: 'chromium',
+ *   headless: false
+ * }, {
+ *   captureConsole: true,
+ *   captureErrors: true
+ * });
+ *
+ * session.on('consoleMessage', (msg) => {
+ *   console.log(`Console ${msg.type}: ${msg.text}`);
+ * });
+ *
+ * await session.launch();
+ * await session.navigate('https://example.com');
+ * ```
  */
 export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   private manager: BrowserManager;
@@ -78,6 +101,26 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   private pageErrorBuffer: PageErrorEvent[] = [];
   private errorPollingInterval?: NodeJS.Timeout;
 
+  /**
+   * Creates a new BrowserSession instance
+   *
+   * @param manager - Browser manager to use for creating browser instances
+   * @param config - Partial session configuration to override defaults
+   * @param captureConfig - Partial capture configuration for monitoring
+   *
+   * @example
+   * ```typescript
+   * const session = new BrowserSession(manager, {
+   *   browserType: 'firefox',
+   *   viewport: { width: 1920, height: 1080 },
+   *   timeout: 60000
+   * }, {
+   *   captureConsole: true,
+   *   captureErrors: true,
+   *   maxBufferSize: 1000
+   * });
+   * ```
+   */
   constructor(
     manager: BrowserManager,
     config: Partial<BrowserSessionConfig> = {},
@@ -91,6 +134,29 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Launches browser session and creates a new page
+   *
+   * Performs the complete browser session initialization:
+   * - Launches browser instance via manager
+   * - Creates isolated browser context
+   * - Creates a new page
+   * - Sets up console and error capture monitoring
+   *
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if browser launch fails
+   * @throws Will return error result if context creation fails
+   * @throws Will return error result if page creation fails
+   *
+   * @example
+   * ```typescript
+   * const result = await session.launch();
+   * if (result.success) {
+   *   console.log('Browser session ready');
+   *   await session.navigate('https://example.com');
+   * } else {
+   *   console.error(`Launch failed: ${result.error}`);
+   * }
+   * ```
    */
   async launch(): Promise<BrowserActionResult<void>> {
     const startTime = Date.now();
@@ -150,6 +216,28 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Navigates to a URL
+   *
+   * Navigates the browser page to the specified URL and waits for page load.
+   * Returns the final URL after any redirects.
+   *
+   * @param url - Target URL to navigate to
+   * @param options - Navigation options (timeout, waitUntil, referer)
+   * @returns Promise resolving to final URL or error
+   *
+   * @throws Will return error result if browser not launched
+   * @throws Will return error result if navigation fails or times out
+   *
+   * @example
+   * ```typescript
+   * const result = await session.navigate('https://example.com', {
+   *   timeout: 30000,
+   *   waitUntil: 'networkidle'
+   * });
+   *
+   * if (result.success) {
+   *   console.log(`Navigated to: ${result.data}`);
+   * }
+   * ```
    */
   async navigate(url: string, options: NavigationOptions = {}): Promise<BrowserActionResult<string>> {
     const startTime = Date.now();
@@ -331,6 +419,36 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Clicks on an element
+   *
+   * Locates the specified element and performs a click action.
+   * Supports both string selectors and structured ElementSelector objects.
+   *
+   * @param selector - CSS selector, XPath, or ElementSelector object
+   * @param options - Click options (timeout, force)
+   * @param options.timeout - Maximum time to wait for element in milliseconds
+   * @param options.force - Whether to force click even if element is not actionable
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if browser not launched
+   * @throws Will return error result if element not found or not clickable
+   *
+   * @example
+   * ```typescript
+   * // String selector
+   * await session.click('button.submit');
+   *
+   * // ElementSelector object
+   * await session.click({
+   *   type: 'xpath',
+   *   value: '//button[contains(text(), "Submit")]'
+   * });
+   *
+   * // With options
+   * await session.click('.slow-element', {
+   *   timeout: 10000,
+   *   force: true
+   * });
+   * ```
    */
   async click(
     selector: string | ElementSelector,
@@ -371,6 +489,35 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Types text into an element
+   *
+   * Clears the target element and types the specified text.
+   * Useful for filling form inputs, text areas, and editable content.
+   *
+   * @param selector - CSS selector, XPath, or ElementSelector object
+   * @param text - Text content to type into the element
+   * @param options - Typing options (timeout, delay)
+   * @param options.timeout - Maximum time to wait for element in milliseconds
+   * @param options.delay - Delay between keystrokes in milliseconds
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if browser not launched
+   * @throws Will return error result if element not found or not editable
+   *
+   * @example
+   * ```typescript
+   * // Type into an input field
+   * await session.type('#email', 'user@example.com');
+   *
+   * // Type with delay between keystrokes
+   * await session.type('#password', 'secretpassword', {
+   *   delay: 100
+   * });
+   *
+   * // Type with custom timeout
+   * await session.type('.slow-input', 'text', {
+   *   timeout: 15000
+   * });
+   * ```
    */
   async type(
     selector: string | ElementSelector,
@@ -537,6 +684,37 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Takes a screenshot
+   *
+   * Captures a screenshot of the current page with configurable options.
+   * Supports both viewport-only and full-page screenshots.
+   *
+   * @param options - Screenshot configuration options
+   * @param options.path - Optional file path to save screenshot
+   * @param options.type - Image format ('png' or 'jpeg')
+   * @param options.quality - JPEG quality (1-100, only for JPEG)
+   * @param options.fullPage - Whether to capture full scrollable page
+   * @param options.omitBackground - Whether to omit background (transparent PNG)
+   * @returns Promise resolving to screenshot buffer or error
+   *
+   * @throws Will return error result if browser not launched
+   * @throws Will return error result if screenshot capture fails
+   *
+   * @example
+   * ```typescript
+   * // Basic screenshot
+   * const result = await session.screenshot();
+   * if (result.success) {
+   *   fs.writeFileSync('screenshot.png', result.data);
+   * }
+   *
+   * // Full page JPEG with quality setting
+   * const fullPage = await session.screenshot({
+   *   type: 'jpeg',
+   *   quality: 90,
+   *   fullPage: true,
+   *   path: './full-page.jpg'
+   * });
+   * ```
    */
   async screenshot(options: ScreenshotOptions = {}): Promise<BrowserActionResult<Buffer>> {
     const startTime = Date.now();
@@ -858,6 +1036,21 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Gets captured console messages
+   *
+   * Returns a copy of all console messages captured during the session.
+   * Console capture must be enabled in the capture configuration.
+   *
+   * @returns Array of captured console messages
+   *
+   * @example
+   * ```typescript
+   * const messages = session.getCapturedConsoleMessages();
+   * messages.forEach(msg => {
+   *   console.log(`${msg.type}: ${msg.text} at ${new Date(msg.timestamp)}`);
+   * });
+   * ```
+   *
+   * @see {@link updateCaptureConfig} to enable console capture
    */
   getCapturedConsoleMessages(): CapturedConsoleMessage[] {
     return [...this.consoleBuffer];
@@ -865,6 +1058,24 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Gets captured JavaScript errors
+   *
+   * Returns a copy of all JavaScript errors captured during the session.
+   * Error capture must be enabled in the capture configuration.
+   *
+   * @returns Array of captured JavaScript errors
+   *
+   * @example
+   * ```typescript
+   * const errors = session.getCapturedJavaScriptErrors();
+   * errors.forEach(error => {
+   *   console.error(`${error.name}: ${error.message}`);
+   *   if (error.source) {
+   *     console.error(`  at ${error.source.url}:${error.source.line}`);
+   *   }
+   * });
+   * ```
+   *
+   * @see {@link updateCaptureConfig} to enable error capture
    */
   getCapturedJavaScriptErrors(): CapturedJavaScriptError[] {
     return [...this.errorBuffer];
@@ -1105,6 +1316,30 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
   /**
    * Closes the browser session
+   *
+   * Gracefully shuts down the browser session by:
+   * - Stopping error polling if active
+   * - Closing the page
+   * - Closing the browser context
+   * - Cleaning up internal state
+   *
+   * Note: Browser instance may remain open for reuse if configured.
+   *
+   * @returns Promise resolving to success status or error
+   *
+   * @throws Will return error result if context closing fails
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   const result = await session.close();
+   *   if (result.success) {
+   *     console.log('Session closed successfully');
+   *   }
+   * } catch (error) {
+   *   console.error('Failed to close session:', error);
+   * }
+   * ```
    */
   async close(): Promise<BrowserActionResult<void>> {
     const startTime = Date.now();

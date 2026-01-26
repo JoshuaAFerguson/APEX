@@ -49,6 +49,26 @@ import {
   MCPInstallationStatus,
 } from '@apexcli/core';
 
+/**
+ * Persistent storage for APEX tasks, templates, and related data using SQLite.
+ *
+ * Manages the lifecycle of tasks including creation, status updates, checkpoints,
+ * and cleanup. Provides atomic operations and transaction support for data consistency.
+ *
+ * @example
+ * ```typescript
+ * const store = new TaskStore('/path/to/project');
+ * await store.initialize();
+ *
+ * const task = await store.createTask({
+ *   description: 'Build feature',
+ *   workflow: 'development',
+ *   agent: 'developer'
+ * });
+ *
+ * await store.updateTaskStatus(task.id, 'running');
+ * ```
+ */
 export class TaskStore {
   private db!: Database.Database;
   private dbPath: string;
@@ -64,7 +84,19 @@ export class TaskStore {
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
-    const apexDir = path.join(projectPath, '.apex');
+
+    // Check for APEX_HOME environment variable
+    const apexHome = process.env.APEX_HOME;
+    let apexDir: string;
+
+    if (apexHome) {
+      // Use APEX_HOME if set
+      apexDir = apexHome;
+    } else {
+      // Default to .apex directory in project path
+      apexDir = path.join(projectPath, '.apex');
+    }
+
     try {
       if (!fs.existsSync(apexDir)) {
         fs.mkdirSync(apexDir, { recursive: true });

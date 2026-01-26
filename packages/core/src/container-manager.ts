@@ -206,9 +206,18 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Build an image if dockerfile is specified and image is missing or stale
-   * @param config Container configuration
+   * @param config Container configuration with image and optional dockerfile
    * @param projectRoot Project root directory for resolving relative paths
-   * @returns Image tag to use for container creation
+   * @returns Promise resolving to image tag to use for container creation
+   * @throws {Error} When dockerfile path is invalid or build fails
+   * @example
+   * ```typescript
+   * const imageTag = await containerManager.buildImageIfNeeded({
+   *   image: 'node:18',
+   *   dockerfile: 'Dockerfile',
+   *   buildContext: '.'
+   * }, '/project/root');
+   * ```
    */
   private async buildImageIfNeeded(config: ContainerConfig, projectRoot?: string): Promise<string> {
     // If no dockerfile specified, return the original image
@@ -264,8 +273,25 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Create a new container with the specified configuration
-   * @param options Container creation options
-   * @returns Container operation result
+   * @param options Container creation options including config, taskId, and autoStart
+   * @returns Promise resolving to container operation result with containerId and containerInfo
+   * @throws {Error} When container creation fails or runtime is unavailable
+   * @example
+   * ```typescript
+   * const result = await containerManager.createContainer({
+   *   config: {
+   *     image: 'node:18',
+   *     command: ['npm', 'start'],
+   *     volumes: { '/host/path': '/container/path' },
+   *     environment: { NODE_ENV: 'production' }
+   *   },
+   *   taskId: 'task-123',
+   *   autoStart: true
+   * });
+   * if (result.success) {
+   *   console.log('Container created:', result.containerId);
+   * }
+   * ```
    */
   async createContainer(options: CreateContainerOptions): Promise<ContainerOperationResult> {
     try {
@@ -380,9 +406,19 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Start an existing container
-   * @param containerId Container ID or name
+   * @param containerId Container ID or name to start
    * @param runtimeType Optional runtime type (auto-detected if not provided)
-   * @returns Container operation result
+   * @returns Promise resolving to container operation result with status and containerInfo
+   * @throws {Error} When container start fails or runtime is unavailable
+   * @example
+   * ```typescript
+   * const result = await containerManager.startContainer('my-container');
+   * if (result.success) {
+   *   console.log('Container started successfully');
+   * } else {
+   *   console.error('Failed to start container:', result.error);
+   * }
+   * ```
    */
   async startContainer(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerOperationResult> {
     try {
@@ -469,10 +505,20 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Stop a running container
-   * @param containerId Container ID or name
+   * @param containerId Container ID or name to stop
    * @param runtimeType Optional runtime type (auto-detected if not provided)
-   * @param timeout Timeout in seconds for graceful shutdown
-   * @returns Container operation result
+   * @param timeout Timeout in seconds for graceful shutdown (default: 10)
+   * @returns Promise resolving to container operation result with status
+   * @throws {Error} When container stop fails or runtime is unavailable
+   * @example
+   * ```typescript
+   * const result = await containerManager.stopContainer('my-container', undefined, 5);
+   * if (result.success) {
+   *   console.log('Container stopped gracefully');
+   * } else {
+   *   console.error('Failed to stop container:', result.error);
+   * }
+   * ```
    */
   async stopContainer(
     containerId: string,
@@ -559,10 +605,22 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Remove a container
-   * @param containerId Container ID or name
+   * @param containerId Container ID or name to remove
    * @param runtimeType Optional runtime type (auto-detected if not provided)
-   * @param force Whether to force removal of running containers
-   * @returns Container operation result
+   * @param force Whether to force removal of running containers (default: false)
+   * @returns Promise resolving to container operation result with removal status
+   * @throws {Error} When container removal fails or runtime is unavailable
+   * @example
+   * ```typescript
+   * // Remove a stopped container
+   * const result = await containerManager.removeContainer('my-container');
+   *
+   * // Force remove a running container
+   * const forceResult = await containerManager.removeContainer('my-container', undefined, true);
+   * if (forceResult.success) {
+   *   console.log('Container removed successfully');
+   * }
+   * ```
    */
   async removeContainer(
     containerId: string,

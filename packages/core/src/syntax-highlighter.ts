@@ -12,7 +12,12 @@
  * Supports terminal ANSI colors for CLI output.
  */
 
-// ANSI color codes for terminal output
+/**
+ * ANSI color codes and formatting constants for terminal output
+ *
+ * Provides color codes for foreground/background colors and text formatting
+ * for styled console output in terminal environments.
+ */
 export const ANSI_COLORS = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',

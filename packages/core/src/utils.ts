@@ -170,9 +170,21 @@ export function formatDuration(ms: number): string {
 
 /**
  * Formats elapsed time from a start date to current time in a human-readable format
+ *
  * @param startTime - The start time as a Date object
  * @param currentTime - The current time as a Date object (defaults to now)
  * @returns Formatted elapsed time string (e.g., "42s", "2m 15s", "1h 5m")
+ *
+ * @example
+ * ```typescript
+ * const start = new Date('2024-01-01T10:00:00Z');
+ * const current = new Date('2024-01-01T10:02:30Z');
+ * console.log(formatElapsed(start, current)); // '2m 30s'
+ *
+ * // Using current time
+ * const now = new Date();
+ * console.log(formatElapsed(new Date(Date.now() - 5000))); // '5s'
+ * ```
  */
 export function formatElapsed(startTime: Date, currentTime: Date = new Date()): string {
   const startMs = startTime?.getTime?.();

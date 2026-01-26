@@ -35,48 +35,120 @@ import {
 import { registerScreenshotRoutes } from './routes/screenshot.js';
 import { SlackService } from './services/slack-service.js';
 
-// Subtask API request types
+/**
+ * Request payload for decomposing a task into subtasks.
+ *
+ * @interface DecomposeTaskRequest
+ */
 interface DecomposeTaskRequest {
+  /** Array of subtask definitions to create */
   subtasks: SubtaskDefinition[];
+  /** Strategy for executing the subtasks (optional) */
   strategy?: SubtaskStrategy;
 }
 
-// Template API request types
+/**
+ * Request payload for creating a new task template.
+ *
+ * @interface CreateTemplateRequest
+ */
 interface CreateTemplateRequest {
+  /** Name of the template */
   name: string;
+  /** Description of what this template does */
   description: string;
+  /** Workflow to use for tasks created from this template */
   workflow: string;
+  /** Optional priority level */
   priority?: string;
+  /** Optional estimated effort */
   effort?: string;
+  /** Optional acceptance criteria */
   acceptanceCriteria?: string;
+  /** Optional tags for categorization */
   tags?: string[];
 }
 
+/**
+ * Request payload for updating an existing task template.
+ *
+ * @interface UpdateTemplateRequest
+ */
 interface UpdateTemplateRequest {
+  /** Updated name of the template */
   name?: string;
+  /** Updated description */
   description?: string;
+  /** Updated workflow to use */
   workflow?: string;
+  /** Updated priority level */
   priority?: string;
+  /** Updated estimated effort */
   effort?: string;
+  /** Updated acceptance criteria */
   acceptanceCriteria?: string;
+  /** Updated tags for categorization */
   tags?: string[];
 }
 
-// WebSocket client tracking with event filtering
+/**
+ * WebSocket client tracking with event filtering capabilities.
+ *
+ * @interface WebSocketClient
+ */
 interface WebSocketClient {
+  /** The WebSocket connection instance */
   socket: WebSocket;
-  eventFilters?: Set<string>; // Set of event types to filter for (if empty, receives all events)
+  /** Set of event types to filter for (if empty, receives all events) */
+  eventFilters?: Set<string>;
 }
 
 const clients = new Map<string, Set<WebSocketClient>>();
 
+/**
+ * Configuration options for starting the APEX API server.
+ *
+ * @interface ServerOptions
+ * @example
+ * ```typescript
+ * const options: ServerOptions = {
+ *   port: 3000,
+ *   host: '0.0.0.0',
+ *   projectPath: '/path/to/project',
+ *   silent: false
+ * };
+ * const server = await createServer(options);
+ * ```
+ */
 export interface ServerOptions {
+  /** Port number to listen on (default: 3000) */
   port?: number;
+  /** Host address to bind to (default: '0.0.0.0') */
   host?: string;
+  /** Path to the APEX project directory */
   projectPath: string;
+  /** Whether to suppress server logging (default: false) */
   silent?: boolean;
 }
 
+/**
+ * Creates and configures a Fastify server instance for the APEX API.
+ *
+ * Sets up REST endpoints for task management, WebSocket connections for real-time events,
+ * and integrates with the ApexOrchestrator for task execution and monitoring.
+ *
+ * @param options - Server configuration options
+ * @returns Promise that resolves to the configured Fastify server instance
+ *
+ * @example
+ * ```typescript
+ * const server = await createServer({
+ *   port: 3000,
+ *   projectPath: '/path/to/project'
+ * });
+ * await server.listen({ port: 3000, host: '0.0.0.0' });
+ * ```
+ */
 export async function createServer(options: ServerOptions): Promise<FastifyInstance> {
   const { port = 3000, host = '0.0.0.0', projectPath, silent = false } = options;
 
@@ -2344,7 +2416,24 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
 }
 
 /**
- * Start the server
+ * Starts the APEX API server and listens for incoming connections.
+ *
+ * Creates a new Fastify server instance using createServer(), then starts listening
+ * on the specified host and port. Provides comprehensive logging of all available
+ * endpoints when not in silent mode.
+ *
+ * @param options - Server configuration options including port, host, and project path
+ * @throws Will exit the process with code 1 if server startup fails
+ *
+ * @example
+ * ```typescript
+ * await startServer({
+ *   port: 3000,
+ *   host: '0.0.0.0',
+ *   projectPath: '/path/to/apex/project',
+ *   silent: false
+ * });
+ * ```
  */
 export async function startServer(options: ServerOptions): Promise<void> {
   const { port = 3000, host = '0.0.0.0', silent = false } = options;

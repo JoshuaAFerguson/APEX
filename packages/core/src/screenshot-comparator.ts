@@ -11,6 +11,15 @@ import {
   ImageMetadataSchema,
 } from './types';
 
+/** Internal options type with required fields that have defaults */
+type ResolvedComparisonOptions = {
+  threshold: number;
+  includeAlpha: boolean;
+  outputDiff: boolean;
+  diffOutputPath?: string;
+  diffColor: [number, number, number];
+};
+
 /**
  * Core screenshot comparison engine with pixel-diff algorithm
  *
@@ -21,15 +30,6 @@ import {
  * - Generate diff images
  * - Handle different image formats and sizes
  */
-/** Internal options type with required fields that have defaults */
-type ResolvedComparisonOptions = {
-  threshold: number;
-  includeAlpha: boolean;
-  outputDiff: boolean;
-  diffOutputPath?: string;
-  diffColor: [number, number, number];
-};
-
 export class ScreenshotComparator {
   private defaultOptions: ResolvedComparisonOptions;
 

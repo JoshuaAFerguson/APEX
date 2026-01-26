@@ -107,6 +107,15 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
     '.tar', '.gz', '.rar', '.7z', '.mp4', '.avi', '.mov', '.mp3', '.wav', '.flac'
   ]);
 
+  /**
+   * Creates a new ReadTool instance.
+   *
+   * @example
+   * ```typescript
+   * const readTool = new ReadTool();
+   * const result = await readTool.execute({ file_path: '/path/to/file.txt' });
+   * ```
+   */
   constructor() {
     super({
       name: 'Read',
@@ -164,6 +173,18 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Validates the input parameters with enhanced security checks.
+   *
+   * @param params - The input parameters to validate
+   * @param context - Optional execution context
+   * @returns Validation result with any errors or warnings
+   *
+   * @example
+   * ```typescript
+   * const validation = readTool.validate({ file_path: '/path/to/file.txt' });
+   * if (!validation.valid) {
+   *   console.error(validation.errors);
+   * }
+   * ```
    */
   validate(
     params: ReadToolInput,
@@ -232,6 +253,21 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Executes the file reading operation.
+   *
+   * @param params - The input parameters containing file path and options
+   * @param context - Optional execution context
+   * @returns Promise resolving to the file content with metadata
+   * @throws {Error} When file cannot be read, doesn't exist, or access is denied
+   *
+   * @example
+   * ```typescript
+   * const result = await readTool.execute({
+   *   file_path: '/path/to/file.txt',
+   *   offset: 10,
+   *   limit: 50
+   * });
+   * console.log(result.content);
+   * ```
    */
   protected async executeImpl(
     params: ReadToolInput,
@@ -282,6 +318,9 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Detects the file type based on extension and potentially content.
+   *
+   * @param filePath - Path to the file to analyze
+   * @returns The detected file type
    */
   private detectFileType(filePath: string): 'text' | 'image' | 'pdf' | 'binary' {
     const ext = path.extname(filePath).toLowerCase();
@@ -303,6 +342,12 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Reads a text file with line number formatting.
+   *
+   * @param params - The input parameters
+   * @param stats - File statistics
+   * @param context - Optional execution context
+   * @returns Promise resolving to formatted file content
+   * @throws {Error} When file cannot be read or is binary
    */
   private async readTextFile(
     params: ReadToolInput,
@@ -376,6 +421,10 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Handles image files by providing metadata and description.
+   *
+   * @param params - The input parameters
+   * @param stats - File statistics
+   * @returns Promise resolving to image metadata
    */
   private async readImageFile(
     params: ReadToolInput,
@@ -409,6 +458,10 @@ export class ReadTool extends BaseTool<ReadToolInput, ReadToolOutput> {
 
   /**
    * Handles PDF files by providing metadata and description.
+   *
+   * @param params - The input parameters
+   * @param stats - File statistics
+   * @returns Promise resolving to PDF metadata
    */
   private async readPdfFile(
     params: ReadToolInput,

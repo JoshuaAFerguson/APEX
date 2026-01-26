@@ -45,6 +45,9 @@ export * from './factories/index.js';
 // Builder classes
 export * from './builders/index.js';
 
+// Marketplace fixtures
+export * from '../fixtures/index.js';
+
 // Re-export existing fixtures for backward compatibility
 export {
   loadValidToolFixtures,

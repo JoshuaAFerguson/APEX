@@ -24,18 +24,62 @@ import {
 
 const execAsync = promisify(exec);
 
+/**
+ * Configuration options for the WorkspaceManager.
+ *
+ * @interface WorkspaceManagerOptions
+ * @example
+ * ```typescript
+ * const options: WorkspaceManagerOptions = {
+ *   projectPath: '/path/to/project',
+ *   defaultStrategy: 'container',
+ *   containerDefaults: {
+ *     image: 'node:18',
+ *     workingDir: '/app'
+ *   }
+ * };
+ * ```
+ */
 export interface WorkspaceManagerOptions {
+  /** The root path of the project where workspaces will be managed */
   projectPath: string;
+  /** The default workspace isolation strategy to use */
   defaultStrategy: WorkspaceConfig['strategy'];
+  /** Optional default configuration for container-based workspaces */
   containerDefaults?: ContainerDefaults;
 }
 
+/**
+ * Information about a managed workspace and its current state.
+ *
+ * @interface WorkspaceInfo
+ * @example
+ * ```typescript
+ * const workspaceInfo: WorkspaceInfo = {
+ *   taskId: 'task-123',
+ *   config: { strategy: 'container', isolation: { level: 'full' } },
+ *   workspacePath: '/tmp/apex/workspaces/task-123',
+ *   status: 'active',
+ *   createdAt: new Date(),
+ *   lastAccessed: new Date(),
+ *   containerId: 'apex-task-123',
+ *   warnings: [],
+ *   success: true
+ * };
+ * ```
+ */
 export interface WorkspaceInfo {
+  /** The unique task ID associated with this workspace */
   taskId: string;
+  /** The workspace configuration used */
   config: WorkspaceConfig;
+  /** The file system path to the workspace */
   workspacePath: string;
+  /** Current status of the workspace */
   status: 'active' | 'cleanup-pending' | 'cleaned';
+  /** When the workspace was created */
   createdAt: Date;
+  /** When the workspace was last accessed */
   lastAccessed: Date;
   /**
    * Container ID for container-based workspaces
@@ -101,6 +145,24 @@ export interface WorkspaceManagerEvents {
   'dependency-install-recovery': (data: DependencyInstallRecoveryEventData) => void;
 }
 
+/**
+ * Manages isolated workspaces for task execution using various strategies.
+ * Supports container-based isolation, workspace cloning, and dependency management.
+ *
+ * @example
+ * ```typescript
+ * const manager = new WorkspaceManager({
+ *   projectPath: '/path/to/project',
+ *   defaultStrategy: 'container'
+ * });
+ * await manager.initialize();
+ *
+ * const workspace = await manager.createWorkspace('task-123', {
+ *   strategy: 'container',
+ *   isolation: { level: 'full' }
+ * });
+ * ```
+ */
 export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private projectPath: string;
   private defaultStrategy: WorkspaceConfig['strategy'];

@@ -67,6 +67,9 @@ export default defineConfig({
     // Global setup file for E2E resource management
     setupFiles: ['./tests/e2e/setup.ts'],
 
+    // Global teardown file for final resource cleanup
+    globalTeardown: './tests/e2e/teardown.ts',
+
     // Run tests sequentially to avoid resource conflicts
     // E2E tests often involve shared system resources (ports, git repos)
     sequence: {

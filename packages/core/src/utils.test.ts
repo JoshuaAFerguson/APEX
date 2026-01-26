@@ -34,7 +34,7 @@ import {
   type TruncateResult,
 } from './utils';
 
-describe.skip('generateTaskId', () => {
+describe('generateTaskId', () => {
   it('should generate unique task IDs', () => {
     const id1 = generateTaskId();
     const id2 = generateTaskId();
@@ -54,7 +54,7 @@ describe.skip('generateTaskId', () => {
   });
 });
 
-describe.skip('slugify', () => {
+describe('slugify', () => {
   it('should convert to lowercase', () => {
     expect(slugify('Hello World')).toBe('hello-world');
   });
@@ -77,7 +77,7 @@ describe.skip('slugify', () => {
   });
 });
 
-describe.skip('generateBranchName', () => {
+describe('generateBranchName', () => {
   it('should combine prefix, task id, and description', () => {
     const branch = generateBranchName('apex/', 'task_abc123_def456', 'Add user auth');
     expect(branch).toMatch(/^apex\//);
@@ -90,7 +90,7 @@ describe.skip('generateBranchName', () => {
   });
 });
 
-describe.skip('calculateCost', () => {
+describe('calculateCost', () => {
   it('should calculate cost based on token usage', () => {
     // 1M input tokens at $3/M + 0 output = $3
     const cost = calculateCost(1_000_000, 0);
@@ -113,7 +113,7 @@ describe.skip('calculateCost', () => {
   });
 });
 
-describe.skip('formatDuration', () => {
+describe('formatDuration', () => {
   it('should format milliseconds', () => {
     expect(formatDuration(500)).toBe('500ms');
   });
@@ -131,7 +131,7 @@ describe.skip('formatDuration', () => {
   });
 });
 
-describe.skip('formatTokens', () => {
+describe('formatTokens', () => {
   it('should format with commas', () => {
     expect(formatTokens(1000000)).toBe('1,000,000');
   });
@@ -141,7 +141,7 @@ describe.skip('formatTokens', () => {
   });
 });
 
-describe.skip('formatCost', () => {
+describe('formatCost', () => {
   it('should format as USD with 4 decimal places', () => {
     expect(formatCost(1.2345)).toBe('$1.2345');
   });
@@ -155,7 +155,7 @@ describe.skip('formatCost', () => {
 // SEMANTIC VERSIONING TESTS
 // ============================================================================
 
-describe.skip('parseSemver', () => {
+describe('parseSemver', () => {
   // Valid versions
   it('should parse basic version', () => {
     const result = parseSemver('1.2.3');
@@ -287,7 +287,7 @@ describe.skip('parseSemver', () => {
   });
 });
 
-describe.skip('isPreRelease', () => {
+describe('isPreRelease', () => {
   it('should return true for prerelease versions', () => {
     expect(isPreRelease('1.0.0-alpha')).toBe(true);
     expect(isPreRelease('1.0.0-alpha.1')).toBe(true);
@@ -585,7 +585,7 @@ describe.skip('createConventionalCommit', () => {
   });
 });
 
-describe.skip('safeJsonParse', () => {
+describe('safeJsonParse', () => {
   it('should parse valid JSON', () => {
     expect(safeJsonParse('{"a": 1}', null)).toEqual({ a: 1 });
   });
@@ -599,7 +599,7 @@ describe.skip('safeJsonParse', () => {
   });
 });
 
-describe.skip('deepMerge', () => {
+describe('deepMerge', () => {
   it('should merge simple objects', () => {
     const result = deepMerge({ a: 1 }, { b: 2 });
     expect(result).toEqual({ a: 1, b: 2 });
@@ -666,7 +666,7 @@ describe.skip('extractCodeBlocks', () => {
   });
 });
 
-describe.skip('retry', () => {
+describe('retry', () => {
   it('should return result on first success', async () => {
     const fn = vi.fn().mockResolvedValue('success');
 
@@ -1228,7 +1228,7 @@ describe.skip('formatConflictReport', () => {
   });
 });
 
-describe.skip('truncateToolOutput', () => {
+describe('truncateToolOutput', () => {
   it('should truncate long output', () => {
     const longOutput = 'A'.repeat(15000);
     const result = truncateToolOutput(longOutput, { maxLength: 1000 });

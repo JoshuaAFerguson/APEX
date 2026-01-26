@@ -149,11 +149,20 @@ import { TestReportGenerator, type TestReportGeneratorOptions, type TestStartInf
 
 const execAsync = promisify(exec);
 
+/**
+ * Configuration options for ApexOrchestrator initialization
+ *
+ * @interface OrchestratorOptions
+ */
 export interface OrchestratorOptions {
+  /** Project root path for file operations and workspace management */
   projectPath: string;
+  /** Optional API server URL for external integrations */
   apiUrl?: string;
-  autonomyEnforcer?: AutonomyEnforcer;  // Optional injection
-  policyEngine?: PolicyEngine;  // Optional PolicyEngine injection
+  /** Optional custom autonomy enforcer for dependency injection */
+  autonomyEnforcer?: AutonomyEnforcer;
+  /** Optional policy engine for custom policy validation */
+  policyEngine?: PolicyEngine;
 }
 
 /**
@@ -1248,6 +1257,28 @@ export interface MergeTaskBranchResult {
   commitHash?: string;
 }
 
+/**
+ * Main orchestrator class for managing AI agents, workflows, and task execution
+ *
+ * Provides high-level coordination of:
+ * - Agent lifecycle management and workflow execution
+ * - Task storage, checkpointing, and result tracking
+ * - Permission management and security controls
+ * - Tool execution with hooks and validation
+ * - Event emission for real-time monitoring
+ * - Integration with Claude Agent SDK
+ *
+ * @extends EventEmitter<OrchestratorEvents>
+ * @example
+ * ```typescript
+ * const orchestrator = new ApexOrchestrator({ projectPath: '/path/to/project' });
+ * await orchestrator.initialize();
+ *
+ * const task = await orchestrator.executeWorkflow('feature-development', {
+ *   description: 'Add user authentication'
+ * });
+ * ```
+ */
 export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private config!: ApexConfig;
   private effectiveConfig!: ReturnType<typeof getEffectiveConfig>;
@@ -7456,6 +7487,15 @@ Parent: ${parentTask.description}`;
     const subtaskIds = new Set(parentTask.subtaskIds || []);
     const completedSubtasks = new Set<string>();
     const inProgressSubtasks = new Set<string>();
+
+    // Initialize completedSubtasks from database - critical for resuming interrupted execution
+    // Without this, restarted parent tasks don't recognize previously completed subtasks
+    for (const subtaskId of subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'completed' || subtask.status === 'cancelled')) {
+        completedSubtasks.add(subtaskId);
+      }
+    }
 
     while (completedSubtasks.size < subtaskIds.size) {
       // Check if parent was cancelled

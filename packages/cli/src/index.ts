@@ -61,22 +61,43 @@ const banner = `
 // Types
 // ============================================================================
 
+/**
+ * Context object that tracks the global state of the APEX CLI application.
+ * Contains information about initialization status, configuration, active processes, and ports.
+ */
 interface ApexContext {
+  /** Current working directory where the CLI is running */
   cwd: string;
+  /** Whether the current directory has been initialized as an APEX project */
   initialized: boolean;
+  /** Loaded APEX configuration, null if not initialized or failed to load */
   config: ApexConfig | null;
+  /** Active orchestrator instance for task execution, null if not created */
   orchestrator: ApexOrchestrator | null;
+  /** API server child process, null if not running */
   apiProcess: ChildProcess | null;
+  /** Web UI child process, null if not running */
   webUIProcess: ChildProcess | null;
+  /** Port number for the API server */
   apiPort: number;
+  /** Port number for the Web UI server */
   webUIPort: number;
 }
 
+/**
+ * Defines the structure for CLI command definitions.
+ * Each command has a name, aliases, description, optional usage info, and handler function.
+ */
 interface Command {
+  /** Primary command name (used with / prefix in REPL) */
   name: string;
+  /** Alternative names for the command */
   aliases: string[];
+  /** Human-readable description of what the command does */
   description: string;
+  /** Optional usage information showing command syntax */
   usage?: string;
+  /** Async function that executes the command with given context and arguments */
   handler: (ctx: ApexContext, args: string[]) => Promise<void>;
 }
 
@@ -99,7 +120,17 @@ const ctx: ApexContext = {
 // Commands
 // ============================================================================
 
+/**
+ * Exported type alias for ApexContext to be used by external modules.
+ * This provides access to the CLI's internal context state for extensions and plugins.
+ */
 export type CliContext = ApexContext;
+
+/**
+ * Array of all available CLI commands with their definitions.
+ * Each command includes name, aliases, description, and handler function.
+ * Used by the REPL to process user commands and display help information.
+ */
 export const commands: Command[] = [
   {
     name: 'help',
@@ -4428,6 +4459,19 @@ async function executeTaskWithOutput(
 // Server Management
 // ============================================================================
 
+/**
+ * Starts the APEX API server on the specified port.
+ *
+ * @param ctx - CLI context containing project information
+ * @param port - Port number to start the server on
+ * @param silent - Whether to suppress console output (default: false)
+ * @param keepAlive - Whether to keep the server running indefinitely (default: false)
+ *
+ * @example
+ * ```typescript
+ * await startAPIServer(ctx, 3000, false, true); // Start server on port 3000 and keep alive
+ * ```
+ */
 async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = false, keepAlive: boolean = false): Promise<void> {
   if (!silent) {
     console.log(chalk.cyan(`Starting API server on port ${port}...`));
@@ -4454,6 +4498,14 @@ async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = 
   }
 }
 
+/**
+ * Starts the APEX Web UI server on the specified port.
+ * Spawns a separate Node.js process running the web-ui package.
+ *
+ * @param ctx - CLI context to store the web UI process reference
+ * @param port - Port number to start the Web UI server on
+ * @param silent - Whether to suppress console output (default: false)
+ */
 async function startWebUI(ctx: ApexContext, port: number, silent: boolean = false): Promise<void> {
   if (!silent) {
     console.log(chalk.cyan(`Starting Web UI on port ${port}...`));
@@ -4636,6 +4688,19 @@ async function startREPL(): Promise<void> {
   });
 }
 
+/**
+ * Parses command line input into an array of arguments, respecting quoted strings.
+ * Handles quoted arguments containing spaces and splits unquoted arguments on whitespace.
+ *
+ * @param input - Raw input string to parse
+ * @returns Array of parsed arguments with quotes removed
+ *
+ * @example
+ * ```typescript
+ * parseInput('command arg1 "arg with spaces" arg3')
+ * // Returns: ['command', 'arg1', 'arg with spaces', 'arg3']
+ * ```
+ */
 function parseInput(input: string): string[] {
   const parts: string[] = [];
   let current = '';
@@ -4665,6 +4730,13 @@ function parseInput(input: string): string[] {
 // Helper Functions
 // ============================================================================
 
+/**
+ * Returns an appropriate emoji for the given autonomy level.
+ * Used in UI displays to visually represent automation settings.
+ *
+ * @param level - Autonomy level string ('full-auto', 'review-before-commit', 'review-all')
+ * @returns Corresponding emoji or default gear emoji for unknown levels
+ */
 function getAutonomyEmoji(level: string): string {
   const emojis: Record<string, string> = {
     'full-auto': '🤖',
@@ -4674,6 +4746,13 @@ function getAutonomyEmoji(level: string): string {
   return emojis[level] || '⚙️';
 }
 
+/**
+ * Returns an appropriate emoji for the given task status.
+ * Provides visual indicators for task lifecycle states in CLI output.
+ *
+ * @param status - Task status string (pending, queued, planning, in-progress, etc.)
+ * @returns Corresponding emoji or question mark for unknown statuses
+ */
 function getStatusEmoji(status: string): string {
   const emojis: Record<string, string> = {
     pending: '⏳',
@@ -4689,6 +4768,13 @@ function getStatusEmoji(status: string): string {
   return emojis[status] || '❓';
 }
 
+/**
+ * Returns a colored string representation of a log level.
+ * Used for consistent log level formatting throughout the CLI.
+ *
+ * @param level - Log level string (debug, info, warn, error)
+ * @returns Chalk-styled colored log level string
+ */
 function getLevelColor(level: string): string {
   switch (level) {
     case 'debug':
@@ -4704,6 +4790,13 @@ function getLevelColor(level: string): string {
   }
 }
 
+/**
+ * Returns an appropriate emoji for different types of documentation issues.
+ * Used to visually categorize documentation problems in CLI output.
+ *
+ * @param type - Documentation issue type (version-mismatch, deprecated-api, broken-link, etc.)
+ * @returns Corresponding emoji or document emoji for unknown types
+ */
 function getDocTypeEmoji(type: string): string {
   const emojis: Record<string, string> = {
     'version-mismatch': '🔢',
@@ -4715,6 +4808,13 @@ function getDocTypeEmoji(type: string): string {
   return emojis[type] || '📄';
 }
 
+/**
+ * Returns an appropriate emoji for different README sections.
+ * Provides visual indicators for different sections of documentation.
+ *
+ * @param section - README section name
+ * @returns Corresponding emoji or default document emoji
+ */
 function getReadmeSectionEmoji(section: string): string {
   const emojis: Record<string, string> = {
     'title': '📝',

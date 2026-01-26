@@ -105,17 +105,62 @@ export type {
 
 // Import and export Playwright browser launcher functions for convenience
 import { chromium as chromiumLauncher, firefox as firefoxLauncher, webkit as webkitLauncher } from 'playwright';
-export { chromiumLauncher as chromium, firefoxLauncher as firefox, webkitLauncher as webkit };
 
 /**
- * Utility function to create a new browser manager
+ * Playwright Chromium browser type for direct launching
+ * @see https://playwright.dev/docs/api/class-browsertype
+ */
+export { chromiumLauncher as chromium };
+
+/**
+ * Playwright Firefox browser type for direct launching
+ * @see https://playwright.dev/docs/api/class-browsertype
+ */
+export { firefoxLauncher as firefox };
+
+/**
+ * Playwright WebKit browser type for direct launching
+ * @see https://playwright.dev/docs/api/class-browsertype
+ */
+export { webkitLauncher as webkit };
+
+/**
+ * Creates a new browser manager instance with optional configuration
+ *
+ * @param config - Partial configuration to override default settings
+ * @returns A new BrowserManager instance
+ *
+ * @example
+ * ```typescript
+ * const manager = createBrowserManager({
+ *   maxInstances: 10,
+ *   reuseInstances: true
+ * });
+ * ```
  */
 export function createBrowserManager(config?: Partial<BrowserManagerConfig>) {
   return new BrowserManagerClass(config);
 }
 
 /**
- * Utility function to create a new browser session
+ * Creates a new browser session instance with the given manager and configuration
+ *
+ * @param manager - Browser manager instance to use for creating the session
+ * @param config - Partial session configuration to override defaults
+ * @param captureConfig - Partial capture configuration for console/error monitoring
+ * @returns A new BrowserSession instance
+ *
+ * @example
+ * ```typescript
+ * const manager = createBrowserManager();
+ * const session = createBrowserSession(manager, {
+ *   browserType: 'firefox',
+ *   headless: false
+ * }, {
+ *   captureConsole: true,
+ *   captureErrors: true
+ * });
+ * ```
  */
 export function createBrowserSession(
   manager: BrowserManagerClass,
@@ -126,7 +171,30 @@ export function createBrowserSession(
 }
 
 /**
- * Utility function to launch a browser session with default configuration
+ * Launches a new browser session with default configuration
+ *
+ * This is a convenience function that creates both a browser manager and session,
+ * launches the browser, and returns the ready-to-use session.
+ *
+ * @param config - Partial session configuration to override defaults
+ * @param captureConfig - Partial capture configuration for console/error monitoring
+ * @returns Promise that resolves to a BrowserActionResult containing the launched session
+ *
+ * @throws Will return an error result if browser launch fails
+ *
+ * @example
+ * ```typescript
+ * const result = await launchBrowser({
+ *   browserType: 'chrome',
+ *   headless: true,
+ *   viewport: { width: 1920, height: 1080 }
+ * });
+ *
+ * if (result.success) {
+ *   const session = result.data;
+ *   await session.navigate('https://example.com');
+ * }
+ * ```
  */
 export async function launchBrowser(
   config?: Partial<BrowserSessionConfig>,
@@ -161,7 +229,20 @@ export async function launchBrowser(
   }
 }
 
-// Default export for convenience
+/**
+ * Default export containing all browser automation utilities
+ *
+ * Provides convenient access to all classes, functions, and utilities
+ * in a single import for CommonJS compatibility.
+ *
+ * @example
+ * ```typescript
+ * import browser from '@apexcli/browser';
+ *
+ * const manager = browser.createBrowserManager();
+ * const session = browser.createBrowserSession(manager);
+ * ```
+ */
 export default {
   BrowserManager: BrowserManagerClass,
   BrowserSession: BrowserSessionClass,

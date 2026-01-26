@@ -3691,4 +3691,59 @@ describe('TaskStore', () => {
       });
     });
   });
+
+  describe('APEX_HOME Environment Variable Integration', () => {
+    let originalApexHome: string | undefined;
+    let apexHomeTestDir: string;
+
+    beforeEach(async () => {
+      originalApexHome = process.env.APEX_HOME;
+      apexHomeTestDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-home-integration-'));
+    });
+
+    afterEach(async () => {
+      if (originalApexHome !== undefined) {
+        process.env.APEX_HOME = originalApexHome;
+      } else {
+        delete process.env.APEX_HOME;
+      }
+      try {
+        await fs.rm(apexHomeTestDir, { recursive: true, force: true });
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    });
+
+    it('should use APEX_HOME directory when environment variable is set', async () => {
+      // Close current store
+      store.close();
+
+      // Set APEX_HOME environment variable
+      process.env.APEX_HOME = apexHomeTestDir;
+
+      // Create new store instance
+      const apexHomeStore = new TaskStore(testDir);
+      await apexHomeStore.initialize();
+
+      const task = createTestTask();
+      task.id = 'apex_home_test_task';
+      await apexHomeStore.createTask(task);
+
+      // Verify task exists in the store
+      const retrieved = await apexHomeStore.getTask('apex_home_test_task');
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe('apex_home_test_task');
+
+      // Verify database file exists in APEX_HOME directory
+      const apexHomeDbPath = path.join(apexHomeTestDir, 'apex.db');
+      const dbExists = await fs.access(apexHomeDbPath).then(() => true).catch(() => false);
+      expect(dbExists).toBe(true);
+
+      apexHomeStore.close();
+
+      // Recreate store for other tests
+      store = new TaskStore(testDir);
+      await store.initialize();
+    });
+  });
 });

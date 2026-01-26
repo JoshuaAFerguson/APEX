@@ -26,6 +26,7 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "jsdoc:coverage": "ts-node scripts/jsdoc-coverage.ts",
     "apex": "node packages/cli/dist/index.js"
   },
   "devDependencies": {

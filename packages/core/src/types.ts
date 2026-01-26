@@ -4,9 +4,25 @@ import { z } from 'zod';
 // Agent Definitions
 // ============================================================================
 
+/**
+ * Schema for defining which AI model an agent should use
+ * @example
+ * ```typescript
+ * const model: AgentModel = 'sonnet';
+ * const validModel = AgentModelSchema.parse('opus');
+ * ```
+ */
 export const AgentModelSchema = z.enum(['opus', 'sonnet', 'haiku', 'inherit']);
 export type AgentModel = z.infer<typeof AgentModelSchema>;
 
+/**
+ * Schema for defining available tools that agents can use
+ * @example
+ * ```typescript
+ * const tool: AgentTool = 'Read';
+ * const validTool = AgentToolSchema.parse('WebFetch');
+ * ```
+ */
 export const AgentToolSchema = z.enum([
   'Read',
   'Write',
@@ -22,6 +38,20 @@ export const AgentToolSchema = z.enum([
 ]);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 
+/**
+ * Schema for defining an AI agent configuration including its capabilities and behavior
+ * @example
+ * ```typescript
+ * const agent: AgentDefinition = {
+ *   name: 'developer',
+ *   description: 'Writes and reviews code',
+ *   prompt: 'You are a senior software developer...',
+ *   tools: ['Read', 'Write', 'Edit'],
+ *   model: 'sonnet',
+ *   skills: ['typescript', 'react']
+ * };
+ * ```
+ */
 export const AgentDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -3592,26 +3622,100 @@ export type ApexConfig = z.infer<typeof ApexConfigSchema>;
 // Task Management
 // ============================================================================
 
+/**
+ * Schema for task execution status tracking throughout the APEX workflow lifecycle
+ * @example
+ * ```typescript
+ * const status: TaskStatus = 'pending';
+ * const validStatus = TaskStatusSchema.parse('in-progress');
+ *
+ * // Task progression example:
+ * // pending → queued → planning → in-progress → completed
+ * // or: pending → queued → planning → in-progress → paused → in-progress → completed
+ * ```
+ */
 export const TaskStatusSchema = z.enum([
-  'pending',
-  'queued',
-  'planning',
-  'in-progress',
-  'waiting-approval',
-  'awaiting-approval',
-  'paused',
-  'completed',
-  'failed',
-  'cancelled',
+  'pending',        // Task created but not yet queued
+  'queued',         // Task ready for execution
+  'planning',       // Agent is planning implementation approach
+  'in-progress',    // Task actively being executed
+  'waiting-approval',  // Task requires user approval (deprecated, use 'awaiting-approval')
+  'awaiting-approval', // Task requires user approval to continue
+  'paused',         // Task execution paused (rate limits, manual pause, etc.)
+  'completed',      // Task successfully finished
+  'failed',         // Task execution failed
+  'cancelled',      // Task was cancelled by user or system
 ]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
-export const TaskPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+/**
+ * Schema for task priority levels affecting execution order and resource allocation
+ * @example
+ * ```typescript
+ * const priority: TaskPriority = 'normal';
+ * const validPriority = TaskPrioritySchema.parse('urgent');
+ *
+ * // Priority affects task queue ordering:
+ * // urgent > high > normal > low
+ * ```
+ */
+export const TaskPrioritySchema = z.enum([
+  'low',      // Low priority, executed when resources available
+  'normal',   // Default priority for most tasks
+  'high',     // High priority, prioritized over normal/low
+  'urgent',   // Highest priority, executed immediately when possible
+]);
 export type TaskPriority = z.infer<typeof TaskPrioritySchema>;
 
-export const TaskEffortSchema = z.enum(['xs', 'small', 'medium', 'large', 'xl']);
+/**
+ * Schema for estimated task effort/complexity levels used for planning and resource allocation
+ * @example
+ * ```typescript
+ * const effort: TaskEffort = 'medium';
+ * const validEffort = TaskEffortSchema.parse('large');
+ *
+ * // Effort levels roughly correspond to:
+ * // xs: <1 hour, small: 1-4 hours, medium: 4-8 hours, large: 1-2 days, xl: 2+ days
+ * ```
+ */
+export const TaskEffortSchema = z.enum([
+  'xs',      // Extra small: minimal effort, quick fixes
+  'small',   // Small: simple features or bug fixes
+  'medium',  // Medium: moderate complexity features
+  'large',   // Large: complex features or refactoring
+  'xl',      // Extra large: major features or architectural changes
+]);
 export type TaskEffort = z.infer<typeof TaskEffortSchema>;
 
+/**
+ * Core task entity representing a unit of work in the APEX system
+ *
+ * Tasks are the fundamental building blocks of APEX workflows, containing all metadata
+ * needed for execution, tracking, and management throughout their lifecycle.
+ *
+ * @example
+ * ```typescript
+ * const task: Task = {
+ *   id: 'task-123',
+ *   description: 'Add login component',
+ *   acceptanceCriteria: 'Component should handle validation and errors',
+ *   workflow: 'feature-development',
+ *   autonomy: 'supervised',
+ *   status: 'pending',
+ *   priority: 'normal',
+ *   effort: 'medium',
+ *   projectPath: '/path/to/project',
+ *   retryCount: 0,
+ *   maxRetries: 3,
+ *   resumeAttempts: 0,
+ *   createdAt: new Date(),
+ *   updatedAt: new Date(),
+ *   usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
+ *   logs: [],
+ *   artifacts: []
+ * };
+ * ```
+ */
 export interface Task {
   id: string;
   description: string;
@@ -3627,50 +3731,108 @@ export interface Task {
   prUrl?: string;
   retryCount: number;
   maxRetries: number;
-  resumeAttempts: number; // Number of times this task has been resumed from checkpoint
-  dependsOn?: string[];  // Task IDs this task depends on
-  blockedBy?: string[];  // Computed: tasks that are blocking this one
+  /** Number of times this task has been resumed from checkpoint after pausing */
+  resumeAttempts: number;
+  /** Task IDs this task depends on - execution waits for these to complete */
+  dependsOn?: string[];
+  /** Computed field: tasks that are currently blocking this one from execution */
+  blockedBy?: string[];
+
   // Subtask support
-  parentTaskId?: string;   // If this is a subtask, the parent task ID
-  subtaskIds?: string[];   // If this is a parent task, IDs of its subtasks
-  subtaskStrategy?: SubtaskStrategy; // How subtasks should be executed
+  /** If this is a subtask, the parent task ID */
+  parentTaskId?: string;
+  /** If this is a parent task, IDs of its subtasks */
+  subtaskIds?: string[];
+  /** Strategy for subtask execution: sequential, parallel, or dependency-based */
+  subtaskStrategy?: SubtaskStrategy;
+
   // v0.5.0 dry-run support
-  dryRun?: boolean;         // If true, task execution simulates without making actual API calls
+  /** If true, task execution simulates without making actual API calls or file changes */
+  dryRun?: boolean;
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
-  pausedAt?: Date;           // When the task was paused
-  resumeAfter?: Date;        // When to auto-resume (e.g., after rate limit reset)
-  pauseReason?: string;      // Why the task was paused (e.g., 'rate_limit', 'budget', 'manual')
-  trashedAt?: Date;          // When the task was moved to trash (soft delete)
-  archivedAt?: Date;         // When the task was archived
+  /** Timestamp when the task was paused */
+  pausedAt?: Date;
+  /** When to automatically resume the task (e.g., after rate limit reset) */
+  resumeAfter?: Date;
+  /** Reason for pausing: 'rate_limit', 'budget', 'manual', 'user_intervention', etc. */
+  pauseReason?: string;
+  /** When the task was moved to trash (soft delete) */
+  trashedAt?: Date;
+  /** When the task was archived after completion */
+  archivedAt?: Date;
   usage: TaskUsage;
   logs: TaskLog[];
   artifacts: TaskArtifact[];
   error?: string;
   conversation?: AgentMessage[];
   // v0.4.0 enhancements
-  workspace?: WorkspaceConfig;  // Workspace isolation settings
-  sessionData?: TaskSessionData; // Session recovery data
-  thoughtCaptures?: ThoughtCapture[]; // Quick ideas related to this task
-  iterationHistory?: IterationHistory; // Iteration history for the task
+  /** Workspace isolation settings for sandboxed execution */
+  workspace?: WorkspaceConfig;
+  /** Session recovery data for resuming interrupted tasks */
+  sessionData?: TaskSessionData;
+  /** Quick ideas and notes captured during task execution */
+  thoughtCaptures?: ThoughtCapture[];
+  /** History of task iterations and refinements */
+  iterationHistory?: IterationHistory;
+
   // v0.5.0 policy check result
-  policyCheckResult?: TaskPolicyCheckResult; // Result of policy evaluation for this task
+  /** Result of policy evaluation determining if task execution is allowed */
+  policyCheckResult?: TaskPolicyCheckResult;
+
   // v0.5.0 approval state
-  approvalState?: ApprovalState; // Current approval state if task is awaiting approval
+  /** Current approval state when task requires user approval to continue */
+  approvalState?: ApprovalState;
 }
 
 /**
- * Strategy for how subtasks should be executed
+ * Strategy for how subtasks should be executed within a parent task
+ *
+ * @example
+ * ```typescript
+ * const strategy: SubtaskStrategy = 'parallel';
+ *
+ * // sequential: subtasks execute one after another
+ * // parallel: all subtasks execute simultaneously
+ * // dependency-based: execution order determined by dependsOn relationships
+ * ```
  */
 export type SubtaskStrategy = 'sequential' | 'parallel' | 'dependency-based';
 
 /**
- * Request to decompose a task into subtasks
+ * Request to decompose a complex task into smaller, manageable subtasks
+ *
+ * Used when a large task needs to be broken down into smaller units for
+ * better parallelization, progress tracking, and failure isolation.
+ *
+ * @example
+ * ```typescript
+ * const decomposition: TaskDecomposition = {
+ *   parentTaskId: 'task-123',
+ *   subtasks: [
+ *     {
+ *       description: 'Create user model',
+ *       acceptanceCriteria: 'Model should include validation',
+ *       workflow: 'code-only',
+ *       effort: 'small'
+ *     },
+ *     {
+ *       description: 'Create user controller',
+ *       dependsOn: ['Create user model'],
+ *       effort: 'medium'
+ *     }
+ *   ],
+ *   strategy: 'dependency-based'
+ * };
+ * ```
  */
 export interface TaskDecomposition {
+  /** ID of the parent task being decomposed */
   parentTaskId: string;
+  /** Array of subtask definitions to create */
   subtasks: SubtaskDefinition[];
+  /** How the subtasks should be executed (sequential/parallel/dependency-based) */
   strategy: SubtaskStrategy;
 }
 
@@ -3686,29 +3848,99 @@ export interface SubtaskDefinition {
   dependsOn?: string[];  // References other subtask descriptions or IDs
 }
 
+/**
+ * Resource usage and cost tracking for task execution
+ *
+ * Tracks token consumption, cost estimates, and execution time for Claude API calls
+ * made during task execution for billing and resource monitoring.
+ *
+ * @example
+ * ```typescript
+ * const usage: TaskUsage = {
+ *   inputTokens: 1500,
+ *   outputTokens: 800,
+ *   totalTokens: 2300,
+ *   estimatedCost: 0.023,
+ *   totalCostCents: 23,
+ *   executionTimeMs: 5000
+ * };
+ * ```
+ */
 export interface TaskUsage {
+  /** Number of input tokens sent to Claude API */
   inputTokens: number;
+  /** Number of output tokens received from Claude API */
   outputTokens: number;
+  /** Total tokens used (inputTokens + outputTokens) */
   totalTokens: number;
+  /** Estimated cost in dollars based on current pricing */
   estimatedCost: number;
+  /** Total cost in cents for precise billing calculations */
   totalCostCents: number;
+  /** Total execution time in milliseconds */
   executionTimeMs: number;
 }
 
+/**
+ * Log entry for task execution events and debugging
+ *
+ * Captures structured logging information during task execution, including
+ * timestamps, severity levels, and contextual information for troubleshooting.
+ *
+ * @example
+ * ```typescript
+ * const log: TaskLog = {
+ *   timestamp: new Date(),
+ *   level: 'info',
+ *   stage: 'implementation',
+ *   agent: 'developer',
+ *   message: 'Starting code implementation',
+ *   metadata: { fileCount: 3, estimatedTime: 300 }
+ * };
+ * ```
+ */
 export interface TaskLog {
+  /** When this log entry was created */
   timestamp: Date;
+  /** Log severity level following standard logging conventions */
   level: 'debug' | 'info' | 'warn' | 'error';
+  /** Workflow stage when this event occurred (planning, implementation, etc.) */
   stage?: string;
+  /** Agent name that generated this log entry */
   agent?: string;
+  /** Human-readable log message */
   message: string;
+  /** Additional structured data associated with this log entry */
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Artifact generated during task execution (files, diffs, reports, etc.)
+ *
+ * Represents deliverables and outputs created during task execution,
+ * including code files, documentation, reports, and change summaries.
+ *
+ * @example
+ * ```typescript
+ * const artifact: TaskArtifact = {
+ *   name: 'LoginComponent.tsx',
+ *   type: 'file',
+ *   path: '/src/components/LoginComponent.tsx',
+ *   content: 'import React from "react"...',
+ *   createdAt: new Date()
+ * };
+ * ```
+ */
 export interface TaskArtifact {
+  /** Human-readable name for the artifact */
   name: string;
+  /** Type of artifact generated */
   type: 'file' | 'diff' | 'report' | 'log';
+  /** File system path where the artifact is located */
   path?: string;
+  /** Textual content of the artifact (for small files or reports) */
   content?: string;
+  /** When this artifact was created */
   createdAt: Date;
 }
 
