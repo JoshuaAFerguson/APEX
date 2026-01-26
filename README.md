@@ -551,6 +551,113 @@ generateApprovalId();  // "apr_lx2n8p_m3n4o5p6"
 
 All ID generation functions create unique identifiers using timestamps and cryptographic randomness for collision-free operation across distributed systems.
 
+### Path Utilities
+
+APEX provides cross-platform path utility functions in the `@apex/core` package for handling file system paths across Windows, macOS, and Linux.
+
+#### `getHomeDir(): string`
+Gets the user's home directory path in a cross-platform way.
+
+```typescript
+import { getHomeDir } from '@apex/core';
+
+getHomeDir();  // On Windows: "C:\Users\username"
+               // On macOS: "/Users/username"
+               // On Linux: "/home/username"
+```
+
+#### `normalizePath(pathStr: string): string`
+Normalizes a file path for the current platform, converting path separators and resolving relative components.
+
+```typescript
+import { normalizePath } from '@apex/core';
+
+normalizePath('./src/../dist/file.js');     // "dist/file.js"
+normalizePath('src\\utils\\..\\index.ts');  // "src/index.ts" (on Windows)
+normalizePath('src/utils/../index.ts');     // "src/index.ts" (on Unix)
+```
+
+#### `getConfigDir(appName?: string): string`
+Gets the configuration directory path in a cross-platform way.
+
+```typescript
+import { getConfigDir } from '@apex/core';
+
+getConfigDir();           // On Windows: "C:\Users\username\AppData\Roaming"
+                          // On macOS/Linux: "/Users/username/.config"
+
+getConfigDir('apex');     // On Windows: "C:\Users\username\AppData\Roaming\apex"
+                          // On macOS/Linux: "/Users/username/.config/apex"
+```
+
+### Shell Utilities
+
+APEX provides cross-platform shell utility functions for executing commands and managing processes across different operating systems.
+
+#### `getPlatformShell(): ShellConfig`
+Gets the platform-appropriate shell configuration for command execution.
+
+```typescript
+import { getPlatformShell } from '@apex/core';
+
+const shell = getPlatformShell();
+// On Windows: { shell: 'cmd.exe', shellArgs: ['/d', '/s', '/c'] }
+// On Unix: { shell: '/bin/sh', shellArgs: ['-c'] }
+
+// Use with child_process.spawn
+import { spawn } from 'child_process';
+const child = spawn(shell.shell, [...shell.shellArgs, 'echo Hello'], { stdio: 'pipe' });
+```
+
+#### `isWindows(): boolean`
+Checks if the current platform is Windows.
+
+```typescript
+import { isWindows } from '@apex/core';
+
+isWindows();  // true on Windows, false on macOS/Linux
+
+if (isWindows()) {
+  console.log('Running on Windows');
+} else {
+  console.log('Running on Unix-like system');
+}
+```
+
+#### `getKillCommand(pid: number): string[]`
+Gets the platform-appropriate command to kill a process by PID.
+
+```typescript
+import { getKillCommand } from '@apex/core';
+
+const killCmd = getKillCommand(12345);
+// On Windows: ['taskkill', '/f', '/pid', '12345']
+// On Unix: ['kill', '-9', '12345']
+
+// Use with child_process.spawn
+import { spawn } from 'child_process';
+const killProcess = spawn(killCmd[0], killCmd.slice(1));
+```
+
+#### `createShellCommand(commandParts: string[]): string`
+Creates a shell command string with proper platform-specific escaping.
+
+```typescript
+import { createShellCommand } from '@apex/core';
+
+const cmd = createShellCommand(['echo', 'Hello World']);
+// On Windows: 'echo "Hello World"'
+// On Unix: "echo 'Hello World'"
+
+const complexCmd = createShellCommand(['git', 'commit', '-m', 'feat: add new feature']);
+// On Windows: 'git commit -m "feat: add new feature"'
+// On Unix: "git commit -m 'feat: add new feature'"
+
+// Handle special characters
+const pathCmd = createShellCommand(['cp', '/path/with spaces/file.txt', '/dest']);
+// On Unix: "cp '/path/with spaces/file.txt' /dest"
+```
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
