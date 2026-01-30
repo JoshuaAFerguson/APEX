@@ -35,6 +35,7 @@ export const AgentToolSchema = z.enum([
   'WebFetch',
   'WebSearch',
   'TodoWrite',
+  'Browser',
 ]);
 export type AgentTool = z.infer<typeof AgentToolSchema>;
 
@@ -659,13 +660,15 @@ export type BrowserToolInput = z.infer<typeof BrowserToolInputSchema>;
  * Screenshot comparison result
  */
 export const ScreenshotComparisonResultSchema = z.object({
-  /** Whether the screenshots match within threshold */
-  match: z.boolean(),
-  /** Pixel difference percentage (0-1) */
-  diffPercentage: z.number().min(0).max(1),
+  /** Similarity score between 0 (completely different) and 1 (identical) */
+  similarity: z.number().min(0).max(1),
   /** Number of different pixels */
-  diffPixels: z.number().int().min(0),
-  /** Path to diff image (if generated) */
+  differentPixels: z.number().int().min(0),
+  /** Total number of pixels compared */
+  totalPixels: z.number().int().min(1),
+  /** Whether the images pass the similarity threshold */
+  isMatch: z.boolean(),
+  /** Path to diff image if generated */
   diffImagePath: z.string().optional(),
   /** Dimensions of compared images */
   dimensions: z.object({
@@ -710,6 +713,104 @@ export const BrowserToolOutputSchema = z.object({
   browserErrors: z.array(BrowserErrorSchema).optional(),
 });
 export type BrowserToolOutput = z.infer<typeof BrowserToolOutputSchema>;
+
+// ============================================================================
+// Browser Session Types
+// ============================================================================
+
+/**
+ * Configuration for browser sessions
+ */
+export const BrowserSessionConfigSchema = z.object({
+  /** Browser type to use */
+  browserType: z.enum(['chromium', 'firefox', 'webkit']).optional().default('chromium'),
+
+  /** Whether to run in headless mode */
+  headless: z.boolean().optional().default(true),
+
+  /** Default timeout in milliseconds */
+  timeout: z.number().int().min(1000).optional().default(30000),
+
+  /** Viewport configuration */
+  viewport: z.object({
+    width: z.number().int().min(100),
+    height: z.number().int().min(100),
+  }).optional(),
+
+  /** User agent string */
+  userAgent: z.string().optional(),
+
+  /** Whether to ignore HTTPS errors */
+  ignoreHTTPSErrors: z.boolean().optional().default(false),
+});
+export type BrowserSessionConfig = z.infer<typeof BrowserSessionConfigSchema>;
+
+/**
+ * Interface for browser automation sessions
+ */
+export interface BrowserSession {
+  /** Whether the session is connected */
+  isConnected: boolean;
+
+  /** Current URL */
+  url: string;
+
+  /** Navigate to a URL */
+  navigate(url: string): Promise<{ success: boolean; url: string; error?: string }>;
+
+  /** Click on an element */
+  click(selector: string): Promise<{ success: boolean; element?: string; error?: string }>;
+
+  /** Type text into an element */
+  type(selector: string, text: string): Promise<{ success: boolean; error?: string }>;
+
+  /** Take a screenshot */
+  screenshot(filename?: string): Promise<{ success: boolean; path?: string; error?: string }>;
+
+  /** Compare screenshots */
+  compareScreenshot(baseline: string, current?: string): Promise<{
+    success: boolean;
+    identical: boolean;
+    difference?: number;
+    diffPath?: string;
+    error?: string;
+  }>;
+
+  /** Execute JavaScript in the browser */
+  evaluate(expression: string): Promise<{ success: boolean; result?: any; error?: string }>;
+
+  /** Wait for an element to appear */
+  waitForSelector(selector: string, timeout?: number): Promise<{
+    success: boolean;
+    found: boolean;
+    error?: string;
+  }>;
+
+  /** Get an element's attribute value */
+  getAttribute(selector: string, attribute: string): Promise<{
+    success: boolean;
+    value?: string;
+    error?: string;
+  }>;
+
+  /** Get an element's text content */
+  getText(selector: string): Promise<{ success: boolean; text?: string; error?: string }>;
+
+  /** Get HTML content */
+  getHtml(selector?: string): Promise<{ success: boolean; html?: string; error?: string }>;
+
+  /** Scroll the page */
+  scroll(x: number, y: number): Promise<{ success: boolean; error?: string }>;
+
+  /** Hover over an element */
+  hover(selector: string): Promise<{ success: boolean; error?: string }>;
+
+  /** Submit a form */
+  submit(selector: string): Promise<{ success: boolean; error?: string }>;
+
+  /** Close the session */
+  close(): Promise<void>;
+}
 
 /**
  * Configuration for search tools (Grep)
@@ -851,37 +952,6 @@ export type JSONSchemaType = z.infer<typeof JSONSchemaTypeSchema>;
  * Tool parameter definition with JSON Schema-compatible structure
  * Supports nested object and array types for complex parameter definitions
  */
-export const ToolParameterSchema: z.ZodType<ToolParameter> = z.lazy(() =>
-  z.object({
-    /** Parameter name */
-    name: z.string().min(1, 'Parameter name is required'),
-    /** JSON Schema type */
-    type: JSONSchemaTypeSchema,
-    /** Human-readable description */
-    description: z.string().optional(),
-    /** Whether the parameter is required */
-    required: z.boolean().optional().default(false),
-    /** Default value for the parameter */
-    default: z.unknown().optional(),
-    /** Allowed values (for enum-like constraints) */
-    enum: z.array(z.unknown()).optional(),
-    /** Nested properties for object types */
-    properties: z.record(z.string(), ToolParameterSchema).optional(),
-    /** Schema for array items */
-    items: ToolParameterSchema.optional(),
-    /** Minimum value for numbers */
-    minimum: z.number().optional(),
-    /** Maximum value for numbers */
-    maximum: z.number().optional(),
-    /** Minimum length for strings/arrays */
-    minLength: z.number().optional(),
-    /** Maximum length for strings/arrays */
-    maxLength: z.number().optional(),
-    /** Pattern for string validation (regex) */
-    pattern: z.string().optional(),
-  })
-);
-
 /**
  * Tool parameter interface for TypeScript
  */
@@ -900,6 +970,24 @@ export interface ToolParameter {
   maxLength?: number;
   pattern?: string;
 }
+
+export const ToolParameterSchema: z.ZodType<ToolParameter> = z.lazy(() =>
+  z.object({
+    name: z.string().min(1, 'Parameter name is required'),
+    type: JSONSchemaTypeSchema,
+    description: z.string().optional(),
+    required: z.boolean().optional(),
+    default: z.unknown().optional(),
+    enum: z.array(z.unknown()).optional(),
+    properties: z.record(z.string(), z.lazy(() => ToolParameterSchema)).optional(),
+    items: z.lazy(() => ToolParameterSchema).optional(),
+    minimum: z.number().optional(),
+    maximum: z.number().optional(),
+    minLength: z.number().optional(),
+    maxLength: z.number().optional(),
+    pattern: z.string().optional(),
+  })
+) as z.ZodType<ToolParameter>;
 
 /**
  * JSON Schema representation of tool parameters
@@ -8968,23 +9056,6 @@ export const ScreenshotComparisonOptionsSchema = VisualRegressionConfigSchema;
 export type ScreenshotComparisonOptions = z.infer<typeof ScreenshotComparisonOptionsSchema>;
 
 /**
- * Result of a screenshot comparison operation
- */
-export const ScreenshotComparisonResultSchema = z.object({
-  /** Similarity score between 0 (completely different) and 1 (identical) */
-  similarity: z.number().min(0).max(1),
-  /** Number of different pixels */
-  differentPixels: z.number().min(0),
-  /** Total number of pixels compared */
-  totalPixels: z.number().min(1),
-  /** Whether the images pass the similarity threshold */
-  isMatch: z.boolean(),
-  /** Path to diff image if generated */
-  diffImagePath: z.string().optional(),
-});
-export type ScreenshotComparisonResult = z.infer<typeof ScreenshotComparisonResultSchema>;
-
-/**
  * Image metadata for screenshot comparison
  */
 export const ImageMetadataSchema = z.object({
@@ -9014,34 +9085,6 @@ export type ScreenshotFormat = z.infer<typeof ScreenshotFormatSchema>;
  */
 export const ScreenshotOutputModeSchema = z.enum(['buffer', 'file']);
 export type ScreenshotOutputMode = z.infer<typeof ScreenshotOutputModeSchema>;
-
-/**
- * Options for capturing screenshots
- * Used by browser automation tools to configure screenshot capture behavior
- */
-export const ScreenshotOptionsSchema = z.object({
-  /** Image format for the screenshot (default: 'png') */
-  format: ScreenshotFormatSchema.optional().default('png'),
-
-  /** Image quality (1-100), only applicable for JPEG format (default: 80) */
-  quality: z.number().int().min(1).max(100).optional().default(80),
-
-  /** How to return the screenshot - as a buffer or saved to file */
-  output: ScreenshotOutputModeSchema.optional().default('buffer'),
-
-  /** File path to save the screenshot (required when output is 'file') */
-  path: z.string().optional(),
-
-  /** Whether to capture the full scrollable page (default: false) */
-  fullPage: z.boolean().optional().default(false),
-
-  /** Whether to hide default white background and allow capturing with transparency (PNG only) */
-  omitBackground: z.boolean().optional().default(false),
-}).refine(
-  (data) => data.output !== 'file' || (data.output === 'file' && data.path !== undefined),
-  { message: "Path is required when output mode is 'file'", path: ['path'] }
-);
-export type ScreenshotOptions = z.infer<typeof ScreenshotOptionsSchema>;
 
 /**
  * Result of a screenshot capture operation
@@ -9075,7 +9118,7 @@ export type ScreenshotResult = z.infer<typeof ScreenshotResultSchema>;
  * Options for capturing a screenshot of a specific element
  * Extends base screenshot options with element selector
  */
-export const CaptureElementOptionsSchema = ScreenshotOptionsSchema.innerType().extend({
+export const CaptureElementOptionsSchema = ScreenshotOptionsSchema.extend({
   /** CSS selector for the element to capture */
   selector: z.string().min(1, 'Selector is required'),
 
@@ -9087,7 +9130,7 @@ export type CaptureElementOptions = z.infer<typeof CaptureElementOptionsSchema>;
 /**
  * Options for capturing a screenshot of a specific viewport region
  */
-export const CaptureRegionOptionsSchema = ScreenshotOptionsSchema.innerType().extend({
+export const CaptureRegionOptionsSchema = ScreenshotOptionsSchema.extend({
   /** X coordinate of the region's top-left corner */
   x: z.number().int().min(0),
 
@@ -9423,3 +9466,68 @@ export const TestReportSchema = z.object({
   schemaVersion: z.string().optional().default('1.0.0'),
 });
 export type TestReport = z.infer<typeof TestReportSchema>;
+
+// ============================================================================
+// Permission Change Event Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Valid permission change types that can occur in the system
+ */
+export const PermissionChangeTypeSchema = z.enum([
+  'granted',   // Permission was granted to an agent
+  'revoked',   // Permission was revoked from an agent
+  'modified'   // Permission settings were modified
+]);
+
+export type PermissionChangeType = z.infer<typeof PermissionChangeTypeSchema>;
+
+/**
+ * Details about the permission that was changed
+ */
+export const PermissionDetailsSchema = z.object({
+  /** The tool category affected by this permission change */
+  category: ToolCategorySchema,
+
+  /** The specific permission level that was changed */
+  permission: ToolPermissionSchema,
+
+  /** Previous permission level (null for newly granted permissions) */
+  previousLevel: PermissionLevelSchema.nullable(),
+
+  /** New permission level (null for revoked permissions) */
+  newLevel: PermissionLevelSchema.nullable(),
+
+  /** Optional reason for the permission change */
+  reason: z.string().trim().optional(),
+
+  /** Agent that was affected by this permission change */
+  agentName: z.string().trim().min(1).optional(),
+
+  /** Task ID associated with this permission change, if any */
+  taskId: z.string().trim().min(1).optional()
+});
+
+export type PermissionDetails = z.infer<typeof PermissionDetailsSchema>;
+
+/**
+ * Event emitted when permission settings change in the system
+ */
+export const PermissionChangeEventSchema = z.object({
+  /** Type of permission change that occurred */
+  changeType: PermissionChangeTypeSchema,
+
+  /** Details about the permission that was changed */
+  permission: PermissionDetailsSchema,
+
+  /** When this permission change occurred */
+  timestamp: z.date(),
+
+  /** Human-readable message describing the change and any required actions */
+  message: z.string().trim().min(1),
+
+  /** Optional metadata about the change context */
+  metadata: z.record(z.string(), z.any()).optional()
+});
+
+export type PermissionChangeEvent = z.infer<typeof PermissionChangeEventSchema>;

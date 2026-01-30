@@ -380,17 +380,34 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   );
 
-  // List tasks
-  app.get<{ Querystring: { status?: TaskStatus; limit?: string } }>(
+  // Task stats (lightweight, for dashboard)
+  app.get(
+    '/tasks/stats',
+    async (request, reply) => {
+      const stats = await orchestrator.getTaskStats();
+      return stats;
+    }
+  );
+
+  // List tasks (paginated, lightweight by default)
+  app.get<{ Querystring: { status?: TaskStatus; limit?: string; offset?: string; full?: string } }>(
     '/tasks',
     async (request, reply) => {
-      const { status, limit } = request.query;
+      const { status, limit, offset, full } = request.query;
+      const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : 50;
+      const parsedOffset = offset ? parseInt(offset, 10) : 0;
+      const lightweight = full !== 'true';
+
       const tasks = await orchestrator.listTasks({
         status,
-        limit: limit ? parseInt(limit, 10) : undefined,
+        limit: parsedLimit,
+        offset: parsedOffset,
+        lightweight,
       });
 
-      return { tasks, count: tasks.length };
+      const counts = await orchestrator.countTasks({ status });
+
+      return { tasks, count: tasks.length, total: counts.total, limit: parsedLimit, offset: parsedOffset };
     }
   );
 
@@ -2194,9 +2211,9 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
 
   // Approval events (v0.5.0)
   orchestrator.on('approval:required', (eventData: ApprovalRequiredEventData) => {
-    broadcast(eventData.taskId, {
+    broadcast(eventData.taskId!, {
       type: 'approval-required',
-      taskId: eventData.taskId,
+      taskId: eventData.taskId!,
       timestamp: new Date(),
       data: {
         approvalId: eventData.approvalId,
@@ -2219,9 +2236,9 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   orchestrator.on('approval:approved', (eventData: ApprovalGrantedEventData) => {
-    broadcast(eventData.taskId, {
+    broadcast(eventData.taskId!, {
       type: 'approval:granted',
-      taskId: eventData.taskId,
+      taskId: eventData.taskId!,
       timestamp: new Date(),
       data: {
         approvalId: eventData.approvalId,
@@ -2232,9 +2249,9 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   orchestrator.on('approval:denied', (eventData: ApprovalDeniedEventData) => {
-    broadcast(eventData.taskId, {
+    broadcast(eventData.taskId!, {
       type: 'approval:denied',
-      taskId: eventData.taskId,
+      taskId: eventData.taskId!,
       timestamp: new Date(),
       data: {
         approvalId: eventData.approvalId,

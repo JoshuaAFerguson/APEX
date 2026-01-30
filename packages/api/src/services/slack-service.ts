@@ -74,6 +74,7 @@ export class SlackService {
     this.logger.info('Starting Slack Socket Mode integration...');
     this.webClient = new WebClient(this.config.botToken);
     this.socketClient = new SocketModeClient({ appToken: this.config.appToken! });
+    this.patchSocketModeClient();
 
     this.socketClient.on('connecting', () => {
       this.logger.info('Slack Socket Mode: Connecting...');
@@ -123,6 +124,58 @@ export class SlackService {
   async stop(): Promise<void> {
     if (this.socketClient) {
       await this.socketClient.disconnect();
+    }
+  }
+
+  private patchSocketModeClient(): void {
+    const socketClient = this.socketClient as any;
+    const stateMachine = socketClient?.stateMachine;
+    if (!stateMachine || typeof stateMachine.handle !== 'function') {
+      return;
+    }
+
+    const originalHandle = stateMachine.handle.bind(stateMachine);
+    const originalHandleUnhandledEvent = typeof stateMachine.handleUnhandledEvent === 'function'
+      ? stateMachine.handleUnhandledEvent.bind(stateMachine)
+      : undefined;
+
+    const getCurrentState = () => {
+      if (typeof stateMachine.getCurrentState === 'function') {
+        return String(stateMachine.getCurrentState());
+      }
+      return typeof stateMachine.currentState === 'string' ? stateMachine.currentState : 'unknown';
+    };
+
+    const shouldIgnoreExplicitDisconnect = (event: string, message: string) => (
+      event === 'server explicit disconnect'
+      && getCurrentState().toLowerCase() === 'connecting'
+      && message.includes('Unhandled event')
+    );
+
+    stateMachine.handle = (event: string, ...args: unknown[]) => {
+      try {
+        return originalHandle(event, ...args);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (shouldIgnoreExplicitDisconnect(event, message)) {
+          this.logger.warn('Slack Socket Mode: ignoring explicit disconnect while connecting.');
+          return;
+        }
+
+        throw error;
+      }
+    };
+
+    if (originalHandleUnhandledEvent) {
+      stateMachine.handleUnhandledEvent = (event: string, eventPayload?: unknown) => {
+        const message = `Unhandled event '${event}' in state '${getCurrentState()}'`;
+        if (shouldIgnoreExplicitDisconnect(event, message)) {
+          this.logger.warn('Slack Socket Mode: ignoring explicit disconnect while connecting.');
+          return;
+        }
+
+        return originalHandleUnhandledEvent(event, eventPayload);
+      };
     }
   }
 
@@ -326,8 +379,8 @@ export class SlackService {
   }
 
   private getNotificationChannels(): string[] {
-    const channels = [this.config.defaultChannel, ...this.config.notificationChannels];
-    return Array.from(new Set(channels.filter(Boolean)));
+    const channels = [this.config.defaultChannel, ...(this.config.notificationChannels ?? [])];
+    return Array.from(new Set(channels.filter(Boolean))) as string[];
   }
 
   private async postMessage(

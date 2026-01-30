@@ -73,13 +73,17 @@ export default function MCPMarketplacePage() {
           apiClient.getMCPRecommendations()
         ])
 
-        setEntries(marketplaceResponse.entries)
+        setEntries(marketplaceResponse.entries as MCPMarketplaceEntry[])
         setInstalledServers(serversResponse.map(server => ({
-          name: server.name,
-          status: 'installed'
+          name: server.name!,
+          status: 'installed' as const
         })))
-        setCategories(categoriesResponse.categories)
-        setRecommendations(recommendationsResponse)
+        setCategories(categoriesResponse.categories as Array<{ name: string; count: number }>)
+        setRecommendations(recommendationsResponse as {
+          essential: MCPMarketplaceEntry[];
+          recommended: MCPMarketplaceEntry[];
+          optional: MCPMarketplaceEntry[];
+        })
       } catch (error) {
         console.error('Failed to fetch MCP data:', error)
       } finally {
@@ -145,8 +149,8 @@ export default function MCPMarketplacePage() {
         // Refresh the installed servers list
         const serversResponse = await apiClient.listMCPServers()
         setInstalledServers(serversResponse.map(server => ({
-          name: server.name,
-          status: 'installed'
+          name: server.name!,
+          status: 'installed' as const
         })))
 
         console.log(`Auto-configuration completed: ${result.configured.length} servers configured`)

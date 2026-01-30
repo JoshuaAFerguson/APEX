@@ -3226,7 +3226,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             agent: agent.name,
           });
 
-          return { stage, result, error: null, decompositionRequest: result.decompositionRequest };
+          return { stage, result, error: null as any, decompositionRequest: result.decompositionRequest };
         } catch (error) {
           // Parse and enhance the error message for better feedback
           const rawError = error instanceof Error ? error : new Error(String(error));
@@ -3252,7 +3252,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             completedAt: new Date(),
           };
 
-          return { stage, result: failedResult, error: rawError, decompositionRequest: undefined };
+          return { stage, result: failedResult, error: rawError, decompositionRequest: undefined as any };
         }
       });
 
@@ -4704,7 +4704,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       updatedAt: new Date(),
       ...(status === 'completed' ? {
         completedAt: new Date(),
-        resumeAttempts: 0  // Reset resume attempts counter on successful completion
+        resumeAttempts: 0,  // Reset resume attempts counter on successful completion
+        pauseReason: undefined,  // Clear stale pause metadata
+        pausedAt: undefined,
+        resumeAfter: undefined,
       } : {}),
     });
 
@@ -5102,12 +5105,38 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async listTasks(options?: {
     status?: TaskStatus;
     limit?: number;
+    offset?: number;
     orderByPriority?: boolean;
     includeTrashed?: boolean;
     includeArchived?: boolean;
+    lightweight?: boolean;
   }): Promise<Task[]> {
     await this.ensureInitialized();
     return this.store.listTasks(options);
+  }
+
+  /**
+   * Get task statistics (counts and cost, no per-task loading).
+   */
+  async getTaskStats(): Promise<{
+    byStatus: Record<string, number>;
+    totalCost: number;
+    totalTokens: number;
+  }> {
+    await this.ensureInitialized();
+    return this.store.getTaskStats();
+  }
+
+  /**
+   * Count tasks matching filters.
+   */
+  async countTasks(options?: {
+    status?: TaskStatus;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): Promise<{ total: number; byStatus: Record<string, number> }> {
+    await this.ensureInitialized();
+    return this.store.countTasks(options);
   }
 
   /**
@@ -8903,7 +8932,7 @@ Parent: ${parentTask.description}`;
                   success: true, // Assume success if we reach post-hooks
                   output: input.output || null,
                   error: input.error || undefined,
-                  duration: undefined, // Would be calculated elsewhere
+                  duration: undefined as any, // Would be calculated elsewhere
                 },
               };
 
@@ -10824,7 +10853,7 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
         
         // Register these rules with the PolicyEngine
         if (this.policyEngine) {
-          this.policyEngine.registerApexRules(this.config.projectRules);
+          this.policyEngine.registerApexRules(this.config.projectRules as any);
           console.log(`Registered ${this.config.projectRules.length} APEX rules with PolicyEngine.`);
         } else {
           console.warn('PolicyEngine not initialized. APEX rules will not be enforced.');

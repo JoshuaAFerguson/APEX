@@ -103,6 +103,35 @@ export type {
   ScreenshotResult,
 } from './screenshot-utility.js';
 
+// Import and export permission mocking utilities
+import {
+  mockPermissions as mockPermissionsFn,
+  isPermissionsMocked as isPermissionsMockedFn,
+  getCurrentMockHandle as getCurrentMockHandleFn,
+  withMockedPermissions as withMockedPermissionsFn,
+  MockPermissionStatus as MockPermissionStatusClass,
+} from './permission-mocking/index.js';
+
+export {
+  mockPermissionsFn as mockPermissions,
+  isPermissionsMockedFn as isPermissionsMocked,
+  getCurrentMockHandleFn as getCurrentMockHandle,
+  withMockedPermissionsFn as withMockedPermissions,
+  MockPermissionStatusClass as MockPermissionStatus,
+};
+
+export type {
+  PermissionState,
+  PermissionName,
+  PermissionDescriptor,
+  PermissionStateChangeHandler,
+  MockPermissionDescriptor,
+  MockPermissionStatus as MockPermissionStatusType,
+  MockPermissionConfig,
+  MockPermissionHandle,
+  NavigatorWithMockedPermissions,
+} from './permission-mocking/index.js';
+
 // Import and export Playwright browser launcher functions for convenience
 import { chromium as chromiumLauncher, firefox as firefoxLauncher, webkit as webkitLauncher } from 'playwright';
 
@@ -243,6 +272,52 @@ export async function launchBrowser(
  * const session = browser.createBrowserSession(manager);
  * ```
  */
+// Import and export mock utilities
+import {
+  MockBrowserManager as MockBrowserManagerClass,
+  MockBrowserSession as MockBrowserSessionClass,
+  createMockBrowserManager as createMockBrowserManagerFn,
+  createMockBrowserSession as createMockBrowserSessionFn,
+  launchMockBrowser as launchMockBrowserFn,
+  createMockSessionForTesting as createMockSessionForTestingFn,
+  createUnreliableMockSession as createUnreliableMockSessionFn,
+  createMockScenario as createMockScenarioFn,
+  commonScenarios as commonMockScenarios,
+  defaultMockConfig as defaultMockConfigValue,
+} from './mocks/index.js';
+
+export {
+  MockBrowserManagerClass as MockBrowserManager,
+  MockBrowserSessionClass as MockBrowserSession,
+  createMockBrowserManagerFn as createMockBrowserManager,
+  createMockBrowserSessionFn as createMockBrowserSession,
+  launchMockBrowserFn as launchMockBrowser,
+  createMockSessionForTestingFn as createMockSessionForTesting,
+  createUnreliableMockSessionFn as createUnreliableMockSession,
+  createMockScenarioFn as createMockScenario,
+  commonMockScenarios as commonMockScenarios,
+  defaultMockConfigValue as defaultMockConfig,
+};
+
+export type {
+  MockBehaviorConfig,
+  MockScenarioConfig,
+  MockNavigationResult,
+  MockElement,
+  MockScreenshot,
+  MockPageState,
+  MockBrowserSessionConfig,
+  MockOperation,
+  MockBrowserEvents,
+  MockBrowserManagerState,
+  MockResponse,
+  MockResponseFactory,
+  MockScenarioBuilder,
+  MockUrlBehavior,
+  MockElementBehavior,
+  MockOperationBehavior,
+} from './mocks/index.js';
+
 export default {
   BrowserManager: BrowserManagerClass,
   BrowserSession: BrowserSessionClass,
@@ -257,4 +332,21 @@ export default {
   chromium: chromiumLauncher,
   firefox: firefoxLauncher,
   webkit: webkitLauncher,
+  // Permission mocking utilities
+  mockPermissions: mockPermissionsFn,
+  isPermissionsMocked: isPermissionsMockedFn,
+  getCurrentMockHandle: getCurrentMockHandleFn,
+  withMockedPermissions: withMockedPermissionsFn,
+  MockPermissionStatus: MockPermissionStatusClass,
+  // Browser mocking utilities
+  MockBrowserManager: MockBrowserManagerClass,
+  MockBrowserSession: MockBrowserSessionClass,
+  createMockBrowserManager: createMockBrowserManagerFn,
+  createMockBrowserSession: createMockBrowserSessionFn,
+  launchMockBrowser: launchMockBrowserFn,
+  createMockSessionForTesting: createMockSessionForTestingFn,
+  createUnreliableMockSession: createUnreliableMockSessionFn,
+  createMockScenario: createMockScenarioFn,
+  commonMockScenarios,
+  defaultMockConfig: defaultMockConfigValue,
 };

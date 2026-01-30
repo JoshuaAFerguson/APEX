@@ -65,6 +65,11 @@ export enum ApexErrorCode {
   CLAUDE_SDK_ERROR = 'APEX_1700',
   TOOL_INTEGRATION_FAILED = 'APEX_1701',
   DEPENDENCY_ERROR = 'APEX_1702',
+
+  // Browser errors (1800-1899)
+  BROWSER_PERMISSION_DENIED = 'APEX_1800',
+  BROWSER_RESOURCE_LEAK = 'APEX_1801',
+  BROWSER_SESSION_INVALID = 'APEX_1802',
 }
 
 // ============================================================================
@@ -355,4 +360,117 @@ export function wrapWithApexError<T extends (...args: any[]) => any>(
       throw new ApexError(String(error), code, context);
     }
   }) as T;
+}
+
+// ============================================================================
+// Error Sanitization Utilities
+// ============================================================================
+
+/**
+ * Patterns that indicate sensitive filesystem paths in error messages
+ */
+const SENSITIVE_PATH_PATTERNS: RegExp[] = [
+  /\/Users\/[^\s/]+\//g,         // macOS home directories
+  /\/home\/[^\s/]+\//g,          // Linux home directories
+  /[A-Z]:\\Users\\[^\s\\]+\\/gi, // Windows home directories
+  /node_modules\/[^\s]*/g,       // Internal dependency paths
+  /\.apex\/(config\.yaml|apex\.db)/g, // APEX internal config/db paths
+  /\/tmp\/[^\s]*/g,              // Temporary file paths
+  /\/var\/[^\s]*/g,              // System paths
+];
+
+/**
+ * Patterns that indicate credentials or secrets in error messages
+ */
+const SENSITIVE_VALUE_PATTERNS: RegExp[] = [
+  /sk-ant-[a-zA-Z0-9-]+/g,                    // Anthropic API keys
+  /sk-[a-zA-Z0-9]{20,}/g,                     // Generic sk- prefixed keys
+  /Bearer\s+[a-zA-Z0-9._-]+/g,               // Bearer tokens
+  /password[=:]\s*\S+/gi,                     // Password values
+  /postgres:\/\/[^@\s]+@/g,                   // PostgreSQL connection strings
+  /mongodb(\+srv)?:\/\/[^@\s]+@/g,            // MongoDB connection strings
+  /mysql:\/\/[^@\s]+@/g,                      // MySQL connection strings
+  /redis:\/\/[^@\s]+@/g,                      // Redis connection strings
+  /ANTHROPIC_API_KEY\s*[=:]\s*\S+/g,          // Anthropic env var with value
+  /(?:api[_-]?key|secret|token|credential)[=:]\s*\S+/gi, // Generic secrets
+];
+
+/**
+ * Generic safe messages for security-sensitive error codes
+ */
+const SAFE_ERROR_MESSAGES: Partial<Record<ApexErrorCode, string>> = {
+  [ApexErrorCode.AUTHENTICATION_ERROR]: 'Authentication failed',
+  [ApexErrorCode.FILE_ACCESS_DENIED]: 'Access denied',
+  [ApexErrorCode.DATABASE_CONNECTION_FAILED]: 'Service temporarily unavailable',
+  [ApexErrorCode.DATABASE_QUERY_FAILED]: 'Service temporarily unavailable',
+  [ApexErrorCode.DATABASE_MIGRATION_FAILED]: 'Service temporarily unavailable',
+  [ApexErrorCode.CONFIGURATION]: 'Configuration error',
+  [ApexErrorCode.NETWORK_ERROR]: 'Network error',
+  [ApexErrorCode.RATE_LIMIT_EXCEEDED]: 'Rate limit exceeded, please try again later',
+  [ApexErrorCode.BROWSER_PERMISSION_DENIED]: 'Browser permission denied',
+};
+
+/**
+ * Sanitize an error message for safe external display.
+ * Strips internal paths and credential patterns from the message.
+ *
+ * @param message - The raw error message to sanitize
+ * @returns A sanitized message safe for external display
+ *
+ * @example
+ * ```typescript
+ * sanitizeErrorMessage('Failed to read /Users/dev/project/.apex/config.yaml')
+ * // Returns: 'Failed to read [path]'
+ *
+ * sanitizeErrorMessage('Auth failed: Bearer eyJhbGci...')
+ * // Returns: 'Auth failed: [redacted]'
+ * ```
+ */
+export function sanitizeErrorMessage(message: string): string {
+  let sanitized = message;
+
+  // Replace sensitive paths with [path]
+  for (const pattern of SENSITIVE_PATH_PATTERNS) {
+    sanitized = sanitized.replace(pattern, '[path]');
+  }
+
+  // Replace sensitive values with [redacted]
+  for (const pattern of SENSITIVE_VALUE_PATTERNS) {
+    sanitized = sanitized.replace(pattern, '[redacted]');
+  }
+
+  return sanitized;
+}
+
+/**
+ * Get a production-safe representation of an ApexError.
+ * Returns only the error code, sanitized message, and errorId.
+ * No stack traces, no internal paths, no credentials.
+ *
+ * @param error - The ApexError to create a safe response for
+ * @returns A safe error response object suitable for API responses
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await riskyOperation();
+ * } catch (err) {
+ *   const apexErr = toApexError(err);
+ *   reply.status(500).send(toSafeErrorResponse(apexErr));
+ * }
+ * ```
+ */
+export function toSafeErrorResponse(error: ApexError): {
+  errorId: string;
+  code: ApexErrorCode;
+  message: string;
+} {
+  // Use the generic safe message if one exists for this error code
+  const safeMessage = SAFE_ERROR_MESSAGES[error.code];
+
+  return {
+    errorId: error.errorId,
+    code: error.code,
+    message: safeMessage ?? sanitizeErrorMessage(error.message),
+  };
 }

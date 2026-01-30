@@ -123,14 +123,26 @@ export class ApexApiClient {
   }
 
   /**
-   * List all tasks
+   * Get task stats (lightweight, for dashboard)
+   */
+  async getTaskStats(): Promise<{
+    byStatus: Record<string, number>
+    totalCost: number
+    totalTokens: number
+  }> {
+    const response = await this.fetch('/tasks/stats')
+    return response.json()
+  }
+
+  /**
+   * List tasks (paginated)
    */
   async listTasks(filters?: {
     status?: string
     workflow?: string
     limit?: number
     offset?: number
-  }): Promise<{ tasks: Task[]; total: number }> {
+  }): Promise<{ tasks: Task[]; total: number; count: number; limit: number; offset: number }> {
     const params = new URLSearchParams()
     if (filters?.status) params.set('status', filters.status)
     if (filters?.workflow) params.set('workflow', filters.workflow)

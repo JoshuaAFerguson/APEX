@@ -30,5 +30,16 @@ export type {
   DynamicResponseHandler
 } from './claude-agent-sdk.types';
 
-// Future mock exports can be added here
-// export * from './other-mocks';
+// Permission Revocation Test Utilities
+export {
+  PermissionRevokedError,
+  InterruptibleStreamController,
+  PartialResultTracker,
+  PermissionRevocationSimulator
+} from './permission-revocation';
+
+export type {
+  RevocationConfig,
+  RevocationSimulationResult,
+  TrackedToolCall
+} from './permission-revocation.types';

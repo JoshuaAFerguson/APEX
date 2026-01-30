@@ -29,6 +29,12 @@
       "require": "./dist/test-setup.js",
       "default": "./dist/test-setup.js"
     },
+    "./test-setup-utils": {
+      "types": "./dist/test-setup-utils.d.ts",
+      "import": "./dist/test-setup-utils.js",
+      "require": "./dist/test-setup-utils.js",
+      "default": "./dist/test-setup-utils.js"
+    },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js",
@@ -46,6 +52,12 @@
       "import": "./dist/config.js",
       "require": "./dist/config.js",
       "default": "./dist/config.js"
+    },
+    "./test-fixtures": {
+      "types": "./dist/test-fixtures/index.d.ts",
+      "import": "./dist/test-fixtures/index.js",
+      "require": "./dist/test-fixtures/index.js",
+      "default": "./dist/test-fixtures/index.js"
     }
   },
   "files": [

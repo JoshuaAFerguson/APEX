@@ -58,7 +58,8 @@ export default defineConfig({
     // Coverage for unit tests
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      reporter: ['text', 'text-summary', 'html', 'json', 'lcov'],
+      reportsDirectory: './coverage',
       include: ['packages/*/src/**/*.ts'],
       exclude: [
         '**/*.test.ts',
@@ -73,6 +74,12 @@ export default defineConfig({
         'packages/web-ui/src/components/**/*.{ts,tsx}',
         'packages/web-ui/src/lib/websocket-client.ts',
       ],
+      thresholds: {
+        lines: 50,
+        functions: 50,
+        branches: 50,
+        statements: 50,
+      },
     },
   },
 });

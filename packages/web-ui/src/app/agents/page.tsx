@@ -92,7 +92,7 @@ export default function AgentsPage() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <h3 className="font-medium capitalize">{agent.name}</h3>
-                <Badge variant={modelColors[agent.model] || 'default'}>
+                <Badge variant={(agent.model && modelColors[agent.model]) || 'default'}>
                   {agent.model}
                 </Badge>
               </div>

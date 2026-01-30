@@ -1106,16 +1106,17 @@ export class TaskStore {
   }
 
   /**
-   * List tasks
+   * Build the WHERE/ORDER/LIMIT SQL for task listing queries.
    */
-  async listTasks(options?: {
+  private buildTaskListQuery(options?: {
     status?: TaskStatus;
     limit?: number;
+    offset?: number;
     orderByPriority?: boolean;
     includeTrashed?: boolean;
     includeArchived?: boolean;
-  }): Promise<Task[]> {
-    let sql = 'SELECT * FROM tasks';
+  }): { sql: string; params: unknown[] } {
+    let sql = '';
     const params: unknown[] = [];
     const whereClauses: string[] = [];
 
@@ -1124,7 +1125,6 @@ export class TaskStore {
       params.push(options.status);
     }
 
-    // By default, exclude trashed and archived tasks unless explicitly requested
     if (!options?.includeTrashed) {
       whereClauses.push('trashed_at IS NULL');
     }
@@ -1138,7 +1138,6 @@ export class TaskStore {
     }
 
     if (options?.orderByPriority) {
-      // Order by priority (urgent > high > normal > low), then by effort (lower effort preferred), then by creation date
       sql += ` ORDER BY CASE priority
         WHEN 'urgent' THEN 1
         WHEN 'high' THEN 2
@@ -1160,22 +1159,251 @@ export class TaskStore {
     if (options?.limit) {
       sql += ' LIMIT ?';
       params.push(options.limit);
+      if (options?.offset) {
+        sql += ' OFFSET ?';
+        params.push(options.offset);
+      }
     }
 
-    const stmt = this.db.prepare(sql);
+    return { sql, params };
+  }
+
+  /**
+   * Count tasks matching the given filters (lightweight, no data loading).
+   */
+  countTasks(options?: {
+    status?: TaskStatus;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): { total: number; byStatus: Record<string, number> } {
+    // Total with filters
+    const { sql: whereSql, params } = this.buildTaskListQuery(options);
+    const countSql = `SELECT COUNT(*) as cnt FROM tasks${whereSql}`;
+    const total = (this.db.prepare(countSql).get(...params) as { cnt: number }).cnt;
+
+    // Breakdown by status (always unfiltered by status, but respects trash/archive)
+    const breakdownWhere: string[] = [];
+    if (!options?.includeTrashed) breakdownWhere.push('trashed_at IS NULL');
+    if (!options?.includeArchived) breakdownWhere.push('archived_at IS NULL');
+    const breakdownSql = `SELECT status, COUNT(*) as cnt FROM tasks${breakdownWhere.length ? ' WHERE ' + breakdownWhere.join(' AND ') : ''} GROUP BY status`;
+    const breakdownRows = this.db.prepare(breakdownSql).all() as { status: string; cnt: number }[];
+    const byStatus: Record<string, number> = {};
+    for (const row of breakdownRows) {
+      byStatus[row.status] = row.cnt;
+    }
+
+    return { total, byStatus };
+  }
+
+  /**
+   * Get aggregate stats for dashboard (single query, no per-task loading).
+   */
+  getTaskStats(options?: {
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): {
+    byStatus: Record<string, number>;
+    totalCost: number;
+    totalTokens: number;
+  } {
+    const whereClauses: string[] = [];
+    if (!options?.includeTrashed) whereClauses.push('trashed_at IS NULL');
+    if (!options?.includeArchived) whereClauses.push('archived_at IS NULL');
+    const where = whereClauses.length ? ' WHERE ' + whereClauses.join(' AND ') : '';
+
+    const statsSql = `SELECT
+      status,
+      COUNT(*) as cnt,
+      SUM(usage_estimated_cost) as total_cost,
+      SUM(usage_total_tokens) as total_tokens
+    FROM tasks${where} GROUP BY status`;
+    const rows = this.db.prepare(statsSql).all() as {
+      status: string; cnt: number; total_cost: number; total_tokens: number;
+    }[];
+
+    const byStatus: Record<string, number> = {};
+    let totalCost = 0;
+    let totalTokens = 0;
+    for (const row of rows) {
+      byStatus[row.status] = row.cnt;
+      totalCost += row.total_cost || 0;
+      totalTokens += row.total_tokens || 0;
+    }
+
+    return { byStatus, totalCost, totalTokens };
+  }
+
+  /**
+   * List tasks with batched relation loading (fixes N+1 query problem).
+   * For list views, use `lightweight: true` to skip logs/artifacts/iterations.
+   */
+  async listTasks(options?: {
+    status?: TaskStatus;
+    limit?: number;
+    offset?: number;
+    orderByPriority?: boolean;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+    lightweight?: boolean;
+  }): Promise<Task[]> {
+    const { sql: querySql, params } = this.buildTaskListQuery(options);
+    const stmt = this.db.prepare('SELECT * FROM tasks' + querySql);
     const rows = stmt.all(...params) as TaskRow[];
 
-    const tasks: Task[] = [];
-    for (const row of rows) {
-      const logs = await this.getTaskLogs(row.id);
-      const artifacts = await this.getTaskArtifacts(row.id);
-      const dependsOn = await this.getTaskDependencies(row.id);
-      const blockedBy = await this.getBlockingTasks(row.id);
-      const iterationHistory = await this.getIterationHistory(row.id);
-      tasks.push(this.rowToTask(row, logs, artifacts, dependsOn, blockedBy, iterationHistory));
+    if (rows.length === 0) return [];
+
+    const taskIds = rows.map(r => r.id);
+
+    // Batch load dependencies and blockers (always needed, small data)
+    const allDependencies = this.batchGetTaskDependencies(taskIds);
+    const allBlockers = this.batchGetBlockingTasks(taskIds);
+
+    // In lightweight mode, skip expensive log/artifact/iteration loading
+    let allLogs: Record<string, TaskLog[]> = {};
+    let allArtifacts: Record<string, TaskArtifact[]> = {};
+    let allIterations: Record<string, IterationHistory> = {};
+
+    if (!options?.lightweight) {
+      allLogs = this.batchGetTaskLogs(taskIds);
+      allArtifacts = this.batchGetTaskArtifacts(taskIds);
+      allIterations = this.batchGetIterationHistory(taskIds);
     }
 
-    return tasks;
+    return rows.map(row => this.rowToTask(
+      row,
+      allLogs[row.id] || [],
+      allArtifacts[row.id] || [],
+      allDependencies[row.id] || [],
+      allBlockers[row.id] || [],
+      allIterations[row.id] || undefined
+    ));
+  }
+
+  /**
+   * Batch load task logs for multiple tasks in a single query.
+   */
+  private batchGetTaskLogs(taskIds: string[]): Record<string, TaskLog[]> {
+    const result: Record<string, TaskLog[]> = {};
+    if (taskIds.length === 0) return result;
+
+    const placeholders = taskIds.map(() => '?').join(',');
+    const sql = `SELECT * FROM task_logs WHERE task_id IN (${placeholders}) ORDER BY timestamp DESC`;
+    const rows = this.db.prepare(sql).all(...taskIds) as (TaskLogRow & { task_id: string })[];
+
+    for (const row of rows) {
+      if (!result[row.task_id]) result[row.task_id] = [];
+      result[row.task_id].push({
+        timestamp: new Date(row.timestamp),
+        level: row.level as TaskLog['level'],
+        stage: row.stage || undefined,
+        agent: row.agent || undefined,
+        message: row.message,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Batch load task artifacts for multiple tasks in a single query.
+   */
+  private batchGetTaskArtifacts(taskIds: string[]): Record<string, TaskArtifact[]> {
+    const result: Record<string, TaskArtifact[]> = {};
+    if (taskIds.length === 0) return result;
+
+    const placeholders = taskIds.map(() => '?').join(',');
+    const sql = `SELECT * FROM task_artifacts WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`;
+    const rows = this.db.prepare(sql).all(...taskIds) as (TaskArtifactRow & { task_id: string })[];
+
+    for (const row of rows) {
+      if (!result[row.task_id]) result[row.task_id] = [];
+      result[row.task_id].push({
+        name: row.name,
+        type: row.type as TaskArtifact['type'],
+        path: row.path || undefined,
+        content: row.content || undefined,
+        createdAt: new Date(row.created_at),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Batch load task dependencies for multiple tasks in a single query.
+   */
+  private batchGetTaskDependencies(taskIds: string[]): Record<string, string[]> {
+    const result: Record<string, string[]> = {};
+    if (taskIds.length === 0) return result;
+
+    const placeholders = taskIds.map(() => '?').join(',');
+    const sql = `SELECT task_id, depends_on_task_id FROM task_dependencies WHERE task_id IN (${placeholders})`;
+    const rows = this.db.prepare(sql).all(...taskIds) as { task_id: string; depends_on_task_id: string }[];
+
+    for (const row of rows) {
+      if (!result[row.task_id]) result[row.task_id] = [];
+      result[row.task_id].push(row.depends_on_task_id);
+    }
+    return result;
+  }
+
+  /**
+   * Batch load blocking tasks for multiple tasks in a single query.
+   */
+  private batchGetBlockingTasks(taskIds: string[]): Record<string, string[]> {
+    const result: Record<string, string[]> = {};
+    if (taskIds.length === 0) return result;
+
+    const placeholders = taskIds.map(() => '?').join(',');
+    const sql = `SELECT d.task_id, d.depends_on_task_id
+      FROM task_dependencies d
+      JOIN tasks t ON t.id = d.depends_on_task_id
+      WHERE d.task_id IN (${placeholders})
+      AND t.status NOT IN ('completed', 'cancelled')`;
+    const rows = this.db.prepare(sql).all(...taskIds) as { task_id: string; depends_on_task_id: string }[];
+
+    for (const row of rows) {
+      if (!result[row.task_id]) result[row.task_id] = [];
+      result[row.task_id].push(row.depends_on_task_id);
+    }
+    return result;
+  }
+
+  /**
+   * Batch load iteration history for multiple tasks in a single query.
+   */
+  private batchGetIterationHistory(taskIds: string[]): Record<string, IterationHistory> {
+    const result: Record<string, IterationHistory> = {};
+    if (taskIds.length === 0) return result;
+
+    const placeholders = taskIds.map(() => '?').join(',');
+    const sql = `SELECT * FROM task_iterations WHERE task_id IN (${placeholders}) ORDER BY timestamp ASC`;
+    const rows = this.db.prepare(sql).all(...taskIds) as (TaskIterationRow & { task_id: string })[];
+
+    // Group by task_id
+    const grouped: Record<string, IterationEntry[]> = {};
+    for (const row of rows) {
+      if (!grouped[row.task_id]) grouped[row.task_id] = [];
+      grouped[row.task_id].push({
+        id: row.id,
+        feedback: row.feedback,
+        timestamp: new Date(row.timestamp),
+        diffSummary: row.diff_summary || undefined,
+        stage: row.stage || undefined,
+        modifiedFiles: row.modified_files ? JSON.parse(row.modified_files) : undefined,
+        agent: row.agent || undefined,
+        beforeState: row.before_state ? JSON.parse(row.before_state) : undefined,
+        afterState: row.after_state ? JSON.parse(row.after_state) : undefined,
+      });
+    }
+
+    for (const [taskId, entries] of Object.entries(grouped)) {
+      result[taskId] = {
+        entries,
+        totalIterations: entries.length,
+        lastIterationAt: entries.length > 0 ? entries[entries.length - 1].timestamp : undefined,
+      };
+    }
+    return result;
   }
 
   async getTasksByStatus(status: TaskStatus): Promise<Task[]> {

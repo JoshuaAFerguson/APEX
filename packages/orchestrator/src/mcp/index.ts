@@ -134,22 +134,5 @@ export {
   searchTemplatesByCapabilities,
 } from './templates.js';
 
-// Mock MCP Server (for testing)
-export {
-  MockTransport,
-  MockBehaviorEngine,
-  MockMCPProtocolHandler,
-  MockMCPServerFacade,
-  MockAssertionError,
-  createSimpleMockServer,
-  createErrorMockServer,
-  createSlowMockServer,
-  type RecordedRequest,
-  type RecordedNotification,
-  type MockTransportOptions,
-  type ProtocolState,
-  type ErrorInjectionResult,
-  type ComputedDelay,
-  type MockServerFacadeEvents,
-  type MockServerStats,
-} from './mock-server/index.js';
+// Mock MCP Server (for testing) - import directly from './mock-server/index.js' in test files
+// These exports are excluded from the production build to avoid mock-server compilation issues

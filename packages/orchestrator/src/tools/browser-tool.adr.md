@@ -1,150 +1,118 @@
 # ADR: BrowserTool Architecture Design
 
 ## Status
-Proposed
+Accepted (Implemented)
 
 ## Context
-APEX needs a browser automation tool that can perform web page interactions (navigate, click, screenshot, etc.) while integrating with the existing permission system. This tool will be used by AI agents to interact with web applications.
+APEX needs browser automation capabilities that AI agents can invoke through the existing tool system. Browser tool handlers must support basic browser operations (navigate, click, type, screenshot, evaluate, etc.) and return structured results, while integrating with the permission system and exposing operations via the MCP server protocol for Claude Agent SDK compatibility.
 
 ## Decision
 
-### 1. Class Structure
+### 1. Component Architecture
 
-The `BrowserTool` class will follow the existing tool pattern established by `WebFetchTool`:
+The browser tool system is organized into three layers:
 
-```typescript
-packages/orchestrator/src/tools/browser-tool.ts
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    Claude Agent SDK (query())                     │
+│  Tools: [...builtInTools], mcpServers: { browser-tools: ... }    │
+└────────────────────────────────┬─────────────────────────────────┘
+                                 │
+                    MCP Protocol (tool invocation)
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│  browser-mcp.ts - MCP Server Adapter                             │
+│  buildBrowserToolsServer(browserTool) → { name, config }         │
+│  - Zod schema for operation + params                             │
+│  - Routes calls to BrowserTool.execute()                         │
+│  - Formats results for SDK (text + structuredContent)            │
+└────────────────────────────────┬─────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│  browser-tool.ts - BrowserTool Class (~1500 lines)               │
+│  Core execution engine with:                                     │
+│  - Permission checking (3-layer: tool, config, dangerous-op)     │
+│  - 13 browser operations with typed params                       │
+│  - Dual backend: Playwright (primary) + Puppeteer (optional)     │
+│  - Console/error stream capture                                  │
+│  - Visual regression via pixelmatch                              │
+└────────────────────────────────┬─────────────────────────────────┘
+                                 │
+┌────────────────────────────────▼─────────────────────────────────┐
+│  browser-manager.ts - BrowserManager Class                       │
+│  Lifecycle management layer:                                     │
+│  - Browser instance pool (max 5 concurrent)                      │
+│  - Context isolation per task                                    │
+│  - Automatic cleanup of idle resources (5-min timeout)           │
+│  - Event-driven state changes                                    │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Permission Integration Points
+### 2. File Structure
 
-The BrowserTool integrates with `PermissionManager` at multiple levels:
-
-#### 2.1 Tool-Level Permission
-- Uses `checkToolPermission('Browser', options)` before any operation
-- Scope parameter encodes operation type + target URL: `navigate:https://example.com`
-
-#### 2.2 Per-Operation Permission Hooks
-Each browser operation can trigger permission requests:
-
-| Operation | Permission Scope Pattern | Risk Level |
-|-----------|-------------------------|------------|
-| navigate  | `navigate:{url}` | Medium - loads external content |
-| click     | `click:{selector}` | Low - UI interaction |
-| type      | `type:{selector}` | Medium - may submit forms |
-| screenshot | `screenshot:{url}` | Low - read-only |
-| evaluate  | `evaluate:{script_hash}` | High - arbitrary JS execution |
-| submit    | `submit:{form_selector}` | High - may trigger actions |
-
-#### 2.3 Configuration Schema
-Extend `ToolPermissionConfigSchema` union in `@apexcli/core` with:
-
-```typescript
-export const BrowserToolConfigSchema = BaseToolPermissionConfigSchema.extend({
-  /** Allowed domains for navigation (empty = all allowed) */
-  allowedDomains: z.array(z.string()).optional().default([]),
-
-  /** Blocked domains */
-  blockedDomains: z.array(z.string()).optional().default([]),
-
-  /** Whether to allow JavaScript execution via evaluate() */
-  allowJavaScriptExecution: z.boolean().optional().default(false),
-
-  /** Whether to allow form submissions */
-  allowFormSubmission: z.boolean().optional().default(true),
-
-  /** Maximum page load timeout in milliseconds */
-  pageLoadTimeout: z.number().int().min(0).optional().default(30000),
-
-  /** Whether to allow file downloads */
-  allowDownloads: z.boolean().optional().default(false),
-
-  /** Whether to capture screenshots */
-  allowScreenshots: z.boolean().optional().default(true),
-
-  /** Whether to block popups/new windows */
-  blockPopups: z.boolean().optional().default(true),
-
-  /** User agent override */
-  userAgent: z.string().optional(),
-
-  /** Viewport configuration */
-  viewport: z.object({
-    width: z.number().int().min(320).default(1280),
-    height: z.number().int().min(240).default(720),
-  }).optional(),
-});
+```
+packages/orchestrator/src/
+├── tools/
+│   ├── index.ts                    # Module exports (BrowserTool, types)
+│   ├── browser-tool.ts             # BrowserTool class implementation
+│   ├── browser-tool.adr.md         # This architecture document
+│   └── __tests__/
+│       ├── browser-tool.test.ts                        # Core unit tests
+│       ├── browser-tool-error-handling.test.ts          # Error scenarios
+│       └── browser-tool-permission-integration.test.ts  # Permission tests
+├── browser-mcp.ts                  # MCP server adapter
+├── browser-mcp.test.ts             # MCP adapter tests
+├── browser-manager.ts              # Browser lifecycle manager
+├── browser-manager.test.ts         # Manager tests
+├── browser-console-stream.ts       # Enhanced console capture
+└── browser-tool-console.test.ts    # Console capture tests (tools dir)
 ```
 
-### 3. Interface Design
+### 3. Supported Operations (13 total)
+
+| Operation | Params Interface | Description | Risk |
+|-----------|-----------------|-------------|------|
+| navigate | BrowserNavigateParams | Load URL with wait conditions | Medium |
+| click | BrowserClickParams | Click element by selector | Low |
+| type | BrowserTypeParams | Type text into input element | Medium |
+| screenshot | BrowserScreenshotParams | Capture viewport/element/fullpage | Low |
+| compareScreenshot | BrowserCompareScreenshotParams | Visual regression diff via pixelmatch | Low |
+| evaluate | BrowserEvaluateParams | Execute arbitrary JavaScript | **High** |
+| submit | BrowserSubmitParams | Submit form by selector | **High** |
+| waitForSelector | BrowserWaitForSelectorParams | Wait for element presence | Low |
+| getAttribute | BrowserGetAttributeParams | Read element attribute value | Low |
+| getText | BrowserGetTextParams | Read element text content | Low |
+| getHtml | BrowserGetHtmlParams | Read element/page HTML | Low |
+| scroll | BrowserScrollParams | Scroll to coordinates/element | Low |
+| hover | BrowserHoverParams | Hover over element | Low |
+
+### 4. Type System
+
+All types use a discriminated union pattern for type safety:
 
 ```typescript
-// Browser operation types
-export type BrowserOperation =
-  | 'navigate'
-  | 'click'
-  | 'type'
-  | 'screenshot'
-  | 'evaluate'
-  | 'submit'
-  | 'waitForSelector'
-  | 'getAttribute'
-  | 'getText'
-  | 'getHtml'
-  | 'scroll'
-  | 'hover';
-
-// Parameters for each operation
-export interface BrowserNavigateParams {
-  url: string;
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
-  timeout?: number;
-}
-
-export interface BrowserClickParams {
-  selector: string;
-  button?: 'left' | 'right' | 'middle';
-  clickCount?: number;
-  delay?: number;
-}
-
-export interface BrowserTypeParams {
-  selector: string;
-  text: string;
-  delay?: number;
-  clearFirst?: boolean;
-}
-
-export interface BrowserScreenshotParams {
-  path?: string;
-  fullPage?: boolean;
-  selector?: string;
-  format?: 'png' | 'jpeg';
-  quality?: number;
-}
-
-export interface BrowserEvaluateParams {
-  script: string;
-  args?: unknown[];
-}
-
-// ... additional operation params
-
-// Unified params type
+// Discriminated union - compiler ensures correct params per operation
 export type BrowserParams =
   | { operation: 'navigate'; params: BrowserNavigateParams }
   | { operation: 'click'; params: BrowserClickParams }
   | { operation: 'type'; params: BrowserTypeParams }
   | { operation: 'screenshot'; params: BrowserScreenshotParams }
+  | { operation: 'compareScreenshot'; params: BrowserCompareScreenshotParams }
   | { operation: 'evaluate'; params: BrowserEvaluateParams }
-  // ... etc
+  | { operation: 'submit'; params: BrowserSubmitParams }
+  | { operation: 'waitForSelector'; params: BrowserWaitForSelectorParams }
+  | { operation: 'getAttribute'; params: BrowserGetAttributeParams }
+  | { operation: 'getText'; params: BrowserGetTextParams }
+  | { operation: 'getHtml'; params: BrowserGetHtmlParams }
+  | { operation: 'scroll'; params: BrowserScrollParams }
+  | { operation: 'hover'; params: BrowserHoverParams };
 
-// Result types
+// Unified result with operation metadata
 export interface BrowserResult {
   success: boolean;
   operation: BrowserOperation;
   data?: unknown;
-  screenshot?: string; // base64 or path
+  screenshot?: string;         // base64 or file path
   error?: string;
   metadata?: {
     url: string;
@@ -152,235 +120,256 @@ export interface BrowserResult {
     executionTime: number;
     permissionGranted: boolean;
     permissionLevel?: PermissionLevel;
+    target?: string;
+    consoleMessages?: BrowserConsoleMessage[];
+    runtimeErrors?: BrowserRuntimeError[];
+    enhancedConsoleMessages?: EnhancedConsoleMessage[];
+    enhancedRuntimeErrors?: EnhancedRuntimeError[];
   };
 }
 ```
 
-### 4. Permission Request Flow
+### 5. Permission Flow (3-Layer Check)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      BrowserTool.execute()                       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Validate params & build permission scope                     │
-│     scope = `${operation}:${target}`                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  2. Check tool permission via PermissionManager                  │
-│     const result = await permissionManager.checkToolPermission(  │
-│       'Browser',                                                 │
-│       { scope, consumeAllowOnce: true }                         │
-│     );                                                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                   ┌──────────────────┐
-                   │ result.allowed?  │
-                   └──────────────────┘
-                     │           │
-                   Yes           No
-                     │           │
-                     ▼           ▼
-┌──────────────────────┐  ┌──────────────────────────────────────┐
-│ 3. Check domain      │  │ Return BrowserResult with             │
-│    restrictions from │  │ { success: false,                     │
-│    config            │  │   error: result.denialReason }        │
-└──────────────────────┘  └──────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  4. Check operation-specific restrictions                        │
-│     - evaluate: check allowJavaScriptExecution                   │
-│     - submit: check allowFormSubmission                          │
-│     - screenshot: check allowScreenshots                         │
-│     - navigate: check domain allowlist/blocklist                 │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  5. Execute operation (stub returns placeholder)                 │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  6. Return BrowserResult with metadata                           │
-└─────────────────────────────────────────────────────────────────┘
+BrowserTool.execute(params)
+  │
+  ├─ Layer 1: Tool Permission ─────────────────────────────────────┐
+  │  permissionManager.checkToolPermission('Browser', {            │
+  │    scope: `${operation}:${target}`,                            │
+  │    consumeAllowOnce: true                                      │
+  │  })                                                            │
+  │  → denied? return { success: false, error: denialReason }      │
+  │                                                                │
+  ├─ Layer 2: Configuration Restrictions ──────────────────────────┤
+  │  checkConfigurationRestrictions(operation, params)             │
+  │  - evaluate → config.allowJavaScriptExecution required         │
+  │  - submit → config.allowFormSubmission required                │
+  │  - screenshot → config.allowScreenshots required               │
+  │  - navigate → domain allowlist/blocklist check                 │
+  │  → restricted? return { success: false, error: reason }        │
+  │                                                                │
+  ├─ Layer 3: Dangerous Operation Gate ────────────────────────────┤
+  │  checkDangerousOperation(operation, params)                    │
+  │  - evaluate: always dangerous                                  │
+  │  - submit: always dangerous                                    │
+  │  - navigate: dangerous if domain not in allowlist              │
+  │  → dangerous + no explicit permission? deny                    │
+  │                                                                │
+  └─ Execute Operation ────────────────────────────────────────────┘
+    executeOperation(params) → BrowserResult
 ```
 
-### 5. Dependency Injection Pattern
+**Permission Scope Patterns:**
 
-The BrowserTool accepts an optional `PermissionManager` instance for testability:
+| Operation | Scope Pattern | Example |
+|-----------|--------------|---------|
+| navigate | `navigate:{url}` | `navigate:https://example.com` |
+| click | `click:{selector}` | `click:#submit-btn` |
+| type | `type:{selector}` | `type:#email-input` |
+| screenshot | `screenshot:{selector\|viewport}` | `screenshot:viewport` |
+| evaluate | `evaluate:{script_hash}` | `evaluate:a1b2c3d4` |
+| submit | `submit:{selector}` | `submit:#login-form` |
+
+### 6. Backend Architecture
+
+The BrowserTool supports dual backends with a preference for Playwright:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                     BrowserTool                                │
+│  backend: 'playwright' | 'puppeteer'                         │
+│  activeBackend: tracks which is currently in use              │
+├───────────────────────────────────────────────────────────────┤
+│  ensurePage(config?) → { backend, page }                     │
+│    ├── playwright: chromium.launch() → browser.newContext()   │
+│    │              → context.newPage()                         │
+│    │   Engines: chromium | firefox | webkit                  │
+│    └── puppeteer: dynamically imported                       │
+│                   puppeteer.launch() → browser.newPage()     │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Backend Selection:**
+- Playwright is the primary backend (imported statically)
+- Puppeteer is optional (dynamically imported to avoid hard dependency)
+- Backend can be configured per-tool instance or per-operation via config
+- Operations use backend-specific APIs with conditional logic
+
+### 7. MCP Server Integration
+
+Browser tool is exposed to Claude Agent SDK via MCP server protocol:
 
 ```typescript
-export class BrowserTool {
-  private permissionManager?: PermissionManager;
-
-  constructor(options?: BrowserToolOptions) {
-    this.permissionManager = options?.permissionManager;
-  }
-
-  /**
-   * Inject permission manager at runtime
-   * Allows lazy binding after orchestrator initialization
-   */
-  setPermissionManager(manager: PermissionManager): void {
-    this.permissionManager = manager;
-  }
-
-  /**
-   * Permission check hook - returns whether operation is allowed
-   * External code can use this to pre-check permissions
-   */
-  async checkPermission(
-    operation: BrowserOperation,
-    target: string
-  ): Promise<ToolPermissionResult> {
-    if (!this.permissionManager) {
-      // If no permission manager, allow by default
-      return { allowed: true, level: null, requiresConfirmation: false };
+// browser-mcp.ts
+export function buildBrowserToolsServer(browserTool: BrowserTool): BrowserToolsServer {
+  const browserToolDefinition = tool(
+    'Browser',
+    'Browser automation tool for navigation, interaction, screenshots, and evaluation.',
+    {
+      operation: z.enum([...13 operations]),
+      params: z.record(z.unknown()).optional(),
+    },
+    async (args) => {
+      const result = await browserTool.execute({ operation, params } as BrowserParams);
+      return {
+        content: [{ type: 'text', text: outputText }],
+        structuredContent: result,
+        isError: !result.success,
+      };
     }
-
-    const scope = this.buildScope(operation, target);
-    return this.permissionManager.checkToolPermission('Browser', { scope });
-  }
+  );
+  return { name: 'browser-tools', config: createSdkMcpServer({ ... }) };
 }
 ```
 
-### 6. Dangerous Operation Detection
+**Key design choice:** Browser is NOT a built-in SDK tool. It is exposed exclusively via MCP server, which:
+- Enables clean separation of concerns (BrowserTool knows nothing about SDK)
+- Allows the tool to be conditionally enabled/disabled via config
+- Supports the same invocation pattern as external MCP tools
+- Makes it testable independently of the SDK
 
-Integrate with `DangerousOperationDetector` from `@apexcli/core`:
+### 8. Orchestrator Wiring
+
+In `ApexOrchestrator` initialization:
 
 ```typescript
-// High-risk operations that require explicit confirmation
-const DANGEROUS_OPERATIONS = {
-  evaluate: 'Executing arbitrary JavaScript code',
-  submit: 'Submitting form data',
-  navigate: 'Navigating to external domain', // only for non-allowed domains
-};
+// 1. Create and wire BrowserTool
+browserTool.setPermissionManager(this.permissionManager);
+browserTool.setEventEmitter(this);
 
-// Check before execution
-private async checkDangerousOperation(
-  operation: BrowserOperation,
-  params: unknown
-): Promise<{ isDangerous: boolean; reason?: string }> {
-  if (operation === 'evaluate') {
-    return { isDangerous: true, reason: DANGEROUS_OPERATIONS.evaluate };
-  }
-
-  if (operation === 'submit') {
-    return { isDangerous: true, reason: DANGEROUS_OPERATIONS.submit };
-  }
-
-  if (operation === 'navigate') {
-    const { url } = params as BrowserNavigateParams;
-    const domain = new URL(url).hostname;
-    const config = await this.getConfig();
-
-    if (config?.blockedDomains?.includes(domain)) {
-      return { isDangerous: true, reason: `Domain ${domain} is blocked` };
-    }
-
-    if (config?.allowedDomains?.length && !config.allowedDomains.includes(domain)) {
-      return { isDangerous: true, reason: `Domain ${domain} is not in allowlist` };
-    }
-  }
-
-  return { isDangerous: false };
+// 2. Conditionally build MCP server
+const browserToolConfig = this.effectiveConfig.tools?.Browser;
+if (browserToolConfig?.enabled !== false) {
+  this.browserToolsServer = buildBrowserToolsServer(browserTool);
 }
-```
 
-### 7. File Structure
-
-```
-packages/orchestrator/src/tools/
-├── index.ts                    # Re-exports all tools
-├── webfetch.ts                 # Existing WebFetch tool
-├── browser-tool.ts             # NEW: BrowserTool implementation
-├── browser-tool.test.ts        # NEW: Unit tests
-└── browser-tool.adr.md         # NEW: This architecture document
-```
-
-### 8. Export Updates
-
-Update `packages/orchestrator/src/tools/index.ts`:
-
-```typescript
-export {
-  WebFetchTool,
-  webFetchTool,
-  webFetch,
-  type WebFetchParams,
-  type WebFetchResult,
-  type HttpMethod,
-} from './webfetch';
-
-export {
-  BrowserTool,
+// 3. Create BrowserManager for lifecycle
+this.browserManager = new BrowserManager({
+  permissionManager: this.permissionManager,
   browserTool,
-  type BrowserOperation,
-  type BrowserParams,
-  type BrowserResult,
-  type BrowserNavigateParams,
-  type BrowserClickParams,
-  type BrowserTypeParams,
-  type BrowserScreenshotParams,
-  type BrowserEvaluateParams,
-  type BrowserToolConfig,
-} from './browser-tool';
+  defaultConfig: browserToolConfig?.browserConfig || {},
+});
+
+// 4. Forward browser events
+this.setupBrowserEventIntegration();
+
+// 5. Include in query() call
+mcpServers: { [this.browserToolsServer.name]: this.browserToolsServer.config }
 ```
 
-### 9. Core Types Updates (Future)
+### 9. Configuration Schema
 
-When the BrowserTool config is finalized, add to `@apexcli/core` types:
+```typescript
+export interface BrowserToolConfig {
+  enabled?: boolean;                    // Enable/disable tool
+  timeout?: number;                     // Max execution time
+  requireConfirmation?: boolean;        // Pre-execution confirmation
+  rateLimitPerMinute?: number;          // Rate limiting
+  allowedDomains?: string[];            // Navigation whitelist
+  blockedDomains?: string[];            // Navigation blacklist
+  allowJavaScriptExecution?: boolean;   // Gate for evaluate()
+  allowFormSubmission?: boolean;        // Gate for submit()
+  pageLoadTimeout?: number;             // Navigation timeout
+  allowDownloads?: boolean;             // File download permission
+  allowScreenshots?: boolean;           // Screenshot permission
+  blockPopups?: boolean;                // Popup blocking
+  engine?: 'chromium' | 'firefox' | 'webkit';  // Browser engine
+  backend?: 'playwright' | 'puppeteer';          // Automation backend
+  headless?: boolean;                   // Headless mode
+  userAgent?: string;                   // UA override
+  viewport?: { width: number; height: number };  // Viewport size
+  consoleStream?: {                     // Console capture config
+    enabled?: boolean;
+    config?: ConsoleStreamConfig;
+  };
+}
+```
 
-1. Add `BrowserToolConfigSchema` to the union in `ToolPermissionConfigSchema`
-2. Add 'Browser' to the `WRITE_TOOLS` array (since it can modify state)
-3. Export `BrowserToolConfig` type
+### 10. Dependency Injection Pattern
 
-## Implementation Notes
+All external dependencies are injected via setter methods for testability:
 
-### Stub Implementation
-For the initial stub:
-- All browser operations return placeholder results
-- Permission hooks are fully implemented and functional
-- Actual browser automation (Playwright/Puppeteer) will be added later
+```typescript
+class BrowserTool {
+  setPermissionManager(manager: PermissionManager): void;  // Permission checks
+  setEventEmitter(emitter: EventEmitter): void;            // Event broadcasting
+}
 
-### Future Browser Backend Options
-The stub is designed to be backend-agnostic. Future implementations could use:
-1. **Playwright** - Cross-browser, modern API, good TypeScript support
-2. **Puppeteer** - Chrome-focused, widely used
-3. **CDP (Chrome DevTools Protocol)** - Direct protocol access
+class BrowserManager extends EventEmitter {
+  setPermissionManager(manager: PermissionManager): void;
+  setBrowserTool(tool: BrowserTool): void;
+}
+```
 
-### Testing Strategy
-1. Unit tests for permission hook integration
-2. Mock `PermissionManager` for isolated testing
-3. Integration tests with actual permission store
-4. E2E tests when real browser backend is added
+This enables:
+- Unit testing with mock dependencies
+- Lazy binding after orchestrator initialization
+- Optional permission enforcement (no manager = allow all)
+
+### 11. Console & Error Capture
+
+Two levels of capture:
+
+1. **Legacy** (`BrowserConsoleMessage`, `BrowserRuntimeError`): Simple message/stack capture
+2. **Enhanced** (`BrowserConsoleStream`): Full context with log levels, session tracking, page correlation, and configurable buffer sizes (max 1000 items)
+
+Both are included in `BrowserResult.metadata` for backward compatibility.
+
+### 12. Visual Regression Testing
+
+The `compareScreenshot` operation:
+1. Captures current page screenshot
+2. Reads baseline image from specified path
+3. Computes pixel diff using `pixelmatch`
+4. Emits `visual:comparison:*` events with diff data
+5. Returns pass/fail based on configurable threshold
+
+### 13. Resource Management
+
+**BrowserManager** handles lifecycle:
+- Max 5 concurrent browser instances
+- Max 10 contexts per browser
+- Automatic cleanup of idle resources (5-minute timeout)
+- Graceful shutdown with force-close fallback
+- Event-driven state tracking (`browser:launched`, `browser:closed`, etc.)
+
+## Testing Strategy
+
+1. **Unit Tests** (`browser-tool.test.ts`): Core functionality with mocked backends
+2. **Permission Tests** (`browser-tool-permission-integration.test.ts`): All permission layers
+3. **Error Handling Tests** (`browser-tool-error-handling.test.ts`): Failure scenarios, backend switching
+4. **Console Tests** (`browser-tool-console.test.ts`): Message capture, session tracking
+5. **MCP Tests** (`browser-mcp.test.ts`): Server adapter formatting
+
+All tests mock Playwright/Puppeteer to avoid requiring browser binaries in CI.
 
 ## Consequences
 
 ### Positive
-- Clean separation between permission logic and browser automation
-- Follows existing tool patterns for consistency
-- Easy to test permission behavior without browser dependencies
-- Flexible configuration per domain/operation
+- Clean 3-layer architecture (MCP adapter → Tool engine → Browser manager)
+- Comprehensive permission system with per-operation granularity
+- Dual backend support for flexibility
+- Fully testable without browser dependencies
+- Consistent with existing tool patterns (WebFetch)
+- Conditional enablement via configuration
 
 ### Negative
-- Initial stub doesn't provide real browser automation
-- Multiple permission checks per operation may add latency
-- Configuration schema adds complexity
+- 3-layer permission checking adds latency per operation
+- Playwright as a dependency adds ~50MB to install
+- MCP server indirection adds protocol overhead vs built-in tools
 
 ### Risks
-- Browser automation security implications
-- Resource management (browser process lifecycle)
-- Cross-origin restrictions in real browsers
+- Browser process leaks if cleanup fails
+- Security exposure from `evaluate()` operation
+- Cross-origin restrictions may limit automation scope
+- Puppeteer backend may drift from Playwright API surface
 
 ## References
-- `packages/orchestrator/src/tools/webfetch.ts` - Existing tool pattern
+- `packages/orchestrator/src/tools/browser-tool.ts` - Core implementation
+- `packages/orchestrator/src/browser-mcp.ts` - MCP server adapter
+- `packages/orchestrator/src/browser-manager.ts` - Lifecycle manager
+- `packages/orchestrator/src/browser-console-stream.ts` - Console capture
 - `packages/orchestrator/src/permission-manager.ts` - Permission integration
 - `packages/core/src/types.ts` - Type definitions and schemas
+- `packages/orchestrator/src/tools/webfetch.ts` - Reference tool pattern

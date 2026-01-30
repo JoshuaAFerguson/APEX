@@ -174,6 +174,147 @@ export type AsyncFixtureFactory<T, TOptions = Record<string, unknown>> = (
 ) => Promise<T>;
 
 // ============================================================================
+// Test Setup and Teardown Types
+// ============================================================================
+
+import { vi } from 'vitest';
+
+// ============================================================================
+// Mock Function Types
+// ============================================================================
+
+/**
+ * Mock function type from Vitest
+ */
+export type MockFunction<T extends (...args: any[]) => any = (...args: any[]) => any> = ReturnType<typeof vi.fn<T>>;
+
+/**
+ * Configuration options for test suite setup
+ */
+export interface TestSuiteConfig {
+  /** Whether to automatically setup mocks in beforeEach */
+  setupMocks?: boolean;
+  /** Whether to cleanup state after each test */
+  cleanupAfterEach?: boolean;
+  /** Custom mock configuration */
+  mockConfig?: MockConfig;
+  /** Timeout settings for async operations */
+  timeout?: number;
+  /** Whether to use fake timers */
+  useFakeTimers?: boolean;
+  /** Custom setup function to run before each test */
+  customSetup?: () => void | Promise<void>;
+  /** Custom teardown function to run after each test */
+  customTeardown?: () => void | Promise<void>;
+}
+
+/**
+ * Browser state representation for testing
+ */
+export interface BrowserState {
+  /** Current page URL */
+  url: string;
+  /** Page title */
+  title: string;
+  /** Loading state */
+  isLoading: boolean;
+  /** Error state */
+  hasError: boolean;
+  /** Authentication status */
+  isAuthenticated: boolean;
+  /** Local storage data */
+  localStorage: Record<string, string>;
+  /** Session storage data */
+  sessionStorage: Record<string, string>;
+  /** Cookies */
+  cookies: Array<{
+    name: string;
+    value: string;
+    domain?: string;
+    path?: string;
+  }>;
+  /** Console messages */
+  consoleMessages: Array<{
+    type: 'log' | 'warn' | 'error' | 'info';
+    message: string;
+    timestamp: Date;
+  }>;
+  /** Network requests */
+  networkRequests: Array<{
+    url: string;
+    method: string;
+    status?: number;
+    headers?: Record<string, string>;
+  }>;
+}
+
+/**
+ * Mock configuration options
+ */
+export interface MockConfig {
+  /** Whether to mock file system operations */
+  mockFs?: boolean;
+  /** Whether to mock network requests */
+  mockNetwork?: boolean;
+  /** Whether to mock timers */
+  mockTimers?: boolean;
+  /** Custom mock implementations */
+  customMocks?: Record<string, ReturnType<typeof vi.fn>>;
+  /** Mock data for specific scenarios */
+  mockData?: {
+    /** API response data */
+    apiResponses?: Record<string, any>;
+    /** File system data */
+    fileSystemData?: Record<string, string>;
+    /** Environment variables */
+    envVars?: Record<string, string>;
+  };
+}
+
+/**
+ * Setup and teardown hooks for test suites
+ */
+export interface SetupTeardownHooks {
+  /** Function to run before each test */
+  beforeEach: () => void | Promise<void>;
+  /** Function to run after each test */
+  afterEach: () => void | Promise<void>;
+  /** Function to run before all tests in suite */
+  beforeAll?: () => void | Promise<void>;
+  /** Function to run after all tests in suite */
+  afterAll?: () => void | Promise<void>;
+}
+
+/**
+ * Test environment state
+ */
+export interface TestEnvironment {
+  /** Project path for the test */
+  projectPath: string;
+  /** Temporary directory for test files */
+  tempDir?: string;
+  /** Mock implementations that were set up */
+  activeMocks: Map<string, ReturnType<typeof vi.fn>>;
+  /** Cleanup functions to run */
+  cleanupTasks: Array<() => void | Promise<void>>;
+  /** Test-specific data */
+  testData: Map<string, any>;
+}
+
+/**
+ * Common test scenarios
+ */
+export type TestScenario =
+  | 'clean-state'
+  | 'logged-in-user'
+  | 'error-state'
+  | 'loading-state'
+  | 'network-offline'
+  | 'permission-denied'
+  | 'file-not-found'
+  | 'invalid-config';
+
+// ============================================================================
 // Validation Types
 // ============================================================================
 

@@ -15,7 +15,15 @@
  */
 
 import { PermissionManager } from '../permission-manager';
-import { PermissionLevel, ToolPermissionResult, VisualComparisonEventData } from '@apexcli/core';
+import {
+  PermissionLevel,
+  ToolPermissionResult,
+  VisualComparisonEventData,
+  BrowserPermissionDeniedError,
+  BrowserResourceState,
+  ApexError,
+  ApexErrorCode
+} from '@apexcli/core';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
 import { EventEmitter } from 'eventemitter3';
 import * as fs from 'fs';
@@ -381,6 +389,8 @@ export class BrowserTool {
   private enhancedConsoleMessages: EnhancedConsoleMessage[] = [];
   private enhancedRuntimeErrors: EnhancedRuntimeError[] = [];
   private eventEmitter?: EventEmitter;
+  private resourceState: BrowserResourceState;
+  private sessionId: string;
 
   constructor(options?: BrowserToolOptions) {
     this.permissionManager = options?.permissionManager;
@@ -388,6 +398,14 @@ export class BrowserTool {
     this.headless = options?.headless;
     this.backend = options?.backend || 'playwright';
     this.activeBackend = this.backend;
+    this.sessionId = this.generateSessionId();
+    this.resourceState = {
+      browserActive: false,
+      contextActive: false,
+      pageActive: false,
+      sessionId: this.sessionId,
+      activeOperations: 0
+    };
   }
 
   /**
@@ -612,12 +630,14 @@ export class BrowserTool {
 
     const browserType = engine === 'firefox' ? firefox : engine === 'webkit' ? webkit : chromium;
     this.browser = await browserType.launch({ headless });
+    this.updateResourceStateOnLaunch();
 
     this.context = await this.browser.newContext({
       userAgent: config?.userAgent,
       viewport: config?.viewport,
       acceptDownloads: config?.allowDownloads ?? true,
     });
+    this.updateResourceStateOnContextCreate();
 
     if (config?.blockPopups) {
       this.context.on('page', async (popup) => {
@@ -630,6 +650,7 @@ export class BrowserTool {
     }
 
     this.page = await this.context.newPage();
+    this.updateResourceStateOnPageCreate();
     this.setupPageListeners(this.page);
     await this.setupConsoleStreaming(this.page, config);
     return this.page;
@@ -1479,6 +1500,246 @@ export class BrowserTool {
       return error.message;
     }
     return `Unknown error: ${String(error)}`;
+  }
+
+  /**
+   * Generate a unique session ID for tracking browser resources
+   */
+  private generateSessionId(): string {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 8);
+    return `browser_${timestamp}_${random}`;
+  }
+
+  /**
+   * Get current resource state
+   */
+  public getResourceState(): BrowserResourceState {
+    return { ...this.resourceState };
+  }
+
+  /**
+   * Update resource state when browser is launched
+   */
+  private updateResourceStateOnLaunch(): void {
+    this.resourceState = {
+      ...this.resourceState,
+      browserActive: true,
+      lastAllocation: new Date()
+    };
+  }
+
+  /**
+   * Update resource state when context is created
+   */
+  private updateResourceStateOnContextCreate(): void {
+    this.resourceState = {
+      ...this.resourceState,
+      contextActive: true,
+      lastAllocation: new Date()
+    };
+  }
+
+  /**
+   * Update resource state when page is created
+   */
+  private updateResourceStateOnPageCreate(url?: string): void {
+    this.resourceState = {
+      ...this.resourceState,
+      pageActive: true,
+      currentUrl: url,
+      lastAllocation: new Date()
+    };
+  }
+
+  /**
+   * Increment active operations count
+   */
+  private incrementActiveOperations(): void {
+    this.resourceState.activeOperations++;
+  }
+
+  /**
+   * Decrement active operations count
+   */
+  private decrementActiveOperations(): void {
+    this.resourceState.activeOperations = Math.max(0, this.resourceState.activeOperations - 1);
+  }
+
+  /**
+   * Gracefully cleanup all browser resources
+   * Called when permission is denied or on normal shutdown
+   */
+  public async cleanup(): Promise<void> {
+    try {
+      // Close console stream first
+      if (this.consoleStream) {
+        this.consoleStream.clearBuffers();
+      }
+
+      // Clear any pending operations
+      this.resourceState.activeOperations = 0;
+
+      // Close page if it exists
+      if (this.page) {
+        try {
+          await this.page.close();
+          this.resourceState.pageActive = false;
+          this.resourceState.currentUrl = undefined;
+        } catch (error) {
+          // Log but don't throw - we're in cleanup mode
+          console.warn('Error closing page during cleanup:', error);
+        } finally {
+          this.page = undefined;
+        }
+      }
+
+      // Close context if it exists
+      if (this.context) {
+        try {
+          await this.context.close();
+          this.resourceState.contextActive = false;
+        } catch (error) {
+          console.warn('Error closing context during cleanup:', error);
+        } finally {
+          this.context = undefined;
+        }
+      }
+
+      // Close browser if it exists
+      if (this.browser) {
+        try {
+          await this.browser.close();
+          this.resourceState.browserActive = false;
+        } catch (error) {
+          console.warn('Error closing browser during cleanup:', error);
+        } finally {
+          this.browser = undefined;
+        }
+      }
+
+      // Close puppeteer resources if they exist
+      if (this.puppeteerPage) {
+        try {
+          await this.puppeteerPage.close();
+        } catch (error) {
+          console.warn('Error closing puppeteer page during cleanup:', error);
+        } finally {
+          this.puppeteerPage = undefined;
+        }
+      }
+
+      if (this.puppeteerBrowser) {
+        try {
+          await this.puppeteerBrowser.close();
+        } catch (error) {
+          console.warn('Error closing puppeteer browser during cleanup:', error);
+        } finally {
+          this.puppeteerBrowser = undefined;
+        }
+      }
+
+      // Clear buffers
+      this.clearConsoleBuffers();
+
+    } catch (error) {
+      // If cleanup itself fails, throw a resource leak error
+      throw new ApexError(
+        'Failed to cleanup browser resources',
+        ApexErrorCode.BROWSER_RESOURCE_LEAK,
+        {
+          sessionId: this.sessionId,
+          operation: 'cleanup',
+          metadata: { resourceState: this.resourceState }
+        },
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
+  }
+
+  /**
+   * Handle permission denied errors with proper cleanup
+   */
+  private async handlePermissionDeniedError(
+    operation: BrowserOperation,
+    target: string,
+    denialReason: string,
+    permissionType?: BrowserPermissionDeniedError['browserContext']['permissionType']
+  ): Promise<never> {
+    // Perform cleanup before throwing error
+    try {
+      await this.cleanup();
+    } catch (cleanupError) {
+      // If cleanup fails, throw a resource leak error instead
+      throw new ApexError(
+        `Permission denied for ${operation} and subsequent resource cleanup failed`,
+        ApexErrorCode.BROWSER_RESOURCE_LEAK,
+        {
+          operation,
+          target,
+          sessionId: this.sessionId,
+          metadata: {
+            originalDenialReason: denialReason,
+            resourceState: this.resourceState,
+            cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }
+        }
+      );
+    }
+
+    // Throw the permission denied error
+    throw new BrowserPermissionDeniedError(
+      `Browser permission denied: ${denialReason}`,
+      {
+        operation,
+        target,
+        permissionType,
+        denialReason,
+        sessionId: this.sessionId
+      }
+    );
+  }
+
+  /**
+   * Validate session state and throw error if invalid
+   */
+  private validateSessionState(): void {
+    // Check for inconsistent state that indicates resource leaks
+    const hasPlaywrightResources = this.browser || this.context || this.page;
+    const hasPuppeteerResources = this.puppeteerBrowser || this.puppeteerPage;
+    const resourceStateIndicatesActive = this.resourceState.browserActive ||
+      this.resourceState.contextActive ||
+      this.resourceState.pageActive;
+
+    if ((hasPlaywrightResources || hasPuppeteerResources) && !resourceStateIndicatesActive) {
+      throw new ApexError(
+        'Browser session state is invalid - resources exist but state indicates inactive',
+        ApexErrorCode.BROWSER_SESSION_INVALID,
+        {
+          sessionId: this.sessionId,
+          metadata: {
+            resourceState: this.resourceState,
+            hasPlaywrightResources: !!hasPlaywrightResources,
+            hasPuppeteerResources: !!hasPuppeteerResources
+          }
+        }
+      );
+    }
+
+    if (!hasPlaywrightResources && !hasPuppeteerResources && resourceStateIndicatesActive) {
+      throw new ApexError(
+        'Browser session state is invalid - state indicates active but no resources exist',
+        ApexErrorCode.BROWSER_SESSION_INVALID,
+        {
+          sessionId: this.sessionId,
+          metadata: {
+            resourceState: this.resourceState,
+            hasPlaywrightResources: !!hasPlaywrightResources,
+            hasPuppeteerResources: !!hasPuppeteerResources
+          }
+        }
+      );
+    }
   }
 }
 

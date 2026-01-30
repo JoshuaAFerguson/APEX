@@ -14,7 +14,8 @@ export default defineConfig({
     include: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.tsx', 'packages/*/src/**/*.stress.test.ts', 'packages/*/src/**/*.edge.test.ts', 'packages/*/src/**/*.integration.test.ts', 'packages/*/src/**/*.e2e.test.ts', 'tests/**/*.test.ts', 'docs/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      reporter: ['text', 'text-summary', 'html', 'json', 'lcov'],
+      reportsDirectory: './coverage',
       include: ['packages/*/src/**/*.ts'],
       exclude: [
         '**/*.test.ts',
@@ -30,6 +31,12 @@ export default defineConfig({
         // WebSocket client requires browser WebSocket API
         'packages/web-ui/src/lib/websocket-client.ts',
       ],
+      thresholds: {
+        lines: 50,
+        functions: 50,
+        branches: 50,
+        statements: 50,
+      },
     },
   },
 });

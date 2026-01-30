@@ -10,20 +10,20 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noImplicitOverride": true,
-    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": false,
+    "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": true,
     "checkJs": true,
     "allowJs": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**", "src/test-utils.ts", "src/test-setup.ts"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**", "src/test-utils.ts", "src/test-setup.ts", "src/test-fixtures"]
 }

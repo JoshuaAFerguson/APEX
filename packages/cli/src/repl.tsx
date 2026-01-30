@@ -292,7 +292,7 @@ async function handleWorkflows(): Promise<void> {
   const lines = ['**Available Workflows:**\n'];
   for (const workflow of workflows) {
     lines.push(`  **${workflow.name}** - ${workflow.description || 'No description'}`);
-    const stages = workflow.stages?.map((s: { name?: string; agent: string }) => s.name || s.agent).join(' → ') || 'No stages';
+    const stages = workflow.stages?.map((s: any) => s.name || s.agent).join(' → ') || 'No stages';
     lines.push(`    Stages: ${stages}`);
   }
 

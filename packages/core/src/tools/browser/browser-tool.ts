@@ -449,11 +449,11 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
           success: true,
           operation: 'compareScreenshot',
           comparisonResult: {
-            match: true,
-            diffPercentage: 0,
-            diffPixels: 0,
-            dimensions: { width: this.config.viewport.width, height: this.config.viewport.height },
-          },
+                                            isMatch: true,
+                                            similarity: 1,
+                                            differentPixels: 0,
+                                            totalPixels: 1,
+                                            dimensions: { width: this.config.viewport.width, height: this.config.viewport.height },          },
         };
 
       case 'evaluate':

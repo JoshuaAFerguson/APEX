@@ -281,6 +281,19 @@ export const ALL_MARKETPLACE_ENTRIES: MarketplaceEntry[] = [
   BRAVE_SEARCH_SERVER,
   COMMUNITY_SERVER,
   HTTP_SERVER,
+  INVALID_CONFIG_SERVER,
+  MISSING_DEPS_SERVER,
+  MALFORMED_CONFIG_SERVER,
+];
+
+/**
+ * Error scenario test entries for negative testing
+ */
+export const ERROR_TEST_ENTRIES: MarketplaceEntry[] = [
+  INVALID_CONFIG_SERVER,
+  MISSING_DEPS_SERVER,
+  MALFORMED_CONFIG_SERVER,
+  CONFLICTING_SERVER,
 ];
 
 /**
@@ -554,6 +567,56 @@ export const CONFLICTING_SERVER: MarketplaceEntry = {
     type: 'http',
     command: 'should-not-be-here-for-http', // Conflict: command with http type
     url: 'http://localhost:3000',
+    autoStart: false,
+  },
+};
+
+/**
+ * Server with intentionally invalid config (empty name)
+ */
+export const INVALID_CONFIG_SERVER: MarketplaceEntry = {
+  name: 'invalid-config',
+  description: 'Server with intentionally invalid config',
+  version: '0.0.1',
+  verified: false,
+  category: 'test',
+  serverConfig: { name: '', type: 'stdio' as const }, // Empty name = invalid
+};
+
+/**
+ * Server requiring unavailable dependencies
+ */
+export const MISSING_DEPS_SERVER: MarketplaceEntry = {
+  name: 'missing-deps',
+  description: 'Server requiring unavailable dependencies',
+  version: '1.0.0',
+  verified: false,
+  category: 'test',
+  serverConfig: {
+    name: 'missing-deps',
+    type: 'stdio' as const,
+    command: '/nonexistent/binary',
+    args: ['--nonexistent-option'],
+    env: {},
+    autoStart: false,
+  },
+};
+
+/**
+ * Server with malformed configuration (for corrupt YAML testing)
+ */
+export const MALFORMED_CONFIG_SERVER: MarketplaceEntry = {
+  name: 'malformed-config',
+  description: 'Server designed to create malformed config',
+  version: '1.0.0',
+  verified: false,
+  category: 'test',
+  serverConfig: {
+    name: 'malformed\nconfig\ttab', // Invalid characters that will break YAML
+    type: 'stdio' as const,
+    command: 'echo',
+    args: ['test'],
+    env: {},
     autoStart: false,
   },
 };

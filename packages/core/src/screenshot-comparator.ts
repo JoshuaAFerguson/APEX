@@ -40,8 +40,8 @@ export class ScreenshotComparator {
       includeAlpha: options.includeAlpha ?? false,
       outputDiff: options.outputDiff ?? false,
       diffOutputPath: options.diffOutputPath,
-      diffColor: options.diffColor ?? [255, 0, 255],
-    };
+      diffColor: (options.diffColor as [number, number, number] | undefined) ?? [255, 0, 255],
+    } as ResolvedComparisonOptions;
 
     // Validate options schema
     ScreenshotComparisonOptionsSchema.parse(this.defaultOptions);
@@ -60,8 +60,11 @@ export class ScreenshotComparator {
     imagePath2: string,
     options: Partial<ScreenshotComparisonOptions> = {}
   ): Promise<ScreenshotComparisonResult> {
-    // Merge options with defaults
-    const finalOptions = { ...this.defaultOptions, ...options };
+    const finalOptions = {
+      ...this.defaultOptions,
+      ...options,
+      diffColor: (options.diffColor as [number, number, number] | undefined) ?? this.defaultOptions.diffColor,
+    } as ResolvedComparisonOptions;
 
     // Validate input files exist
     await this.validateImageFile(imagePath1);
@@ -151,7 +154,11 @@ export class ScreenshotComparator {
     buffer2: Buffer,
     options: Partial<ScreenshotComparisonOptions> = {}
   ): Promise<ScreenshotComparisonResult> {
-    const finalOptions = { ...this.defaultOptions, ...options };
+    const finalOptions = {
+      ...this.defaultOptions,
+      ...options,
+      diffColor: (options.diffColor as [number, number, number] | undefined) ?? this.defaultOptions.diffColor,
+    } as ResolvedComparisonOptions;
 
     // Process image buffers
     const [image1Data, image2Data] = await Promise.all([

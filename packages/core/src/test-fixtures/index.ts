@@ -45,6 +45,24 @@ export * from './factories/index.js';
 // Builder classes
 export * from './builders/index.js';
 
+// Browser fixtures
+export * from './browser-fixtures.js';
+
+// Mock helpers
+export * from './mock-helpers.js';
+
+// Setup and teardown utilities
+export * from './setup-teardown.js';
+
+// Package-specific helpers
+export * from './package-helpers.js';
+
+// Test utilities
+export * from './test-utils.js';
+
+// Sensitive information detection utilities
+export * from './sensitive-info-utils.js';
+
 // Marketplace fixtures
 export * from '../fixtures/index.js';
 

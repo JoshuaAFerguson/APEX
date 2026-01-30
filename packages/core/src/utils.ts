@@ -1,5 +1,16 @@
 import * as crypto from 'crypto';
 
+export interface CodeBlock {
+  language: string;
+  code: string;
+}
+
+export interface ChangelogGroup {
+  type: CommitType | 'other';
+  title: string;
+  commits: GitLogEntry[];
+}
+
 /**
  * Generate a unique task ID with timestamp and random components
  *
@@ -1363,7 +1374,7 @@ export function generateChangelogMarkdown(
   for (const group of groups) {
     if (group.commits.length === 0) continue;
 
-    const typeConfig = group.type !== 'other' ? COMMIT_TYPES[group.type] : null;
+    const typeConfig = group.type !== 'other' ? COMMIT_TYPES[group.type as CommitType] : null;
     const emoji = typeConfig?.emoji || '📝';
 
     markdown += `### ${emoji} ${group.title}\n\n`;

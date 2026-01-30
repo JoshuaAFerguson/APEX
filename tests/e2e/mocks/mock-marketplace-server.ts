@@ -48,6 +48,12 @@ export interface MockMarketplaceBehavior {
   healthCheckDelayMs?: number;
   /** Whether to simulate connection drops after N requests */
   disconnectAfterRequests?: number;
+  /** Simulate specific network error modes */
+  networkErrorMode?: 'timeout' | 'refused' | 'reset';
+  /** Delay before network error triggers */
+  networkErrorAfterMs?: number;
+  /** Simulate corrupted response data */
+  corruptResponseMode?: 'malformed_json' | 'incomplete' | 'wrong_schema';
 }
 
 /**
@@ -160,6 +166,9 @@ export class MockMarketplaceServer extends EventEmitter {
       supportsHealthCheck: behavior?.supportsHealthCheck ?? true,
       healthCheckDelayMs: behavior?.healthCheckDelayMs ?? 5,
       disconnectAfterRequests: behavior?.disconnectAfterRequests ?? 0,
+      networkErrorMode: behavior?.networkErrorMode,
+      networkErrorAfterMs: behavior?.networkErrorAfterMs ?? 0,
+      corruptResponseMode: behavior?.corruptResponseMode,
     };
     this.tools = tools ?? this.generateDefaultTools();
   }
@@ -771,4 +780,82 @@ export class MockServerManager extends EventEmitter {
     }
     return total;
   }
+}
+
+// ============================================================================
+// Error Scenario Factory Functions (ADR-076)
+// ============================================================================
+
+/**
+ * Creates a mock server that simulates network failures
+ *
+ * @param entry - Marketplace entry for the server
+ * @param errorMode - Type of network error to simulate
+ * @returns MockMarketplaceServer configured for network failures
+ */
+export function createFailingServer(
+  entry: MarketplaceEntry,
+  errorMode: 'timeout' | 'refused' | 'reset' = 'refused'
+): MockMarketplaceServer {
+  return createMockMarketplaceServer(entry, {
+    failOnStart: true,
+    startupErrorMessage: `Network error: ${errorMode}`,
+    networkErrorMode: errorMode,
+    networkErrorAfterMs: 100,
+    errorProbability: 1.0, // Always fail
+  });
+}
+
+/**
+ * Creates a mock server that simulates slow responses and timeouts
+ *
+ * @param entry - Marketplace entry for the server
+ * @param delayMs - Delay in milliseconds (default: 30000 for timeout)
+ * @returns MockMarketplaceServer configured for slow responses
+ */
+export function createSlowServer(
+  entry: MarketplaceEntry,
+  delayMs: number = 30000
+): MockMarketplaceServer {
+  return createMockMarketplaceServer(entry, {
+    startupDelayMs: delayMs,
+    requestDelayMs: delayMs / 2,
+    healthCheckDelayMs: delayMs / 4,
+    networkErrorAfterMs: delayMs,
+  });
+}
+
+/**
+ * Creates a mock server that returns corrupted responses
+ *
+ * @param entry - Marketplace entry for the server
+ * @param corruptMode - Type of corruption to simulate
+ * @returns MockMarketplaceServer configured for corrupted responses
+ */
+export function createCorruptedServer(
+  entry: MarketplaceEntry,
+  corruptMode: 'malformed_json' | 'incomplete' | 'wrong_schema' = 'malformed_json'
+): MockMarketplaceServer {
+  return createMockMarketplaceServer(entry, {
+    corruptResponseMode: corruptMode,
+    errorProbability: 0.8, // High chance of corruption
+  });
+}
+
+/**
+ * Creates a mock server that crashes during operation
+ *
+ * @param entry - Marketplace entry for the server
+ * @param crashAfterRequests - Number of requests before crash (default: 3)
+ * @returns MockMarketplaceServer configured to crash
+ */
+export function createCrashingServer(
+  entry: MarketplaceEntry,
+  crashAfterRequests: number = 3
+): MockMarketplaceServer {
+  return createMockMarketplaceServer(entry, {
+    disconnectAfterRequests: crashAfterRequests,
+    errorProbability: 0.5,
+    startupErrorMessage: 'Server crashed during operation',
+  });
 }
