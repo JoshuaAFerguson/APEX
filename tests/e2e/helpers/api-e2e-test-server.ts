@@ -8,7 +8,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
-import { createServer } from '@apexcli/api';
+import { createServer } from '@apex/api';
 import { createWebSocketTestClient, WebSocketTestClient } from '../utils/ws-test-client.js';
 
 export interface APITestServerOptions {

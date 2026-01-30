@@ -14,9 +14,9 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
-import type { Task } from '@apexcli/core';
-import { skipOnWindows } from '@apexcli/core';
+import { ApexOrchestrator } from '@apex/orchestrator';
+import type { Task } from '@apex/core';
+import { skipOnWindows } from '@apex/core';
 
 const execAsync = promisify(exec);
 

@@ -318,6 +318,9 @@ export type {
   MockOperationBehavior,
 } from './mocks/index.js';
 
+// Export test utilities
+export * from './test-utils.js';
+
 export default {
   BrowserManager: BrowserManagerClass,
   BrowserSession: BrowserSessionClass,
