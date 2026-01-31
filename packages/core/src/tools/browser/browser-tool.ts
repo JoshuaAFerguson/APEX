@@ -42,6 +42,7 @@ import type {
   BrowserToolInput,
   BrowserToolOutput,
 } from '../../types.js';
+import { BrowserPermissionDeniedError } from './browser-permission-denied-error.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -148,6 +149,21 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
 
   /** Tool configuration */
   private readonly config: Required<BrowserToolOptions>;
+
+  /** Active browser sessions for resource tracking */
+  private readonly activeSessions = new Map<string, {
+    session: any; // Browser session object
+    operations: string[]; // Track operations performed
+    createdAt: Date;
+    cleanup: () => Promise<void>;
+  }>();
+
+  /** Permission cache to avoid repeated permission checks */
+  private readonly permissionCache = new Map<string, {
+    granted: boolean;
+    level?: string;
+    expiresAt: Date;
+  }>();
 
   /**
    * Creates a new BrowserTool instance.
@@ -367,16 +383,14 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
   }
 
   /**
-   * Executes the browser operation.
-   *
-   * Note: This is a placeholder implementation. In production, this would
-   * integrate with Playwright, Puppeteer, or MCP browser tools.
+   * Executes the browser operation with proper permission checks and resource management.
    */
   protected async executeImpl(
     params: BrowserToolInput,
     context?: ToolExecutionContext
   ): Promise<BrowserToolOutput> {
     const startTime = Date.now();
+    const sessionId = this.generateSessionId();
 
     // Check cancellation early
     if (context?.signal?.aborted) {
@@ -384,34 +398,93 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
     }
 
     try {
-      // This is a type-safe implementation scaffold
-      // In production, this would delegate to actual browser automation
-      const result = await this.executeOperation(params, context);
+      // Check permission before executing operation
+      await this.checkPermission(params.operation, context);
+
+      // Execute the operation with session tracking
+      const result = await this.executeOperation(params, context, sessionId);
 
       return {
         ...result,
         duration: Date.now() - startTime,
+        sessionId,
       };
     } catch (error) {
+      // Handle different error types gracefully
+      if (error instanceof BrowserPermissionDeniedError) {
+        // Execute cleanup for permission denied errors
+        await this.cleanupAllSessions();
+
+        // Return structured error response instead of throwing
+        return {
+          success: false,
+          operation: params.operation,
+          error: error.getUserFriendlyMessage(),
+          permissionDenied: true,
+          duration: Date.now() - startTime,
+          sessionId,
+          metadata: {
+            operation: params.operation,
+            permissionDenied: true,
+            deniedBy: 'system',
+            timestamp: new Date().toISOString(),
+            suggestions: error.getResolutionSuggestions(),
+          },
+        };
+      }
+
       if (error instanceof Error && error.message.includes('cancelled')) {
+        // Clean up on cancellation
+        await this.cleanupSession(sessionId);
         throw error;
       }
-      throw new Error(`Browser operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Clean up on general errors
+      await this.cleanupSession(sessionId);
+
+      // Return structured error response for other errors
+      return {
+        success: false,
+        operation: params.operation,
+        error: `Browser operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        duration: Date.now() - startTime,
+        sessionId,
+      };
     }
   }
 
   /**
-   * Executes a specific browser operation.
+   * Generates a unique session ID for tracking
+   */
+  private generateSessionId(): string {
+    return `browser-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Executes a specific browser operation with session tracking.
    * This method handles the operation dispatch and would integrate with
    * the actual browser automation backend.
    */
   private async executeOperation(
     params: BrowserToolInput,
-    context?: ToolExecutionContext
+    context?: ToolExecutionContext,
+    sessionId?: string
   ): Promise<Omit<BrowserToolOutput, 'duration'>> {
     // Check cancellation
     if (context?.signal?.aborted) {
       throw new Error('Browser operation was cancelled');
+    }
+
+    // Register session for resource tracking (mock browser session)
+    if (sessionId) {
+      const mockBrowserSession = { url: null, title: null, closed: false };
+      const cleanup = async () => {
+        mockBrowserSession.closed = true;
+        console.debug(`Cleaned up browser session: ${sessionId}`);
+      };
+
+      this.registerSession(sessionId, mockBrowserSession, cleanup);
+      this.recordOperation(sessionId, params.operation);
     }
 
     // Placeholder implementation - returns success with operation-specific data
@@ -529,5 +602,137 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
       ...this.config,
       ...updates,
     });
+  }
+
+  /**
+   * Registers a browser session for resource tracking
+   */
+  private registerSession(sessionId: string, session: any, cleanup: () => Promise<void>): void {
+    this.activeSessions.set(sessionId, {
+      session,
+      operations: [],
+      createdAt: new Date(),
+      cleanup,
+    });
+  }
+
+  /**
+   * Records an operation for a session
+   */
+  private recordOperation(sessionId: string, operation: string): void {
+    const session = this.activeSessions.get(sessionId);
+    if (session) {
+      session.operations.push(operation);
+    }
+  }
+
+  /**
+   * Cleans up a specific browser session
+   */
+  private async cleanupSession(sessionId: string): Promise<void> {
+    const session = this.activeSessions.get(sessionId);
+    if (session) {
+      try {
+        await session.cleanup();
+      } catch (error) {
+        console.warn(`Failed to cleanup browser session ${sessionId}:`, error);
+      } finally {
+        this.activeSessions.delete(sessionId);
+      }
+    }
+  }
+
+  /**
+   * Cleans up all active browser sessions
+   * Called when tool is disposed or on permission denial
+   */
+  public async cleanupAllSessions(): Promise<void> {
+    const sessionIds = Array.from(this.activeSessions.keys());
+    await Promise.allSettled(
+      sessionIds.map(sessionId => this.cleanupSession(sessionId))
+    );
+    this.activeSessions.clear();
+  }
+
+  /**
+   * Checks permission for a browser operation
+   * Returns permission info or throws BrowserPermissionDeniedError
+   */
+  private async checkPermission(
+    operation: string,
+    context?: ToolExecutionContext
+  ): Promise<{ granted: boolean; level?: string }> {
+    // Generate cache key
+    const cacheKey = `${operation}-${context?.userId || 'default'}`;
+
+    // Check cache first (with 5-minute expiry)
+    const cached = this.permissionCache.get(cacheKey);
+    if (cached && cached.expiresAt > new Date()) {
+      if (!cached.granted) {
+        throw new BrowserPermissionDeniedError(
+          `Permission denied for browser operation '${operation}' (cached)`,
+          {
+            operation,
+            denialReason: 'Cached permission denial',
+          }
+        );
+      }
+      return { granted: cached.granted, level: cached.level };
+    }
+
+    // Simulate permission check - in production this would integrate with PermissionManager
+    const isPermitted = await this.simulatePermissionCheck(operation, context);
+
+    // Cache the result
+    this.permissionCache.set(cacheKey, {
+      granted: isPermitted.granted,
+      level: isPermitted.level,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+    });
+
+    if (!isPermitted.granted) {
+      throw new BrowserPermissionDeniedError(
+        isPermitted.reason || `Permission denied for browser operation '${operation}'`,
+        {
+          operation,
+          denialReason: isPermitted.reason,
+        }
+      );
+    }
+
+    return isPermitted;
+  }
+
+  /**
+   * Simulates permission checking - in production this would integrate with the actual permission system
+   */
+  private async simulatePermissionCheck(
+    operation: string,
+    context?: ToolExecutionContext
+  ): Promise<{ granted: boolean; level?: string; deniedBy?: string; reason?: string }> {
+    // For testing purposes, we'll allow most operations but deny 'evaluate' and 'submit'
+    // This simulates a security policy that restricts dangerous operations
+
+    const dangerousOperations = ['evaluate', 'submit'];
+
+    if (dangerousOperations.includes(operation)) {
+      return {
+        granted: false,
+        deniedBy: 'security-policy',
+        reason: `Operation '${operation}' requires elevated permissions`,
+      };
+    }
+
+    return {
+      granted: true,
+      level: 'basic',
+    };
+  }
+
+  /**
+   * Clears permission cache - useful for testing or when permissions change
+   */
+  public clearPermissionCache(): void {
+    this.permissionCache.clear();
   }
 }

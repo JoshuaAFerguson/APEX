@@ -2196,12 +2196,11 @@ export class TaskStore {
       )
     `;
 
-    // Always prioritize in-progress parent tasks (Case 2) over pending tasks (Case 1)
-    // This ensures parents are picked up first when restartParentOnly is enabled,
-    // allowing them to manage their pending subtasks
+    // Sort by priority first, then prefer in-progress parents as a tie-breaker
+    // for same-priority tasks. This prevents priority inversion where low-priority
+    // in-progress tasks block high-priority pending work.
     if (options?.orderByPriority) {
       sql += ` ORDER BY
-        CASE WHEN t.status = 'in-progress' THEN 0 ELSE 1 END ASC,
         CASE t.priority
           WHEN 'urgent' THEN 1
           WHEN 'high' THEN 2
@@ -2209,6 +2208,7 @@ export class TaskStore {
           WHEN 'low' THEN 4
           ELSE 5
         END ASC,
+        CASE WHEN t.status = 'in-progress' THEN 0 ELSE 1 END ASC,
         CASE t.effort
           WHEN 'xs' THEN 1
           WHEN 'small' THEN 2
@@ -2217,9 +2217,19 @@ export class TaskStore {
           WHEN 'xl' THEN 5
           ELSE 3
         END ASC,
+        t.parent_task_id IS NOT NULL ASC,
         t.created_at ASC`;
     } else {
-      sql += ' ORDER BY CASE WHEN t.status = \'in-progress\' THEN 0 ELSE 1 END ASC, t.created_at ASC';
+      sql += ` ORDER BY
+        CASE t.priority
+          WHEN 'urgent' THEN 1
+          WHEN 'high' THEN 2
+          WHEN 'normal' THEN 3
+          WHEN 'low' THEN 4
+          ELSE 5
+        END ASC,
+        CASE WHEN t.status = 'in-progress' THEN 0 ELSE 1 END ASC,
+        t.created_at ASC`;
     }
 
     if (options?.limit) {

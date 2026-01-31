@@ -10,11 +10,9 @@
 export { MockBrowserSession } from './mock-browser-session.js';
 export { MockBrowserManager } from './mock-browser-manager.js';
 
-// Export scenario builder utilities
-export {
-  createMockScenario,
-  commonScenarios,
-} from './scenario-builder.js';
+// Import and re-export scenario builder utilities
+import { createMockScenario, commonScenarios } from './scenario-builder.js';
+export { createMockScenario, commonScenarios };
 
 // Export all mock types
 export type {

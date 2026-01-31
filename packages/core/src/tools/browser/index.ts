@@ -60,4 +60,7 @@ export {
   isBrowserPermissionDeniedError,
   toBrowserPermissionDeniedError,
   type BrowserPermissionDeniedContext,
+  type BrowserResourceState,
+  type BrowserLifecycleState,
+  type BrowserLifecycleAware,
 } from './browser-permission-denied-error.js';

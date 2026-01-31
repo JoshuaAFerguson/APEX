@@ -711,6 +711,12 @@ export const BrowserToolOutputSchema = z.object({
   consoleMessages: z.array(ConsoleMessageSchema).optional(),
   /** Browser errors captured during operation */
   browserErrors: z.array(BrowserErrorSchema).optional(),
+  /** Session ID for tracking browser resources */
+  sessionId: z.string().optional(),
+  /** Whether operation was denied due to permissions */
+  permissionDenied: z.boolean().optional(),
+  /** Additional metadata about the operation */
+  metadata: z.record(z.unknown()).optional(),
 });
 export type BrowserToolOutput = z.infer<typeof BrowserToolOutputSchema>;
 
@@ -3981,6 +3987,18 @@ export const SlackIntegrationConfigSchema = z.object({
 });
 export type SlackIntegrationConfig = z.infer<typeof SlackIntegrationConfigSchema>;
 
+/**
+ * Schema for API authentication configuration
+ * Controls access to the APEX REST API and WebSocket endpoints
+ */
+export const ApiAuthConfigSchema = z.object({
+  /** Whether API authentication is enabled */
+  enabled: z.boolean().optional().default(false),
+  /** Array of valid API keys for authenticating requests */
+  apiKeys: z.array(z.string()).optional().default([]),
+});
+export type ApiAuthConfig = z.infer<typeof ApiAuthConfigSchema>;
+
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -4000,6 +4018,8 @@ export const ApexConfigSchema = z.object({
       url: z.string().optional().default('http://localhost:3000'),
       port: z.number().optional().default(3000),
       autoStart: z.boolean().optional().default(false),
+      /** Authentication configuration for API access control */
+      auth: ApiAuthConfigSchema.optional(),
     })
     .optional(),
   ui: UIConfigSchema.optional(),
@@ -5753,6 +5773,70 @@ export type PermissionEventDataFor<T extends ApexEventType> =
   T extends 'policy:warned' ? PolicyWarnedEventData :
   T extends 'policy:audited' ? PolicyAuditedEventData :
   never;
+
+// ============================================================================
+// Permission Notification Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Schema for permission notification data
+ * Used for real-time notifications about permission changes and status
+ */
+export const PermissionNotificationSchema = z.object({
+  /** Unique identifier for this notification */
+  id: z.string().min(1),
+
+  /** Type of permission notification */
+  type: z.enum([
+    'permission:requested',
+    'permission:granted',
+    'permission:denied',
+    'dangerous:detected',
+    'dangerous:confirmed',
+    'dangerous:blocked'
+  ]),
+
+  /** Task ID associated with this notification */
+  taskId: z.string().min(1),
+
+  /** Agent that triggered this notification */
+  agent: z.string().min(1),
+
+  /** Tool involved in the permission change */
+  tool: z.string().min(1),
+
+  /** Optional scope/context (e.g., file path, command pattern) */
+  scope: z.string().optional(),
+
+  /** Human-readable title for the notification */
+  title: z.string().min(1),
+
+  /** Detailed message describing the permission event */
+  message: z.string().min(1),
+
+  /** Severity level for UI display */
+  severity: z.enum(['info', 'warning', 'error', 'critical']).default('info'),
+
+  /** Whether this notification requires immediate user attention */
+  requiresAction: z.boolean().default(false),
+
+  /** Available actions user can take (e.g., ['approve', 'deny', 'view_details']) */
+  actions: z.array(z.string()).default([]),
+
+  /** Additional metadata for the notification */
+  metadata: z.record(z.unknown()).optional(),
+
+  /** Timestamp when the notification was created */
+  timestamp: z.date(),
+
+  /** Expiration timestamp (optional) */
+  expiresAt: z.date().optional(),
+
+  /** Whether this notification has been read/acknowledged */
+  acknowledged: z.boolean().default(false)
+});
+
+export type PermissionNotification = z.infer<typeof PermissionNotificationSchema>;
 
 // ============================================================================
 // TDD Event Data Types (v0.5.0)
@@ -9531,3 +9615,13 @@ export const PermissionChangeEventSchema = z.object({
 });
 
 export type PermissionChangeEvent = z.infer<typeof PermissionChangeEventSchema>;
+
+// ============================================================================
+// Browser Lifecycle Types (re-exported from browser tools)
+// ============================================================================
+
+export type {
+  BrowserLifecycleState,
+  BrowserLifecycleAware,
+  BrowserResourceState,
+} from './tools/browser/browser-permission-denied-error.js';

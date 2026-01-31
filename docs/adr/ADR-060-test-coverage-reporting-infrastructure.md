@@ -1,10 +1,10 @@
 # ADR-060: Test Coverage Reporting Infrastructure
 
 ## Status
-Accepted
+Accepted (Implementation Complete)
 
 ## Date
-2026-01-29
+2026-01-29 (Updated: 2026-01-31)
 
 ## Context
 
@@ -15,24 +15,18 @@ APEX is a Turbo monorepo with four core packages (`core`, `orchestrator`, `cli`,
 3. Support CI enforcement of minimum coverage thresholds
 4. Generate reports in multiple formats for different consumers (developers, CI, dashboards)
 
-### Current State
+### Current State (Fully Implemented)
 
-The project already has substantial coverage infrastructure in place:
+All Phase 1 infrastructure is now in place:
 
 - **`@vitest/coverage-v8`** v4.0.15 installed as a devDependency
 - **`npm run test:coverage`** script exists (`vitest run --coverage`)
 - **`npm run test:unit:coverage`** script exists (`vitest run --config vitest.unit.config.ts --coverage`)
-- **Root `vitest.config.ts`** has a `coverage` block with `provider: 'v8'`, reporters `['text', 'html']`, and include/exclude patterns
+- **Root `vitest.config.ts`** has full coverage config: `provider: 'v8'`, reporters `['text', 'text-summary', 'html', 'json', 'lcov']`, thresholds at 50%, explicit `reportsDirectory: './coverage'`
 - **`vitest.unit.config.ts`** mirrors the coverage configuration for unit-only test runs
-- **CI pipeline** (`.github/workflows/ci.yml`) runs `npm test` but does NOT run coverage reporting
-
-### What's Missing
-
-1. **Coverage thresholds** - No enforcement of minimum coverage percentages
-2. **JSON/LCOV reporters** - Only `text` and `html` reporters; missing machine-readable formats needed for CI tooling and coverage badges
-3. **CI coverage step** - CI workflow does not run `test:coverage`
-4. **Per-package visibility** - Coverage is aggregated; no per-package breakdown in reporting
-5. **Coverage output directory** - Using default location; should be explicit and gitignored
+- **`.gitignore`** includes `coverage/` directory
+- **Coverage thresholds** set at 50% for lines, functions, branches, statements
+- **CI pipeline** (`.github/workflows/ci.yml`) runs `npm test` but does NOT yet run coverage reporting (Phase 2)
 
 ## Decision
 
@@ -44,7 +38,7 @@ The project already has substantial coverage infrastructure in place:
 
 ### 2. Reporter Configuration
 
-**Decision**: Expand reporters from `['text', 'html']` to `['text', 'text-summary', 'html', 'json', 'lcov']`.
+**Decision**: Use reporters `['text', 'text-summary', 'html', 'json', 'lcov']` (implemented).
 
 | Reporter | Purpose | Consumer |
 |----------|---------|----------|
@@ -117,11 +111,11 @@ vitest.e2e.config.ts      → No coverage (E2E tests are not source-coverage tar
 
 ## Implementation Plan
 
-### Phase 1: Configuration Enhancement (This Task)
-1. Update `vitest.config.ts` coverage block with expanded reporters, thresholds, and explicit output directory
-2. Update `vitest.unit.config.ts` to match
-3. Ensure `coverage/` is in `.gitignore`
-4. Verify `npm run test:coverage` generates reports successfully
+### Phase 1: Configuration Enhancement ✅ COMPLETE
+1. ✅ `vitest.config.ts` coverage block has expanded reporters, thresholds, and explicit output directory
+2. ✅ `vitest.unit.config.ts` mirrors the configuration
+3. ✅ `coverage/` is in `.gitignore`
+4. ⏳ Developer stage to verify `npm run test:coverage` generates reports successfully and review baseline numbers
 
 ### Phase 2: CI Integration (Future)
 1. Add coverage step to `.github/workflows/ci.yml`

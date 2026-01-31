@@ -1572,9 +1572,16 @@ export class BrowserTool {
    */
   public async cleanup(): Promise<void> {
     try {
-      // Close console stream first
+      // Close console stream first and properly stop streaming
       if (this.consoleStream) {
-        this.consoleStream.clearBuffers();
+        try {
+          this.consoleStream.stopStream();
+          this.consoleStream.clearBuffers();
+        } catch (error) {
+          console.warn('Error stopping console stream during cleanup:', error);
+        } finally {
+          this.consoleStream = undefined;
+        }
       }
 
       // Clear any pending operations
@@ -1654,6 +1661,50 @@ export class BrowserTool {
         },
         error instanceof Error ? error : new Error(String(error))
       );
+    }
+  }
+
+  /**
+   * Forcefully destroy all browser resources
+   * This is a more aggressive cleanup that ensures all resources are released
+   * and the tool is in a clean state, even if normal cleanup fails
+   */
+  public async destroy(): Promise<void> {
+    try {
+      // Attempt normal cleanup first
+      await this.cleanup();
+    } catch (cleanupError) {
+      // If cleanup fails, force reset all resources
+      console.warn('Normal cleanup failed, forcing resource reset:', cleanupError);
+
+      // Force nullify all references
+      this.page = undefined;
+      this.context = undefined;
+      this.browser = undefined;
+      this.puppeteerPage = undefined;
+      this.puppeteerBrowser = undefined;
+      this.consoleStream = undefined;
+
+      // Reset resource state to inactive
+      this.resourceState = {
+        browserActive: false,
+        contextActive: false,
+        pageActive: false,
+        sessionId: this.sessionId,
+        activeOperations: 0,
+        currentUrl: undefined,
+        lastAllocation: undefined
+      };
+
+      // Clear all buffers
+      this.consoleMessages = [];
+      this.runtimeErrors = [];
+      this.enhancedConsoleMessages = [];
+      this.enhancedRuntimeErrors = [];
+
+      // Generate new session ID to ensure fresh state
+      this.sessionId = this.generateSessionId();
+      this.resourceState.sessionId = this.sessionId;
     }
   }
 

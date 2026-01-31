@@ -37,6 +37,7 @@ import {
   SessionLimitStatus,
   PermissionLevel,
   PermissionPreset,
+  PermissionNotification,
   ToolExecution,
   ToolStartHookContext,
   ToolStartHookCallback,
@@ -304,6 +305,7 @@ export interface OrchestratorEvents {
   'permission:request': (event: PermissionRequestEventData) => void;
   'permission:granted': (event: PermissionGrantedEventData) => void;
   'permission:denied': (event: PermissionDeniedEventData) => void;
+  'permission:notification': (event: PermissionNotification) => void;
   'dangerous:detected': (event: DangerousOperationDetectedEventData) => void;
   'dangerous:confirmed': (event: DangerousOperationConfirmedEventData) => void;
   'dangerous:blocked': (event: DangerousOperationBlockedEventData) => void;
@@ -11800,6 +11802,7 @@ export {
   type CleanupOptions,
   type BrowserManagerEvents,
 } from './browser-manager';
+export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
 export { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';

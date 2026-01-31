@@ -1591,18 +1591,40 @@ export class DaemonRunner {
           }
         }
 
-        // Check 2: Task stuck in checkpoint resume loop
+        // Check 2: Task stuck in checkpoint resume loop — mark as failed to break the cycle
         if (!needsRepair && task.resumeAttempts && task.resumeAttempts >= 3) {
           if (timeSinceUpdate > stuckThresholdMs && !this.runningTasks.has(task.id)) {
-            needsRepair = true;
-            repairReason = `Task hit max resume attempts (${task.resumeAttempts})`;
+            this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
+            await this.store.updateTask(task.id, {
+              status: 'failed',
+              error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
+              updatedAt: new Date(),
+            });
+            repairedCount++;
+            continue;
           }
         }
 
         // Check 3: Task with error in error field that looks like a checkpoint reference (not a real error)
+        // Only repair if the task hasn't been updated recently (same guard as other checks)
+        // and hasn't already been repaired too many times (resumeAttempts tracks this)
         if (!needsRepair && task.error && task.error.startsWith('Resuming from checkpoint:')) {
-          needsRepair = true;
-          repairReason = 'Task has checkpoint reference in error field';
+          if (timeSinceUpdate > stuckThresholdMs && !this.runningTasks.has(task.id)) {
+            if ((task.resumeAttempts ?? 0) >= 3) {
+              // Task has been repaired multiple times but keeps ending up with checkpoint error.
+              // Mark it as failed to break the infinite loop.
+              this.log('warn', `[AutoTriage] Task ${task.id} stuck in checkpoint repair loop (${task.resumeAttempts} attempts), marking as failed`);
+              await this.store.updateTask(task.id, {
+                status: 'failed',
+                error: `AutoTriage: Task stuck in checkpoint resume loop after ${task.resumeAttempts} repair attempts. Original: ${task.error.substring(0, 200)}`,
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            }
+            needsRepair = true;
+            repairReason = 'Task has checkpoint reference in error field';
+          }
         }
 
         // Check 4: Task stuck in planning/subtask-execution with workflow error
@@ -1633,10 +1655,10 @@ export class DaemonRunner {
             }
           }
 
-          // Reset the task
+          // Reset the task (increment resumeAttempts to track repair cycles)
           await this.store.updateTask(task.id, {
             error: undefined,
-            resumeAttempts: 0,
+            resumeAttempts: (task.resumeAttempts ?? 0) + 1,
             currentStage: newStage,
             updatedAt: new Date(),
           });

@@ -11,6 +11,64 @@
 import { ApexError, ApexErrorCode, type ApexErrorContext } from '../../apex-error.js';
 
 // ============================================================================
+// Lifecycle State Types
+// ============================================================================
+
+/**
+ * Represents the lifecycle state of a browser instance.
+ *
+ * State transitions follow this flow:
+ * ```
+ * idle → launching → active → cleaning_up → destroyed
+ *                      ↓
+ *                  cleaning_up → idle (if reusable)
+ * ```
+ *
+ * - `idle`: Browser is initialized but not yet launched or has been reset
+ * - `launching`: Browser is in the process of starting up
+ * - `active`: Browser is fully operational and ready for interactions
+ * - `cleaning_up`: Browser is releasing resources and shutting down
+ * - `destroyed`: Browser has been fully terminated and cannot be reused
+ */
+export type BrowserLifecycleState = 'idle' | 'launching' | 'active' | 'cleaning_up' | 'destroyed';
+
+/**
+ * Interface for objects that are aware of browser lifecycle state.
+ *
+ * Implementing this interface allows components to expose their current
+ * lifecycle state and provide a convenience check for whether the browser
+ * is currently active and available for operations.
+ *
+ * @example
+ * ```typescript
+ * class BrowserSession implements BrowserLifecycleAware {
+ *   state: BrowserLifecycleState = 'idle';
+ *
+ *   isActive(): boolean {
+ *     return this.state === 'active';
+ *   }
+ *
+ *   async launch(): Promise<void> {
+ *     this.state = 'launching';
+ *     // ... launch logic
+ *     this.state = 'active';
+ *   }
+ * }
+ * ```
+ */
+export interface BrowserLifecycleAware {
+  /** The current lifecycle state of the browser */
+  state: BrowserLifecycleState;
+
+  /**
+   * Check whether the browser is currently active and available for operations.
+   *
+   * @returns true if the browser state is 'active'
+   */
+  isActive(): boolean;
+}
+
+// ============================================================================
 // Resource State Tracking
 // ============================================================================
 
@@ -33,6 +91,8 @@ export interface BrowserResourceState {
   sessionId?: string;
   /** Number of active operations */
   activeOperations: number;
+  /** Optional lifecycle state for tracking browser launch/teardown phases */
+  lifecycleState?: BrowserLifecycleState;
 }
 
 // ============================================================================
