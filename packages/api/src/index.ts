@@ -177,7 +177,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const config = await orchestrator.getConfig();
 
   // Register auth middleware with configuration
-  await app.register(authMiddleware, {
+  await app.register(authPlugin, {
     enabled: config.api?.auth?.enabled ?? false,
     apiKeys: config.api?.auth?.apiKeys ?? [],
     publicRoutes: ['/health', '/status', '/metrics', '/ws']

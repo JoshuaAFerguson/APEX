@@ -423,7 +423,7 @@ assertPermissionHistory(history, {
 
 ## Mock Data Factories
 
-> **Tip:** Use these factories to generate test data for the [Permission Assertion Helpers](#api-reference-permission-assertion-helpers) above. For browser automation operations that exercise these permissions in integration tests, see the [Browser Automation Guide](./browser-automation.md).
+> **Tip:** Use these factories to generate test data for the [Permission Assertion Helpers](#api-reference-permission-assertion-helpers) above. For complete mock environments and additional test utilities, see the [Mock Helpers API Reference](./mock-helpers-api.md). For browser automation operations that exercise these permissions in integration tests, see the [Browser Automation Guide](./browser-automation.md).
 
 ### `createMockToolPermissionResult(options)`
 

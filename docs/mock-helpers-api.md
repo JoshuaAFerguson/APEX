@@ -498,3 +498,10 @@ const mockFn: MockFunction<(arg: string) => Promise<string>> = vi.fn();
      mockTaskStore._clearTasks();
    });
    ```
+
+## Related Documentation
+
+- [Browser Permission Test Utilities](./browser-permission-test-utilities.md) - Permission assertion helpers and mock data factories for permission testing
+- [System APIs Reference](./system-apis-reference.md) - Type definitions for interfaces being mocked
+- [Test Utilities](./test-utilities.md) - Cross-platform test utilities and helper functions
+- [Browser Automation Guide](./browser-automation.md) - Browser operations and configuration patterns tested with these mocks
