@@ -185,7 +185,7 @@ describe('Permission Change Event Types', () => {
       const minimalEvent = {
         changeType: 'revoked' as const,
         permission: {
-          category: 'network',
+          category: 'web',
           permission: 'network',
           previousLevel: 'allow-always',
           newLevel: null
@@ -288,7 +288,7 @@ describe('Permission Change Event Types', () => {
         changeType: 'granted' as const,
         permission: {
           category: 'browser',
-          permission: 'navigate',
+          permission: 'execute',
           previousLevel: null,
           newLevel: 'allow-always'
         },

@@ -12,7 +12,6 @@ import {
   withMockedPermissions,
   MockPermissionStatus,
   isMockPermissionStatus,
-  isPermissionsMockedGuard,
 } from '../permission-mocking/index.js';
 import type {
   PermissionState,
@@ -78,13 +77,13 @@ describe('Permission Mocking Edge Cases', () => {
     });
 
     it('should correctly identify mocked permissions with type guard', () => {
-      expect(isPermissionsMockedGuard(navigator)).toBe(false);
+      expect(isPermissionsMocked(navigator)).toBe(false);
 
       const handle = mockPermissions();
-      expect(isPermissionsMockedGuard(navigator)).toBe(true);
+      expect(isPermissionsMocked(navigator)).toBe(true);
 
       handle.restore();
-      expect(isPermissionsMockedGuard(navigator)).toBe(false);
+      expect(isPermissionsMocked(navigator)).toBe(false);
     });
   });
 

@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { WebSocket } from 'ws';
@@ -34,6 +34,7 @@ import {
 
 import { registerScreenshotRoutes } from './routes/screenshot.js';
 import { SlackService } from './services/slack-service.js';
+import authPlugin from './middleware/auth.js';
 
 /**
  * Request payload for decomposing a task into subtasks.
@@ -169,14 +170,67 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   await app.register(cors, { origin: true });
   await app.register(websocket);
 
-  // Register screenshot routes
-  await registerScreenshotRoutes(app);
-
-  // Initialize orchestrator
+  // Initialize orchestrator to get config for auth middleware
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
   await orchestrator.initialize();
 
   const config = await orchestrator.getConfig();
+
+  // Register auth middleware with configuration
+  await app.register(authMiddleware, {
+    enabled: config.api?.auth?.enabled ?? false,
+    apiKeys: config.api?.auth?.apiKeys ?? [],
+    publicRoutes: ['/health', '/status', '/metrics', '/ws']
+  });
+
+  // Global error handler for production security
+  app.setErrorHandler(async (error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Log the full error for debugging (only visible in logs, not in response)
+    app.log.error(error, `Error in ${request.method} ${request.url}`);
+
+    // Determine appropriate status code
+    let statusCode = 500;
+    if (error.statusCode) {
+      statusCode = error.statusCode;
+    } else if (error.code === 'FST_ERR_VALIDATION') {
+      statusCode = 400;
+    }
+
+    // Create secure error response
+    const errorResponse: {
+      error: string;
+      statusCode: number;
+      message?: string;
+    } = {
+      error: 'Internal Server Error',
+      statusCode
+    };
+
+    // In production, only return generic error messages
+    if (isProduction) {
+      if (statusCode >= 400 && statusCode < 500) {
+        errorResponse.error = 'Bad Request';
+        errorResponse.message = 'The request could not be processed';
+      } else {
+        errorResponse.error = 'Internal Server Error';
+        errorResponse.message = 'An internal server error occurred';
+      }
+    } else {
+      // In development/test, provide more detailed errors (but still no stack traces)
+      errorResponse.message = error.message || 'An error occurred';
+    }
+
+    // Never include stack traces in any environment
+    // This ensures security even if someone accidentally sets NODE_ENV incorrectly
+    delete error.stack;
+
+    return reply.status(statusCode).send(errorResponse);
+  });
+
+  // Register screenshot routes
+  await registerScreenshotRoutes(app);
   const slackService = new SlackService({ orchestrator, config: config.slack, logger: app.log });
   try {
     await slackService.start();

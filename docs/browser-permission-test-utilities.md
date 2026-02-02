@@ -92,6 +92,8 @@ import {
 
 ## API Reference: Permission Assertion Helpers
 
+> **Tip:** These assertion helpers work best with test data created by the [Mock Data Factories](#mock-data-factories) below. For the underlying `ToolPermissionResult` and `PermissionContext` type definitions, see the [System APIs Reference](./system-apis-reference.md#-permissions-system-apis).
+
 ### `toBePermissionGranted(expectedLevel?)`
 
 **Custom Vitest Matcher** - Assert that a permission result is granted, optionally with a specific level.
@@ -421,6 +423,8 @@ assertPermissionHistory(history, {
 
 ## Mock Data Factories
 
+> **Tip:** Use these factories to generate test data for the [Permission Assertion Helpers](#api-reference-permission-assertion-helpers) above. For browser automation operations that exercise these permissions in integration tests, see the [Browser Automation Guide](./browser-automation.md).
+
 ### `createMockToolPermissionResult(options)`
 
 Create mock permission results for testing.
@@ -480,6 +484,8 @@ const history = createMockPermissionHistory({
 ```
 
 ## Integration Examples
+
+> **Note:** These examples combine [Permission Assertion Helpers](#api-reference-permission-assertion-helpers) with [Mock Data Factories](#mock-data-factories). For cross-platform test utilities (platform detection, conditional skipping), see the [Test Utilities](./test-utilities.md) documentation.
 
 ### Complete Browser Permission Test Suite
 
@@ -682,3 +688,666 @@ describe('Permission Error Handling', () => {
   });
 });
 ```
+
+---
+
+## API Reference: Browser State Helpers
+
+> **Tip:** The `browserHelpers` object provides pure, immutable helper functions for manipulating `BrowserState` objects. Each method returns a **new** `BrowserState` instance — the original state is never mutated. For building complex states from scratch, see the [BrowserStateBuilder](#api-reference-browserstatebuilder) below.
+
+```typescript
+import { browserHelpers, browserFixtures } from '@apex/core/test-fixtures';
+```
+
+### `addConsoleMessage(state, type, message)`
+
+Adds a console message entry (with auto-generated timestamp) to the browser state.
+
+```typescript
+const state = browserHelpers.addConsoleMessage(
+  browserFixtures.cleanState(),
+  'error',
+  'Uncaught TypeError: Cannot read property of undefined'
+);
+// state.consoleMessages[0] => { type: 'error', message: '...', timestamp: Date }
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `type`: `'log' | 'warn' | 'error' | 'info'` — Console message severity level
+- `message`: `string` — The console message text
+
+**Returns:** `BrowserState` — A new state with the message appended to `consoleMessages`
+
+**Usage Example:**
+```typescript
+it('should capture console errors during page load', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.addConsoleMessage(state, 'info', 'App initializing');
+  state = browserHelpers.addConsoleMessage(state, 'error', 'Failed to load config');
+
+  expect(state.consoleMessages).toHaveLength(2);
+  expect(state.consoleMessages[1].type).toBe('error');
+  expect(state.consoleMessages[1].timestamp).toBeInstanceOf(Date);
+});
+```
+
+---
+
+### `addNetworkRequest(state, url, method?, status?, headers?)`
+
+Adds a network request entry to the browser state.
+
+```typescript
+const state = browserHelpers.addNetworkRequest(
+  browserFixtures.cleanState(),
+  'https://api.apex.dev/tasks',
+  'POST',
+  201,
+  { 'Content-Type': 'application/json', 'Authorization': 'Bearer token' }
+);
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `url`: `string` — The request URL
+- `method`: `string` *(optional, default: `'GET'`)* — HTTP method
+- `status`: `number` *(optional)* — HTTP response status code
+- `headers`: `Record<string, string>` *(optional)* — Request/response headers
+
+**Returns:** `BrowserState` — A new state with the request appended to `networkRequests`
+
+**Usage Example:**
+```typescript
+it('should track API calls made during authentication', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.addNetworkRequest(state, 'https://api.apex.dev/auth/login', 'POST', 200);
+  state = browserHelpers.addNetworkRequest(state, 'https://api.apex.dev/user/profile', 'GET', 200);
+
+  expect(state.networkRequests).toHaveLength(2);
+  expect(state.networkRequests[0].method).toBe('POST');
+  expect(state.networkRequests[0].status).toBe(200);
+});
+```
+
+---
+
+### `setLocalStorage(state, key, value)`
+
+Sets a single key-value pair in the browser state's local storage, preserving existing entries.
+
+```typescript
+const state = browserHelpers.setLocalStorage(
+  browserFixtures.cleanState(),
+  'auth-token',
+  'eyJhbGciOiJIUzI1NiJ9...'
+);
+// state.localStorage => { 'auth-token': 'eyJhbGciOiJIUzI1NiJ9...' }
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `key`: `string` — The localStorage key
+- `value`: `string` — The localStorage value
+
+**Returns:** `BrowserState` — A new state with the key-value pair merged into `localStorage`
+
+**Usage Example:**
+```typescript
+it('should store user preferences in localStorage', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.setLocalStorage(state, 'theme', 'dark');
+  state = browserHelpers.setLocalStorage(state, 'lang', 'en');
+
+  expect(state.localStorage).toEqual({ theme: 'dark', lang: 'en' });
+});
+```
+
+---
+
+### `setSessionStorage(state, key, value)`
+
+Sets a single key-value pair in the browser state's session storage, preserving existing entries.
+
+```typescript
+const state = browserHelpers.setSessionStorage(
+  browserFixtures.cleanState(),
+  'current-project',
+  '/users/dev/my-project'
+);
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `key`: `string` — The sessionStorage key
+- `value`: `string` — The sessionStorage value
+
+**Returns:** `BrowserState` — A new state with the key-value pair merged into `sessionStorage`
+
+**Usage Example:**
+```typescript
+it('should track navigation state in sessionStorage', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.setSessionStorage(state, 'navigation-state', 'loading');
+  state = browserHelpers.setSessionStorage(state, 'previous-page', '/home');
+
+  expect(state.sessionStorage['navigation-state']).toBe('loading');
+  expect(state.sessionStorage['previous-page']).toBe('/home');
+});
+```
+
+---
+
+### `addCookie(state, name, value, options?)`
+
+Adds a cookie to the browser state with optional domain and path.
+
+```typescript
+const state = browserHelpers.addCookie(
+  browserFixtures.cleanState(),
+  'auth-session',
+  'sess_abc123',
+  { domain: 'app.apex.dev', path: '/dashboard' }
+);
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `name`: `string` — Cookie name
+- `value`: `string` — Cookie value
+- `options`: `{ domain?: string; path?: string }` *(optional)* — Cookie attributes
+  - `domain` — Defaults to `'localhost'`
+  - `path` — Defaults to `'/'`
+
+**Returns:** `BrowserState` — A new state with the cookie appended to `cookies`
+
+**Usage Example:**
+```typescript
+it('should set authentication cookies', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.addCookie(state, 'auth-session', 'mock-session', {
+    domain: 'app.apex.dev',
+    path: '/',
+  });
+  state = browserHelpers.addCookie(state, 'csrf-token', 'mock-csrf');
+
+  expect(state.cookies).toHaveLength(2);
+  expect(state.cookies[0].domain).toBe('app.apex.dev');
+  expect(state.cookies[1].domain).toBe('localhost'); // default
+});
+```
+
+---
+
+### `navigateTo(state, url, title?)`
+
+Simulates navigation to a new URL. Sets `isLoading` to `false` (navigation complete). Preserves the existing title if no new title is provided.
+
+```typescript
+const state = browserHelpers.navigateTo(
+  browserFixtures.loadingPage(),
+  'https://app.apex.dev/dashboard',
+  'APEX Dashboard'
+);
+// state.url => 'https://app.apex.dev/dashboard'
+// state.isLoading => false
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `url`: `string` — The destination URL
+- `title`: `string` *(optional)* — The new page title (keeps existing title if omitted)
+
+**Returns:** `BrowserState` — A new state with updated `url`, optional `title`, and `isLoading: false`
+
+**Usage Example:**
+```typescript
+it('should simulate a full navigation flow', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.startLoading(state);
+  expect(state.isLoading).toBe(true);
+
+  state = browserHelpers.navigateTo(state, 'https://app.apex.dev', 'APEX Home');
+  expect(state.url).toBe('https://app.apex.dev');
+  expect(state.title).toBe('APEX Home');
+  expect(state.isLoading).toBe(false);
+});
+```
+
+---
+
+### `startLoading(state)`
+
+Sets the browser state's loading flag to `true`. Typically used before a simulated navigation or resource fetch.
+
+```typescript
+const state = browserHelpers.startLoading(browserFixtures.cleanState());
+// state.isLoading => true
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+
+**Returns:** `BrowserState` — A new state with `isLoading: true`
+
+---
+
+### `finishLoading(state)`
+
+Sets the browser state's loading flag to `false`. Typically used after a simulated navigation or resource fetch completes.
+
+```typescript
+const loadingState = browserFixtures.loadingPage();
+const state = browserHelpers.finishLoading(loadingState);
+// state.isLoading => false
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+
+**Returns:** `BrowserState` — A new state with `isLoading: false`
+
+---
+
+### `setError(state, hasError?)`
+
+Sets the browser state's error flag. Defaults to `true` if `hasError` is not specified.
+
+```typescript
+const state = browserHelpers.setError(browserFixtures.cleanState());
+// state.hasError => true
+
+const recovered = browserHelpers.setError(state, false);
+// recovered.hasError => false
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `hasError`: `boolean` *(optional, default: `true`)* — Whether the page has an error
+
+**Returns:** `BrowserState` — A new state with updated `hasError`
+
+**Usage Example:**
+```typescript
+it('should simulate error and recovery', () => {
+  let state = browserFixtures.cleanState();
+  state = browserHelpers.setError(state);
+  expect(state.hasError).toBe(true);
+
+  state = browserHelpers.setError(state, false);
+  expect(state.hasError).toBe(false);
+});
+```
+
+---
+
+### `setAuthenticated(state, isAuthenticated)`
+
+Sets the browser state's authentication status.
+
+```typescript
+const state = browserHelpers.setAuthenticated(browserFixtures.cleanState(), true);
+// state.isAuthenticated => true
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+- `isAuthenticated`: `boolean` — Whether the user is authenticated
+
+**Returns:** `BrowserState` — A new state with updated `isAuthenticated`
+
+**Usage Example:**
+```typescript
+it('should simulate login and logout', () => {
+  let state = browserFixtures.cleanState();
+
+  state = browserHelpers.setAuthenticated(state, true);
+  expect(state.isAuthenticated).toBe(true);
+
+  state = browserHelpers.setAuthenticated(state, false);
+  expect(state.isAuthenticated).toBe(false);
+});
+```
+
+---
+
+### `clearBrowserData(state)`
+
+Clears all stored browser data — localStorage, sessionStorage, cookies, consoleMessages, and networkRequests — while preserving URL, title, loading, error, and authentication state.
+
+```typescript
+const populatedState = browserFixtures.loggedInPage();
+const state = browserHelpers.clearBrowserData(populatedState);
+
+// Cleared:
+// state.localStorage => {}
+// state.sessionStorage => {}
+// state.cookies => []
+// state.consoleMessages => []
+// state.networkRequests => []
+
+// Preserved:
+// state.url => 'https://app.apex.dev/dashboard'
+// state.isAuthenticated => true
+```
+
+**Parameters:**
+- `state`: `BrowserState` — The current browser state
+
+**Returns:** `BrowserState` — A new state with all stored data cleared
+
+**Usage Example:**
+```typescript
+it('should clear browser data while preserving page state', () => {
+  const loggedIn = browserFixtures.loggedInPage();
+  const cleared = browserHelpers.clearBrowserData(loggedIn);
+
+  expect(cleared.localStorage).toEqual({});
+  expect(cleared.cookies).toEqual([]);
+  expect(cleared.consoleMessages).toEqual([]);
+  // Page-level state is preserved
+  expect(cleared.url).toBe(loggedIn.url);
+  expect(cleared.isAuthenticated).toBe(loggedIn.isAuthenticated);
+});
+```
+
+---
+
+## API Reference: BrowserStateBuilder
+
+> **Tip:** The `BrowserStateBuilder` class provides a fluent API for constructing complex `BrowserState` objects via method chaining. For simpler, one-off state mutations, see the [browserHelpers](#api-reference-browser-state-helpers) above.
+
+```typescript
+import { BrowserStateBuilder, createBrowserState } from '@apex/core/test-fixtures';
+```
+
+### `createBrowserState(initialState?)`
+
+Factory function that creates a new `BrowserStateBuilder` instance. This is the recommended entry point for the builder pattern.
+
+```typescript
+const state = createBrowserState()
+  .withUrl('https://app.apex.dev')
+  .withAuth(true)
+  .build();
+```
+
+**Parameters:**
+- `initialState`: `Partial<BrowserState>` *(optional)* — Initial state values merged with clean defaults
+
+**Returns:** `BrowserStateBuilder` — A new builder instance
+
+**Usage Example:**
+```typescript
+it('should create a custom authenticated state', () => {
+  const state = createBrowserState({ isAuthenticated: true })
+    .withUrl('https://app.apex.dev/dashboard')
+    .withTitle('Dashboard')
+    .withLocalStorage({ 'auth-token': 'jwt-token-123' })
+    .build();
+
+  expect(state.isAuthenticated).toBe(true);
+  expect(state.url).toBe('https://app.apex.dev/dashboard');
+  expect(state.localStorage['auth-token']).toBe('jwt-token-123');
+});
+```
+
+---
+
+### `new BrowserStateBuilder(initialState?)`
+
+Constructs a new builder. Initializes internal state from `browserFixtures.cleanState()` merged with any provided overrides.
+
+```typescript
+const builder = new BrowserStateBuilder({ url: 'https://example.com' });
+```
+
+**Parameters:**
+- `initialState`: `Partial<BrowserState>` *(optional)* — Overrides merged onto clean defaults
+
+---
+
+### `.withUrl(url)`
+
+Sets the page URL.
+
+```typescript
+builder.withUrl('https://app.apex.dev/settings');
+```
+
+**Parameters:**
+- `url`: `string` — The page URL
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withTitle(title)`
+
+Sets the page title.
+
+```typescript
+builder.withTitle('Settings - APEX');
+```
+
+**Parameters:**
+- `title`: `string` — The page title
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withLoading(isLoading)`
+
+Sets the loading state.
+
+```typescript
+builder.withLoading(true);
+```
+
+**Parameters:**
+- `isLoading`: `boolean` — Whether the page is loading
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withError(hasError)`
+
+Sets the error state.
+
+```typescript
+builder.withError(true);
+```
+
+**Parameters:**
+- `hasError`: `boolean` — Whether the page has an error
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withAuth(isAuthenticated)`
+
+Sets the authentication status.
+
+```typescript
+builder.withAuth(true);
+```
+
+**Parameters:**
+- `isAuthenticated`: `boolean` — Whether the user is authenticated
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withLocalStorage(data)`
+
+Merges key-value pairs into localStorage. Can be called multiple times — entries accumulate and later calls overwrite existing keys.
+
+```typescript
+builder
+  .withLocalStorage({ 'auth-token': 'abc123' })
+  .withLocalStorage({ theme: 'dark' });
+// localStorage => { 'auth-token': 'abc123', theme: 'dark' }
+```
+
+**Parameters:**
+- `data`: `Record<string, string>` — Key-value pairs to merge into localStorage
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withSessionStorage(data)`
+
+Merges key-value pairs into sessionStorage. Can be called multiple times — entries accumulate and later calls overwrite existing keys.
+
+```typescript
+builder
+  .withSessionStorage({ 'session-id': 'sess_123' })
+  .withSessionStorage({ 'nav-state': 'active' });
+```
+
+**Parameters:**
+- `data`: `Record<string, string>` — Key-value pairs to merge into sessionStorage
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withConsoleMessages(messages)`
+
+Appends console messages to the state. Auto-generates timestamps for entries that don't provide one. Can be called multiple times — messages accumulate.
+
+```typescript
+builder.withConsoleMessages([
+  { type: 'info', message: 'App loaded' },
+  { type: 'error', message: 'API timeout', timestamp: new Date('2024-01-15T10:00:00Z') },
+]);
+```
+
+**Parameters:**
+- `messages`: `Array<{ type: 'log' | 'warn' | 'error' | 'info'; message: string; timestamp?: Date }>` — Console messages to append
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.withNetworkRequests(requests)`
+
+Appends network requests to the state. Can be called multiple times — requests accumulate.
+
+```typescript
+builder.withNetworkRequests([
+  { url: 'https://api.apex.dev/user', method: 'GET', status: 200 },
+  { url: 'https://api.apex.dev/tasks', method: 'POST', status: 201, headers: { 'Content-Type': 'application/json' } },
+]);
+```
+
+**Parameters:**
+- `requests`: `Array<{ url: string; method: string; status?: number; headers?: Record<string, string> }>` — Network requests to append
+
+**Returns:** `this` — The builder instance (for chaining)
+
+---
+
+### `.build()`
+
+Builds and returns a **shallow copy** of the constructed `BrowserState`. Can be called multiple times on the same builder — each call returns an independent copy. Modifications to the builder after calling `build()` do not affect previously built states.
+
+```typescript
+const state = builder.build();
+```
+
+**Parameters:** None
+
+**Returns:** `BrowserState` — A copy of the constructed browser state
+
+---
+
+### Full Chaining Example
+
+```typescript
+import { createBrowserState, browserFixtures } from '@apex/core/test-fixtures';
+
+describe('Dashboard Integration Tests', () => {
+  it('should render authenticated dashboard with API data', () => {
+    const state = createBrowserState()
+      .withUrl('https://app.apex.dev/dashboard')
+      .withTitle('APEX Dashboard')
+      .withAuth(true)
+      .withLocalStorage({
+        'auth-token': 'mock-jwt-token',
+        'user-preferences': JSON.stringify({ theme: 'dark' }),
+      })
+      .withSessionStorage({
+        'active-project': 'my-project',
+      })
+      .withConsoleMessages([
+        { type: 'info', message: 'Dashboard loaded' },
+        { type: 'log', message: 'Fetching project data...' },
+      ])
+      .withNetworkRequests([
+        { url: 'https://api.apex.dev/user/profile', method: 'GET', status: 200 },
+        { url: 'https://api.apex.dev/projects', method: 'GET', status: 200 },
+      ])
+      .build();
+
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.url).toBe('https://app.apex.dev/dashboard');
+    expect(state.localStorage['auth-token']).toBe('mock-jwt-token');
+    expect(state.consoleMessages).toHaveLength(2);
+    expect(state.networkRequests).toHaveLength(2);
+  });
+
+  it('should extend a fixture with the builder', () => {
+    const loggedInFixture = browserFixtures.loggedInPage();
+    const state = new BrowserStateBuilder(loggedInFixture)
+      .withUrl('https://app.apex.dev/settings')
+      .withTitle('Settings - APEX')
+      .withLocalStorage({ 'debug-mode': 'true' })
+      .build();
+
+    // Inherits logged-in fixture data
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.localStorage['auth-token']).toBe('mock-jwt-token');
+    // With builder overrides
+    expect(state.url).toBe('https://app.apex.dev/settings');
+    expect(state.localStorage['debug-mode']).toBe('true');
+  });
+
+  it('should create multiple independent states from one builder', () => {
+    const builder = createBrowserState()
+      .withAuth(true)
+      .withLocalStorage({ 'auth-token': 'shared-token' });
+
+    const state1 = builder.withUrl('https://app.apex.dev/page1').build();
+    const state2 = builder.withUrl('https://app.apex.dev/page2').build();
+
+    expect(state1).not.toBe(state2);
+    // Note: builder is stateful, so state1.url will be 'page2' after the second withUrl call
+    // For truly independent states, create separate builders
+  });
+});
+```
+
+### Helpers vs Builder: When to Use Which
+
+| Scenario | Recommended API | Reason |
+|----------|----------------|--------|
+| Modifying a single property on an existing state | `browserHelpers` | Simpler, one-off immutable transform |
+| Simulating a sequence of user actions | `browserHelpers` (chained) | Each step returns new state, models temporal progression |
+| Building a complex state from scratch | `BrowserStateBuilder` | Fluent chaining is more readable for many properties |
+| Extending a fixture with additional data | `new BrowserStateBuilder(fixture)` | Merges fixture data with builder overrides |
+| Quick factory creation in test setup | `createBrowserState()` | Concise entry point for builder pattern |
+
+---
+
+## Related Documentation
+
+- [Browser Automation Guide](./browser-automation.md) - Browser operations, configuration, and usage patterns that these test utilities validate
+- [System APIs Reference](./system-apis-reference.md) - Type definitions for `ToolPermissionResult`, `PermissionManager`, `BrowserTool`, and other interfaces used in tests
+- [Test Utilities](./test-utilities.md) - Cross-platform test utilities (platform detection, conditional skipping, platform mocking) shared across all test suites
+- [API Reference](./api-reference.md) - REST API and WebSocket endpoints for programmatic permission and browser management

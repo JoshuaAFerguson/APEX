@@ -408,6 +408,8 @@ const SAFE_ERROR_MESSAGES: Partial<Record<ApexErrorCode, string>> = {
   [ApexErrorCode.NETWORK_ERROR]: 'Network error',
   [ApexErrorCode.RATE_LIMIT_EXCEEDED]: 'Rate limit exceeded, please try again later',
   [ApexErrorCode.BROWSER_PERMISSION_DENIED]: 'Browser permission denied',
+  [ApexErrorCode.BROWSER_RESOURCE_LEAK]: 'Browser resource leak detected',
+  [ApexErrorCode.BROWSER_SESSION_INVALID]: 'Browser session is in an invalid state',
 };
 
 /**

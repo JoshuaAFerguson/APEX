@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import Database from 'better-sqlite3';
 import type { Task, TaskStatus, TaskUsage } from '@apexcli/core';
+import { TaskStore } from './store.js';
 
 /**
  * Creates a temporary directory for testing
@@ -1058,4 +1059,288 @@ export async function createPermissionTestScenario(
       return testContext.store.listPermissions();
     },
   };
+}
+
+// ============================================================================
+// Task Fixture Seed Functions
+// ============================================================================
+
+/**
+ * Context returned by createTestTaskStore containing the store and cleanup function
+ */
+export interface TestTaskStoreContext {
+  /** The TaskStore instance with a temp directory database */
+  store: TaskStore;
+  /** The underlying SQLite database instance */
+  db: Database.Database;
+  /** Cleanup function to close DB and remove temp files - call in afterEach */
+  cleanup: () => Promise<void>;
+  /** The temporary directory used for the store */
+  tempPath: string;
+}
+
+/**
+ * Creates a TaskStore backed by a temporary directory for testing.
+ * Provides full TaskStore functionality with real SQLite (file-based in temp dir).
+ *
+ * @returns TestTaskStoreContext with store, database, and cleanup function
+ *
+ * @example
+ * ```typescript
+ * describe('TaskStore tests', () => {
+ *   let ctx: TestTaskStoreContext;
+ *
+ *   beforeEach(async () => {
+ *     ctx = await createTestTaskStore();
+ *   });
+ *
+ *   afterEach(async () => {
+ *     await ctx.cleanup();
+ *   });
+ *
+ *   it('should seed a completed task', async () => {
+ *     const task = await seedCompletedTask(ctx.store);
+ *     expect(task.status).toBe('completed');
+ *   });
+ * });
+ * ```
+ */
+export async function createTestTaskStore(): Promise<TestTaskStoreContext> {
+  const tempPath = await createTempDirectoryAsync('apex-test-store-');
+  const store = new TaskStore(tempPath);
+  await store.initialize();
+
+  return {
+    store,
+    db: store.getDatabase(),
+    tempPath,
+    cleanup: async () => {
+      try {
+        store.close();
+      } catch {
+        // Already closed
+      }
+      await removeTempDirectory(tempPath);
+    },
+  };
+}
+
+/**
+ * Seeds a pending task into the store.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedPendingTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Pending test task',
+    status: 'pending',
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Seeds a running task into the store.
+ * The task transitions from pending -> running with a current stage.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedRunningTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Running test task',
+    status: 'pending',
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  await store.updateTaskStatus(task.id, 'running', overrides.currentStage || 'development');
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Seeds a completed task into the store.
+ * The task transitions from pending -> running -> completed with realistic usage data.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedCompletedTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Completed test task',
+    status: 'pending',
+    usage: {
+      inputTokens: 5000,
+      outputTokens: 3000,
+      totalTokens: 8000,
+      estimatedCost: 0.15,
+      totalCostCents: 15,
+      executionTimeMs: 45000,
+    },
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  await store.updateTaskStatus(task.id, 'running', 'development');
+  await store.updateTaskStatus(task.id, 'completed');
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Seeds a failed task into the store.
+ * The task transitions from pending -> running -> failed with an error message.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedFailedTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Failed test task',
+    status: 'pending',
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  await store.updateTaskStatus(task.id, 'running', 'testing');
+  await store.updateTaskStatus(task.id, 'failed', undefined, 'Test execution failed: assertion error');
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Seeds a paused task into the store.
+ * The task transitions from pending -> running -> paused with a pause reason.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedPausedTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Paused test task',
+    status: 'pending',
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  await store.updateTaskStatus(task.id, 'running', 'development');
+  await store.updateTaskStatus(task.id, 'paused', undefined, 'Rate limit exceeded');
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Seeds a cancelled task into the store.
+ * The task transitions from pending -> cancelled.
+ *
+ * @param store - The TaskStore to seed into
+ * @param overrides - Optional partial Task to override defaults
+ * @returns The created Task as read back from the store
+ */
+export async function seedCancelledTask(store: TaskStore, overrides: Partial<Task> = {}): Promise<Task> {
+  const task = createMockTask({
+    description: 'Cancelled test task',
+    status: 'pending',
+    ...overrides,
+  });
+
+  await store.createTask(task);
+  await store.updateTaskStatus(task.id, 'cancelled', undefined, 'Cancelled by user');
+  const result = await store.getTask(task.id);
+  return result!;
+}
+
+/**
+ * Pre-defined multi-task scenarios for integration testing.
+ */
+export type TaskScenario = 'mixed-statuses' | 'dependency-chain' | 'subtask-tree' | 'retry-exhausted';
+
+/**
+ * Seeds a multi-task scenario into the store.
+ *
+ * Scenarios:
+ * - **mixed-statuses**: One task per status (pending, running, completed, failed, paused, cancelled)
+ * - **dependency-chain**: 3 tasks where B depends on A, C depends on B
+ * - **subtask-tree**: Parent task with 3 subtasks in different states
+ * - **retry-exhausted**: Task that has reached maxRetries with multiple retry attempts
+ *
+ * @param store - The TaskStore to seed into
+ * @param scenario - The scenario to create
+ * @returns Array of created tasks
+ *
+ * @example
+ * ```typescript
+ * const tasks = await seedTaskScenario(store, 'mixed-statuses');
+ * expect(tasks).toHaveLength(6);
+ * expect(tasks.map(t => t.status)).toContain('completed');
+ * ```
+ */
+export async function seedTaskScenario(store: TaskStore, scenario: TaskScenario): Promise<Task[]> {
+  switch (scenario) {
+    case 'mixed-statuses': {
+      const tasks = await Promise.all([
+        seedPendingTask(store, { description: 'Scenario: pending task' }),
+        seedRunningTask(store, { description: 'Scenario: running task' }),
+        seedCompletedTask(store, { description: 'Scenario: completed task' }),
+        seedFailedTask(store, { description: 'Scenario: failed task' }),
+        seedPausedTask(store, { description: 'Scenario: paused task' }),
+        seedCancelledTask(store, { description: 'Scenario: cancelled task' }),
+      ]);
+      return tasks;
+    }
+
+    case 'dependency-chain': {
+      const taskA = await seedCompletedTask(store, { description: 'Chain: task A (root)' });
+      const taskB = await seedRunningTask(store, {
+        description: 'Chain: task B (depends on A)',
+        dependsOn: [taskA.id],
+      });
+      const taskC = await seedPendingTask(store, {
+        description: 'Chain: task C (depends on B)',
+        dependsOn: [taskB.id],
+      });
+      return [taskA, taskB, taskC];
+    }
+
+    case 'subtask-tree': {
+      // Create subtasks first to get their IDs
+      const sub1 = await seedCompletedTask(store, { description: 'Subtask 1: completed' });
+      const sub2 = await seedRunningTask(store, { description: 'Subtask 2: running' });
+      const sub3 = await seedPendingTask(store, { description: 'Subtask 3: pending' });
+
+      // Create parent with subtask references
+      const parent = await seedRunningTask(store, {
+        description: 'Parent task with subtasks',
+        subtaskIds: [sub1.id, sub2.id, sub3.id],
+        subtaskStrategy: 'parallel',
+      });
+
+      return [parent, sub1, sub2, sub3];
+    }
+
+    case 'retry-exhausted': {
+      const task = createMockTask({
+        description: 'Retry exhausted task',
+        status: 'pending',
+        retryCount: 3,
+        maxRetries: 3,
+      });
+
+      await store.createTask(task);
+      await store.updateTaskStatus(task.id, 'running', 'testing');
+      await store.updateTaskStatus(task.id, 'failed', undefined, 'Max retries exceeded');
+      const result = await store.getTask(task.id);
+      return [result!];
+    }
+  }
 }

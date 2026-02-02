@@ -1,0 +1,168 @@
+{
+  "audit_summary": {
+    "total_subsystems": 4,
+    "total_files": 15,
+    "total_lines_of_code": 2000,
+    "security_rating": "STRONG",
+    "audit_date": "2026-02-01"
+  },
+  "subsystems": [
+    {
+      "name": "Permission System",
+      "description": "Interactive Tool Permission Requests",
+      "files": [
+        "src/ui/components/permissions/PermissionPrompt.tsx",
+        "src/ui/components/permissions/index.ts"
+      ],
+      "key_components": ["PermissionPrompt", "PermissionHistory"],
+      "security_features": [
+        "4-tier danger level system",
+        "Parameter sanitization",
+        "Visual risk indicators",
+        "Keyboard shortcuts",
+        "Timeout mechanisms"
+      ]
+    },
+    {
+      "name": "Approval Gate System",
+      "description": "Workflow Stage Approval",
+      "files": [
+        "src/ui/components/autonomy/ApprovalGate.tsx",
+        "src/ui/components/autonomy/index.ts",
+        "src/utils/approval-prompt.ts"
+      ],
+      "gate_types": [
+        "before-commit",
+        "before-destructive",
+        "before-network",
+        "before-file-write",
+        "review-all"
+      ],
+      "security_features": [
+        "Timeout-based auto-denial",
+        "Queue management",
+        "Context-sensitive prompts",
+        "Response tracking",
+        "Info request follow-up"
+      ]
+    },
+    {
+      "name": "Confirmation System",
+      "description": "Dangerous Operation Protection",
+      "files": [
+        "src/utils/confirmation.ts"
+      ],
+      "protected_operations": [
+        {
+          "operation": "CANCEL_TASK",
+          "command": "/cancel",
+          "location": "src/index.ts:784"
+        },
+        {
+          "operation": "TRASH_TASK",
+          "command": "/trash",
+          "location": "src/index.ts:3944"
+        },
+        {
+          "operation": "EMPTY_TRASH",
+          "command": "/empty-trash",
+          "location": "src/index.ts:4052",
+          "force_confirmation": true
+        },
+        {
+          "operation": "MERGE_TASK",
+          "command": "/merge",
+          "location": "src/index.ts:2378"
+        },
+        {
+          "operation": "DELETE_TEMPLATE",
+          "description": "Template deletion operations"
+        },
+        {
+          "operation": "UNARCHIVE_TASK",
+          "description": "Archive restoration operations"
+        }
+      ],
+      "autonomy_levels": {
+        "full-auto": "Only irreversible high-consequence operations require confirmation",
+        "review-before-commit": "Medium and high consequence operations require confirmation",
+        "review-all": "All operations require confirmation"
+      }
+    },
+    {
+      "name": "Resource Limit System",
+      "description": "Usage-Based Access Control",
+      "files": [
+        "src/ui/components/autonomy/LimitWarning.tsx",
+        "src/ui/components/status/useLimitColors.ts",
+        "src/ui/components/status/ResourceLimitBar.tsx",
+        "src/ui/components/status/ResourceUsageDisplay.tsx"
+      ],
+      "monitored_resources": [
+        "Tokens",
+        "Cost",
+        "Time",
+        "Files",
+        "Lines"
+      ],
+      "warning_thresholds": ["60%", "75%", "85%", "95%"]
+    }
+  ],
+  "mcp_security": {
+    "description": "Model Context Protocol Security",
+    "protected_operations": [
+      {
+        "operation": "MCP Server Uninstall",
+        "location": "src/index.ts:3159",
+        "confirmation_required": true,
+        "risk": "Medium"
+      },
+      {
+        "operation": "MCP Init Setup",
+        "location": "src/index.ts:2706",
+        "confirmation_required": true,
+        "risk": "Low"
+      }
+    ]
+  },
+  "integration_points": {
+    "event_system": [
+      "orchestrator.on('approval:required', handler)",
+      "orchestrator.on('approval:info-requested', handler)",
+      "orchestrator.respondToApproval(approvalId, response)"
+    ],
+    "display_modes": ["normal", "compact", "verbose"],
+    "config_integration": ["AutonomyLevel", "autonomy.level configuration"]
+  },
+  "security_analysis": {
+    "prevention_mechanisms": [
+      "No automatic privilege escalation",
+      "Multi-layered authorization",
+      "Context-sensitive prompts",
+      "Parameter sanitization"
+    ],
+    "audit_capabilities": [
+      "Permission decisions logged",
+      "Approval responses tracked",
+      "Resource usage monitoring",
+      "Operation consequences communicated"
+    ],
+    "defense_layers": [
+      "Permission Layer (tool-level authorization)",
+      "Approval Layer (workflow checkpoints)",
+      "Confirmation Layer (dangerous operation protection)",
+      "Limit Layer (resource enforcement)"
+    ]
+  },
+  "test_coverage": {
+    "status": "COMPREHENSIVE",
+    "test_files": [
+      "src/__tests__/permission-audit-integration.test.ts",
+      "src/__tests__/permission-audit-system.test.ts",
+      "src/__tests__/permission-notification-cli.integration.test.ts",
+      "src/ui/components/permissions/__tests__/PermissionPrompt.*.test.tsx",
+      "src/utils/__tests__/confirmation*.test.ts",
+      "src/utils/__tests__/approval-prompt*.test.ts"
+    ]
+  }
+}

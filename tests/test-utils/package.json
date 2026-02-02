@@ -3,12 +3,35 @@
   "version": "0.1.0",
   "description": "Common test utilities for APEX testing",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./index.ts",
-    "./async": "./async.ts",
-    "./assertions": "./assertions.ts",
-    "./context": "./context.ts",
-    "./cleanup": "./cleanup.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./async": {
+      "types": "./dist/async.d.ts",
+      "import": "./dist/async.js"
+    },
+    "./assertions": {
+      "types": "./dist/assertions.d.ts",
+      "import": "./dist/assertions.js"
+    },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.js"
+    },
+    "./cleanup": {
+      "types": "./dist/cleanup.d.ts",
+      "import": "./dist/cleanup.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "vitest": "workspace:*"

@@ -393,6 +393,44 @@ limits:
         expect(errorMessage).not.toMatch(/\s+at\s+/);
       }
     });
+
+    it('should handle global errors securely in development mode', async () => {
+      // Test that even in development mode, the global error handler prevents stack trace exposure
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/tasks/this-should-trigger-global-error-handler'
+      });
+
+      expect([404, 500]).toContain(response.statusCode);
+
+      let body: any;
+      try {
+        body = JSON.parse(response.body);
+      } catch (error) {
+        // If not JSON, verify no stack traces in text
+        expect(response.body).not.toMatch(/\s+at\s+/);
+        expect(response.body).not.toMatch(/\/.*\.js:\d+/);
+        return;
+      }
+
+      // Even in development, should not expose stack traces
+      expect(body).not.toHaveProperty('stack');
+      expect(body).not.toHaveProperty('stackTrace');
+      expect(body).toHaveProperty('error');
+
+      // Verify no stack trace patterns anywhere
+      const bodyStr = JSON.stringify(body);
+      expect(bodyStr).not.toMatch(/\s+at\s+/);
+      expect(bodyStr).not.toMatch(/\/.*\.js:\d+/);
+      expect(bodyStr).not.toMatch(/Error:\s+.*\n\s+at\s+/);
+
+      // In development, might have more descriptive error but still secure
+      if (body.message) {
+        expect(body.message).not.toMatch(/\s+at\s+/);
+        expect(body.message).not.toMatch(/\/.*\.js:\d+/);
+      }
+    });
   });
 
   describe('Test Mode Error Handling Tests', () => {
@@ -578,6 +616,51 @@ limits:
       expect(bodyStr).not.toMatch(/\/.*\.js:\d+/);
       expect(bodyStr).not.toMatch(/packages\/orchestrator\/src\//);
       expect(bodyStr).not.toMatch(/ApexOrchestrator/);
+    });
+
+    it('should handle unexpected errors through global error handler', async () => {
+      // This test ensures our global error handler correctly processes any unexpected errors
+
+      // Make a request to an endpoint that might trigger unexpected errors
+      const response = await app.inject({
+        method: 'GET',
+        url: '/tasks/this-will-trigger-internal-error-for-testing'
+      });
+
+      // Should handle gracefully (likely 404 or 500)
+      expect([404, 500]).toContain(response.statusCode);
+
+      let body: any;
+      try {
+        body = JSON.parse(response.body);
+      } catch (error) {
+        // If not JSON, check raw response
+        expect(response.body).not.toMatch(/\s+at\s+/);
+        expect(response.body).not.toMatch(/\/.*\.js:\d+/);
+        expect(response.body).not.toMatch(/Error:\s+.*\n\s+at\s+/);
+        return;
+      }
+
+      // Verify the global error handler produces secure responses
+      expect(body).toHaveProperty('error');
+      expect(body).toHaveProperty('statusCode');
+      expect(body).not.toHaveProperty('stack');
+      expect(body).not.toHaveProperty('stackTrace');
+
+      // Check for secure message format
+      if (response.statusCode === 500) {
+        expect(body.error).toBe('Internal Server Error');
+        expect(body.message).toBe('An internal server error occurred');
+      } else if (response.statusCode === 404) {
+        // 404 errors might be handled differently but should still be secure
+        expect(body.error).toMatch(/not found|Not Found/i);
+      }
+
+      // Verify no stack trace patterns in any field
+      const bodyStr = JSON.stringify(body);
+      expect(bodyStr).not.toMatch(/\s+at\s+/);
+      expect(bodyStr).not.toMatch(/\/.*\.js:\d+/);
+      expect(bodyStr).not.toMatch(/Error:\s+.*\n/);
     });
   });
 });

@@ -631,3 +631,12 @@ For complete examples and integration patterns, see:
 - [Visual Regression Tests](./examples/visual-regression/)
 - [Form Automation Patterns](./examples/form-automation/)
 - [Cross-Browser Testing](./examples/cross-browser/)
+
+---
+
+## Related Documentation
+
+- [Browser Permission Test Utilities](./browser-permission-test-utilities.md) - Custom Vitest matchers, mock factories, and assertion helpers for testing browser permissions
+- [System APIs Reference](./system-apis-reference.md) - Type definitions for `BrowserTool`, `BrowserManager`, `VisualComparer`, and other browser automation interfaces
+- [Test Utilities](./test-utilities.md) - Cross-platform test utilities for platform detection and conditional test execution
+- [API Reference](./api-reference.md) - REST API and WebSocket endpoints for programmatic task and browser management

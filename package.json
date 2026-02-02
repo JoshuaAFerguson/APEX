@@ -4,7 +4,8 @@
   "description": "Autonomous Product Engineering eXecutor - AI-powered development team automation",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "tests/test-utils"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -14,6 +15,8 @@
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:unit:watch": "vitest --config vitest.unit.config.ts",
     "test:unit:coverage": "vitest run --config vitest.unit.config.ts --coverage",
+    "test:integration": "vitest run packages/*/src/**/*.integration.test.ts",
+    "test:integration:watch": "vitest packages/*/src/**/*.integration.test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:watch": "vitest --config vitest.e2e.config.ts",
     "test:watch": "vitest",

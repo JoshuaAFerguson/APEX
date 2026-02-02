@@ -2682,38 +2682,54 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   private async checkAndResumeParent(parentTaskId: string): Promise<void> {
     const parentTask = await this.store.getTask(parentTaskId);
-    if (!parentTask || parentTask.status !== 'paused') {
+    if (!parentTask) {
       return;
     }
 
-    // Check if the pause was due to a subtask
-    if (!parentTask.pauseReason?.startsWith('subtask_paused:')) {
+    // If parent is completed, failed, or cancelled — nothing to do
+    if (['completed', 'failed', 'cancelled'].includes(parentTask.status)) {
       return;
     }
 
-    // Check if all subtasks are no longer paused
-    const subtasks = await this.getSubtasks(parentTaskId);
-    const anyPaused = subtasks.some(s => s.status === 'paused');
-
-    if (!anyPaused) {
-      // All subtasks are no longer paused, resume parent
-      await this.store.updateTask(parentTaskId, {
-        status: 'in-progress',
-        pausedAt: undefined,
-        pauseReason: undefined,
-        resumeAfter: undefined,
-        updatedAt: new Date(),
-      });
-
-      await this.store.addLog(parentTaskId, {
-        level: 'info',
-        message: 'Parent task resumed - all subtasks unpaused',
-      });
-
-      // Recursively check if this parent's parent should also resume
+    // If parent is already in-progress, just propagate up
+    if (parentTask.status === 'in-progress') {
       if (parentTask.parentTaskId) {
         await this.checkAndResumeParent(parentTask.parentTaskId);
       }
+      return;
+    }
+
+    // Parent is paused or pending — check if it should become in-progress
+    if (parentTask.status === 'paused') {
+      // For subtask_paused: check if all subtasks are no longer paused
+      if (parentTask.pauseReason?.startsWith('subtask_paused:')) {
+        const subtasks = await this.getSubtasks(parentTaskId);
+        const anyPaused = subtasks.some(s => s.status === 'paused');
+        if (anyPaused) {
+          return; // Still have paused subtasks, can't resume
+        }
+      }
+      // For usage_limit/token_limit/other: a child is now running so the limit has passed
+    }
+
+    // Resume the parent (from paused or pending)
+    await this.store.updateTask(parentTaskId, {
+      status: 'in-progress',
+      currentStage: 'subtask-execution',
+      pausedAt: undefined,
+      pauseReason: undefined,
+      resumeAfter: undefined,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Parent task resumed from ${parentTask.status} - child task is active`,
+    });
+
+    // Recursively propagate up
+    if (parentTask.parentTaskId) {
+      await this.checkAndResumeParent(parentTask.parentTaskId);
     }
   }
 
@@ -4712,6 +4728,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         resumeAfter: undefined,
       } : {}),
     });
+
+    // Propagate in-progress status up the ancestor chain
+    if (status === 'in-progress') {
+      const task = await this.store.getTask(taskId);
+      if (task?.parentTaskId) {
+        try {
+          await this.checkAndResumeParent(task.parentTaskId);
+        } catch (err) {
+          // Don't fail the status update if propagation fails
+        }
+      }
+    }
 
     // Handle worktree cleanup for completed, failed, or cancelled tasks
     if ((status === 'completed' || status === 'failed' || status === 'cancelled') && this.worktreeManager) {
@@ -7113,8 +7141,12 @@ Parent: ${parentTask.description}`;
       return false; // No checkpoint to resume from
     }
 
-    // Update task status to in-progress
-    await this.updateTaskStatus(taskId, 'in-progress', `Resuming from checkpoint: ${checkpoint.checkpointId}`);
+    // Update task status to in-progress (don't pass checkpoint ref as error — it's not an error)
+    await this.updateTaskStatus(taskId, 'in-progress');
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Resuming from checkpoint: ${checkpoint.checkpointId}`,
+    });
 
     // Generate resume context from checkpoint conversation state
     let resumeContext: string | undefined;

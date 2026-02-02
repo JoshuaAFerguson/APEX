@@ -2734,3 +2734,5 @@ export function setupPermissionMatchers(expectInstance: ExpectStatic): void {
     toHavePermissionHistory,
   });
 }
+// Export sensitive patterns utilities
+export * from './test-utils/sensitive-patterns';

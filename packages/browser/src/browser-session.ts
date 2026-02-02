@@ -24,6 +24,13 @@ import type {
   ConsoleLogLevel,
 } from './types.js';
 
+// Import lifecycle types from core
+import type {
+  BrowserLifecycleState,
+  BrowserLifecycleAware,
+  BrowserResourceState,
+} from '@apexcli/core';
+
 import {
   defaultBrowserConfig,
   defaultCaptureConfig,
@@ -65,6 +72,7 @@ declare global {
  * - Screenshot capture
  * - Console and error monitoring
  * - Resource cleanup
+ * - Lifecycle state tracking for resource management
  *
  * @fires BrowserSession#consoleMessage - When a console message is captured
  * @fires BrowserSession#javascriptError - When a JavaScript error is captured
@@ -89,7 +97,7 @@ declare global {
  * await session.navigate('https://example.com');
  * ```
  */
-export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
+export class BrowserSession extends EventEmitter<BrowserCaptureEvents> implements BrowserLifecycleAware {
   private manager: BrowserManager;
   private instanceId?: string;
   private contextId?: string;
@@ -100,6 +108,12 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   private errorBuffer: CapturedJavaScriptError[] = [];
   private pageErrorBuffer: PageErrorEvent[] = [];
   private errorPollingInterval?: NodeJS.Timeout;
+
+  /** The current lifecycle state of the browser session */
+  public state: BrowserLifecycleState = 'idle';
+
+  /** Unique session identifier for resource tracking */
+  private sessionId: string = this.generateSessionId();
 
   /**
    * Creates a new BrowserSession instance
@@ -133,6 +147,42 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
   }
 
   /**
+   * Check whether the browser session is currently active and available for operations.
+   *
+   * @returns true if the browser state is 'active'
+   */
+  public isActive(): boolean {
+    return this.state === 'active';
+  }
+
+  /**
+   * Get the current resource state of the browser session
+   *
+   * @returns The current resource state for tracking purposes
+   */
+  public getResourceState(): BrowserResourceState {
+    return {
+      browserActive: !!this.instanceId,
+      contextActive: !!this.contextId,
+      pageActive: !!this.page,
+      currentUrl: this.page?.url(),
+      lastAllocation: this.page ? new Date() : undefined,
+      sessionId: this.sessionId,
+      activeOperations: 0, // This could be tracked more granularly in future
+      lifecycleState: this.state,
+    };
+  }
+
+  /**
+   * Generate a unique session identifier
+   *
+   * @returns A unique session ID string
+   */
+  private generateSessionId(): string {
+    return `browser-session-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+  }
+
+  /**
    * Launches browser session and creates a new page
    *
    * Performs the complete browser session initialization:
@@ -162,6 +212,9 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
     const startTime = Date.now();
 
     try {
+      // Update lifecycle state to launching
+      this.state = 'launching';
+
       // Launch browser instance
       const instanceResult = await this.manager.launchBrowser(this.config);
       if (!instanceResult.success) {
@@ -200,6 +253,9 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
 
       // Set up console and error capture
       await this.setupCapture();
+
+      // Update lifecycle state to active when fully ready
+      this.state = 'active';
 
       return {
         success: true,
@@ -1345,6 +1401,9 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> {
     const startTime = Date.now();
 
     try {
+      // Update lifecycle state to cleaning up
+      this.state = 'cleaning_up';
+
       // Stop error polling if running
       this.stopErrorPolling();
 

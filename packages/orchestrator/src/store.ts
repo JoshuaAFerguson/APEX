@@ -1415,6 +1415,17 @@ export class TaskStore {
   }
 
   /**
+   * Get lightweight status info for a set of subtask IDs.
+   * Returns only id and status — avoids loading full task data.
+   */
+  getSubtaskStatuses(subtaskIds: string[]): { id: string; status: string }[] {
+    if (subtaskIds.length === 0) return [];
+    const placeholders = subtaskIds.map(() => '?').join(',');
+    const stmt = this.db.prepare(`SELECT id, status FROM tasks WHERE id IN (${placeholders})`);
+    return stmt.all(...subtaskIds) as { id: string; status: string }[];
+  }
+
+  /**
    * Get only trashed tasks
    */
   async getTrashedTasks(): Promise<Task[]> {

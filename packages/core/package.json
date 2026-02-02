@@ -18,10 +18,10 @@
       "default": "./dist/browser.js"
     },
     "./test-utils": {
-      "types": "./dist/test-utils.d.ts",
-      "import": "./dist/test-utils.js",
-      "require": "./dist/test-utils.js",
-      "default": "./dist/test-utils.js"
+      "types": "./dist/test-utils/index.d.ts",
+      "import": "./dist/test-utils/index.js",
+      "require": "./dist/test-utils/index.js",
+      "default": "./dist/test-utils/index.js"
     },
     "./test-setup": {
       "types": "./dist/test-setup.d.ts",
@@ -34,6 +34,12 @@
       "import": "./dist/test-setup-utils.js",
       "require": "./dist/test-setup-utils.js",
       "default": "./dist/test-setup-utils.js"
+    },
+    "./test-config": {
+      "types": "../../../vitest.shared.config.d.ts",
+      "import": "../../../vitest.shared.config.js",
+      "require": "../../../vitest.shared.config.js",
+      "default": "../../../vitest.shared.config.js"
     },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
@@ -71,7 +77,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run src/__tests__/**/*.test.ts",
+    "test": "vitest run src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

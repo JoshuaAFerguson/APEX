@@ -154,6 +154,9 @@ export class DaemonRunner {
   // Integrated services (API and Web UI)
   private apiProcess: ChildProcess | null = null;
   private webuiProcess: ChildProcess | null = null;
+  private apiRestartCount = 0;
+  private webuiRestartCount = 0;
+  private static readonly MAX_SERVICE_RESTARTS = 3;
 
   constructor(options: DaemonRunnerOptions) {
     // Store the raw options - we'll resolve defaults in start() after loading config
@@ -1082,8 +1085,8 @@ export class DaemonRunner {
       return;
     }
 
-    // Start API server if enabled
-    if (servicesConfig.api?.enabled) {
+    // Start API server if enabled (skip if already running)
+    if (servicesConfig.api?.enabled && !this.apiProcess) {
       const apiPort = servicesConfig.api.port ?? 4000;
       const apiHost = servicesConfig.api.host ?? 'localhost';
 
@@ -1117,6 +1120,21 @@ export class DaemonRunner {
         this.apiProcess.on('exit', (code) => {
           this.log('info', `API server exited with code ${code}`);
           this.apiProcess = null;
+          if (this.isRunning && !this.isShuttingDown && code !== 0) {
+            this.apiRestartCount++;
+            if (this.apiRestartCount <= DaemonRunner.MAX_SERVICE_RESTARTS) {
+              this.log('warn', `API server crashed (code ${code}), restarting in 5s... (attempt ${this.apiRestartCount}/${DaemonRunner.MAX_SERVICE_RESTARTS})`);
+              setTimeout(() => {
+                if (this.isRunning && !this.isShuttingDown) {
+                  this.startIntegratedServices(daemonConfig).catch(err => {
+                    this.log('error', `Failed to restart API server: ${(err as Error).message}`);
+                  });
+                }
+              }, 5000);
+            } else {
+              this.log('error', `API server exceeded max restarts (${DaemonRunner.MAX_SERVICE_RESTARTS}), giving up`);
+            }
+          }
         });
 
         this.log('info', `API server started on ${apiHost}:${apiPort}`);
@@ -1125,8 +1143,8 @@ export class DaemonRunner {
       }
     }
 
-    // Start Web UI if enabled
-    if (servicesConfig.webui?.enabled) {
+    // Start Web UI if enabled (skip if already running)
+    if (servicesConfig.webui?.enabled && !this.webuiProcess) {
       const webuiPort = servicesConfig.webui.port ?? 3000;
       const webuiHost = servicesConfig.webui.host ?? 'localhost';
 
@@ -1160,6 +1178,21 @@ export class DaemonRunner {
         this.webuiProcess.on('exit', (code) => {
           this.log('info', `Web UI exited with code ${code}`);
           this.webuiProcess = null;
+          if (this.isRunning && !this.isShuttingDown && code !== 0) {
+            this.webuiRestartCount++;
+            if (this.webuiRestartCount <= DaemonRunner.MAX_SERVICE_RESTARTS) {
+              this.log('warn', `Web UI crashed (code ${code}), restarting in 5s... (attempt ${this.webuiRestartCount}/${DaemonRunner.MAX_SERVICE_RESTARTS})`);
+              setTimeout(() => {
+                if (this.isRunning && !this.isShuttingDown) {
+                  this.startIntegratedServices(daemonConfig).catch(err => {
+                    this.log('error', `Failed to restart Web UI: ${(err as Error).message}`);
+                  });
+                }
+              }, 5000);
+            } else {
+              this.log('error', `Web UI exceeded max restarts (${DaemonRunner.MAX_SERVICE_RESTARTS}), giving up`);
+            }
+          }
         });
 
         this.log('info', `Web UI started on ${webuiHost}:${webuiPort}`);
@@ -1243,8 +1276,8 @@ export class DaemonRunner {
     }
 
     try {
-      // Get all in-progress tasks
-      const inProgressTasks = await this.store.listTasks({ status: 'in-progress' });
+      // Get all in-progress tasks (lightweight — we only need IDs for reset)
+      const inProgressTasks = await this.store.listTasks({ status: 'in-progress', lightweight: true });
 
       if (inProgressTasks.length === 0) {
         this.log('debug', 'No interrupted tasks to reset on startup');
@@ -1438,9 +1471,8 @@ export class DaemonRunner {
     }
 
     try {
-      // Get all paused tasks
-      const allTasks = await this.store.getAllTasks();
-      const pausedTasks = allTasks.filter(t => t.status === 'paused');
+      // Get only paused tasks (lightweight to avoid OOM with large task counts)
+      const pausedTasks = await this.store.listTasks({ status: 'paused', lightweight: true });
 
       if (pausedTasks.length === 0) {
         return;
@@ -1476,23 +1508,12 @@ export class DaemonRunner {
         let shouldResume = false;
         let resumeReason = '';
 
-        if (task.pauseReason === 'usage_limit' && task.pausedAt) {
+        if (task.pausedAt) {
           const pausedDuration = now - new Date(task.pausedAt).getTime();
           if (pausedDuration >= rateLimitResetMs) {
             shouldResume = true;
-            resumeReason = `usage_limit expired (${Math.round(pausedDuration / 60000)} minutes)`;
-          }
-        } else if (task.pauseReason?.startsWith('subtask_paused:')) {
-          // For subtask_paused, check if this is a root and all its subtasks in the pause chain
-          // have a resolvable pause reason (usage_limit past reset window)
-          // Since this is a root paused task, we should try to resume it
-          // The orchestrator will handle checking/resuming subtasks
-          if (task.pausedAt) {
-            const pausedDuration = now - new Date(task.pausedAt).getTime();
-            if (pausedDuration >= rateLimitResetMs) {
-              shouldResume = true;
-              resumeReason = `subtask_paused hierarchy may be resumable (${Math.round(pausedDuration / 60000)} minutes)`;
-            }
+            const reason = task.pauseReason ?? 'unknown';
+            resumeReason = `${reason} expired (${Math.round(pausedDuration / 60000)} minutes)`;
           }
         }
 
@@ -1504,11 +1525,21 @@ export class DaemonRunner {
             if (resumed) {
               resumedCount++;
               this.log('info', `Auto-resumed root task ${task.id}`, { taskId: task.id });
-              // Only resume one task at a time to avoid overwhelming the system
-              break;
+              // Stop if we've hit the max concurrent task limit
+              const currentRunning = this.runningTasks.size + resumedCount;
+              if (currentRunning >= (this.options.maxConcurrentTasks || 3)) {
+                break;
+              }
             }
           } catch (error) {
-            this.log('warn', `Failed to resume task ${task.id}: ${(error as Error).message}`, { taskId: task.id });
+            const errMsg = (error as Error).message ?? String(error);
+            this.log('warn', `Failed to resume task ${task.id}: ${errMsg}`, { taskId: task.id });
+            // If this is a usage limit error, stop trying other tasks —
+            // the limit is global so all subsequent attempts will also fail
+            if (errMsg.includes('usage limit') || errMsg.includes('Usage limit') || errMsg.includes("hit your limit")) {
+              this.log('info', `Usage limit active, skipping remaining ${rootPausedTasks.length - rootPausedTasks.indexOf(task) - 1} paused task(s) this cycle`);
+              break;
+            }
           }
         }
       }
@@ -1558,16 +1589,13 @@ export class DaemonRunner {
     }
 
     try {
-      const allTasks = await this.store.getAllTasks();
+      // Only load in-progress tasks (lightweight to avoid OOM with large task counts)
+      const inProgressTasks = await this.store.listTasks({ status: 'in-progress', lightweight: true });
       const now = Date.now();
       const stuckThresholdMs = 5 * 60 * 1000; // 5 minutes without update = potentially stuck
       let repairedCount = 0;
 
-      for (const task of allTasks) {
-        // Skip non-in-progress tasks
-        if (task.status !== 'in-progress') {
-          continue;
-        }
+      for (const task of inProgressTasks) {
 
         const updatedAt = task.updatedAt ? new Date(task.updatedAt).getTime() : 0;
         const timeSinceUpdate = now - updatedAt;
@@ -1575,18 +1603,17 @@ export class DaemonRunner {
         let repairReason = '';
 
         // Check 1: Parent task with pending subtasks that's stuck
-        if (task.subtaskIds && task.subtaskIds.length > 0) {
-          const subtasks = allTasks.filter(t => task.subtaskIds!.includes(t.id));
-          const pendingSubtasks = subtasks.filter(t => t.status === 'pending');
-          const inProgressSubtasks = subtasks.filter(t => t.status === 'in-progress');
-          const failedSubtasks = subtasks.filter(t => t.status === 'failed');
+        if (task.subtaskIds && task.subtaskIds.length > 0 && timeSinceUpdate > stuckThresholdMs) {
+          if (!this.runningTasks.has(task.id)) {
+            // Query subtask statuses directly instead of loading all tasks
+            const subtaskStatuses = this.store.getSubtaskStatuses(task.subtaskIds);
+            const pendingCount = subtaskStatuses.filter(s => s.status === 'pending').length;
+            const inProgressCount = subtaskStatuses.filter(s => s.status === 'in-progress').length;
+            const failedCount = subtaskStatuses.filter(s => s.status === 'failed').length;
 
-          // If there are pending subtasks but none in-progress and the task hasn't been updated
-          if (pendingSubtasks.length > 0 && inProgressSubtasks.length === 0 && timeSinceUpdate > stuckThresholdMs) {
-            // Check if we're not currently running this task
-            if (!this.runningTasks.has(task.id)) {
+            if (pendingCount > 0 && inProgressCount === 0) {
               needsRepair = true;
-              repairReason = `Parent task stuck with ${pendingSubtasks.length} pending subtasks (${failedSubtasks.length} failed)`;
+              repairReason = `Parent task stuck with ${pendingCount} pending subtasks (${failedCount} failed)`;
             }
           }
         }
@@ -1648,9 +1675,8 @@ export class DaemonRunner {
           // Determine the appropriate current_stage based on subtask status
           let newStage = task.currentStage;
           if (task.subtaskIds && task.subtaskIds.length > 0) {
-            const subtasks = allTasks.filter(t => task.subtaskIds!.includes(t.id));
-            const pendingSubtasks = subtasks.filter(t => t.status === 'pending');
-            if (pendingSubtasks.length > 0) {
+            const subtaskStatuses = this.store.getSubtaskStatuses(task.subtaskIds);
+            if (subtaskStatuses.some(s => s.status === 'pending')) {
               newStage = 'subtask-execution';
             }
           }

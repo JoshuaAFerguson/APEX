@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "declaration": true,
+    "sourceMap": true,
+    "noErrorTruncation": true,
+    "preserveWatchOutput": true,
+    "paths": {
+      "@apex/core": ["./packages/core/src"],
+      "@apex/core/*": ["./packages/core/src/*"],
+      "@apex/orchestrator": ["./packages/orchestrator/src"],
+      "@apex/orchestrator/*": ["./packages/orchestrator/src/*"],
+      "@apex/cli": ["./packages/cli/src"],
+      "@apex/cli/*": ["./packages/cli/src/*"],
+      "@apex/api": ["./packages/api/src"],
+      "@apex/api/*": ["./packages/api/src/*"],
+      "@apex/test-utils": ["./tests/test-utils"],
+      "@apex/test-utils/*": ["./tests/test-utils/*"]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

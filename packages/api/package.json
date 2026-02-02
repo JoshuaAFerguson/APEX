@@ -36,6 +36,7 @@
     "@slack/socket-mode": "^1.3.2",
     "@slack/web-api": "^7.5.1",
     "fastify": "^4.25.0",
+    "fastify-plugin": "^4.5.1",
     "pino-pretty": "^11.0.0"
   },
   "devDependencies": {

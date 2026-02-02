@@ -48,6 +48,9 @@ export * from './builders/index.js';
 // Browser fixtures
 export * from './browser-fixtures.js';
 
+// Error page fixtures
+export * from './error-page-fixture.js';
+
 // Mock helpers
 export * from './mock-helpers.js';
 

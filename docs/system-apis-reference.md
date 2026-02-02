@@ -692,3 +692,12 @@ export interface SystemHealthMonitor {
 ```
 
 This API reference provides comprehensive documentation for integrating with and extending APEX's core systems. Each interface is designed to be type-safe and provides clear contracts for system interaction.
+
+---
+
+## Related Documentation
+
+- [Browser Automation Guide](./browser-automation.md) - Usage guide, configuration, and workflow patterns for the Browser Automation APIs documented above
+- [Browser Permission Test Utilities](./browser-permission-test-utilities.md) - Custom Vitest matchers and mock factories for testing the Permission and Browser APIs documented above
+- [Test Utilities](./test-utilities.md) - Cross-platform test utilities for platform detection, conditional skipping, and platform mocking
+- [API Reference](./api-reference.md) - REST API and WebSocket endpoints for programmatic access to APEX task management and agent control

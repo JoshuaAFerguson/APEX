@@ -25,6 +25,22 @@ function writeStartupLog(projectPath: string, message: string): void {
 async function main(): Promise<void> {
   // Get configuration from environment
   const projectPath = process.env.APEX_PROJECT_PATH;
+
+  // Install global crash handlers to prevent silent daemon death
+  process.on('uncaughtException', (error) => {
+    if (projectPath) {
+      writeStartupLog(projectPath, `[FATAL] Uncaught exception: ${error.message}\n${error.stack}`);
+    }
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason);
+    if (projectPath) {
+      writeStartupLog(projectPath, `[FATAL] Unhandled rejection: ${message}`);
+    }
+    process.exit(1);
+  });
   if (!projectPath) {
     // Can't log to stdout (it's ignored), exit silently
     process.exit(1);

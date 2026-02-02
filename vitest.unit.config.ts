@@ -19,67 +19,73 @@
  *   *.edge.test.ts          - Edge-case tests (use test)
  */
 
-import { defineConfig } from 'vitest/config';
+import { defineConfig, mergeConfig } from 'vitest/config';
+import { createUnitTestConfig } from './vitest.shared.config.js';
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    environmentMatchGlobs: [
-      ['**/packages/orchestrator/src/**', 'node'],
-      ['**/packages/core/src/**', 'node'],
-      ['**/packages/api/src/**', 'node'],
-      ['**/packages/cli/src/__tests__/**', 'node'],
-      ['**/packages/cli/src/services/**', 'node'],
-    ],
+export default mergeConfig(
+  createUnitTestConfig(),
+  defineConfig({
+    test: {
+      // Environment-specific configuration for monorepo packages
+      environmentMatchGlobs: [
+        ['**/packages/orchestrator/src/**', 'node'],
+        ['**/packages/core/src/**', 'node'],
+        ['**/packages/api/src/**', 'node'],
+        ['**/packages/cli/src/__tests__/**', 'node'],
+        ['**/packages/cli/src/services/**', 'node'],
+      ],
 
-    // Include only unit tests within packages
-    include: [
-      'packages/*/src/**/*.test.ts',
-      'packages/*/src/**/*.test.tsx',
-      'packages/*/src/**/*.unit.test.ts',
-    ],
+      // Include only unit tests within packages
+      include: [
+        'packages/*/src/**/*.test.ts',
+        'packages/*/src/**/*.test.tsx',
+        'packages/*/src/**/*.unit.test.ts',
+      ],
 
-    // Exclude E2E, integration, stress, edge, and top-level test directories
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/*.e2e.test.ts',
-      '**/*.integration.test.ts',
-      '**/*.stress.test.ts',
-      '**/*.edge.test.ts',
-      'tests/**',
-      'docs/**',
-    ],
-
-    // Unit tests should be fast - use default timeouts (5s)
-    // If a unit test needs more than 5s, it's likely an integration test
-
-    // Coverage for unit tests
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'text-summary', 'html', 'json', 'lcov'],
-      reportsDirectory: './coverage',
-      include: ['packages/*/src/**/*.ts'],
+      // Exclude non-unit tests and top-level test directories
       exclude: [
-        '**/*.test.ts',
-        '**/*.unit.test.ts',
+        '**/node_modules/**',
+        '**/dist/**',
         '**/*.e2e.test.ts',
         '**/*.integration.test.ts',
         '**/*.stress.test.ts',
         '**/*.edge.test.ts',
-        '**/*.d.ts',
-        'packages/cli/src/**/*.ts',
-        'packages/web-ui/src/app/**/*.{ts,tsx}',
-        'packages/web-ui/src/components/**/*.{ts,tsx}',
-        'packages/web-ui/src/lib/websocket-client.ts',
+        'tests/**',
+        'docs/**',
       ],
-      thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 50,
-        statements: 50,
+
+      // Unit tests should be fast - use default timeouts (5s)
+      // If a unit test needs more than 5s, it's likely an integration test
+
+      // Coverage for unit tests
+      coverage: {
+        include: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx'],
+        exclude: [
+          '**/*.test.ts',
+          '**/*.test.tsx',
+          '**/*.unit.test.ts',
+          '**/*.e2e.test.ts',
+          '**/*.integration.test.ts',
+          '**/*.stress.test.ts',
+          '**/*.edge.test.ts',
+          '**/*.d.ts',
+          '**/node_modules/**',
+          '**/dist/**',
+          '**/coverage/**',
+          'packages/cli/src/**/*.ts',
+          'packages/web-ui/src/app/**/*.{ts,tsx}',
+          'packages/web-ui/src/components/**/*.{ts,tsx}',
+          'packages/web-ui/src/lib/websocket-client.ts',
+        ],
+        thresholds: {
+          global: {
+            lines: 50,
+            functions: 50,
+            branches: 50,
+            statements: 50,
+          },
+        },
       },
     },
-  },
-});
+  })
+);
