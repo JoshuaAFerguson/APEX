@@ -60,7 +60,8 @@ export type BrowserOperation =
   | 'getText'
   | 'getHtml'
   | 'scroll'
-  | 'hover';
+  | 'hover'
+  | 'generatePdf';
 
 /**
  * Options for BrowserTool constructor
@@ -237,6 +238,43 @@ export interface BrowserHoverParams {
 }
 
 /**
+ * Parameters for PDF generation
+ */
+export interface BrowserGeneratePdfParams {
+  /** Optional file path to save PDF */
+  path?: string;
+  /** PDF format/page size */
+  format?: 'Letter' | 'Legal' | 'Tabloid' | 'Ledger' | 'A0' | 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6';
+  /** Page width (overrides format) */
+  width?: string;
+  /** Page height (overrides format) */
+  height?: string;
+  /** Page margins */
+  margin?: {
+    top?: string;
+    bottom?: string;
+    left?: string;
+    right?: string;
+  };
+  /** Print in landscape orientation */
+  landscape?: boolean;
+  /** Print background graphics */
+  printBackground?: boolean;
+  /** Scale factor for rendering (0.1 to 2.0) */
+  scale?: number;
+  /** Page ranges to print (e.g., '1-5, 8, 11-13') */
+  pageRanges?: string;
+  /** Prefer CSS page size if defined */
+  preferCSSPageSize?: boolean;
+  /** Display header and footer */
+  displayHeaderFooter?: boolean;
+  /** HTML template for header */
+  headerTemplate?: string;
+  /** HTML template for footer */
+  footerTemplate?: string;
+}
+
+/**
  * Unified parameters type for all browser operations
  */
 export type BrowserParams =
@@ -252,7 +290,8 @@ export type BrowserParams =
   | { operation: 'getText'; params: BrowserGetTextParams }
   | { operation: 'getHtml'; params: BrowserGetHtmlParams }
   | { operation: 'scroll'; params: BrowserScrollParams }
-  | { operation: 'hover'; params: BrowserHoverParams };
+  | { operation: 'hover'; params: BrowserHoverParams }
+  | { operation: 'generatePdf'; params: BrowserGeneratePdfParams };
 
 /**
  * Result of browser operation
@@ -811,6 +850,8 @@ export class BrowserTool {
         return params.params.selector || 'page';
       case 'scroll':
         return params.params.selector || `${params.params.x || 0},${params.params.y || 0}`;
+      case 'generatePdf':
+        return params.params.path || 'pdf';
       default:
         return 'unknown';
     }
@@ -1470,12 +1511,18 @@ export class BrowserTool {
           success: true,
           operation,
           data: {
-            diffPixels,
+            differentPixels: diffPixels,
             totalPixels,
+            similarity: 1 - diffRatio,
             diffRatio,
             threshold: compareParams.threshold ?? 0.1,
-            match: passed,
+            isMatch: passed,
+            match: passed, // Keep legacy field for compatibility
             diffPath: compareParams.diffPath,
+            dimensions: {
+              width: baseline.width,
+              height: baseline.height,
+            },
           },
           metadata: {
             url: this.getCurrentUrl(),
@@ -1711,6 +1758,83 @@ export class BrowserTool {
             enhancedRuntimeErrors: this.enhancedRuntimeErrors,
           },
         };
+      }
+
+      case 'generatePdf': {
+        const pdfParams = (params as { params: BrowserGeneratePdfParams }).params;
+
+        // PDF generation is only supported in Chromium browsers with Playwright
+        if (isPuppeteer || this.engine !== 'chromium') {
+          return {
+            success: false,
+            operation,
+            error: 'PDF generation is only supported with Playwright using Chromium browser',
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+            },
+          };
+        }
+
+        try {
+          const pdfBuffer = await page.pdf({
+            path: pdfParams.path,
+            format: pdfParams.format || 'A4',
+            width: pdfParams.width,
+            height: pdfParams.height,
+            margin: pdfParams.margin,
+            landscape: pdfParams.landscape || false,
+            printBackground: pdfParams.printBackground || false,
+            scale: pdfParams.scale || 1,
+            pageRanges: pdfParams.pageRanges,
+            preferCSSPageSize: pdfParams.preferCSSPageSize || false,
+            displayHeaderFooter: pdfParams.displayHeaderFooter || false,
+            headerTemplate: pdfParams.headerTemplate,
+            footerTemplate: pdfParams.footerTemplate,
+          });
+
+          return {
+            success: true,
+            operation,
+            data: {
+              format: pdfParams.format || 'A4',
+              landscape: pdfParams.landscape || false,
+              pages: pdfParams.pageRanges || 'all',
+              size: pdfBuffer.length,
+            },
+            screenshot: pdfParams.path
+              ? pdfParams.path
+              : `data:application/pdf;base64,${pdfBuffer.toString('base64')}`,
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+              enhancedConsoleMessages: this.enhancedConsoleMessages,
+              enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+            },
+          };
+        } catch (error) {
+          return {
+            success: false,
+            operation,
+            error: `PDF generation failed: ${this.formatError(error)}`,
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+            },
+          };
+        }
       }
 
       default:

@@ -17,27 +17,8 @@ import * as os from 'os';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-// Import enhanced test infrastructure
-import {
-  BrowserAutomationTestManager,
-  createBrowserAutomationTestManager,
-  type BrowserAutomationTestConfig,
-  type BrowserAutomationContext,
-} from './utils/browser-automation-test-helpers.js';
-
-import {
-  BrowserPermissionMockManager,
-  createPermissionMockManager,
-  type BrowserPermissionMockConfig,
-} from './utils/browser-permission-mocks.js';
-
-import {
-  IntegrationTestContextManager,
-  createIntegrationTestManager,
-  type ApexIntegrationContext,
-} from './utils/integration-test-context.js';
-
-import { createPermissionTestContext } from '../test-utils/permission-test-helpers.js';
+// Enhanced test infrastructure imports commented out until helper files exist
+// import { createPermissionTestContext } from '../test-utils/permission-test-helpers.js';
 
 // Global test state for browser instances
 export interface BrowserTestContext {

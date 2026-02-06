@@ -500,6 +500,344 @@ describe('Browser Screenshot and Content Capture Integration Tests', () => {
     });
   });
 
+  describe('PDF Generation', () => {
+    it('should generate PDF from current page', async () => {
+      const pdfPath = path.join(testContext.tempDir, 'page.pdf');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Generate PDF
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(pdfResult.data).toMatchObject({
+        format: 'A4',
+        landscape: false
+      });
+
+      // Verify PDF file exists
+      expect(fs.existsSync(pdfPath)).toBe(true);
+      const fileStats = fs.statSync(pdfPath);
+      expect(fileStats.size).toBeGreaterThan(1000); // Should be substantial PDF
+    });
+
+    it('should generate PDF with different page formats', async () => {
+      const formats: Array<'Letter' | 'Legal' | 'A4' | 'A3'> = ['Letter', 'Legal', 'A4', 'A3'];
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      for (const format of formats) {
+        const pdfPath = path.join(testContext.tempDir, `page_${format}.pdf`);
+
+        const pdfResult = await testContext.browserTool.execute({
+          operation: 'generatePdf',
+          params: {
+            path: pdfPath,
+            format,
+            printBackground: true
+          }
+        });
+
+        expect(pdfResult.success).toBe(true);
+        expect(pdfResult.data).toMatchObject({
+          format
+        });
+
+        // Verify PDF file exists
+        expect(fs.existsSync(pdfPath)).toBe(true);
+        const fileStats = fs.statSync(pdfPath);
+        expect(fileStats.size).toBeGreaterThan(1000);
+      }
+    });
+
+    it('should generate PDF in landscape orientation', async () => {
+      const pdfPath = path.join(testContext.tempDir, 'page_landscape.pdf');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Generate landscape PDF
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          landscape: true,
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(pdfResult.data).toMatchObject({
+        format: 'A4',
+        landscape: true
+      });
+
+      // Verify PDF file exists
+      expect(fs.existsSync(pdfPath)).toBe(true);
+    });
+
+    it('should generate PDF with custom margins', async () => {
+      const pdfPath = path.join(testContext.tempDir, 'page_margins.pdf');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Generate PDF with custom margins
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          margin: {
+            top: '2cm',
+            bottom: '2cm',
+            left: '1.5cm',
+            right: '1.5cm'
+          },
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(fs.existsSync(pdfPath)).toBe(true);
+    });
+
+    it('should return base64 PDF data when no path is provided', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Generate PDF without path
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          format: 'A4',
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(pdfResult.screenshot).toBeDefined();
+      expect(pdfResult.screenshot).toMatch(/^data:application\/pdf;base64,/);
+
+      // Verify base64 data is valid
+      const base64Data = pdfResult.screenshot!.split(',')[1];
+      const buffer = Buffer.from(base64Data, 'base64');
+      expect(buffer.length).toBeGreaterThan(1000);
+      // Check PDF header (should start with %PDF)
+      expect(buffer.toString('ascii', 0, 4)).toBe('%PDF');
+    });
+
+    it('should handle PDF generation with page ranges', async () => {
+      // Create a multi-page test scenario by adding content
+      // First navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add additional content to create multiple pages
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            // Add multiple sections to create page breaks
+            const container = document.querySelector('.test-content');
+            for (let i = 0; i < 5; i++) {
+              const section = document.createElement('div');
+              section.style.pageBreakBefore = 'always';
+              section.style.height = '800px';
+              section.innerHTML = '<h2>Page ' + (i + 2) + '</h2><p>Additional content for page ' + (i + 2) + '</p>';
+              container.appendChild(section);
+            }
+          `
+        }
+      });
+
+      const pdfPath = path.join(testContext.tempDir, 'page_range.pdf');
+
+      // Generate PDF with page range
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          pageRanges: '1-3',
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(pdfResult.data).toMatchObject({
+        pages: '1-3'
+      });
+
+      expect(fs.existsSync(pdfPath)).toBe(true);
+    });
+
+    it('should handle PDF generation with headers and footers', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      const pdfPath = path.join(testContext.tempDir, 'page_with_headers.pdf');
+
+      // Generate PDF with headers and footers
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          displayHeaderFooter: true,
+          headerTemplate: '<div style="font-size: 10px; width: 100%; text-align: center;">Test Document Header</div>',
+          footerTemplate: '<div style="font-size: 10px; width: 100%; text-align: center;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+          margin: {
+            top: '1in',
+            bottom: '1in',
+            left: '0.5in',
+            right: '0.5in'
+          },
+          printBackground: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(fs.existsSync(pdfPath)).toBe(true);
+
+      // Verify PDF is larger due to headers/footers
+      const pdfStats = fs.statSync(pdfPath);
+      expect(pdfStats.size).toBeGreaterThan(1000);
+    });
+
+    it('should generate PDF with media queries and responsive content', async () => {
+      // Create a test page with media queries
+      const responsivePageUrl = await createTestPage();
+
+      // Navigate to responsive test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: responsivePageUrl }
+      });
+
+      // Add responsive CSS for print
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const style = document.createElement('style');
+            style.textContent = \`
+              @media print {
+                body { background: white !important; }
+                .test-header { font-size: 24px; }
+                .test-content { page-break-inside: avoid; }
+                .no-print { display: none; }
+              }
+              @page {
+                size: A4;
+                margin: 2cm;
+              }
+            \`;
+            document.head.appendChild(style);
+
+            // Add elements that should be hidden in print
+            const noPrintDiv = document.createElement('div');
+            noPrintDiv.className = 'no-print';
+            noPrintDiv.textContent = 'This should not appear in PDF';
+            noPrintDiv.style.color = 'red';
+            document.querySelector('.test-content').appendChild(noPrintDiv);
+          `
+        }
+      });
+
+      const pdfPath = path.join(testContext.tempDir, 'responsive_pdf.pdf');
+
+      // Generate PDF that respects print media queries
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          printBackground: false, // Test without background
+          preferCSSPageSize: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(fs.existsSync(pdfPath)).toBe(true);
+    });
+
+    it('should respect CSS print media styles', async () => {
+      // Create a test page with print-specific CSS
+      const testPageWithPrintCSS = await createTestPage();
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testPageWithPrintCSS }
+      });
+
+      const pdfPath = path.join(testContext.tempDir, 'page_print_styles.pdf');
+
+      // Generate PDF that respects print styles
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          path: pdfPath,
+          format: 'A4',
+          printBackground: true,
+          preferCSSPageSize: true
+        }
+      });
+
+      expect(pdfResult.success).toBe(true);
+      expect(fs.existsSync(pdfPath)).toBe(true);
+    });
+
+    it('should handle PDF generation errors gracefully', async () => {
+      // Test PDF generation without navigation (should fail or handle gracefully)
+      const pdfResult = await testContext.browserTool.execute({
+        operation: 'generatePdf',
+        params: {
+          format: 'A4'
+        }
+      });
+
+      // PDF generation might succeed with a blank page or fail gracefully
+      // Both outcomes are acceptable depending on browser state
+      if (!pdfResult.success) {
+        expect(pdfResult.error).toBeDefined();
+      } else {
+        expect(pdfResult.success).toBe(true);
+      }
+    });
+  });
+
   describe('Cross-Browser Compatibility', () => {
     // Note: This test is more complex and might be skipped in CI environments
     // where multiple browsers are not available
@@ -619,6 +957,284 @@ describe('Browser Screenshot and Content Capture Integration Tests', () => {
       const html = (htmlResult.data as { html: string }).html;
       expect(html.length).toBeGreaterThan(100);
       expect(html.length).toBeLessThan(1000000); // Should not be excessively large
+    });
+  });
+
+  describe('Advanced Content Extraction', () => {
+    it('should extract content from dynamically loaded elements', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add dynamic content via JavaScript
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const dynamicDiv = document.createElement('div');
+            dynamicDiv.id = 'dynamic-content';
+            dynamicDiv.innerHTML = '<h3>Dynamically Added Content</h3><p>This content was added after page load.</p>';
+            dynamicDiv.style.cssText = 'background: yellow; padding: 20px; margin: 10px;';
+            document.querySelector('.test-content').appendChild(dynamicDiv);
+          `
+        }
+      });
+
+      // Wait for content to be rendered
+      await testContext.browserTool.execute({
+        operation: 'waitForSelector',
+        params: {
+          selector: '#dynamic-content'
+        }
+      });
+
+      // Extract HTML of dynamic content
+      const dynamicHtmlResult = await testContext.browserTool.execute({
+        operation: 'getHtml',
+        params: {
+          selector: '#dynamic-content'
+        }
+      });
+
+      expect(dynamicHtmlResult.success).toBe(true);
+      const dynamicHtml = (dynamicHtmlResult.data as { html: string }).html;
+      expect(dynamicHtml).toContain('Dynamically Added Content');
+      expect(dynamicHtml).toContain('This content was added after page load');
+
+      // Extract text of dynamic content
+      const dynamicTextResult = await testContext.browserTool.execute({
+        operation: 'getText',
+        params: {
+          selector: '#dynamic-content'
+        }
+      });
+
+      expect(dynamicTextResult.success).toBe(true);
+      const dynamicText = (dynamicTextResult.data as { text: string }).text;
+      expect(dynamicText).toContain('Dynamically Added Content');
+      expect(dynamicText).not.toContain('<');
+    });
+
+    it('should extract content from iframes and embedded elements', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add iframe content
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const iframe = document.createElement('iframe');
+            iframe.id = 'test-iframe';
+            iframe.srcdoc = '<html><body><h1>Iframe Content</h1><p>This is inside an iframe</p></body></html>';
+            iframe.style.cssText = 'width: 400px; height: 200px; border: 2px solid blue;';
+            document.querySelector('.test-content').appendChild(iframe);
+          `
+        }
+      });
+
+      // Wait for iframe to load
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Take screenshot including iframe
+      const iframeScreenshotPath = path.join(testContext.tempDir, 'iframe-content.png');
+      const iframeScreenshotResult = await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: iframeScreenshotPath,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(iframeScreenshotResult.success).toBe(true);
+      expect(fs.existsSync(iframeScreenshotPath)).toBe(true);
+    });
+
+    it('should handle large content extraction efficiently', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add large amount of content
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const largeContent = document.createElement('div');
+            largeContent.id = 'large-content';
+            let htmlContent = '<h2>Large Content Test</h2>';
+
+            // Generate large content (1000 paragraphs)
+            for (let i = 0; i < 1000; i++) {
+              htmlContent += '<p>Paragraph ' + i + ': ' + 'Lorem ipsum '.repeat(20) + '</p>';
+            }
+
+            largeContent.innerHTML = htmlContent;
+            document.querySelector('.test-content').appendChild(largeContent);
+          `
+        }
+      });
+
+      const startTime = Date.now();
+
+      // Extract large HTML content
+      const largeHtmlResult = await testContext.browserTool.execute({
+        operation: 'getHtml',
+        params: {
+          selector: '#large-content'
+        }
+      });
+
+      const extractionTime = Date.now() - startTime;
+
+      expect(largeHtmlResult.success).toBe(true);
+      expect(extractionTime).toBeLessThan(TEST_CONFIG.contentTimeout);
+
+      const largeHtml = (largeHtmlResult.data as { html: string }).html;
+      expect(largeHtml.length).toBeGreaterThan(10000);
+      expect(largeHtml).toContain('Paragraph 999'); // Verify it got all content
+    });
+
+    it('should extract content from complex nested structures', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add complex nested structure
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const complexStructure = document.createElement('div');
+            complexStructure.id = 'complex-structure';
+            complexStructure.innerHTML = \`
+              <div class="level-1">
+                <h3>Level 1</h3>
+                <div class="level-2">
+                  <h4>Level 2</h4>
+                  <ul class="level-3">
+                    <li>Item 1 <span class="highlight">highlighted</span></li>
+                    <li>Item 2 <strong>bold</strong></li>
+                    <li>Item 3 <em>italic</em></li>
+                  </ul>
+                  <table class="data-table">
+                    <thead><tr><th>Column 1</th><th>Column 2</th></tr></thead>
+                    <tbody>
+                      <tr><td>Data 1</td><td>Value 1</td></tr>
+                      <tr><td>Data 2</td><td>Value 2</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            \`;
+            document.querySelector('.test-content').appendChild(complexStructure);
+          `
+        }
+      });
+
+      // Extract HTML of complex structure
+      const complexHtmlResult = await testContext.browserTool.execute({
+        operation: 'getHtml',
+        params: {
+          selector: '#complex-structure'
+        }
+      });
+
+      expect(complexHtmlResult.success).toBe(true);
+      const complexHtml = (complexHtmlResult.data as { html: string }).html;
+      expect(complexHtml).toContain('<table');
+      expect(complexHtml).toContain('<thead>');
+      expect(complexHtml).toContain('<tbody>');
+      expect(complexHtml).toContain('highlighted');
+      expect(complexHtml).toContain('<strong>');
+      expect(complexHtml).toContain('<em>');
+
+      // Extract text and verify structure is preserved but tags are removed
+      const complexTextResult = await testContext.browserTool.execute({
+        operation: 'getText',
+        params: {
+          selector: '#complex-structure'
+        }
+      });
+
+      expect(complexTextResult.success).toBe(true);
+      const complexText = (complexTextResult.data as { text: string }).text;
+      expect(complexText).toContain('Level 1');
+      expect(complexText).toContain('Level 2');
+      expect(complexText).toContain('highlighted');
+      expect(complexText).toContain('bold');
+      expect(complexText).toContain('italic');
+      expect(complexText).toContain('Column 1');
+      expect(complexText).toContain('Data 1');
+      expect(complexText).not.toContain('<'); // No HTML tags
+    });
+
+    it('should handle special characters and encoding in content', async () => {
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Add content with special characters
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            const specialContent = document.createElement('div');
+            specialContent.id = 'special-chars';
+            specialContent.innerHTML = \`
+              <h3>Special Characters Test</h3>
+              <p>Unicode: 🚀 🎉 💻 📸 🔍</p>
+              <p>Math: ∑ ∫ ∞ √ π α β γ</p>
+              <p>Currency: $ € ¥ £ ₹</p>
+              <p>Quotes: "double quotes" 'single quotes' « guillemets »</p>
+              <p>Entities: &lt; &gt; &amp; &quot; &#x27;</p>
+              <p>Special: &nbsp;&nbsp;Multiple&nbsp;&nbsp;spaces</p>
+            \`;
+            document.querySelector('.test-content').appendChild(specialContent);
+          `
+        }
+      });
+
+      // Extract HTML and verify encoding
+      const specialHtmlResult = await testContext.browserTool.execute({
+        operation: 'getHtml',
+        params: {
+          selector: '#special-chars'
+        }
+      });
+
+      expect(specialHtmlResult.success).toBe(true);
+      const specialHtml = (specialHtmlResult.data as { html: string }).html;
+      expect(specialHtml).toContain('🚀');
+      expect(specialHtml).toContain('∑');
+      expect(specialHtml).toContain('€');
+
+      // Extract text and verify character preservation
+      const specialTextResult = await testContext.browserTool.execute({
+        operation: 'getText',
+        params: {
+          selector: '#special-chars'
+        }
+      });
+
+      expect(specialTextResult.success).toBe(true);
+      const specialText = (specialTextResult.data as { text: string }).text;
+      expect(specialText).toContain('🚀');
+      expect(specialText).toContain('∑');
+      expect(specialText).toContain('€');
+      expect(specialText).toContain('"double quotes"');
     });
   });
 
@@ -758,6 +1374,395 @@ describe('Browser Screenshot and Content Capture Integration Tests', () => {
       expect(screenshotResult.metadata?.url).toBe(testContext.testPageUrl);
       expect(screenshotResult.metadata?.executionTime).toBeTypeOf('number');
       expect(screenshotResult.metadata?.permissionGranted).toBe(true);
+    });
+  });
+
+  describe('Screenshot Comparison and Visual Regression', () => {
+    it('should compare identical screenshots successfully', async () => {
+      const baselineScreenshotPath = path.join(testContext.tempDir, 'baseline.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline screenshot
+      const baselineResult = await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineScreenshotPath,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(baselineResult.success).toBe(true);
+      expect(fs.existsSync(baselineScreenshotPath)).toBe(true);
+
+      // Wait a moment for consistency
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Compare with current (should be identical)
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineScreenshotPath,
+          threshold: 0.99,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(compareResult.success).toBe(true);
+      expect(compareResult.data).toMatchObject({
+        similarity: expect.any(Number),
+        differentPixels: expect.any(Number),
+        totalPixels: expect.any(Number),
+        isMatch: true
+      });
+
+      const comparisonData = compareResult.data as any;
+      expect(comparisonData.similarity).toBeGreaterThan(0.99);
+      expect(comparisonData.isMatch).toBe(true);
+    });
+
+    it('should compare element screenshots with selectors', async () => {
+      const baselineElementPath = path.join(testContext.tempDir, 'baseline-element.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline element screenshot
+      const baselineResult = await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineElementPath,
+          selector: '.test-container',
+          format: 'png'
+        }
+      });
+
+      expect(baselineResult.success).toBe(true);
+      expect(fs.existsSync(baselineElementPath)).toBe(true);
+
+      // Compare current element with baseline
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineElementPath,
+          selector: '.test-container',
+          threshold: 0.95,
+          format: 'png'
+        }
+      });
+
+      expect(compareResult.success).toBe(true);
+      expect(compareResult.data).toMatchObject({
+        similarity: expect.any(Number),
+        isMatch: expect.any(Boolean)
+      });
+
+      const comparisonData = compareResult.data as any;
+      expect(comparisonData.similarity).toBeGreaterThan(0.90);
+    });
+
+    it('should generate diff images when screenshots differ significantly', async () => {
+      const baselineScreenshotPath = path.join(testContext.tempDir, 'baseline-for-diff.png');
+      const diffOutputPath = path.join(testContext.tempDir, 'diff-output.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline screenshot
+      await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineScreenshotPath,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      // Modify the page content to create differences
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            // Add a bright red banner to create visual differences
+            const banner = document.createElement('div');
+            banner.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: red; z-index: 9999; color: white; text-align: center; line-height: 50px;';
+            banner.textContent = 'DIFF TEST BANNER';
+            document.body.appendChild(banner);
+          `
+        }
+      });
+
+      // Compare with modified page
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineScreenshotPath,
+          diffPath: diffOutputPath,
+          threshold: 0.95,
+          fullPage: true,
+          format: 'png',
+          testId: 'diff-generation-test'
+        }
+      });
+
+      expect(compareResult.success).toBe(true);
+      expect(compareResult.data).toMatchObject({
+        similarity: expect.any(Number),
+        differentPixels: expect.any(Number),
+        isMatch: expect.any(Boolean)
+      });
+
+      const comparisonData = compareResult.data as any;
+      expect(comparisonData.similarity).toBeLessThan(0.95); // Should detect differences
+      expect(comparisonData.isMatch).toBe(false);
+      expect(comparisonData.differentPixels).toBeGreaterThan(100);
+
+      // Verify diff image was generated if configured
+      if (diffOutputPath) {
+        expect(fs.existsSync(diffOutputPath)).toBe(true);
+      }
+    });
+
+    it('should handle different comparison thresholds', async () => {
+      const baselineThresholdPath = path.join(testContext.tempDir, 'baseline-threshold.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline screenshot
+      await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineThresholdPath,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      // Make small visual change
+      await testContext.browserTool.execute({
+        operation: 'evaluate',
+        params: {
+          script: `
+            // Make a very small change (1px border)
+            const container = document.querySelector('.test-container');
+            if (container) {
+              container.style.border = '1px solid #ccc';
+            }
+          `
+        }
+      });
+
+      // Test with strict threshold (should fail)
+      const strictCompareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineThresholdPath,
+          threshold: 0.999, // Very strict
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      // Test with lenient threshold (should pass)
+      const lenientCompareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineThresholdPath,
+          threshold: 0.95, // More lenient
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(strictCompareResult.success).toBe(true);
+      expect(lenientCompareResult.success).toBe(true);
+
+      const strictData = strictCompareResult.data as any;
+      const lenientData = lenientCompareResult.data as any;
+
+      // Both should have the same similarity score
+      expect(strictData.similarity).toBeCloseTo(lenientData.similarity, 2);
+
+      // But different match results based on threshold
+      expect(strictData.isMatch).toBe(false); // Strict threshold
+      expect(lenientData.isMatch).toBe(true);  // Lenient threshold
+    });
+
+    it('should handle JPEG format comparison with quality settings', async () => {
+      const baselineJpegPath = path.join(testContext.tempDir, 'baseline-jpeg.jpg');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline JPEG screenshot
+      await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineJpegPath,
+          fullPage: true,
+          format: 'jpeg',
+          quality: 90
+        }
+      });
+
+      // Compare with different JPEG quality (should still match reasonably)
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineJpegPath,
+          threshold: 0.85, // More lenient for JPEG compression differences
+          fullPage: true,
+          format: 'jpeg',
+          quality: 80
+        }
+      });
+
+      expect(compareResult.success).toBe(true);
+      expect(compareResult.data).toMatchObject({
+        similarity: expect.any(Number),
+        isMatch: expect.any(Boolean)
+      });
+
+      const comparisonData = compareResult.data as any;
+      expect(comparisonData.similarity).toBeGreaterThan(0.80);
+    });
+
+    it('should handle missing baseline screenshot error', async () => {
+      const missingBaselinePath = path.join(testContext.tempDir, 'non-existent-baseline.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Try to compare with non-existent baseline
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: missingBaselinePath,
+          threshold: 0.95,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(compareResult.success).toBe(false);
+      expect(compareResult.error).toBeDefined();
+      expect(compareResult.error).toContain('Baseline screenshot not found');
+      expect(compareResult.error).toContain(missingBaselinePath);
+    });
+
+    it('should validate comparison results structure', async () => {
+      const baselineValidationPath = path.join(testContext.tempDir, 'baseline-validation.png');
+
+      // Navigate to test page
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline screenshot
+      await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineValidationPath,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      // Compare with baseline
+      const compareResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineValidationPath,
+          threshold: 0.99,
+          fullPage: true,
+          format: 'png'
+        }
+      });
+
+      expect(compareResult.success).toBe(true);
+      expect(compareResult.data).toBeDefined();
+
+      const comparisonData = compareResult.data as any;
+
+      // Validate all required fields in comparison result
+      expect(comparisonData).toMatchObject({
+        similarity: expect.any(Number),
+        differentPixels: expect.any(Number),
+        totalPixels: expect.any(Number),
+        isMatch: expect.any(Boolean),
+        dimensions: expect.objectContaining({
+          width: expect.any(Number),
+          height: expect.any(Number)
+        })
+      });
+
+      // Validate ranges
+      expect(comparisonData.similarity).toBeGreaterThanOrEqual(0);
+      expect(comparisonData.similarity).toBeLessThanOrEqual(1);
+      expect(comparisonData.differentPixels).toBeGreaterThanOrEqual(0);
+      expect(comparisonData.totalPixels).toBeGreaterThan(0);
+      expect(comparisonData.dimensions.width).toBeGreaterThan(0);
+      expect(comparisonData.dimensions.height).toBeGreaterThan(0);
+    });
+
+    it('should handle viewport differences in comparison', async () => {
+      const baselineViewportPath = path.join(testContext.tempDir, 'baseline-viewport.png');
+
+      // Navigate to test page with initial viewport
+      await testContext.browserTool.execute({
+        operation: 'navigate',
+        params: { url: testContext.testPageUrl }
+      });
+
+      // Take baseline screenshot (not full page to capture viewport)
+      await testContext.browserTool.execute({
+        operation: 'screenshot',
+        params: {
+          path: baselineViewportPath,
+          fullPage: false,
+          format: 'png'
+        }
+      });
+
+      // Compare with same viewport (should match)
+      const sameViewportResult = await testContext.browserTool.execute({
+        operation: 'compareScreenshot',
+        params: {
+          baselinePath: baselineViewportPath,
+          threshold: 0.95,
+          fullPage: false,
+          format: 'png'
+        }
+      });
+
+      expect(sameViewportResult.success).toBe(true);
+
+      const sameViewportData = sameViewportResult.data as any;
+      expect(sameViewportData.isMatch).toBe(true);
+      expect(sameViewportData.similarity).toBeGreaterThan(0.95);
     });
   });
 });

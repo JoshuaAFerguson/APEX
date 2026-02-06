@@ -460,6 +460,8 @@ class BrowserTool {
                 return params.params.selector || 'page';
             case 'scroll':
                 return params.params.selector || `${params.params.x || 0},${params.params.y || 0}`;
+            case 'generatePdf':
+                return params.params.path || 'pdf';
             default:
                 return 'unknown';
         }
@@ -1254,6 +1256,77 @@ class BrowserTool {
                         enhancedRuntimeErrors: this.enhancedRuntimeErrors,
                     },
                 };
+            }
+            case 'generatePdf': {
+                const pdfParams = params.params;
+                // PDF generation is only supported in Chromium browsers with Playwright
+                if (isPuppeteer || this.engine !== 'chromium') {
+                    return {
+                        success: false,
+                        operation,
+                        error: 'PDF generation is only supported with Playwright using Chromium browser',
+                        metadata: {
+                            url: this.getCurrentUrl(),
+                            title: await page.title(),
+                            executionTime: 0,
+                            permissionGranted: true,
+                            consoleMessages: this.consoleMessages,
+                            runtimeErrors: this.runtimeErrors,
+                        },
+                    };
+                }
+                try {
+                    const pdfBuffer = await page.pdf({
+                        path: pdfParams.path,
+                        format: pdfParams.format || 'A4',
+                        width: pdfParams.width,
+                        height: pdfParams.height,
+                        margin: pdfParams.margin,
+                        landscape: pdfParams.landscape || false,
+                        printBackground: pdfParams.printBackground || false,
+                        scale: pdfParams.scale || 1,
+                        pageRanges: pdfParams.pageRanges,
+                        preferCSSPageSize: pdfParams.preferCSSPageSize || false,
+                    });
+                    return {
+                        success: true,
+                        operation,
+                        data: {
+                            format: pdfParams.format || 'A4',
+                            landscape: pdfParams.landscape || false,
+                            pages: pdfParams.pageRanges || 'all',
+                            size: pdfBuffer.length,
+                        },
+                        screenshot: pdfParams.path
+                            ? pdfParams.path
+                            : `data:application/pdf;base64,${pdfBuffer.toString('base64')}`,
+                        metadata: {
+                            url: this.getCurrentUrl(),
+                            title: await page.title(),
+                            executionTime: 0,
+                            permissionGranted: true,
+                            consoleMessages: this.consoleMessages,
+                            runtimeErrors: this.runtimeErrors,
+                            enhancedConsoleMessages: this.enhancedConsoleMessages,
+                            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+                        },
+                    };
+                }
+                catch (error) {
+                    return {
+                        success: false,
+                        operation,
+                        error: `PDF generation failed: ${this.formatError(error)}`,
+                        metadata: {
+                            url: this.getCurrentUrl(),
+                            title: await page.title(),
+                            executionTime: 0,
+                            permissionGranted: true,
+                            consoleMessages: this.consoleMessages,
+                            runtimeErrors: this.runtimeErrors,
+                        },
+                    };
+                }
             }
             default:
                 return {

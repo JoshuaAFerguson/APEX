@@ -829,4 +829,458 @@ describe('Form Control Interactions Integration Tests', () => {
       }, page);
     });
   });
+
+  describe('File Upload Handling', () => {
+    let testFile1: string;
+    let testFile2: string;
+    let testPdfFile: string;
+    let testImageFile: string;
+    let largePdfFile: string;
+
+    beforeEach(async () => {
+      // Create test files for upload scenarios
+      testFile1 = path.join(tempDir, 'test-file-1.txt');
+      testFile2 = path.join(tempDir, 'test-file-2.txt');
+      testPdfFile = path.join(tempDir, 'test-resume.pdf');
+      testImageFile = path.join(tempDir, 'test-image.png');
+      largePdfFile = path.join(tempDir, 'large-file.pdf');
+
+      // Create actual test files
+      await fs.writeFile(testFile1, 'This is test file 1 content');
+      await fs.writeFile(testFile2, 'This is test file 2 content');
+
+      // Create a simple PDF-like content
+      await fs.writeFile(testPdfFile, '%PDF-1.4\nTest PDF content');
+
+      // Create a simple PNG-like content (minimal valid PNG header)
+      const pngHeader = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+      await fs.writeFile(testImageFile, Buffer.concat([pngHeader, Buffer.from('test image content')]));
+
+      // Create a large file (6MB)
+      await fs.writeFile(largePdfFile, Buffer.alloc(6 * 1024 * 1024, 'x'));
+    });
+
+    it('should handle single file upload with proper validation', async () => {
+      await withBrowserTest(async (page) => {
+        // Test profile photo upload
+        const profilePhotoInput = await waitForElement(page, '#profile-photo', {
+          visible: true,
+          enabled: true
+        });
+
+        // Upload valid image file
+        await profilePhotoInput.setInputFiles(testImageFile);
+
+        // Wait for file info to update
+        await page.waitForTimeout(500);
+
+        // Verify file info is displayed
+        const fileInfo = await page.locator('#file-info').textContent();
+        expect(fileInfo).toContain('test-image.png');
+        expect(fileInfo).toMatch(/\d+.*Bytes|KB|MB/); // Should show file size
+
+        await takeScreenshot(page, 'single-file-upload', tempDir);
+
+        // Test form submission with file
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify form data includes file information
+        const formDataText = await page.locator('#form-data').textContent();
+        const formData = JSON.parse(formDataText || '{}');
+
+        expect(formData).toHaveProperty('profile-photo');
+        expect(formData['profile-photo']).toHaveProperty('name', 'test-image.png');
+        expect(formData['profile-photo']).toHaveProperty('size');
+        expect(formData['profile-photo']).toHaveProperty('type');
+
+        await takeScreenshot(page, 'form-with-file-submitted', tempDir);
+
+      }, page);
+    });
+
+    it('should handle PDF file upload with validation', async () => {
+      await withBrowserTest(async (page) => {
+        // Test resume upload (PDF only)
+        const resumeInput = await waitForElement(page, '#resume', {
+          visible: true,
+          enabled: true
+        });
+
+        // Upload valid PDF file
+        await resumeInput.setInputFiles(testPdfFile);
+        await page.waitForTimeout(500);
+
+        // Verify file info shows PDF details
+        const resumeInfo = await page.locator('#resume-info').textContent();
+        expect(resumeInfo).toContain('test-resume.pdf');
+
+        // Test form validation with PDF file
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify no validation errors for valid PDF
+        const resumeError = await page.locator('#resume-error').textContent();
+        expect(resumeError).toBe('');
+
+        // Verify form data includes PDF info
+        const formDataText = await page.locator('#form-data').textContent();
+        const formData = JSON.parse(formDataText || '{}');
+
+        expect(formData).toHaveProperty('resume');
+        expect(formData.resume).toHaveProperty('name', 'test-resume.pdf');
+
+        await takeScreenshot(page, 'pdf-upload-success', tempDir);
+
+      }, page);
+    });
+
+    it('should handle multiple file upload', async () => {
+      await withBrowserTest(async (page) => {
+        // Test multiple documents upload
+        const documentsInput = await waitForElement(page, '#documents', {
+          visible: true,
+          enabled: true
+        });
+
+        // Upload multiple files
+        await documentsInput.setInputFiles([testFile1, testFile2]);
+        await page.waitForTimeout(500);
+
+        // Verify file info shows multiple files
+        const documentsInfo = await page.locator('#documents-info').textContent();
+        expect(documentsInfo).toContain('2 file(s) selected');
+        expect(documentsInfo).toMatch(/\d+.*Bytes|KB|MB.*total/);
+
+        // Test form submission with multiple files
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify form data includes all files
+        const formDataText = await page.locator('#form-data').textContent();
+        const formData = JSON.parse(formDataText || '{}');
+
+        expect(formData).toHaveProperty('documents');
+        expect(Array.isArray(formData.documents)).toBe(true);
+        expect(formData.documents).toHaveLength(2);
+        expect(formData.documents[0]).toHaveProperty('name', 'test-file-1.txt');
+        expect(formData.documents[1]).toHaveProperty('name', 'test-file-2.txt');
+
+        await takeScreenshot(page, 'multiple-files-upload', tempDir);
+
+      }, page);
+    });
+
+    it('should validate file size limits', async () => {
+      await withBrowserTest(async (page) => {
+        // Upload a large file to trigger size validation
+        const profilePhotoInput = await waitForElement(page, '#profile-photo', {
+          visible: true,
+          enabled: true
+        });
+
+        await profilePhotoInput.setInputFiles(largePdfFile);
+        await page.waitForTimeout(500);
+
+        // Try to submit form to trigger validation
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify file size error is shown
+        const profilePhotoError = await page.locator('#profile-photo-error').textContent();
+        expect(profilePhotoError).toContain('5MB');
+
+        // Verify form did not submit successfully
+        const outputVisible = await page.locator('#form-output').isVisible();
+        expect(outputVisible).toBe(false);
+
+        await takeScreenshot(page, 'file-size-validation-error', tempDir);
+
+      }, page);
+    });
+
+    it('should validate file type restrictions', async () => {
+      await withBrowserTest(async (page) => {
+        // Try to upload wrong file type for resume (should be PDF only)
+        const resumeInput = await waitForElement(page, '#resume', {
+          visible: true,
+          enabled: true
+        });
+
+        await resumeInput.setInputFiles(testImageFile);
+        await page.waitForTimeout(500);
+
+        // Try to submit form to trigger validation
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify file type error is shown
+        const resumeError = await page.locator('#resume-error').textContent();
+        expect(resumeError).toContain('PDF file');
+
+        // Verify form did not submit successfully
+        const outputVisible = await page.locator('#form-output').isVisible();
+        expect(outputVisible).toBe(false);
+
+        await takeScreenshot(page, 'file-type-validation-error', tempDir);
+
+      }, page);
+    });
+
+    it('should handle file removal and re-selection', async () => {
+      await withBrowserTest(async (page) => {
+        const profilePhotoInput = await waitForElement(page, '#profile-photo', {
+          visible: true,
+          enabled: true
+        });
+
+        // Upload initial file
+        await profilePhotoInput.setInputFiles(testImageFile);
+        await page.waitForTimeout(500);
+
+        let fileInfo = await page.locator('#file-info').textContent();
+        expect(fileInfo).toContain('test-image.png');
+
+        // Clear the file selection
+        await profilePhotoInput.setInputFiles([]);
+        await page.waitForTimeout(500);
+
+        // Verify file info is cleared
+        fileInfo = await page.locator('#file-info').textContent();
+        expect(fileInfo).toBe('');
+
+        // Select different file
+        await profilePhotoInput.setInputFiles(testPdfFile);
+        await page.waitForTimeout(500);
+
+        fileInfo = await page.locator('#file-info').textContent();
+        expect(fileInfo).toContain('test-resume.pdf');
+
+        await takeScreenshot(page, 'file-reselection', tempDir);
+
+      }, page);
+    });
+
+    it('should validate maximum file count for multiple uploads', async () => {
+      await withBrowserTest(async (page) => {
+        // Create additional test files to exceed the limit (max 5)
+        const extraFiles = [];
+        for (let i = 3; i <= 7; i++) {
+          const extraFile = path.join(tempDir, `extra-file-${i}.txt`);
+          await fs.writeFile(extraFile, `Extra test file ${i} content`);
+          extraFiles.push(extraFile);
+        }
+
+        const documentsInput = await waitForElement(page, '#documents', {
+          visible: true,
+          enabled: true
+        });
+
+        // Try to upload 7 files (exceeds limit of 5)
+        await documentsInput.setInputFiles([testFile1, testFile2, ...extraFiles]);
+        await page.waitForTimeout(500);
+
+        // Try to submit form to trigger validation
+        await safeFill(page, '#username', 'testuser');
+        await safeFill(page, '#email', 'test@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        await safeClick(page, '#submit-btn');
+        await page.waitForTimeout(1000);
+
+        // Verify file count error is shown
+        const documentsError = await page.locator('#documents-error').textContent();
+        expect(documentsError).toContain('at most 5 documents');
+
+        // Verify form did not submit successfully
+        const outputVisible = await page.locator('#form-output').isVisible();
+        expect(outputVisible).toBe(false);
+
+        await takeScreenshot(page, 'file-count-validation-error', tempDir);
+
+      }, page);
+    });
+  });
+
+  describe('Form Submission Methods (GET/POST)', () => {
+    beforeEach(async () => {
+      // Set up form to test different submission methods
+      await page.evaluate(() => {
+        const form = document.getElementById('test-form') as HTMLFormElement;
+
+        // Add method and action attributes for testing
+        form.setAttribute('method', 'POST');
+        form.setAttribute('action', '#test-submit');
+
+        // Add GET/POST test buttons
+        const buttonGroup = document.querySelector('.form-group:last-child');
+        if (buttonGroup) {
+          const getButton = document.createElement('button');
+          getButton.type = 'button';
+          getButton.id = 'get-submit-btn';
+          getButton.className = 'button secondary';
+          getButton.textContent = 'Submit via GET';
+
+          const postButton = document.createElement('button');
+          postButton.type = 'button';
+          postButton.id = 'post-submit-btn';
+          postButton.className = 'button secondary';
+          postButton.textContent = 'Submit via POST';
+
+          buttonGroup.appendChild(getButton);
+          buttonGroup.appendChild(postButton);
+
+          // Add event handlers for method testing
+          getButton.addEventListener('click', () => {
+            form.method = 'GET';
+            form.action = window.location.href + '?submitted=get';
+            console.log('Form configured for GET submission');
+          });
+
+          postButton.addEventListener('click', () => {
+            form.method = 'POST';
+            form.action = window.location.href + '#submitted=post';
+            console.log('Form configured for POST submission');
+          });
+        }
+      });
+    });
+
+    it('should configure form for GET method submission', async () => {
+      await withBrowserTest(async (page) => {
+        // Fill form with valid data
+        await safeFill(page, '#username', 'getuser');
+        await safeFill(page, '#email', 'get@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        // Configure form for GET submission
+        const consoleMessages = await captureConsoleMessages(page, async () => {
+          await safeClick(page, '#get-submit-btn');
+          await page.waitForTimeout(500);
+        });
+
+        // Verify console shows GET configuration
+        const getConfigMessage = consoleMessages.find(
+          msg => msg.text.includes('Form configured for GET')
+        );
+        expect(getConfigMessage).toBeDefined();
+
+        // Verify form method is set to GET
+        const formMethod = await page.locator('#test-form').getAttribute('method');
+        expect(formMethod).toBe('GET');
+
+        // Verify form action includes GET parameter
+        const formAction = await page.locator('#test-form').getAttribute('action');
+        expect(formAction).toContain('submitted=get');
+
+        await takeScreenshot(page, 'form-get-method-configured', tempDir);
+
+      }, page);
+    });
+
+    it('should configure form for POST method submission', async () => {
+      await withBrowserTest(async (page) => {
+        // Fill form with valid data
+        await safeFill(page, '#username', 'postuser');
+        await safeFill(page, '#email', 'post@example.com');
+        await safeFill(page, '#password', 'password123');
+        await safeClick(page, '#terms');
+
+        // Configure form for POST submission
+        const consoleMessages = await captureConsoleMessages(page, async () => {
+          await safeClick(page, '#post-submit-btn');
+          await page.waitForTimeout(500);
+        });
+
+        // Verify console shows POST configuration
+        const postConfigMessage = consoleMessages.find(
+          msg => msg.text.includes('Form configured for POST')
+        );
+        expect(postConfigMessage).toBeDefined();
+
+        // Verify form method is set to POST
+        const formMethod = await page.locator('#test-form').getAttribute('method');
+        expect(formMethod).toBe('POST');
+
+        // Verify form action includes POST identifier
+        const formAction = await page.locator('#test-form').getAttribute('action');
+        expect(formAction).toContain('submitted=post');
+
+        await takeScreenshot(page, 'form-post-method-configured', tempDir);
+
+      }, page);
+    });
+
+    it('should demonstrate different data handling between GET and POST', async () => {
+      await withBrowserTest(async (page) => {
+        // Test with sample data including special characters
+        await safeFill(page, '#username', 'test user');
+        await safeFill(page, '#email', 'test+special@example.com');
+        await safeFill(page, '#bio', 'Bio with spaces & special chars!');
+        await safeClick(page, '#newsletter');
+        await safeClick(page, '#terms');
+
+        // Configure for GET and observe URL encoding behavior
+        await safeClick(page, '#get-submit-btn');
+        await page.waitForTimeout(500);
+
+        // Verify URL-encoding considerations for GET
+        const getAction = await page.locator('#test-form').getAttribute('action');
+        expect(getAction).toContain('submitted=get');
+
+        // Switch to POST method
+        await safeClick(page, '#post-submit-btn');
+        await page.waitForTimeout(500);
+
+        // Verify POST method configuration
+        const postMethod = await page.locator('#test-form').getAttribute('method');
+        expect(postMethod).toBe('POST');
+
+        // Verify form data handling remains consistent
+        const formData = await page.evaluate(() => {
+          const form = document.getElementById('test-form') as HTMLFormElement;
+          const data = new FormData(form);
+          const result: Record<string, any> = {};
+          for (let [key, value] of data.entries()) {
+            result[key] = value;
+          }
+          return result;
+        });
+
+        expect(formData.username).toBe('test user');
+        expect(formData.email).toBe('test+special@example.com');
+        expect(formData.bio).toBe('Bio with spaces & special chars!');
+
+        await takeScreenshot(page, 'form-method-comparison', tempDir);
+
+      }, page);
+    });
+  });
 });

@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Element Interaction Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        /* Click test styles */
+        .click-button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .click-button:hover {
+            background: #f0f0f0;
+        }
+        .click-button:active {
+            background: #e0e0e0;
+        }
+        .click-button:disabled {
+            background: #f5f5f5;
+            color: #999;
+            cursor: not-allowed;
+        }
+        .hidden-element {
+            display: none;
+        }
+        .invisible-element {
+            visibility: hidden;
+        }
+        .transparent-element {
+            opacity: 0;
+        }
+
+        /* Type test styles */
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+        .input-group input,
+        .input-group textarea,
+        .input-group [contenteditable] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+        .input-group textarea {
+            width: 200px;
+            height: 60px;
+        }
+        .contenteditable-div {
+            min-height: 40px;
+            border: 1px solid #ccc;
+            padding: 8px;
+            background: white;
+        }
+
+        /* Select test styles */
+        select, input[type="checkbox"], input[type="radio"] {
+            margin: 5px;
+        }
+        .custom-dropdown {
+            position: relative;
+            display: inline-block;
+            width: 200px;
+        }
+        .custom-dropdown-toggle {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+        }
+        .custom-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ccc;
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        .custom-dropdown-menu.show {
+            display: block;
+        }
+        .custom-dropdown-item {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .custom-dropdown-item:hover {
+            background: #f0f0f0;
+        }
+
+        /* Tooltip styles */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip-text {
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -60px;
+            width: 120px;
+            background: #333;
+            color: white;
+            text-align: center;
+            padding: 5px;
+            border-radius: 4px;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1;
+        }
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Dynamic elements */
+        .dynamic-container {
+            min-height: 100px;
+            border: 1px dashed #ccc;
+            padding: 10px;
+        }
+
+        /* Event log */
+        #event-log {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+
+        /* States for testing */
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Click Tests Section -->
+    <div class="test-section" id="click-tests">
+        <h2>Click Interaction Tests</h2>
+        <button id="basic-button" class="click-button" data-testid="basic-btn">Basic Button</button>
+        <button id="disabled-button" class="click-button" disabled>Disabled Button</button>
+        <button id="hidden-button" class="click-button hidden-element">Hidden Button</button>
+        <button id="invisible-button" class="click-button invisible-element">Invisible Button</button>
+        <button id="transparent-button" class="click-button transparent-element">Transparent Button</button>
+
+        <div class="input-group">
+            <button id="context-menu-button" class="click-button">Right Click Me</button>
+            <button id="double-click-button" class="click-button">Double Click Me</button>
+        </div>
+
+        <div class="input-group">
+            <a id="test-link" href="#" class="click-button" style="text-decoration: none; display: inline-block;">Link Element</a>
+            <span id="custom-clickable" class="click-button" style="cursor: pointer;">Custom Element</span>
+        </div>
+
+        <div id="nested-container" style="padding: 20px; background: #eee; margin: 10px 0;">
+            <button id="nested-button" class="click-button">Nested Button</button>
+        </div>
+
+        <!-- Dynamic click element will be inserted here -->
+        <div id="dynamic-click-container" class="dynamic-container">
+            <p>Dynamic click elements will appear here...</p>
+        </div>
+    </div>
+
+    <!-- Type Tests Section -->
+    <div class="test-section" id="type-tests">
+        <h2>Type Interaction Tests</h2>
+
+        <div class="input-group">
+            <label>Text Input:</label>
+            <input id="text-input" type="text" placeholder="Enter text">
+        </div>
+
+        <div class="input-group">
+            <label>Password Input:</label>
+            <input id="password-input" type="password" placeholder="Enter password">
+        </div>
+
+        <div class="input-group">
+            <label>Email Input:</label>
+            <input id="email-input" type="email" placeholder="Enter email">
+        </div>
+
+        <div class="input-group">
+            <label>Number Input:</label>
+            <input id="number-input" type="number" placeholder="Enter number">
+        </div>
+
+        <div class="input-group">
+            <label>Textarea:</label>
+            <textarea id="textarea-input" placeholder="Enter multi-line text"></textarea>
+        </div>
+
+        <div class="input-group">
+            <label>Pre-filled Input:</label>
+            <input id="prefilled-input" type="text" value="Existing content">
+        </div>
+
+        <div class="input-group">
+            <label>Readonly Input:</label>
+            <input id="readonly-input" type="text" value="Read only" readonly>
+        </div>
+
+        <div class="input-group">
+            <label>Disabled Input:</label>
+            <input id="disabled-input" type="text" placeholder="Disabled" disabled>
+        </div>
+
+        <div class="input-group">
+            <label>Hidden Input:</label>
+            <input id="hidden-input" type="text" class="hidden-element">
+        </div>
+
+        <div class="input-group">
+            <label>ContentEditable:</label>
+            <div id="contenteditable-div" class="contenteditable-div" contenteditable="true">
+                Edit this content
+            </div>
+        </div>
+    </div>
+
+    <!-- Hover and Select Tests Section -->
+    <div class="test-section" id="select-tests">
+        <h2>Hover and Select Interaction Tests</h2>
+
+        <!-- Hover tests -->
+        <div class="input-group">
+            <div class="tooltip-container">
+                <button id="tooltip-button" class="click-button">Hover for Tooltip</button>
+                <div class="tooltip-text">I'm a tooltip!</div>
+            </div>
+
+            <div id="hover-target" class="click-button" style="background: lightblue;">
+                Hover Changes Color
+            </div>
+        </div>
+
+        <!-- Select dropdown -->
+        <div class="input-group">
+            <label>Basic Select:</label>
+            <select id="basic-select">
+                <option value="">Choose option</option>
+                <option value="option1">Option 1</option>
+                <option value="option2">Option 2</option>
+                <option value="option3">Option 3</option>
+            </select>
+        </div>
+
+        <!-- Multi-select -->
+        <div class="input-group">
+            <label>Multi Select:</label>
+            <select id="multi-select" multiple size="3">
+                <option value="multi1">Multi Option 1</option>
+                <option value="multi2">Multi Option 2</option>
+                <option value="multi3">Multi Option 3</option>
+                <option value="multi4">Multi Option 4</option>
+            </select>
+        </div>
+
+        <!-- Checkboxes -->
+        <div class="input-group">
+            <label>Checkboxes:</label>
+            <input type="checkbox" id="checkbox1" value="cb1">
+            <label for="checkbox1">Checkbox 1</label>
+            <input type="checkbox" id="checkbox2" value="cb2" checked>
+            <label for="checkbox2">Checkbox 2 (pre-checked)</label>
+            <input type="checkbox" id="checkbox3" value="cb3" disabled>
+            <label for="checkbox3">Checkbox 3 (disabled)</label>
+        </div>
+
+        <!-- Radio buttons -->
+        <div class="input-group">
+            <label>Radio Buttons:</label>
+            <input type="radio" id="radio1" name="radiogroup" value="r1">
+            <label for="radio1">Radio 1</label>
+            <input type="radio" id="radio2" name="radiogroup" value="r2" checked>
+            <label for="radio2">Radio 2 (selected)</label>
+            <input type="radio" id="radio3" name="radiogroup" value="r3" disabled>
+            <label for="radio3">Radio 3 (disabled)</label>
+        </div>
+
+        <!-- Custom dropdown -->
+        <div class="input-group">
+            <label>Custom Dropdown:</label>
+            <div id="custom-dropdown" class="custom-dropdown">
+                <div id="custom-dropdown-toggle" class="custom-dropdown-toggle">
+                    Select custom option...
+                </div>
+                <div id="custom-dropdown-menu" class="custom-dropdown-menu">
+                    <div class="custom-dropdown-item" data-value="custom1">Custom Option 1</div>
+                    <div class="custom-dropdown-item" data-value="custom2">Custom Option 2</div>
+                    <div class="custom-dropdown-item" data-value="custom3">Custom Option 3</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Focus tests -->
+        <div class="input-group">
+            <input id="focus-input1" type="text" placeholder="Focus target 1">
+            <input id="focus-input2" type="text" placeholder="Focus target 2">
+            <button id="focus-button" class="click-button">Focusable Button</button>
+            <div id="focus-div" tabindex="0" class="click-button">Focusable Div</div>
+        </div>
+    </div>
+
+    <!-- Dynamic and Hidden Elements Section -->
+    <div class="test-section" id="dynamic-tests">
+        <h2>Dynamic and Hidden Elements Tests</h2>
+
+        <div class="input-group">
+            <button id="create-dynamic-button" class="click-button">Create Dynamic Element</button>
+            <button id="toggle-visibility-button" class="click-button">Toggle Element Visibility</button>
+            <button id="enable-disabled-button" class="click-button">Enable Disabled Element</button>
+        </div>
+
+        <div id="dynamic-elements-container" class="dynamic-container">
+            <!-- Dynamic elements will be inserted here -->
+        </div>
+
+        <div class="input-group">
+            <button id="toggle-target" class="click-button">Target Element</button>
+            <input id="delayed-input" type="text" class="hidden-element" placeholder="Will appear after delay">
+        </div>
+
+        <div id="scroll-container" style="height: 100px; overflow-y: auto; border: 1px solid #ccc;">
+            <div style="height: 300px; padding: 10px;">
+                <p>Scroll down to see the button...</p>
+                <div style="height: 200px;"></div>
+                <button id="scroll-target" class="click-button">Button at Bottom</button>
+            </div>
+        </div>
+
+        <!-- Iframe test -->
+        <iframe id="test-iframe"
+                src="data:text/html,%3Cbutton%20id%3D%22frame-button%22%20onclick%3D%22this.textContent%3D%27Frame%20Clicked%27%22%3EFrame%20Button%3C%2Fbutton%3E"
+                style="width: 300px; height: 100px; border: 1px solid #ccc;">
+        </iframe>
+    </div>
+
+    <!-- Event Log Section -->
+    <div class="test-section">
+        <h2>Event Log</h2>
+        <div id="event-log" data-testid="event-log"></div>
+        <button id="clear-log-button" class="click-button">Clear Log</button>
+    </div>
+
+    <!-- JavaScript for event handling and interactions -->
+    <script>
+        // Global event log
+        const eventLog = document.getElementById('event-log');
+        const eventTypes = ['click', 'dblclick', 'contextmenu', 'mouseover', 'mouseout',
+                           'mouseenter', 'mouseleave', 'focus', 'blur', 'change', 'input'];
+
+        function logEvent(type, target, extra = {}) {
+            const timestamp = new Date().toISOString().substr(11, 12);
+            const targetInfo = target.id ? `#${target.id}` : target.tagName.toLowerCase();
+            const extraInfo = Object.keys(extra).length ? ` | ${JSON.stringify(extra)}` : '';
+            const message = `[${timestamp}] ${type} on ${targetInfo}${extraInfo}\n`;
+            eventLog.textContent += message;
+            eventLog.scrollTop = eventLog.scrollHeight;
+
+            // Also add data attribute for test verification
+            target.setAttribute(`data-last-${type}`, Date.now());
+
+            console.log('Event logged:', type, targetInfo, extra);
+        }
+
+        // Attach event listeners to all interactive elements
+        eventTypes.forEach(eventType => {
+            document.addEventListener(eventType, (e) => {
+                const target = e.target;
+                const extra = {};
+
+                // Capture relevant event properties
+                if (e.ctrlKey) extra.ctrlKey = true;
+                if (e.shiftKey) extra.shiftKey = true;
+                if (e.altKey) extra.altKey = true;
+                if (e.button !== undefined && e.button !== 0) extra.button = e.button;
+                if (eventType === 'change' && target.type) {
+                    extra.value = target.value;
+                    extra.checked = target.checked;
+                }
+
+                logEvent(eventType, target, extra);
+            }, true);
+        });
+
+        // Special handlers for specific interactions
+
+        // Hover color change
+        const hoverTarget = document.getElementById('hover-target');
+        if (hoverTarget) {
+            hoverTarget.addEventListener('mouseenter', () => {
+                hoverTarget.style.background = 'lightgreen';
+                hoverTarget.setAttribute('data-hovered', 'true');
+            });
+            hoverTarget.addEventListener('mouseleave', () => {
+                hoverTarget.style.background = 'lightblue';
+                hoverTarget.removeAttribute('data-hovered');
+            });
+        }
+
+        // Custom dropdown functionality
+        const customDropdown = document.getElementById('custom-dropdown');
+        const customToggle = document.getElementById('custom-dropdown-toggle');
+        const customMenu = document.getElementById('custom-dropdown-menu');
+
+        if (customToggle && customMenu) {
+            customToggle.addEventListener('click', () => {
+                customMenu.classList.toggle('show');
+            });
+
+            // Handle option selection
+            customMenu.addEventListener('click', (e) => {
+                if (e.target.classList.contains('custom-dropdown-item')) {
+                    const value = e.target.getAttribute('data-value');
+                    const text = e.target.textContent;
+                    customToggle.textContent = text;
+                    customToggle.setAttribute('data-selected-value', value);
+                    customMenu.classList.remove('show');
+                }
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!customDropdown.contains(e.target)) {
+                    customMenu.classList.remove('show');
+                }
+            });
+        }
+
+        // Dynamic element creation
+        const createDynamicButton = document.getElementById('create-dynamic-button');
+        const dynamicContainer = document.getElementById('dynamic-elements-container');
+
+        if (createDynamicButton && dynamicContainer) {
+            createDynamicButton.addEventListener('click', () => {
+                const dynamicId = `dynamic-element-${Date.now()}`;
+                const dynamicElement = document.createElement('button');
+                dynamicElement.id = dynamicId;
+                dynamicElement.className = 'click-button';
+                dynamicElement.textContent = `Dynamic Button ${Date.now()}`;
+                dynamicElement.setAttribute('data-created', Date.now());
+
+                dynamicContainer.appendChild(dynamicElement);
+                logEvent('created', dynamicElement, { id: dynamicId });
+            });
+        }
+
+        // Visibility toggle
+        const toggleVisibilityButton = document.getElementById('toggle-visibility-button');
+        const toggleTarget = document.getElementById('toggle-target');
+
+        if (toggleVisibilityButton && toggleTarget) {
+            let isVisible = true;
+            toggleVisibilityButton.addEventListener('click', () => {
+                if (isVisible) {
+                    toggleTarget.style.display = 'none';
+                    toggleTarget.setAttribute('data-visibility', 'hidden');
+                } else {
+                    toggleTarget.style.display = '';
+                    toggleTarget.setAttribute('data-visibility', 'visible');
+                }
+                isVisible = !isVisible;
+            });
+        }
+
+        // Enable/disable toggle
+        const enableDisabledButton = document.getElementById('enable-disabled-button');
+        const delayedInput = document.getElementById('delayed-input');
+
+        if (enableDisabledButton && delayedInput) {
+            enableDisabledButton.addEventListener('click', () => {
+                setTimeout(() => {
+                    delayedInput.classList.remove('hidden-element');
+                    delayedInput.setAttribute('data-enabled', Date.now());
+                    logEvent('enabled', delayedInput);
+                }, 500);
+            });
+        }
+
+        // Clear log functionality
+        const clearLogButton = document.getElementById('clear-log-button');
+        if (clearLogButton) {
+            clearLogButton.addEventListener('click', () => {
+                eventLog.textContent = '';
+                console.log('Event log cleared');
+            });
+        }
+
+        // Initialize with a welcome message
+        logEvent('page-loaded', document.body, { url: window.location.href });
+
+        // Global test utilities for inspection
+        window.testUtils = {
+            getEventLog: () => eventLog.textContent,
+            clearEventLog: () => { eventLog.textContent = ''; },
+            getElementState: (selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+
+                const computedStyle = window.getComputedStyle(element);
+                return {
+                    visible: computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden',
+                    enabled: !element.disabled,
+                    value: element.value || element.textContent || '',
+                    checked: element.checked,
+                    focused: document.activeElement === element,
+                    bounds: element.getBoundingClientRect()
+                };
+            },
+            waitForElement: (selector, timeout = 5000) => {
+                return new Promise((resolve, reject) => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        resolve(element);
+                        return;
+                    }
+
+                    const observer = new MutationObserver(() => {
+                        const found = document.querySelector(selector);
+                        if (found) {
+                            observer.disconnect();
+                            resolve(found);
+                        }
+                    });
+
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+
+                    setTimeout(() => {
+                        observer.disconnect();
+                        reject(new Error(`Element ${selector} not found within ${timeout}ms`));
+                    }, timeout);
+                });
+            }
+        };
+
+        console.log('Element interaction test page loaded and ready');
+        console.log('Available test utilities:', Object.keys(window.testUtils));
+    </script>
+</body>
+</html>

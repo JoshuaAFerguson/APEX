@@ -1674,30 +1674,176 @@ export type AutonomyConfig = z.infer<typeof AutonomyConfigSchema>;
 // Workflow Definitions
 // ============================================================================
 
+/**
+ * Schema for workflow approval gates
+ * Defines checkpoints in workflows that require manual approval or automated validation
+ * @example
+ * ```typescript
+ * const gate: WorkflowGate = {
+ *   id: 'security-review',
+ *   name: 'Security Review Gate',
+ *   trigger: 'stage:implementation:completed',
+ *   required: true,
+ *   approvers: ['security-team@company.com']
+ * };
+ * ```
+ */
+/**
+ * Schema defining an approval gate in the APEX workflow system
+ * @description
+ * Workflow gates provide a flexible mechanism for human or automated approval
+ * before proceeding to subsequent stages. They act as critical checkpoints in the workflow,
+ * allowing for:
+ * - Governance and compliance enforcement
+ * - Quality control and review processes
+ * - Manual intervention and expert validation
+ * - Conditional workflow progression
+ *
+ * @remarks
+ * Gates can be:
+ * - Mandatory (required: true) or optional
+ * - Manually approved or auto-approved
+ * - Triggered by specific workflow events
+ * - Assigned to specific approvers or teams
+ *
+ * @example
+ * ```typescript
+ * const gate: WorkflowGate = {
+ *   id: 'security-review',
+ *   name: 'Security Review Gate',
+ *   description: 'Mandatory security review before code deployment',
+ *   trigger: 'stage:implementation:completed',
+ *   required: true,
+ *   autoApprove: false,
+ *   approvers: ['security-team@company.com'],
+ *   timeout: 1440,  // 24 hours to approve
+ *   tags: ['security', 'compliance']
+ * };
+ * ```
+ *
+ * @see {@link WorkflowDefinition} for using gates in a complete workflow
+ *
+ * @property {string} id - Unique identifier for the gate
+ * @property {string} [name] - Optional human-readable name
+ * @property {string} [description] - Optional detailed description
+ * @property {string} trigger - Event that triggers gate activation
+ * @property {boolean} [required=true] - Whether gate is mandatory
+ * @property {boolean} [autoApprove=false] - Automatically approve after timeout
+ * @property {string[]} [approvers] - Authorized approvers
+ * @property {number} [timeout] - Maximum approval time in minutes
+ * @property {string[]} [tags] - Optional categorization tags
+ *
+ * @category Workflow
+ * @category Governance
+ */
 export const WorkflowGateSchema = z.object({
+  /** Unique identifier for this gate */
   id: z.string(),
+  /** Human-readable name for this gate (optional) */
   name: z.string().optional(),
+  /** Description of what this gate validates (optional) */
   description: z.string().optional(),
+  /** Event that triggers this gate (e.g., 'stage:planning:completed') */
   trigger: z.string(),
+  /** Whether this gate must be approved before proceeding (default: true) */
   required: z.boolean().default(true),
+  /** Whether to automatically approve without manual intervention (default: false) */
   autoApprove: z.boolean().default(false),
+  /** List of users/teams who can approve this gate (optional) */
   approvers: z.array(z.string()).optional(),
-  timeout: z.number().optional(), // Minutes
+  /** Timeout in minutes before auto-approval or failure (optional) */
+  timeout: z.number().optional(),
+  /** Tags for categorizing or filtering gates (optional) */
   tags: z.array(z.string()).optional(),
 });
 export type WorkflowGate = z.infer<typeof WorkflowGateSchema>;
 
+/**
+ * Schema for individual workflow stages
+ * Defines a single step in a workflow that is executed by a specific agent
+ * @example
+ * ```typescript
+ * const stage: WorkflowStage = {
+ *   name: 'implementation',
+ *   agent: 'developer',
+ *   description: 'Write the implementation code',
+ *   dependsOn: ['planning', 'architecture'],
+ *   outputs: ['code_changes', 'test_results'],
+ *   gate: 'code-review-gate'
+ * };
+ * ```
+ */
+/**
+ * Schema defining a single stage in an APEX workflow
+ * @description
+ * Workflow stages represent individual steps in an automated process,
+ * executed by specific agents with configurable dependencies, inputs,
+ * and outputs.
+ *
+ * @remarks
+ * Stages provide granular control over workflow execution through:
+ * - Agent-specific task assignments
+ * - Stage dependency management
+ * - Parallel and sequential processing
+ * - Conditional execution
+ * - Retry mechanisms
+ *
+ * @example
+ * ```typescript
+ * const stage: WorkflowStage = {
+ *   name: 'code-generation',
+ *   agent: 'developer',
+ *   description: 'Generate implementation code based on requirements',
+ *   dependsOn: ['requirements-analysis'],
+ *   parallel: false,
+ *   inputs: ['requirements'],
+ *   outputs: ['generated-code', 'implementation-notes'],
+ *   condition: 'requirements.complexity < 5',
+ *   gate: 'code-review-gate',
+ *   maxRetries: 2
+ * };
+ * ```
+ *
+ * @see {@link WorkflowDefinition} for creating complete workflows
+ * @see {@link WorkflowGate} for stage approval mechanisms
+ *
+ * @property {string} name - Unique stage name within the workflow
+ * @property {string} agent - Agent type responsible for this stage
+ * @property {string} [description] - Optional stage description
+ * @property {string[]} [dependsOn] - Stages that must complete first
+ * @property {boolean} [parallel=false] - Whether stage can run in parallel
+ * @property {string[]} [inputs] - Expected input keys
+ * @property {string[]} [outputs] - Produced output keys
+ * @property {string} [condition] - Conditional execution expression
+ * @property {string[]} [actions] - Commands or actions to perform
+ * @property {string} [gate] - Approval gate to trigger after stage
+ * @property {number} [maxRetries=2] - Maximum retry attempts on failure
+ *
+ * @category Workflow
+ * @category Automation
+ */
 export const WorkflowStageSchema = z.object({
+  /** Name of this stage (must be unique within workflow) */
   name: z.string(),
+  /** Agent type that will execute this stage */
   agent: z.string(),
+  /** Description of what this stage accomplishes (optional) */
   description: z.string().optional(),
+  /** Names of stages that must complete before this one (optional) */
   dependsOn: z.array(z.string()).optional(),
+  /** Whether this stage can run in parallel with others (default: false) */
   parallel: z.boolean().optional().default(false),
+  /** List of input keys this stage expects from previous stages (optional) */
   inputs: z.array(z.string()).optional(),
+  /** List of output keys this stage will provide to subsequent stages (optional) */
   outputs: z.array(z.string()).optional(),
+  /** Conditional expression to determine if stage should run (optional) */
   condition: z.string().optional(),
+  /** List of actions or commands this stage should perform (optional) */
   actions: z.array(z.string()).optional(),
+  /** ID of approval gate to trigger after this stage (optional) */
   gate: z.string().nullable().optional(),
+  /** Maximum number of retry attempts if stage fails (default: 2) */
   maxRetries: z.number().optional().default(2),
 });
 export type WorkflowStage = z.infer<typeof WorkflowStageSchema>;
@@ -1705,6 +1851,55 @@ export type WorkflowStage = z.infer<typeof WorkflowStageSchema>;
 /**
  * Isolation configuration schema for workflows
  * Defines how tasks should be isolated during execution
+ */
+/**
+ * Schema defining task isolation configuration for APEX workflows
+ * @description
+ * Isolation configuration provides granular control over the
+ * execution environment for workflow tasks, ensuring security,
+ * resource management, and clean workflow execution.
+ *
+ * @remarks
+ * Isolation modes offer different levels of environment separation:
+ * - 'full': Complete containerization with strict resource boundaries
+ * - 'worktree': Git-based workspace isolation
+ * - 'shared': Minimal isolation, tasks share common environment
+ *
+ * Key features:
+ * - Container configuration for full isolation
+ * - Automatic workspace cleanup
+ * - Preserving workspaces for debugging
+ *
+ * @example
+ * ```typescript
+ * const isolation: IsolationConfig = {
+ *   mode: 'full',
+ *   container: {
+ *     image: 'apex-task-runner:latest',
+ *     resources: {
+ *       cpu: '2',
+ *       memory: '4G'
+ *     }
+ *   },
+ *   cleanupOnComplete: true,
+ *   preserveOnFailure: false
+ * };
+ *
+ * const gitIsolation: IsolationConfig = {
+ *   mode: 'worktree',
+ *   cleanupOnComplete: true
+ * };
+ * ```
+ *
+ * @see {@link WorkflowDefinition} for using isolation in workflows
+ *
+ * @property {string} mode - Isolation mode ('full', 'worktree', 'shared')
+ * @property {Object} [container] - Container configuration for 'full' mode
+ * @property {boolean} [cleanupOnComplete=true] - Cleanup workspace after task
+ * @property {boolean} [preserveOnFailure=false] - Keep workspace on task failure
+ *
+ * @category Workflow
+ * @category Security
  */
 export const IsolationConfigSchema = z.object({
   /** Isolation mode for this workflow */
@@ -1718,10 +1913,93 @@ export const IsolationConfigSchema = z.object({
 });
 export type IsolationConfig = z.infer<typeof IsolationConfigSchema>;
 
+/**
+ * Schema for complete workflow definitions
+ * Defines a multi-stage automated process with agents, dependencies, and approval gates
+ * @example
+ * ```typescript
+ * const workflow: WorkflowDefinition = {
+ *   name: 'feature-development',
+ *   description: 'Full feature development lifecycle',
+ *   trigger: ['feature:requested', 'pr:opened'],
+ *   stages: [
+ *     { name: 'planning', agent: 'planner' },
+ *     { name: 'implementation', agent: 'developer', dependsOn: ['planning'] }
+ *   ],
+ *   gates: [{ id: 'security-review', trigger: 'stage:implementation:completed' }]
+ * };
+ * ```
+ */
+/**
+ * Schema defining a complete workflow in the APEX system
+ * @description
+ * Workflow definitions provide a comprehensive blueprint for
+ * automated, multi-stage processes with configurable stages,
+ * gates, and isolation mechanisms.
+ *
+ * @remarks
+ * Workflows enable complex process orchestration through:
+ * - Declarative stage definitions
+ * - Approval gate management
+ * - Task isolation configuration
+ * - Event-driven triggering
+ * - Cross-stage dependency management
+ *
+ * @example
+ * ```typescript
+ * const workflow: WorkflowDefinition = {
+ *   name: 'feature-development',
+ *   description: 'End-to-end feature implementation workflow',
+ *   trigger: ['feature:requested'],
+ *   stages: [
+ *     {
+ *       name: 'requirements',
+ *       agent: 'planner',
+ *       description: 'Analyze and document feature requirements'
+ *     },
+ *     {
+ *       name: 'implementation',
+ *       agent: 'developer',
+ *       dependsOn: ['requirements'],
+ *       description: 'Implement feature based on requirements'
+ *     }
+ *   ],
+ *   gates: [
+ *     {
+ *       id: 'code-review',
+ *       name: 'Code Review Approval',
+ *       trigger: 'stage:implementation:completed'
+ *     }
+ *   ],
+ *   isolation: {
+ *     mode: 'worktree',
+ *     cleanupOnComplete: true
+ *   }
+ * };
+ * ```
+ *
+ * @see {@link WorkflowStage} for stage configuration
+ * @see {@link WorkflowGate} for approval gate configuration
+ * @see {@link IsolationConfig} for task isolation settings
+ *
+ * @property {string} name - Unique workflow name
+ * @property {string} description - What the workflow accomplishes
+ * @property {string[]} [trigger] - Events that can initiate the workflow
+ * @property {WorkflowStage[]} stages - Ordered list of stages to execute
+ * @property {WorkflowGate[]} [gates] - Approval gates for workflow checkpoints
+ * @property {IsolationConfig} [isolation] - Workflow execution environment settings
+ *
+ * @category Workflow
+ * @category Automation
+ */
 export const WorkflowDefinitionSchema = z.object({
+  /** Unique name for this workflow */
   name: z.string(),
+  /** Description of what this workflow accomplishes */
   description: z.string(),
+  /** Events that can trigger this workflow (optional) */
   trigger: z.array(z.string()).optional(),
+  /** Ordered list of stages to execute in this workflow */
   stages: z.array(WorkflowStageSchema),
   /** Approval gates for this workflow (optional) */
   gates: z.array(WorkflowGateSchema).optional(),
@@ -1734,6 +2012,19 @@ export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 // Project Configuration
 // ============================================================================
 
+/**
+ * Schema for project-specific configuration settings that define build, test, and development commands
+ * @example
+ * ```typescript
+ * const projectConfig: ProjectConfig = {
+ *   name: 'my-app',
+ *   language: 'typescript',
+ *   framework: 'react',
+ *   testCommand: 'npm test',
+ *   buildCommand: 'npm run build'
+ * };
+ * ```
+ */
 export const ProjectConfigSchema = z.object({
   name: z.string(),
   language: z.string().optional(),
@@ -1805,6 +2096,19 @@ export type WorktreeConfig = z.infer<typeof WorktreeConfigSchema>;
 // Git Configuration
 // ============================================================================
 
+/**
+ * Schema for Git workflow automation settings including branching, commits, pull requests, and worktree management
+ * @example
+ * ```typescript
+ * const gitConfig: GitConfig = {
+ *   branchPrefix: 'apex/',
+ *   commitFormat: 'conventional',
+ *   autoPush: true,
+ *   createPR: 'always',
+ *   autoWorktree: false
+ * };
+ * ```
+ */
 export const GitConfigSchema = z.object({
   branchPrefix: z.string().optional().default('apex/'),
   commitFormat: z.enum(['conventional', 'simple']).optional().default('conventional'),
@@ -1823,6 +2127,19 @@ export const GitConfigSchema = z.object({
 });
 export type GitConfig = z.infer<typeof GitConfigSchema>;
 
+/**
+ * Schema for execution limits and budgets to control resource usage and prevent runaway operations
+ * @example
+ * ```typescript
+ * const limits: LimitsConfig = {
+ *   maxTokensPerTask: 500000,
+ *   maxCostPerTask: 10.0,
+ *   dailyBudget: 100.0,
+ *   maxConcurrentTasks: 3,
+ *   maxRetries: 3
+ * };
+ * ```
+ */
 export const LimitsConfigSchema = z.object({
   maxTokensPerTask: z.number().optional().default(500000),
   maxCostPerTask: z.number().optional().default(10.0),
@@ -1837,6 +2154,17 @@ export const LimitsConfigSchema = z.object({
 });
 export type LimitsConfig = z.infer<typeof LimitsConfigSchema>;
 
+/**
+ * Schema for AI model selection per workflow stage to optimize cost and performance for different task types
+ * @example
+ * ```typescript
+ * const models: ModelsConfig = {
+ *   planning: 'opus',      // Use powerful model for complex planning
+ *   implementation: 'sonnet', // Balanced model for coding
+ *   review: 'haiku'        // Fast model for code review
+ * };
+ * ```
+ */
 export const ModelsConfigSchema = z.object({
   planning: AgentModelSchema.optional().default('opus'),
   implementation: AgentModelSchema.optional().default('sonnet'),
@@ -1844,6 +2172,19 @@ export const ModelsConfigSchema = z.object({
 });
 export type ModelsConfig = z.infer<typeof ModelsConfigSchema>;
 
+/**
+ * Schema for user interface behavior configuration including preview modes and automation settings
+ * @example
+ * ```typescript
+ * const ui: UIConfig = {
+ *   previewMode: true,
+ *   previewConfidence: 0.7,
+ *   autoExecuteHighConfidence: false,
+ *   previewTimeout: 5000,
+ *   diffPreview: true
+ * };
+ * ```
+ */
 export const UIConfigSchema = z.object({
   previewMode: z.boolean().optional().default(true),
   previewConfidence: z.number().min(0).max(1).optional().default(0.7),
@@ -3999,6 +4340,21 @@ export const ApiAuthConfigSchema = z.object({
 });
 export type ApiAuthConfig = z.infer<typeof ApiAuthConfigSchema>;
 
+/**
+ * Main configuration schema for APEX project settings, defining all aspects of the AI development platform
+ * including project setup, agent behavior, resource limits, integrations, and workflow automation
+ * @example
+ * ```typescript
+ * const apexConfig: ApexConfig = {
+ *   version: '1.0',
+ *   project: { name: 'my-app', language: 'typescript' },
+ *   models: { planning: 'opus', implementation: 'sonnet' },
+ *   git: { branchPrefix: 'apex/', autoPush: true },
+ *   limits: { maxTokensPerTask: 500000, dailyBudget: 100.0 },
+ *   ui: { previewMode: true, diffPreview: true }
+ * };
+ * ```
+ */
 export const ApexConfigSchema = z.object({
   version: z.string().default('1.0'),
   project: ProjectConfigSchema,
@@ -4846,18 +5202,47 @@ export interface ServiceInstallConfig {
 // Stage Execution Results
 // ============================================================================
 
+/**
+ * Result data from executing a workflow stage
+ * Contains all information about stage execution including status, outputs, and performance metrics
+ * @example
+ * ```typescript
+ * const result: StageResult = {
+ *   stageName: 'implementation',
+ *   agent: 'developer',
+ *   status: 'completed',
+ *   outputs: { code_changes: ['src/api.ts'], branch_name: 'feature/new-api' },
+ *   artifacts: ['src/api.ts', 'tests/api.test.ts'],
+ *   summary: 'Implemented new API endpoints with comprehensive tests',
+ *   usage: { inputTokens: 1500, outputTokens: 800, totalCost: 0.025 },
+ *   startedAt: new Date('2024-01-01T10:00:00Z'),
+ *   completedAt: new Date('2024-01-01T10:30:00Z')
+ * };
+ * ```
+ */
 export interface StageResult {
+  /** Name of the workflow stage that was executed */
   stageName: string;
+  /** Type of agent that executed this stage */
   agent: string;
+  /** Final execution status of the stage */
   status: 'completed' | 'failed' | 'skipped';
+  /** Key-value pairs of data produced by this stage for subsequent stages */
   outputs: Record<string, unknown>;
-  artifacts: string[];  // File paths created/modified
-  summary: string;      // Agent's summary of what was done
+  /** File paths that were created or modified during stage execution */
+  artifacts: string[];
+  /** Human-readable summary of what was accomplished in this stage */
+  summary: string;
+  /** Token usage and cost metrics for this stage execution */
   usage: TaskUsage;
+  /** Error message if stage failed (optional) */
   error?: string;
+  /** Timestamp when stage execution began */
   startedAt: Date;
+  /** Timestamp when stage execution finished */
   completedAt: Date;
-  autoFixResults?: AutoFixStageResults;  // Auto-fix results if applied to this stage
+  /** Results from any auto-fix operations applied to this stage (optional) */
+  autoFixResults?: AutoFixStageResults;
 }
 
 /**

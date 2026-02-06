@@ -19,7 +19,7 @@ import {
 } from './config';
 import { ApexConfig, ApexConfigSchema } from './types';
 
-describe.skip('parseAgentMarkdown', () => {
+describe('parseAgentMarkdown', () => {
   it('should parse agent markdown with frontmatter', () => {
     const markdown = `---
 name: test-agent
@@ -596,7 +596,7 @@ describe('loadConfig and saveConfig', () => {
   });
 });
 
-describe.skip('loadAgents', () => {
+describe('loadAgents', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -667,7 +667,7 @@ Write code.`;
   });
 });
 
-describe.skip('loadWorkflows', () => {
+describe('loadWorkflows', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -726,7 +726,7 @@ stages:
   });
 });
 
-describe.skip('loadWorkflow', () => {
+describe('loadWorkflow', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -903,7 +903,7 @@ describe('Scanner Configuration Validation', () => {
   });
 });
 
-describe.skip('Skills and Scripts', () => {
+describe('Skills and Scripts', () => {
   let testDir: string;
 
   beforeEach(async () => {

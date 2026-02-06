@@ -327,7 +327,7 @@ describe('isPreRelease', () => {
   });
 });
 
-describe.skip('compareVersions', () => {
+describe('compareVersions', () => {
   // Basic comparisons
   it('should compare major versions', () => {
     expect(compareVersions('2.0.0', '1.0.0')).toBe(1);
@@ -430,7 +430,7 @@ describe.skip('compareVersions', () => {
   });
 });
 
-describe.skip('getUpdateType', () => {
+describe('getUpdateType', () => {
   it('should detect major updates', () => {
     expect(getUpdateType('1.0.0', '2.0.0')).toBe('major');
     expect(getUpdateType('1.5.10', '3.0.0')).toBe('major');
@@ -524,7 +524,7 @@ describe.skip('getUpdateType', () => {
   });
 });
 
-describe.skip('parseConventionalCommit', () => {
+describe('parseConventionalCommit', () => {
   it('should parse basic commit', () => {
     const result = parseConventionalCommit('feat: add new feature');
     expect(result).toEqual({
@@ -563,7 +563,7 @@ describe.skip('parseConventionalCommit', () => {
   });
 });
 
-describe.skip('createConventionalCommit', () => {
+describe('createConventionalCommit', () => {
   it('should create basic commit message', () => {
     const msg = createConventionalCommit('feat', 'add feature');
     expect(msg).toBe('feat: add feature');
@@ -624,7 +624,7 @@ describe('deepMerge', () => {
   });
 });
 
-describe.skip('truncate', () => {
+describe('truncate', () => {
   it('should truncate long strings', () => {
     expect(truncate('hello world', 8)).toBe('hello...');
   });
@@ -638,7 +638,7 @@ describe.skip('truncate', () => {
   });
 });
 
-describe.skip('extractCodeBlocks', () => {
+describe('extractCodeBlocks', () => {
   it('should extract code blocks', () => {
     const markdown = 'Some text\n```typescript\nconst x = 1;\n```\nMore text';
     const blocks = extractCodeBlocks(markdown);
@@ -739,7 +739,7 @@ describe('retry', () => {
   });
 });
 
-describe.skip('createDeferred', () => {
+describe('createDeferred', () => {
   it('should create a deferred that can be resolved', async () => {
     const deferred = createDeferred<string>();
 
@@ -774,7 +774,7 @@ describe.skip('createDeferred', () => {
   });
 });
 
-describe.skip('COMMIT_TYPES', () => {
+describe('COMMIT_TYPES', () => {
   it('should have all standard commit types', () => {
     expect(COMMIT_TYPES.feat).toBeDefined();
     expect(COMMIT_TYPES.fix).toBeDefined();
@@ -793,7 +793,7 @@ describe.skip('COMMIT_TYPES', () => {
   });
 });
 
-describe.skip('parseGitLog', () => {
+describe('parseGitLog', () => {
   it('should parse git log output', () => {
     const logOutput = `commit abc123def456789
 Author: John Doe <john@example.com>
@@ -841,7 +841,7 @@ Date:   Mon Jan 15 10:00:00 2025 -0800
   });
 });
 
-describe.skip('groupCommitsByType', () => {
+describe('groupCommitsByType', () => {
   it('should group commits by conventional type', () => {
     const entries = [
       {
@@ -898,7 +898,7 @@ describe.skip('groupCommitsByType', () => {
   });
 });
 
-describe.skip('generateChangelogMarkdown', () => {
+describe('generateChangelogMarkdown', () => {
   it('should generate markdown changelog', () => {
     const groups = [
       {
@@ -997,7 +997,7 @@ describe.skip('generateChangelogMarkdown', () => {
   });
 });
 
-describe.skip('suggestCommitType', () => {
+describe('suggestCommitType', () => {
   it('should suggest test type for test files', () => {
     const files = ['src/utils.test.ts', 'tests/integration.spec.js'];
     expect(suggestCommitType(files)).toBe('test');
@@ -1038,7 +1038,7 @@ describe.skip('suggestCommitType', () => {
 // CONFLICT DETECTION TESTS
 // ============================================================================
 
-describe.skip('detectConflicts', () => {
+describe('detectConflicts', () => {
   it('should detect simple conflict markers', () => {
     const content = `line 1
 <<<<<<< HEAD
@@ -1121,7 +1121,7 @@ line 8`;
   });
 });
 
-describe.skip('suggestConflictResolution', () => {
+describe('suggestConflictResolution', () => {
   it('should suggest keep-incoming when current is empty', () => {
     const marker = {
       startLine: 1,
@@ -1196,7 +1196,7 @@ describe.skip('suggestConflictResolution', () => {
   });
 });
 
-describe.skip('formatConflictReport', () => {
+describe('formatConflictReport', () => {
   it('should return no conflicts message for empty array', () => {
     const report = formatConflictReport([]);
     expect(report).toBe('No conflicts detected.');

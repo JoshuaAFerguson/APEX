@@ -83,6 +83,19 @@
         .success {
             color: #28a745;
         }
+        .info {
+            color: #6c757d;
+            font-size: 0.875em;
+            margin-top: 5px;
+        }
+        input[type="file"] {
+            width: 100%;
+            max-width: 400px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
     </style>
 </head>
 <body>
@@ -131,6 +144,27 @@
             <div class="form-group">
                 <label for="bio">Bio</label>
                 <textarea id="bio" name="bio" rows="4" placeholder="Tell us about yourself..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="profile-photo">Profile Photo</label>
+                <input type="file" id="profile-photo" name="profile-photo" accept="image/*" />
+                <div id="file-info" class="info"></div>
+                <div id="profile-photo-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="resume">Resume (PDF)</label>
+                <input type="file" id="resume" name="resume" accept=".pdf" />
+                <div id="resume-info" class="info"></div>
+                <div id="resume-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="documents">Additional Documents (Multiple)</label>
+                <input type="file" id="documents" name="documents" multiple />
+                <div id="documents-info" class="info"></div>
+                <div id="documents-error" class="error"></div>
             </div>
 
             <div class="form-group">
@@ -220,18 +254,99 @@
                 isValid = false;
             }
 
+            // File validation
+            const profilePhoto = document.getElementById('profile-photo').files[0];
+            if (profilePhoto) {
+                if (profilePhoto.size > 5 * 1024 * 1024) { // 5MB limit
+                    showError('profile-photo', 'Profile photo must be smaller than 5MB');
+                    isValid = false;
+                }
+                if (!profilePhoto.type.startsWith('image/')) {
+                    showError('profile-photo', 'Profile photo must be an image file');
+                    isValid = false;
+                }
+            }
+
+            const resume = document.getElementById('resume').files[0];
+            if (resume) {
+                if (resume.type !== 'application/pdf') {
+                    showError('resume', 'Resume must be a PDF file');
+                    isValid = false;
+                }
+                if (resume.size > 10 * 1024 * 1024) { // 10MB limit
+                    showError('resume', 'Resume must be smaller than 10MB');
+                    isValid = false;
+                }
+            }
+
+            const documents = document.getElementById('documents').files;
+            if (documents.length > 5) {
+                showError('documents', 'You can upload at most 5 documents');
+                isValid = false;
+            }
+
             return isValid;
+        }
+
+        function showFileInfo(inputId, infoId) {
+            const input = document.getElementById(inputId);
+            const info = document.getElementById(infoId);
+
+            if (input.files.length === 0) {
+                info.textContent = '';
+                return;
+            }
+
+            if (input.multiple) {
+                const fileCount = input.files.length;
+                const totalSize = Array.from(input.files).reduce((sum, file) => sum + file.size, 0);
+                const sizeText = formatFileSize(totalSize);
+                info.textContent = `${fileCount} file(s) selected (${sizeText} total)`;
+            } else {
+                const file = input.files[0];
+                const sizeText = formatFileSize(file.size);
+                info.textContent = `${file.name} (${sizeText})`;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         function getFormData() {
             const data = new FormData(form);
             const result = {};
             for (let [key, value] of data.entries()) {
-                result[key] = value;
+                if (value instanceof File) {
+                    result[key] = {
+                        name: value.name,
+                        size: value.size,
+                        type: value.type,
+                        lastModified: value.lastModified
+                    };
+                } else {
+                    result[key] = value;
+                }
             }
             // Handle checkboxes that aren't checked
             result.newsletter = document.getElementById('newsletter').checked;
             result.terms = document.getElementById('terms').checked;
+
+            // Handle multiple files
+            const documents = document.getElementById('documents').files;
+            if (documents.length > 0) {
+                result.documents = Array.from(documents).map(file => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: file.lastModified
+                }));
+            }
+
             return result;
         }
 
@@ -281,6 +396,25 @@
             if (email && !emailRegex.test(email)) {
                 showError('email', 'Please enter a valid email address');
             }
+        });
+
+        // File input event listeners
+        document.getElementById('profile-photo').addEventListener('change', function() {
+            showFileInfo('profile-photo', 'file-info');
+            // Clear previous errors on new selection
+            document.getElementById('profile-photo-error').textContent = '';
+        });
+
+        document.getElementById('resume').addEventListener('change', function() {
+            showFileInfo('resume', 'resume-info');
+            // Clear previous errors on new selection
+            document.getElementById('resume-error').textContent = '';
+        });
+
+        document.getElementById('documents').addEventListener('change', function() {
+            showFileInfo('documents', 'documents-info');
+            // Clear previous errors on new selection
+            document.getElementById('documents-error').textContent = '';
         });
 
         // Log page load

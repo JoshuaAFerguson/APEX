@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { BrowserTestBase, createBrowserTest, BrowserTestUtils } from '../../test-utils/browser-test-base.js';
+import { BrowserTestBase, createBrowserTest, BrowserTestUtils } from '@apex/test-utils/browser-test-base';
 import { createBrowser, createBrowserContext, createPage, setupTestPage } from './setup.js';
 import { takeScreenshot, waitForElement, safeClick, safeFill } from './utils/test-helpers.js';
 import * as fs from 'fs/promises';

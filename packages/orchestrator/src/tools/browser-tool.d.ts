@@ -24,7 +24,7 @@ export type BrowserToolLifecycleState = 'idle' | 'launching' | 'active' | 'clean
 /**
  * Supported browser operations
  */
-export type BrowserOperation = 'navigate' | 'click' | 'type' | 'screenshot' | 'compareScreenshot' | 'evaluate' | 'submit' | 'waitForSelector' | 'getAttribute' | 'getText' | 'getHtml' | 'scroll' | 'hover';
+export type BrowserOperation = 'navigate' | 'click' | 'type' | 'screenshot' | 'compareScreenshot' | 'evaluate' | 'submit' | 'waitForSelector' | 'getAttribute' | 'getText' | 'getHtml' | 'scroll' | 'hover' | 'generatePdf';
 /**
  * Options for BrowserTool constructor
  */
@@ -186,6 +186,36 @@ export interface BrowserHoverParams {
     selector: string;
 }
 /**
+ * Parameters for PDF generation
+ */
+export interface BrowserGeneratePdfParams {
+    /** Optional file path to save PDF */
+    path?: string;
+    /** PDF format/page size */
+    format?: 'Letter' | 'Legal' | 'Tabloid' | 'Ledger' | 'A0' | 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6';
+    /** Page width (overrides format) */
+    width?: string;
+    /** Page height (overrides format) */
+    height?: string;
+    /** Page margins */
+    margin?: {
+        top?: string;
+        bottom?: string;
+        left?: string;
+        right?: string;
+    };
+    /** Print in landscape orientation */
+    landscape?: boolean;
+    /** Print background graphics */
+    printBackground?: boolean;
+    /** Scale factor for rendering (0.1 to 2.0) */
+    scale?: number;
+    /** Page ranges to print (e.g., '1-5, 8, 11-13') */
+    pageRanges?: string;
+    /** Prefer CSS page size if defined */
+    preferCSSPageSize?: boolean;
+}
+/**
  * Unified parameters type for all browser operations
  */
 export type BrowserParams = {
@@ -227,6 +257,9 @@ export type BrowserParams = {
 } | {
     operation: 'hover';
     params: BrowserHoverParams;
+} | {
+    operation: 'generatePdf';
+    params: BrowserGeneratePdfParams;
 };
 /**
  * Result of browser operation
