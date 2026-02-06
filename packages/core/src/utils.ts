@@ -1,13 +1,48 @@
 import * as crypto from 'crypto';
 
+/**
+ * Represents a code block with syntax highlighting information.
+ * Used for displaying formatted code snippets with language-specific highlighting.
+ *
+ * @interface CodeBlock
+ * @example
+ * ```typescript
+ * const codeBlock: CodeBlock = {
+ *   language: 'typescript',
+ *   code: 'function hello() { return "world"; }'
+ * };
+ * ```
+ */
 export interface CodeBlock {
+  /** Programming language for syntax highlighting (e.g., 'typescript', 'javascript', 'python') */
   language: string;
+  /** The actual code content as a string */
   code: string;
 }
 
+/**
+ * Represents a group of git commits organized by their conventional commit type.
+ * Used for generating organized changelogs and release notes.
+ *
+ * @interface ChangelogGroup
+ * @example
+ * ```typescript
+ * const changelogGroup: ChangelogGroup = {
+ *   type: 'feat',
+ *   title: 'Features',
+ *   commits: [
+ *     { hash: 'abc123', message: 'feat: add new user authentication' },
+ *     { hash: 'def456', message: 'feat: implement password reset' }
+ *   ]
+ * };
+ * ```
+ */
 export interface ChangelogGroup {
+  /** The conventional commit type or 'other' for unclassified commits */
   type: CommitType | 'other';
+  /** Human-readable title for this group in changelogs */
   title: string;
+  /** Array of git commits belonging to this group */
   commits: GitLogEntry[];
 }
 

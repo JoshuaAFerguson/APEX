@@ -691,6 +691,286 @@ describe('Permission Error Handling', () => {
 
 ---
 
+## API Reference: Browser State Fixtures
+
+> **Tip:** The `browserFixtures` object provides factory functions for creating predefined browser state objects for common testing scenarios. These fixtures include authentication states, error conditions, loading states, and network conditions. For detailed modification of states, see the [browserHelpers](#api-reference-browser-state-helpers) below.
+
+```typescript
+import { browserFixtures, browserHelpers, BrowserStateBuilder } from '@apex/core/test-fixtures';
+```
+
+### `cleanState(overrides?)`
+
+Creates a clean initial browser state with no user data, representing a fresh browser start.
+
+```typescript
+const state = browserFixtures.cleanState({
+  url: 'https://custom.example.com',
+  title: 'Custom Page'
+});
+// state.isAuthenticated => false, state.localStorage => {}, etc.
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default clean state
+
+**Returns:** `BrowserState` — Clean browser state with default values:
+- `url`: `'about:blank'`
+- `title`: `''`
+- `isLoading`: `false`
+- `hasError`: `false`
+- `isAuthenticated`: `false`
+- `localStorage`: `{}`
+- `sessionStorage`: `{}`
+- `cookies`: `[]`
+- `consoleMessages`: `[]`
+- `networkRequests`: `[]`
+
+**Usage Example:**
+```typescript
+it('should start with clean browser state', () => {
+  const state = browserFixtures.cleanState();
+  expect(state.isAuthenticated).toBe(false);
+  expect(state.localStorage).toEqual({});
+  expect(state.cookies).toEqual([]);
+});
+```
+
+---
+
+### `loggedInPage(overrides?)`
+
+Creates a browser state representing a logged-in user with authentication data and session information.
+
+```typescript
+const state = browserFixtures.loggedInPage({
+  sessionStorage: {
+    'current-project': '/users/custom/project'
+  }
+});
+// state.isAuthenticated => true, state.localStorage['auth-token'] => 'mock-jwt-token', etc.
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default logged-in state
+
+**Returns:** `BrowserState` — Logged-in browser state with default values:
+- `url`: `'https://app.apex.dev/dashboard'`
+- `title`: `'APEX Dashboard'`
+- `isAuthenticated`: `true`
+- `localStorage`: Contains `'auth-token'`, `'user-preferences'`, `'session-id'`
+- `sessionStorage`: Contains `'current-project'`, `'active-agents'`
+- `cookies`: Contains authentication and CSRF tokens
+- `consoleMessages`: Contains successful authentication logs
+- `networkRequests`: Contains user profile and projects API calls
+
+**Usage Example:**
+```typescript
+it('should have authenticated user with session data', () => {
+  const state = browserFixtures.loggedInPage();
+  expect(state.isAuthenticated).toBe(true);
+  expect(state.localStorage['auth-token']).toBe('mock-jwt-token');
+  expect(state.cookies).toHaveLength(2);
+  expect(state.networkRequests).toHaveLength(2);
+});
+```
+
+---
+
+### `errorPage(overrides?)`
+
+Creates a browser state representing an error condition (network error, 500 error, etc.).
+
+```typescript
+const state = browserFixtures.errorPage({
+  localStorage: {
+    'last-error': JSON.stringify({
+      code: 404,
+      message: 'Page Not Found'
+    })
+  }
+});
+// state.hasError => true, state.isAuthenticated => false (errors clear auth)
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default error state
+
+**Returns:** `BrowserState` — Error browser state with default values:
+- `url`: `'https://app.apex.dev/error'`
+- `title`: `'Error - APEX'`
+- `hasError`: `true`
+- `isAuthenticated`: `false` (errors often clear auth state)
+- `localStorage`: Contains last error information
+- `consoleMessages`: Contains error messages and warnings
+- `networkRequests`: Contains failed API requests with 500 status
+
+**Usage Example:**
+```typescript
+it('should handle server errors with error state', () => {
+  const state = browserFixtures.errorPage();
+  expect(state.hasError).toBe(true);
+  expect(state.consoleMessages.some(msg => msg.type === 'error')).toBe(true);
+  expect(state.networkRequests[0].status).toBe(500);
+});
+```
+
+---
+
+### `loadingPage(overrides?)`
+
+Creates a browser state representing a loading condition (initial load, navigation in progress).
+
+```typescript
+const state = browserFixtures.loadingPage({
+  sessionStorage: {
+    'loading-progress': '75%'
+  }
+});
+// state.isLoading => true, state.isAuthenticated => false (unknown during loading)
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default loading state
+
+**Returns:** `BrowserState` — Loading browser state with default values:
+- `url`: `'https://app.apex.dev/loading'`
+- `title`: `'Loading... - APEX'`
+- `isLoading`: `true`
+- `isAuthenticated`: `false` (unknown during loading)
+- `localStorage`: Contains loading start time
+- `sessionStorage`: Contains navigation state
+- `consoleMessages`: Contains loading progress messages
+- `networkRequests`: Contains resource loading requests (bundle.js, styles.css)
+
+**Usage Example:**
+```typescript
+it('should show loading state during navigation', () => {
+  const state = browserFixtures.loadingPage();
+  expect(state.isLoading).toBe(true);
+  expect(state.title).toBe('Loading... - APEX');
+  expect(state.consoleMessages.some(msg => msg.message.includes('Loading'))).toBe(true);
+});
+```
+
+---
+
+### `offlinePage(overrides?)`
+
+Creates a browser state representing a network offline condition.
+
+```typescript
+const state = browserFixtures.offlinePage({
+  localStorage: {
+    'cached-content': JSON.stringify({
+      projects: ['project1', 'project2']
+    })
+  }
+});
+// state.localStorage['offline-mode'] => 'true', state.networkRequests => []
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default offline state
+
+**Returns:** `BrowserState` — Offline browser state with default values:
+- `url`: `'https://app.apex.dev/offline'`
+- `title`: `'Offline - APEX'`
+- `isAuthenticated`: `false` (cannot verify when offline)
+- `localStorage`: Contains offline mode flag, last online time, and cached data
+- `consoleMessages`: Contains network loss warnings and offline mode notifications
+- `networkRequests`: `[]` (no requests when offline)
+
+**Usage Example:**
+```typescript
+it('should handle offline mode with cached data', () => {
+  const state = browserFixtures.offlinePage();
+  expect(state.localStorage['offline-mode']).toBe('true');
+  expect(state.networkRequests).toHaveLength(0);
+  expect(state.consoleMessages.some(msg => msg.message.includes('Network connection lost'))).toBe(true);
+});
+```
+
+---
+
+### `permissionDeniedPage(overrides?)`
+
+Creates a browser state representing a permission denied condition (user lacks access to a resource).
+
+```typescript
+const state = browserFixtures.permissionDeniedPage({
+  sessionStorage: {
+    'attempted-resource': '/api/admin/users'
+  }
+});
+// state.isAuthenticated => true, but access denied to specific resource
+```
+
+**Parameters:**
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the default permission denied state
+
+**Returns:** `BrowserState` — Permission denied browser state with default values:
+- `url`: `'https://app.apex.dev/access-denied'`
+- `title`: `'Access Denied - APEX'`
+- `hasError`: `false` (not a system error, just access denied)
+- `isAuthenticated`: `true` (user is logged in but lacks permissions)
+- `localStorage`: Contains auth token and access level information
+- `sessionStorage`: Contains attempted resource path
+- `cookies`: Contains authentication session cookie
+- `consoleMessages`: Contains permission warnings and role information
+- `networkRequests`: Contains failed API request with 403 status
+
+**Usage Example:**
+```typescript
+it('should handle authenticated user with insufficient permissions', () => {
+  const state = browserFixtures.permissionDeniedPage();
+  expect(state.isAuthenticated).toBe(true);
+  expect(state.networkRequests[0].status).toBe(403);
+  expect(state.consoleMessages.some(msg => msg.message.includes('Access denied'))).toBe(true);
+});
+```
+
+---
+
+### `fromScenario(scenario, overrides?)`
+
+Creates a browser state based on a predefined test scenario.
+
+```typescript
+const state = browserFixtures.fromScenario('logged-in-user', {
+  url: 'https://custom.example.com/dashboard'
+});
+// Equivalent to: browserFixtures.loggedInPage({ url: 'https://custom.example.com/dashboard' })
+```
+
+**Parameters:**
+- `scenario`: `TestScenario` — The test scenario to create a state for
+- `overrides`: `Partial<BrowserState>` *(optional)* — Properties to override in the scenario state
+
+**Supported Scenarios:**
+- `'clean-state'`: Creates clean state (calls `cleanState()`)
+- `'logged-in-user'`: Creates logged-in state (calls `loggedInPage()`)
+- `'error-state'`: Creates error state (calls `errorPage()`)
+- `'loading-state'`: Creates loading state (calls `loadingPage()`)
+- `'network-offline'`: Creates offline state (calls `offlinePage()`)
+- `'permission-denied'`: Creates permission denied state (calls `permissionDeniedPage()`)
+
+**Usage Example:**
+```typescript
+const scenarios = ['clean-state', 'logged-in-user', 'error-state'] as const;
+
+scenarios.forEach(scenario => {
+  it(`should handle ${scenario} scenario`, () => {
+    const state = browserFixtures.fromScenario(scenario);
+    expect(state).toBeDefined();
+    expect(state.url).toBeDefined();
+    expect(state.title).toBeDefined();
+  });
+});
+```
+
+---
+
 ## API Reference: Browser State Helpers
 
 > **Tip:** The `browserHelpers` object provides pure, immutable helper functions for manipulating `BrowserState` objects. Each method returns a **new** `BrowserState` instance — the original state is never mutated. For building complex states from scratch, see the [BrowserStateBuilder](#api-reference-browserstatebuilder) below.
@@ -1345,8 +1625,350 @@ describe('Dashboard Integration Tests', () => {
 
 ---
 
+## API Reference: Mock Helper Functions
+
+> **Tip:** The mock helper functions create comprehensive mocks for testing various APEX components. These functions integrate seamlessly with the browser state fixtures and permission testing utilities above. For complete documentation of all mock helpers, see the [Mock Helpers API Reference](./mock-helpers-api.md).
+
+```typescript
+import {
+  createOrchestratorMock,
+  createAgentSdkMock,
+  createFileSystemMock,
+  createNetworkMock,
+  createTaskStoreMock,
+  createEventEmitterMock,
+  createPageMock,
+  createConsoleMock,
+  createMockEnvironment
+} from '@apex/core/test-fixtures/mock-helpers';
+```
+
+### `createOrchestratorMock(overrides?)`
+
+Creates a mock for the APEX Orchestrator with all core functionality.
+
+```typescript
+const mockOrchestrator = createOrchestratorMock({
+  executeTask: vi.fn().mockResolvedValue({
+    success: true,
+    taskId: 'custom-task-id',
+    result: 'Custom result'
+  })
+});
+```
+
+**Parameters:**
+- `overrides`: `Record<string, any>` *(optional, default: `{}`)* — Object to override default mock implementations
+
+**Returns:** Mock object with orchestrator methods:
+- `executeTask()` — Returns `{ success: true, taskId: 'mock-task-id', result: 'Task completed successfully' }`
+- `createTask()` — Returns `{ id: 'mock-task-id', status: 'pending', workflow: 'feature-development', createdAt: Date }`
+- `getTask()`, `getTasks()` — Task retrieval methods
+- `on()`, `off()`, `emit()` — Event handling methods
+- `loadConfig()` — Returns `{ autonomyLevel: 'supervised', agents: {}, workflows: {} }`
+
+**Usage Example:**
+```typescript
+it('should execute tasks through orchestrator', async () => {
+  const mockOrchestrator = createOrchestratorMock();
+  const result = await mockOrchestrator.executeTask('test-workflow', 'Test description');
+
+  expect(result.success).toBe(true);
+  expect(mockOrchestrator.executeTask).toHaveBeenCalledWith('test-workflow', 'Test description');
+});
+```
+
+---
+
+### `createAgentSdkMock(overrides?)`
+
+Creates a mock for the Claude Agent SDK interface.
+
+```typescript
+const mockAgentSdk = createAgentSdkMock({
+  query: vi.fn().mockResolvedValue({
+    text: 'Custom agent response',
+    usage: { input_tokens: 50, output_tokens: 75 }
+  })
+});
+```
+
+**Parameters:**
+- `overrides`: `Record<string, any>` *(optional, default: `{}`)* — Object to override default mock implementations
+
+**Returns:** Mock object with Agent SDK methods:
+- `query()` — Returns `{ text: 'Mock agent response', usage: { input_tokens: 100, output_tokens: 150 } }`
+- `createClient()` — Returns mock client with `messages.create` method
+
+**Usage Example:**
+```typescript
+it('should query agent SDK for responses', async () => {
+  const mockAgentSdk = createAgentSdkMock();
+  const result = await mockAgentSdk.query('test prompt');
+
+  expect(result.text).toBe('Mock agent response');
+  expect(result.usage.input_tokens).toBe(100);
+});
+```
+
+---
+
+### `createFileSystemMock(fileData?)`
+
+Creates a mock for file system operations with configurable file data.
+
+```typescript
+const mockFs = createFileSystemMock({
+  '/path/to/file.txt': 'file content',
+  '/config.json': '{"key": "value"}'
+});
+```
+
+**Parameters:**
+- `fileData`: `Record<string, string>` *(optional, default: `{}`)* — Map of file paths to their content
+
+**Returns:** Mock object with file system methods:
+- `readFile()` — Reads from `fileData` or throws ENOENT error
+- `writeFile()`, `mkdir()`, `unlink()` — File manipulation methods
+- `readdir()` — Returns directory contents based on `fileData`
+- `stat()`, `access()` — File metadata and existence checks
+
+**Usage Example:**
+```typescript
+it('should read and write files through file system mock', async () => {
+  const mockFs = createFileSystemMock({
+    '/test.txt': 'initial content'
+  });
+
+  const content = await mockFs.readFile('/test.txt');
+  expect(content).toBe('initial content');
+
+  await mockFs.writeFile('/test.txt', 'new content');
+  expect(mockFs.writeFile).toHaveBeenCalledWith('/test.txt', 'new content');
+});
+```
+
+---
+
+### `createNetworkMock(responses?)`
+
+Creates a mock for network requests with configurable responses.
+
+```typescript
+const mockNetwork = createNetworkMock({
+  'https://api.example.com/data': { success: true, data: [] },
+  'https://api.example.com/user': 'user response string'
+});
+```
+
+**Parameters:**
+- `responses`: `Record<string, any>` *(optional, default: `{}`)* — Map of URLs to their response data
+
+**Returns:** Mock object with network methods:
+- `fetch()` — Returns configured responses or throws error for unmocked URLs
+- `addResponse()` — Adds a response for a specific URL
+- `simulateNetworkError()` — Configures a URL to throw network errors
+
+**Usage Example:**
+```typescript
+it('should handle network requests with mock responses', async () => {
+  const mockNetwork = createNetworkMock({
+    'https://api.example.com/test': { result: 'success' }
+  });
+
+  const response = await mockNetwork.fetch('https://api.example.com/test');
+  const data = await response.json();
+
+  expect(data.result).toBe('success');
+
+  // Add response dynamically
+  mockNetwork.addResponse('https://api.example.com/new', { id: 123 });
+});
+```
+
+---
+
+### `createTaskStoreMock(initialTasks?)`
+
+Creates a mock task store with in-memory task management.
+
+```typescript
+const mockTaskStore = createTaskStoreMock([
+  { id: 'existing-task', status: 'completed', workflow: 'test' }
+]);
+```
+
+**Parameters:**
+- `initialTasks`: `any[]` *(optional, default: `[]`)* — Array of initial tasks to populate the store
+
+**Returns:** Mock object with task store methods:
+- `create()` — Creates a new task with auto-generated ID and timestamps
+- `get()`, `update()`, `delete()` — Task CRUD operations
+- `list()` — Returns all tasks
+- `_getTasks()`, `_clearTasks()`, `_addTask()` — Helper methods for testing
+
+**Usage Example:**
+```typescript
+it('should manage tasks through task store mock', async () => {
+  const mockTaskStore = createTaskStoreMock();
+
+  const newTask = await mockTaskStore.create({
+    workflow: 'test-workflow',
+    description: 'Test task'
+  });
+
+  expect(newTask.id).toBeDefined();
+  expect(newTask.status).toBe('pending');
+
+  const retrieved = await mockTaskStore.get(newTask.id);
+  expect(retrieved.workflow).toBe('test-workflow');
+});
+```
+
+---
+
+### `createPageMock(overrides?)`
+
+Creates a mock for browser/Playwright page objects.
+
+```typescript
+const mockPage = createPageMock({
+  title: vi.fn().mockResolvedValue('Custom Page Title'),
+  url: vi.fn().mockReturnValue('https://custom.example.com')
+});
+```
+
+**Parameters:**
+- `overrides`: `Record<string, any>` *(optional, default: `{}`)* — Object to override default mock implementations
+
+**Returns:** Mock object with page methods:
+- `goto()`, `url()`, `title()`, `content()` — Navigation and content methods
+- `click()`, `type()`, `fill()`, `selectOption()` — Element interaction methods
+- `waitForSelector()`, `waitForTimeout()`, `waitForLoadState()` — Waiting methods
+- `screenshot()`, `evaluate()` — Capture and execution methods
+- `locator()` — Returns mock locator object with interaction methods
+
+**Usage Example:**
+```typescript
+it('should interact with page elements through page mock', async () => {
+  const mockPage = createPageMock();
+
+  await mockPage.goto('https://example.com');
+  await mockPage.click('#button');
+  const title = await mockPage.title();
+
+  expect(title).toBe('Test Page');
+  expect(mockPage.goto).toHaveBeenCalledWith('https://example.com');
+  expect(mockPage.click).toHaveBeenCalledWith('#button');
+});
+```
+
+---
+
+### `createConsoleMock()`
+
+Creates a mock console with message tracking.
+
+```typescript
+const mockConsole = createConsoleMock();
+
+mockConsole.log('Test message');
+mockConsole.error('Error message');
+
+const messages = mockConsole._getMessages();
+const errors = mockConsole._getMessagesByLevel('error');
+```
+
+**Parameters:** None
+
+**Returns:** Mock object with console methods:
+- `log()`, `error()`, `warn()`, `info()` — Logging methods that store messages
+- `_getMessages()` — Returns all logged messages with timestamps
+- `_clearMessages()` — Clears all logged messages
+- `_getMessagesByLevel()` — Returns messages filtered by level
+
+**Usage Example:**
+```typescript
+it('should track console messages through console mock', () => {
+  const mockConsole = createConsoleMock();
+
+  mockConsole.log('Info message');
+  mockConsole.error('Error occurred');
+
+  const messages = mockConsole._getMessages();
+  expect(messages).toHaveLength(2);
+
+  const errors = mockConsole._getMessagesByLevel('error');
+  expect(errors).toHaveLength(1);
+  expect(errors[0].message).toBe('Error occurred');
+});
+```
+
+---
+
+### `createMockEnvironment(options?)`
+
+Creates a complete mock environment with multiple mocks configured together.
+
+```typescript
+const env = createMockEnvironment({
+  includeOrchestrator: true,
+  includeFileSystem: true,
+  fileData: {
+    '/.apex/config.yaml': 'autonomy_level: supervised',
+    '/src/main.ts': 'console.log("Hello");'
+  },
+  networkResponses: {
+    'https://api.anthropic.com/v1/messages': {
+      content: [{ text: 'AI response' }],
+      usage: { input_tokens: 10, output_tokens: 20 }
+    }
+  }
+});
+```
+
+**Parameters:**
+- `options`: Configuration object *(optional, default: `{}`)* with properties:
+  - `includeOrchestrator`: `boolean` *(default: `true`)* — Include orchestrator mock
+  - `includeFileSystem`: `boolean` *(default: `true`)* — Include file system mock
+  - `includeNetwork`: `boolean` *(default: `true`)* — Include network mock
+  - `includeTaskStore`: `boolean` *(default: `true`)* — Include task store mock
+  - `fileData`: `Record<string, string>` *(default: `{}`)* — File data for file system mock
+  - `networkResponses`: `Record<string, any>` *(default: `{}`)* — Network responses for network mock
+  - `initialTasks`: `any[]` *(default: `[]`)* — Initial tasks for task store mock
+
+**Returns:** Environment object containing selected mocks:
+- `orchestrator?` — Orchestrator mock (if included)
+- `fs?` — File system mock (if included)
+- `network?` — Network mock (if included)
+- `taskStore?` — Task store mock (if included)
+
+**Usage Example:**
+```typescript
+it('should provide complete mock environment for integration tests', async () => {
+  const env = createMockEnvironment({
+    fileData: { '/config.yaml': 'key: value' },
+    networkResponses: { 'https://api.test.com': { success: true } },
+    initialTasks: [{ id: 'task-1', status: 'pending' }]
+  });
+
+  // Use all mocks together
+  const config = await env.fs.readFile('/config.yaml');
+  const task = await env.taskStore.get('task-1');
+  const result = await env.orchestrator.executeTask('workflow', 'description');
+
+  expect(config).toBe('key: value');
+  expect(task.status).toBe('pending');
+  expect(result.success).toBe(true);
+});
+```
+
+---
+
 ## Related Documentation
 
+- [Mock Helpers API Reference](./mock-helpers-api.md) - Complete API reference for mock helper functions including createOrchestratorMock, createAgentSdkMock, createFileSystemMock, and other test utilities
+- [Browser State Fixtures API](./browser-state-fixtures-api.md) - Detailed API documentation for browserFixtures, browserHelpers, and BrowserStateBuilder
 - [Browser Automation Guide](./browser-automation.md) - Browser operations, configuration, and usage patterns that these test utilities validate
 - [System APIs Reference](./system-apis-reference.md) - Type definitions for `ToolPermissionResult`, `PermissionManager`, `BrowserTool`, and other interfaces used in tests
 - [Test Utilities](./test-utilities.md) - Cross-platform test utilities (platform detection, conditional skipping, platform mocking) shared across all test suites

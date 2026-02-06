@@ -2,8 +2,10 @@
  * Test utilities for APEX testing
  *
  * This module provides shared testing utilities used across the APEX codebase,
- * including browser test utilities for mock page objects, DOM structures,
- * test URLs, and browser state assertions.
+ * including:
+ * - Browser test utilities for mock page objects, DOM structures, and assertions
+ * - Mock tool types for Claude Agent SDK testing
+ * - Sensitive pattern detection for testing secret scanning
  */
 
 // Existing utilities
@@ -14,3 +16,6 @@ export * from './mock-page';
 export * from './mock-dom';
 export * from './test-urls';
 export * from './browser-assertions';
+
+// Mock tool types for Claude Agent SDK testing
+export * from './mock-tool-types';

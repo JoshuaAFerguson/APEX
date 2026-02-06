@@ -37,3 +37,21 @@ export {
   ShellToolResponses,
   WebToolResponses
 } from './tool-factory.js';
+
+// Autonomy factories
+export {
+  createAutonomyConfig,
+  createAgentAutonomyOverride,
+  createApprovalGate,
+  createResourceLimits,
+  createFullAutoConfig,
+  createReviewBeforeCommitConfig,
+  createReviewAllConfig,
+  createTestAutonomyConfig,
+  createRestrictiveConfig,
+  createPermissiveConfig,
+  AutonomyPresets,
+  createAutonomyLevelCollection,
+  createAutonomyVariants,
+  validateAutonomyConfig
+} from './autonomy-factory.js';

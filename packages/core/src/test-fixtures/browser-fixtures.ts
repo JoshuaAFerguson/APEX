@@ -607,6 +607,19 @@ export class BrowserStateBuilder {
   }
 
   /**
+   * Adds cookies
+   */
+  withCookies(cookies: Array<{
+    name: string;
+    value: string;
+    domain?: string;
+    path?: string;
+  }>): this {
+    this.state.cookies = [...this.state.cookies, ...cookies];
+    return this;
+  }
+
+  /**
    * Adds network requests
    */
   withNetworkRequests(requests: Array<{

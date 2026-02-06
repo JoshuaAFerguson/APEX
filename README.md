@@ -70,14 +70,59 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 - **🏢 Enterprise Ready** - Scales from individual developers to large teams
 
 ### v0.5.0 - Tool System & Permissions ✨ **NEW**
-- **🌐 Browser Automation** - Headless browser testing with Playwright (Chrome, Firefox, Safari)
-- **🔧 Built-in Tools** - Complete Claude Code tool parity (Read, Write, Edit, Bash, etc.)
-- **🛡️ Permission System** - Fine-grained control with autonomous/review/read-only presets
-- **📋 Policy Engine** - Policy-as-code rules for path restrictions and approval gates
-- **🎯 Autonomy Controls** - Smart budget, token, time, and change limits
-- **🔍 Code Quality** - Lint-after-edit, auto-fix, type checking, and TDD mode
-- **🔗 MCP Integration** - Model Context Protocol for extensible tool ecosystem
-- **🔐 Secret Protection** - Automatic detection and blocking of credential leaks
+
+#### 🌐 Browser Automation
+- **Multi-browser support** with Playwright (Chromium, Firefox, WebKit)
+- **Interactive operations** - Navigate, click, type, scroll, hover, screenshot
+- **Visual regression testing** - Compare screenshots across runs with diff detection
+- **Console monitoring** - Capture browser console logs and runtime errors
+- **Form automation** - Submit forms and handle complex user interactions
+- **Domain security** - Configurable allowlists and blocklists for safe browsing
+
+#### 🔧 Built-in Tools (Claude Code Parity)
+- **File Operations**: Read, Write, Edit, MultiEdit with syntax highlighting
+- **System Commands**: Bash execution with safety controls and command filtering
+- **Code Search**: Glob pattern matching and Grep content search with ripgrep
+- **Web Operations**: WebFetch and WebSearch for external content integration
+- **Development Tools**: NotebookEdit for Jupyter notebooks, TodoWrite for task management
+- **Real-time Visualization**: Tool execution display with timing and output formatting
+
+#### 🛡️ Permission System
+- **Three-tier control**: Autonomous (full auto), Review All (human approval), Read Only (safe exploration)
+- **Fine-grained permissions**: Per-tool, per-operation, and per-domain controls
+- **Persistent storage** - SQLite-backed permission grants with lifetime management
+- **Approval workflows** - Event-driven approval gates with WebSocket real-time updates
+- **Directory access control** - Path-based restrictions with allowlists and blocklists
+
+#### 📋 Policy Engine & Governance
+- **Policy-as-code** - YAML-defined rules for organizational compliance
+- **Approval rules** - Configurable gates for dangerous operations, cost thresholds, config changes
+- **Path restrictions** - Enforce allowed/blocked file access patterns
+- **Audit trails** - Complete logging of tool usage and permission grants
+
+#### 🎯 Smart Autonomy Controls
+- **Resource limits**: Budget ($), token count, execution time, and change volume controls
+- **Warning thresholds** - Configurable alerts before hitting limits
+- **Approval gates** - Pause execution for human review at critical checkpoints
+- **Graceful degradation** - Continue operation within constraints when limits approached
+
+#### 🔍 Code Quality Integration
+- **Lint-after-edit** - Automatic code formatting and error correction
+- **Type checking integration** - TypeScript/Flow support with auto-fix suggestions
+- **Test-Driven Development** - TDD mode with iterative fix loops
+- **Regression guards** - Prevent breaking changes with pre-commit validation
+
+#### 🔗 Extensible Tool Ecosystem
+- **MCP Integration** - Model Context Protocol for third-party tool servers
+- **Custom tools** - Plugin architecture for organization-specific tools
+- **Tool hooks** - Pre/post execution callbacks for custom validation and processing
+- **Workflow integration** - Tools respect autonomy levels and permission presets
+
+#### 🔐 Security & Safety
+- **Secret detection** - Automatic scanning for API keys, passwords, tokens
+- **Credential leak prevention** - Block commits and tool outputs containing sensitive data
+- **Sandboxed execution** - Isolated browser sessions and command execution
+- **Request monitoring** - Track and control external network requests
 
 ## Platform Support
 
@@ -144,7 +189,52 @@ $env:ANTHROPIC_API_KEY="your_key_here"
 
 # Run a development task
 apex run "Add user authentication with JWT tokens"
+
+# Run with browser automation (v0.5.0+)
+apex run "Create a login form with visual regression tests"
+
+# Run with specific permission level
+apex run --autonomy autonomous "Optimize database performance"
+apex run --autonomy review-all "Update production configuration"
 ```
+
+### v0.5.0 Features Setup
+
+**Browser Automation Setup:**
+```bash
+# Install browser dependencies
+npx playwright install chromium
+
+# Test browser automation
+apex browser test-connection
+```
+
+**Configure Permissions (add to .apex/config.yaml):**
+```yaml
+permissions:
+  preset: autonomous    # Options: autonomous, reviewAll, readOnly
+  persistence: true
+
+tools:
+  browser:
+    enabled: true
+    engine: chromium
+    headless: true
+    allowedDomains:
+      - localhost
+      - '*.local'
+
+autonomy:
+  limits:
+    budgetLimit: 10.0
+    tokenLimit: 100000
+    timeLimit: 3600000
+```
+
+**Permission Presets:**
+- `autonomous` - Full automation for maximum productivity
+- `reviewAll` - Human approval for every operation
+- `readOnly` - Safe exploration mode, no file modifications
 
 ### Slack Integration (Socket Mode)
 
@@ -163,6 +253,10 @@ Once the API is running, use `/apex` commands in Slack:
 
 | Document | Description |
 |----------|-------------|
+| [v0.5.0 Features](docs/v050-features.md) | Complete guide to v0.5.0 tools, permissions, and browser automation |
+| [Browser Automation](docs/browser-automation.md) | Headless browser testing, visual regression, and web interaction |
+| [Permission System](docs/permission-system.md) | Fine-grained permission controls and security |
+| [Tool System](docs/tool-system.md) | Built-in tools, extensions, and MCP integration |
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Windows Installation Guide](docs/windows-installation.md) | Windows-specific setup and configuration |
 | [Configuration](docs/configuration.md) | Project configuration options |

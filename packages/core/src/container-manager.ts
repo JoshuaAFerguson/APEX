@@ -189,6 +189,25 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
     eventTypes: ['die', 'start', 'stop', 'create', 'destroy']
   };
 
+  /**
+   * Create a new ContainerManager instance
+   *
+   * @param runtime - Container runtime instance (auto-created if not provided)
+   * @param namingConfig - Custom container naming configuration (merged with defaults)
+   *
+   * @example
+   * ```typescript
+   * // Create with defaults
+   * const manager = new ContainerManager();
+   *
+   * // Create with custom runtime and naming
+   * const customRuntime = new ContainerRuntime();
+   * const manager = new ContainerManager(customRuntime, {
+   *   prefix: 'myapp',
+   *   includeTimestamp: true
+   * });
+   * ```
+   */
   constructor(
     runtime?: ContainerRuntime,
     namingConfig?: Partial<ContainerNamingConfig>
@@ -2099,15 +2118,50 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
 /**
  * Default container manager instance
+ *
+ * Pre-configured ContainerManager with default settings for global use
+ * throughout the APEX system.
+ *
+ * @example
+ * ```typescript
+ * import { containerManager } from '@apex/core';
+ *
+ * // Create a container using the default manager
+ * const result = await containerManager.createContainer({
+ *   config: { image: 'node:18' },
+ *   taskId: 'task-123'
+ * });
+ * ```
  */
 export const containerManager = new ContainerManager();
 
 /**
  * Convenience function to create a container with a task ID
- * @param config Container configuration
- * @param taskId Associated task ID
- * @param autoStart Whether to start the container immediately
- * @returns Container operation result
+ *
+ * Simplified interface for creating containers that automatically handles
+ * common task-based container scenarios using the default container manager.
+ *
+ * @param config - Container configuration including image, commands, volumes
+ * @param taskId - Associated task ID for naming and tracking
+ * @param autoStart - Whether to start the container immediately (default: true)
+ * @returns Promise resolving to container operation result
+ *
+ * @example
+ * ```typescript
+ * // Create and start a Node.js container for a task
+ * const result = await createTaskContainer(
+ *   {
+ *     image: 'node:18',
+ *     command: ['npm', 'start'],
+ *     environment: { NODE_ENV: 'production' }
+ *   },
+ *   'task-123'
+ * );
+ *
+ * if (result.success) {
+ *   console.log('Container created:', result.containerId);
+ * }
+ * ```
  */
 export async function createTaskContainer(
   config: ContainerConfig,

@@ -34,7 +34,21 @@ const testDuplicatePattern: DuplicatePattern = {
   similarity: 0.95,
 };
 
-// Compile-time verification that types work
+/**
+ * Compile-time verification that type interfaces work correctly.
+ *
+ * Performs runtime validation of type definitions for enhanced complexity metrics
+ * including ComplexityHotspot, CodeSmell, and DuplicatePattern interfaces.
+ * This function ensures that all interface properties are accessible and properly typed.
+ *
+ * @returns Always returns true after successful type validation
+ * @example
+ * ```typescript
+ * // Validate that all type definitions compile correctly
+ * const isValid = validateTypes();
+ * console.log('Types are valid:', isValid); // true
+ * ```
+ */
 export function validateTypes(): boolean {
   // Test ComplexityHotspot properties
   const hotspotFile: string = testHotspot.file;

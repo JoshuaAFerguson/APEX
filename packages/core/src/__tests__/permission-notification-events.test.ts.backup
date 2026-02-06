@@ -350,7 +350,6 @@ describe('PermissionChangeEventSchema Validation', () => {
         'granted',
         'revoked',
         'modified',
-        'expired',
       ];
 
       changeTypes.forEach(changeType => {
@@ -359,7 +358,7 @@ describe('PermissionChangeEventSchema Validation', () => {
     });
 
     it('should reject invalid change types', () => {
-      const invalidTypes = ['created', 'deleted', 'updated', 'invalid'];
+      const invalidTypes = ['expired', 'created', 'deleted', 'updated', 'invalid'];
 
       invalidTypes.forEach(type => {
         expect(() => PermissionChangeTypeSchema.parse(type)).toThrow();
@@ -544,10 +543,10 @@ describe('PermissionChangeEventSchema Validation', () => {
       expect(result.metadata?.automaticRevocation).toBe(true);
     });
 
-    it('should validate permission expiration event', () => {
+    it('should validate permission revocation event due to expiration', () => {
       const expirationEvent: PermissionChangeEvent = {
         id: 'perm-expire-101',
-        changeType: 'expired',
+        changeType: 'revoked',
         permission: {
           tool: 'Read',
           scope: '/tmp/temp-files/**',
@@ -573,7 +572,7 @@ describe('PermissionChangeEventSchema Validation', () => {
       };
 
       const result = PermissionChangeEventSchema.parse(expirationEvent);
-      expect(result.changeType).toBe('expired');
+      expect(result.changeType).toBe('revoked');
       expect(result.permission.reason).toContain('expired after timeout');
       expect(result.source).toBe('permission-expiration-service');
     });

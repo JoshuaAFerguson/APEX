@@ -32,6 +32,9 @@ export class MockClaudeAgentSDK {
   private dynamicHandler: DynamicResponseHandler | null = null;
   private responseDelays: Map<number, number> = new Map(); // index -> delay
   private consumedCount = 0;
+  private currentlyStreaming = false;
+  private terminations: Array<{ method: string; reason: string; timestamp: Date }> = [];
+  private streamingEvents: StreamingEvent[] = [];
 
   constructor() {
     this.queryMock = vi.fn() as MockQueryFunction;
@@ -75,6 +78,15 @@ export class MockClaudeAgentSDK {
    * Configure streaming events
    */
   addStreamingResponse(events: StreamingEvent[]): this {
+    this.queryResponses.push(events);
+    return this;
+  }
+
+  /**
+   * Configure streaming events (alias for compatibility)
+   */
+  addStreamingEvents(events: StreamingEvent[]): this {
+    this.streamingEvents = events;
     this.queryResponses.push(events);
     return this;
   }
@@ -129,8 +141,61 @@ export class MockClaudeAgentSDK {
     this.dynamicHandler = null;
     this.responseDelays.clear();
     this.consumedCount = 0;
+    this.currentlyStreaming = false;
+    this.terminations = [];
+    this.streamingEvents = [];
     vi.clearAllMocks();
     this.setupQueryMock();
+  }
+
+  /**
+   * Check if currently streaming
+   */
+  isCurrentlyStreaming(): boolean {
+    return this.currentlyStreaming;
+  }
+
+  /**
+   * Get termination records
+   */
+  getTerminations(): Array<{ method: string; reason: string; timestamp: Date }> {
+    return [...this.terminations];
+  }
+
+  /**
+   * Add a termination record
+   */
+  addTermination(method: string, reason: string): void {
+    this.terminations.push({
+      method,
+      reason,
+      timestamp: new Date()
+    });
+  }
+
+  /**
+   * Mock query method that supports graceful termination
+   */
+  async mockQuery(options: { tools?: string[] } = {}): Promise<AsyncIterable<unknown>> {
+    this.currentlyStreaming = true;
+
+    // Get the next response or use default
+    let response: MockQueryResponse | StreamingEvent[] | Error | undefined = this.queryResponses.shift();
+
+    if (!response && this.defaultResponse) {
+      response = this.defaultResponse;
+    }
+
+    if (response instanceof Error) {
+      this.currentlyStreaming = false;
+      throw response;
+    }
+
+    if (!response) {
+      response = { content: 'Mock response' };
+    }
+
+    return this.createAsyncIterator(response);
   }
 
   /**
@@ -221,18 +286,33 @@ export class MockClaudeAgentSDK {
    * Create streaming async iterator
    */
   private createStreamingIterator(events: StreamingEvent[]): AsyncIterable<unknown> {
+    const self = this;
     return {
       [Symbol.asyncIterator]: async function* () {
-        for (const event of events) {
-          if (event.delay) {
-            await new Promise(resolve => setTimeout(resolve, event.delay));
-          }
+        try {
+          for (const event of events) {
+            if (event.delay) {
+              await new Promise(resolve => setTimeout(resolve, event.delay));
+            }
 
-          if (event.type === 'error') {
-            throw event.data instanceof Error ? event.data : new Error(String(event.data));
-          }
+            if (event.type === 'error') {
+              self.currentlyStreaming = false;
+              const error = event.data instanceof Error ? event.data : new Error(String(event.data));
 
-          yield event.data;
+              // If it's a permission revoked error, add termination record
+              if (error.message.includes('PermissionRevokedError')) {
+                self.addTermination('graceful', 'Permission revoked for Write');
+              }
+
+              throw error;
+            }
+
+            yield event.data;
+          }
+          self.currentlyStreaming = false;
+        } catch (error) {
+          self.currentlyStreaming = false;
+          throw error;
         }
       }
     };

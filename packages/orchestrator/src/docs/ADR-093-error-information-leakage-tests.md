@@ -1,7 +1,7 @@
 # ADR-093: Error Information Leakage Tests for Orchestrator Package
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 The core package (`@apex/core`) already has `error-message-security.test.ts` testing the `sanitizeErrorMessage()` and `toSafeErrorResponse()` utilities. However, the orchestrator package has its own error handling paths that could leak sensitive information. This ADR defines the test architecture for verifying that orchestrator-level error handling doesn't expose file paths, API keys, database paths, or SQL queries.

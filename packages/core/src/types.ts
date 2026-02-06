@@ -4296,15 +4296,36 @@ export interface TaskDecomposition {
 }
 
 /**
- * Definition for creating a subtask
+ * Definition for creating a subtask within a parent task decomposition
+ *
+ * Used to define the characteristics and requirements of a subtask when
+ * breaking down a complex parent task into smaller, manageable units.
+ *
+ * @example
+ * ```typescript
+ * const subtaskDef: SubtaskDefinition = {
+ *   description: 'Create user authentication API',
+ *   acceptanceCriteria: 'API should handle login/logout with JWT tokens',
+ *   workflow: 'api-development',
+ *   priority: 'high',
+ *   effort: 'medium',
+ *   dependsOn: ['Create user database schema']
+ * };
+ * ```
  */
 export interface SubtaskDefinition {
+  /** Brief description of what the subtask should accomplish */
   description: string;
+  /** Optional acceptance criteria defining when the subtask is complete */
   acceptanceCriteria?: string;
+  /** Workflow to use for subtask execution (defaults to parent task's workflow) */
   workflow?: string;
+  /** Priority level for subtask execution (defaults to parent task's priority) */
   priority?: TaskPriority;
+  /** Estimated effort/complexity level (defaults to parent task's effort scaled down) */
   effort?: TaskEffort;
-  dependsOn?: string[];  // References other subtask descriptions or IDs
+  /** Array of subtask descriptions or IDs this subtask depends on for execution order */
+  dependsOn?: string[];
 }
 
 /**
@@ -9624,4 +9645,11 @@ export type {
   BrowserLifecycleState,
   BrowserLifecycleAware,
   BrowserResourceState,
+  BrowserPermissionDeniedContext,
+} from './tools/browser/browser-permission-denied-error.js';
+
+export {
+  BrowserPermissionDeniedError,
+  isBrowserPermissionDeniedError,
+  toBrowserPermissionDeniedError,
 } from './tools/browser/browser-permission-denied-error.js';

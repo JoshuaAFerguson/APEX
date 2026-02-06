@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Test Page - APEX Browser Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: #dc3545;
+            color: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .button {
+            background: #007acc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #005a9e;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .button.danger:hover {
+            background: #c82333;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.success:hover {
+            background: #218838;
+        }
+        .hidden {
+            display: none;
+        }
+        .visible {
+            display: block;
+        }
+        .output-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            min-height: 50px;
+            font-family: monospace;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            z-index: 1000;
+        }
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .draggable {
+            background: #fff3cd;
+            border: 2px dashed #856404;
+            padding: 20px;
+            margin: 10px;
+            border-radius: 4px;
+            cursor: move;
+            user-select: none;
+        }
+        .drop-zone {
+            background: #d1ecf1;
+            border: 2px dashed #0c5460;
+            padding: 40px;
+            margin: 10px;
+            border-radius: 4px;
+            text-align: center;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drop-zone.drag-over {
+            background: #b8daff;
+            border-color: #004085;
+        }
+        .slider {
+            width: 100%;
+            margin: 20px 0;
+        }
+        #progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #progress-fill {
+            height: 100%;
+            background: #007acc;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Interactive Test Page</h1>
+            <p>Advanced interactions for browser automation testing</p>
+        </div>
+
+        <!-- Dynamic Content Section -->
+        <div class="section">
+            <h2>Dynamic Content</h2>
+            <button id="add-content-btn" class="button">Add Content</button>
+            <button id="remove-content-btn" class="button danger">Remove Content</button>
+            <button id="toggle-content-btn" class="button">Toggle Visibility</button>
+            <div id="dynamic-content" class="output-box">
+                <p>Initial content</p>
+            </div>
+        </div>
+
+        <!-- Modal Section -->
+        <div class="section">
+            <h2>Modal Testing</h2>
+            <button id="open-modal-btn" class="button">Open Modal</button>
+            <button id="confirm-modal-btn" class="button success">Open Confirm Modal</button>
+        </div>
+
+        <!-- Drag and Drop Section -->
+        <div class="section">
+            <h2>Drag and Drop</h2>
+            <div class="draggable" id="draggable-1" draggable="true">
+                Drag me to the drop zone
+            </div>
+            <div class="drop-zone" id="drop-zone">
+                Drop items here
+            </div>
+            <div id="drag-output" class="output-box">
+                Drag and drop events will appear here...
+            </div>
+        </div>
+
+        <!-- Slider and Progress Section -->
+        <div class="section">
+            <h2>Slider and Progress</h2>
+            <input type="range" id="test-slider" class="slider" min="0" max="100" value="50" />
+            <p>Slider Value: <span id="slider-value">50</span></p>
+            <button id="start-progress-btn" class="button">Start Progress</button>
+            <div id="progress-bar">
+                <div id="progress-fill"></div>
+            </div>
+            <p>Progress: <span id="progress-text">0%</span></p>
+        </div>
+
+        <!-- Event Logging Section -->
+        <div class="section">
+            <h2>Event Logging</h2>
+            <button id="log-info-btn" class="button">Log Info</button>
+            <button id="log-warning-btn" class="button" style="background: #ffc107; color: #000;">Log Warning</button>
+            <button id="log-error-btn" class="button danger">Log Error</button>
+            <button id="clear-log-btn" class="button">Clear Console</button>
+            <div id="event-log" class="output-box">
+                Event log will appear here...
+            </div>
+        </div>
+
+        <!-- Async Operations Section -->
+        <div class="section">
+            <h2>Async Operations</h2>
+            <button id="fast-async-btn" class="button">Fast Async (1s)</button>
+            <button id="slow-async-btn" class="button">Slow Async (3s)</button>
+            <button id="failing-async-btn" class="button danger">Failing Async</button>
+            <div id="async-output" class="output-box">
+                Async operation results will appear here...
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal HTML -->
+    <div id="test-modal" class="modal">
+        <div class="modal-content">
+            <h3>Test Modal</h3>
+            <p>This is a modal dialog for testing.</p>
+            <button id="close-modal-btn" class="button">Close</button>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <h3>Confirm Action</h3>
+            <p>Are you sure you want to perform this action?</p>
+            <button id="confirm-yes-btn" class="button success">Yes</button>
+            <button id="confirm-no-btn" class="button danger">No</button>
+        </div>
+    </div>
+
+    <script>
+        // Dynamic content management
+        let contentCounter = 1;
+        const dynamicContent = document.getElementById('dynamic-content');
+        const eventLog = document.getElementById('event-log');
+
+        function logEvent(message, type = 'info') {
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            eventLog.textContent += logEntry;
+            eventLog.scrollTop = eventLog.scrollHeight;
+
+            // Also log to browser console
+            console[type](message);
+        }
+
+        document.getElementById('add-content-btn').addEventListener('click', function() {
+            const p = document.createElement('p');
+            p.textContent = `Dynamic content ${++contentCounter}`;
+            p.id = `content-${contentCounter}`;
+            dynamicContent.appendChild(p);
+            logEvent(`Added content-${contentCounter}`);
+        });
+
+        document.getElementById('remove-content-btn').addEventListener('click', function() {
+            const lastChild = dynamicContent.lastElementChild;
+            if (lastChild && lastChild.tagName === 'P') {
+                const id = lastChild.id;
+                dynamicContent.removeChild(lastChild);
+                logEvent(`Removed ${id}`);
+            } else {
+                logEvent('No content to remove', 'warn');
+            }
+        });
+
+        document.getElementById('toggle-content-btn').addEventListener('click', function() {
+            dynamicContent.classList.toggle('hidden');
+            const isHidden = dynamicContent.classList.contains('hidden');
+            logEvent(`Content visibility: ${isHidden ? 'hidden' : 'visible'}`);
+        });
+
+        // Modal functionality
+        const testModal = document.getElementById('test-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+
+        document.getElementById('open-modal-btn').addEventListener('click', function() {
+            testModal.style.display = 'block';
+            logEvent('Test modal opened');
+        });
+
+        document.getElementById('close-modal-btn').addEventListener('click', function() {
+            testModal.style.display = 'none';
+            logEvent('Test modal closed');
+        });
+
+        document.getElementById('confirm-modal-btn').addEventListener('click', function() {
+            confirmModal.style.display = 'block';
+            logEvent('Confirm modal opened');
+        });
+
+        document.getElementById('confirm-yes-btn').addEventListener('click', function() {
+            confirmModal.style.display = 'none';
+            logEvent('Confirm modal: YES selected');
+        });
+
+        document.getElementById('confirm-no-btn').addEventListener('click', function() {
+            confirmModal.style.display = 'none';
+            logEvent('Confirm modal: NO selected');
+        });
+
+        // Close modals on background click
+        [testModal, confirmModal].forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                    logEvent('Modal closed by background click');
+                }
+            });
+        });
+
+        // Drag and drop functionality
+        const draggable = document.getElementById('draggable-1');
+        const dropZone = document.getElementById('drop-zone');
+        const dragOutput = document.getElementById('drag-output');
+
+        draggable.addEventListener('dragstart', function(e) {
+            e.dataTransfer.setData('text/plain', e.target.id);
+            dragOutput.textContent = 'Drag started';
+            logEvent('Drag started');
+        });
+
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', function(e) {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            const draggedId = e.dataTransfer.getData('text/plain');
+            dropZone.classList.remove('drag-over');
+            dragOutput.textContent = `Dropped: ${draggedId}`;
+            logEvent(`Item dropped: ${draggedId}`);
+        });
+
+        // Slider functionality
+        const slider = document.getElementById('test-slider');
+        const sliderValue = document.getElementById('slider-value');
+
+        slider.addEventListener('input', function() {
+            sliderValue.textContent = slider.value;
+            logEvent(`Slider value changed to: ${slider.value}`);
+        });
+
+        // Progress bar functionality
+        document.getElementById('start-progress-btn').addEventListener('click', function() {
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            let progress = 0;
+
+            logEvent('Progress started');
+
+            const interval = setInterval(() => {
+                progress += 10;
+                progressFill.style.width = progress + '%';
+                progressText.textContent = progress + '%';
+
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    logEvent('Progress completed');
+                }
+            }, 200);
+        });
+
+        // Console logging buttons
+        document.getElementById('log-info-btn').addEventListener('click', function() {
+            logEvent('This is an info message', 'info');
+        });
+
+        document.getElementById('log-warning-btn').addEventListener('click', function() {
+            logEvent('This is a warning message', 'warn');
+        });
+
+        document.getElementById('log-error-btn').addEventListener('click', function() {
+            logEvent('This is an error message', 'error');
+        });
+
+        document.getElementById('clear-log-btn').addEventListener('click', function() {
+            eventLog.textContent = '';
+            console.clear();
+            logEvent('Event log cleared');
+        });
+
+        // Async operations
+        document.getElementById('fast-async-btn').addEventListener('click', async function() {
+            const output = document.getElementById('async-output');
+            output.textContent = 'Fast async operation in progress...';
+            logEvent('Fast async operation started');
+
+            setTimeout(() => {
+                output.textContent = 'Fast async operation completed!';
+                logEvent('Fast async operation completed');
+            }, 1000);
+        });
+
+        document.getElementById('slow-async-btn').addEventListener('click', async function() {
+            const output = document.getElementById('async-output');
+            output.textContent = 'Slow async operation in progress...';
+            logEvent('Slow async operation started');
+
+            setTimeout(() => {
+                output.textContent = 'Slow async operation completed!';
+                logEvent('Slow async operation completed');
+            }, 3000);
+        });
+
+        document.getElementById('failing-async-btn').addEventListener('click', async function() {
+            const output = document.getElementById('async-output');
+            output.textContent = 'Failing async operation...';
+            logEvent('Failing async operation started');
+
+            setTimeout(() => {
+                output.textContent = 'Async operation failed!';
+                logEvent('Async operation failed', 'error');
+                throw new Error('Intentional async failure for testing');
+            }, 1500);
+        });
+
+        // Initial page load log
+        logEvent('Interactive test page loaded and initialized');
+        console.log('Interactive test page fully loaded');
+    </script>
+</body>
+</html>

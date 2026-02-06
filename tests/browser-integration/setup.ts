@@ -1,11 +1,13 @@
 /**
- * @fileoverview Setup file for APEX browser automation integration tests
+ * @fileoverview Enhanced Setup file for APEX browser automation integration tests
  *
  * This file provides:
- * - Global browser instance management
+ * - Global browser instance management with permission testing support
  * - Setup and teardown utilities for browser automation tests
- * - Common browser configuration and utilities
- * - Cleanup hooks for browser resources
+ * - Common browser configuration and utilities with security controls
+ * - Cleanup hooks for browser resources and permission contexts
+ * - Permission testing infrastructure integration
+ * - Comprehensive test artifact management
  */
 
 import { beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
@@ -14,6 +16,28 @@ import { chromium, firefox, webkit } from 'playwright';
 import * as os from 'os';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+// Import enhanced test infrastructure
+import {
+  BrowserAutomationTestManager,
+  createBrowserAutomationTestManager,
+  type BrowserAutomationTestConfig,
+  type BrowserAutomationContext,
+} from './utils/browser-automation-test-helpers.js';
+
+import {
+  BrowserPermissionMockManager,
+  createPermissionMockManager,
+  type BrowserPermissionMockConfig,
+} from './utils/browser-permission-mocks.js';
+
+import {
+  IntegrationTestContextManager,
+  createIntegrationTestManager,
+  type ApexIntegrationContext,
+} from './utils/integration-test-context.js';
+
+import { createPermissionTestContext } from '../test-utils/permission-test-helpers.js';
 
 // Global test state for browser instances
 export interface BrowserTestContext {

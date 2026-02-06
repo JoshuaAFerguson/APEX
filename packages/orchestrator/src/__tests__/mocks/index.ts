@@ -32,7 +32,6 @@ export type {
 
 // Permission Revocation Test Utilities
 export {
-  PermissionRevokedError,
   InterruptibleStreamController,
   PartialResultTracker,
   PermissionRevocationSimulator

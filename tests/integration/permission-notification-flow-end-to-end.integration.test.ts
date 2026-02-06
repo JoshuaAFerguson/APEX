@@ -23,7 +23,16 @@ import websocket from '@fastify/websocket';
 
 // Import packages under test
 import { ApexOrchestrator } from '@apexcli/orchestrator';
-import { initializeApex } from '@apexcli/core';
+import {
+  initializeApex,
+  PermissionRequestEventData,
+  PermissionGrantedEventData,
+  PermissionDeniedEventData,
+  DangerousOperationDetectedEventData,
+  DangerousOperationConfirmedEventData,
+  DangerousOperationBlockedEventData,
+  PermissionLevel
+} from '@apexcli/core';
 
 /**
  * Mock CLI Handler to simulate CLI notification processing
@@ -82,8 +91,8 @@ class MockCLIHandler extends EventEmitter {
     switch (event.type) {
       case 'permission:request':
         notification = {
-          title: `Permission Required: ${event.data.toolName}`,
-          message: `Agent ${event.data.agentName} requests permission to use ${event.data.toolName}${event.data.scope ? ` on ${event.data.scope}` : ''}. Reason: ${event.data.reason || 'No reason provided'}`,
+          title: `Permission Required: ${event.data.tool}`,
+          message: `Agent ${event.data.agent} requests permission to use ${event.data.tool}${event.data.scope ? ` on ${event.data.scope}` : ''}. Reason: ${event.data.description || 'No reason provided'}`,
           severity: event.data.isDangerous ? 'critical' : 'warning',
           timestamp: event.timestamp
         };
@@ -91,8 +100,8 @@ class MockCLIHandler extends EventEmitter {
 
       case 'permission:granted':
         notification = {
-          title: `Permission Granted: ${event.data.toolName}`,
-          message: `Access granted with level: ${event.data.level}${event.data.grantReason ? `. Reason: ${event.data.grantReason}` : ''}`,
+          title: `Permission Granted: ${event.data.tool}`,
+          message: `Access granted with level: ${event.data.level}${event.data.reason ? `. Reason: ${event.data.reason}` : ''}`,
           severity: 'info',
           timestamp: event.timestamp
         };
@@ -100,8 +109,8 @@ class MockCLIHandler extends EventEmitter {
 
       case 'permission:denied':
         notification = {
-          title: `Permission Denied: ${event.data.toolName}`,
-          message: `Access denied. ${event.data.denialReason || 'No reason provided'}`,
+          title: `Permission Denied: ${event.data.tool}`,
+          message: `Access denied. ${event.data.reason || 'No reason provided'}`,
           severity: 'error',
           timestamp: event.timestamp
         };
@@ -109,8 +118,8 @@ class MockCLIHandler extends EventEmitter {
 
       case 'dangerous:detected':
         notification = {
-          title: `DANGEROUS OPERATION: ${event.data.toolName}`,
-          message: `Risk Level: ${event.data.riskLevel?.toUpperCase()}. Operation: ${event.data.operationType}. ${event.data.description || 'No description provided'}`,
+          title: `DANGEROUS OPERATION: ${event.data.tool}`,
+          message: `Risk Level: ${event.data.riskLevel?.toUpperCase()}. Operation: ${event.data.operation}. ${event.data.riskDescription || 'No description provided'}`,
           severity: 'critical',
           timestamp: event.timestamp
         };
@@ -118,8 +127,8 @@ class MockCLIHandler extends EventEmitter {
 
       case 'dangerous:confirmed':
         notification = {
-          title: `Dangerous Operation Confirmed: ${event.data.toolName}`,
-          message: `Operation approved by ${event.data.confirmedBy}. ${event.data.confirmation || 'No confirmation details'}`,
+          title: `Dangerous Operation Confirmed: ${event.data.tool}`,
+          message: `Operation approved by ${event.data.confirmedBy}. ${event.data.reason || 'No confirmation details'}`,
           severity: 'warning',
           timestamp: event.timestamp
         };
@@ -127,8 +136,8 @@ class MockCLIHandler extends EventEmitter {
 
       case 'dangerous:blocked':
         notification = {
-          title: `Dangerous Operation Blocked: ${event.data.toolName}`,
-          message: `Operation blocked by ${event.data.blockedBy}. ${event.data.blockReason || 'No block reason provided'}`,
+          title: `Dangerous Operation Blocked: ${event.data.tool}`,
+          message: `Operation blocked by ${event.data.blockedBy}. ${event.data.reason || 'No block reason provided'}`,
           severity: 'error',
           timestamp: event.timestamp
         };
@@ -241,6 +250,35 @@ class MockWebSocketClient extends EventEmitter {
 }
 
 /**
+ * Async event waiting utility for more reliable tests
+ */
+function waitForEvents(
+  client: MockWebSocketClient | MockCLIHandler,
+  expectedCount: number,
+  timeout: number = 1000
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+
+    const checkCount = () => {
+      const currentCount = client instanceof MockWebSocketClient
+        ? client.getMessageCount()
+        : client.getProcessedEventCount();
+
+      if (currentCount >= expectedCount) {
+        resolve();
+      } else if (Date.now() - startTime > timeout) {
+        reject(new Error(`Timeout: Expected ${expectedCount} events, got ${currentCount} after ${timeout}ms`));
+      } else {
+        setTimeout(checkCount, 10);
+      }
+    };
+
+    checkCount();
+  });
+}
+
+/**
  * Test Infrastructure Setup
  */
 describe('End-to-End Permission Notification Flow Integration', () => {
@@ -309,29 +347,64 @@ stages:
           const ws = connection.socket;
 
           // Forward all permission-related events to WebSocket clients
-          const forwardEvent = (eventType: string) => (data: any) => {
+          const permissionRequestHandler = (data: any) => {
             ws.send(JSON.stringify({
-              type: eventType,
+              type: 'permission:request',
+              timestamp: new Date().toISOString(),
+              data
+            }));
+          };
+          const permissionGrantedHandler = (data: any) => {
+            ws.send(JSON.stringify({
+              type: 'permission:granted',
+              timestamp: new Date().toISOString(),
+              data
+            }));
+          };
+          const permissionDeniedHandler = (data: any) => {
+            ws.send(JSON.stringify({
+              type: 'permission:denied',
+              timestamp: new Date().toISOString(),
+              data
+            }));
+          };
+          const dangerousDetectedHandler = (data: any) => {
+            ws.send(JSON.stringify({
+              type: 'dangerous:detected',
+              timestamp: new Date().toISOString(),
+              data
+            }));
+          };
+          const dangerousConfirmedHandler = (data: any) => {
+            ws.send(JSON.stringify({
+              type: 'dangerous:confirmed',
+              timestamp: new Date().toISOString(),
+              data
+            }));
+          };
+          const dangerousBlockedHandler = (data: any) => {
+            ws.send(JSON.stringify({
+              type: 'dangerous:blocked',
               timestamp: new Date().toISOString(),
               data
             }));
           };
 
-          orchestrator.on('permission:request', forwardEvent('permission:request'));
-          orchestrator.on('permission:granted', forwardEvent('permission:granted'));
-          orchestrator.on('permission:denied', forwardEvent('permission:denied'));
-          orchestrator.on('dangerous:detected', forwardEvent('dangerous:detected'));
-          orchestrator.on('dangerous:confirmed', forwardEvent('dangerous:confirmed'));
-          orchestrator.on('dangerous:blocked', forwardEvent('dangerous:blocked'));
+          orchestrator.on('permission:request', permissionRequestHandler);
+          orchestrator.on('permission:granted', permissionGrantedHandler);
+          orchestrator.on('permission:denied', permissionDeniedHandler);
+          orchestrator.on('dangerous:detected', dangerousDetectedHandler);
+          orchestrator.on('dangerous:confirmed', dangerousConfirmedHandler);
+          orchestrator.on('dangerous:blocked', dangerousBlockedHandler);
 
           ws.on('close', () => {
-            // Clean up event listeners when client disconnects
-            orchestrator.removeAllListeners('permission:request');
-            orchestrator.removeAllListeners('permission:granted');
-            orchestrator.removeAllListeners('permission:denied');
-            orchestrator.removeAllListeners('dangerous:detected');
-            orchestrator.removeAllListeners('dangerous:confirmed');
-            orchestrator.removeAllListeners('dangerous:blocked');
+            // Clean up only this client's event listeners when client disconnects
+            orchestrator.removeListener('permission:request', permissionRequestHandler);
+            orchestrator.removeListener('permission:granted', permissionGrantedHandler);
+            orchestrator.removeListener('permission:denied', permissionDeniedHandler);
+            orchestrator.removeListener('dangerous:detected', dangerousDetectedHandler);
+            orchestrator.removeListener('dangerous:confirmed', dangerousConfirmedHandler);
+            orchestrator.removeListener('dangerous:blocked', dangerousBlockedHandler);
           });
         });
       });
@@ -373,27 +446,30 @@ stages:
       await wsClient.connect(apiPort);
 
       // Trigger permission request
-      const permissionRequest = {
-        taskId: 'e2e-test-task-1',
-        toolName: 'Write',
+      const permissionRequest: PermissionRequestEventData = {
+        requestId: 'e2e-test-task-1',
+        tool: 'Write',
         timestamp: new Date(),
         scope: '/project/src/component.tsx',
-        reason: 'Need to create new React component for feature',
-        agentName: 'developer',
+        description: 'Need to create new React component for feature',
+        agent: 'developer',
         isDangerous: false
       };
 
       orchestrator.emit('permission:request', permissionRequest);
 
       // Wait for events to propagate
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await Promise.all([
+        waitForEvents(cliHandler, 1, 500),
+        waitForEvents(wsClient, 1, 500)
+      ]);
 
       // Verify CLI received and processed the event
       const cliEvents = cliHandler.getEventsByType('permission:request');
       expect(cliEvents).toHaveLength(1);
-      expect(cliEvents[0].toolName).toBe('Write');
+      expect(cliEvents[0].tool).toBe('Write');
       expect(cliEvents[0].scope).toBe('/project/src/component.tsx');
-      expect(cliEvents[0].reason).toBe('Need to create new React component for feature');
+      expect(cliEvents[0].description).toBe('Need to create new React component for feature');
 
       // Verify CLI generated user-friendly notification
       const cliNotifications = cliHandler.getNotificationsByTitlePattern('Permission Required: Write');
@@ -405,9 +481,9 @@ stages:
       // Verify WebSocket client received the event
       const wsMessages = wsClient.getMessagesByType('permission:request');
       expect(wsMessages).toHaveLength(1);
-      expect(wsMessages[0].toolName).toBe('Write');
+      expect(wsMessages[0].tool).toBe('Write');
       expect(wsMessages[0].scope).toBe('/project/src/component.tsx');
-      expect(wsMessages[0].agentName).toBe('developer');
+      expect(wsMessages[0].agent).toBe('developer');
     });
 
     it('should handle complete permission grant/deny workflow', async () => {
@@ -415,31 +491,34 @@ stages:
       webSocketClients.push(wsClient);
       await wsClient.connect(apiPort);
 
-      const taskId = 'e2e-workflow-test';
+      const requestId = 'e2e-workflow-test';
 
       // Step 1: Permission request
-      orchestrator.emit('permission:request', {
-        taskId,
-        toolName: 'Edit',
+      const requestData: PermissionRequestEventData = {
+        requestId,
+        tool: 'Edit',
         timestamp: new Date(),
         scope: '/config/settings.json',
-        reason: 'Update application configuration',
-        agentName: 'developer'
-      });
+        description: 'Update application configuration',
+        agent: 'developer',
+        isDangerous: false
+      };
+      orchestrator.emit('permission:request', requestData);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForEvents(cliHandler, 1, 300);
 
       // Step 2: Permission granted
-      orchestrator.emit('permission:granted', {
-        taskId,
-        toolName: 'Edit',
+      const grantedData: PermissionGrantedEventData = {
+        requestId,
+        tool: 'Edit',
         timestamp: new Date(),
-        level: 'allow-once',
+        level: 'allow-once' as PermissionLevel,
         grantedBy: 'user',
-        grantReason: 'Configuration update approved after review'
-      });
+        reason: 'Configuration update approved after review'
+      };
+      orchestrator.emit('permission:granted', grantedData);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForEvents(cliHandler, 2, 300);
 
       // Verify complete workflow in CLI
       const requestNotifications = cliHandler.getNotificationsByTitlePattern('Permission Required: Edit');
@@ -469,36 +548,39 @@ stages:
       webSocketClients.push(wsClient);
       await wsClient.connect(apiPort);
 
-      const taskId = 'e2e-dangerous-test';
+      const operationId = 'e2e-dangerous-test';
 
       // Step 1: Dangerous operation detection
-      orchestrator.emit('dangerous:detected', {
-        taskId,
-        toolName: 'Bash',
+      const dangerousData: DangerousOperationDetectedEventData = {
+        operationId,
+        tool: 'Bash',
         timestamp: new Date(),
-        operationType: 'file-deletion',
+        operation: 'file-deletion',
         riskLevel: 'high',
-        description: 'Attempting to delete critical configuration files',
-        metadata: {
+        riskDescription: 'Attempting to delete critical configuration files',
+        agent: 'developer',
+        context: {
           command: 'rm -rf /etc/app/*.conf',
           estimatedFiles: 25,
           systemImpact: 'high'
         }
-      });
+      };
+      orchestrator.emit('dangerous:detected', dangerousData);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForEvents(cliHandler, 1, 300);
 
       // Step 2: Dangerous operation confirmed
-      orchestrator.emit('dangerous:confirmed', {
-        taskId,
-        toolName: 'Bash',
+      const confirmedData: DangerousOperationConfirmedEventData = {
+        operationId,
+        tool: 'Bash',
         timestamp: new Date(),
-        operationType: 'file-deletion',
+        operation: 'file-deletion',
         confirmedBy: 'admin',
-        confirmation: 'Admin approved after creating backup of configuration files'
-      });
+        reason: 'Admin approved after creating backup of configuration files'
+      };
+      orchestrator.emit('dangerous:confirmed', confirmedData);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForEvents(cliHandler, 2, 300);
 
       // Verify dangerous operation handling in CLI
       const dangerousNotifications = cliHandler.getNotificationsByTitlePattern('DANGEROUS OPERATION: Bash');
@@ -522,7 +604,7 @@ stages:
       expect(wsConfirmedMessages).toHaveLength(1);
 
       expect(wsDangerousMessages[0].riskLevel).toBe('high');
-      expect(wsDangerousMessages[0].metadata.estimatedFiles).toBe(25);
+      expect(wsDangerousMessages[0].context.estimatedFiles).toBe(25);
       expect(wsConfirmedMessages[0].confirmedBy).toBe('admin');
     });
   });
@@ -543,18 +625,23 @@ stages:
       ]);
 
       // Trigger permission event
-      const permissionEvent = {
-        taskId: 'multi-client-test',
-        toolName: 'MultiTool',
+      const permissionEvent: PermissionRequestEventData = {
+        requestId: 'multi-client-test',
+        tool: 'MultiTool',
         timestamp: new Date(),
         scope: '/shared/resource',
-        reason: 'Multi-client notification test',
-        agentName: 'developer'
+        description: 'Multi-client notification test',
+        agent: 'developer',
+        isDangerous: false
       };
 
       orchestrator.emit('permission:request', permissionEvent);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await Promise.all([
+        waitForEvents(wsClient1, 1, 500),
+        waitForEvents(wsClient2, 1, 500),
+        waitForEvents(wsClient3, 1, 500)
+      ]);
 
       // Verify all clients received the event
       expect(wsClient1.getMessagesByType('permission:request')).toHaveLength(1);
@@ -566,13 +653,13 @@ stages:
       const client2Data = wsClient2.getMessagesByType('permission:request')[0];
       const client3Data = wsClient3.getMessagesByType('permission:request')[0];
 
-      expect(client1Data.taskId).toBe(permissionEvent.taskId);
-      expect(client2Data.taskId).toBe(permissionEvent.taskId);
-      expect(client3Data.taskId).toBe(permissionEvent.taskId);
+      expect(client1Data.requestId).toBe(permissionEvent.requestId);
+      expect(client2Data.requestId).toBe(permissionEvent.requestId);
+      expect(client3Data.requestId).toBe(permissionEvent.requestId);
 
-      expect(client1Data.toolName).toBe(permissionEvent.toolName);
-      expect(client2Data.toolName).toBe(permissionEvent.toolName);
-      expect(client3Data.toolName).toBe(permissionEvent.toolName);
+      expect(client1Data.tool).toBe(permissionEvent.tool);
+      expect(client2Data.tool).toBe(permissionEvent.tool);
+      expect(client3Data.tool).toBe(permissionEvent.tool);
     });
 
     it('should deliver to CLI and WebSocket clients independently', async () => {
@@ -582,9 +669,34 @@ stages:
 
       // Send multiple different event types
       const events = [
-        { type: 'permission:request', data: { taskId: 'test-1', toolName: 'Write' } },
-        { type: 'permission:granted', data: { taskId: 'test-2', toolName: 'Read', level: 'allow' } },
-        { type: 'permission:denied', data: { taskId: 'test-3', toolName: 'Execute', denialReason: 'Not allowed' } }
+        {
+          type: 'permission:request',
+          data: {
+            requestId: 'test-1',
+            tool: 'Write',
+            description: 'Test write operation',
+            agent: 'developer',
+            isDangerous: false
+          }
+        },
+        {
+          type: 'permission:granted',
+          data: {
+            requestId: 'test-2',
+            tool: 'Read',
+            level: 'allow-once' as PermissionLevel,
+            grantedBy: 'user'
+          }
+        },
+        {
+          type: 'permission:denied',
+          data: {
+            requestId: 'test-3',
+            tool: 'Execute',
+            reason: 'Not allowed',
+            deniedBy: 'system'
+          }
+        }
       ];
 
       // Emit all events
@@ -592,7 +704,10 @@ stages:
         orchestrator.emit(event.type, { ...event.data, timestamp: new Date() });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await Promise.all([
+        waitForEvents(cliHandler, 3, 500),
+        waitForEvents(wsClient, 3, 500)
+      ]);
 
       // Verify CLI received all events
       expect(cliHandler.getProcessedEventCount()).toBe(3);
@@ -610,8 +725,8 @@ stages:
       const cliRequest = cliHandler.getEventsByType('permission:request')[0];
       const wsRequest = wsClient.getMessagesByType('permission:request')[0];
 
-      expect(cliRequest.taskId).toBe(wsRequest.taskId);
-      expect(cliRequest.toolName).toBe(wsRequest.toolName);
+      expect(cliRequest.requestId).toBe(wsRequest.requestId);
+      expect(cliRequest.tool).toBe(wsRequest.tool);
     });
   });
 
@@ -622,13 +737,13 @@ stages:
       await wsClient.connect(apiPort);
 
       // Trigger comprehensive permission request with all details
-      const detailedRequest = {
-        taskId: 'detailed-test-123',
-        toolName: 'Write',
+      const detailedRequest: PermissionRequestEventData = {
+        requestId: 'detailed-test-123',
+        tool: 'Write',
         timestamp: new Date('2024-01-15T10:30:00Z'),
         scope: '/project/src/components/UserAuthentication.tsx',
-        reason: 'Creating new user authentication component with secure password handling and OAuth integration',
-        agentName: 'developer',
+        description: 'Creating new user authentication component with secure password handling and OAuth integration',
+        agent: 'developer',
         isDangerous: false,
         metadata: {
           fileType: 'typescript',
@@ -640,7 +755,10 @@ stages:
 
       orchestrator.emit('permission:request', detailedRequest);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await Promise.all([
+        waitForEvents(cliHandler, 1, 500),
+        waitForEvents(wsClient, 1, 500)
+      ]);
 
       // Verify CLI notification contains actionable information
       const cliNotifications = cliHandler.getNotificationsByTitlePattern('Permission Required: Write');
@@ -658,10 +776,10 @@ stages:
       expect(wsMessages).toHaveLength(1);
 
       const wsMessage = wsMessages[0];
-      expect(wsMessage.taskId).toBe('detailed-test-123');
-      expect(wsMessage.toolName).toBe('Write');
+      expect(wsMessage.requestId).toBe('detailed-test-123');
+      expect(wsMessage.tool).toBe('Write');
       expect(wsMessage.scope).toBe('/project/src/components/UserAuthentication.tsx');
-      expect(wsMessage.agentName).toBe('developer');
+      expect(wsMessage.agent).toBe('developer');
       expect(wsMessage.metadata.securitySensitive).toBe(true);
       expect(wsMessage.metadata.estimatedLines).toBe(150);
 
@@ -674,23 +792,20 @@ stages:
       webSocketClients.push(wsClient);
       await wsClient.connect(apiPort);
 
-      const denialEvent = {
-        taskId: 'denial-context-test',
-        toolName: 'Bash',
+      const denialEvent: PermissionDeniedEventData = {
+        requestId: 'denial-context-test',
+        tool: 'Bash',
         timestamp: new Date(),
-        denialReason: 'Shell commands are not permitted in production environment. Use the API endpoints instead or request elevated privileges through the admin panel.',
-        deniedBy: 'environment-policy',
-        suggestedActions: ['use-api-endpoints', 'request-elevation'],
-        metadata: {
-          environment: 'production',
-          policyLevel: 'strict',
-          alternativeApproach: 'api-based-operations'
-        }
+        reason: 'Shell commands are not permitted in production environment. Use the API endpoints instead or request elevated privileges through the admin panel.',
+        deniedBy: 'environment-policy'
       };
 
       orchestrator.emit('permission:denied', denialEvent);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await Promise.all([
+        waitForEvents(cliHandler, 1, 500),
+        waitForEvents(wsClient, 1, 500)
+      ]);
 
       // Verify CLI provides actionable denial information
       const cliNotifications = cliHandler.getNotificationsByTitlePattern('Permission Denied: Bash');
@@ -707,10 +822,8 @@ stages:
       expect(wsMessages).toHaveLength(1);
 
       const wsMessage = wsMessages[0];
-      expect(wsMessage.denialReason).toContain('production environment');
+      expect(wsMessage.reason).toContain('production environment');
       expect(wsMessage.deniedBy).toBe('environment-policy');
-      expect(wsMessage.metadata.environment).toBe('production');
-      expect(wsMessage.metadata.alternativeApproach).toBe('api-based-operations');
     });
 
     it('should highlight dangerous operations with appropriate urgency', async () => {
@@ -718,14 +831,15 @@ stages:
       webSocketClients.push(wsClient);
       await wsClient.connect(apiPort);
 
-      const criticalDangerousEvent = {
-        taskId: 'critical-danger-test',
-        toolName: 'Bash',
+      const criticalDangerousEvent: DangerousOperationDetectedEventData = {
+        operationId: 'critical-danger-test',
+        tool: 'Bash',
         timestamp: new Date(),
-        operationType: 'system-modification',
+        operation: 'system-modification',
         riskLevel: 'critical',
-        description: 'Attempting to modify system-critical files that could render the system inoperable',
-        metadata: {
+        riskDescription: 'Attempting to modify system-critical files that could render the system inoperable',
+        agent: 'developer',
+        context: {
           affectedFiles: ['/etc/passwd', '/etc/shadow', '/boot/grub/grub.cfg'],
           riskFactors: ['system-instability', 'security-breach', 'data-loss'],
           recoveryDifficulty: 'extremely-difficult',
@@ -735,7 +849,10 @@ stages:
 
       orchestrator.emit('dangerous:detected', criticalDangerousEvent);
 
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await Promise.all([
+        waitForEvents(cliHandler, 1, 500),
+        waitForEvents(wsClient, 1, 500)
+      ]);
 
       // Verify CLI treats this with maximum urgency
       const cliNotifications = cliHandler.getNotificationsByTitlePattern('DANGEROUS OPERATION: Bash');
@@ -754,9 +871,9 @@ stages:
 
       const wsMessage = wsMessages[0];
       expect(wsMessage.riskLevel).toBe('critical');
-      expect(wsMessage.metadata.affectedFiles).toContain('/etc/passwd');
-      expect(wsMessage.metadata.riskFactors).toContain('system-instability');
-      expect(wsMessage.metadata.recoveryDifficulty).toBe('extremely-difficult');
+      expect(wsMessage.context.affectedFiles).toContain('/etc/passwd');
+      expect(wsMessage.context.riskFactors).toContain('system-instability');
+      expect(wsMessage.context.recoveryDifficulty).toBe('extremely-difficult');
     });
   });
 
@@ -773,11 +890,15 @@ stages:
       ]);
 
       // Emit initial event - both should receive
-      orchestrator.emit('permission:request', {
-        taskId: 'disconnect-test-1',
-        toolName: 'Test',
-        timestamp: new Date()
-      });
+      const disconnectTestData: PermissionRequestEventData = {
+        requestId: 'disconnect-test-1',
+        tool: 'Test',
+        timestamp: new Date(),
+        description: 'Test disconnection handling',
+        agent: 'test',
+        isDangerous: false
+      };
+      orchestrator.emit('permission:request', disconnectTestData);
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -789,12 +910,14 @@ stages:
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Emit another event - only second client should receive
-      orchestrator.emit('permission:granted', {
-        taskId: 'disconnect-test-2',
-        toolName: 'Test',
+      const grantedTestData: PermissionGrantedEventData = {
+        requestId: 'disconnect-test-2',
+        tool: 'Test',
         timestamp: new Date(),
-        level: 'allow'
-      });
+        level: 'allow-once' as PermissionLevel,
+        grantedBy: 'test'
+      };
+      orchestrator.emit('permission:granted', grantedTestData);
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -813,8 +936,8 @@ stages:
       // Emit events with missing or invalid data
       const malformedEvents = [
         { type: 'permission:request', data: { /* missing required fields */ } },
-        { type: 'permission:granted', data: { taskId: null, toolName: 123 } },
-        { type: 'dangerous:detected', data: { riskLevel: 'invalid-level', metadata: 'not-an-object' } }
+        { type: 'permission:granted', data: { requestId: null, tool: 123 } },
+        { type: 'dangerous:detected', data: { riskLevel: 'invalid-level', context: 'not-an-object' } }
       ];
 
       malformedEvents.forEach(event => {
@@ -830,12 +953,15 @@ stages:
       expect(wsClient.getMessageCount()).toBe(3);
 
       // Verify system continues to work with valid events
-      orchestrator.emit('permission:request', {
-        taskId: 'recovery-test',
-        toolName: 'RecoveryTool',
+      const recoveryData: PermissionRequestEventData = {
+        requestId: 'recovery-test',
+        tool: 'RecoveryTool',
         timestamp: new Date(),
-        agentName: 'test'
-      });
+        description: 'Recovery test after malformed data',
+        agent: 'test',
+        isDangerous: false
+      };
+      orchestrator.emit('permission:request', recoveryData);
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -853,12 +979,14 @@ stages:
 
       // Generate many events rapidly
       for (let i = 0; i < eventCount; i++) {
-        const event = {
-          taskId: `stress-test-${i}`,
-          toolName: `Tool${i % 10}`,
+        const event: PermissionRequestEventData = {
+          requestId: `stress-test-${i}`,
+          tool: `Tool${i % 10}`,
           timestamp: new Date(),
-          agentName: `agent-${i % 3}`,
-          index: i
+          description: `Stress test operation ${i}`,
+          agent: `agent-${i % 3}`,
+          isDangerous: false,
+          metadata: { index: i }
         };
         events.push(event);
       }
@@ -877,7 +1005,7 @@ stages:
 
       // Verify no data corruption
       const receivedEvents = cliHandler.getEventsByType('permission:request');
-      const receivedIndexes = receivedEvents.map(e => e.index).sort((a, b) => a - b);
+      const receivedIndexes = receivedEvents.map(e => e.metadata?.index).sort((a, b) => a - b);
       const expectedIndexes = Array.from({ length: eventCount }, (_, i) => i);
 
       expect(receivedIndexes).toEqual(expectedIndexes);
@@ -894,19 +1022,42 @@ stages:
       const testScenarios = [
         {
           type: 'permission:request',
-          data: { taskId: 'coverage-1', toolName: 'Write', agentName: 'dev' }
+          data: {
+            requestId: 'coverage-1',
+            tool: 'Write',
+            description: 'Coverage test write',
+            agent: 'dev',
+            isDangerous: false
+          } as PermissionRequestEventData
         },
         {
           type: 'permission:granted',
-          data: { taskId: 'coverage-2', toolName: 'Read', level: 'allow' }
+          data: {
+            requestId: 'coverage-2',
+            tool: 'Read',
+            level: 'allow-once' as PermissionLevel,
+            grantedBy: 'user'
+          } as PermissionGrantedEventData
         },
         {
           type: 'permission:denied',
-          data: { taskId: 'coverage-3', toolName: 'Execute', denialReason: 'Not allowed' }
+          data: {
+            requestId: 'coverage-3',
+            tool: 'Execute',
+            reason: 'Not allowed',
+            deniedBy: 'system'
+          } as PermissionDeniedEventData
         },
         {
           type: 'dangerous:detected',
-          data: { taskId: 'coverage-4', toolName: 'Bash', operationType: 'deletion', riskLevel: 'high' }
+          data: {
+            operationId: 'coverage-4',
+            tool: 'Bash',
+            operation: 'deletion',
+            riskLevel: 'high' as const,
+            riskDescription: 'High risk operation',
+            agent: 'dev'
+          } as DangerousOperationDetectedEventData
         }
       ];
 

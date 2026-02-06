@@ -250,6 +250,181 @@ const suite = createTestSuite({
 // Failed teardown operations are logged but don't break the test run
 ```
 
+## Browser Testing Patterns
+
+### Error Page Testing
+
+For testing error states and error page behavior:
+
+```typescript
+import {
+  ErrorPageFixture,
+  createErrorFixtureHooks,
+  withErrorFixture,
+  ERROR_SCENARIOS
+} from '@apex/core/test-fixtures';
+
+// Method 1: Manual fixture management
+describe('Error Page Behavior', () => {
+  let fixture: ErrorPageFixture;
+
+  beforeEach(() => {
+    fixture = new ErrorPageFixture();
+  });
+
+  afterEach(async () => {
+    if (fixture.isSetup()) {
+      await fixture.teardown();
+    }
+  });
+
+  it('should handle 404 errors correctly', async () => {
+    await fixture.simulateError('404-not-found');
+
+    const browserState = fixture.getBrowserState();
+    expect(browserState.hasError).toBe(true);
+    expect(browserState.title).toContain('404');
+
+    const validation = await fixture.validate();
+    expect(validation.valid).toBe(true);
+  });
+});
+
+// Method 2: Using fixture hooks
+describe('Error Scenarios', () => {
+  const { setup, teardown } = createErrorFixtureHooks('500-internal-error', {
+    expectedUrl: 'https://myapp.com/error',
+    expectedTitle: 'Server Error'
+  });
+
+  let fixture: ErrorPageFixture;
+
+  beforeEach(async () => {
+    fixture = await setup();
+  });
+
+  afterEach(teardown);
+
+  it('should clear authentication on server errors', () => {
+    const browserState = fixture.getBrowserState();
+    expect(browserState.isAuthenticated).toBe(false);
+  });
+});
+
+// Method 3: Higher-order function (most concise)
+describe('Network Error Handling', () => {
+  it('should handle network timeouts', withErrorFixture('network-timeout', async (fixture) => {
+    const browserState = fixture.getBrowserState();
+    expect(browserState.hasError).toBe(true);
+    expect(browserState.consoleMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'error',
+          message: expect.stringContaining('timeout')
+        })
+      ])
+    );
+  }));
+
+  // Test multiple scenarios
+  it.each(['404-not-found', '500-internal-error', 'network-timeout'])(
+    'should handle %s correctly',
+    withErrorFixture(async (fixture, scenario) => {
+      expect(fixture.state.config.scenario).toBe(scenario);
+
+      const validation = await fixture.validate();
+      expect(validation.valid).toBe(true);
+    })
+  );
+});
+```
+
+### Custom Error Scenarios
+
+Create custom error configurations:
+
+```typescript
+it('should handle custom API validation errors', async () => {
+  const fixture = new ErrorPageFixture();
+
+  try {
+    await fixture.setup({
+      name: 'API Validation Error',
+      description: 'Test custom validation error handling',
+      scenario: '422-validation-error' as any, // Custom scenario
+      statusCode: 422,
+      statusText: 'Unprocessable Entity',
+      category: 'client',
+      expectedTitle: 'Validation Error',
+      mockResponse: {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          errors: [
+            { field: 'email', message: 'Invalid email format' },
+            { field: 'password', message: 'Password too short' }
+          ]
+        }),
+        delay: 100
+      }
+    });
+
+    const browserState = fixture.getBrowserState();
+    expect(browserState.hasError).toBe(true);
+
+    // Test mock fetch functionality
+    const mockFetch = fixture.state.activeMocks.get('fetch');
+    const response = await mockFetch('https://api.example.com/users');
+    expect(response.status).toBe(422);
+
+  } finally {
+    await fixture.teardown();
+  }
+});
+```
+
+### Browser State Testing
+
+Test complex browser state scenarios:
+
+```typescript
+import { browserFixtures, browserHelpers } from '@apex/core/test-fixtures';
+
+describe('Browser State Management', () => {
+  it('should create logged-in user state', () => {
+    const state = browserFixtures.loggedInPage({
+      url: 'https://myapp.com/dashboard',
+      localStorage: { theme: 'dark' }
+    });
+
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.url).toBe('https://myapp.com/dashboard');
+    expect(state.localStorage.theme).toBe('dark');
+  });
+
+  it('should simulate user logout', () => {
+    let state = browserFixtures.loggedInPage();
+    expect(state.isAuthenticated).toBe(true);
+
+    state = browserHelpers.simulateLogout(state);
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.localStorage['auth-token']).toBeUndefined();
+  });
+
+  it('should add console messages', () => {
+    let state = browserFixtures.cleanState();
+
+    state = browserHelpers.addConsoleMessage(state, 'error', 'Test error message');
+
+    expect(state.consoleMessages).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        message: 'Test error message'
+      })
+    ]);
+  });
+});
+```
+
 ## Migration from Manual Patterns
 
 ### Before (Manual Pattern)

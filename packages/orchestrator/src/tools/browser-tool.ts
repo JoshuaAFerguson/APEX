@@ -20,6 +20,8 @@ import {
   ToolPermissionResult,
   VisualComparisonEventData,
   BrowserPermissionDeniedError,
+  BrowserPermissionDeniedContext,
+  isBrowserPermissionDeniedError,
   BrowserResourceState,
   ApexError,
   ApexErrorCode
@@ -36,6 +38,11 @@ import {
   BrowserConsoleMessage as EnhancedConsoleMessage,
   BrowserRuntimeError as EnhancedRuntimeError
 } from '../browser-console-stream';
+
+/**
+ * BrowserTool lifecycle states
+ */
+export type BrowserToolLifecycleState = 'idle' | 'launching' | 'active' | 'cleaning_up' | 'destroyed';
 
 /**
  * Supported browser operations
@@ -391,6 +398,7 @@ export class BrowserTool {
   private eventEmitter?: EventEmitter;
   private resourceState: BrowserResourceState;
   private sessionId: string;
+  private state: BrowserToolLifecycleState;
 
   constructor(options?: BrowserToolOptions) {
     this.permissionManager = options?.permissionManager;
@@ -399,6 +407,7 @@ export class BrowserTool {
     this.backend = options?.backend || 'playwright';
     this.activeBackend = this.backend;
     this.sessionId = this.generateSessionId();
+    this.state = 'idle';
     this.resourceState = {
       browserActive: false,
       contextActive: false,
@@ -406,6 +415,8 @@ export class BrowserTool {
       sessionId: this.sessionId,
       activeOperations: 0
     };
+    // Set event emitter if provided
+    this.eventEmitter = options?.eventEmitter;
   }
 
   /**
@@ -455,6 +466,35 @@ export class BrowserTool {
     this.runtimeErrors = [];
 
     try {
+      // State guard: refuse operations on destroyed instances
+      if (this.state === 'destroyed') {
+        return {
+          success: false,
+          operation,
+          error: 'Cannot execute operation: BrowserTool instance has been destroyed',
+          metadata: {
+            url: 'about:blank',
+            executionTime: Date.now() - startTime,
+            permissionGranted: false,
+            target: this.extractTarget(params),
+          },
+        };
+      }
+
+      // State guard: refuse operations during cleanup
+      if (this.state === 'cleaning_up') {
+        return {
+          success: false,
+          operation,
+          error: 'Cannot execute operation: BrowserTool instance is currently cleaning up',
+          metadata: {
+            url: 'about:blank',
+            executionTime: Date.now() - startTime,
+            permissionGranted: false,
+            target: this.extractTarget(params),
+          },
+        };
+      }
       // Build permission scope and target for this operation
       const target = this.extractTarget(params);
       const scope = this.buildScope(operation, target);
@@ -463,10 +503,45 @@ export class BrowserTool {
       const permissionResult = await this.checkPermissionInternal(operation, target);
 
       if (!permissionResult.allowed) {
+        const denialReason = permissionResult.denialReason || 'Operation denied by permission policy';
+
+        // Create BrowserPermissionDeniedError with context
+        const permissionError = new BrowserPermissionDeniedError(
+          `Browser permission denied: ${denialReason}`,
+          {
+            operation,
+            target,
+            denialReason,
+            permissionType: 'domain', // Default type for general permission checks
+            sessionId: this.sessionId
+          }
+        );
+
+        // Cleanup resources if browser was launched
+        if (this.resourceState.browserActive) {
+          try {
+            await this.cleanup();
+          } catch (cleanupError) {
+            console.warn('Error during cleanup after permission denial:', cleanupError);
+          }
+        }
+
+        // Emit permission:denied event via eventEmitter
+        if (this.eventEmitter) {
+          this.eventEmitter.emit('permission:denied', {
+            operation,
+            target,
+            denialReason,
+            sessionId: this.sessionId,
+            timestamp: new Date(),
+            error: permissionError
+          });
+        }
+
         return {
           success: false,
           operation,
-          error: permissionResult.denialReason || 'Operation denied by permission policy',
+          error: permissionError.message,
           metadata: {
             url: this.getCurrentUrl(),
             executionTime: Date.now() - startTime,
@@ -479,10 +554,65 @@ export class BrowserTool {
       // Check operation-specific restrictions from configuration
       const configCheck = await this.checkConfigurationRestrictions(operation, params);
       if (!configCheck.allowed) {
+        const denialReason = configCheck.reason || 'Operation restricted by configuration';
+
+        // Determine permission type based on operation
+        let permissionType: BrowserPermissionDeniedContext['permissionType'] = 'unknown';
+        switch (operation) {
+          case 'navigate':
+            permissionType = 'domain';
+            break;
+          case 'evaluate':
+            permissionType = 'javascript';
+            break;
+          case 'submit':
+            permissionType = 'form';
+            break;
+          case 'screenshot':
+            permissionType = 'unknown'; // Screenshots don't have a specific browser permission
+            break;
+          default:
+            permissionType = 'unknown';
+        }
+
+        // Create BrowserPermissionDeniedError with context
+        const permissionError = new BrowserPermissionDeniedError(
+          `Browser configuration restriction: ${denialReason}`,
+          {
+            operation,
+            target,
+            denialReason,
+            permissionType,
+            sessionId: this.sessionId
+          }
+        );
+
+        // Cleanup resources if browser was launched
+        if (this.resourceState.browserActive) {
+          try {
+            await this.cleanup();
+          } catch (cleanupError) {
+            console.warn('Error during cleanup after configuration restriction:', cleanupError);
+          }
+        }
+
+        // Emit permission:denied event via eventEmitter
+        if (this.eventEmitter) {
+          this.eventEmitter.emit('permission:denied', {
+            operation,
+            target,
+            denialReason,
+            sessionId: this.sessionId,
+            timestamp: new Date(),
+            error: permissionError,
+            restrictionType: 'configuration'
+          });
+        }
+
         return {
           success: false,
           operation,
-          error: configCheck.reason,
+          error: permissionError.message,
           metadata: {
             url: this.getCurrentUrl(),
             executionTime: Date.now() - startTime,
@@ -495,10 +625,62 @@ export class BrowserTool {
       // Check for dangerous operations
       const dangerCheck = await this.checkDangerousOperation(operation, params);
       if (dangerCheck.isDangerous && !permissionResult.level) {
+        const denialReason = `Dangerous operation requires explicit permission: ${dangerCheck.reason}`;
+
+        // Determine permission type based on operation
+        let permissionType: BrowserPermissionDeniedContext['permissionType'] = 'unknown';
+        switch (operation) {
+          case 'evaluate':
+            permissionType = 'javascript';
+            break;
+          case 'submit':
+            permissionType = 'form';
+            break;
+          case 'navigate':
+            permissionType = 'domain';
+            break;
+          default:
+            permissionType = 'unknown';
+        }
+
+        // Create BrowserPermissionDeniedError with context
+        const permissionError = new BrowserPermissionDeniedError(
+          `Dangerous operation blocked: ${dangerCheck.reason}`,
+          {
+            operation,
+            target,
+            denialReason,
+            permissionType,
+            sessionId: this.sessionId
+          }
+        );
+
+        // Cleanup resources if browser was launched
+        if (this.resourceState.browserActive) {
+          try {
+            await this.cleanup();
+          } catch (cleanupError) {
+            console.warn('Error during cleanup after dangerous operation block:', cleanupError);
+          }
+        }
+
+        // Emit permission:denied event via eventEmitter
+        if (this.eventEmitter) {
+          this.eventEmitter.emit('permission:denied', {
+            operation,
+            target,
+            denialReason,
+            sessionId: this.sessionId,
+            timestamp: new Date(),
+            error: permissionError,
+            restrictionType: 'dangerous_operation'
+          });
+        }
+
         return {
           success: false,
           operation,
-          error: `Dangerous operation requires explicit permission: ${dangerCheck.reason}`,
+          error: permissionError.message,
           metadata: {
             url: this.getCurrentUrl(),
             executionTime: Date.now() - startTime,
@@ -524,6 +706,44 @@ export class BrowserTool {
       };
 
     } catch (error) {
+      // Handle BrowserPermissionDeniedError specifically without crashing
+      if (isBrowserPermissionDeniedError(error)) {
+        // Cleanup resources if browser was launched
+        if (this.resourceState.browserActive) {
+          try {
+            await this.cleanup();
+          } catch (cleanupError) {
+            console.warn('Error during cleanup after BrowserPermissionDeniedError:', cleanupError);
+          }
+        }
+
+        // Emit permission:denied event via eventEmitter
+        if (this.eventEmitter) {
+          this.eventEmitter.emit('permission:denied', {
+            operation,
+            target: this.extractTarget({ operation, params: params.params } as any),
+            denialReason: error.browserContext.denialReason || error.message,
+            sessionId: this.sessionId,
+            timestamp: new Date(),
+            error: error,
+            restrictionType: 'exception'
+          });
+        }
+
+        return {
+          success: false,
+          operation,
+          error: error.message,
+          metadata: {
+            url: this.getCurrentUrl(),
+            executionTime: Date.now() - startTime,
+            permissionGranted: false,
+            target: error.browserContext.target,
+          },
+        };
+      }
+
+      // Handle all other errors normally
       return {
         success: false,
         operation,
@@ -607,17 +827,86 @@ export class BrowserTool {
   }
 
   /**
+   * Helper method to transition state and emit events
+   */
+  private transitionState(newState: BrowserToolLifecycleState): void {
+    const previousState = this.state;
+    this.state = newState;
+
+    // Emit state transition event if eventEmitter is available
+    if (this.eventEmitter) {
+      this.eventEmitter.emit('browser:state:transition', {
+        sessionId: this.sessionId,
+        previousState,
+        newState,
+        timestamp: new Date()
+      });
+    }
+  }
+
+  /**
    * Ensure a browser page is available for operations
    */
   private async ensurePage(config?: BrowserToolConfig): Promise<{ backend: 'playwright' | 'puppeteer'; page: any }> {
+    // State guard: refuse operations if destroyed or cleaning up
+    if (this.state === 'destroyed') {
+      throw new ApexError(
+        'Cannot launch browser: BrowserTool instance has been destroyed',
+        ApexErrorCode.BROWSER_SESSION_INVALID,
+        {
+          sessionId: this.sessionId,
+          operation: 'ensurePage',
+          state: this.state,
+          metadata: { resourceState: this.resourceState }
+        }
+      );
+    }
+
+    if (this.state === 'cleaning_up') {
+      throw new ApexError(
+        'Cannot launch browser: BrowserTool instance is currently cleaning up',
+        ApexErrorCode.BROWSER_SESSION_INVALID,
+        {
+          sessionId: this.sessionId,
+          operation: 'ensurePage',
+          state: this.state,
+          metadata: { resourceState: this.resourceState }
+        }
+      );
+    }
+
+    // If already active, return existing page
+    if (this.state === 'active' && (this.page || this.puppeteerPage)) {
+      const backend = config?.backend || this.backend;
+      this.activeBackend = backend;
+
+      if (backend === 'puppeteer' && this.puppeteerPage) {
+        return { backend, page: this.puppeteerPage };
+      }
+      if (backend === 'playwright' && this.page) {
+        return { backend, page: this.page };
+      }
+    }
+
+    // Transition to launching state
+    if (this.state === 'idle') {
+      this.transitionState('launching');
+    }
+
     const backend = config?.backend || this.backend;
     this.activeBackend = backend;
 
+    let page: any;
     if (backend === 'puppeteer') {
-      return { backend, page: await this.ensurePuppeteerPage(config) };
+      page = await this.ensurePuppeteerPage(config);
+    } else {
+      page = await this.ensurePlaywrightPage(config);
     }
 
-    return { backend, page: await this.ensurePlaywrightPage(config) };
+    // Transition to active state once page is ready
+    this.transitionState('active');
+
+    return { backend, page };
   }
 
   private async ensurePlaywrightPage(config?: BrowserToolConfig): Promise<Page> {
@@ -1519,6 +1808,20 @@ export class BrowserTool {
   }
 
   /**
+   * Check if the BrowserTool instance is currently active
+   */
+  public isActive(): boolean {
+    return this.state === 'active';
+  }
+
+  /**
+   * Get current lifecycle state
+   */
+  public getState(): BrowserToolLifecycleState {
+    return this.state;
+  }
+
+  /**
    * Update resource state when browser is launched
    */
   private updateResourceStateOnLaunch(): void {
@@ -1571,6 +1874,14 @@ export class BrowserTool {
    * Called when permission is denied or on normal shutdown
    */
   public async cleanup(): Promise<void> {
+    // Skip if already destroyed or currently cleaning up
+    if (this.state === 'destroyed' || this.state === 'cleaning_up') {
+      return;
+    }
+
+    // Transition to cleaning_up state
+    this.transitionState('cleaning_up');
+
     try {
       // Close console stream first and properly stop streaming
       if (this.consoleStream) {
@@ -1649,6 +1960,9 @@ export class BrowserTool {
       // Clear buffers
       this.clearConsoleBuffers();
 
+      // Transition to destroyed state after successful cleanup
+      this.transitionState('destroyed');
+
     } catch (error) {
       // If cleanup itself fails, throw a resource leak error
       throw new ApexError(
@@ -1670,12 +1984,22 @@ export class BrowserTool {
    * and the tool is in a clean state, even if normal cleanup fails
    */
   public async destroy(): Promise<void> {
+    // Skip if already destroyed
+    if (this.state === 'destroyed') {
+      return;
+    }
+
     try {
       // Attempt normal cleanup first
       await this.cleanup();
     } catch (cleanupError) {
       // If cleanup fails, force reset all resources
       console.warn('Normal cleanup failed, forcing resource reset:', cleanupError);
+
+      // Transition to cleaning_up state if not already there
+      if (this.state !== 'cleaning_up') {
+        this.transitionState('cleaning_up');
+      }
 
       // Force nullify all references
       this.page = undefined;
@@ -1705,6 +2029,9 @@ export class BrowserTool {
       // Generate new session ID to ensure fresh state
       this.sessionId = this.generateSessionId();
       this.resourceState.sessionId = this.sessionId;
+
+      // Transition to destroyed state
+      this.transitionState('destroyed');
     }
   }
 

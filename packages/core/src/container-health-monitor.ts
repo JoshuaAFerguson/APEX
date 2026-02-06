@@ -100,6 +100,19 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Start health monitoring for containers
+   *
+   * Detects the container runtime, begins periodic health checks,
+   * and starts emitting health events for monitored containers.
+   *
+   * @returns Promise that resolves when monitoring is started
+   * @throws {Error} If no container runtime is available
+   *
+   * @example
+   * ```typescript
+   * const monitor = new ContainerHealthMonitor(containerManager);
+   * await monitor.startMonitoring();
+   * console.log('Health monitoring started');
+   * ```
    */
   async startMonitoring(): Promise<void> {
     if (this.isMonitoring) {
@@ -129,6 +142,17 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Stop health monitoring
+   *
+   * Stops the periodic health check timer and ceases monitoring
+   * container health status. Does nothing if monitoring is not active.
+   *
+   * @returns Promise that resolves when monitoring is stopped
+   *
+   * @example
+   * ```typescript
+   * await monitor.stopMonitoring();
+   * console.log('Health monitoring stopped');
+   * ```
    */
   async stopMonitoring(): Promise<void> {
     if (!this.isMonitoring) {
@@ -147,6 +171,16 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Get current health status for all monitored containers
+   *
+   * @returns Map of container IDs to their health check results
+   *
+   * @example
+   * ```typescript
+   * const healthStatus = monitor.getHealthStatus();
+   * for (const [containerId, health] of healthStatus) {
+   *   console.log(`${health.containerName}: ${health.status}`);
+   * }
+   * ```
    */
   getHealthStatus(): Map<string, ContainerHealthCheck> {
     return new Map(this.containerHealth);
@@ -154,6 +188,17 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Get health status for a specific container
+   *
+   * @param containerId - The ID of the container to get health status for
+   * @returns Health check result for the container, or null if not found
+   *
+   * @example
+   * ```typescript
+   * const health = monitor.getContainerHealth('apex-task123-abc456');
+   * if (health) {
+   *   console.log(`Status: ${health.status}, Failures: ${health.failingStreak}`);
+   * }
+   * ```
    */
   getContainerHealth(containerId: string): ContainerHealthCheck | null {
     return this.containerHealth.get(containerId) || null;
@@ -161,6 +206,20 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Force a health check for a specific container
+   *
+   * Performs an immediate health check on the specified container
+   * outside of the normal monitoring interval.
+   *
+   * @param containerId - The ID of the container to check
+   * @returns Promise that resolves to health check result, or null if container not found
+   *
+   * @example
+   * ```typescript
+   * const health = await monitor.checkContainerHealth('apex-task123-abc456');
+   * if (health) {
+   *   console.log(`Container health: ${health.status}`);
+   * }
+   * ```
    */
   async checkContainerHealth(containerId: string): Promise<ContainerHealthCheck | null> {
     const containerInfo = await this.containerManager.getContainerInfo(containerId);
@@ -178,6 +237,20 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Add a container to monitoring (useful when not monitoring all containers)
+   *
+   * Adds a specific container to the health monitoring system and performs
+   * an initial health check. Useful when monitorAll is false.
+   *
+   * @param containerId - The ID of the container to add to monitoring
+   * @returns Promise that resolves when container is added
+   * @throws {Error} If container is not found
+   *
+   * @example
+   * ```typescript
+   * // Add a specific container to monitoring
+   * await monitor.addContainer('apex-custom-task-123');
+   * console.log('Container added to monitoring');
+   * ```
    */
   async addContainer(containerId: string): Promise<void> {
     const containerInfo = await this.containerManager.getContainerInfo(containerId);
@@ -194,6 +267,17 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Remove a container from monitoring
+   *
+   * Stops monitoring the specified container and removes its health data.
+   * Container lifecycle events will automatically trigger this for stopped containers.
+   *
+   * @param containerId - The ID of the container to remove from monitoring
+   *
+   * @example
+   * ```typescript
+   * monitor.removeContainer('apex-task123-abc456');
+   * console.log('Container removed from monitoring');
+   * ```
    */
   removeContainer(containerId: string): void {
     this.containerHealth.delete(containerId);
@@ -201,6 +285,20 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Update monitoring configuration
+   *
+   * Updates the monitoring options and restarts monitoring if it was active.
+   * Useful for changing monitoring interval or other settings at runtime.
+   *
+   * @param newOptions - Partial options to update
+   *
+   * @example
+   * ```typescript
+   * // Change monitoring interval to 1 minute
+   * monitor.updateOptions({ interval: 60000 });
+   *
+   * // Enable monitoring all containers
+   * monitor.updateOptions({ monitorAll: true });
+   * ```
    */
   updateOptions(newOptions: Partial<ContainerHealthMonitorOptions>): void {
     const wasMonitoring = this.isMonitoring;
@@ -221,6 +319,17 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Get current monitoring status
+   *
+   * @returns true if health monitoring is currently active, false otherwise
+   *
+   * @example
+   * ```typescript
+   * if (monitor.isActive()) {
+   *   console.log('Monitoring is running');
+   * } else {
+   *   console.log('Monitoring is stopped');
+   * }
+   * ```
    */
   isActive(): boolean {
     return this.isMonitoring;
@@ -228,6 +337,19 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Get monitoring statistics
+   *
+   * Provides aggregate statistics about the monitored containers including
+   * counts by health status and average failure rates.
+   *
+   * @returns Object containing monitoring statistics
+   *
+   * @example
+   * ```typescript
+   * const stats = monitor.getStats();
+   * console.log(`Monitoring ${stats.totalContainers} containers`);
+   * console.log(`Healthy: ${stats.healthyContainers}, Unhealthy: ${stats.unhealthyContainers}`);
+   * console.log(`Average failing streak: ${stats.averageFailingStreak.toFixed(1)}`);
+   * ```
    */
   getStats(): {
     isMonitoring: boolean;
@@ -563,6 +685,31 @@ export const containerHealthMonitor = {
 
 /**
  * Convenience function to start container health monitoring
+ *
+ * Creates a new ContainerHealthMonitor instance with the specified options
+ * and starts monitoring immediately.
+ *
+ * @param options - Configuration options for the health monitor
+ * @returns Promise that resolves to the started ContainerHealthMonitor instance
+ * @throws {Error} If no container runtime is available for monitoring
+ *
+ * @example
+ * ```typescript
+ * // Start monitoring with default options
+ * const monitor = await startContainerHealthMonitoring();
+ *
+ * // Start monitoring with custom options
+ * const monitor = await startContainerHealthMonitoring({
+ *   interval: 60000, // Check every minute
+ *   maxFailures: 5,
+ *   containerPrefix: 'myapp'
+ * });
+ *
+ * // Listen to health events
+ * monitor.on('container:health', (event) => {
+ *   console.log(`Container ${event.containerName} is now ${event.status}`);
+ * });
+ * ```
  */
 export async function startContainerHealthMonitoring(
   options?: ContainerHealthMonitorOptions
@@ -575,6 +722,25 @@ export async function startContainerHealthMonitoring(
 
 /**
  * Convenience function to get container health status
+ *
+ * Retrieves the current health status for a specific container from
+ * the default health monitor instance.
+ *
+ * @param containerId - The ID of the container to check
+ * @returns ContainerHealthCheck object if found, null otherwise
+ *
+ * @example
+ * ```typescript
+ * // Check health of a specific container
+ * const health = getContainerHealth('apex-task123-abc456');
+ * if (health) {
+ *   console.log(`Container ${health.containerName} status: ${health.status}`);
+ *   console.log(`Failing streak: ${health.failingStreak}`);
+ *   console.log(`Last check: ${health.lastCheckTime}`);
+ * } else {
+ *   console.log('Container not found or not being monitored');
+ * }
+ * ```
  */
 export function getContainerHealth(containerId: string): ContainerHealthCheck | null {
   return containerHealthMonitor.instance.getContainerHealth(containerId);

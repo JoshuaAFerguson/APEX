@@ -25,6 +25,58 @@
     "./cleanup": {
       "types": "./dist/cleanup.d.ts",
       "import": "./dist/cleanup.js"
+    },
+    "./browser-automation-mocks": {
+      "types": "./dist/browser-automation-mocks.d.ts",
+      "import": "./dist/browser-automation-mocks.js"
+    },
+    "./browser-permission-simulator": {
+      "types": "./dist/browser-permission-simulator.d.ts",
+      "import": "./dist/browser-permission-simulator.js"
+    },
+    "./browser-test-fixtures": {
+      "types": "./dist/browser-test-fixtures.d.ts",
+      "import": "./dist/browser-test-fixtures.js"
+    },
+    "./browser-automation-test-setup": {
+      "types": "./dist/browser-automation-test-setup.d.ts",
+      "import": "./dist/browser-automation-test-setup.js"
+    },
+    "./browser-test-base": {
+      "types": "./dist/browser-test-base.d.ts",
+      "import": "./dist/browser-test-base.js"
+    },
+    "./browser-automation-config": {
+      "types": "./dist/browser-automation-config.d.ts",
+      "import": "./dist/browser-automation-config.js"
+    },
+    "./browser-error-fixtures": {
+      "types": "./dist/browser-error-fixtures.d.ts",
+      "import": "./dist/browser-error-fixtures.js"
+    },
+    "./browser-utils": {
+      "types": "./dist/browser-utils.d.ts",
+      "import": "./dist/browser-utils.js"
+    },
+    "./autonomy-test-helpers": {
+      "types": "./dist/autonomy-test-helpers.d.ts",
+      "import": "./dist/autonomy-test-helpers.js"
+    },
+    "./permission-test-helpers": {
+      "types": "./dist/permission-test-helpers.d.ts",
+      "import": "./dist/permission-test-helpers.js"
+    },
+    "./mcp-permission-helpers": {
+      "types": "./dist/mcp-permission-helpers.d.ts",
+      "import": "./dist/mcp-permission-helpers.js"
+    },
+    "./mcp-test-base": {
+      "types": "./dist/mcp-test-base.d.ts",
+      "import": "./dist/mcp-test-base.js"
+    },
+    "./mock-server-factory": {
+      "types": "./dist/mock-server-factory.d.ts",
+      "import": "./dist/mock-server-factory.js"
     }
   },
   "scripts": {

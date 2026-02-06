@@ -27,8 +27,8 @@ import {
 import {
   PermissionRevocationSimulator,
   PartialResultTracker,
-  PermissionRevokedError,
 } from './mocks/permission-revocation';
+import { PermissionRevokedError } from '@apexcli/core';
 
 let testDir: string;
 let permissionStore: PermissionStore;

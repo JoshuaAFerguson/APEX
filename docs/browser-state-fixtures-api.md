@@ -42,6 +42,7 @@ The browser state fixtures module exports a collection of factory functions and 
     - [withAuth()](#withauth)
     - [withLocalStorage()](#withlocalstorage-1)
     - [withSessionStorage()](#withsessionstorage-1)
+    - [withCookies()](#withcookies)
     - [withConsoleMessages()](#withconsolemessages)
     - [withNetworkRequests()](#withnetworkrequests)
     - [build()](#build)
@@ -1066,6 +1067,46 @@ const state = new BrowserStateBuilder()
 expect(state.sessionStorage['current-tab']).toBe('dashboard');
 ```
 
+#### withCookies()
+
+Adds cookies (appends to existing cookies).
+
+**Signature:**
+```typescript
+withCookies(cookies: Array<{
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+}>): this
+```
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cookies` | `Array<Cookie>` | Yes | Array of cookies |
+| `cookies[].name` | `string` | Yes | Cookie name |
+| `cookies[].value` | `string` | Yes | Cookie value |
+| `cookies[].domain` | `string` | No | Cookie domain (defaults to 'localhost') |
+| `cookies[].path` | `string` | No | Cookie path (defaults to '/') |
+
+**Returns:** `this` — The builder instance for method chaining
+
+**Usage Example:**
+```typescript
+const state = new BrowserStateBuilder()
+  .withCookies([
+    { name: 'session-id', value: 'sess_123' },
+    { name: 'tracking', value: 'track_456', domain: 'example.com', path: '/analytics' }
+  ])
+  .build();
+
+expect(state.cookies).toHaveLength(2);
+expect(state.cookies[0].name).toBe('session-id');
+expect(state.cookies[1].domain).toBe('example.com');
+```
+
 #### withConsoleMessages()
 
 Adds console messages (appends to existing messages).
@@ -1238,6 +1279,7 @@ state = browserHelpers.addConsoleMessage(state, 'info', 'User logged in');
 const state2 = createBrowserState()
   .withAuth(true)
   .withLocalStorage({ 'theme': 'dark' })
+  .withCookies([{ name: 'session-id', value: 'sess_123' }])
   .withConsoleMessages([{ type: 'info', message: 'User logged in' }])
   .build();
 
@@ -1408,7 +1450,8 @@ describe('Cross-scenario Testing', () => {
 
 ## Related Documentation
 
-- [Mock Helpers API](./mock-helpers-api.md) - Complete mock helpers API reference for testing
-- [Test Utilities](./test-utilities.md) - Additional testing utilities and helpers
-- [Browser Automation](./browser-automation.md) - Browser automation testing guide
-- [System APIs Reference](./system-apis-reference.md) - Complete system API documentation
+- [Browser Permission Test Utilities](./browser-permission-test-utilities.md) - Comprehensive browser testing utilities including browser state fixtures, browserHelpers, BrowserStateBuilder, mock helper functions, permission assertion helpers, and custom Vitest matchers for testing permissions and browser automation
+- [Mock Helpers API](./mock-helpers-api.md) - Complete mock helpers API reference including createOrchestratorMock, createAgentSdkMock, createFileSystemMock, createNetworkMock, createTaskStoreMock, createPageMock, and other testing utilities
+- [Test Utilities](./test-utilities.md) - Cross-platform testing utilities including platform detection, conditional test skipping, and helper functions
+- [Browser Automation](./browser-automation.md) - Browser automation testing guide and integration patterns
+- [System APIs Reference](./system-apis-reference.md) - Complete system API documentation including type definitions for BrowserState, ToolPermissionResult, and other interfaces

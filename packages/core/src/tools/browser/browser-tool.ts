@@ -42,7 +42,7 @@ import type {
   BrowserToolInput,
   BrowserToolOutput,
 } from '../../types.js';
-import { BrowserPermissionDeniedError } from './browser-permission-denied-error.js';
+import { BrowserPermissionDeniedError, type BrowserLifecycleState, type BrowserLifecycleAware } from './browser-permission-denied-error.js';
 
 // ============================================================================
 // Types and Interfaces
@@ -140,7 +140,7 @@ export interface BrowserToolOptions {
  * - Form submission control prevents unwanted actions
  * - Network permission is required
  */
-export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
+export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> implements BrowserLifecycleAware {
   /** Default page load timeout in milliseconds */
   private static readonly DEFAULT_TIMEOUT = 30000;
 
@@ -149,6 +149,9 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
 
   /** Tool configuration */
   private readonly config: Required<BrowserToolOptions>;
+
+  /** Current lifecycle state of the browser tool */
+  public state: BrowserLifecycleState = 'idle';
 
   /** Active browser sessions for resource tracking */
   private readonly activeSessions = new Map<string, {
@@ -391,6 +394,17 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
   ): Promise<BrowserToolOutput> {
     const startTime = Date.now();
     const sessionId = this.generateSessionId();
+
+    // Check if tool is in a state that prevents execution
+    if (this.state === 'destroyed' || this.state === 'cleaning_up' || this.state === 'launching') {
+      throw new Error('Browser tool has been destroyed and cannot execute operations');
+    }
+
+    // Transition to active state on first execution
+    if (this.state === 'idle') {
+      this.state = 'active';
+      console.debug(`BrowserTool: State transitioned from idle to active`);
+    }
 
     // Check cancellation early
     if (context?.signal?.aborted) {
@@ -647,11 +661,21 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
    * Called when tool is disposed or on permission denial
    */
   public async cleanupAllSessions(): Promise<void> {
+    // Transition to cleaning_up state
+    if (this.state !== 'destroyed') {
+      this.state = 'cleaning_up';
+      console.debug(`BrowserTool: State transitioned to cleaning_up`);
+    }
+
     const sessionIds = Array.from(this.activeSessions.keys());
     await Promise.allSettled(
       sessionIds.map(sessionId => this.cleanupSession(sessionId))
     );
     this.activeSessions.clear();
+
+    // Transition to destroyed state after cleanup
+    this.state = 'destroyed';
+    console.debug(`BrowserTool: State transitioned to destroyed`);
   }
 
   /**
@@ -734,5 +758,15 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> {
    */
   public clearPermissionCache(): void {
     this.permissionCache.clear();
+  }
+
+  /**
+   * Check whether the browser tool is currently active and available for operations.
+   * Returns true when state is 'idle' or 'active', false otherwise.
+   *
+   * @returns true if the browser tool is available for operations
+   */
+  public isActive(): boolean {
+    return this.state === 'idle' || this.state === 'active';
   }
 }

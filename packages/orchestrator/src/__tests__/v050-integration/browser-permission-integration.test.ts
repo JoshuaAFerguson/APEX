@@ -77,7 +77,7 @@ describe('Browser + Permission System Integration', () => {
   describe('Permission Gate Integration', () => {
     it('should block navigate without permission', async () => {
       // Ensure no existing permission
-      await testEnv.permissionManager.denyPermission('browser', 'navigate');
+      await testEnv.permissionManager.grantPermission('browser', 'navigate', 'deny');
 
       const result = await browserTool.navigate({
         url: 'https://example.com',
@@ -231,7 +231,7 @@ describe('Browser + Permission System Integration', () => {
       expect(storedPermission).toBe('allow-always');
 
       // Deny permission and verify update
-      await testEnv.permissionManager.denyPermission(tool, scope);
+      await testEnv.permissionManager.grantPermission(tool, scope);
 
       const updatedPermission = testEnv.permissionManager.getPermission(tool, scope);
       expect(updatedPermission).toBe('deny');
@@ -290,7 +290,7 @@ describe('Browser + Permission System Integration', () => {
   describe('Error Handling', () => {
     it('should handle permission denial gracefully', async () => {
       // Deny permission
-      await testEnv.permissionManager.denyPermission('browser');
+      await testEnv.permissionManager.grantPermission('browser');
 
       const result = await browserTool.navigate({ url: 'https://example.com' });
 
@@ -301,7 +301,7 @@ describe('Browser + Permission System Integration', () => {
     });
 
     it('should return permission error in BrowserResult metadata', async () => {
-      await testEnv.permissionManager.denyPermission('browser', 'navigate');
+      await testEnv.permissionManager.grantPermission('browser', 'navigate', 'deny');
 
       const result = await browserTool.navigate({ url: 'https://example.com' });
 
@@ -317,7 +317,7 @@ describe('Browser + Permission System Integration', () => {
 
     it('should not execute browser action when permission denied', async () => {
       const navigateSpy = vi.spyOn(mockSession, 'navigate');
-      await testEnv.permissionManager.denyPermission('browser');
+      await testEnv.permissionManager.grantPermission('browser');
 
       await browserTool.navigate({ url: 'https://example.com' });
 
@@ -330,7 +330,7 @@ describe('Browser + Permission System Integration', () => {
     it('should handle mixed permission levels for different operations', async () => {
       // Allow navigation but deny clicking
       await testEnv.permissionManager.grantPermission('browser', 'allow-always', 'navigate');
-      await testEnv.permissionManager.denyPermission('browser', 'click');
+      await testEnv.permissionManager.grantPermission('browser', 'click');
 
       const navigateResult = await browserTool.navigate({ url: 'https://example.com' });
       expect(navigateResult.success).toBe(true);
@@ -342,7 +342,7 @@ describe('Browser + Permission System Integration', () => {
     it('should respect scope-specific permissions', async () => {
       // Allow screenshots but deny evaluate
       await testEnv.permissionManager.grantPermission('browser', 'allow-always', 'screenshot');
-      await testEnv.permissionManager.denyPermission('browser', 'evaluate');
+      await testEnv.permissionManager.grantPermission('browser', 'evaluate');
 
       const screenshotResult = await browserTool.screenshot();
       expect(screenshotResult.success).toBe(true);

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Test Page - APEX Browser Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: #dc3545;
+            color: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .button {
+            background: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #c82333;
+        }
+        .button.warning {
+            background: #ffc107;
+            color: #000;
+        }
+        .button.warning:hover {
+            background: #e0a800;
+        }
+        .output-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            min-height: 50px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .error-box {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .hidden-element {
+            display: none;
+        }
+        .broken-image {
+            border: 2px dashed #dc3545;
+            padding: 10px;
+            text-align: center;
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Error Test Page</h1>
+            <p>Testing error conditions and edge cases</p>
+        </div>
+
+        <!-- JavaScript Errors Section -->
+        <div class="section">
+            <h2>JavaScript Errors</h2>
+            <button id="syntax-error-btn" class="button">Cause Syntax Error</button>
+            <button id="reference-error-btn" class="button">Cause Reference Error</button>
+            <button id="type-error-btn" class="button">Cause Type Error</button>
+            <button id="custom-error-btn" class="button">Throw Custom Error</button>
+            <div id="js-error-output" class="output-box error-box">
+                JavaScript errors will be logged here...
+            </div>
+        </div>
+
+        <!-- Network Errors Section -->
+        <div class="section">
+            <h2>Network Errors</h2>
+            <button id="404-error-btn" class="button">Trigger 404 Error</button>
+            <button id="timeout-error-btn" class="button">Trigger Timeout</button>
+            <button id="cors-error-btn" class="button">Trigger CORS Error</button>
+            <div id="network-error-output" class="output-box error-box">
+                Network errors will be logged here...
+            </div>
+        </div>
+
+        <!-- DOM Errors Section -->
+        <div class="section">
+            <h2>DOM Errors</h2>
+            <button id="missing-element-btn" class="button">Access Missing Element</button>
+            <button id="invalid-selector-btn" class="button">Use Invalid Selector</button>
+            <button id="broken-event-btn" class="button">Attach Broken Event</button>
+            <div id="dom-error-output" class="output-box error-box">
+                DOM errors will be logged here...
+            </div>
+        </div>
+
+        <!-- Console Warnings Section -->
+        <div class="section">
+            <h2>Console Warnings</h2>
+            <button id="deprecation-warning-btn" class="button warning">Log Deprecation Warning</button>
+            <button id="performance-warning-btn" class="button warning">Log Performance Warning</button>
+            <button id="security-warning-btn" class="button warning">Log Security Warning</button>
+            <div id="warning-output" class="output-box warning-box">
+                Warnings will be logged here...
+            </div>
+        </div>
+
+        <!-- Resource Loading Errors -->
+        <div class="section">
+            <h2>Resource Loading Errors</h2>
+            <button id="broken-image-btn" class="button">Load Broken Image</button>
+            <button id="missing-script-btn" class="button">Load Missing Script</button>
+            <button id="invalid-css-btn" class="button">Load Invalid CSS</button>
+            <div id="resource-container">
+                <div class="broken-image">Resource loading errors will appear here</div>
+            </div>
+            <div id="resource-error-output" class="output-box error-box">
+                Resource loading errors will be logged here...
+            </div>
+        </div>
+
+        <!-- Form Validation Errors -->
+        <div class="section">
+            <h2>Form Validation Errors</h2>
+            <form id="error-form">
+                <input type="email" id="invalid-email" value="invalid-email" required />
+                <input type="number" id="invalid-number" value="not-a-number" required />
+                <input type="url" id="invalid-url" value="invalid-url" required />
+                <button type="submit" class="button">Submit Invalid Form</button>
+            </form>
+            <div id="form-error-output" class="output-box error-box">
+                Form validation errors will be logged here...
+            </div>
+        </div>
+
+        <!-- Async Errors Section -->
+        <div class="section">
+            <h2>Async Errors</h2>
+            <button id="promise-rejection-btn" class="button">Unhandled Promise Rejection</button>
+            <button id="async-timeout-btn" class="button">Async Timeout Error</button>
+            <button id="callback-error-btn" class="button">Callback Error</button>
+            <div id="async-error-output" class="output-box error-box">
+                Async errors will be logged here...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Error logging utility
+        function logError(message, type = 'error', outputId = null) {
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+
+            if (outputId) {
+                const output = document.getElementById(outputId);
+                if (output) {
+                    output.textContent += logMessage + '\n';
+                }
+            }
+
+            // Log to browser console
+            console[type](message);
+        }
+
+        // Set up global error handlers
+        window.onerror = function(message, source, lineno, colno, error) {
+            logError(`Global error: ${message} at ${source}:${lineno}:${colno}`, 'error', 'js-error-output');
+            return false; // Don't prevent default handling
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            logError(`Unhandled promise rejection: ${event.reason}`, 'error', 'async-error-output');
+        });
+
+        // JavaScript Errors
+        document.getElementById('syntax-error-btn').addEventListener('click', function() {
+            try {
+                // This will cause a syntax error when evaluated
+                eval('const = invalid syntax;');
+            } catch (error) {
+                logError(`Syntax Error: ${error.message}`, 'error', 'js-error-output');
+            }
+        });
+
+        document.getElementById('reference-error-btn').addEventListener('click', function() {
+            try {
+                // Reference to undefined variable
+                console.log(undefinedVariable);
+            } catch (error) {
+                logError(`Reference Error: ${error.message}`, 'error', 'js-error-output');
+            }
+        });
+
+        document.getElementById('type-error-btn').addEventListener('click', function() {
+            try {
+                // Type error - calling method on null
+                const nullValue = null;
+                nullValue.someMethod();
+            } catch (error) {
+                logError(`Type Error: ${error.message}`, 'error', 'js-error-output');
+            }
+        });
+
+        document.getElementById('custom-error-btn').addEventListener('click', function() {
+            try {
+                throw new Error('This is a custom error for testing purposes');
+            } catch (error) {
+                logError(`Custom Error: ${error.message}`, 'error', 'js-error-output');
+            }
+        });
+
+        // Network Errors
+        document.getElementById('404-error-btn').addEventListener('click', async function() {
+            try {
+                const response = await fetch('/nonexistent-endpoint');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                logError(`Network Error: ${error.message}`, 'error', 'network-error-output');
+            }
+        });
+
+        document.getElementById('timeout-error-btn').addEventListener('click', function() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 100);
+
+            fetch('https://httpbin.org/delay/5', { signal: controller.signal })
+                .then(() => clearTimeout(timeoutId))
+                .catch(error => {
+                    if (error.name === 'AbortError') {
+                        logError('Request timed out', 'error', 'network-error-output');
+                    } else {
+                        logError(`Network Error: ${error.message}`, 'error', 'network-error-output');
+                    }
+                });
+        });
+
+        document.getElementById('cors-error-btn').addEventListener('click', function() {
+            // This will typically cause a CORS error
+            fetch('https://api.github.com/users/octocat', { mode: 'no-cors' })
+                .catch(error => {
+                    logError(`CORS Error: ${error.message}`, 'error', 'network-error-output');
+                });
+        });
+
+        // DOM Errors
+        document.getElementById('missing-element-btn').addEventListener('click', function() {
+            try {
+                const missingElement = document.getElementById('nonexistent-element');
+                missingElement.style.display = 'block'; // This will throw an error
+            } catch (error) {
+                logError(`DOM Error: ${error.message}`, 'error', 'dom-error-output');
+            }
+        });
+
+        document.getElementById('invalid-selector-btn').addEventListener('click', function() {
+            try {
+                document.querySelector('invalid::selector:::');
+            } catch (error) {
+                logError(`Selector Error: ${error.message}`, 'error', 'dom-error-output');
+            }
+        });
+
+        document.getElementById('broken-event-btn').addEventListener('click', function() {
+            try {
+                const element = document.createElement('div');
+                element.addEventListener('click', undefinedFunction); // This will cause an error when clicked
+                element.click();
+            } catch (error) {
+                logError(`Event Error: ${error.message}`, 'error', 'dom-error-output');
+            }
+        });
+
+        // Console Warnings
+        document.getElementById('deprecation-warning-btn').addEventListener('click', function() {
+            logError('This API is deprecated and will be removed in future versions', 'warn', 'warning-output');
+        });
+
+        document.getElementById('performance-warning-btn').addEventListener('click', function() {
+            logError('Performance warning: Large DOM manipulation detected', 'warn', 'warning-output');
+        });
+
+        document.getElementById('security-warning-btn').addEventListener('click', function() {
+            logError('Security warning: Potentially unsafe operation detected', 'warn', 'warning-output');
+        });
+
+        // Resource Loading Errors
+        document.getElementById('broken-image-btn').addEventListener('click', function() {
+            const img = document.createElement('img');
+            img.src = 'https://nonexistent-domain-12345.com/image.jpg';
+            img.onerror = function() {
+                logError('Failed to load image resource', 'error', 'resource-error-output');
+            };
+            document.getElementById('resource-container').appendChild(img);
+        });
+
+        document.getElementById('missing-script-btn').addEventListener('click', function() {
+            const script = document.createElement('script');
+            script.src = '/nonexistent-script.js';
+            script.onerror = function() {
+                logError('Failed to load script resource', 'error', 'resource-error-output');
+            };
+            document.head.appendChild(script);
+        });
+
+        document.getElementById('invalid-css-btn').addEventListener('click', function() {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/nonexistent-styles.css';
+            link.onerror = function() {
+                logError('Failed to load CSS resource', 'error', 'resource-error-output');
+            };
+            document.head.appendChild(link);
+        });
+
+        // Form Validation Errors
+        document.getElementById('error-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const formData = new FormData(form);
+            const errors = [];
+
+            // Validate fields
+            if (!form.checkValidity()) {
+                form.querySelectorAll('input').forEach(input => {
+                    if (!input.checkValidity()) {
+                        errors.push(`${input.type} field: ${input.validationMessage}`);
+                    }
+                });
+
+                logError(`Form validation failed: ${errors.join(', ')}`, 'error', 'form-error-output');
+            }
+        });
+
+        // Async Errors
+        document.getElementById('promise-rejection-btn').addEventListener('click', function() {
+            // Create unhandled promise rejection
+            Promise.reject(new Error('Unhandled promise rejection for testing'));
+        });
+
+        document.getElementById('async-timeout-btn').addEventListener('click', function() {
+            async function timeoutOperation() {
+                return new Promise((resolve, reject) => {
+                    setTimeout(() => {
+                        reject(new Error('Async operation timed out'));
+                    }, 1000);
+                });
+            }
+
+            timeoutOperation().catch(error => {
+                logError(`Async Timeout: ${error.message}`, 'error', 'async-error-output');
+            });
+        });
+
+        document.getElementById('callback-error-btn').addEventListener('click', function() {
+            function problematicCallback() {
+                throw new Error('Error in callback function');
+            }
+
+            try {
+                setTimeout(problematicCallback, 100);
+            } catch (error) {
+                logError(`Callback Error: ${error.message}`, 'error', 'async-error-output');
+            }
+        });
+
+        // Initial page load
+        console.log('Error test page loaded');
+        logError('Error test page initialized - ready for error testing', 'info');
+    </script>
+</body>
+</html>

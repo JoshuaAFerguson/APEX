@@ -12,20 +12,7 @@
 
 import type { StreamingEvent } from './claude-agent-sdk.types';
 import type { RevocationConfig, RevocationSimulationResult, TrackedToolCall } from './permission-revocation.types';
-
-/**
- * Custom error thrown when a permission is revoked mid-stream.
- *
- * Distinguishable from other errors via the `code` property.
- */
-export class PermissionRevokedError extends Error {
-  readonly code = 'PERMISSION_REVOKED' as const;
-
-  constructor(reason?: string) {
-    super(reason ?? 'Permission revoked');
-    this.name = 'PermissionRevokedError';
-  }
-}
+import { PermissionRevokedError } from '@apexcli/core';
 
 /**
  * Controls interruption of an async generator stream.

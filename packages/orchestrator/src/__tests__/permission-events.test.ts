@@ -33,29 +33,11 @@ describe('Permission Change Event Emission', () => {
     // Create temporary SQLite database for testing
     testDbPath = join(tmpdir(), `apex-test-${Date.now()}.db`);
 
-    // Mock ApexOrchestrator with minimal required configuration
-    const mockConfig = {
-      project: {
-        name: 'test-project',
-        autonomy: 'supervised' as const
-      },
-      agents: {},
-      workflows: {},
-      limits: {
-        maxConcurrentTasks: 1,
-        maxCost: 100
-      },
-      permissions: {
-        presets: {},
-        defaults: {
-          level: 'ask' as PermissionLevel
-        }
-      }
-    };
-
-    // Initialize orchestrator with test configuration
-    orchestrator = new ApexOrchestrator();
-    await orchestrator.initialize('/tmp/test-project', mockConfig);
+    // Initialize orchestrator with minimal test configuration
+    orchestrator = new ApexOrchestrator({
+      projectPath: '/tmp/test-project'
+    });
+    await orchestrator.initialize();
 
     // Get the store instance (should be using in-memory SQLite for tests)
     mockStore = orchestrator.store;

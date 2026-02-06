@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
+import {
   Task,
   TaskUsage,
   TaskLog,
@@ -18,7 +18,13 @@ import type {
   SubtaskStrategy,
   TaskDecomposition,
   SubtaskDefinition,
-  AutonomyLevel
+  AutonomyLevel,
+  TaskStatusSchema,
+  TaskStatus,
+  TaskPrioritySchema,
+  TaskPriority,
+  TaskEffortSchema,
+  TaskEffort,
 } from '../types';
 
 // Helper function to create a minimal valid Task object
@@ -52,10 +58,325 @@ function createMinimalTask(overrides: Partial<Task> = {}): Task {
 }
 
 // ============================================================================
+// TaskStatusSchema Tests
+// ============================================================================
+
+describe('TaskStatusSchema', () => {
+  describe('schema validation', () => {
+    it('should validate all documented status values from JSDoc', () => {
+      const validStatuses: TaskStatus[] = [
+        'pending',        // Task created but not yet queued
+        'queued',         // Task ready for execution
+        'planning',       // Agent is planning implementation approach
+        'in-progress',    // Task actively being executed
+        'waiting-approval',  // Task requires user approval (deprecated)
+        'awaiting-approval', // Task requires user approval
+        'paused',         // Task execution paused
+        'completed',      // Task successfully finished
+        'failed',         // Task execution failed
+        'cancelled',      // Task was cancelled by user or system
+      ];
+
+      validStatuses.forEach((status) => {
+        expect(() => TaskStatusSchema.parse(status)).not.toThrow();
+        expect(TaskStatusSchema.parse(status)).toBe(status);
+      });
+    });
+
+    it('should work with JSDoc example code', () => {
+      // Test examples directly from JSDoc comments
+      const status: TaskStatus = 'pending';
+      expect(status).toBe('pending');
+
+      const validStatus = TaskStatusSchema.parse('in-progress');
+      expect(validStatus).toBe('in-progress');
+    });
+
+    it('should validate task progression workflow from JSDoc', () => {
+      // Test progression example: pending → queued → planning → in-progress → completed
+      const standardProgression: TaskStatus[] = [
+        'pending',
+        'queued',
+        'planning',
+        'in-progress',
+        'completed'
+      ];
+
+      standardProgression.forEach((status) => {
+        expect(() => TaskStatusSchema.parse(status)).not.toThrow();
+      });
+
+      // Test alternative progression with pause: pending → queued → planning → in-progress → paused → in-progress → completed
+      const pausedProgression: TaskStatus[] = [
+        'pending',
+        'queued',
+        'planning',
+        'in-progress',
+        'paused',
+        'in-progress',
+        'completed'
+      ];
+
+      pausedProgression.forEach((status) => {
+        expect(() => TaskStatusSchema.parse(status)).not.toThrow();
+      });
+    });
+
+    it('should reject invalid status values', () => {
+      const invalidStatuses = [
+        'invalid-status',
+        'PENDING',           // Case sensitive
+        'In-Progress',       // Case sensitive
+        'ready',
+        'running',
+        '',                  // Empty string
+        null,
+        undefined,
+        123,                 // Number
+        true,                // Boolean
+      ];
+
+      invalidStatuses.forEach((status) => {
+        expect(() => TaskStatusSchema.parse(status)).toThrow();
+      });
+    });
+  });
+
+  describe('type inference', () => {
+    it('should infer correct TypeScript types', () => {
+      const inferredStatus = 'failed';
+      const typedStatus: TaskStatus = inferredStatus;
+      expect(TaskStatusSchema.parse(typedStatus)).toBe('failed');
+
+      // Test that all enum values are properly typed
+      const allStatuses: TaskStatus[] = [
+        'pending', 'queued', 'planning', 'in-progress',
+        'waiting-approval', 'awaiting-approval', 'paused',
+        'completed', 'failed', 'cancelled'
+      ];
+
+      allStatuses.forEach(status => {
+        const typed: TaskStatus = status;
+        expect(typed).toBe(status);
+      });
+    });
+  });
+});
+
+// ============================================================================
+// TaskPrioritySchema Tests
+// ============================================================================
+
+describe('TaskPrioritySchema', () => {
+  describe('schema validation', () => {
+    it('should validate all documented priority values from JSDoc', () => {
+      const validPriorities: TaskPriority[] = [
+        'low',      // Low priority, executed when resources available
+        'normal',   // Default priority for most tasks
+        'high',     // High priority, prioritized over normal/low
+        'urgent',   // Highest priority, executed immediately when possible
+      ];
+
+      validPriorities.forEach((priority) => {
+        expect(() => TaskPrioritySchema.parse(priority)).not.toThrow();
+        expect(TaskPrioritySchema.parse(priority)).toBe(priority);
+      });
+    });
+
+    it('should work with JSDoc example code', () => {
+      // Test examples directly from JSDoc comments
+      const priority: TaskPriority = 'normal';
+      expect(priority).toBe('normal');
+
+      const validPriority = TaskPrioritySchema.parse('urgent');
+      expect(validPriority).toBe('urgent');
+    });
+
+    it('should validate priority ordering from JSDoc', () => {
+      // Test priority ordering: urgent > high > normal > low
+      const priorityOrder: TaskPriority[] = ['urgent', 'high', 'normal', 'low'];
+
+      priorityOrder.forEach((priority) => {
+        expect(() => TaskPrioritySchema.parse(priority)).not.toThrow();
+      });
+
+      // Test that we can map priorities to numeric weights for sorting
+      const priorityWeights = { low: 1, normal: 2, high: 3, urgent: 4 };
+      priorityOrder.forEach((priority) => {
+        expect(priorityWeights[priority]).toBeDefined();
+        expect(typeof priorityWeights[priority]).toBe('number');
+      });
+    });
+
+    it('should reject invalid priority values', () => {
+      const invalidPriorities = [
+        'critical',          // Not in enum
+        'medium',           // Not in enum
+        'LOW',              // Case sensitive
+        'High',             // Case sensitive
+        'emergency',        // Not in enum
+        '',                 // Empty string
+        null,
+        undefined,
+        1,                  // Number
+        true,               // Boolean
+      ];
+
+      invalidPriorities.forEach((priority) => {
+        expect(() => TaskPrioritySchema.parse(priority)).toThrow();
+      });
+    });
+  });
+
+  describe('priority logic support', () => {
+    it('should support priority comparison and queue ordering', () => {
+      const priorities: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
+      const priorityWeights = { low: 1, normal: 2, high: 3, urgent: 4 };
+
+      // Test that all priorities can be mapped to weights for queue ordering
+      priorities.forEach((priority) => {
+        expect(priorityWeights[priority]).toBeDefined();
+        expect(typeof priorityWeights[priority]).toBe('number');
+        expect(priorityWeights[priority]).toBeGreaterThan(0);
+      });
+
+      // Test ordering logic
+      expect(priorityWeights.urgent).toBeGreaterThan(priorityWeights.high);
+      expect(priorityWeights.high).toBeGreaterThan(priorityWeights.normal);
+      expect(priorityWeights.normal).toBeGreaterThan(priorityWeights.low);
+    });
+  });
+});
+
+// ============================================================================
+// TaskEffortSchema Tests
+// ============================================================================
+
+describe('TaskEffortSchema', () => {
+  describe('schema validation', () => {
+    it('should validate all documented effort values from JSDoc', () => {
+      const validEfforts: TaskEffort[] = [
+        'xs',      // Extra small: minimal effort, quick fixes
+        'small',   // Small: simple features or bug fixes
+        'medium',  // Medium: moderate complexity features
+        'large',   // Large: complex features or refactoring
+        'xl',      // Extra large: major features or architectural changes
+      ];
+
+      validEfforts.forEach((effort) => {
+        expect(() => TaskEffortSchema.parse(effort)).not.toThrow();
+        expect(TaskEffortSchema.parse(effort)).toBe(effort);
+      });
+    });
+
+    it('should work with JSDoc example code', () => {
+      // Test examples directly from JSDoc comments
+      const effort: TaskEffort = 'medium';
+      expect(effort).toBe('medium');
+
+      const validEffort = TaskEffortSchema.parse('large');
+      expect(validEffort).toBe('large');
+    });
+
+    it('should validate effort level descriptions from JSDoc', () => {
+      // Test that effort levels correspond to documented descriptions
+      const effortDescriptions = {
+        xs: 'minimal effort, quick fixes',
+        small: 'simple features or bug fixes',
+        medium: 'moderate complexity features',
+        large: 'complex features or refactoring',
+        xl: 'major features or architectural changes',
+      };
+
+      Object.keys(effortDescriptions).forEach((effort) => {
+        expect(() => TaskEffortSchema.parse(effort)).not.toThrow();
+      });
+    });
+
+    it('should validate time estimates from JSDoc comment', () => {
+      // Test the time estimate mappings from JSDoc: xs: <1 hour, small: 1-4 hours, medium: 4-8 hours, large: 1-2 days, xl: 2+ days
+      const efforts: TaskEffort[] = ['xs', 'small', 'medium', 'large', 'xl'];
+      const effortHours = { xs: 0.5, small: 2, medium: 6, large: 16, xl: 40 };
+
+      efforts.forEach((effort) => {
+        expect(effortHours[effort]).toBeDefined();
+        expect(typeof effortHours[effort]).toBe('number');
+        expect(effortHours[effort]).toBeGreaterThan(0);
+      });
+
+      // Validate time progression (each level should generally be more than the previous)
+      expect(effortHours.small).toBeGreaterThan(effortHours.xs);
+      expect(effortHours.medium).toBeGreaterThan(effortHours.small);
+      expect(effortHours.large).toBeGreaterThan(effortHours.medium);
+      expect(effortHours.xl).toBeGreaterThan(effortHours.large);
+    });
+
+    it('should reject invalid effort values', () => {
+      const invalidEfforts = [
+        'extra-small',      // Not abbreviated
+        'tiny',             // Not in enum
+        'huge',             // Not in enum
+        'XS',               // Case sensitive
+        'Small',            // Case sensitive
+        'mini',             // Not in enum
+        '',                 // Empty string
+        null,
+        undefined,
+        0,                  // Number
+        false,              // Boolean
+      ];
+
+      invalidEfforts.forEach((effort) => {
+        expect(() => TaskEffortSchema.parse(effort)).toThrow();
+      });
+    });
+  });
+
+  describe('effort estimation support', () => {
+    it('should support effort-based planning and resource allocation', () => {
+      const efforts: TaskEffort[] = ['xs', 'small', 'medium', 'large', 'xl'];
+      const effortHours = { xs: 1, small: 4, medium: 8, large: 16, xl: 40 };
+      const effortComplexity = { xs: 1, small: 2, medium: 3, large: 4, xl: 5 };
+
+      // Test that all efforts can be mapped to planning metrics
+      efforts.forEach((effort) => {
+        expect(effortHours[effort]).toBeDefined();
+        expect(effortComplexity[effort]).toBeDefined();
+        expect(typeof effortHours[effort]).toBe('number');
+        expect(typeof effortComplexity[effort]).toBe('number');
+        expect(effortHours[effort]).toBeGreaterThan(0);
+        expect(effortComplexity[effort]).toBeGreaterThan(0);
+      });
+    });
+  });
+});
+
+// ============================================================================
 // TaskUsage Interface Tests
 // ============================================================================
 
 describe('TaskUsage Interface', () => {
+  describe('JSDoc example validation', () => {
+    it('should work with exact JSDoc example', () => {
+      // Test the exact example from JSDoc comments
+      const usage: TaskUsage = {
+        inputTokens: 1500,
+        outputTokens: 800,
+        totalTokens: 2300,
+        estimatedCost: 0.023,
+        totalCostCents: 23,
+        executionTimeMs: 5000
+      };
+
+      expect(usage.inputTokens).toBe(1500);
+      expect(usage.outputTokens).toBe(800);
+      expect(usage.totalTokens).toBe(2300);
+      expect(usage.estimatedCost).toBe(0.023);
+      expect(usage.totalCostCents).toBe(23);
+      expect(usage.executionTimeMs).toBe(5000);
+    });
+  });
+
   describe('structure validation', () => {
     it('should have all required fields with correct types', () => {
       const usage: TaskUsage = {
@@ -176,6 +497,28 @@ describe('TaskUsage Interface', () => {
 // ============================================================================
 
 describe('TaskLog Interface', () => {
+  describe('JSDoc example validation', () => {
+    it('should work with exact JSDoc example', () => {
+      // Test the exact example from JSDoc comments
+      const log: TaskLog = {
+        timestamp: new Date(),
+        level: 'info',
+        stage: 'implementation',
+        agent: 'developer',
+        message: 'Starting code implementation',
+        metadata: { fileCount: 3, estimatedTime: 300 }
+      };
+
+      expect(log.timestamp).toBeInstanceOf(Date);
+      expect(log.level).toBe('info');
+      expect(log.stage).toBe('implementation');
+      expect(log.agent).toBe('developer');
+      expect(log.message).toBe('Starting code implementation');
+      expect(log.metadata?.fileCount).toBe(3);
+      expect(log.metadata?.estimatedTime).toBe(300);
+    });
+  });
+
   describe('structure validation', () => {
     it('should have all required fields with correct types', () => {
       const log: TaskLog = {
@@ -278,6 +621,25 @@ describe('TaskLog Interface', () => {
 // ============================================================================
 
 describe('TaskArtifact Interface', () => {
+  describe('JSDoc example validation', () => {
+    it('should work with exact JSDoc example', () => {
+      // Test the exact example from JSDoc comments
+      const artifact: TaskArtifact = {
+        name: 'LoginComponent.tsx',
+        type: 'file',
+        path: '/src/components/LoginComponent.tsx',
+        content: 'import React from "react"...',
+        createdAt: new Date()
+      };
+
+      expect(artifact.name).toBe('LoginComponent.tsx');
+      expect(artifact.type).toBe('file');
+      expect(artifact.path).toBe('/src/components/LoginComponent.tsx');
+      expect(artifact.content).toBe('import React from "react"...');
+      expect(artifact.createdAt).toBeInstanceOf(Date);
+    });
+  });
+
   describe('structure validation', () => {
     it('should have all required fields with correct types', () => {
       const artifact: TaskArtifact = {
@@ -390,6 +752,28 @@ describe('TaskArtifact Interface', () => {
 // ============================================================================
 
 describe('SubtaskStrategy Type', () => {
+  describe('JSDoc example validation', () => {
+    it('should work with exact JSDoc example', () => {
+      // Test the exact example from JSDoc comments
+      const strategy: SubtaskStrategy = 'parallel';
+      expect(strategy).toBe('parallel');
+    });
+
+    it('should validate all strategies mentioned in JSDoc', () => {
+      // sequential: subtasks execute one after another
+      const sequential: SubtaskStrategy = 'sequential';
+      expect(sequential).toBe('sequential');
+
+      // parallel: all subtasks execute simultaneously
+      const parallel: SubtaskStrategy = 'parallel';
+      expect(parallel).toBe('parallel');
+
+      // dependency-based: execution order determined by dependsOn relationships
+      const dependencyBased: SubtaskStrategy = 'dependency-based';
+      expect(dependencyBased).toBe('dependency-based');
+    });
+  });
+
   describe('valid strategy values', () => {
     it('should accept sequential strategy', () => {
       const strategy: SubtaskStrategy = 'sequential';

@@ -423,4 +423,45 @@ describe('BrowserTool', () => {
       expect(updated.getConfig().allowedDomains).toEqual(['example.com']);
     });
   });
+
+  describe('lifecycle integration', () => {
+    it('should start with idle state', () => {
+      expect(browserTool.state).toBe('idle');
+      expect(browserTool.isActive()).toBe(true);
+    });
+
+    it('should transition to active state after first execution', async () => {
+      expect(browserTool.state).toBe('idle');
+
+      await browserTool.execute({
+        operation: 'navigate',
+        params: { url: 'https://example.com' },
+      });
+
+      expect(browserTool.state).toBe('active');
+      expect(browserTool.isActive()).toBe(true);
+    });
+
+    it('should be unusable after cleanup', async () => {
+      // Execute an operation to get to active state
+      await browserTool.execute({
+        operation: 'navigate',
+        params: { url: 'https://example.com' },
+      });
+
+      // Cleanup should destroy the tool
+      await browserTool.cleanupAllSessions();
+      expect(browserTool.state).toBe('destroyed');
+      expect(browserTool.isActive()).toBe(false);
+
+      // Further executions should fail
+      const result = await browserTool.execute({
+        operation: 'click',
+        params: { selector: 'button' },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Browser tool has been destroyed and cannot execute operations');
+    });
+  });
 });

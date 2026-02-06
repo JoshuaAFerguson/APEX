@@ -15,6 +15,29 @@ export * from './context';
 // Export cleanup utilities
 export * from './cleanup';
 
+// Re-export browser test utilities would be available from the browser package if it existed
+// Currently these are commented out as the browser package test utilities are not yet available
+// TODO: Uncomment when browser package test utilities are implemented
+
+// Export autonomy and permission test helpers
+export * from './autonomy-test-helpers';
+export * from './permission-test-helpers';
+
+// Export browser automation test infrastructure
+export * from './browser-test-base';
+export * from './browser-automation-mocks';
+export * from './browser-permission-simulator';
+export * from './browser-test-fixtures';
+export * from './browser-automation-test-setup';
+export * from './browser-automation-config';
+export * from './browser-error-fixtures';
+export * from './browser-utils';
+
+// Export MCP test infrastructure
+export * from './mcp-test-base';
+export * from './mcp-permission-helpers';
+export * from './mock-server-factory';
+
 // Re-export commonly used vitest functions for convenience
 export { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 

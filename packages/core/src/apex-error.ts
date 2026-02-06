@@ -66,10 +66,15 @@ export enum ApexErrorCode {
   TOOL_INTEGRATION_FAILED = 'APEX_1701',
   DEPENDENCY_ERROR = 'APEX_1702',
 
-  // Browser errors (1800-1899)
-  BROWSER_PERMISSION_DENIED = 'APEX_1800',
-  BROWSER_RESOURCE_LEAK = 'APEX_1801',
-  BROWSER_SESSION_INVALID = 'APEX_1802',
+  // Permission errors (1800-1849)
+  PERMISSION_REVOKED = 'APEX_1800',
+  PERMISSION_DENIED = 'APEX_1801',
+  PERMISSION_EXPIRED = 'APEX_1802',
+
+  // Browser errors (1850-1899)
+  BROWSER_PERMISSION_DENIED = 'APEX_1850',
+  BROWSER_RESOURCE_LEAK = 'APEX_1851',
+  BROWSER_SESSION_INVALID = 'APEX_1852',
 }
 
 // ============================================================================
@@ -407,6 +412,9 @@ const SAFE_ERROR_MESSAGES: Partial<Record<ApexErrorCode, string>> = {
   [ApexErrorCode.CONFIGURATION]: 'Configuration error',
   [ApexErrorCode.NETWORK_ERROR]: 'Network error',
   [ApexErrorCode.RATE_LIMIT_EXCEEDED]: 'Rate limit exceeded, please try again later',
+  [ApexErrorCode.PERMISSION_REVOKED]: 'Permission was revoked',
+  [ApexErrorCode.PERMISSION_DENIED]: 'Permission denied',
+  [ApexErrorCode.PERMISSION_EXPIRED]: 'Permission has expired',
   [ApexErrorCode.BROWSER_PERMISSION_DENIED]: 'Browser permission denied',
   [ApexErrorCode.BROWSER_RESOURCE_LEAK]: 'Browser resource leak detected',
   [ApexErrorCode.BROWSER_SESSION_INVALID]: 'Browser session is in an invalid state',
@@ -475,4 +483,43 @@ export function toSafeErrorResponse(error: ApexError): {
     code: error.code,
     message: safeMessage ?? sanitizeErrorMessage(error.message),
   };
+}
+
+// ============================================================================
+// Permission-specific Error Classes
+// ============================================================================
+
+/**
+ * Specific error class for permission revocation scenarios
+ *
+ * This error is thrown when a permission is revoked mid-operation,
+ * requiring graceful termination of in-flight requests.
+ */
+export class PermissionRevokedError extends ApexError {
+  /** Static code for this specific error type */
+  static readonly CODE = ApexErrorCode.PERMISSION_REVOKED as const;
+
+  constructor(
+    message: string = 'Permission was revoked during operation',
+    context: ApexErrorContext = {},
+    cause?: Error
+  ) {
+    super(message, ApexErrorCode.PERMISSION_REVOKED, context, cause);
+    this.name = 'PermissionRevokedError';
+
+    // Set the prototype explicitly for proper instanceof checks
+    Object.setPrototypeOf(this, PermissionRevokedError.prototype);
+  }
+
+  /** Legacy code property for backward compatibility with tests */
+  get code(): 'PERMISSION_REVOKED' {
+    return 'PERMISSION_REVOKED';
+  }
+}
+
+/**
+ * Type guard to check if an error is a PermissionRevokedError
+ */
+export function isPermissionRevokedError(error: unknown): error is PermissionRevokedError {
+  return error instanceof PermissionRevokedError;
 }

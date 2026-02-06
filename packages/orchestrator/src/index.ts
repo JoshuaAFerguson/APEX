@@ -99,6 +99,7 @@ import {
   TestVisualComparison,
   TestVisualComparisonSchema,
   getMCPServers,
+  sanitizeErrorMessage,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
@@ -2740,40 +2741,41 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private parseErrorMessage(error: Error): string {
     const message = error.message || String(error);
     const lowerMessage = message.toLowerCase();
+    const sanitizedMessage = sanitizeErrorMessage(message);
 
     // Token/context limit errors
     if (lowerMessage.includes('token') || lowerMessage.includes('context length') ||
         lowerMessage.includes('max_tokens') || lowerMessage.includes('context window')) {
-      return `Token limit exceeded: The conversation became too long. Consider breaking down the task into smaller subtasks. Original error: ${message}`;
+      return `Token limit exceeded: The conversation became too long. Consider breaking down the task into smaller subtasks. Original error: ${sanitizedMessage}`;
     }
 
     // Rate limiting
     if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many requests') ||
         lowerMessage.includes('429')) {
-      return `Rate limit exceeded: Too many API requests. The task will be retried automatically after a delay. Original error: ${message}`;
+      return `Rate limit exceeded: Too many API requests. The task will be retried automatically after a delay. Original error: ${sanitizedMessage}`;
     }
 
     // Authentication errors
     if (lowerMessage.includes('unauthorized') || lowerMessage.includes('authentication') ||
         lowerMessage.includes('api key') || lowerMessage.includes('401')) {
-      return `Authentication error: Invalid or missing API credentials. Please check your API key configuration. Original error: ${message}`;
+      return `Authentication error: Invalid or missing API credentials. Please check your API key configuration. Original error: ${sanitizedMessage}`;
     }
 
     // Permission/access errors
     if (lowerMessage.includes('forbidden') || lowerMessage.includes('permission') ||
         lowerMessage.includes('403')) {
-      return `Permission denied: You don't have access to the requested resource. Original error: ${message}`;
+      return `Permission denied: You don't have access to the requested resource. Original error: ${sanitizedMessage}`;
     }
 
     // Network errors
     if (lowerMessage.includes('network') || lowerMessage.includes('connection') ||
         lowerMessage.includes('econnrefused') || lowerMessage.includes('timeout')) {
-      return `Network error: Failed to connect to the API. Please check your internet connection and try again. Original error: ${message}`;
+      return `Network error: Failed to connect to the API. Please check your internet connection and try again. Original error: ${sanitizedMessage}`;
     }
 
     // Budget exceeded
     if (lowerMessage.includes('budget') || lowerMessage.includes('cost limit')) {
-      return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${message}`;
+      return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${sanitizedMessage}`;
     }
 
     // Usage/billing limit exceeded
@@ -2783,7 +2785,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
         lowerMessage.includes('daily limit') || lowerMessage.includes('limit reached') ||
         lowerMessage.includes('/upgrade') || lowerMessage.includes('extra-usage')) {
-      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
+      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${sanitizedMessage}`;
     }
 
     // Process exit errors
@@ -2800,23 +2802,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         return `Process terminated (exit code 143): The process was gracefully terminated by a signal.`;
       }
 
-      return `Process failed with exit code ${exitCode}. Original error: ${message}`;
+      return `Process failed with exit code ${exitCode}. Original error: ${sanitizedMessage}`;
     }
 
     // Server errors
     if (lowerMessage.includes('500') || lowerMessage.includes('502') ||
         lowerMessage.includes('503') || lowerMessage.includes('internal server error')) {
-      return `Server error: The API service encountered an internal error. This is usually temporary - please try again. Original error: ${message}`;
+      return `Server error: The API service encountered an internal error. This is usually temporary - please try again. Original error: ${sanitizedMessage}`;
     }
 
     // Invalid request
     if (lowerMessage.includes('invalid') || lowerMessage.includes('bad request') ||
         lowerMessage.includes('400')) {
-      return `Invalid request: The request was malformed or contained invalid parameters. Original error: ${message}`;
+      return `Invalid request: The request was malformed or contained invalid parameters. Original error: ${sanitizedMessage}`;
     }
 
-    // Default: return the original message but ensure it's informative
-    return message.length > 0 ? message : 'An unknown error occurred during task execution';
+    // Default: return the sanitized original message
+    return sanitizedMessage.length > 0 ? sanitizedMessage : 'An unknown error occurred during task execution';
   }
 
   /**
