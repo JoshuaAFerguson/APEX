@@ -197,6 +197,18 @@ describe('Timeout Configurations Integration Tests', () => {
         {
           name: 'waitForElement',
           operation: () => session.waitForElement('#never-exists', { timeout: customTimeout })
+        },
+        {
+          name: 'waitForSelector',
+          operation: () => session.waitForSelector('#never-exists', { timeout: customTimeout })
+        },
+        {
+          name: 'waitForFunction',
+          operation: () => session.waitForFunction(() => false, { timeout: customTimeout })
+        },
+        {
+          name: 'waitForLoadState',
+          operation: () => session.waitForLoadState('networkidle', { timeout: customTimeout })
         }
       ];
 
@@ -247,6 +259,18 @@ describe('Timeout Configurations Integration Tests', () => {
         {
           name: 'waitForElement timeout',
           operation: () => session.waitForElement('#missing-element', { timeout: 500 })
+        },
+        {
+          name: 'waitForSelector timeout',
+          operation: () => session.waitForSelector('#missing-element', { timeout: 500 })
+        },
+        {
+          name: 'waitForFunction timeout',
+          operation: () => session.waitForFunction(() => false, { timeout: 500 })
+        },
+        {
+          name: 'waitForLoadState timeout',
+          operation: () => session.waitForLoadState('networkidle', { timeout: 500 })
         },
         {
           name: 'navigation timeout',
@@ -492,6 +516,195 @@ describe('Timeout Configurations Integration Tests', () => {
 
         expect(result.success).toBe(false);
         expect(duration).toBeLessThan(timeout + maxOverrun);
+      }
+    });
+  });
+
+  describe('Advanced Wait Strategy Timeout Behavior', () => {
+    beforeEach(async () => {
+      session = createBrowserSession(manager, {
+        browserType: 'chromium',
+        headless: true,
+        timeout: 5000,
+      });
+      await session.launch();
+      await session.navigate('data:text/html,<div>Advanced wait strategy test</div>');
+    });
+
+    it('should handle waitFor timeout consistently', async () => {
+      const waitTime = 100;
+
+      const startTime = Date.now();
+      const result = await session.waitFor(waitTime);
+      const duration = Date.now() - startTime;
+
+      expect(result.success).toBe(true);
+      expect(duration).toBeGreaterThanOrEqual(90); // Allow some timing variance
+      expect(duration).toBeLessThan(300);
+    });
+
+    it('should handle waitForRequest timeout properly', async () => {
+      const customTimeout = 800;
+
+      const startTime = Date.now();
+      const result = await session.waitForRequest(/\/never-requested/, { timeout: customTimeout });
+      const duration = Date.now() - startTime;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/timeout|timed out/i);
+      expect(duration).toBeGreaterThanOrEqual(600);
+      expect(duration).toBeLessThan(1500);
+    });
+
+    it('should handle waitForResponse timeout properly', async () => {
+      const customTimeout = 900;
+
+      const startTime = Date.now();
+      const result = await session.waitForResponse(/\/never-responded/, { timeout: customTimeout });
+      const duration = Date.now() - startTime;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/timeout|timed out/i);
+      expect(duration).toBeGreaterThanOrEqual(700);
+      expect(duration).toBeLessThan(1600);
+    });
+
+    it('should handle waitForFunction with complex conditions', async () => {
+      const customTimeout = 700;
+
+      // Function that will never return true
+      const neverTrueFunction = () => {
+        return (window as any).neverSetVariable === 'neverSetValue';
+      };
+
+      const startTime = Date.now();
+      const result = await session.waitForFunction(neverTrueFunction, { timeout: customTimeout });
+      const duration = Date.now() - startTime;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/timeout|timed out/i);
+      expect(duration).toBeGreaterThanOrEqual(500);
+      expect(duration).toBeLessThan(1400);
+    });
+
+    it('should handle waitForFunction with string functions', async () => {
+      const customTimeout = 600;
+
+      const startTime = Date.now();
+      const result = await session.waitForFunction(
+        '() => window.nonExistentCondition === true',
+        { timeout: customTimeout }
+      );
+      const duration = Date.now() - startTime;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/timeout|timed out/i);
+      expect(duration).toBeGreaterThanOrEqual(400);
+      expect(duration).toBeLessThan(1200);
+    });
+
+    it('should handle edge cases for waitFor method', async () => {
+      // Test zero wait time
+      const startTime1 = Date.now();
+      const result1 = await session.waitFor(0);
+      const duration1 = Date.now() - startTime1;
+
+      expect(result1.success).toBe(true);
+      expect(duration1).toBeLessThan(100);
+
+      // Test very short wait time
+      const startTime2 = Date.now();
+      const result2 = await session.waitFor(50);
+      const duration2 = Date.now() - startTime2;
+
+      expect(result2.success).toBe(true);
+      expect(duration2).toBeGreaterThanOrEqual(40);
+      expect(duration2).toBeLessThan(200);
+    });
+
+    it('should validate all new wait strategies respect custom timeouts', async () => {
+      const customTimeout = 750;
+
+      const waitOperations = [
+        {
+          name: 'waitForSelector with custom timeout',
+          operation: () => session.waitForSelector('#non-existent-selector', { timeout: customTimeout })
+        },
+        {
+          name: 'waitForFunction with custom timeout',
+          operation: () => session.waitForFunction(() => false, { timeout: customTimeout })
+        },
+        {
+          name: 'waitForLoadState with custom timeout',
+          operation: () => session.waitForLoadState('networkidle', { timeout: customTimeout })
+        },
+        {
+          name: 'waitForRequest with custom timeout',
+          operation: () => session.waitForRequest(/\/never-exists/, { timeout: customTimeout })
+        },
+        {
+          name: 'waitForResponse with custom timeout',
+          operation: () => session.waitForResponse(/\/never-exists/, { timeout: customTimeout })
+        }
+      ];
+
+      for (const { name, operation } of waitOperations) {
+        const startTime = Date.now();
+        const result = await operation();
+        const duration = Date.now() - startTime;
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBeDefined();
+        expect(result.error).toMatch(/timeout|timed out/i);
+        expect(duration).toBeGreaterThanOrEqual(550); // Allow timing variance
+        expect(duration).toBeLessThan(1500);
+      }
+    });
+  });
+
+  describe('Zero and Negative Timeout Edge Cases for New Wait Strategies', () => {
+    beforeEach(async () => {
+      session = createBrowserSession(manager, {
+        browserType: 'chromium',
+        headless: true,
+        timeout: 5000,
+      });
+      await session.launch();
+      await session.navigate('data:text/html,<div>Edge case test</div>');
+    });
+
+    it('should handle zero/negative timeouts for new wait strategies', async () => {
+      const edgeCaseOperations = [
+        {
+          name: 'waitForSelector with zero timeout',
+          operation: () => session.waitForSelector('#non-existent', { timeout: 0 })
+        },
+        {
+          name: 'waitForFunction with negative timeout',
+          operation: () => session.waitForFunction(() => false, { timeout: -100 })
+        },
+        {
+          name: 'waitForLoadState with zero timeout',
+          operation: () => session.waitForLoadState('networkidle', { timeout: 0 })
+        },
+        {
+          name: 'waitForRequest with negative timeout',
+          operation: () => session.waitForRequest(/\/never/, { timeout: -50 })
+        },
+        {
+          name: 'waitForResponse with zero timeout',
+          operation: () => session.waitForResponse(/\/never/, { timeout: 0 })
+        }
+      ];
+
+      for (const { name, operation } of edgeCaseOperations) {
+        const startTime = Date.now();
+        const result = await operation();
+        const duration = Date.now() - startTime;
+
+        // Should fail quickly with zero/negative timeouts
+        expect(result.success).toBe(false);
+        expect(duration).toBeLessThan(1000); // Should fail quickly
       }
     });
   });

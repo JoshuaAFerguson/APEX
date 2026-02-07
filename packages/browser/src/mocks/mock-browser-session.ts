@@ -448,6 +448,261 @@ export class MockBrowserSession extends EventEmitter<MockBrowserEvents> {
   }
 
   /**
+   * Mock waiting for selector (alias for waitForElement)
+   */
+  async waitForSelector(
+    selector: string | ElementSelector,
+    options?: {
+      timeout?: number;
+      state?: 'visible' | 'hidden' | 'attached' | 'detached';
+    }
+  ): Promise<BrowserActionResult<void>> {
+    return this.waitForElement(selector, options);
+  }
+
+  /**
+   * Mock waiting for element
+   */
+  async waitForElement(
+    selector: string | ElementSelector,
+    options?: {
+      timeout?: number;
+      state?: 'visible' | 'hidden' | 'attached' | 'detached';
+    }
+  ): Promise<BrowserActionResult<void>> {
+    const operation = this.startOperation('waitForElement', [selector, options]);
+
+    try {
+      const response = await this.executeWithConfig('waitForElement', [selector, options]);
+
+      if (response.success) {
+        this.completeOperation(operation, true, undefined);
+        return {
+          success: true,
+          duration: operation.endTime! - operation.startTime,
+        };
+      } else {
+        this.completeOperation(operation, false, response.error!);
+        return {
+          success: false,
+          error: response.error,
+          duration: operation.endTime! - operation.startTime,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
+   * Mock waiting for function
+   */
+  async waitForFunction(
+    fn: string | (() => unknown),
+    options?: {
+      timeout?: number;
+      polling?: number | 'raf';
+    }
+  ): Promise<BrowserActionResult<unknown>> {
+    const operation = this.startOperation('waitForFunction', [fn, options]);
+
+    try {
+      const response = await this.executeWithConfig('waitForFunction', [fn, options]);
+
+      if (response.success) {
+        const result = response.data ?? true; // Default to true if function succeeds
+        this.completeOperation(operation, true, result);
+        return {
+          success: true,
+          data: result,
+          duration: operation.endTime! - operation.startTime,
+        };
+      } else {
+        this.completeOperation(operation, false, response.error!);
+        return {
+          success: false,
+          error: response.error,
+          duration: operation.endTime! - operation.startTime,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
+   * Mock waiting for load state
+   */
+  async waitForLoadState(
+    state: 'load' | 'domcontentloaded' | 'networkidle' = 'load',
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<void>> {
+    const operation = this.startOperation('waitForLoadState', [state, options]);
+
+    try {
+      const response = await this.executeWithConfig('waitForLoadState', [state, options]);
+
+      if (response.success) {
+        this.completeOperation(operation, true, undefined);
+        return {
+          success: true,
+          duration: operation.endTime! - operation.startTime,
+        };
+      } else {
+        this.completeOperation(operation, false, response.error!);
+        return {
+          success: false,
+          error: response.error,
+          duration: operation.endTime! - operation.startTime,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
+   * Mock waiting for request
+   */
+  async waitForRequest(
+    urlPattern: string | RegExp | ((request: any) => boolean),
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<any>> {
+    const operation = this.startOperation('waitForRequest', [urlPattern, options]);
+
+    try {
+      const response = await this.executeWithConfig('waitForRequest', [urlPattern, options]);
+
+      if (response.success) {
+        const requestData = response.data || {
+          url: 'https://example.com/api/test',
+          method: 'GET',
+          headers: {},
+          resourceType: 'xhr',
+        };
+        this.completeOperation(operation, true, requestData);
+        return {
+          success: true,
+          data: requestData,
+          duration: operation.endTime! - operation.startTime,
+        };
+      } else {
+        this.completeOperation(operation, false, response.error!);
+        return {
+          success: false,
+          error: response.error,
+          duration: operation.endTime! - operation.startTime,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
+   * Mock waiting for response
+   */
+  async waitForResponse(
+    urlPattern: string | RegExp | ((response: any) => boolean),
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<any>> {
+    const operation = this.startOperation('waitForResponse', [urlPattern, options]);
+
+    try {
+      const response = await this.executeWithConfig('waitForResponse', [urlPattern, options]);
+
+      if (response.success) {
+        const responseData = response.data || {
+          url: 'https://example.com/api/test',
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          ok: true,
+        };
+        this.completeOperation(operation, true, responseData);
+        return {
+          success: true,
+          data: responseData,
+          duration: operation.endTime! - operation.startTime,
+        };
+      } else {
+        this.completeOperation(operation, false, response.error!);
+        return {
+          success: false,
+          error: response.error,
+          duration: operation.endTime! - operation.startTime,
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
+   * Mock waiting for timeout
+   */
+  async waitFor(
+    milliseconds: number
+  ): Promise<BrowserActionResult<void>> {
+    const operation = this.startOperation('waitFor', [milliseconds]);
+
+    try {
+      // Simulate the wait delay
+      await this.delay(milliseconds);
+
+      this.completeOperation(operation, true, undefined);
+      return {
+        success: true,
+        duration: operation.endTime! - operation.startTime,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.completeOperation(operation, false, errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        duration: operation.endTime! - operation.startTime,
+      };
+    }
+  }
+
+  /**
    * Mock browser close
    */
   async close(): Promise<BrowserActionResult<void>> {
@@ -555,6 +810,13 @@ export class MockBrowserSession extends EventEmitter<MockBrowserEvents> {
       getElementText: 150,
       captureScreenshot: 800,
       waitForNavigation: 1000,
+      waitForElement: 500,
+      waitForSelector: 500,
+      waitForFunction: 750,
+      waitForLoadState: 300,
+      waitForRequest: 1200,
+      waitForResponse: 1200,
+      waitFor: 0, // No additional delay for waitFor since it's already a delay
       close: 500,
     };
 

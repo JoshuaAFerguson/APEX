@@ -660,6 +660,41 @@ Final line after blank line with more content`;
 
       }, page);
     });
+
+    it('should handle Shift+Enter in content-editable elements for explicit line breaks', async () => {
+      await withBrowserTest(async (page) => {
+        const contentEditable = await waitForElement(page, '#contenteditable', {
+          visible: true
+        });
+
+        // Clear existing content and start fresh
+        await contentEditable.click();
+        await page.keyboard.press('Control+a');
+        await page.keyboard.type('First line in content-editable');
+
+        // Test Shift+Enter for explicit line break
+        await page.keyboard.press('Shift+Enter');
+        await page.keyboard.type('Second line after Shift+Enter');
+
+        // Test regular Enter for paragraph break
+        await page.keyboard.press('Enter');
+        await page.keyboard.type('Third line after regular Enter');
+
+        const textContent = await contentEditable.textContent();
+
+        // Content should include all lines
+        expect(textContent).toContain('First line in content-editable');
+        expect(textContent).toContain('Second line after Shift+Enter');
+        expect(textContent).toContain('Third line after regular Enter');
+
+        // Verify that we have proper line structure
+        const lines = textContent.split(/[\n\r]+/).filter(line => line.trim().length > 0);
+        expect(lines).toHaveLength(3);
+
+        await takeScreenshot(page, 'contenteditable-shift-enter-lines', tempDir);
+
+      }, page);
+    });
   });
 
   describe('5. Special Key Combinations', () => {
@@ -750,6 +785,94 @@ Final line after blank line with more content`;
         expect(value).toBe('Replaced all text');
 
         await takeScreenshot(page, 'keyboard-shortcuts-comprehensive', tempDir);
+
+      }, page);
+    });
+
+    it('should handle cross-platform modifier key combinations (Ctrl/Cmd+A)', async () => {
+      await withBrowserTest(async (page) => {
+        const textInput = await waitForElement(page, '#text-input', {
+          visible: true,
+          enabled: true
+        });
+
+        const testText = 'Cross-platform modifier key test text';
+        await textInput.clear();
+        await textInput.type(testText);
+        await textInput.focus();
+
+        // Get platform info to determine which modifier key to use
+        const userAgent = await page.evaluate(() => navigator.userAgent);
+        const isMac = userAgent.includes('Mac');
+
+        // Test both Ctrl+A and Cmd+A to ensure cross-platform compatibility
+        if (isMac) {
+          // Test Cmd+A (Meta+A) on macOS
+          await page.keyboard.press('Meta+a');
+        } else {
+          // Test Ctrl+A on Windows/Linux
+          await page.keyboard.press('Control+a');
+        }
+
+        await page.keyboard.type('Selected and replaced');
+
+        const value = await textInput.inputValue();
+        expect(value).toBe('Selected and replaced');
+
+        // Also test that the opposite modifier works (for universal compatibility)
+        await textInput.clear();
+        await textInput.type('Test opposite modifier');
+        await textInput.focus();
+
+        if (isMac) {
+          // Test that Ctrl+A also works on Mac (some apps support both)
+          await page.keyboard.press('Control+a');
+        } else {
+          // Test that Meta+A works on Windows/Linux (though less common)
+          try {
+            await page.keyboard.press('Meta+a');
+          } catch (error) {
+            // Meta key might not be available on Windows/Linux, that's expected
+            console.log('Meta key not available on this platform, testing Ctrl+A instead');
+            await page.keyboard.press('Control+a');
+          }
+        }
+
+        await page.keyboard.type('Universal selection works');
+        const universalValue = await textInput.inputValue();
+        expect(universalValue).toBe('Universal selection works');
+
+        await takeScreenshot(page, 'cross-platform-modifier-keys', tempDir);
+
+      }, page);
+    });
+
+    it('should handle Shift+Enter for newlines in textarea elements', async () => {
+      await withBrowserTest(async (page) => {
+        const textarea = await waitForElement(page, '#textarea', {
+          visible: true,
+          enabled: true
+        });
+
+        await textarea.clear();
+        await textarea.type('First line');
+
+        // Test Shift+Enter for explicit newline insertion
+        await page.keyboard.press('Shift+Enter');
+        await page.keyboard.type('Second line after Shift+Enter');
+
+        // Test regular Enter also creates newlines in textarea
+        await page.keyboard.press('Enter');
+        await page.keyboard.type('Third line after regular Enter');
+
+        const value = await textarea.inputValue();
+        const lines = value.split('\n');
+        expect(lines).toHaveLength(3);
+        expect(lines[0]).toBe('First line');
+        expect(lines[1]).toBe('Second line after Shift+Enter');
+        expect(lines[2]).toBe('Third line after regular Enter');
+
+        await takeScreenshot(page, 'shift-enter-newlines', tempDir);
 
       }, page);
     });

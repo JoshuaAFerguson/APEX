@@ -596,4 +596,215 @@ describe('BrowserSession Wait Method Integration', () => {
       expect(result.data).toBe(true);
     });
   });
+
+  describe('advanced wait scenario edge cases', () => {
+    it('should handle multiple rapid state transitions', async () => {
+      const rapidStateTransitionPage = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>Rapid State Transitions</title></head>
+        <body>
+          <div id="rapid-element" style="display:none">Rapid Element</div>
+          <script>
+            let count = 0;
+            const interval = setInterval(() => {
+              const el = document.getElementById('rapid-element');
+              el.style.display = el.style.display === 'none' ? 'block' : 'none';
+              count++;
+              if (count >= 10) {
+                clearInterval(interval);
+                el.style.display = 'block';
+              }
+            }, 50);
+          </script>
+        </body>
+        </html>
+      `;
+
+      const dataUrl = createDataUrl(rapidStateTransitionPage);
+      await session.navigate(dataUrl);
+
+      const result = await session.waitForElement('#rapid-element', {
+        state: 'visible',
+        timeout: 10000
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should handle graceful degradation when browser becomes unresponsive', async () => {
+      const heavyPageLoad = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>Heavy Page Load</title></head>
+        <body>
+          <div id="heavy-content">Loading heavy content...</div>
+          <script>
+            // Simulate heavy computation but still allow for graceful timeout
+            setTimeout(() => {
+              const data = Array.from({length: 1000}, (_, i) => ({
+                id: i,
+                data: 'test'.repeat(100)
+              }));
+              document.getElementById('heavy-content').textContent = 'Heavy content loaded';
+              document.getElementById('heavy-content').dataset.loaded = 'true';
+            }, 200);
+          </script>
+        </body>
+        </html>
+      `;
+
+      const dataUrl = createDataUrl(heavyPageLoad);
+      await session.navigate(dataUrl);
+
+      const result = await session.waitForElement('#heavy-content[data-loaded="true"]', {
+        timeout: 5000
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should handle concurrent wait operations without interference', async () => {
+      const concurrentElementsPage = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>Concurrent Elements Test</title></head>
+        <body>
+          <div id="elem-async-1" style="display:none">Element 1</div>
+          <div id="elem-async-2" style="display:none">Element 2</div>
+          <div id="elem-async-3" style="display:none">Element 3</div>
+          <script>
+            setTimeout(() => document.getElementById('elem-async-1').style.display = 'block', 100);
+            setTimeout(() => document.getElementById('elem-async-2').style.display = 'block', 200);
+            setTimeout(() => document.getElementById('elem-async-3').style.display = 'block', 300);
+          </script>
+        </body>
+        </html>
+      `;
+
+      const dataUrl = createDataUrl(concurrentElementsPage);
+      await session.navigate(dataUrl);
+
+      // Start multiple concurrent waits
+      const waitPromises = [
+        session.waitForElement('#elem-async-1', { state: 'visible', timeout: 5000 }),
+        session.waitForElement('#elem-async-2', { state: 'visible', timeout: 5000 }),
+        session.waitForElement('#elem-async-3', { state: 'visible', timeout: 5000 })
+      ];
+
+      const results = await Promise.all(waitPromises);
+
+      // All waits should succeed
+      results.forEach(result => {
+        expect(result.success).toBe(true);
+      });
+    });
+
+    it('should handle stress conditions with many elements', async () => {
+      const stressPage = PageLoadTestPages.stressTestPage(50, 20);
+      const dataUrl = createDataUrl(stressPage);
+      await session.navigate(dataUrl);
+
+      // Wait for the stress test to complete
+      const result = await session.waitForElement('#stress-indicator[data-complete="true"]', {
+        timeout: 15000
+      });
+
+      expect(result.success).toBe(true);
+
+      // Verify multiple elements were created
+      const elementCount = await session.evaluate(() => {
+        return document.querySelectorAll('.stress-element').length;
+      });
+
+      expect(elementCount.success).toBe(true);
+      expect(elementCount.data).toBeGreaterThanOrEqual(50);
+    });
+
+    it('should handle network-dependent loading sequences', async () => {
+      const networkPage = PageLoadTestPages.networkDependentPage([150, 250, 350]);
+      const dataUrl = createDataUrl(networkPage);
+      await session.navigate(dataUrl);
+
+      // Wait for all network-dependent resources to load
+      const result = await session.waitForElement('#network-result[data-loaded="true"]', {
+        timeout: 10000
+      });
+
+      expect(result.success).toBe(true);
+
+      // Verify final status
+      const statusResult = await session.evaluate(() => {
+        return document.getElementById('network-status')?.textContent;
+      });
+
+      expect(statusResult.success).toBe(true);
+      expect(statusResult.data).toBe('Complete');
+    });
+
+    it('should handle mixed wait strategy combinations under load', async () => {
+      const mixedStrategyPage = `
+        <!DOCTYPE html>
+        <html>
+        <head><title>Mixed Wait Strategies</title></head>
+        <body>
+          <div id="dom-ready-indicator" style="display:none">DOM Ready</div>
+          <div id="load-complete-indicator" style="display:none">Load Complete</div>
+          <div id="network-idle-indicator" style="display:none">Network Idle</div>
+          <script>
+            // DOM content loaded simulation
+            setTimeout(() => {
+              document.getElementById('dom-ready-indicator').style.display = 'block';
+              document.getElementById('dom-ready-indicator').dataset.ready = 'true';
+            }, 100);
+
+            // Full page load simulation
+            setTimeout(() => {
+              document.getElementById('load-complete-indicator').style.display = 'block';
+              document.getElementById('load-complete-indicator').dataset.loaded = 'true';
+            }, 300);
+
+            // Network idle simulation (after some network activity)
+            let networkRequests = 0;
+            const simulateNetwork = () => {
+              if (networkRequests < 3) {
+                setTimeout(() => {
+                  networkRequests++;
+                  if (networkRequests < 3) {
+                    simulateNetwork();
+                  } else {
+                    setTimeout(() => {
+                      document.getElementById('network-idle-indicator').style.display = 'block';
+                      document.getElementById('network-idle-indicator').dataset.idle = 'true';
+                    }, 500);
+                  }
+                }, 100);
+              }
+            };
+            simulateNetwork();
+          </script>
+        </body>
+        </html>
+      `;
+
+      const dataUrl = createDataUrl(mixedStrategyPage);
+      await session.navigate(dataUrl);
+
+      // Test sequential wait strategies
+      const domReadyResult = await session.waitForElement('#dom-ready-indicator[data-ready="true"]', {
+        timeout: 5000
+      });
+      expect(domReadyResult.success).toBe(true);
+
+      const loadCompleteResult = await session.waitForElement('#load-complete-indicator[data-loaded="true"]', {
+        timeout: 5000
+      });
+      expect(loadCompleteResult.success).toBe(true);
+
+      const networkIdleResult = await session.waitForElement('#network-idle-indicator[data-idle="true"]', {
+        timeout: 10000
+      });
+      expect(networkIdleResult.success).toBe(true);
+    });
+  });
 });

@@ -347,6 +347,86 @@ export const PageLoadTestPages = {
     </body>
     </html>
   `,
+
+  /**
+   * Creates a page that tests wait strategies under stress conditions
+   * @param elementCount - Number of elements to create
+   * @param staggerDelay - Delay between element appearances
+   */
+  stressTestPage: (elementCount: number = 100, staggerDelay: number = 10): string => `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Stress Test Page</title></head>
+    <body>
+      <div id="stress-container"></div>
+      <div id="stress-indicator">Loading stress test...</div>
+      <script>
+        let created = 0;
+        const total = ${elementCount};
+
+        const createElements = () => {
+          const batch = Math.min(5, total - created);
+          for (let i = 0; i < batch; i++) {
+            const div = document.createElement('div');
+            div.className = 'stress-element';
+            div.id = 'stress-element-' + (created + i);
+            div.textContent = 'Element ' + (created + i);
+            document.getElementById('stress-container').appendChild(div);
+          }
+          created += batch;
+
+          if (created >= total) {
+            document.getElementById('stress-indicator').textContent = 'Stress test complete';
+            document.getElementById('stress-indicator').dataset.complete = 'true';
+          } else {
+            setTimeout(createElements, ${staggerDelay});
+          }
+        };
+
+        setTimeout(createElements, 50);
+      </script>
+    </body>
+    </html>
+  `,
+
+  /**
+   * Creates a page that simulates network-dependent loading states
+   * @param networkDelays - Array of delays for simulated network requests
+   */
+  networkDependentPage: (networkDelays: number[] = [100, 200, 300]): string => `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Network Dependent Loading</title></head>
+    <body>
+      <div id="network-status">Initializing...</div>
+      <div id="network-progress">0/${networkDelays.length}</div>
+      <div id="network-result" style="display:none">All resources loaded</div>
+      <script>
+        const delays = ${JSON.stringify(networkDelays)};
+        let completed = 0;
+
+        const updateProgress = () => {
+          document.getElementById('network-progress').textContent = completed + '/' + delays.length;
+          if (completed === delays.length) {
+            document.getElementById('network-status').textContent = 'Complete';
+            document.getElementById('network-result').style.display = 'block';
+            document.getElementById('network-result').dataset.loaded = 'true';
+          }
+        };
+
+        delays.forEach((delay, index) => {
+          setTimeout(() => {
+            completed++;
+            updateProgress();
+          }, delay);
+        });
+
+        document.getElementById('network-status').textContent = 'Loading resources...';
+        updateProgress();
+      </script>
+    </body>
+    </html>
+  `
 };
 
 /**

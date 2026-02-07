@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Core types and utilities for APEX",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
