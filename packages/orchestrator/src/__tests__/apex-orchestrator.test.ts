@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, jest, beforeAll, afterAll } from '@jest/globals';
+import { describe, it as test, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -12,8 +12,8 @@ describe('ApexOrchestrator', () => {
 
   beforeAll(() => {
     // Mock the Claude Agent SDK to prevent actual API calls during tests
-    jest.mock('@anthropic-ai/claude-agent-sdk', () => ({
-      query: jest.fn().mockResolvedValue({
+    vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+      query: vi.fn().mockResolvedValue({
         messages: ['Mock agent response'],
         inputTokens: 100,
         outputTokens: 50
@@ -367,15 +367,15 @@ stages:
       });
 
       // Mock the Claude SDK query to simulate task completion
-      const mockQuery = jest.fn().mockResolvedValue({
+      const mockQuery = vi.fn().mockResolvedValue({
         messages: ['### Stage Summary: implementation\n**Status**: completed\n**Summary**: Task completed successfully'],
         inputTokens: 100,
         outputTokens: 50
       });
 
       // Replace the query function temporarily
-      const originalQuery = require('@anthropic-ai/claude-agent-sdk').query;
-      require('@anthropic-ai/claude-agent-sdk').query = mockQuery;
+      const originalQuery = await import('@anthropic-ai/claude-agent-sdk');
+      vi.mocked(originalQuery.query).mockImplementation(mockQuery);
 
       try {
         await orchestrator.executeTask(taskId);
@@ -384,7 +384,7 @@ stages:
         expect(task?.status).toBe('completed');
       } finally {
         // Restore original query function
-        require('@anthropic-ai/claude-agent-sdk').query = originalQuery;
+        vi.restoreAllMocks();
       }
     });
 
@@ -395,9 +395,9 @@ stages:
       });
 
       // Mock the Claude SDK to throw an error
-      const mockQuery = jest.fn().mockRejectedValue(new Error('Test execution error'));
-      const originalQuery = require('@anthropic-ai/claude-agent-sdk').query;
-      require('@anthropic-ai/claude-agent-sdk').query = mockQuery;
+      const mockQuery = vi.fn().mockRejectedValue(new Error('Test execution error'));
+      const originalQuery = await import('@anthropic-ai/claude-agent-sdk');
+      vi.mocked(originalQuery.query).mockImplementation(mockQuery);
 
       try {
         await expect(orchestrator.executeTask(taskId)).rejects.toThrow();
@@ -405,7 +405,7 @@ stages:
         const task = await orchestrator.getTask(taskId);
         expect(task?.status).toBe('failed');
       } finally {
-        require('@anthropic-ai/claude-agent-sdk').query = originalQuery;
+        vi.restoreAllMocks();
       }
     });
 
@@ -480,9 +480,9 @@ stages:
       });
 
       // Mock execution to fail
-      const mockQuery = jest.fn().mockRejectedValue(new Error('Test failure'));
-      const originalQuery = require('@anthropic-ai/claude-agent-sdk').query;
-      require('@anthropic-ai/claude-agent-sdk').query = mockQuery;
+      const mockQuery = vi.fn().mockRejectedValue(new Error('Test failure'));
+      const originalQuery = await import('@anthropic-ai/claude-agent-sdk');
+      vi.mocked(originalQuery.query).mockImplementation(mockQuery);
 
       try {
         await orchestrator.executeTask(taskId).catch(() => {
@@ -493,7 +493,7 @@ stages:
         expect(emittedData.taskId).toBe(taskId);
         expect(emittedData.error).toContain('Test failure');
       } finally {
-        require('@anthropic-ai/claude-agent-sdk').query = originalQuery;
+        vi.restoreAllMocks();
       }
     });
   });
