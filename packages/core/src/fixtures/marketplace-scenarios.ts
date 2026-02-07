@@ -15,7 +15,6 @@ import type {
   MCPServerConfig,
   MCPMarketplace,
   MCPMarketplaceSource,
-  MCPInstallationStatus,
 } from '../types.js';
 
 // ============================================================================

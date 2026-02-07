@@ -64,6 +64,12 @@
       "import": "./dist/test-fixtures/index.js",
       "require": "./dist/test-fixtures/index.js",
       "default": "./dist/test-fixtures/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures/index.d.ts",
+      "import": "./dist/fixtures/index.js",
+      "require": "./dist/fixtures/index.js",
+      "default": "./dist/fixtures/index.js"
     }
   },
   "files": [
