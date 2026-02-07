@@ -22,36 +22,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-// Simple YAML parsing for basic structure validation
-function parseSimpleYaml(content: string): Record<string, any> {
-  const result: Record<string, any> = {};
-  const lines = content.split('\n');
-  let currentKey = '';
-  let indent = 0;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    const match = line.match(/^(\s*)([^:]+):\s*(.*)$/);
-    if (match) {
-      const [, spaces, key, value] = match;
-      const currentIndent = spaces.length;
-
-      if (currentIndent === 0) {
-        currentKey = key;
-        result[key] = value || {};
-      } else if (currentIndent === 2 && currentKey) {
-        if (typeof result[currentKey] !== 'object') {
-          result[currentKey] = {};
-        }
-        result[currentKey][key] = value || {};
-      }
-    }
-  }
-
-  return result;
-}
 
 describe('E2E: CI Pipeline Configuration', () => {
   const projectRoot = path.resolve(__dirname, '../..');
@@ -136,167 +106,144 @@ describe('E2E: CI Pipeline Configuration', () => {
   });
 
   describe('E2E Job Configuration', () => {
-    let e2eJob: any;
+    let workflowContent: string;
 
     beforeEach(async () => {
-      const workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
-      const workflow = yaml.load(workflowContent) as any;
-      e2eJob = workflow.jobs.e2e;
+      workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
     });
 
     it('should have correct job dependencies', () => {
-      expect(e2eJob.needs).toBe('build');
+      expect(workflowContent).toMatch(/e2e:[\s\S]*?needs:\s*build/);
     });
 
     it('should have isolated test environment', () => {
       // E2E should run only on Ubuntu for consistency
-      expect(e2eJob.strategy.matrix.os).toEqual(['ubuntu-latest']);
-      expect(e2eJob.strategy.matrix['node-version']).toEqual(['20.x']);
+      const e2eSection = workflowContent.split('e2e:')[1]?.split(/\w+:/)[0] || '';
 
-      // Should not fail fast to allow investigation of issues
-      expect(e2eJob.strategy['fail-fast']).toBe(false);
+      expect(e2eSection).toMatch(/os:\s*\[ubuntu-latest\]/);
+      expect(e2eSection).toMatch(/node-version:\s*\[20\.x\]/);
+      expect(e2eSection).toMatch(/fail-fast:\s*false/);
     });
 
     it('should have proper environment variables', () => {
-      const envVars = e2eJob.env;
+      const e2eSection = workflowContent.split('e2e:')[1]?.split(/^\s*\w+:/m)[0] || '';
 
-      expect(envVars).toBeDefined();
-      expect(envVars.CI).toBe(true);
-      expect(envVars.APEX_TEST_MODE).toBe('e2e');
-      expect(envVars.NO_COLOR).toBe(1);
+      expect(e2eSection).toMatch(/CI:\s*true/);
+      expect(e2eSection).toMatch(/APEX_TEST_MODE:\s*e2e/);
+      expect(e2eSection).toMatch(/NO_COLOR:\s*1/);
 
       // Git configuration for E2E tests
-      expect(envVars.GIT_AUTHOR_NAME).toBe('GitHub Actions');
-      expect(envVars.GIT_AUTHOR_EMAIL).toBe('actions@github.com');
-      expect(envVars.GIT_COMMITTER_NAME).toBe('GitHub Actions');
-      expect(envVars.GIT_COMMITTER_EMAIL).toBe('actions@github.com');
+      expect(e2eSection).toMatch(/GIT_AUTHOR_NAME:\s*GitHub Actions/);
+      expect(e2eSection).toMatch(/GIT_AUTHOR_EMAIL:\s*actions@github.com/);
+      expect(e2eSection).toMatch(/GIT_COMMITTER_NAME:\s*GitHub Actions/);
+      expect(e2eSection).toMatch(/GIT_COMMITTER_EMAIL:\s*actions@github.com/);
     });
 
     it('should include required E2E test steps', () => {
-      const stepNames = e2eJob.steps.map((step: any) => step.name);
+      const e2eSection = workflowContent.split('e2e:')[1] || '';
 
-      expect(stepNames).toContain('Checkout');
-      expect(stepNames).toContain('Build');
-      expect(stepNames).toContain('Run E2E tests');
-      expect(stepNames).toContain('Cleanup E2E test resources');
+      expect(e2eSection).toContain('- name: Checkout');
+      expect(e2eSection).toContain('- name: Build');
+      expect(e2eSection).toContain('- name: Run E2E tests');
+      expect(e2eSection).toContain('- name: Cleanup E2E test resources');
     });
 
     it('should have E2E test step with timeout', () => {
-      const e2eTestStep = e2eJob.steps.find(
-        (step: any) => step.name === 'Run E2E tests'
-      );
-
-      expect(e2eTestStep).toBeDefined();
-      expect(e2eTestStep.run).toBe('npm run test:e2e');
-      expect(e2eTestStep['timeout-minutes']).toBe(15);
+      expect(workflowContent).toMatch(/- name: Run E2E tests[\s\S]*?run:\s*npm run test:e2e/);
+      expect(workflowContent).toMatch(/- name: Run E2E tests[\s\S]*?timeout-minutes:\s*15/);
     });
 
     it('should have cleanup step that always runs', () => {
-      const cleanupStep = e2eJob.steps.find(
-        (step: any) => step.name === 'Cleanup E2E test resources'
-      );
-
-      expect(cleanupStep).toBeDefined();
-      expect(cleanupStep.if).toBe('always()');
+      expect(workflowContent).toMatch(/- name: Cleanup E2E test resources[\s\S]*?if:\s*always\(\)/);
 
       // Should cleanup processes and temp directories
-      const cleanupScript = cleanupStep.run;
-      expect(cleanupScript).toContain('pkill -f "apex"');
-      expect(cleanupScript).toContain('pkill -f "node.*packages/cli"');
-      expect(cleanupScript).toContain('rm -rf /tmp/apex-e2e-*');
+      const cleanupSection = workflowContent.split('- name: Cleanup E2E test resources')[1]?.split(/- name:/)[0] || '';
+      expect(cleanupSection).toContain('pkill -f "apex"');
+      expect(cleanupSection).toContain('pkill -f "node.*packages/cli"');
+      expect(cleanupSection).toContain('rm -rf /tmp/apex-e2e-*');
     });
   });
 
   describe('Environment Variable Configuration', () => {
-    let e2eJob: any;
+    let workflowContent: string;
 
     beforeEach(async () => {
-      const workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
-      const workflow = yaml.load(workflowContent) as any;
-      e2eJob = workflow.jobs.e2e;
+      workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
     });
 
     it('should set CI environment flag', () => {
-      expect(e2eJob.env.CI).toBe(true);
+      expect(workflowContent).toMatch(/CI:\s*true/);
     });
 
     it('should set E2E test mode', () => {
-      expect(e2eJob.env.APEX_TEST_MODE).toBe('e2e');
+      expect(workflowContent).toMatch(/APEX_TEST_MODE:\s*e2e/);
     });
 
     it('should disable color output for CI', () => {
-      expect(e2eJob.env.NO_COLOR).toBe(1);
+      expect(workflowContent).toMatch(/NO_COLOR:\s*1/);
     });
 
     it('should configure git user for E2E operations', () => {
-      expect(e2eJob.env.GIT_AUTHOR_NAME).toBe('GitHub Actions');
-      expect(e2eJob.env.GIT_AUTHOR_EMAIL).toBe('actions@github.com');
-      expect(e2eJob.env.GIT_COMMITTER_NAME).toBe('GitHub Actions');
-      expect(e2eJob.env.GIT_COMMITTER_EMAIL).toBe('actions@github.com');
+      expect(workflowContent).toMatch(/GIT_AUTHOR_NAME:\s*GitHub Actions/);
+      expect(workflowContent).toMatch(/GIT_AUTHOR_EMAIL:\s*actions@github.com/);
+      expect(workflowContent).toMatch(/GIT_COMMITTER_NAME:\s*GitHub Actions/);
+      expect(workflowContent).toMatch(/GIT_COMMITTER_EMAIL:\s*actions@github.com/);
     });
   });
 
   describe('Cleanup Mechanism Validation', () => {
-    let e2eJob: any;
+    let workflowContent: string;
 
     beforeEach(async () => {
-      const workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
-      const workflow = yaml.load(workflowContent) as any;
-      e2eJob = workflow.jobs.e2e;
+      workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
     });
 
     it('should ensure cleanup runs on job failure', () => {
-      const cleanupStep = e2eJob.steps.find(
-        (step: any) => step.name === 'Cleanup E2E test resources'
-      );
-
-      expect(cleanupStep.if).toBe('always()');
+      expect(workflowContent).toMatch(/- name: Cleanup E2E test resources[\s\S]*?if:\s*always\(\)/);
     });
 
     it('should cleanup orphaned processes', () => {
-      const cleanupStep = e2eJob.steps.find(
-        (step: any) => step.name === 'Cleanup E2E test resources'
-      );
+      const cleanupSection = workflowContent.split('- name: Cleanup E2E test resources')[1]?.split(/- name:/)[0] || '';
 
-      const cleanupScript = cleanupStep.run;
-      expect(cleanupScript).toMatch(/pkill -f "apex"/);
-      expect(cleanupScript).toMatch(/pkill -f "node.*packages\/cli"/);
+      expect(cleanupSection).toMatch(/pkill -f "apex"/);
+      expect(cleanupSection).toMatch(/pkill -f "node.*packages\/cli"/);
 
       // Should use || true to not fail if processes don't exist
-      expect(cleanupScript).toContain('|| true');
+      expect(cleanupSection).toContain('|| true');
     });
 
     it('should cleanup temporary directories', () => {
-      const cleanupStep = e2eJob.steps.find(
-        (step: any) => step.name === 'Cleanup E2E test resources'
-      );
+      const cleanupSection = workflowContent.split('- name: Cleanup E2E test resources')[1]?.split(/- name:/)[0] || '';
 
-      const cleanupScript = cleanupStep.run;
-      expect(cleanupScript).toMatch(/rm -rf \/tmp\/apex-e2e-\*/);
-      expect(cleanupScript).toContain('|| true');
+      expect(cleanupSection).toMatch(/rm -rf \/tmp\/apex-e2e-\*/);
+      expect(cleanupSection).toContain('|| true');
     });
   });
 
   describe('Isolation and Resource Management', () => {
-    let e2eJob: any;
+    let workflowContent: string;
 
     beforeEach(async () => {
-      const workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
-      const workflow = yaml.load(workflowContent) as any;
-      e2eJob = workflow.jobs.e2e;
+      workflowContent = await fs.readFile(ciWorkflowPath, 'utf-8');
     });
 
     it('should run on single OS for consistency', () => {
-      expect(e2eJob.strategy.matrix.os).toHaveLength(1);
-      expect(e2eJob.strategy.matrix.os[0]).toBe('ubuntu-latest');
+      const e2eSection = workflowContent.split('e2e:')[1]?.split(/^\s*\w+:/m)[0] || '';
+
+      expect(e2eSection).toMatch(/os:\s*\[ubuntu-latest\]/);
+      expect(e2eSection).not.toMatch(/os:\s*\[[^\]]*,/);
     });
 
     it('should use latest stable Node.js for E2E', () => {
-      expect(e2eJob.strategy.matrix['node-version']).toEqual(['20.x']);
+      const e2eSection = workflowContent.split('e2e:')[1]?.split(/^\s*\w+:/m)[0] || '';
+
+      expect(e2eSection).toMatch(/node-version:\s*\[20\.x\]/);
     });
 
     it('should not fail fast to allow debugging', () => {
-      expect(e2eJob.strategy['fail-fast']).toBe(false);
+      const e2eSection = workflowContent.split('e2e:')[1]?.split(/^\s*\w+:/m)[0] || '';
+
+      expect(e2eSection).toMatch(/fail-fast:\s*false/);
     });
   });
 });

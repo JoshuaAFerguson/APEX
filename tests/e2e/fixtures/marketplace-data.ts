@@ -692,3 +692,129 @@ export const CATEGORY_FILTER_CASES = [
     expectedServers: [],
   },
 ] as const;
+
+// ============================================================================
+// Server Selection Test Cases
+// ============================================================================
+
+/**
+ * Server selection test scenarios for E2E testing
+ * Based on ADR-078: Server Selection E2E Test Architecture
+ */
+export const SELECTION_TEST_CASES = [
+  {
+    scenario: 'single verified server',
+    selectServerIds: ['filesystem'],
+    expectedValid: true,
+    expectedDetails: {
+      name: 'Filesystem Server',
+      verified: true,
+      category: 'filesystem',
+    },
+  },
+  {
+    scenario: 'multiple servers',
+    selectServerIds: ['filesystem', 'memory'],
+    expectedValid: true,
+    expectedDetails: {
+      totalSelected: 2,
+      allVerified: true,
+    },
+  },
+  {
+    scenario: 'non-existent server',
+    selectServerIds: ['nonexistent-server-xyz'],
+    expectedValid: false,
+    expectedError: 'not found',
+  },
+  {
+    scenario: 'empty selection',
+    selectServerIds: [],
+    expectedValid: false,
+    expectedError: 'No servers selected',
+  },
+  {
+    scenario: 'mixed valid and invalid',
+    selectServerIds: ['filesystem', 'invalid-server'],
+    expectedValid: false,
+    expectedError: 'not found',
+    partiallyValid: true,
+    validIds: ['filesystem'],
+    invalidIds: ['invalid-server'],
+  },
+  {
+    scenario: 'unverified server selection',
+    selectServerIds: ['community-tools'],
+    expectedValid: true,
+    expectedDetails: {
+      verified: false,
+      category: 'system',
+    },
+  },
+  {
+    scenario: 'server with environment variables',
+    selectServerIds: ['github'],
+    expectedValid: true,
+    expectedDetails: {
+      requiresEnvVars: true,
+      envVars: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+    },
+  },
+  {
+    scenario: 'http-based server',
+    selectServerIds: ['remote-api'],
+    expectedValid: true,
+    expectedDetails: {
+      type: 'http',
+      requiresUrl: true,
+    },
+  },
+] as const;
+
+/**
+ * Selection validation test cases
+ */
+export const SELECTION_VALIDATION_CASES = [
+  {
+    description: 'valid single selection',
+    availableServers: ['filesystem', 'memory', 'fetch'],
+    selectedIds: ['filesystem'],
+    expectedValid: true,
+    expectedInvalidIds: [],
+  },
+  {
+    description: 'valid multiple selection',
+    availableServers: ['filesystem', 'memory', 'fetch'],
+    selectedIds: ['filesystem', 'memory'],
+    expectedValid: true,
+    expectedInvalidIds: [],
+  },
+  {
+    description: 'invalid single selection',
+    availableServers: ['filesystem', 'memory'],
+    selectedIds: ['nonexistent'],
+    expectedValid: false,
+    expectedInvalidIds: ['nonexistent'],
+  },
+  {
+    description: 'partially valid selection',
+    availableServers: ['filesystem', 'memory'],
+    selectedIds: ['filesystem', 'invalid1', 'memory', 'invalid2'],
+    expectedValid: false,
+    expectedInvalidIds: ['invalid1', 'invalid2'],
+  },
+  {
+    description: 'empty selection',
+    availableServers: ['filesystem', 'memory'],
+    selectedIds: [],
+    expectedValid: true, // Empty selection is technically valid
+    expectedInvalidIds: [],
+  },
+  {
+    description: 'duplicate selection',
+    availableServers: ['filesystem', 'memory'],
+    selectedIds: ['filesystem', 'filesystem'],
+    expectedValid: true, // Duplicates should be handled gracefully
+    expectedInvalidIds: [],
+  },
+] as const;

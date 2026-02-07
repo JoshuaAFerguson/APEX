@@ -75,13 +75,23 @@ export class TaskStore {
   private projectPath: string;
 
   /**
-   * Get the database instance for internal use by related stores
+   * Get the database instance for internal use by related stores.
+   * Ensures the database is initialized before returning the instance.
+   *
+   * @returns The SQLite database instance
    */
   getDatabase(): Database.Database {
     this.ensureInitialized();
     return this.db;
   }
 
+  /**
+   * Creates a new TaskStore instance for the specified project path.
+   * Automatically configures the database location using either APEX_HOME environment
+   * variable or a .apex directory in the project path.
+   *
+   * @param projectPath - The path to the project directory
+   */
   constructor(projectPath: string) {
     this.projectPath = projectPath;
 
@@ -129,7 +139,10 @@ export class TaskStore {
   }
 
   /**
-   * Initialize the database
+   * Initialize the database connection, create tables, and run migrations.
+   * This method is idempotent and can be called multiple times safely.
+   *
+   * @returns A promise that resolves when initialization is complete
    */
   async initialize(): Promise<void> {
     try {
@@ -805,7 +818,11 @@ export class TaskStore {
   }
 
   /**
-   * Create a new task
+   * Create a new task in the database.
+   * Supports both fully formed Task objects and CreateTaskRequest objects.
+   *
+   * @param task - Either a complete Task object or a CreateTaskRequest to build a task from
+   * @returns A promise that resolves to the created task
    */
   async createTask(task: Task): Promise<Task>;
   async createTask(task: CreateTaskRequest): Promise<Task>;
@@ -918,7 +935,11 @@ export class TaskStore {
   }
 
   /**
-   * Get a task by ID
+   * Get a task by its unique identifier.
+   * Returns null if the task is not found.
+   *
+   * @param taskId - The unique identifier of the task
+   * @returns A promise that resolves to the task object or null if not found
    */
   async getTask(taskId: string): Promise<Task | null> {
     const stmt = this.db.prepare('SELECT * FROM tasks WHERE id = ?');
@@ -936,7 +957,12 @@ export class TaskStore {
   }
 
   /**
-   * Update a task
+   * Update an existing task with the specified changes.
+   * Only provided fields will be updated, others remain unchanged.
+   *
+   * @param taskId - The unique identifier of the task to update
+   * @param updates - Object containing the fields to update
+   * @returns A promise that resolves when the update is complete
    */
   async updateTask(
     taskId: string,
@@ -1406,10 +1432,21 @@ export class TaskStore {
     return result;
   }
 
+  /**
+   * Get all tasks with the specified status.
+   *
+   * @param status - The task status to filter by
+   * @returns A promise that resolves to an array of tasks with the specified status
+   */
   async getTasksByStatus(status: TaskStatus): Promise<Task[]> {
     return this.listTasks({ status });
   }
 
+  /**
+   * Get all tasks in the database, regardless of status.
+   *
+   * @returns A promise that resolves to an array of all tasks
+   */
   async getAllTasks(): Promise<Task[]> {
     return this.listTasks();
   }
