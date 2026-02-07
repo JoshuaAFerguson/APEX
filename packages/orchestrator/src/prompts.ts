@@ -13,24 +13,97 @@ import {
 } from '@apexcli/core';
 
 /**
- * Parsed decomposition request from planner output
+ * Parsed decomposition request from planner output containing subtask breakdown details.
+ *
+ * Used when the planner determines that a complex task should be decomposed into smaller,
+ * manageable subtasks that can be executed independently or in dependency order.
+ *
+ * @example
+ * ```typescript
+ * const decomposition: DecompositionRequest = {
+ *   shouldDecompose: true,
+ *   subtasks: [
+ *     {
+ *       description: "Create user model",
+ *       acceptanceCriteria: "Model validates email format",
+ *       workflow: "feature"
+ *     }
+ *   ],
+ *   strategy: "sequential",
+ *   reason: "Task involves multiple components requiring separate implementation"
+ * };
+ * ```
  */
 export interface DecompositionRequest {
+  /** Whether the task should be decomposed into subtasks */
   shouldDecompose: boolean;
+  /** Array of subtask definitions to be created */
   subtasks: SubtaskDefinition[];
+  /** Execution strategy for the subtasks (sequential, parallel, or dependency-based) */
   strategy: SubtaskStrategy;
+  /** Optional explanation for why decomposition was chosen */
   reason?: string;
 }
 
+/**
+ * Context data required for building orchestrator prompts.
+ *
+ * Contains all necessary configuration and state information needed to generate
+ * appropriate prompts for the APEX orchestrator and agents.
+ *
+ * @example
+ * ```typescript
+ * const context: PromptContext = {
+ *   config: getEffectiveConfig('/project/path'),
+ *   workflow: {
+ *     name: 'feature',
+ *     description: 'Feature development workflow',
+ *     stages: [...]
+ *   },
+ *   task: {
+ *     id: 'task-123',
+ *     description: 'Add user authentication',
+ *     status: 'running'
+ *   },
+ *   agents: {
+ *     developer: { name: 'developer', description: '...' }
+ *   }
+ * };
+ * ```
+ */
 export interface PromptContext {
+  /** Effective configuration for the current project */
   config: ReturnType<typeof getEffectiveConfig>;
+  /** Workflow definition containing stages and their configurations */
   workflow: WorkflowDefinition;
+  /** Current task being executed */
   task: Task;
+  /** Available agents mapped by name */
   agents: Record<string, AgentDefinition>;
 }
 
 /**
- * Build the orchestrator system prompt
+ * Build the main orchestrator system prompt for multi-agent coordination.
+ *
+ * Creates a comprehensive prompt that provides the orchestrator with project context,
+ * available agents, workflow stages, and coordination protocols. Includes autonomy
+ * instructions, git workflow guidelines, and validation requirements.
+ *
+ * @param context - Complete prompt context including config, workflow, task and agents
+ * @returns Formatted system prompt string for the orchestrator
+ *
+ * @example
+ * ```typescript
+ * const context: PromptContext = {
+ *   config: getEffectiveConfig('/project'),
+ *   workflow: { name: 'feature', stages: [...] },
+ *   task: { id: 'task-123', description: 'Add authentication' },
+ *   agents: { developer: {...}, tester: {...} }
+ * };
+ *
+ * const prompt = buildOrchestratorPrompt(context);
+ * console.log(prompt); // "You are the APEX Orchestrator..."
+ * ```
  */
 export function buildOrchestratorPrompt(context: PromptContext): string {
   const { config, workflow, task, agents } = context;
@@ -143,7 +216,31 @@ function getAutonomyInstructions(autonomy: Task['autonomy']): string {
 }
 
 /**
- * Build agent definitions for the Claude Agent SDK
+ * Build agent definitions for the Claude Agent SDK format.
+ *
+ * Converts APEX agent definitions to the format expected by the Claude Agent SDK,
+ * including enhanced prompts with APEX integration instructions, filtering by
+ * enabled/disabled agents, and model type conversion.
+ *
+ * @param agents - Record of available agents keyed by name
+ * @param config - Effective configuration containing agent enable/disable settings
+ * @returns Agent definitions in Claude Agent SDK format
+ *
+ * @example
+ * ```typescript
+ * const agents = {
+ *   developer: {
+ *     name: 'developer',
+ *     description: 'Writes code',
+ *     prompt: 'You are a developer...',
+ *     tools: ['Read', 'Write'],
+ *     model: 'sonnet'
+ *   }
+ * };
+ * const config = getEffectiveConfig('/project');
+ * const sdkAgents = buildAgentDefinitions(agents, config);
+ * // Returns: { developer: { description: '...', prompt: '...', tools: [...] } }
+ * ```
  */
 export function buildAgentDefinitions(
   agents: Record<string, AgentDefinition>,
@@ -181,7 +278,29 @@ export function buildAgentDefinitions(
 }
 
 /**
- * Build a summary prompt for workflow completion
+ * Build a completion summary for finished workflow tasks.
+ *
+ * Generates a formatted summary containing task details, execution metrics,
+ * token usage statistics, estimated costs, and any artifacts created during execution.
+ *
+ * @param task - Completed task with usage statistics and artifacts
+ * @returns Formatted completion summary string
+ *
+ * @example
+ * ```typescript
+ * const task: Task = {
+ *   id: 'task-123',
+ *   description: 'Add user authentication',
+ *   status: 'completed',
+ *   createdAt: new Date('2024-01-01'),
+ *   completedAt: new Date('2024-01-01T01:00:00'),
+ *   usage: { inputTokens: 1000, outputTokens: 500, totalTokens: 1500, estimatedCost: 0.02 },
+ *   artifacts: [{ name: 'auth.ts', type: 'file' }]
+ * };
+ *
+ * const summary = buildCompletionSummary(task);
+ * // Returns formatted summary with duration, usage stats, and artifacts
+ * ```
  */
 export function buildCompletionSummary(task: Task): string {
   return `
@@ -226,18 +345,65 @@ function formatDuration(start: Date, end: Date): string {
 // Stage-Specific Prompts for Multi-Agent Orchestration
 // ============================================================================
 
+/**
+ * Context data required for building stage-specific prompts.
+ *
+ * Contains all information needed to generate targeted prompts for specific workflow stages,
+ * including context from previous stages and agent-specific configuration.
+ *
+ * @example
+ * ```typescript
+ * const stageContext: StagePromptContext = {
+ *   task: { id: 'task-123', description: 'Build feature' },
+ *   stage: { name: 'implementation', agent: 'developer' },
+ *   agent: { name: 'developer', description: 'Writes code' },
+ *   workflow: { name: 'feature', stages: [...] },
+ *   config: getEffectiveConfig('/project'),
+ *   previousStageResults: new Map([
+ *     ['planning', { status: 'completed', summary: 'Plan created' }]
+ *   ])
+ * };
+ * ```
+ */
 export interface StagePromptContext {
+  /** Current task being executed */
   task: Task;
+  /** Current workflow stage */
   stage: WorkflowStage;
+  /** Agent assigned to execute this stage */
   agent: AgentDefinition;
+  /** Complete workflow definition */
   workflow: WorkflowDefinition;
+  /** Effective configuration for the project */
   config: ReturnType<typeof getEffectiveConfig>;
+  /** Results from previously completed stages */
   previousStageResults: Map<string, StageResult>;
 }
 
 /**
- * Build a focused prompt for a specific workflow stage
- * This replaces the monolithic orchestrator prompt with targeted agent prompts
+ * Build a focused prompt for a specific workflow stage.
+ *
+ * Creates targeted prompts for individual agents working on specific workflow stages.
+ * Includes stage context, inputs from previous stages, expected outputs, and agent-specific
+ * instructions. Replaces monolithic orchestrator prompts with focused agent guidance.
+ *
+ * @param context - Complete stage context including task, agent, workflow, and previous results
+ * @returns Formatted stage-specific prompt string for the assigned agent
+ *
+ * @example
+ * ```typescript
+ * const stageContext: StagePromptContext = {
+ *   task: { id: 'task-123', description: 'Add auth' },
+ *   stage: { name: 'implementation', agent: 'developer' },
+ *   agent: { name: 'developer', description: 'Writes code' },
+ *   workflow: { name: 'feature', stages: [...] },
+ *   config: getEffectiveConfig('/project'),
+ *   previousStageResults: new Map([['planning', { status: 'completed', summary: '...' }]])
+ * };
+ *
+ * const prompt = buildStagePrompt(stageContext);
+ * // Returns: "# Developer Agent - implementation Stage\nYou are the **developer** agent..."
+ * ```
  */
 export function buildStagePrompt(context: StagePromptContext): string {
   const { task, stage, agent, workflow, config, previousStageResults } = context;
@@ -375,8 +541,29 @@ function formatExpectedOutputs(stage: WorkflowStage): string {
 }
 
 /**
- * Build a specialized prompt for the planning stage
- * Includes instructions for task decomposition when appropriate
+ * Build a specialized prompt for the planning stage with decomposition support.
+ *
+ * Creates targeted prompts for planner agents that include comprehensive instructions
+ * for task analysis and decomposition. Provides guidelines for when to decompose
+ * complex tasks into manageable subtasks with different execution strategies.
+ *
+ * @param context - Stage context containing task, agent, workflow and configuration
+ * @returns Formatted planning stage prompt with decomposition instructions
+ *
+ * @example
+ * ```typescript
+ * const plannerContext: StagePromptContext = {
+ *   task: { description: 'Implement full user management system' },
+ *   stage: { name: 'planning', agent: 'planner' },
+ *   agent: { name: 'planner', description: 'Plans implementation' },
+ *   workflow: { name: 'feature', stages: [...] },
+ *   config: getEffectiveConfig('/project'),
+ *   previousStageResults: new Map()
+ * };
+ *
+ * const prompt = buildPlannerStagePrompt(plannerContext);
+ * // Returns planning prompt with decomposition instructions and format requirements
+ * ```
  */
 export function buildPlannerStagePrompt(context: StagePromptContext): string {
   const { task, stage, agent, workflow, config, previousStageResults } = context;
@@ -466,7 +653,33 @@ Begin your analysis now.`;
 }
 
 /**
- * Parse the planner's output to extract decomposition request
+ * Parse the planner's output to extract decomposition request details.
+ *
+ * Analyzes planner output for decomposition blocks, validates the JSON structure,
+ * and returns a structured decomposition request with subtasks and execution strategy.
+ * Falls back to no decomposition if parsing fails or format is invalid.
+ *
+ * @param output - Raw output text from the planner agent
+ * @returns Parsed decomposition request with validation and normalization applied
+ *
+ * @example
+ * ```typescript
+ * const plannerOutput = `
+ * \`\`\`decompose
+ * {
+ *   "reason": "Complex feature needs breakdown",
+ *   "strategy": "sequential",
+ *   "subtasks": [
+ *     { "description": "Create models", "acceptanceCriteria": "Models validate input" },
+ *     { "description": "Build API", "dependsOn": ["Create models"] }
+ *   ]
+ * }
+ * \`\`\`
+ * `;
+ *
+ * const request = parseDecompositionRequest(plannerOutput);
+ * // Returns: { shouldDecompose: true, subtasks: [...], strategy: 'sequential' }
+ * ```
  */
 export function parseDecompositionRequest(output: string): DecompositionRequest {
   const decomposeMatch = output.match(/```decompose\s*([\s\S]*?)```/);
@@ -531,15 +744,47 @@ export function parseDecompositionRequest(output: string): DecompositionRequest 
 }
 
 /**
- * Check if a stage is a planning stage that supports decomposition
+ * Check if a stage is a planning stage that supports task decomposition.
+ *
+ * Identifies planning stages by checking stage name or agent type to determine
+ * if the stage should support task decomposition functionality.
+ *
+ * @param stage - Workflow stage to check for planning capabilities
+ * @returns True if the stage is a planning stage that supports decomposition
+ *
+ * @example
+ * ```typescript
+ * const planningStage: WorkflowStage = { name: 'planning', agent: 'planner' };
+ * const devStage: WorkflowStage = { name: 'implementation', agent: 'developer' };
+ *
+ * isPlanningStage(planningStage); // true
+ * isPlanningStage(devStage); // false
+ * ```
  */
 export function isPlanningStage(stage: WorkflowStage): boolean {
   return stage.name === 'planning' || stage.name === 'plan' || stage.agent === 'planner';
 }
 
 /**
- * Check if a stage is a code generation stage that should trigger auto-fix
- * This includes stages that write, modify, or generate code files
+ * Check if a stage is a code generation stage that should trigger auto-fix.
+ *
+ * Identifies stages that write, modify, or generate code files by examining
+ * the agent type, stage outputs, and stage names. Used to determine when
+ * automatic code quality fixes should be applied after stage completion.
+ *
+ * @param stage - Workflow stage to check for code generation capabilities
+ * @returns True if the stage generates code and should trigger auto-fix processes
+ *
+ * @example
+ * ```typescript
+ * const devStage: WorkflowStage = { name: 'implementation', agent: 'developer' };
+ * const testStage: WorkflowStage = { name: 'testing', agent: 'tester' };
+ * const planStage: WorkflowStage = { name: 'planning', agent: 'planner' };
+ *
+ * isCodeGenerationStage(devStage); // true (developer agent generates code)
+ * isCodeGenerationStage(testStage); // true (tester agent writes test files)
+ * isCodeGenerationStage(planStage); // false (planner doesn't generate code)
+ * ```
  */
 export function isCodeGenerationStage(stage: WorkflowStage): boolean {
   // Check by agent name - these agents typically generate code
