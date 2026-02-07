@@ -46,6 +46,8 @@
     "validate:browser-permissions": "node scripts/validate-browser-permission-tests.js",
     "clean": "turbo run clean && rm -rf node_modules",
     "cleanup:test": "node scripts/cleanup-test-directory.mjs",
+    "cleanup:test:shell": "./scripts/cleanup-test-directory.sh",
+    "cleanup:test:windows": "scripts\\cleanup-test-directory.bat",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "jsdoc:coverage": "ts-node scripts/jsdoc-coverage.ts",

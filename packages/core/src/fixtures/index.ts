@@ -8,6 +8,9 @@
 // Re-export all marketplace fixtures including new factory functions
 export * from './marketplace.js';
 
+// Re-export scenario-specific marketplace fixtures
+export * from './marketplace-scenarios.js';
+
 // Re-export types for external use
 export type {
   MCPMarketplaceEntry,

@@ -36,6 +36,20 @@ async function removeDirectory(dirPath) {
   } catch (error) {
     if (error.code === 'ENOENT') {
       console.log(`ℹ️  Directory does not exist: ${dirPath}`);
+    } else if (error.code === 'EPERM' || error.code === 'EACCES') {
+      // Permission-related errors - attempt alternative cleanup methods
+      console.log(`⚠️  Permission denied for: ${dirPath} - attempting alternative cleanup...`);
+
+      try {
+        // Try to change permissions first, then remove
+        await fs.chmod(dirPath, 0o755);
+        await fs.rm(dirPath, { recursive: true, force: true });
+        console.log(`✅ Successfully removed after permission fix: ${dirPath}`);
+      } catch (permError) {
+        console.error(`❌ Failed to remove ${dirPath} due to permission restrictions: ${permError.message}`);
+        console.log(`💡 Manual cleanup may be required for: ${dirPath}`);
+        // Don't throw - just warn and continue
+      }
     } else {
       throw error;
     }
@@ -67,7 +81,9 @@ async function findApexTestDirectories(rootDir) {
       }
     }
   } catch (error) {
-    if (error.code !== 'ENOENT' && error.code !== 'EPERM') {
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      console.warn(`⚠️  Permission denied accessing directory ${rootDir}: ${error.message}`);
+    } else if (error.code !== 'ENOENT') {
       console.warn(`Warning: Could not read directory ${rootDir}: ${error.message}`);
     }
   }
