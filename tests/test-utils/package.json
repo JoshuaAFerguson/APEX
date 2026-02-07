@@ -77,6 +77,18 @@
     "./mock-server-factory": {
       "types": "./dist/mock-server-factory.d.ts",
       "import": "./dist/mock-server-factory.js"
+    },
+    "./navigation-test-utils": {
+      "types": "./dist/navigation-test-utils.d.ts",
+      "import": "./dist/navigation-test-utils.js"
+    },
+    "./navigation-test-fixtures": {
+      "types": "./dist/navigation-test-fixtures.d.ts",
+      "import": "./dist/navigation-test-fixtures.js"
+    },
+    "./isolation": {
+      "types": "./dist/isolation/index.d.ts",
+      "import": "./dist/isolation/index.js"
     }
   },
   "scripts": {
@@ -86,7 +98,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "vitest": "workspace:*"
+    "vitest": "workspace:*",
+    "playwright": "workspace:*",
+    "eventemitter3": "^5.0.1"
   },
   "devDependencies": {
     "@types/node": "workspace:*",

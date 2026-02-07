@@ -20,7 +20,6 @@ import type {
   ApprovalGate,
   MCPConnectionConfig,
   Task,
-  BrowserConfig,
   CustomToolConfig,
 } from '@apexcli/core';
 
@@ -346,7 +345,7 @@ describe('Timeout Integration Comprehensive Tests', () => {
 
   describe('Browser Automation Timeout Integration', () => {
     it('should handle browser session timeout during navigation', async () => {
-      const browserConfig: BrowserConfig = {
+      const browserConfig = {
         timeout: 3000,
         headless: true,
       };

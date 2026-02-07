@@ -17,7 +17,7 @@
  */
 
 import { defineConfig, mergeConfig } from 'vitest/config';
-import { createIntegrationTestConfig } from './vitest.shared.config.js';
+import { createIntegrationTestConfig } from './vitest.shared.config';
 import * as path from 'path';
 
 export default mergeConfig(

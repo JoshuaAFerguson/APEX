@@ -456,4 +456,273 @@ describe('Click Interactions Integration Tests', () => {
       expect(restoredState?.visible).toBe(true);
     });
   });
+
+  describe('Form Element Click Interactions', () => {
+    it('should click on checkboxes and verify state changes', async () => {
+      // Test unchecked checkbox
+      const checkbox1InitialState = await page.isChecked('#checkbox1');
+      expect(checkbox1InitialState).toBe(false);
+
+      await page.click('#checkbox1');
+
+      const checkbox1ClickedState = await page.isChecked('#checkbox1');
+      expect(checkbox1ClickedState).toBe(true);
+
+      // Verify event was logged
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #checkbox1');
+
+      // Click again to uncheck
+      await page.click('#checkbox1');
+      const checkbox1DoubleClickedState = await page.isChecked('#checkbox1');
+      expect(checkbox1DoubleClickedState).toBe(false);
+    });
+
+    it('should click on pre-checked checkboxes', async () => {
+      // Test pre-checked checkbox (checkbox2 is checked by default)
+      const checkbox2InitialState = await page.isChecked('#checkbox2');
+      expect(checkbox2InitialState).toBe(true);
+
+      await page.click('#checkbox2');
+
+      const checkbox2ClickedState = await page.isChecked('#checkbox2');
+      expect(checkbox2ClickedState).toBe(false);
+
+      // Verify event was logged
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #checkbox2');
+    });
+
+    it('should handle clicks on disabled checkboxes gracefully', async () => {
+      // Verify checkbox3 is disabled
+      const isDisabled = await page.isDisabled('#checkbox3');
+      expect(isDisabled).toBe(true);
+
+      // Attempt to click disabled checkbox
+      await page.click('#checkbox3', { force: true });
+
+      // Verify state hasn't changed (disabled checkboxes shouldn't respond)
+      const checkboxState = await page.isChecked('#checkbox3');
+      expect(checkboxState).toBe(false); // Should remain unchecked
+    });
+
+    it('should click on radio buttons and verify state changes', async () => {
+      // Test that radio2 is initially selected
+      const radio2InitialState = await page.isChecked('#radio2');
+      expect(radio2InitialState).toBe(true);
+
+      // Click on radio1
+      await page.click('#radio1');
+
+      // Verify radio1 is now selected and radio2 is deselected
+      const radio1ClickedState = await page.isChecked('#radio1');
+      const radio2AfterClick = await page.isChecked('#radio2');
+
+      expect(radio1ClickedState).toBe(true);
+      expect(radio2AfterClick).toBe(false);
+
+      // Verify event was logged
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #radio1');
+    });
+
+    it('should handle clicks on disabled radio buttons gracefully', async () => {
+      // Verify radio3 is disabled
+      const isDisabled = await page.isDisabled('#radio3');
+      expect(isDisabled).toBe(true);
+
+      // Get current state of radio group before clicking disabled radio
+      const radio1StateBefore = await page.isChecked('#radio1');
+      const radio2StateBefore = await page.isChecked('#radio2');
+
+      // Attempt to click disabled radio button
+      await page.click('#radio3', { force: true });
+
+      // Verify radio group state hasn't changed
+      const radio1StateAfter = await page.isChecked('#radio1');
+      const radio2StateAfter = await page.isChecked('#radio2');
+      const radio3StateAfter = await page.isChecked('#radio3');
+
+      expect(radio1StateAfter).toBe(radio1StateBefore);
+      expect(radio2StateAfter).toBe(radio2StateBefore);
+      expect(radio3StateAfter).toBe(false); // Should remain unchecked
+    });
+
+    it('should click on labels to trigger associated form controls', async () => {
+      // Click on label for checkbox1
+      await page.click('label[for="checkbox1"]');
+
+      // Verify checkbox1 state changed
+      const checkboxState = await page.isChecked('#checkbox1');
+      expect(checkboxState).toBe(true);
+
+      // Click on label for radio1
+      await page.click('label[for="radio1"]');
+
+      // Verify radio1 state changed
+      const radioState = await page.isChecked('#radio1');
+      expect(radioState).toBe(true);
+
+      // Verify event log contains label clicks
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('label');
+    });
+
+    it('should handle select dropdown clicks', async () => {
+      // Clear log before test
+      await page.evaluate(() => window.testUtils?.clearEventLog());
+
+      // Click on select dropdown
+      await page.click('#basic-select');
+
+      // Select an option
+      await page.selectOption('#basic-select', 'option1');
+
+      // Verify selection
+      const selectedValue = await page.inputValue('#basic-select');
+      expect(selectedValue).toBe('option1');
+
+      // Verify events were logged
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('change');
+    });
+
+    it('should handle multi-select clicks with Ctrl modifier', async () => {
+      // Click first option in multi-select
+      await page.click('#multi-select option[value="multi1"]');
+
+      // Ctrl+click second option to add to selection
+      await page.click('#multi-select option[value="multi2"]', { modifiers: ['Control'] });
+
+      // Verify multiple selections
+      const selectedValues = await page.evaluate(() => {
+        const select = document.getElementById('multi-select') as HTMLSelectElement;
+        return Array.from(select.selectedOptions).map(option => option.value);
+      });
+
+      expect(selectedValues).toContain('multi1');
+      expect(selectedValues).toContain('multi2');
+    });
+  });
+
+  describe('Custom Element Click Interactions', () => {
+    it('should click on custom dropdown and select options', async () => {
+      // Click on custom dropdown toggle
+      await page.click('#custom-dropdown-toggle');
+
+      // Wait for dropdown menu to appear
+      await page.waitForSelector('#custom-dropdown-menu.show');
+
+      // Click on a custom dropdown item
+      await page.click('.custom-dropdown-item[data-value="custom1"]');
+
+      // Verify selection was made
+      const selectedValue = await page.getAttribute('#custom-dropdown-toggle', 'data-selected-value');
+      expect(selectedValue).toBe('custom1');
+
+      // Verify menu is closed
+      const menuVisible = await page.isVisible('#custom-dropdown-menu.show');
+      expect(menuVisible).toBe(false);
+    });
+
+    it('should close custom dropdown when clicking outside', async () => {
+      // Open custom dropdown
+      await page.click('#custom-dropdown-toggle');
+
+      // Verify dropdown is open
+      await page.waitForSelector('#custom-dropdown-menu.show');
+
+      // Click outside the dropdown
+      await page.click('body');
+
+      // Verify dropdown is closed
+      const menuVisible = await page.isVisible('#custom-dropdown-menu.show');
+      expect(menuVisible).toBe(false);
+    });
+
+    it('should handle clicks on contenteditable elements', async () => {
+      // Click on contenteditable div
+      await page.click('#contenteditable-div');
+
+      // Verify it receives focus
+      const isFocused = await page.evaluate(() => {
+        return document.activeElement?.id === 'contenteditable-div';
+      });
+      expect(isFocused).toBe(true);
+
+      // Verify event was logged
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #contenteditable-div');
+    });
+  });
+
+  describe('Advanced Click Interaction Patterns', () => {
+    it('should handle rapid successive clicks on form elements', async () => {
+      // Perform rapid clicks on checkbox to test toggle behavior
+      const clickCount = 5;
+      for (let i = 0; i < clickCount; i++) {
+        await page.click('#checkbox1');
+      }
+
+      // Since we clicked an odd number of times, checkbox should be checked
+      const finalState = await page.isChecked('#checkbox1');
+      expect(finalState).toBe(true);
+
+      // Verify all clicks were registered
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      const clickEvents = (eventLog.match(/click on #checkbox1/g) || []).length;
+      expect(clickEvents).toBe(clickCount);
+    });
+
+    it('should handle clicks with different timing intervals', async () => {
+      // Clear log before test
+      await page.evaluate(() => window.testUtils?.clearEventLog());
+
+      // Click with varying delays
+      await page.click('#basic-button');
+      await page.waitForTimeout(100);
+
+      await page.click('#basic-button');
+      await page.waitForTimeout(500);
+
+      await page.click('#basic-button');
+
+      // Verify all clicks were registered with timing information
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      const clickEvents = (eventLog.match(/click on #basic-button/g) || []).length;
+      expect(clickEvents).toBe(3);
+
+      // Verify timestamps show different intervals
+      const timestamps = eventLog.split('\n')
+        .filter(line => line.includes('click on #basic-button'))
+        .map(line => line.match(/\[(.*?)\]/)?.[1])
+        .filter(Boolean);
+
+      expect(timestamps).toHaveLength(3);
+    });
+
+    it('should handle clicks on elements becoming visible during animation', async () => {
+      // This test uses the delayed element that appears after clicking enable button
+      await page.click('#enable-disabled-button');
+
+      // Wait for the delayed element to become visible
+      await page.waitForSelector('#delayed-input', { state: 'visible', timeout: 10000 });
+
+      // Now click on the newly visible element
+      await page.click('#delayed-input');
+
+      // Verify the click was registered
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #delayed-input');
+    });
+
+    it('should handle clicks on scrollable content', async () => {
+      // Scroll to the button at bottom of scroll container
+      await page.click('#scroll-target');
+
+      // Verify the click was successful even though element needed scrolling
+      const eventLog = await page.evaluate(() => window.testUtils?.getEventLog());
+      expect(eventLog).toContain('click on #scroll-target');
+    });
+  });
 });

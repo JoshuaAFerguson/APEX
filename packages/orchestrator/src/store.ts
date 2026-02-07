@@ -4448,6 +4448,94 @@ export class TaskStore {
   }
 
   /**
+   * Clear all tasks from the database
+   * Useful for testing or cleanup scenarios
+   */
+  clearAllTasks(): void {
+    this.ensureInitialized();
+    this.db.prepare('DELETE FROM task_logs').run();
+    this.db.prepare('DELETE FROM task_artifacts').run();
+    this.db.prepare('DELETE FROM gates').run();
+    this.db.prepare('DELETE FROM commands').run();
+    this.db.prepare('DELETE FROM task_dependencies').run();
+    this.db.prepare('DELETE FROM task_checkpoints').run();
+    this.db.prepare('DELETE FROM task_interactions').run();
+    this.db.prepare('DELETE FROM workspace_info').run();
+    this.db.prepare('DELETE FROM task_iterations').run();
+    this.db.prepare('DELETE FROM todos').run();
+    this.db.prepare('DELETE FROM approval_states').run();
+    this.db.prepare('DELETE FROM tool_actions').run();
+    this.db.prepare('DELETE FROM snapshots').run();
+    this.db.prepare('DELETE FROM file_snapshots').run();
+    this.db.prepare('DELETE FROM fix_attempts').run();
+    this.db.prepare('DELETE FROM audit_logs WHERE task_id IS NOT NULL').run();
+    this.db.prepare('DELETE FROM tasks').run();
+  }
+
+  /**
+   * Reset the database by dropping and recreating all tables
+   * This is a more thorough cleanup than clearAllTasks
+   */
+  resetDatabase(): void {
+    this.ensureInitialized();
+
+    // Drop all tables in reverse dependency order
+    const tablesToDrop = [
+      'audit_logs',
+      'fix_attempts',
+      'snapshots',
+      'file_snapshots',
+      'tool_actions',
+      'approval_states',
+      'todos',
+      'task_iterations',
+      'workspace_info',
+      'task_interactions',
+      'task_checkpoints',
+      'task_dependencies',
+      'commands',
+      'gates',
+      'task_artifacts',
+      'task_logs',
+      'tasks',
+      'idle_tasks',
+      'task_templates',
+      'thought_captures',
+      'permissions',
+      'mcp_marketplace',
+      'mcp_servers',
+      'mcp_installations'
+    ];
+
+    for (const table of tablesToDrop) {
+      try {
+        this.db.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+      } catch (error) {
+        // Ignore errors for tables that don't exist
+      }
+    }
+
+    // Recreate all tables
+    this.createTables();
+    this.runMigrations();
+  }
+
+  /**
+   * Create a TaskStore instance for testing with an in-memory database
+   * @param projectPath - The project path to use for the test instance
+   * @returns TaskStore instance configured for testing
+   */
+  static createTestInstance(projectPath?: string): TaskStore {
+    const testPath = projectPath || '/tmp/test';
+    const store = new TaskStore(testPath);
+
+    // Override the database path to use in-memory SQLite
+    (store as any).dbPath = ':memory:';
+
+    return store;
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {

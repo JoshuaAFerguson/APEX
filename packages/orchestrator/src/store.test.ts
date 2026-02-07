@@ -3746,4 +3746,147 @@ describe('TaskStore', () => {
       await store.initialize();
     });
   });
+
+  describe('Cleanup Methods', () => {
+    beforeEach(async () => {
+      // Create some test data
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.addLog(task.id, {
+        level: 'info',
+        stage: 'test',
+        agent: 'test-agent',
+        message: 'Test log entry',
+        timestamp: new Date(),
+      });
+
+      await store.addArtifact(task.id, {
+        name: 'test-artifact',
+        type: 'file',
+        path: '/test/path',
+        content: 'test content',
+        metadata: {},
+      });
+    });
+
+    it('should clear all tasks and related data with clearAllTasks', async () => {
+      // Verify data exists before cleanup
+      const tasksBeforeCleanup = await store.listTasks();
+      expect(tasksBeforeCleanup).toHaveLength(1);
+
+      const logsBeforeCleanup = await store.getLogs(tasksBeforeCleanup[0].id);
+      expect(logsBeforeCleanup).toHaveLength(1);
+
+      const artifactsBeforeCleanup = await store.getArtifacts(tasksBeforeCleanup[0].id);
+      expect(artifactsBeforeCleanup).toHaveLength(1);
+
+      // Clear all tasks
+      store.clearAllTasks();
+
+      // Verify all data is cleared
+      const tasksAfterCleanup = await store.listTasks();
+      expect(tasksAfterCleanup).toHaveLength(0);
+
+      const logsAfterCleanup = await store.getLogs('non-existent-task');
+      expect(logsAfterCleanup).toHaveLength(0);
+
+      const artifactsAfterCleanup = await store.getArtifacts('non-existent-task');
+      expect(artifactsAfterCleanup).toHaveLength(0);
+    });
+
+    it('should reset database completely with resetDatabase', async () => {
+      // Verify data exists before reset
+      const tasksBeforeReset = await store.listTasks();
+      expect(tasksBeforeReset).toHaveLength(1);
+
+      // Reset the database
+      store.resetDatabase();
+
+      // Verify all data is cleared and tables are recreated
+      const tasksAfterReset = await store.listTasks();
+      expect(tasksAfterReset).toHaveLength(0);
+
+      // Verify we can still create new data after reset
+      const newTask = createTestTask();
+      await store.createTask(newTask);
+
+      const retrievedTask = await store.getTask(newTask.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.id).toBe(newTask.id);
+    });
+
+    it('should handle clearAllTasks when database is empty', () => {
+      store.clearAllTasks();
+      // Should not throw any errors
+      expect(true).toBe(true);
+    });
+
+    it('should handle resetDatabase when database is empty', () => {
+      store.resetDatabase();
+      // Should not throw any errors
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('createTestInstance static method', () => {
+    it('should create a test instance with in-memory database', async () => {
+      const testStore = TaskStore.createTestInstance();
+      await testStore.initialize();
+
+      // Verify it's working with in-memory database
+      const task = createTestTask();
+      await testStore.createTask(task);
+
+      const retrievedTask = await testStore.getTask(task.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.id).toBe(task.id);
+
+      testStore.close();
+    });
+
+    it('should create test instance with custom project path', async () => {
+      const customPath = '/custom/test/path';
+      const testStore = TaskStore.createTestInstance(customPath);
+      await testStore.initialize();
+
+      // Verify the store works
+      const task = createTestTask();
+      task.projectPath = customPath; // Use custom project path
+      await testStore.createTask(task);
+
+      const retrievedTask = await testStore.getTask(task.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.projectPath).toBe(customPath);
+
+      testStore.close();
+    });
+
+    it('should create independent test instances', async () => {
+      const testStore1 = TaskStore.createTestInstance();
+      const testStore2 = TaskStore.createTestInstance();
+
+      await testStore1.initialize();
+      await testStore2.initialize();
+
+      // Add different tasks to each store
+      const task1 = createTestTask();
+      task1.id = 'task1';
+      await testStore1.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task2';
+      await testStore2.createTask(task2);
+
+      // Verify isolation
+      const retrievedFromStore1 = await testStore1.getTask('task2');
+      expect(retrievedFromStore1).toBeNull();
+
+      const retrievedFromStore2 = await testStore2.getTask('task1');
+      expect(retrievedFromStore2).toBeNull();
+
+      testStore1.close();
+      testStore2.close();
+    });
+  });
 });

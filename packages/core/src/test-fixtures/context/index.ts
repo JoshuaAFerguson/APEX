@@ -86,3 +86,27 @@ export {
   createIntegrationTestContext,
   createUnitTestContext,
 } from './test-context.js';
+
+// Advanced isolation utilities
+export {
+  // Isolated execution patterns
+  createIsolatedExecution,
+  withIsolatedContext,
+  // State tracking
+  createStateTracker,
+  type StateSnapshot,
+  // Mock registry
+  createMockRegistry,
+  type MockRegistryEntry,
+  // Parallel test helpers
+  createResourceLock,
+  withLock,
+  type ResourceLock,
+  // Environment isolation
+  withEnvironment,
+  withEnvironmentSync,
+  // Test data factories
+  createTestDataFactory,
+  // Cleanup orchestration
+  createCleanupOrchestrator,
+} from './isolation-utils.js';

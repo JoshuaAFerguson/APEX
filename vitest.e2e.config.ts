@@ -26,7 +26,7 @@
  */
 
 import { defineConfig, mergeConfig } from 'vitest/config';
-import { createE2ETestConfig } from './vitest.shared.config.js';
+import { createE2ETestConfig } from './vitest.shared.config';
 import * as path from 'path';
 
 export default mergeConfig(

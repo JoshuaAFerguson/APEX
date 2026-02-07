@@ -4179,6 +4179,10 @@ export declare const ToolDefinitionSchema: z.ZodObject<{
     version?: string | undefined;
 }>;
 export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
+/**
+ * Output parser type for custom tools
+ * Defines how custom tool output should be processed and formatted
+ */
 export declare const CustomToolOutputParserSchema: z.ZodEnum<["json", "text", "lines"]>;
 export type CustomToolOutputParser = z.infer<typeof CustomToolOutputParserSchema>;
 export declare const CustomToolConfigSchema: z.ZodObject<{

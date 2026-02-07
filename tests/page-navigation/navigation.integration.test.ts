@@ -47,8 +47,14 @@ describe('Page Navigation Infrastructure', () => {
     context = await createNavigationContext(browser);
     page = await createNavigationPage(context);
 
-    // Use the mock server URL
+    // Use the mock server URL (works with both enhanced and basic mock servers)
     baseUrl = `http://localhost:${globalThis.navigationTestContext.mockServerPort}`;
+
+    // Enhanced mock server provides additional scenarios if available
+    const enhancedServer = globalThis.navigationTestContext.enhancedMockServer;
+    if (enhancedServer && enhancedServer.isRunning) {
+      baseUrl = enhancedServer.baseUrl;
+    }
   });
 
   afterEach(async () => {

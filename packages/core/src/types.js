@@ -787,6 +787,10 @@ exports.ToolDefinitionSchema = zod_1.z.object({
 // ============================================================================
 // Custom Tool Configuration (v0.5.0)
 // ============================================================================
+/**
+ * Output parser type for custom tools
+ * Defines how custom tool output should be processed and formatted
+ */
 exports.CustomToolOutputParserSchema = zod_1.z.enum(['json', 'text', 'lines']);
 exports.CustomToolConfigSchema = zod_1.z.object({
     /** Unique tool identifier */

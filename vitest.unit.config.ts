@@ -20,7 +20,7 @@
  */
 
 import { defineConfig, mergeConfig } from 'vitest/config';
-import { createUnitTestConfig } from './vitest.shared.config.js';
+import { createUnitTestConfig } from './vitest.shared.config';
 
 export default mergeConfig(
   createUnitTestConfig(),

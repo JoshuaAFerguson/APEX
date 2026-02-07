@@ -1022,12 +1022,18 @@ class BrowserTool {
                     success: true,
                     operation,
                     data: {
-                        diffPixels,
+                        differentPixels: diffPixels,
                         totalPixels,
+                        similarity: 1 - diffRatio,
                         diffRatio,
                         threshold: compareParams.threshold ?? 0.1,
-                        match: passed,
+                        isMatch: passed,
+                        match: passed, // Keep legacy field for compatibility
                         diffPath: compareParams.diffPath,
+                        dimensions: {
+                            width: baseline.width,
+                            height: baseline.height,
+                        },
                     },
                     metadata: {
                         url: this.getCurrentUrl(),
@@ -1287,6 +1293,9 @@ class BrowserTool {
                         scale: pdfParams.scale || 1,
                         pageRanges: pdfParams.pageRanges,
                         preferCSSPageSize: pdfParams.preferCSSPageSize || false,
+                        displayHeaderFooter: pdfParams.displayHeaderFooter || false,
+                        headerTemplate: pdfParams.headerTemplate,
+                        footerTemplate: pdfParams.footerTemplate,
                     });
                     return {
                         success: true,

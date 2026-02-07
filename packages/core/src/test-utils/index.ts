@@ -19,3 +19,9 @@ export * from './browser-assertions';
 
 // Mock tool types for Claude Agent SDK testing
 export * from './mock-tool-types';
+
+// Mock server utilities
+export * from './mock-server';
+
+// Test context for unique test isolation
+export * from '../test-fixtures/context/index.js';

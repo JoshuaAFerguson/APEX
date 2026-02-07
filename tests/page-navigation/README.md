@@ -149,6 +149,42 @@ describe('My Navigation Tests', () => {
 });
 ```
 
+### Using Enhanced Mock Server
+
+```typescript
+import { MockNavigationServer, MockServerLifecycle } from './mock-server';
+
+describe('Enhanced Navigation Tests', () => {
+  let mockServer: MockNavigationServer;
+
+  beforeAll(async () => {
+    mockServer = await MockServerLifecycle.startForTest('my-tests', {
+      verbose: true,
+      baseDelay: 1000
+    });
+  });
+
+  afterAll(async () => {
+    await MockServerLifecycle.stopForTest('my-tests');
+  });
+
+  it('should use enhanced mock server', async () => {
+    await page.goto(`${mockServer.baseUrl}/page1`);
+    expect(await page.title()).toBe('Navigation Test - Page 1');
+
+    // Add custom scenario at runtime
+    mockServer.addScenario({
+      name: 'custom-test',
+      path: '/custom',
+      body: '<h1>Custom Content</h1>'
+    });
+
+    await page.goto(`${mockServer.baseUrl}/custom`);
+    expect(await page.textContent('h1')).toBe('Custom Content');
+  });
+});
+```
+
 ### Using Navigation Scenarios
 
 ```typescript
@@ -238,16 +274,52 @@ The `vitest.config.ts` includes navigation-specific settings:
 - `NAVIGATION_SCENARIOS`: Collection of common navigation patterns
 - `createNavigationTestPage()`: Generate test pages with navigation elements
 
-## Mock Server Features
+## Enhanced Mock Server (v0.5.0)
 
-The integrated mock server provides:
+The navigation tests now include an enhanced mock server (`mock-server.ts`) that provides superior functionality while maintaining backward compatibility with the basic server implementation.
+
+### Key Enhancements
+
+- **Programmatic lifecycle control**: Start and stop servers via API calls
+- **Named instance management**: Manage multiple servers for different test suites
+- **Extended scenario support**: More comprehensive error, redirect, and performance scenarios
+- **Runtime scenario management**: Add, remove, and modify scenarios during tests
+- **Better error handling**: Graceful fallback to basic server if enhanced server fails
+- **Improved logging**: Optional verbose output for debugging
+
+### Enhanced Mock Server Features
+
+The enhanced mock server provides:
 
 ### Standard Routes
-- `/` - Home page with navigation menu
+- `/` - Enhanced home page with comprehensive navigation menu
 - `/page1`, `/page2`, `/page3` - Test pages with navigation controls
-- `/slow` - Simulates slow loading (2 second delay)
+- `/slow` - Simulates slow loading (configurable delay)
+- `/very-slow` - Very slow loading (extended delay)
 - `/error` - Returns 500 error for error handling tests
-- `/redirect?to=URL` - HTTP redirect testing
+- `/404` - Returns 404 not found error
+- `/forbidden` - Returns 403 forbidden error
+- `/redirect?to=URL` - HTTP redirect testing (dynamic)
+- `/redirect-temp` - 302 temporary redirect
+- `/redirect-permanent` - 301 permanent redirect
+- `/api/data` - JSON API response
+- `/empty` - Empty response body
+
+### Enhanced Server Classes
+
+The new implementation provides two main classes:
+
+#### MockNavigationServer
+- Core server implementation with scenario management
+- Programmatic start/stop lifecycle
+- Runtime scenario addition/removal
+- Comprehensive error and redirect handling
+
+#### MockServerLifecycle
+- Named instance management for test isolation
+- Multi-server support for parallel test suites
+- Automatic cleanup utilities
+- Integration with test frameworks
 
 ### Navigation Elements
 Each test page includes:
@@ -347,6 +419,24 @@ try {
    console.log('Navigation events:', monitor.getEvents());
    ```
 
+## New Test Files
+
+The enhanced infrastructure includes additional test files:
+
+- `mock-server.ts` - Enhanced mock server implementation
+- `mock-server.test.ts` - Unit tests for mock server functionality
+- `enhanced-navigation.test.ts` - Integration tests demonstrating enhanced features
+- `MOCK_SERVER_GUIDE.md` - Comprehensive guide for mock server usage
+
+## Backward Compatibility
+
+The enhanced mock server is fully backward compatible with existing tests:
+
+- Automatic fallback to basic server if enhanced server fails
+- Existing test patterns continue to work unchanged
+- Same port and URL access patterns maintained
+- All existing navigation scenarios preserved
+
 ## Integration with APEX
 
 This navigation test infrastructure integrates with APEX's browser automation features:
@@ -355,5 +445,7 @@ This navigation test infrastructure integrates with APEX's browser automation fe
 - Validates navigation commands in orchestrator context
 - Ensures navigation reliability across different browsers
 - Measures navigation performance impact on workflows
+- Provides controlled environment for testing navigation edge cases
+- Supports testing of error handling and recovery scenarios
 
-The infrastructure provides a solid foundation for testing any navigation-related features in the APEX ecosystem.
+The enhanced infrastructure provides a robust, scalable foundation for testing any navigation-related features in the APEX ecosystem while maintaining full compatibility with existing test suites.

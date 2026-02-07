@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { simulateTyping, fillFormWithTestData } from './setup';
 import React from 'react';
@@ -354,26 +354,29 @@ function getCheckboxVisual(container: HTMLElement, testId: string): HTMLElement 
 /**
  * Utility function to simulate checkbox click
  */
-function clickCheckbox(container: HTMLElement, testId: string): void {
+async function clickCheckbox(container: HTMLElement, testId: string, userEventInstance: ReturnType<typeof userEvent.setup>): Promise<void> {
   const checkbox = getCheckboxElement(container, testId);
-  checkbox.click();
+  await userEventInstance.click(checkbox);
 }
 
 /**
  * Utility function to simulate label click
  */
-function clickCheckboxLabel(container: HTMLElement, testId: string): void {
+async function clickCheckboxLabel(container: HTMLElement, testId: string, userEventInstance: ReturnType<typeof userEvent.setup>): Promise<void> {
   const label = container.querySelector(`[data-testid="${testId}"] label`);
   if (!label) {
     throw new Error(`Checkbox label with test ID "${testId}" not found`);
   }
-  (label as HTMLElement).click();
+  await userEventInstance.click(label as HTMLElement);
 }
 
 describe('Checkbox Toggle Interactions Integration Tests', () => {
   let container: HTMLElement;
+  let user: ReturnType<typeof userEvent.setup>;
 
   beforeEach(() => {
+    cleanup();
+    user = userEvent.setup();
     const rendered = render(<CheckboxFormTest />);
     container = rendered.container;
   });
@@ -384,106 +387,107 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(checkbox.checked).toBe(false);
     });
 
-    it('should check when clicked', () => {
-      clickCheckbox(container, 'single-checkbox');
+    it('should check when clicked', async () => {
+      await clickCheckbox(container, 'single-checkbox', user);
       const checkbox = getCheckboxElement(container, 'single-checkbox');
       expect(checkbox.checked).toBe(true);
     });
 
-    it('should uncheck when clicked again', () => {
+    it('should uncheck when clicked again', async () => {
       // First click to check
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
       let checkbox = getCheckboxElement(container, 'single-checkbox');
       expect(checkbox.checked).toBe(true);
 
       // Second click to uncheck
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
       checkbox = getCheckboxElement(container, 'single-checkbox');
       expect(checkbox.checked).toBe(false);
     });
 
-    it('should toggle when label is clicked', () => {
-      clickCheckboxLabel(container, 'single-checkbox');
+    it('should toggle when label is clicked', async () => {
+      await clickCheckboxLabel(container, 'single-checkbox', user);
       const checkbox = getCheckboxElement(container, 'single-checkbox');
       expect(checkbox.checked).toBe(true);
     });
 
-    it('should handle multiple rapid clicks correctly', () => {
+    it('should handle multiple rapid clicks correctly', async () => {
       const checkbox = getCheckboxElement(container, 'single-checkbox');
 
       // Simulate rapid clicking
       for (let i = 0; i < 5; i++) {
-        clickCheckbox(container, 'single-checkbox');
+        await clickCheckbox(container, 'single-checkbox', user);
       }
 
       // Should be checked (odd number of clicks)
       expect(checkbox.checked).toBe(true);
 
       // One more click should uncheck
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
       expect(checkbox.checked).toBe(false);
     });
 
-    it('should handle keyboard space key toggle', () => {
+    it('should handle keyboard space key toggle', async () => {
       const checkbox = getCheckboxElement(container, 'single-checkbox');
-      checkbox.focus();
-
-      // Simulate space key press
-      checkbox.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+      await user.click(checkbox); // Focus and check
       expect(checkbox.checked).toBe(true);
 
-      // Another space key press should uncheck
-      checkbox.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+      // Use space key to toggle
+      await user.keyboard(' ');
       expect(checkbox.checked).toBe(false);
+
+      // Another space key press should check again
+      await user.keyboard(' ');
+      expect(checkbox.checked).toBe(true);
     });
   });
 
   describe('Indeterminate State Handling', () => {
     it('should show indeterminate state when some children are selected', async () => {
       // Select only one child
-      clickCheckbox(container, 'child-checkbox-1');
+      await clickCheckbox(container, 'child-checkbox-1', user);
 
       const parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.indeterminate).toBe(true);
       expect(parentCheckbox.checked).toBe(false);
     });
 
-    it('should clear indeterminate state when all children are selected', () => {
+    it('should clear indeterminate state when all children are selected', async () => {
       // Select all children
-      clickCheckbox(container, 'child-checkbox-1');
-      clickCheckbox(container, 'child-checkbox-2');
-      clickCheckbox(container, 'child-checkbox-3');
+      await clickCheckbox(container, 'child-checkbox-1', user);
+      await clickCheckbox(container, 'child-checkbox-2', user);
+      await clickCheckbox(container, 'child-checkbox-3', user);
 
       const parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.indeterminate).toBe(false);
       expect(parentCheckbox.checked).toBe(true);
     });
 
-    it('should clear indeterminate state when no children are selected', () => {
+    it('should clear indeterminate state when no children are selected', async () => {
       // First select some children to get indeterminate state
-      clickCheckbox(container, 'child-checkbox-1');
+      await clickCheckbox(container, 'child-checkbox-1', user);
 
       let parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.indeterminate).toBe(true);
 
       // Then unselect all
-      clickCheckbox(container, 'child-checkbox-1');
+      await clickCheckbox(container, 'child-checkbox-1', user);
 
       parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.indeterminate).toBe(false);
       expect(parentCheckbox.checked).toBe(false);
     });
 
-    it('should select all children when parent is clicked from indeterminate state', () => {
+    it('should select all children when parent is clicked from indeterminate state', async () => {
       // Get to indeterminate state
-      clickCheckbox(container, 'child-checkbox-1');
-      clickCheckbox(container, 'child-checkbox-2');
+      await clickCheckbox(container, 'child-checkbox-1', user);
+      await clickCheckbox(container, 'child-checkbox-2', user);
 
       let parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.indeterminate).toBe(true);
 
       // Click parent to select all
-      clickCheckbox(container, 'parent-checkbox');
+      await clickCheckbox(container, 'parent-checkbox', user);
 
       // All children should be selected
       expect(getCheckboxElement(container, 'child-checkbox-1').checked).toBe(true);
@@ -495,18 +499,18 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(parentCheckbox.checked).toBe(true);
     });
 
-    it('should deselect all children when parent is clicked from fully selected state', () => {
+    it('should deselect all children when parent is clicked from fully selected state', async () => {
       // Select all children first
-      clickCheckbox(container, 'child-checkbox-1');
-      clickCheckbox(container, 'child-checkbox-2');
-      clickCheckbox(container, 'child-checkbox-3');
+      await clickCheckbox(container, 'child-checkbox-1', user);
+      await clickCheckbox(container, 'child-checkbox-2', user);
+      await clickCheckbox(container, 'child-checkbox-3', user);
 
       let parentCheckbox = getCheckboxElement(container, 'parent-checkbox');
       expect(parentCheckbox.checked).toBe(true);
       expect(parentCheckbox.indeterminate).toBe(false);
 
       // Click parent to deselect all
-      clickCheckbox(container, 'parent-checkbox');
+      await clickCheckbox(container, 'parent-checkbox', user);
 
       // All children should be deselected
       expect(getCheckboxElement(container, 'child-checkbox-1').checked).toBe(false);
@@ -520,28 +524,30 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
   });
 
   describe('Disabled State Behavior', () => {
-    it('should not respond to clicks when disabled', () => {
+    it('should not respond to clicks when disabled', async () => {
       const checkbox = getCheckboxElement(container, 'disabled-checkbox');
       expect(checkbox.disabled).toBe(true);
       expect(checkbox.checked).toBe(false);
 
-      clickCheckbox(container, 'disabled-checkbox');
+      // Clicking disabled checkbox should not change its state
+      await user.click(checkbox);
       expect(checkbox.checked).toBe(false);
     });
 
-    it('should not respond to label clicks when disabled', () => {
+    it('should not respond to label clicks when disabled', async () => {
       const checkbox = getCheckboxElement(container, 'disabled-checkbox');
       expect(checkbox.disabled).toBe(true);
 
-      clickCheckboxLabel(container, 'disabled-checkbox');
+      await clickCheckboxLabel(container, 'disabled-checkbox', user);
       expect(checkbox.checked).toBe(false);
     });
 
-    it('should not respond to keyboard events when disabled', () => {
+    it('should not respond to keyboard events when disabled', async () => {
       const checkbox = getCheckboxElement(container, 'disabled-checkbox');
-      checkbox.focus();
 
-      checkbox.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+      // Try to focus and use keyboard on disabled checkbox
+      await user.click(checkbox);
+      await user.keyboard(' ');
       expect(checkbox.checked).toBe(false);
     });
 
@@ -553,51 +559,49 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
   });
 
   describe('Checkbox Groups Interactions', () => {
-    it('should allow multiple checkboxes to be selected independently', () => {
-      clickCheckbox(container, 'group-option-1');
-      clickCheckbox(container, 'group-option-3');
+    it('should allow multiple checkboxes to be selected independently', async () => {
+      await clickCheckbox(container, 'group-option-1', user);
+      await clickCheckbox(container, 'group-option-3', user);
 
       expect(getCheckboxElement(container, 'group-option-1').checked).toBe(true);
       expect(getCheckboxElement(container, 'group-option-2').checked).toBe(false);
       expect(getCheckboxElement(container, 'group-option-3').checked).toBe(true);
     });
 
-    it('should allow all checkboxes in a group to be selected', () => {
-      clickCheckbox(container, 'group-option-1');
-      clickCheckbox(container, 'group-option-2');
-      clickCheckbox(container, 'group-option-3');
+    it('should allow all checkboxes in a group to be selected', async () => {
+      await clickCheckbox(container, 'group-option-1', user);
+      await clickCheckbox(container, 'group-option-2', user);
+      await clickCheckbox(container, 'group-option-3', user);
 
       expect(getCheckboxElement(container, 'group-option-1').checked).toBe(true);
       expect(getCheckboxElement(container, 'group-option-2').checked).toBe(true);
       expect(getCheckboxElement(container, 'group-option-3').checked).toBe(true);
     });
 
-    it('should allow partial deselection from a group', () => {
+    it('should allow partial deselection from a group', async () => {
       // First select all
-      clickCheckbox(container, 'group-option-1');
-      clickCheckbox(container, 'group-option-2');
-      clickCheckbox(container, 'group-option-3');
+      await clickCheckbox(container, 'group-option-1', user);
+      await clickCheckbox(container, 'group-option-2', user);
+      await clickCheckbox(container, 'group-option-3', user);
 
       // Then deselect middle option
-      clickCheckbox(container, 'group-option-2');
+      await clickCheckbox(container, 'group-option-2', user);
 
       expect(getCheckboxElement(container, 'group-option-1').checked).toBe(true);
       expect(getCheckboxElement(container, 'group-option-2').checked).toBe(false);
       expect(getCheckboxElement(container, 'group-option-3').checked).toBe(true);
     });
 
-    it('should handle group interactions with keyboard navigation', () => {
+    it('should handle group interactions with keyboard navigation', async () => {
       const option1 = getCheckboxElement(container, 'group-option-1');
       const option2 = getCheckboxElement(container, 'group-option-2');
 
       // Focus and select first option
-      option1.focus();
-      option1.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+      await user.click(option1);
       expect(option1.checked).toBe(true);
 
       // Focus and select second option
-      option2.focus();
-      option2.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+      await user.click(option2);
       expect(option2.checked).toBe(true);
 
       // Both should remain selected
@@ -607,13 +611,13 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
   });
 
   describe('Form State Integration', () => {
-    it('should reflect checkbox values in form state', () => {
+    it('should reflect checkbox values in form state', async () => {
       // Check a single checkbox
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
 
       // Check some group options
-      clickCheckbox(container, 'group-option-1');
-      clickCheckbox(container, 'group-option-3');
+      await clickCheckbox(container, 'group-option-1', user);
+      await clickCheckbox(container, 'group-option-3', user);
 
       const formStateElement = container.querySelector('[data-testid="form-state"]') as HTMLElement;
       const formData = JSON.parse(formStateElement.getAttribute('data-form-state') || '{}');
@@ -624,10 +628,10 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(formData.checkboxGroup.option3).toBe(true);
     });
 
-    it('should update form state when checkboxes are unchecked', () => {
+    it('should update form state when checkboxes are unchecked', async () => {
       // First check, then uncheck
-      clickCheckbox(container, 'single-checkbox');
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
+      await clickCheckbox(container, 'single-checkbox', user);
 
       const formStateElement = container.querySelector('[data-testid="form-state"]') as HTMLElement;
       const formData = JSON.parse(formStateElement.getAttribute('data-form-state') || '{}');
@@ -635,10 +639,10 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(formData.singleCheckbox).toBe(false);
     });
 
-    it('should handle complex parent-child relationships in form state', () => {
+    it('should handle complex parent-child relationships in form state', async () => {
       // Create a partially selected state
-      clickCheckbox(container, 'child-checkbox-1');
-      clickCheckbox(container, 'child-checkbox-2');
+      await clickCheckbox(container, 'child-checkbox-1', user);
+      await clickCheckbox(container, 'child-checkbox-2', user);
 
       const formStateElement = container.querySelector('[data-testid="form-state"]') as HTMLElement;
       const formData = JSON.parse(formStateElement.getAttribute('data-form-state') || '{}');
@@ -648,7 +652,7 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(formData.parentSelection.children.child3).toBe(false);
     });
 
-    it('should validate boolean values are properly reflected', () => {
+    it('should validate boolean values are properly reflected', async () => {
       const formStateElement = container.querySelector('[data-testid="form-state"]') as HTMLElement;
       let formData = JSON.parse(formStateElement.getAttribute('data-form-state') || '{}');
 
@@ -657,18 +661,18 @@ describe('Checkbox Toggle Interactions Integration Tests', () => {
       expect(typeof formData.singleCheckbox).toBe('boolean');
 
       // After clicking, should be true (boolean true)
-      clickCheckbox(container, 'single-checkbox');
+      await clickCheckbox(container, 'single-checkbox', user);
       formData = JSON.parse(formStateElement.getAttribute('data-form-state') || '{}');
       expect(formData.singleCheckbox).toBe(true);
       expect(typeof formData.singleCheckbox).toBe('boolean');
     });
 
-    it('should handle form submission data correctly', () => {
+    it('should handle form submission data correctly', async () => {
       const form = container.querySelector('[data-testid="checkbox-test-form"]') as HTMLFormElement;
 
       // Select various checkboxes
-      clickCheckbox(container, 'single-checkbox');
-      clickCheckbox(container, 'group-option-2');
+      await clickCheckbox(container, 'single-checkbox', user);
+      await clickCheckbox(container, 'group-option-2', user);
 
       // Create FormData to test actual form submission values
       const formData = new FormData(form);

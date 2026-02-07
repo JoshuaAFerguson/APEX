@@ -25,5 +25,5 @@
     "allowJs": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**", "src/test-utils.ts", "src/test-setup.ts", "src/test-fixtures"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**", "src/test-setup.ts"]
 }

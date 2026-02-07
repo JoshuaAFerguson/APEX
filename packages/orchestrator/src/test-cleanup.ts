@@ -366,4 +366,121 @@ export class TestAssertions {
 
     return stats;
   }
+
+  /**
+   * Assert that database state matches expected counts
+   */
+  static async assertDatabaseCounts(
+    store: TaskStore,
+    expectedCounts: Record<string, number>
+  ): Promise<void> {
+    const actualCounts = await TestAssertions.getDatabaseStats(store);
+
+    for (const [tableName, expectedCount] of Object.entries(expectedCounts)) {
+      const actualCount = actualCounts[tableName] ?? 0;
+      if (actualCount !== expectedCount) {
+        throw new Error(
+          `Expected ${expectedCount} records in ${tableName} table, found ${actualCount}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Assert that database has specific number of tasks
+   */
+  static async assertTaskCount(store: TaskStore, expectedCount: number): Promise<void> {
+    await TestAssertions.assertDatabaseCounts(store, { tasks: expectedCount });
+  }
+
+  /**
+   * Assert that database has specific number of logs
+   */
+  static async assertLogCount(store: TaskStore, expectedCount: number): Promise<void> {
+    await TestAssertions.assertDatabaseCounts(store, { task_logs: expectedCount });
+  }
+
+  /**
+   * Assert that database has specific number of templates
+   */
+  static async assertTemplateCount(store: TaskStore, expectedCount: number): Promise<void> {
+    await TestAssertions.assertDatabaseCounts(store, { task_templates: expectedCount });
+  }
+}
+
+/**
+ * Convenience utilities for common test patterns
+ */
+export class TestUtils {
+  /**
+   * Create a complete test setup with automatic cleanup
+   * @param config Optional cleanup configuration
+   * @returns Promise resolving to test utilities and store
+   */
+  static async setupTest(config?: Partial<CleanupConfig>): Promise<{
+    store: TaskStore;
+    cleanup: () => Promise<void>;
+    resetStore: () => Promise<void>;
+  }> {
+    const testHooks = createTestHooks(config);
+    await testHooks.beforeEach();
+
+    const store = await testHooks.createTaskStore();
+
+    return {
+      store,
+      cleanup: async () => {
+        await testHooks.afterEach();
+      },
+      resetStore: async () => {
+        await testHooks.resetTaskStore(store);
+      }
+    };
+  }
+
+  /**
+   * Wrapper for tests that need a clean TaskStore
+   * Automatically sets up and cleans up the store
+   */
+  static async withCleanStore<T>(
+    testFn: (store: TaskStore) => Promise<T>,
+    config?: Partial<CleanupConfig>
+  ): Promise<T> {
+    const { store, cleanup } = await TestUtils.setupTest(config);
+    try {
+      return await testFn(store);
+    } finally {
+      await cleanup();
+    }
+  }
+
+  /**
+   * Wrapper for tests that need multiple clean operations on the same store
+   */
+  static async withResetableStore<T>(
+    testFn: (store: TaskStore, resetStore: () => Promise<void>) => Promise<T>,
+    config?: Partial<CleanupConfig>
+  ): Promise<T> {
+    const { store, cleanup, resetStore } = await TestUtils.setupTest(config);
+    try {
+      return await testFn(store, resetStore);
+    } finally {
+      await cleanup();
+    }
+  }
+
+  /**
+   * Create a test store with temporary directory
+   * @deprecated Use setupTest() instead for better resource management
+   */
+  static async createTestStore(projectPath?: string): Promise<{
+    store: TaskStore;
+    tempDir: string;
+  }> {
+    const cleanup = new TestCleanup();
+    const tempDir = projectPath || `/tmp/test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const store = await cleanup.createTestTaskStore(tempDir);
+
+    return { store, tempDir };
+  }
 }

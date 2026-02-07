@@ -5,7 +5,7 @@
  * It includes unit tests, integration tests, stress tests, and e2e tests.
  */
 import { defineConfig, mergeConfig } from 'vitest/config';
-import { createSharedConfig } from './vitest.shared.config.js';
+import { createSharedConfig } from './vitest.shared.config';
 
 export default mergeConfig(
   createSharedConfig('jsdom'),

@@ -214,6 +214,12 @@ export interface BrowserGeneratePdfParams {
     pageRanges?: string;
     /** Prefer CSS page size if defined */
     preferCSSPageSize?: boolean;
+    /** Display header and footer */
+    displayHeaderFooter?: boolean;
+    /** HTML template for header */
+    headerTemplate?: string;
+    /** HTML template for footer */
+    footerTemplate?: string;
 }
 /**
  * Unified parameters type for all browser operations

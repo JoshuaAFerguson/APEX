@@ -11837,6 +11837,16 @@ export {
   type BrowserManagerEvents,
 } from './browser-manager';
 export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
+
+// Test utilities for state cleanup and test isolation
+export {
+  TestCleanup,
+  TestHooks,
+  createTestHooks,
+  TestAssertions,
+  TestUtils,
+  type CleanupConfig
+} from './test-cleanup';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
 export { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';

@@ -36,6 +36,10 @@ export * from './browser-automation-config';
 export * from './browser-error-fixtures';
 export * from './browser-utils';
 
+// Export navigation testing utilities
+export * from './navigation-test-utils';
+export * from './navigation-test-fixtures';
+
 // Export MCP test infrastructure
 export * from './mcp-test-base';
 export * from './mcp-permission-helpers';

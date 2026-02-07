@@ -19,6 +19,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createServer } from 'http';
 import type { Server } from 'http';
+import { MockNavigationServer, MockServerLifecycle } from './mock-server';
 
 // Global test state for navigation testing
 export interface NavigationTestContext {
@@ -29,6 +30,7 @@ export interface NavigationTestContext {
   screenshots?: string[];
   mockServer?: Server;
   mockServerPort?: number;
+  enhancedMockServer?: MockNavigationServer;
   navigationHistory?: string[];
   performanceMetrics?: Record<string, any>[];
 }
@@ -439,13 +441,28 @@ beforeAll(async () => {
   // Create temporary directory for test artifacts
   globalThis.navigationTestContext.tempDir = await createTempDir();
 
-  // Start mock server
-  const { server, port } = await createMockServer();
-  globalThis.navigationTestContext.mockServer = server;
-  globalThis.navigationTestContext.mockServerPort = port;
+  // Start enhanced mock server
+  try {
+    const enhancedMockServer = await MockServerLifecycle.startForTest('navigation-tests', {
+      verbose: process.env.NODE_ENV !== 'test'
+    });
+    globalThis.navigationTestContext.enhancedMockServer = enhancedMockServer;
+    globalThis.navigationTestContext.mockServerPort = enhancedMockServer.port;
 
-  console.log(`Navigation test temp directory: ${globalThis.navigationTestContext.tempDir}`);
-  console.log(`Mock server started on port: ${port}`);
+    console.log(`Navigation test temp directory: ${globalThis.navigationTestContext.tempDir}`);
+    console.log(`Enhanced mock server started on port: ${enhancedMockServer.port}`);
+    console.log(`Mock server URL: ${enhancedMockServer.baseUrl}`);
+  } catch (error) {
+    console.error('Failed to start enhanced mock server, falling back to basic server');
+
+    // Fallback to basic mock server
+    const { server, port } = await createMockServer();
+    globalThis.navigationTestContext.mockServer = server;
+    globalThis.navigationTestContext.mockServerPort = port;
+
+    console.log(`Navigation test temp directory: ${globalThis.navigationTestContext.tempDir}`);
+    console.log(`Basic mock server started on port: ${port}`);
+  }
 });
 
 afterAll(async () => {
@@ -462,7 +479,12 @@ afterAll(async () => {
     await globalThis.navigationTestContext.browser.close();
   }
 
-  // Stop mock server
+  // Stop enhanced mock server
+  if (globalThis.navigationTestContext.enhancedMockServer) {
+    await MockServerLifecycle.stopForTest('navigation-tests');
+  }
+
+  // Stop basic mock server (fallback)
   if (globalThis.navigationTestContext.mockServer) {
     globalThis.navigationTestContext.mockServer.close();
   }

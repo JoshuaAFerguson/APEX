@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createBrowserManager, createBrowserSession } from '../index.js';
-import type { BrowserManager, BrowserSession, BrowserSessionConfig } from '../types.js';
+import { createBrowserManager, createBrowserSession, BrowserManager, BrowserSession } from '../index.js';
+import type { BrowserSessionConfig } from '../index.js';
 
 // Mock weak reference tracking for memory leak detection
 const activeTimeouts = new WeakSet();
