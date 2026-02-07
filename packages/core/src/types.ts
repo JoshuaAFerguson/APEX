@@ -1072,6 +1072,10 @@ export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
 // Custom Tool Configuration (v0.5.0)
 // ============================================================================
 
+/**
+ * Output parser type for custom tools
+ * Defines how custom tool output should be processed and formatted
+ */
 export const CustomToolOutputParserSchema = z.enum(['json', 'text', 'lines']);
 export type CustomToolOutputParser = z.infer<typeof CustomToolOutputParserSchema>;
 

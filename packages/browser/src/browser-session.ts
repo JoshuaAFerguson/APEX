@@ -1024,6 +1024,210 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> implement
   }
 
   /**
+   * Waits for a selector to match an element
+   * Alias for waitForElement for compatibility
+   */
+  async waitForSelector(
+    selector: string | ElementSelector,
+    options?: {
+      timeout?: number;
+      state?: 'visible' | 'hidden' | 'attached' | 'detached';
+    }
+  ): Promise<BrowserActionResult<void>> {
+    return this.waitForElement(selector, options);
+  }
+
+  /**
+   * Waits for a function to evaluate to true
+   */
+  async waitForFunction(
+    fn: string | (() => unknown),
+    options?: {
+      timeout?: number;
+      polling?: number | 'raf';
+    }
+  ): Promise<BrowserActionResult<unknown>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const result = await this.page.waitForFunction(fn, {
+        timeout: options?.timeout || this.config.timeout,
+        polling: options?.polling || 'raf',
+      });
+
+      const value = await result.jsonValue();
+
+      return {
+        success: true,
+        data: value,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Waits for page to reach a specific load state
+   */
+  async waitForLoadState(
+    state: 'load' | 'domcontentloaded' | 'networkidle' = 'load',
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<void>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      await this.page.waitForLoadState(state, {
+        timeout: options?.timeout || this.config.timeout,
+      });
+
+      return {
+        success: true,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Waits for a request with matching URL pattern
+   */
+  async waitForRequest(
+    urlPattern: string | RegExp | ((request: any) => boolean),
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<any>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const request = await this.page.waitForRequest(urlPattern, {
+        timeout: options?.timeout || this.config.timeout,
+      });
+
+      return {
+        success: true,
+        data: {
+          url: request.url(),
+          method: request.method(),
+          headers: request.headers(),
+          resourceType: request.resourceType(),
+        },
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Waits for a response with matching URL pattern
+   */
+  async waitForResponse(
+    urlPattern: string | RegExp | ((response: any) => boolean),
+    options?: {
+      timeout?: number;
+    }
+  ): Promise<BrowserActionResult<any>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      const response = await this.page.waitForResponse(urlPattern, {
+        timeout: options?.timeout || this.config.timeout,
+      });
+
+      return {
+        success: true,
+        data: {
+          url: response.url(),
+          status: response.status(),
+          statusText: response.statusText(),
+          headers: response.headers(),
+          ok: response.ok(),
+        },
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Waits for a specific amount of time
+   */
+  async waitFor(
+    milliseconds: number
+  ): Promise<BrowserActionResult<void>> {
+    const startTime = Date.now();
+
+    try {
+      await this.page?.waitForTimeout(milliseconds);
+
+      return {
+        success: true,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
    * Evaluates JavaScript in the browser context
    */
   async evaluate<T = unknown>(script: string | (() => T)): Promise<BrowserActionResult<T>> {
