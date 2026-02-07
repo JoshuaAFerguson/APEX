@@ -730,6 +730,16 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * @param containerId Container ID or name
    * @param runtimeType Optional runtime type (auto-detected if not provided)
    * @returns Container information or null if not found
+   * @throws {Error} When runtime detection fails
+   * @example
+   * ```typescript
+   * const info = await containerManager.inspect('my-container');
+   * if (info) {
+   *   console.log(`Container details: ${JSON.stringify(info, null, 2)}`);
+   * } else {
+   *   console.log('Container not found');
+   * }
+   * ```
    */
   async inspect(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerInfo | null> {
     return this.getContainerInfo(containerId, runtimeType);
@@ -740,6 +750,15 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * @param containerId Container ID or name
    * @param runtimeType Optional runtime type (auto-detected if not provided)
    * @returns Container statistics or null if not found
+   * @throws {Error} When runtime detection fails
+   * @example
+   * ```typescript
+   * const stats = await containerManager.getStats('my-container');
+   * if (stats) {
+   *   console.log(`CPU: ${stats.cpuPercent}%, Memory: ${stats.memoryUsage} bytes`);
+   *   console.log(`PIDs: ${stats.pids}, Network RX: ${stats.networkRxBytes}`);
+   * }
+   * ```
    */
   async getStats(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerStats | null> {
     try {
@@ -792,6 +811,16 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * @param containerId Container ID or name
    * @param runtimeType Optional runtime type (auto-detected if not provided)
    * @returns Container information or null if not found
+   * @throws {Error} When runtime detection fails or command execution fails
+   * @example
+   * ```typescript
+   * const info = await containerManager.getContainerInfo('my-container');
+   * if (info) {
+   *   console.log(`${info.name} (${info.id})`);
+   *   console.log(`Status: ${info.status}, Image: ${info.image}`);
+   *   console.log(`Created: ${info.createdAt}, Started: ${info.startedAt}`);
+   * }
+   * ```
    */
   async getContainerInfo(containerId: string, runtimeType?: ContainerRuntimeType): Promise<ContainerInfo | null> {
     try {
@@ -832,8 +861,21 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
   /**
    * List all APEX containers
    * @param runtimeType Optional runtime type (auto-detected if not provided)
-   * @param includeExited Whether to include exited containers
+   * @param includeExited Whether to include exited containers (default: false)
    * @returns Array of container information
+   * @throws {Error} When runtime detection fails or command execution fails
+   * @example
+   * ```typescript
+   * // List only running APEX containers
+   * const runningContainers = await containerManager.listApexContainers();
+   * console.log(`Found ${runningContainers.length} running containers`);
+   *
+   * // List all APEX containers including stopped ones
+   * const allContainers = await containerManager.listApexContainers(undefined, true);
+   * for (const container of allContainers) {
+   *   console.log(`${container.name}: ${container.status}`);
+   * }
+   * ```
    */
   async listApexContainers(
     runtimeType?: ContainerRuntimeType,
@@ -875,9 +917,29 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
   /**
    * Stream logs from a container
    * @param containerId Container ID or name
-   * @param options Log streaming options
+   * @param options Log streaming options (default: {})
    * @param runtimeType Optional runtime type (auto-detected if not provided)
    * @returns EventEmitter that emits 'data' events with ContainerLogEntry objects
+   * @throws {Error} When no container runtime is available
+   * @example
+   * ```typescript
+   * const logStream = await containerManager.streamLogs('my-container', {
+   *   follow: true,
+   *   timestamps: true,
+   *   tail: 100
+   * });
+   *
+   * logStream.on('data', (entry) => {
+   *   console.log(`[${entry.timestamp}] ${entry.stream}: ${entry.message}`);
+   * });
+   *
+   * logStream.on('error', (error) => {
+   *   console.error('Log stream error:', error);
+   * });
+   *
+   * // Clean up when done
+   * setTimeout(() => logStream.end(), 30000);
+   * ```
    */
   async streamLogs(
     containerId: string,
@@ -897,9 +959,33 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * Execute a command inside a running container
    * @param containerId Container ID or name
    * @param command Command string or array of command parts to execute
-   * @param options Execution options (working directory, user, timeout, etc.)
+   * @param options Execution options (working directory, user, timeout, etc.) - default: {}
    * @param runtimeType Optional runtime type (auto-detected if not provided)
    * @returns Result of command execution with stdout, stderr, exit code
+   * @throws {Error} When runtime detection fails or command preparation fails
+   * @example
+   * ```typescript
+   * // Execute a simple command
+   * const result = await containerManager.execCommand('my-container', 'ls -la');
+   * if (result.success) {
+   *   console.log('Output:', result.stdout);
+   * } else {
+   *   console.error('Error:', result.error);
+   *   console.error('Exit code:', result.exitCode);
+   * }
+   *
+   * // Execute with options
+   * const result2 = await containerManager.execCommand(
+   *   'my-container',
+   *   ['npm', 'test'],
+   *   {
+   *     workingDir: '/app',
+   *     environment: { NODE_ENV: 'test' },
+   *     timeout: 60000,
+   *     user: 'node'
+   *   }
+   * );
+   * ```
    */
   async execCommand(
     containerId: string,
@@ -985,6 +1071,20 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * @param taskId Task ID to include in the name
    * @param config Optional naming configuration override
    * @returns Generated container name
+   * @example
+   * ```typescript
+   * // Generate with default config
+   * const name = containerManager.generateContainerName('task-123');
+   * console.log(name); // "apex-task_123"
+   *
+   * // Generate with custom config
+   * const customName = containerManager.generateContainerName('task-123', {
+   *   prefix: 'myapp',
+   *   includeTimestamp: true,
+   *   separator: '_'
+   * });
+   * console.log(customName); // "myapp_task_123_1k2m3n"
+   * ```
    */
   generateContainerName(taskId: string, config?: Partial<ContainerNamingConfig>): string {
     const namingConfig = { ...this.defaultNamingConfig, ...config };
@@ -1012,6 +1112,24 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
    * Start monitoring Docker/Podman events for container lifecycle changes
    * @param options Optional monitoring configuration
    * @returns Promise that resolves when monitoring starts
+   * @throws {Error} When no container runtime is available or monitoring fails to start
+   * @example
+   * ```typescript
+   * // Start monitoring with default options
+   * await containerManager.startEventsMonitoring();
+   *
+   * // Start monitoring with custom filters
+   * await containerManager.startEventsMonitoring({
+   *   namePrefix: 'myapp',
+   *   eventTypes: ['start', 'stop', 'die'],
+   *   labelFilters: { 'project': 'production' }
+   * });
+   *
+   * // Listen for container died events
+   * containerManager.on('container:died', (event) => {
+   *   console.log(`Container ${event.containerId} died with exit code ${event.exitCode}`);
+   * });
+   * ```
    */
   async startEventsMonitoring(options?: Partial<DockerEventsMonitorOptions>): Promise<void> {
     if (this.isMonitoring) {
@@ -1041,6 +1159,17 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
   /**
    * Stop monitoring Docker/Podman events
    * @returns Promise that resolves when monitoring stops
+   * @example
+   * ```typescript
+   * // Stop event monitoring
+   * await containerManager.stopEventsMonitoring();
+   * console.log('Event monitoring stopped');
+   *
+   * // Check if monitoring is still active
+   * if (!containerManager.isEventsMonitoringActive()) {
+   *   console.log('Monitoring successfully stopped');
+   * }
+   * ```
    */
   async stopEventsMonitoring(): Promise<void> {
     if (!this.isMonitoring || !this.eventsMonitorProcess) {
@@ -1078,7 +1207,16 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
 
   /**
    * Check if Docker events monitoring is currently active
-   * @returns True if monitoring is active
+   * @returns True if monitoring is active, false otherwise
+   * @example
+   * ```typescript
+   * if (containerManager.isEventsMonitoringActive()) {
+   *   console.log('Events are being monitored');
+   * } else {
+   *   console.log('No event monitoring active');
+   *   await containerManager.startEventsMonitoring();
+   * }
+   * ```
    */
   isEventsMonitoringActive(): boolean {
     return this.isMonitoring && !!this.eventsMonitorProcess && !this.eventsMonitorProcess.killed;
@@ -1087,6 +1225,13 @@ export class ContainerManager extends TypedEventEmitter<ContainerManagerEvents> 
   /**
    * Get current monitoring options
    * @returns Current monitoring configuration
+   * @example
+   * ```typescript
+   * const options = containerManager.getMonitoringOptions();
+   * console.log(`Monitoring prefix: ${options.namePrefix}`);
+   * console.log(`Event types: ${options.eventTypes?.join(', ')}`);
+   * console.log(`Label filters:`, options.labelFilters);
+   * ```
    */
   getMonitoringOptions(): DockerEventsMonitorOptions {
     return { ...this.monitorOptions };
@@ -1783,6 +1928,33 @@ export interface ContainerLogStreamEvents {
 /**
  * Container log stream implementation
  * EventEmitter that streams logs from a container with async iterator support
+ *
+ * @example
+ * ```typescript
+ * const logStream = new ContainerLogStream('container123', {
+ *   follow: true,
+ *   timestamps: true
+ * }, 'docker');
+ *
+ * // Listen to log events
+ * logStream.on('data', (entry) => {
+ *   console.log(`[${entry.timestamp}] ${entry.stream}: ${entry.message}`);
+ * });
+ *
+ * logStream.on('error', (error) => {
+ *   console.error('Stream error:', error);
+ * });
+ *
+ * logStream.on('end', () => {
+ *   console.log('Stream ended');
+ * });
+ *
+ * // Or use as async iterator
+ * for await (const logEntry of logStream) {
+ *   console.log(logEntry.message);
+ *   if (someCondition) break; // This will clean up the stream
+ * }
+ * ```
  */
 export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmitter<ContainerLogStreamEvents>) {
   private process?: ChildProcess;
@@ -1792,6 +1964,12 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
   private isStreaming: boolean = false;
   private ended: boolean = false;
 
+  /**
+   * Create a new ContainerLogStream instance
+   * @param containerId Container ID or name to stream logs from
+   * @param options Log streaming options (follow, timestamps, etc.)
+   * @param runtime Container runtime type ('docker' or 'podman')
+   */
   constructor(containerId: string, options: ContainerLogStreamOptions, runtime: ContainerRuntimeType) {
     super();
     this.containerId = containerId;
@@ -1802,6 +1980,7 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Start streaming logs from the container
+   * Sets up the container logs command and begins processing log output
    */
   private startStreaming(): void {
     if (this.isStreaming || this.ended) {
@@ -1854,6 +2033,8 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Process log data from stdout/stderr and emit parsed log entries
+   * @param chunk Raw data chunk from the log stream
+   * @param stream Source stream identifier ('stdout' or 'stderr')
    */
   private processLogData(chunk: Buffer, stream: 'stdout' | 'stderr'): void {
     if (this.ended) {
@@ -1889,6 +2070,9 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Parse a log line into a ContainerLogEntry
+   * @param line Raw log line to parse
+   * @param defaultStream Default stream type if not detected from line
+   * @returns Parsed log entry or null if parsing fails
    */
   private parseLogLine(line: string, defaultStream: 'stdout' | 'stderr'): ContainerLogEntry | null {
     try {
@@ -1931,6 +2115,7 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Build the logs command based on options
+   * @returns Complete logs command string for the container runtime
    */
   private buildLogsCommand(): string {
     const parts = [this.runtime, 'logs'];
@@ -1978,6 +2163,8 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Format timestamp for docker/podman logs command
+   * @param timestamp Timestamp in various formats (string, number, Date)
+   * @returns Formatted timestamp string or null if invalid
    */
   private formatTimestamp(timestamp: string | number | Date): string | null {
     try {
@@ -2014,6 +2201,14 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Stop streaming and clean up resources
+   * Terminates the log stream process and emits 'end' event
+   * @example
+   * ```typescript
+   * // Stop streaming after 30 seconds
+   * setTimeout(() => {
+   *   logStream.end();
+   * }, 30000);
+   * ```
    */
   end(): void {
     if (this.ended) {
@@ -2046,6 +2241,15 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Check if the stream is currently active
+   * @returns True if the stream is actively reading logs, false otherwise
+   * @example
+   * ```typescript
+   * if (logStream.isActive) {
+   *   console.log('Stream is still running');
+   * } else {
+   *   console.log('Stream has ended');
+   * }
+   * ```
    */
   get isActive(): boolean {
     return this.isStreaming && !this.ended;
@@ -2053,6 +2257,20 @@ export class ContainerLogStream extends (EventEmitter as new () => TypedEventEmi
 
   /**
    * Async iterator implementation for convenient log consumption
+   * @returns Async iterator yielding ContainerLogEntry objects
+   * @throws {Error} If the log stream encounters an error
+   * @example
+   * ```typescript
+   * // Consume logs using async iterator
+   * for await (const logEntry of logStream) {
+   *   console.log(`[${logEntry.stream}] ${logEntry.message}`);
+   *
+   *   // Break on specific condition to stop streaming
+   *   if (logEntry.message.includes('ERROR')) {
+   *     break;
+   *   }
+   * }
+   * ```
    */
   async *[Symbol.asyncIterator](): AsyncIterableIterator<ContainerLogEntry> {
     const entries: ContainerLogEntry[] = [];
@@ -2177,8 +2395,13 @@ export async function createTaskContainer(
 
 /**
  * Convenience function to generate a container name for a task
- * @param taskId Task ID
- * @returns Generated container name
+ * @param taskId Task ID to include in the container name
+ * @returns Generated container name following APEX naming conventions
+ * @example
+ * ```typescript
+ * const containerName = generateTaskContainerName('task-abc123');
+ * console.log(containerName); // "apex-task_abc123"
+ * ```
  */
 export function generateTaskContainerName(taskId: string): string {
   return containerManager.generateContainerName(taskId);

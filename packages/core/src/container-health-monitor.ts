@@ -74,6 +74,25 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
   private containerHealth: Map<string, ContainerHealthCheck> = new Map();
   private runtimeType: ContainerRuntimeType | null = null;
 
+  /**
+   * Create a new ContainerHealthMonitor instance
+   * @param containerManager ContainerManager instance to monitor containers from
+   * @param options Health monitoring configuration options (default: {})
+   * @example
+   * ```typescript
+   * const monitor = new ContainerHealthMonitor(containerManager, {
+   *   interval: 60000,        // Check every minute
+   *   maxFailures: 5,         // 5 failures before marking unhealthy
+   *   timeout: 10000,         // 10 second timeout for health checks
+   *   containerPrefix: 'app'  // Monitor containers starting with 'app'
+   * });
+   *
+   * // Listen to health events
+   * monitor.on('container:health', (event) => {
+   *   console.log(`${event.containerName} is now ${event.status}`);
+   * });
+   * ```
+   */
   constructor(containerManager: ContainerManager, options: ContainerHealthMonitorOptions = {}) {
     super();
 
@@ -389,6 +408,7 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Setup listeners for container lifecycle events from ContainerManager
+   * Automatically adds/removes containers from monitoring based on lifecycle events
    */
   private setupContainerLifecycleHandlers(): void {
     // When a container is created, add it to monitoring
@@ -438,6 +458,7 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Perform health checks for all monitored containers
+   * Runs health checks concurrently for all containers being monitored
    */
   private async performHealthChecks(): Promise<void> {
     if (!this.isMonitoring) {
@@ -473,6 +494,7 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Get list of containers that should be monitored
+   * @returns Array of container info objects to monitor based on configuration
    */
   private async getContainersToMonitor(): Promise<ContainerInfo[]> {
     try {
@@ -494,6 +516,8 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Check if a container should be monitored based on configuration
+   * @param containerName Name of the container to check
+   * @returns True if the container should be monitored, false otherwise
    */
   private shouldMonitorContainer(containerName: string): boolean {
     if (this.options.monitorAll) {
@@ -506,6 +530,8 @@ export class ContainerHealthMonitor extends EventEmitter<ContainerHealthMonitorE
 
   /**
    * Perform health check for a specific container
+   * @param containerInfo Container information to health check
+   * @returns Health check result or null if check fails completely
    */
   private async performContainerHealthCheck(containerInfo: ContainerInfo): Promise<ContainerHealthCheck | null> {
     const existingHealth = this.containerHealth.get(containerInfo.id);

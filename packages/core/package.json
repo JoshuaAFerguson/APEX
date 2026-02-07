@@ -77,7 +77,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts src/test-utils/__tests__/**/*.test.ts",
+    "test": "vitest run src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts src/test-utils/__tests__/**/*.test.ts src/fixtures/__tests__/**/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

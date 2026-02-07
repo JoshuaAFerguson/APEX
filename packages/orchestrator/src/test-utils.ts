@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import Database from 'better-sqlite3';
-import type { Task, TaskStatus, TaskUsage } from '@apexcli/core';
+import type { Task, TaskStatus, TaskUsage, AgentDefinition, WorkflowDefinition, WorkflowStage } from '@apexcli/core';
 import { TaskStore } from './store.js';
 
 /**
@@ -596,6 +596,553 @@ export type { Database };
 
 // Re-export MCP test utilities for convenience
 export * from './test-utils-mcp.js';
+
+// ============================================================================
+// DatabaseSeeder - Consolidated E2E Test Data Management
+// ============================================================================
+
+// AgentDefinition, WorkflowDefinition, WorkflowStage are now imported above
+
+/**
+ * DatabaseSeeder provides centralized E2E test data management with isolated SQLite databases.
+ * Combines task seeding, agent fixtures, and workflow definitions for comprehensive testing.
+ *
+ * Features:
+ * - Isolated in-memory SQLite database per test
+ * - Task fixtures with realistic data matching Zod schemas
+ * - Agent and workflow definition fixtures
+ * - Complete reset capability between test runs
+ * - Pre-defined test scenarios for integration testing
+ *
+ * @example
+ * ```typescript
+ * describe('Integration tests', () => {
+ *   let seeder: DatabaseSeeder;
+ *
+ *   beforeEach(async () => {
+ *     seeder = new DatabaseSeeder();
+ *     await seeder.initialize();
+ *   });
+ *
+ *   afterEach(async () => {
+ *     await seeder.cleanup();
+ *   });
+ *
+ *   it('should seed complete test environment', async () => {
+ *     const { tasks, agents, workflows } = await seeder.seedFullEnvironment();
+ *     expect(tasks).toHaveLength(6); // One task per status
+ *     expect(agents).toHaveLength(6); // Core agent types
+ *     expect(workflows).toHaveLength(3); // Common workflows
+ *   });
+ * });
+ * ```
+ */
+export class DatabaseSeeder {
+  private storeContext?: TestTaskStoreContext;
+  private agentFixtures: AgentDefinition[] = [];
+  private workflowFixtures: WorkflowDefinition[] = [];
+
+  /**
+   * Initialize the seeder with an isolated test database.
+   */
+  async initialize(): Promise<void> {
+    this.storeContext = await createTestTaskStore();
+  }
+
+  /**
+   * Get the TaskStore instance for direct database operations.
+   */
+  getStore(): TaskStore {
+    if (!this.storeContext) {
+      throw new Error('DatabaseSeeder not initialized. Call initialize() first.');
+    }
+    return this.storeContext.store;
+  }
+
+  /**
+   * Get the raw SQLite database instance for advanced testing.
+   */
+  getDatabase(): Database.Database {
+    if (!this.storeContext) {
+      throw new Error('DatabaseSeeder not initialized. Call initialize() first.');
+    }
+    return this.storeContext.db;
+  }
+
+  /**
+   * Reset all test data in the database.
+   * Clears all tasks, logs, artifacts, and other test data.
+   */
+  async reset(): Promise<void> {
+    if (!this.storeContext) {
+      throw new Error('DatabaseSeeder not initialized. Call initialize() first.');
+    }
+
+    const db = this.storeContext.db;
+
+    // Clear all tables in reverse dependency order
+    const clearSql = `
+      DELETE FROM audit_logs;
+      DELETE FROM fix_attempts;
+      DELETE FROM mcp_servers;
+      DELETE FROM mcp_marketplace;
+      DELETE FROM permissions;
+      DELETE FROM snapshots;
+      DELETE FROM tool_actions;
+      DELETE FROM file_snapshots;
+      DELETE FROM approval_states;
+      DELETE FROM todos;
+      DELETE FROM task_templates;
+      DELETE FROM task_iterations;
+      DELETE FROM idle_tasks;
+      DELETE FROM workspace_info;
+      DELETE FROM task_interactions;
+      DELETE FROM thought_captures;
+      DELETE FROM task_checkpoints;
+      DELETE FROM task_dependencies;
+      DELETE FROM commands;
+      DELETE FROM gates;
+      DELETE FROM task_artifacts;
+      DELETE FROM task_logs;
+      DELETE FROM tasks;
+    `;
+
+    db.exec(clearSql);
+
+    // Clear fixture caches
+    this.agentFixtures = [];
+    this.workflowFixtures = [];
+  }
+
+  /**
+   * Clean up resources and close database connections.
+   */
+  async cleanup(): Promise<void> {
+    if (this.storeContext) {
+      await this.storeContext.cleanup();
+      this.storeContext = undefined;
+    }
+    this.agentFixtures = [];
+    this.workflowFixtures = [];
+  }
+
+  // ============================================================================
+  // Task Seeding Methods (delegated to existing functions)
+  // ============================================================================
+
+  /**
+   * Seed a pending task into the database.
+   */
+  async seedPendingTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedPendingTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a running task into the database.
+   */
+  async seedRunningTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedRunningTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a completed task into the database.
+   */
+  async seedCompletedTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedCompletedTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a failed task into the database.
+   */
+  async seedFailedTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedFailedTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a paused task into the database.
+   */
+  async seedPausedTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedPausedTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a cancelled task into the database.
+   */
+  async seedCancelledTask(overrides: Partial<Task> = {}): Promise<Task> {
+    return seedCancelledTask(this.getStore(), overrides);
+  }
+
+  /**
+   * Seed a predefined task scenario.
+   */
+  async seedTaskScenario(scenario: TaskScenario): Promise<Task[]> {
+    return seedTaskScenario(this.getStore(), scenario);
+  }
+
+  // ============================================================================
+  // Agent Fixture Methods
+  // ============================================================================
+
+  /**
+   * Create an agent definition fixture that matches AgentDefinitionSchema.
+   */
+  createAgentFixture(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
+    const agentFixture: AgentDefinition = {
+      name: 'test-agent',
+      description: 'Test agent for E2E scenarios',
+      prompt: 'You are a test agent. Follow instructions carefully and provide detailed responses.',
+      tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep'],
+      model: 'sonnet',
+      skills: ['testing', 'debugging'],
+      ...overrides,
+    };
+
+    // Validate against schema (import at runtime to avoid circular dependencies)
+    try {
+      const { AgentDefinitionSchema } = require('@apexcli/core');
+      return AgentDefinitionSchema.parse(agentFixture);
+    } catch (error) {
+      // Fallback to return unvalidated fixture if schema import fails
+      console.warn('Could not validate agent fixture against schema:', error);
+      return agentFixture;
+    }
+  }
+
+  /**
+   * Create standard agent fixtures for common agent types.
+   */
+  createStandardAgentFixtures(): AgentDefinition[] {
+    const agents = [
+      this.createAgentFixture({
+        name: 'planner',
+        description: 'Plans and designs implementation approaches',
+        prompt: 'You are a senior architect. Create comprehensive implementation plans.',
+        tools: ['Read', 'Grep', 'Glob'],
+        skills: ['architecture', 'planning', 'design'],
+      }),
+      this.createAgentFixture({
+        name: 'developer',
+        description: 'Implements features and writes production code',
+        prompt: 'You are a senior developer. Write clean, well-tested code.',
+        tools: ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
+        skills: ['typescript', 'javascript', 'node.js', 'react'],
+      }),
+      this.createAgentFixture({
+        name: 'tester',
+        description: 'Writes and executes comprehensive tests',
+        prompt: 'You are a senior QA engineer. Ensure comprehensive test coverage.',
+        tools: ['Read', 'Write', 'Edit', 'Bash'],
+        skills: ['testing', 'vitest', 'jest', 'playwright'],
+      }),
+      this.createAgentFixture({
+        name: 'reviewer',
+        description: 'Reviews code quality and provides feedback',
+        prompt: 'You are a senior code reviewer. Provide constructive feedback.',
+        tools: ['Read', 'Grep', 'Glob'],
+        skills: ['code-review', 'security', 'performance'],
+      }),
+      this.createAgentFixture({
+        name: 'devops',
+        description: 'Manages deployment and infrastructure',
+        prompt: 'You are a DevOps engineer. Ensure reliable deployments.',
+        tools: ['Read', 'Write', 'Bash'],
+        skills: ['docker', 'kubernetes', 'ci-cd', 'monitoring'],
+      }),
+      this.createAgentFixture({
+        name: 'architect',
+        description: 'Designs system architecture and technical approaches',
+        prompt: 'You are a solutions architect. Design scalable systems.',
+        tools: ['Read', 'Write', 'Grep'],
+        skills: ['system-design', 'scalability', 'microservices'],
+      }),
+    ];
+
+    this.agentFixtures = agents;
+    return agents;
+  }
+
+  /**
+   * Get cached agent fixtures or create them if not yet created.
+   */
+  getAgentFixtures(): AgentDefinition[] {
+    if (this.agentFixtures.length === 0) {
+      this.createStandardAgentFixtures();
+    }
+    return this.agentFixtures;
+  }
+
+  // ============================================================================
+  // Workflow Fixture Methods
+  // ============================================================================
+
+  /**
+   * Create a workflow stage fixture that matches WorkflowStageSchema.
+   */
+  createWorkflowStageFixture(overrides: Partial<WorkflowStage> = {}): WorkflowStage {
+    const stageFixture: WorkflowStage = {
+      name: 'test-stage',
+      agent: 'developer',
+      description: 'Test stage for E2E scenarios',
+      parallel: false,
+      maxRetries: 2,
+      ...overrides,
+    };
+
+    // Validate against schema (import at runtime to avoid circular dependencies)
+    try {
+      const { WorkflowStageSchema } = require('@apexcli/core');
+      return WorkflowStageSchema.parse(stageFixture);
+    } catch (error) {
+      // Fallback to return unvalidated fixture if schema import fails
+      console.warn('Could not validate workflow stage fixture against schema:', error);
+      return stageFixture;
+    }
+  }
+
+  /**
+   * Create a workflow definition fixture that matches WorkflowDefinitionSchema.
+   */
+  createWorkflowFixture(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
+    const workflowFixture: WorkflowDefinition = {
+      name: 'test-workflow',
+      description: 'Test workflow for E2E scenarios',
+      stages: [
+        this.createWorkflowStageFixture({
+          name: 'planning',
+          agent: 'planner',
+          description: 'Plan the implementation approach',
+        }),
+        this.createWorkflowStageFixture({
+          name: 'implementation',
+          agent: 'developer',
+          description: 'Implement the feature',
+          dependsOn: ['planning'],
+        }),
+        this.createWorkflowStageFixture({
+          name: 'testing',
+          agent: 'tester',
+          description: 'Write and run tests',
+          dependsOn: ['implementation'],
+        }),
+      ],
+      ...overrides,
+    };
+
+    // Validate against schema (import at runtime to avoid circular dependencies)
+    try {
+      const { WorkflowDefinitionSchema } = require('@apexcli/core');
+      return WorkflowDefinitionSchema.parse(workflowFixture);
+    } catch (error) {
+      // Fallback to return unvalidated fixture if schema import fails
+      console.warn('Could not validate workflow fixture against schema:', error);
+      return workflowFixture;
+    }
+  }
+
+  /**
+   * Create standard workflow fixtures for common development scenarios.
+   */
+  createStandardWorkflowFixtures(): WorkflowDefinition[] {
+    const workflows = [
+      // Feature development workflow
+      this.createWorkflowFixture({
+        name: 'feature',
+        description: 'Full feature development lifecycle',
+        trigger: ['feature:requested'],
+        stages: [
+          this.createWorkflowStageFixture({
+            name: 'planning',
+            agent: 'planner',
+            description: 'Plan feature implementation',
+            outputs: ['implementation_plan', 'architecture_decisions'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'architecture',
+            agent: 'architect',
+            description: 'Design technical architecture',
+            dependsOn: ['planning'],
+            inputs: ['implementation_plan'],
+            outputs: ['technical_design', 'component_specs'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'implementation',
+            agent: 'developer',
+            description: 'Implement the feature',
+            dependsOn: ['architecture'],
+            inputs: ['technical_design', 'component_specs'],
+            outputs: ['code_changes', 'branch_name'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'testing',
+            agent: 'tester',
+            description: 'Write comprehensive tests',
+            dependsOn: ['implementation'],
+            inputs: ['code_changes'],
+            outputs: ['test_results', 'coverage_report'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'review',
+            agent: 'reviewer',
+            description: 'Code review and quality check',
+            dependsOn: ['testing'],
+            inputs: ['code_changes', 'test_results'],
+            outputs: ['review_feedback', 'approval_status'],
+          }),
+        ],
+      }),
+
+      // Bug fix workflow
+      this.createWorkflowFixture({
+        name: 'bugfix',
+        description: 'Bug investigation and fix workflow',
+        trigger: ['bug:reported'],
+        stages: [
+          this.createWorkflowStageFixture({
+            name: 'investigation',
+            agent: 'developer',
+            description: 'Investigate and reproduce the bug',
+            outputs: ['bug_analysis', 'reproduction_steps'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'fix',
+            agent: 'developer',
+            description: 'Implement bug fix',
+            dependsOn: ['investigation'],
+            inputs: ['bug_analysis'],
+            outputs: ['fix_changes', 'branch_name'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'verification',
+            agent: 'tester',
+            description: 'Verify bug fix and test regression',
+            dependsOn: ['fix'],
+            inputs: ['fix_changes', 'reproduction_steps'],
+            outputs: ['verification_results'],
+          }),
+        ],
+      }),
+
+      // Testing workflow
+      this.createWorkflowFixture({
+        name: 'testing',
+        description: 'Comprehensive testing workflow',
+        trigger: ['test:requested'],
+        stages: [
+          this.createWorkflowStageFixture({
+            name: 'unit-testing',
+            agent: 'tester',
+            description: 'Write and run unit tests',
+            outputs: ['unit_test_results'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'integration-testing',
+            agent: 'tester',
+            description: 'Run integration tests',
+            dependsOn: ['unit-testing'],
+            outputs: ['integration_test_results'],
+          }),
+          this.createWorkflowStageFixture({
+            name: 'e2e-testing',
+            agent: 'tester',
+            description: 'Run end-to-end tests',
+            dependsOn: ['integration-testing'],
+            parallel: true,
+            outputs: ['e2e_test_results'],
+          }),
+        ],
+      }),
+    ];
+
+    this.workflowFixtures = workflows;
+    return workflows;
+  }
+
+  /**
+   * Get cached workflow fixtures or create them if not yet created.
+   */
+  getWorkflowFixtures(): WorkflowDefinition[] {
+    if (this.workflowFixtures.length === 0) {
+      this.createStandardWorkflowFixtures();
+    }
+    return this.workflowFixtures;
+  }
+
+  // ============================================================================
+  // Complete Environment Seeding
+  // ============================================================================
+
+  /**
+   * Seed a complete test environment with tasks, agents, and workflows.
+   * This provides a comprehensive dataset for integration testing.
+   *
+   * @param scenario - Optional task scenario to seed (default: 'mixed-statuses')
+   * @returns Object containing all seeded data
+   */
+  async seedFullEnvironment(scenario: TaskScenario = 'mixed-statuses'): Promise<{
+    tasks: Task[];
+    agents: AgentDefinition[];
+    workflows: WorkflowDefinition[];
+    database: Database.Database;
+    store: TaskStore;
+  }> {
+    // Seed tasks
+    const tasks = await this.seedTaskScenario(scenario);
+
+    // Create agent and workflow fixtures
+    const agents = this.createStandardAgentFixtures();
+    const workflows = this.createStandardWorkflowFixtures();
+
+    return {
+      tasks,
+      agents,
+      workflows,
+      database: this.getDatabase(),
+      store: this.getStore(),
+    };
+  }
+
+  /**
+   * Create a minimal test environment for focused testing.
+   */
+  async seedMinimalEnvironment(): Promise<{
+    task: Task;
+    agent: AgentDefinition;
+    workflow: WorkflowDefinition;
+    database: Database.Database;
+    store: TaskStore;
+  }> {
+    // Seed a single completed task
+    const task = await this.seedCompletedTask({
+      description: 'Minimal test task for focused testing',
+      workflow: 'feature',
+    });
+
+    // Create minimal fixtures
+    const agent = this.createAgentFixture({
+      name: 'developer',
+      description: 'Developer for minimal testing',
+    });
+
+    const workflow = this.createWorkflowFixture({
+      name: 'simple',
+      description: 'Simple workflow for focused testing',
+      stages: [
+        this.createWorkflowStageFixture({
+          name: 'implementation',
+          agent: 'developer',
+        }),
+      ],
+    });
+
+    return {
+      task,
+      agent,
+      workflow,
+      database: this.getDatabase(),
+      store: this.getStore(),
+    };
+  }
+}
 
 // ============================================================================
 // Permission Test Database Utilities
