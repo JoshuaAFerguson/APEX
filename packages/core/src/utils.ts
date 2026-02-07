@@ -308,7 +308,23 @@ export function formatCost(cost: number): string {
 // ============================================================================
 
 /**
- * Parsed semantic version components
+ * Represents a parsed semantic version following the SemVer specification.
+ *
+ * Semantic versioning uses a three-part version number (MAJOR.MINOR.PATCH)
+ * with optional prerelease and build metadata components.
+ *
+ * @see https://semver.org/
+ * @example
+ * ```typescript
+ * const version: SemVer = {
+ *   major: 2,
+ *   minor: 1,
+ *   patch: 0,
+ *   prerelease: ['beta', '3'],  // for "2.1.0-beta.3"
+ *   build: ['build', '20240115'], // for "2.1.0+build.20240115"
+ *   raw: '2.1.0-beta.3+build.20240115'
+ * };
+ * ```
  */
 export interface SemVer {
   /** Major version number (breaking changes) */
@@ -573,13 +589,30 @@ export function getUpdateType(current: string | SemVer, latest: string | SemVer)
 // ============================================================================
 
 /**
- * Parse conventional commit message
+ * Represents a parsed conventional commit following the Conventional Commits specification.
+ *
+ * @see https://www.conventionalcommits.org/
+ * @example
+ * ```typescript
+ * const commit: ConventionalCommit = {
+ *   type: 'feat',
+ *   scope: 'auth',
+ *   description: 'add OAuth2 integration',
+ *   body: 'Implements OAuth2 authentication flow with Google provider',
+ *   breaking: false
+ * };
+ * ```
  */
 export interface ConventionalCommit {
+  /** The type of change (feat, fix, docs, style, refactor, test, chore, etc.) */
   type: string;
+  /** Optional scope indicating the module/component affected by the change */
   scope?: string;
+  /** Brief description of the change */
   description: string;
+  /** Optional longer description providing additional context */
   body?: string;
+  /** Whether this commit introduces breaking changes (BREAKING CHANGE or !) */
   breaking: boolean;
 }
 
@@ -947,12 +980,36 @@ export const COMMIT_TYPES = {
 export type CommitType = keyof typeof COMMIT_TYPES;
 
 /**
- * Git conflict detection types
+ * Information about merge conflicts detected in a file.
+ *
+ * Contains details about conflict markers, affected branches, and conflict locations
+ * to help with automated or manual conflict resolution.
+ *
+ * @example
+ * ```typescript
+ * const conflictInfo: ConflictInfo = {
+ *   file: 'src/components/Button.tsx',
+ *   conflictMarkers: [
+ *     {
+ *       startLine: 15,
+ *       endLine: 23,
+ *       currentContent: 'const Button = () => <button>Click me</button>',
+ *       incomingContent: 'const Button = ({ label }) => <button>{label}</button>'
+ *     }
+ *   ],
+ *   baseBranch: 'main',
+ *   incomingBranch: 'feature/button-props'
+ * };
+ * ```
  */
 export interface ConflictInfo {
+  /** Path to the file containing merge conflicts */
   file: string;
+  /** Array of conflict markers found in the file */
   conflictMarkers: ConflictMarker[];
+  /** Name of the base branch (usually main/master) */
   baseBranch?: string;
+  /** Name of the incoming branch being merged */
   incomingBranch?: string;
 }
 
@@ -1234,14 +1291,41 @@ export function formatConflictReport(conflicts: ConflictInfo[]): string {
 }
 
 /**
- * Parsed git log entry
+ * Represents a parsed git log entry with commit metadata and optional conventional commit analysis.
+ *
+ * Contains all essential information from a git commit, including timestamps, author info,
+ * and parsed conventional commit structure if the message follows the specification.
+ *
+ * @example
+ * ```typescript
+ * const logEntry: GitLogEntry = {
+ *   hash: '1a2b3c4d5e6f7890abcdef1234567890abcdef12',
+ *   shortHash: '1a2b3c4',
+ *   author: 'John Doe <john@example.com>',
+ *   date: new Date('2024-01-15T10:30:00Z'),
+ *   message: 'feat(auth): add OAuth2 integration',
+ *   conventional: {
+ *     type: 'feat',
+ *     scope: 'auth',
+ *     description: 'add OAuth2 integration',
+ *     body: undefined,
+ *     breaking: false
+ *   }
+ * };
+ * ```
  */
 export interface GitLogEntry {
+  /** Full SHA-1 hash of the commit */
   hash: string;
+  /** Abbreviated hash for display purposes (usually first 7 characters) */
   shortHash: string;
+  /** Commit author name and email in 'Name <email>' format */
   author: string;
+  /** Date and time when the commit was created */
   date: Date;
+  /** Full commit message as entered by the author */
   message: string;
+  /** Parsed conventional commit data if the message follows the specification */
   conventional?: ConventionalCommit;
 }
 
@@ -1508,7 +1592,22 @@ export function suggestCommitType(files: string[]): CommitType {
 // ============================================================================
 
 /**
- * Options for truncating tool output
+ * Configuration options for truncating long tool output to manageable sizes.
+ *
+ * Used to prevent extremely long outputs from overwhelming logs or UI displays
+ * while preserving essential information and readability.
+ *
+ * @example
+ * ```typescript
+ * const options: TruncateOptions = {
+ *   maxLength: 5000,
+ *   suffix: '... [output truncated]',
+ *   preserveJson: true,
+ *   wordBoundary: true
+ * };
+ *
+ * const result = truncateOutput(longOutput, options);
+ * ```
  */
 export interface TruncateOptions {
   /** Maximum number of characters before truncation (default: 10000) */
@@ -1522,7 +1621,28 @@ export interface TruncateOptions {
 }
 
 /**
- * Result of tool output truncation
+ * Result returned from truncating tool output, including metadata about the operation.
+ *
+ * Provides both the processed output and statistics about whether and how
+ * much truncation was applied.
+ *
+ * @example
+ * ```typescript
+ * const result: TruncateResult = {
+ *   output: 'Short content that fits within limits',
+ *   truncated: false,
+ *   originalLength: 42,
+ *   truncatedLength: 42
+ * };
+ *
+ * // Or for truncated content:
+ * const longResult: TruncateResult = {
+ *   output: 'This is very long content that has been cut off... [truncated]',
+ *   truncated: true,
+ *   originalLength: 15000,
+ *   truncatedLength: 64
+ * };
+ * ```
  */
 export interface TruncateResult {
   /** The truncated output */
