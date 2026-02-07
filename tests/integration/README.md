@@ -1,6 +1,51 @@
 # APEX Integration Tests
 
-This directory contains integration tests that verify the interaction between different APEX packages.
+This directory contains integration tests that verify the interaction between different APEX packages and end-to-end workflows.
+
+## Quick Start
+
+```bash
+# Run all integration tests
+npm run test:integration
+
+# Run integration tests in watch mode
+npm run test:integration:watch
+
+# Run integration tests with coverage
+npm run test:integration:coverage
+
+# Validate integration test infrastructure
+npm run validate:integration-infrastructure
+```
+
+## Configuration
+
+Integration tests use a dedicated Vitest configuration:
+
+- **Config File**: `vitest.integration.config.ts` (root level)
+- **Setup File**: `tests/integration/setup.ts`
+- **Environment**: Node.js (for backend testing)
+- **Timeouts**: Extended for async operations (30s test, 20s hooks)
+
+## Available Test Helpers
+
+Global test helpers are available via `globalThis.apexTestHelpers`:
+
+```typescript
+// Create isolated temp directory
+const tempDir = await apexTestHelpers.createTempDir('my-test-');
+
+// Wait for async conditions
+await apexTestHelpers.waitFor(() => condition, { timeout: 10000 });
+
+// Generate unique test IDs
+const testId = apexTestHelpers.createTestId('task');
+
+// Register resources for automatic cleanup
+apexTestHelpers.registerOrchestrator(orchestrator);
+apexTestHelpers.registerServer(server);
+apexTestHelpers.registerStore(store);
+```
 
 ## Error Display Flow Integration Test
 

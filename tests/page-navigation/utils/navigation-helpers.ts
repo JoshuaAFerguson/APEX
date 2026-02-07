@@ -538,8 +538,8 @@ export async function benchmarkNavigation(
   };
 }
 
-// Export helper utilities
-export {
+// Re-export types for convenient access
+export type {
   NavigationValidation,
   NavigationPerformance,
   NavigationHistory,

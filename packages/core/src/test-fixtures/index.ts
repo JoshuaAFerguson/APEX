@@ -69,6 +69,9 @@ export * from './test-utils.js';
 // Sensitive information detection utilities
 export * from './sensitive-info-utils.js';
 
+// Test context for isolation
+export * from './context/index.js';
+
 // Marketplace fixtures
 export * from '../fixtures/index.js';
 

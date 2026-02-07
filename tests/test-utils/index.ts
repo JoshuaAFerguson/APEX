@@ -15,6 +15,9 @@ export * from './context';
 // Export cleanup utilities
 export * from './cleanup';
 
+// Export test isolation utilities (see ADR-052)
+export * from './isolation';
+
 // Re-export browser test utilities would be available from the browser package if it existed
 // Currently these are commented out as the browser package test utilities are not yet available
 // TODO: Uncomment when browser package test utilities are implemented
