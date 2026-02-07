@@ -279,4 +279,108 @@ export declare const CATEGORY_FILTER_CASES: readonly [{
     readonly expectedMinCount: 0;
     readonly expectedServers: readonly [];
 }];
+/**
+ * Server selection test scenarios for E2E testing
+ * Based on ADR-078: Server Selection E2E Test Architecture
+ */
+export declare const SELECTION_TEST_CASES: readonly [{
+    readonly scenario: "single verified server";
+    readonly selectServerIds: readonly ["filesystem"];
+    readonly expectedValid: true;
+    readonly expectedDetails: {
+        readonly name: "Filesystem Server";
+        readonly verified: true;
+        readonly category: "filesystem";
+    };
+}, {
+    readonly scenario: "multiple servers";
+    readonly selectServerIds: readonly ["filesystem", "memory"];
+    readonly expectedValid: true;
+    readonly expectedDetails: {
+        readonly totalSelected: 2;
+        readonly allVerified: true;
+    };
+}, {
+    readonly scenario: "non-existent server";
+    readonly selectServerIds: readonly ["nonexistent-server-xyz"];
+    readonly expectedValid: false;
+    readonly expectedError: "not found";
+}, {
+    readonly scenario: "empty selection";
+    readonly selectServerIds: readonly [];
+    readonly expectedValid: false;
+    readonly expectedError: "No servers selected";
+}, {
+    readonly scenario: "mixed valid and invalid";
+    readonly selectServerIds: readonly ["filesystem", "invalid-server"];
+    readonly expectedValid: false;
+    readonly expectedError: "not found";
+    readonly partiallyValid: true;
+    readonly validIds: readonly ["filesystem"];
+    readonly invalidIds: readonly ["invalid-server"];
+}, {
+    readonly scenario: "unverified server selection";
+    readonly selectServerIds: readonly ["community-tools"];
+    readonly expectedValid: true;
+    readonly expectedDetails: {
+        readonly verified: false;
+        readonly category: "system";
+    };
+}, {
+    readonly scenario: "server with environment variables";
+    readonly selectServerIds: readonly ["github"];
+    readonly expectedValid: true;
+    readonly expectedDetails: {
+        readonly requiresEnvVars: true;
+        readonly envVars: readonly ["GITHUB_PERSONAL_ACCESS_TOKEN"];
+    };
+}, {
+    readonly scenario: "http-based server";
+    readonly selectServerIds: readonly ["remote-api"];
+    readonly expectedValid: true;
+    readonly expectedDetails: {
+        readonly type: "http";
+        readonly requiresUrl: true;
+    };
+}];
+/**
+ * Selection validation test cases
+ */
+export declare const SELECTION_VALIDATION_CASES: readonly [{
+    readonly description: "valid single selection";
+    readonly availableServers: readonly ["filesystem", "memory", "fetch"];
+    readonly selectedIds: readonly ["filesystem"];
+    readonly expectedValid: true;
+    readonly expectedInvalidIds: readonly [];
+}, {
+    readonly description: "valid multiple selection";
+    readonly availableServers: readonly ["filesystem", "memory", "fetch"];
+    readonly selectedIds: readonly ["filesystem", "memory"];
+    readonly expectedValid: true;
+    readonly expectedInvalidIds: readonly [];
+}, {
+    readonly description: "invalid single selection";
+    readonly availableServers: readonly ["filesystem", "memory"];
+    readonly selectedIds: readonly ["nonexistent"];
+    readonly expectedValid: false;
+    readonly expectedInvalidIds: readonly ["nonexistent"];
+}, {
+    readonly description: "partially valid selection";
+    readonly availableServers: readonly ["filesystem", "memory"];
+    readonly selectedIds: readonly ["filesystem", "invalid1", "memory", "invalid2"];
+    readonly expectedValid: false;
+    readonly expectedInvalidIds: readonly ["invalid1", "invalid2"];
+}, {
+    readonly description: "empty selection";
+    readonly availableServers: readonly ["filesystem", "memory"];
+    readonly selectedIds: readonly [];
+    readonly expectedValid: true;
+    readonly expectedInvalidIds: readonly [];
+}, {
+    readonly description: "duplicate selection";
+    readonly availableServers: readonly ["filesystem", "memory"];
+    readonly selectedIds: readonly ["filesystem", "filesystem"];
+    readonly expectedValid: true;
+    readonly expectedInvalidIds: readonly [];
+}];
 //# sourceMappingURL=marketplace-data.d.ts.map

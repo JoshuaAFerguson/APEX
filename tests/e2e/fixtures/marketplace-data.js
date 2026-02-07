@@ -17,7 +17,7 @@
  * @module tests/e2e/fixtures/marketplace-data
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CATEGORY_FILTER_CASES = exports.SEARCH_TEST_CASES = exports.MALFORMED_CONFIG_SERVER = exports.MISSING_DEPS_SERVER = exports.INVALID_CONFIG_SERVER = exports.CONFLICTING_SERVER = exports.INVALID_CONFIG_NO_COMMAND = exports.INVALID_ENTRY_MISSING_NAME = exports.EXPECTED_MULTI_SERVER_CONFIG = exports.EXPECTED_FILESYSTEM_CONFIG = exports.STANDARD_CATEGORIES = exports.AUTO_START_ENTRIES = exports.ENV_REQUIRING_ENTRIES = exports.VERIFIED_ENTRIES = exports.ERROR_TEST_ENTRIES = exports.ALL_MARKETPLACE_ENTRIES = exports.HTTP_SERVER = exports.COMMUNITY_SERVER = exports.BRAVE_SEARCH_SERVER = exports.POSTGRES_SERVER = exports.GITHUB_SERVER = exports.FETCH_SERVER = exports.MEMORY_SERVER = exports.FILESYSTEM_SERVER = void 0;
+exports.SELECTION_VALIDATION_CASES = exports.SELECTION_TEST_CASES = exports.CATEGORY_FILTER_CASES = exports.SEARCH_TEST_CASES = exports.MALFORMED_CONFIG_SERVER = exports.MISSING_DEPS_SERVER = exports.INVALID_CONFIG_SERVER = exports.CONFLICTING_SERVER = exports.INVALID_CONFIG_NO_COMMAND = exports.INVALID_ENTRY_MISSING_NAME = exports.EXPECTED_MULTI_SERVER_CONFIG = exports.EXPECTED_FILESYSTEM_CONFIG = exports.STANDARD_CATEGORIES = exports.AUTO_START_ENTRIES = exports.ENV_REQUIRING_ENTRIES = exports.VERIFIED_ENTRIES = exports.ERROR_TEST_ENTRIES = exports.ALL_MARKETPLACE_ENTRIES = exports.HTTP_SERVER = exports.COMMUNITY_SERVER = exports.BRAVE_SEARCH_SERVER = exports.POSTGRES_SERVER = exports.GITHUB_SERVER = exports.FETCH_SERVER = exports.MEMORY_SERVER = exports.FILESYSTEM_SERVER = void 0;
 exports.createTestCatalog = createTestCatalog;
 exports.createMinimalCatalog = createMinimalCatalog;
 exports.createVerifiedOnlyCatalog = createVerifiedOnlyCatalog;
@@ -589,6 +589,129 @@ exports.CATEGORY_FILTER_CASES = [
         category: 'nonexistent',
         expectedMinCount: 0,
         expectedServers: [],
+    },
+];
+// ============================================================================
+// Server Selection Test Cases
+// ============================================================================
+/**
+ * Server selection test scenarios for E2E testing
+ * Based on ADR-078: Server Selection E2E Test Architecture
+ */
+exports.SELECTION_TEST_CASES = [
+    {
+        scenario: 'single verified server',
+        selectServerIds: ['filesystem'],
+        expectedValid: true,
+        expectedDetails: {
+            name: 'Filesystem Server',
+            verified: true,
+            category: 'filesystem',
+        },
+    },
+    {
+        scenario: 'multiple servers',
+        selectServerIds: ['filesystem', 'memory'],
+        expectedValid: true,
+        expectedDetails: {
+            totalSelected: 2,
+            allVerified: true,
+        },
+    },
+    {
+        scenario: 'non-existent server',
+        selectServerIds: ['nonexistent-server-xyz'],
+        expectedValid: false,
+        expectedError: 'not found',
+    },
+    {
+        scenario: 'empty selection',
+        selectServerIds: [],
+        expectedValid: false,
+        expectedError: 'No servers selected',
+    },
+    {
+        scenario: 'mixed valid and invalid',
+        selectServerIds: ['filesystem', 'invalid-server'],
+        expectedValid: false,
+        expectedError: 'not found',
+        partiallyValid: true,
+        validIds: ['filesystem'],
+        invalidIds: ['invalid-server'],
+    },
+    {
+        scenario: 'unverified server selection',
+        selectServerIds: ['community-tools'],
+        expectedValid: true,
+        expectedDetails: {
+            verified: false,
+            category: 'system',
+        },
+    },
+    {
+        scenario: 'server with environment variables',
+        selectServerIds: ['github'],
+        expectedValid: true,
+        expectedDetails: {
+            requiresEnvVars: true,
+            envVars: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+        },
+    },
+    {
+        scenario: 'http-based server',
+        selectServerIds: ['remote-api'],
+        expectedValid: true,
+        expectedDetails: {
+            type: 'http',
+            requiresUrl: true,
+        },
+    },
+];
+/**
+ * Selection validation test cases
+ */
+exports.SELECTION_VALIDATION_CASES = [
+    {
+        description: 'valid single selection',
+        availableServers: ['filesystem', 'memory', 'fetch'],
+        selectedIds: ['filesystem'],
+        expectedValid: true,
+        expectedInvalidIds: [],
+    },
+    {
+        description: 'valid multiple selection',
+        availableServers: ['filesystem', 'memory', 'fetch'],
+        selectedIds: ['filesystem', 'memory'],
+        expectedValid: true,
+        expectedInvalidIds: [],
+    },
+    {
+        description: 'invalid single selection',
+        availableServers: ['filesystem', 'memory'],
+        selectedIds: ['nonexistent'],
+        expectedValid: false,
+        expectedInvalidIds: ['nonexistent'],
+    },
+    {
+        description: 'partially valid selection',
+        availableServers: ['filesystem', 'memory'],
+        selectedIds: ['filesystem', 'invalid1', 'memory', 'invalid2'],
+        expectedValid: false,
+        expectedInvalidIds: ['invalid1', 'invalid2'],
+    },
+    {
+        description: 'empty selection',
+        availableServers: ['filesystem', 'memory'],
+        selectedIds: [],
+        expectedValid: true, // Empty selection is technically valid
+        expectedInvalidIds: [],
+    },
+    {
+        description: 'duplicate selection',
+        availableServers: ['filesystem', 'memory'],
+        selectedIds: ['filesystem', 'filesystem'],
+        expectedValid: true, // Duplicates should be handled gracefully
+        expectedInvalidIds: [],
     },
 ];
 //# sourceMappingURL=marketplace-data.js.map
