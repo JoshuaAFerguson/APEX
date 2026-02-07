@@ -37,6 +37,7 @@ export * from './browser-error-fixtures';
 export * from './browser-utils';
 
 // Export navigation testing utilities
+export * from './navigation-test-types';
 export * from './navigation-test-utils';
 export * from './navigation-test-fixtures';
 

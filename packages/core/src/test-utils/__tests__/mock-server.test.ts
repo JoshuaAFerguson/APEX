@@ -296,7 +296,7 @@ describe('MockServer', () => {
       mockServer = new MockServer({ logger: false });
 
       // Add custom routes for the test
-      await mockServer.addRoutes((app: FastifyInstance) => {
+      await mockServer.addRoutes((app) => {
         app.get('/api/test', async () => ({ test: 'success' }));
         app.post('/api/data', async (request) => ({
           received: request.body,
