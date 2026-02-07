@@ -2,6 +2,65 @@
 
 This directory contains end-to-end tests for APEX CLI commands using real git repositories and orchestrator integration.
 
+## Quick Start
+
+To run E2E tests locally:
+
+```bash
+# Build the CLI first (required for E2E tests)
+npm run build
+
+# Run all E2E tests once
+npm run test:e2e
+
+# Run E2E tests in watch mode for development
+npm run test:e2e:watch
+
+# Run specific E2E test file
+npm test -- tests/e2e/browse-marketplace.e2e.test.ts
+```
+
+**Requirements:**
+- Node.js 18+ (check with `node --version`)
+- Git available in PATH (check with `git --version`)
+- CLI must be built first (`npm run build`)
+
+## Environment Setup
+
+### Prerequisites
+
+1. **Git Installation**: E2E tests require git for repository operations
+   ```bash
+   # Verify git is available
+   git --version
+   ```
+
+2. **CLI Build**: E2E tests execute the actual CLI binary
+   ```bash
+   # Build all packages including CLI
+   npm run build
+
+   # Verify CLI is built
+   ls packages/cli/dist/index.js
+   ```
+
+3. **Dependencies**: Install all project dependencies
+   ```bash
+   npm install
+   ```
+
+### Environment Variables
+
+E2E tests automatically set:
+- `NODE_ENV=test`
+- `APEX_TEST_MODE=e2e`
+
+Optional debugging:
+```bash
+# Enable debug output during tests
+DEBUG=1 npm run test:e2e
+```
+
 ## Infrastructure
 
 The E2E test infrastructure provides:
@@ -40,6 +99,118 @@ All E2E tests automatically get:
 - Resource cleanup (orchestrators, servers, databases)
 - Extended timeouts for real-world operations
 - Global helper utilities
+
+## Temporary Directory Management
+
+### `.apex-test` Directory Purpose
+
+**Important**: The `.apex-test` directory is **NOT** used by E2E tests. It is created by cleanup utility tests in `tests/integration/cleanup-utilities*.test.ts` to verify that the cleanup scripts work correctly.
+
+E2E tests use the system's temporary directory (via `os.tmpdir()`) for isolation:
+- **E2E temp directories**: `os.tmpdir()/apex-e2e-*` (auto-cleaned by test framework)
+- **`.apex-test` directory**: Used only for testing cleanup utilities themselves
+
+### E2E Test Directory Structure
+
+E2E tests create temporary directories like:
+```
+/tmp/apex-e2e-xyz123/          # Test isolation directory
+├── .apex/                     # APEX project config
+│   ├── config.yaml
+│   ├── agents/
+│   └── workflows/
+├── .git/                      # Git repository
+└── test files...
+```
+
+Each test gets its own isolated directory that is automatically cleaned up after the test completes.
+
+## Cleanup Mechanisms
+
+APEX provides three tiers of cleanup for different scenarios:
+
+### 1. Automatic Test Cleanup (Primary)
+
+**E2E Test Framework**: Built into `tests/e2e/setup.ts`
+- Automatically cleans up after each test
+- Handles temp directories, git repos, databases, orchestrators
+- Uses `globalThis.apexE2EHelpers.cleanupAll()`
+- **You don't need to manually clean these**
+
+### 2. Manual Cleanup Scripts (Secondary)
+
+**Cross-platform cleanup scripts** for manual use:
+
+```bash
+# Automatic cleanup (finds and removes all .apex-test directories)
+npm run cleanup:test
+
+# Platform-specific scripts
+npm run cleanup:test:shell     # Unix/Linux/macOS
+npm run cleanup:test:windows   # Windows
+```
+
+**What they clean:**
+- `.apex-test` directories (created by cleanup utility tests)
+- Handles permission issues gracefully
+- Provides detailed logging
+
+### 3. Manual File System Cleanup (Last Resort)
+
+If automatic cleanup fails, manually remove directories:
+
+```bash
+# Unix/Linux/macOS
+rm -rf .apex-test
+find . -name ".apex-test" -type d -exec rm -rf {} +
+
+# Windows
+rmdir /s .apex-test
+for /d /r . %d in (.apex-test) do @if exist "%d" rmdir /s /q "%d"
+```
+
+### Cleanup Best Practices
+
+1. **Run tests normally** - automatic cleanup usually works
+2. **Use cleanup scripts** if you see leftover `.apex-test` directories
+3. **Check permissions** if cleanup fails (especially on Windows)
+4. **Manual cleanup** only as last resort
+
+## Troubleshooting
+
+### Common Issues
+
+**"CLI binary not found"**:
+```bash
+# Solution: Build the project first
+npm run build
+```
+
+**"Git not found in PATH"**:
+```bash
+# Solution: Install git and ensure it's in PATH
+git --version
+```
+
+**Tests hanging or timing out**:
+- Check if ports are already in use
+- Ensure no previous test processes are running
+- Try running tests individually to isolate issues
+
+**Permission errors during cleanup**:
+```bash
+# Run platform-specific cleanup
+npm run cleanup:test
+```
+
+### Debug Mode
+
+Enable detailed logging during tests:
+```bash
+DEBUG=1 npm run test:e2e
+```
+
+This preserves console output and shows detailed test execution information.
 
 ## Browse MCP Marketplace E2E Tests
 

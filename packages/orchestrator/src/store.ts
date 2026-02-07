@@ -1744,6 +1744,16 @@ export class TaskStore {
     return tasks;
   }
 
+  /**
+   * Update the status of a task with optional stage and message information.
+   * Automatically sets completion timestamp for completed tasks.
+   *
+   * @param taskId - The unique identifier of the task to update
+   * @param status - The new status for the task
+   * @param stage - Optional current stage information
+   * @param message - Optional message or error information
+   * @returns A promise that resolves when the status update is complete
+   */
   async updateTaskStatus(
     taskId: string,
     status: TaskStatus,
@@ -1787,6 +1797,12 @@ export class TaskStore {
    * Get the next pending task from the queue based on priority
    * Respects task dependencies - only returns tasks with no blockers
    */
+  /**
+   * Get the next ready task from the queue, considering dependencies and priority.
+   * Only returns tasks that have all dependencies satisfied.
+   *
+   * @returns A promise that resolves to the next ready task or null if none available
+   */
   async getNextQueuedTask(): Promise<Task | null> {
     const readyTasks = await this.getReadyTasks({
       limit: 1,
@@ -1797,7 +1813,10 @@ export class TaskStore {
   }
 
   /**
-   * Get the next pending task (legacy - ignores dependencies)
+   * Get the next pending task ignoring dependency constraints.
+   * This is a legacy method and should be used with caution.
+   *
+   * @returns A promise that resolves to the next pending task or null if none available
    */
   async getNextQueuedTaskIgnoreDeps(): Promise<Task | null> {
     const tasks = await this.listTasks({
@@ -1810,7 +1829,11 @@ export class TaskStore {
   }
 
   /**
-   * Queue a task (set to pending with optional priority)
+   * Queue a task by setting its status to pending with optional priority update.
+   *
+   * @param taskId - The unique identifier of the task to queue
+   * @param priority - Optional priority level to assign to the task
+   * @returns A promise that resolves when the task is queued
    */
   async queueTask(taskId: string, priority?: TaskPriority): Promise<void> {
     const updates: Partial<{ status: TaskStatus; priority: TaskPriority; updatedAt: Date }> = {
@@ -1826,7 +1849,12 @@ export class TaskStore {
   }
 
   /**
-   * Add a log entry
+   * Add a log entry for a task.
+   * If no timestamp is provided, the current time will be used.
+   *
+   * @param taskId - The unique identifier of the task
+   * @param log - Log entry data (timestamp is optional and will default to current time)
+   * @returns A promise that resolves when the log entry is added
    */
   async addLog(taskId: string, log: Omit<TaskLog, 'timestamp'> & { timestamp?: Date }): Promise<void> {
     const stmt = this.db.prepare(`
@@ -1853,7 +1881,15 @@ export class TaskStore {
   }
 
   /**
-   * Get task logs (public)
+   * Get task logs with optional filtering and pagination.
+   * Returns logs in descending order by timestamp (most recent first).
+   *
+   * @param taskId - The unique identifier of the task
+   * @param options - Optional filtering and pagination options
+   * @param options.level - Filter logs by level (e.g., 'info', 'error')
+   * @param options.limit - Maximum number of logs to return
+   * @param options.offset - Number of logs to skip (for pagination)
+   * @returns A promise that resolves to an array of task logs
    */
   async getLogs(taskId: string, options?: { level?: string; limit?: number; offset?: number }): Promise<TaskLog[]> {
     let sql = 'SELECT * FROM task_logs WHERE task_id = ?';
@@ -1889,7 +1925,12 @@ export class TaskStore {
   }
 
   /**
-   * Add an artifact
+   * Add an artifact to a task.
+   * Artifacts represent files, outputs, or other assets generated during task execution.
+   *
+   * @param taskId - The unique identifier of the task
+   * @param artifact - Artifact data (createdAt will be set automatically)
+   * @returns A promise that resolves when the artifact is added
    */
   async addArtifact(taskId: string, artifact: Omit<TaskArtifact, 'createdAt'>): Promise<void> {
     const stmt = this.db.prepare(`
@@ -2137,7 +2178,11 @@ export class TaskStore {
   // ============================================================================
 
   /**
-   * Get task dependencies (task IDs this task depends on)
+   * Get the list of task IDs that the specified task depends on.
+   * Returns all dependencies regardless of their completion status.
+   *
+   * @param taskId - The unique identifier of the task
+   * @returns A promise that resolves to an array of task IDs this task depends on
    */
   async getTaskDependencies(taskId: string): Promise<string[]> {
     const stmt = this.db.prepare(
@@ -2148,7 +2193,11 @@ export class TaskStore {
   }
 
   /**
-   * Get blocking tasks (incomplete tasks that this task depends on)
+   * Get the list of incomplete tasks that are blocking the specified task.
+   * Only returns dependencies that are not yet completed or cancelled.
+   *
+   * @param taskId - The unique identifier of the task
+   * @returns A promise that resolves to an array of task IDs that are blocking this task
    */
   async getBlockingTasks(taskId: string): Promise<string[]> {
     const stmt = this.db.prepare(`
@@ -2163,7 +2212,11 @@ export class TaskStore {
   }
 
   /**
-   * Check if a task is ready to run (all dependencies completed)
+   * Check if a task is ready to run by verifying all dependencies are completed.
+   * A task is ready when it has no blocking dependencies.
+   *
+   * @param taskId - The unique identifier of the task
+   * @returns A promise that resolves to true if the task is ready to run
    */
   async isTaskReady(taskId: string): Promise<boolean> {
     const blockers = await this.getBlockingTasks(taskId);
@@ -2171,7 +2224,12 @@ export class TaskStore {
   }
 
   /**
-   * Add a dependency to a task
+   * Add a dependency relationship between tasks.
+   * The task will not be able to run until the dependency is completed.
+   *
+   * @param taskId - The unique identifier of the dependent task
+   * @param dependsOnTaskId - The unique identifier of the task this depends on
+   * @returns A promise that resolves when the dependency is added
    */
   async addDependency(taskId: string, dependsOnTaskId: string): Promise<void> {
     const stmt = this.db.prepare(`
@@ -2182,7 +2240,11 @@ export class TaskStore {
   }
 
   /**
-   * Remove a dependency from a task
+   * Remove a dependency relationship between tasks.
+   *
+   * @param taskId - The unique identifier of the dependent task
+   * @param dependsOnTaskId - The unique identifier of the dependency to remove
+   * @returns A promise that resolves when the dependency is removed
    */
   async removeDependency(taskId: string, dependsOnTaskId: string): Promise<void> {
     const stmt = this.db.prepare(`
@@ -4769,14 +4831,52 @@ interface ToolActionRow {
 }
 
 /**
- * ToolActionStore extends TaskStore with functionality for tracking tool actions and file snapshots
- * Provides undo capabilities and file versioning
+ * ToolActionStore extends TaskStore with functionality for tracking tool actions and file snapshots.
+ * Provides undo capabilities and file versioning for tasks that modify files.
+ *
+ * This store manages the lifecycle of tool executions, including before/after file snapshots,
+ * which enables rollback functionality for file modifications made during task execution.
+ *
+ * @example
+ * ```typescript
+ * const taskStore = new TaskStore('/path/to/project');
+ * await taskStore.initialize();
+ * const toolStore = new ToolActionStore(taskStore, {
+ *   maxActionsPerTask: 500,
+ *   maxAgeDays: 14
+ * });
+ *
+ * // Record a tool action with file tracking
+ * const beforeSnapshots = await Promise.all(
+ *   modifiedFiles.map(f => toolStore.createFileSnapshot(f))
+ * );
+ *
+ * // Execute tool...
+ *
+ * const afterSnapshots = await Promise.all(
+ *   modifiedFiles.map(f => toolStore.createFileSnapshot(f))
+ * );
+ *
+ * const action = await toolStore.recordToolAction(
+ *   taskId, execution, modifiedFiles, beforeSnapshots, afterSnapshots
+ * );
+ * ```
  */
 export class ToolActionStore {
   private taskStore: TaskStore;
   private db: Database.Database;
   private retentionConfig: ToolActionRetentionConfig;
 
+  /**
+   * Creates a new ToolActionStore instance that extends the provided TaskStore.
+   *
+   * @param taskStore - The TaskStore instance to extend with tool action functionality
+   * @param retentionConfig - Optional configuration for retention policies
+   * @param retentionConfig.maxActionsPerTask - Maximum actions to keep per task (default: 1000)
+   * @param retentionConfig.maxAgeDays - Maximum age in days for actions (default: 30)
+   * @param retentionConfig.keepUndoneSnapshots - Whether to keep snapshots for undone actions (default: false)
+   * @param retentionConfig.maxSnapshotStorageMB - Maximum storage for snapshots in MB (default: 100)
+   */
   constructor(taskStore: TaskStore, retentionConfig: Partial<ToolActionRetentionConfig> = {}) {
     this.taskStore = taskStore;
     this.db = taskStore.getDatabase();
@@ -4789,7 +4889,12 @@ export class ToolActionStore {
   }
 
   /**
-   * Create a file snapshot before modification
+   * Create a snapshot of a file's current state for version tracking.
+   * Captures file content, checksum, size, and modification time.
+   *
+   * @param filePath - The path to the file to snapshot
+   * @param metadata - Optional metadata to associate with the snapshot
+   * @returns A promise that resolves to the created file snapshot
    */
   async createFileSnapshot(filePath: string, metadata?: Record<string, unknown>): Promise<FileSnapshot> {
     const absolutePath = path.resolve(filePath);
