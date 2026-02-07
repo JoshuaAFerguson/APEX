@@ -393,3 +393,232 @@ export function getEntriesByCapability(capability: string): MCPMarketplaceEntry[
     entry => entry.capabilities?.includes(capability)
   );
 }
+
+// ============================================================================
+// Factory Function Types (ADR-002)
+// ============================================================================
+
+/**
+ * Configuration options for MCPServer factory
+ */
+export interface MCPServerFactoryOptions {
+  /** Include default environment variables */
+  includeEnv?: boolean;
+  /** Include structured envVars array */
+  includeEnvVars?: boolean;
+}
+
+/**
+ * Configuration options for MCPServerConfig factory
+ */
+export interface MCPServerConfigFactoryOptions {
+  /** Connection type preset */
+  type?: 'stdio' | 'http' | 'sse' | 'sdk';
+  /** Whether to auto-start */
+  autoStart?: boolean;
+  /** Include environment variables */
+  includeEnv?: boolean;
+}
+
+/**
+ * Configuration options for MCPMarketplaceEntry factory
+ */
+export interface MCPMarketplaceEntryFactoryOptions {
+  /** Set verified status */
+  verified?: boolean;
+  /** Include default capabilities */
+  includeCapabilities?: boolean;
+}
+
+// ============================================================================
+// Factory Functions (ADR-002)
+// ============================================================================
+
+/**
+ * Creates an MCPServerConfig fixture with sensible defaults
+ *
+ * @param overrides - Partial MCPServerConfig properties to override defaults
+ * @param options - Factory-level configuration options
+ * @returns A fully-typed MCPServerConfig object
+ *
+ * @example
+ * ```typescript
+ * const config = createMCPServerConfig({
+ *   name: 'my-server',
+ *   autoStart: true
+ * });
+ * expect(config.name).toBe('my-server');
+ * expect(config.type).toBe('stdio'); // default value
+ * ```
+ */
+export function createMCPServerConfig(
+  overrides: Partial<MCPServerConfig> = {},
+  options: MCPServerConfigFactoryOptions = {}
+): MCPServerConfig {
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const defaults: MCPServerConfig = {
+    name: `test-config-${uniqueId}`,
+    type: options.type || 'stdio',
+    command: 'npx',
+    args: ['@apex/test-mcp-server'],
+    autoStart: options.autoStart ?? false,
+  };
+
+  if (options.includeEnv) {
+    defaults.env = {
+      NODE_ENV: 'test',
+    };
+  }
+
+  return {
+    ...defaults,
+    ...overrides,
+  };
+}
+
+/**
+ * Creates an MCPServer fixture with sensible defaults
+ *
+ * @param overrides - Partial MCPServer properties to override defaults
+ * @param options - Factory-level configuration options
+ * @returns A fully-typed MCPServer object
+ *
+ * @example
+ * ```typescript
+ * const server = createMCPServer({
+ *   name: 'postgres-server',
+ *   package: '@modelcontextprotocol/server-postgres'
+ * });
+ * expect(server.name).toBe('postgres-server');
+ * expect(server.version).toBe('1.0.0'); // default value
+ * ```
+ */
+export function createMCPServer(
+  overrides: Partial<MCPServer> = {},
+  options: MCPServerFactoryOptions = {}
+): MCPServer {
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const defaults: MCPServer = {
+    name: `test-server-${uniqueId}`,
+    package: '@apex/test-mcp-server',
+    command: 'npx',
+    args: ['@apex/test-mcp-server'],
+    env: options.includeEnv ? { NODE_ENV: 'test' } : {},
+    envVars: [],
+    version: '1.0.0',
+  };
+
+  return {
+    ...defaults,
+    ...overrides,
+  };
+}
+
+/**
+ * Creates an MCPMarketplaceEntry fixture with sensible defaults
+ *
+ * @param overrides - Partial MCPMarketplaceEntry properties to override defaults
+ * @param options - Factory-level configuration options
+ * @returns A fully-typed MCPMarketplaceEntry object
+ *
+ * @example
+ * ```typescript
+ * const entry = createMCPMarketplaceEntry({
+ *   name: 'filesystem-server',
+ *   verified: true
+ * });
+ * expect(entry.name).toBe('filesystem-server');
+ * expect(entry.verified).toBe(true);
+ * expect(entry.serverConfig).toBeDefined(); // uses config factory
+ * ```
+ */
+export function createMCPMarketplaceEntry(
+  overrides: Partial<MCPMarketplaceEntry> = {},
+  options: MCPMarketplaceEntryFactoryOptions = {}
+): MCPMarketplaceEntry {
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const defaults: MCPMarketplaceEntry = {
+    name: `test-marketplace-entry-${uniqueId}`,
+    description: 'Test MCP server for testing purposes',
+    version: '1.0.0',
+    author: 'Test Author',
+    homepage: 'https://example.com/test-server',
+    repository: 'https://github.com/test/test-server',
+    installCommand: 'npm install -g @apex/test-mcp-server',
+    serverConfig: createMCPServerConfig(
+      { name: `test-marketplace-entry-${uniqueId}` },
+      { type: 'stdio' }
+    ),
+    capabilities: options.includeCapabilities !== false ? ['tools'] : undefined,
+    verified: options.verified ?? false,
+  };
+
+  const result = {
+    ...defaults,
+    ...overrides,
+  };
+
+  // If overrides includes serverConfig, merge it properly
+  if (overrides.serverConfig) {
+    result.serverConfig = {
+      ...defaults.serverConfig,
+      ...overrides.serverConfig,
+    };
+  }
+
+  return result;
+}
+
+// ============================================================================
+// Preset Collections (ADR-002)
+// ============================================================================
+
+/**
+ * Preset collections for common marketplace testing scenarios
+ */
+export const MCPServerPresets = {
+  /** Basic server configurations */
+  basic: {
+    filesystem: () => createMCPServer({
+      name: 'filesystem-server',
+      package: '@modelcontextprotocol/server-filesystem',
+      args: ['@modelcontextprotocol/server-filesystem', '/tmp'],
+    }),
+    memory: () => createMCPServer({
+      name: 'memory-server',
+      package: '@modelcontextprotocol/server-memory',
+      args: ['@modelcontextprotocol/server-memory'],
+    }),
+    git: () => createMCPServer({
+      name: 'git-server',
+      package: '@modelcontextprotocol/server-git',
+      args: ['@modelcontextprotocol/server-git'],
+    }),
+  },
+
+  /** Server configuration presets */
+  configs: {
+    stdio: () => createMCPServerConfig({}, { type: 'stdio' }),
+    http: () => createMCPServerConfig({}, { type: 'http' }),
+    sse: () => createMCPServerConfig({}, { type: 'sse' }),
+    sdk: () => createMCPServerConfig({}, { type: 'sdk' }),
+    withEnv: () => createMCPServerConfig({}, { includeEnv: true }),
+    autoStart: () => createMCPServerConfig({}, { autoStart: true }),
+  },
+
+  /** Marketplace entry presets */
+  marketplace: {
+    verified: () => createMCPMarketplaceEntry({}, { verified: true }),
+    unverified: () => createMCPMarketplaceEntry({}, { verified: false }),
+    withCapabilities: () => createMCPMarketplaceEntry({
+      capabilities: ['tools', 'resources', 'prompts'],
+    }),
+    minimal: () => createMCPMarketplaceEntry({
+      description: 'Minimal test server',
+      capabilities: [],
+    }),
+  },
+} as const;

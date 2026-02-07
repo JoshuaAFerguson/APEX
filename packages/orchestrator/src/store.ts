@@ -89,8 +89,8 @@ export class TaskStore {
     const apexHome = process.env.APEX_HOME;
     let apexDir: string;
 
-    if (apexHome) {
-      // Use APEX_HOME if set
+    if (apexHome && apexHome !== '') {
+      // Use APEX_HOME if set and not empty
       apexDir = apexHome;
     } else {
       // Default to .apex directory in project path
