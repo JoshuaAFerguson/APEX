@@ -96,6 +96,7 @@ export class ContainerRuntime {
    * });
    * ```
    */
+  async detectRuntimes(): Promise<RuntimeDetectionResult[]> {
     const now = Date.now();
 
     // Return cached results if they're still valid
