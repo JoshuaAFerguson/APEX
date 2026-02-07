@@ -239,6 +239,21 @@ export interface PolicyAuditedEventData {
   timestamp: Date;
 }
 
+/**
+ * Event interface defining all events emitted by ApexOrchestrator
+ *
+ * Events are organized into categories:
+ * - Task lifecycle: created, started, completed, failed, etc.
+ * - Agent interactions: messages, thinking, tool usage, transitions
+ * - System events: daemon state, capacity management, auto-resume
+ * - Container events: lifecycle and health monitoring
+ * - Permission events: requests, grants, denials
+ * - Tool events: calls, progress, completion
+ * - Security events: secret detection, dangerous operations
+ * - Linting events: automated code quality checks
+ * - Browser events: automation and error tracking
+ * - MCP events: server management and health monitoring
+ */
 export interface OrchestratorEvents {
   'task:created': (task: Task) => void;
   'task:started': (task: Task) => void;
@@ -1357,6 +1372,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     reject: (error: Error) => void;
   }> = new Map();
 
+  /**
+   * Create a new ApexOrchestrator instance
+   * @param options - Configuration options for the orchestrator
+   * @param options.projectPath - Project root path for file operations and workspace management
+   * @param options.apiUrl - Optional API server URL for external integrations
+   * @param options.autonomyEnforcer - Optional custom autonomy enforcer for dependency injection
+   * @param options.policyEngine - Optional policy engine for custom policy validation
+   */
   constructor(private options: OrchestratorOptions) {
     super();
     this.projectPath = options.projectPath;
@@ -1365,7 +1388,21 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Initialize the orchestrator
+   * Initialize the orchestrator with all required services and components
+   *
+   * Sets up configuration, database connections, agents, workflows, and all necessary
+   * services for task execution including permission management, browser automation,
+   * and policy enforcement.
+   *
+   * @returns Promise that resolves when initialization is complete
+   * @throws {Error} When configuration cannot be loaded or services fail to initialize
+   *
+   * @example
+   * ```typescript
+   * const orchestrator = new ApexOrchestrator({ projectPath: '/path/to/project' });
+   * await orchestrator.initialize();
+   * console.log('Orchestrator ready for task execution');
+   * ```
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -1883,7 +1920,35 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Create a new task
+   * Create a new task with specified configuration and options
+   *
+   * @param options - Task creation options
+   * @param options.description - Human-readable description of what needs to be accomplished
+   * @param options.acceptanceCriteria - Optional criteria that define when the task is complete
+   * @param options.workflow - Workflow name to use (defaults to 'feature')
+   * @param options.autonomy - Autonomy level for the task (defaults to config setting)
+   * @param options.priority - Task priority: low, normal, high, critical (defaults to 'normal')
+   * @param options.effort - Expected effort level: small, medium, large, epic (defaults to 'medium')
+   * @param options.maxRetries - Maximum number of retry attempts (defaults to config setting)
+   * @param options.dependsOn - Array of task IDs that must complete before this task
+   * @param options.parentTaskId - Parent task ID if this is a subtask
+   * @param options.subtaskStrategy - Strategy for handling subtask decomposition
+   * @param options.dryRun - If true, create task but don't execute (for testing)
+   *
+   * @returns Promise resolving to the created Task object
+   * @throws {Error} When task creation fails or dependencies are invalid
+   *
+   * @example
+   * ```typescript
+   * const task = await orchestrator.createTask({
+   *   description: 'Add user authentication to the dashboard',
+   *   acceptanceCriteria: 'Users can log in and access protected routes',
+   *   workflow: 'feature-development',
+   *   priority: 'high',
+   *   effort: 'medium'
+   * });
+   * console.log('Created task:', task.id);
+   * ```
    */
   async createTask(options: {
     description: string;
@@ -2007,7 +2072,37 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Execute a task with automatic retries
+   * Execute a task with its assigned workflow and handle retries, failures, and checkpointing
+   *
+   * Orchestrates the complete task execution including:
+   * - Workflow stage progression with designated agents
+   * - Automatic retry logic on failures
+   * - Progress tracking and event emission
+   * - Permission and policy enforcement
+   * - Resource usage monitoring
+   *
+   * @param taskId - Unique identifier of the task to execute
+   * @param options - Execution options
+   * @param options.autoRetry - Enable automatic retries on failure (defaults to true)
+   * @param options.cliFlags - CLI-specific flags for execution behavior
+   * @param options.cliFlags.diffPreview - Show diff preview before applying changes
+   *
+   * @returns Promise that resolves when task execution completes (successfully or failed)
+   * @throws {Error} When task is not found, already running, or initialization fails
+   *
+   * @example
+   * ```typescript
+   * // Execute a task with automatic retries
+   * await orchestrator.executeTask('task-abc123', {
+   *   autoRetry: true,
+   *   cliFlags: { diffPreview: true }
+   * });
+   *
+   * // Listen to execution events
+   * orchestrator.on('task:completed', (task) => {
+   *   console.log('Task completed:', task.id);
+   * });
+   * ```
    */
   async executeTask(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     await this.ensureInitialized();
@@ -9050,6 +9145,11 @@ Parent: ${parentTask.description}`;
     return Object.keys(servers).length > 0 ? servers : undefined;
   }
 
+  /**
+   * List all configured MCP servers
+   *
+   * @returns Array of MCP server configurations
+   */
   public listMcpServers(): MCPServerConfig[] {
     return this.mcpServerManager?.listServers() ?? [];
   }
@@ -9061,6 +9161,13 @@ Parent: ${parentTask.description}`;
     return this.mcpMarketplaceService.getMarketplaceEntries();
   }
 
+  /**
+   * Install an MCP server by name
+   *
+   * @param name - Name of the MCP server to install
+   * @returns Promise resolving to the installed server configuration
+   * @throws {Error} When MCP server manager is not initialized or installation fails
+   */
   public async installMcpServer(name: string): Promise<MCPServerConfig> {
     if (!this.mcpServerManager) {
       throw new Error('MCP server manager not initialized');
@@ -9085,6 +9192,13 @@ Parent: ${parentTask.description}`;
     this.mcpServerManager.updateConfig(this.config);
   }
 
+  /**
+   * Get the current status of an MCP server
+   *
+   * @param name - Name of the MCP server to check
+   * @returns Promise resolving to server status information
+   * @throws {Error} When MCP server manager is not initialized or server not found
+   */
   public async getMcpServerStatus(name: string): Promise<{
     name: string;
     status: 'running' | 'stopped' | 'error';
@@ -9293,6 +9407,16 @@ Parent: ${parentTask.description}`;
 
   /**
    * Get marketplace entries with filtering options
+   */
+  /**
+   * Get MCP marketplace entries with optional filtering
+   *
+   * @param options - Filtering options for marketplace entries
+   * @param options.category - Filter by category
+   * @param options.search - Search term to filter entries
+   * @param options.featured - Show only featured entries
+   * @param options.verified - Show only verified entries
+   * @returns Promise resolving to filtered marketplace entries
    */
   public async getMcpMarketplaceEntries(options?: {
     category?: string;
