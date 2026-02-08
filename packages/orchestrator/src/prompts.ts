@@ -813,12 +813,30 @@ export function isCodeGenerationStage(stage: WorkflowStage): boolean {
 }
 
 /**
- * Build a resume prompt that combines context summary with original task for session resume
+ * Build a resume prompt that combines context summary with original task for session resume.
  *
- * @param task - The task being resumed
+ * Creates a comprehensive resume context that helps agents understand what was previously
+ * accomplished, key decisions made, and where to continue work. Includes checkpoint timing
+ * information and extracted accomplishments and decisions from prior context.
+ *
+ * @param task - The task being resumed with description and current state
  * @param checkpoint - The checkpoint data containing stage and conversation state
  * @param contextSummary - A summarized version of the prior conversation context
  * @returns A formatted prompt section explaining the resume context
+ *
+ * @example
+ * ```typescript
+ * const task: Task = { id: 'task-123', description: 'Add authentication' };
+ * const checkpoint: TaskCheckpoint = {
+ *   createdAt: new Date('2024-01-01T10:00:00'),
+ *   stage: 'implementation',
+ *   stageIndex: 1
+ * };
+ * const contextSummary = "Created user model and validation logic...";
+ *
+ * const resumePrompt = buildResumePrompt(task, checkpoint, contextSummary);
+ * // Returns formatted resume context with accomplishments and next steps
+ * ```
  */
 export function buildResumePrompt(
   task: Task,
@@ -947,8 +965,31 @@ function extractKeyDecisions(contextSummary: string): string[] {
 }
 
 /**
- * Build a prompt for the orchestrator to coordinate stages
- * Used when deciding what to do next or handling errors
+ * Build a prompt for the orchestrator to coordinate workflow stages.
+ *
+ * Creates coordination prompts used when deciding what to do next in a workflow
+ * or handling stage failures. Provides current workflow state, stage status,
+ * and decision options for the orchestrator to choose the next action.
+ *
+ * @param task - Current task being executed
+ * @param workflow - Workflow definition with stages and description
+ * @param completedStages - Map of completed stages with their results
+ * @param currentStage - Optional currently executing stage
+ * @param error - Optional error message from failed stage
+ * @returns Formatted coordination prompt with stage status and decision options
+ *
+ * @example
+ * ```typescript
+ * const task: Task = { id: 'task-123', description: 'Add feature' };
+ * const workflow: WorkflowDefinition = { name: 'feature', stages: [...] };
+ * const completedStages = new Map([
+ *   ['planning', { status: 'completed', summary: 'Plan ready' }]
+ * ]);
+ * const currentStage: WorkflowStage = { name: 'implementation', agent: 'developer' };
+ *
+ * const prompt = buildCoordinatorPrompt(task, workflow, completedStages, currentStage);
+ * // Returns prompt with workflow status and coordination options
+ * ```
  */
 export function buildCoordinatorPrompt(
   task: Task,
