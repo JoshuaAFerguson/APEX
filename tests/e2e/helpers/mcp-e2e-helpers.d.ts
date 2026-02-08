@@ -86,6 +86,30 @@ export interface WorkflowStepResult {
     duration: number;
 }
 /**
+ * Flow step result for full E2E scenarios
+ */
+export interface FlowStep {
+    /** Step name */
+    name: string;
+    /** Whether the step succeeded */
+    success: boolean;
+    /** Duration in milliseconds */
+    duration: number;
+    /** Error details if failed */
+    error?: string;
+}
+/**
+ * Full flow scenario result
+ */
+export interface FullFlowResult {
+    /** Whether the entire flow succeeded */
+    success: boolean;
+    /** Individual flow steps */
+    steps: FlowStep[];
+    /** Total duration in milliseconds */
+    totalDuration: number;
+}
+/**
  * Complete marketplace workflow result
  */
 export interface MarketplaceWorkflowResult {
@@ -194,6 +218,18 @@ export declare const mcpHelpers: {
      * Run a multi-server installation workflow
      */
     runMultiInstallWorkflow(ctx: MCPTestContext, serverNames: string[]): Promise<MarketplaceWorkflowResult>;
+    /**
+     * Verify server health status after installation
+     */
+    verifyServerHealth(ctx: MCPTestContext, serverName: string): Promise<{
+        healthy: boolean;
+        details: string;
+    }>;
+    /**
+     * Run the complete E2E flow as a single scenario
+     * browse → select → install → configure → verify
+     */
+    runFullFlowScenario(ctx: MCPTestContext, serverName: string): Promise<FullFlowResult>;
 };
 /**
  * Create and start a mock marketplace server for a specific entry
@@ -219,5 +255,5 @@ export declare function writeTestCatalog(ctx: MCPTestContext, catalog: TestCatal
  * Write the default test catalog with all entries
  */
 export declare function writeDefaultTestCatalog(ctx: MCPTestContext): Promise<string>;
-export { type CLIResult, type MCPServerEntry, type ApexConfig, type MCPConfigSection, type MarketplaceOutputExpectations, type MarketplaceEntry, type ServerConfig, FILESYSTEM_SERVER, MEMORY_SERVER, ALL_MARKETPLACE_ENTRIES, MockMarketplaceServer, MockServerManager, createMockMarketplaceServer, createFailingServer, createSlowServer, type MockMarketplaceBehavior, type MockServerStats, execCli, execMCPCommand, execMCPCommandJson, readApexConfig, writeApexConfig, readMCPConfig, isServerInConfig, assertServerInstalled, assertOutputContains, assertOutputNotContains, isCliBinaryAvailable, retry, waitForCondition, };
+export { type CLIResult, type MCPServerEntry, type ApexConfig, type MCPConfigSection, type MarketplaceOutputExpectations, type FlowStep, type FullFlowResult, type MarketplaceEntry, type ServerConfig, FILESYSTEM_SERVER, MEMORY_SERVER, ALL_MARKETPLACE_ENTRIES, MockMarketplaceServer, MockServerManager, createMockMarketplaceServer, createFailingServer, createSlowServer, type MockMarketplaceBehavior, type MockServerStats, execCli, execMCPCommand, execMCPCommandJson, readApexConfig, writeApexConfig, readMCPConfig, isServerInConfig, assertServerInstalled, assertOutputContains, assertOutputNotContains, isCliBinaryAvailable, retry, waitForCondition, };
 //# sourceMappingURL=mcp-e2e-helpers.d.ts.map

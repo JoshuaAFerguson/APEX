@@ -77,6 +77,9 @@ export interface ContextSummaryData {
   recentRequests: string[];
 }
 
+/**
+ * Configuration options for conversation compaction
+ */
 export interface ContextCompactionOptions {
   /** Maximum tokens to keep in context (approximate) */
   maxTokens?: number;
@@ -131,7 +134,22 @@ const PROGRESS_PATTERNS = [
 ];
 
 /**
- * Extract key decisions from assistant messages
+ * Extract key decisions from assistant messages using pattern matching
+ *
+ * Analyzes assistant messages to identify important decisions made during conversation.
+ * Uses confidence-scored patterns to detect implementation choices, architectural decisions,
+ * and workflow steps.
+ *
+ * @param messages - Array of messages to analyze
+ * @returns Array of detected decisions with confidence scores and categories
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const decisions = extractKeyDecisions(messages);
+ * console.log(decisions[0].text); // "implement authentication using JWT"
+ * console.log(decisions[0].confidence); // 0.9
+ * console.log(decisions[0].category); // "implementation"
+ * ```
  */
 export function extractKeyDecisions(messages: AgentMessage[]): KeyDecision[] {
   const decisions: KeyDecision[] = [];
@@ -173,7 +191,21 @@ export function extractKeyDecisions(messages: AgentMessage[]): KeyDecision[] {
 }
 
 /**
- * Track progress indicators from conversation
+ * Track progress indicators from conversation messages
+ *
+ * Scans conversation for progress markers like "completed", "currently working on",
+ * and calculates overall completion percentage. Useful for tracking workflow progress.
+ *
+ * @param messages - Array of messages to scan for progress indicators
+ * @returns Progress information including completed items, current activity, and percentage
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const progress = extractProgressInfo(messages);
+ * console.log(progress.completed); // ["file parsing", "test setup"]
+ * console.log(progress.current); // "implementing authentication"
+ * console.log(progress.percentage); // 66
+ * ```
  */
 export function extractProgressInfo(messages: AgentMessage[]): ProgressInfo {
   const completed: string[] = [];
@@ -217,6 +249,20 @@ export function extractProgressInfo(messages: AgentMessage[]): ProgressInfo {
 
 /**
  * Enhanced file modification tracking with action types
+ *
+ * Analyzes tool usage patterns to track file operations (read, write, edit).
+ * Provides detailed statistics including operation counts and recent activity.
+ *
+ * @param messages - Array of messages containing tool usage
+ * @returns Array of file modifications sorted by most recent activity
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const mods = extractFileModifications(messages);
+ * console.log(mods[0].path); // "src/auth.ts"
+ * console.log(mods[0].action); // "edit"
+ * console.log(mods[0].count); // 3
+ * ```
  */
 export function extractFileModifications(messages: AgentMessage[]): FileModification[] {
   const modifications = new Map<string, FileModification>();
@@ -269,6 +315,18 @@ export function extractFileModifications(messages: AgentMessage[]): FileModifica
 
 /**
  * Estimate token count for a string (rough approximation: ~4 chars per token)
+ *
+ * Provides a simple token estimation based on character count. Uses the common
+ * approximation of 4 characters per token for most natural language text.
+ *
+ * @param text - The text to analyze
+ * @returns Estimated number of tokens
+ * @example
+ * ```typescript
+ * const text = "Hello world!";
+ * const tokens = estimateTokens(text);
+ * console.log(tokens); // 3 (12 chars / 4)
+ * ```
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -276,6 +334,21 @@ export function estimateTokens(text: string): number {
 
 /**
  * Estimate token count for a message
+ *
+ * Calculates the estimated token count for all content in a message,
+ * including text blocks, tool inputs, and tool results.
+ *
+ * @param message - The message to analyze
+ * @returns Estimated total tokens for the message
+ * @example
+ * ```typescript
+ * const message: AgentMessage = {
+ *   type: 'assistant',
+ *   content: [{ type: 'text', text: 'Hello world!' }]
+ * };
+ * const tokens = estimateMessageTokens(message);
+ * console.log(tokens); // 3
+ * ```
  */
 export function estimateMessageTokens(message: AgentMessage): number {
   let tokens = 0;
@@ -299,6 +372,20 @@ export function estimateMessageTokens(message: AgentMessage): number {
 
 /**
  * Estimate total tokens in a conversation
+ *
+ * Sums up the estimated tokens for all messages in a conversation.
+ * Useful for determining if context compaction is needed.
+ *
+ * @param messages - Array of messages in the conversation
+ * @returns Total estimated tokens for the entire conversation
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const totalTokens = estimateConversationTokens(messages);
+ * if (totalTokens > 100000) {
+ *   console.log('Consider compacting the conversation');
+ * }
+ * ```
  */
 export function estimateConversationTokens(messages: AgentMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
@@ -306,6 +393,19 @@ export function estimateConversationTokens(messages: AgentMessage[]): number {
 
 /**
  * Truncate a tool result to maximum length
+ *
+ * Limits the size of tool results to prevent context overflow. Handles both
+ * string and object results by converting to string representation when needed.
+ *
+ * @param result - The tool result to truncate
+ * @param maxLength - Maximum length in characters (default: 5000)
+ * @returns Truncated result with truncation indicator if shortened
+ * @example
+ * ```typescript
+ * const largeResult = "A".repeat(10000);
+ * const truncated = truncateToolResult(largeResult, 1000);
+ * // Returns: "AAA...[... truncated 9000 characters ...]"
+ * ```
  */
 export function truncateToolResult(
   result: unknown,
@@ -330,6 +430,21 @@ export function truncateToolResult(
 
 /**
  * Create a summary of a message for context compaction
+ *
+ * Reduces message size by summarizing text content, preserving tool names,
+ * and replacing tool results with placeholders. Used in conversation compaction.
+ *
+ * @param message - The message to summarize
+ * @returns Summarized version of the message with reduced content
+ * @example
+ * ```typescript
+ * const longMessage: AgentMessage = {
+ *   type: 'assistant',
+ *   content: [{ type: 'text', text: 'A very long explanation...' }]
+ * };
+ * const summary = summarizeMessage(longMessage);
+ * // Returns message with "[Summary] A very long..." as text
+ * ```
  */
 export function summarizeMessage(message: AgentMessage): AgentMessage {
   const summarizedContent: AgentContentBlock[] = [];
@@ -365,10 +480,24 @@ export function summarizeMessage(message: AgentMessage): AgentMessage {
 }
 
 /**
- * Compact a conversation by:
- * 1. Keeping recent messages in full
- * 2. Summarizing older messages
- * 3. Truncating large tool results
+ * Compact a conversation by keeping recent messages and summarizing older ones
+ *
+ * Implements a multi-stage compaction strategy: preserves system messages,
+ * keeps recent messages in full detail, summarizes older messages, and
+ * truncates tool results. Performs aggressive compaction if token limit exceeded.
+ *
+ * @param messages - Array of messages to compact
+ * @param options - Compaction options with token limits and message counts
+ * @returns Compacted conversation that fits within token budget
+ * @example
+ * ```typescript
+ * const longConversation: AgentMessage[] = [...];
+ * const compacted = compactConversation(longConversation, {
+ *   maxTokens: 50000,
+ *   maxRecentMessages: 5
+ * });
+ * console.log(`Reduced from ${longConversation.length} to ${compacted.length} messages`);
+ * ```
  */
 export function compactConversation(
   messages: AgentMessage[],
@@ -439,6 +568,19 @@ export function compactConversation(
 
 /**
  * Prune tool results except for the last N
+ *
+ * Removes tool result content from older messages while preserving the most
+ * recent tool results. Helps reduce context size while maintaining recent context.
+ *
+ * @param messages - Array of messages to process
+ * @param keepLast - Number of recent tool results to preserve in full (default: 5)
+ * @returns Messages with older tool results replaced by placeholders
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...]; // 20 messages with tool results
+ * const pruned = pruneToolResults(messages, 3);
+ * // Only the last 3 tool results are kept, others become "[Result pruned...]"
+ * ```
  */
 export function pruneToolResults(
   messages: AgentMessage[],
@@ -477,6 +619,21 @@ export function pruneToolResults(
 
 /**
  * Create enhanced structured context summary data
+ *
+ * Generates comprehensive metadata about a conversation including metrics,
+ * key decisions, progress tracking, file modifications, and tool usage patterns.
+ * Used as foundation for creating human-readable summaries.
+ *
+ * @param messages - Array of messages to analyze
+ * @returns Structured data object with all conversation insights
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const data = createContextSummaryData(messages);
+ * console.log(data.metrics.messageCount); // 42
+ * console.log(data.keyDecisions.length); // 5
+ * console.log(data.fileModifications[0].path); // "src/auth.ts"
+ * ```
  */
 export function createContextSummaryData(messages: AgentMessage[]): ContextSummaryData {
   const toolUsage = new Map<string, number>();
@@ -521,7 +678,24 @@ export function createContextSummaryData(messages: AgentMessage[]): ContextSumma
 
 /**
  * Create a context summary for including at the start of resumed conversations
- * Enhanced version with decision tracking, progress monitoring, and detailed file operations
+ *
+ * Generates a formatted markdown summary of conversation history including
+ * metrics, file operations, progress tracking, key decisions, and recent requests.
+ * Enhanced version with decision tracking, progress monitoring, and detailed file operations.
+ *
+ * @param messages - Array of messages to summarize
+ * @returns Markdown-formatted summary string for conversation resumption
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const summary = createContextSummary(messages);
+ * console.log(summary);
+ * // ## Previous Context Summary
+ * // - Messages exchanged: 15
+ * // - Tools used: Read, Edit, Bash
+ * // - Files edited: src/auth.ts, src/utils.ts
+ * // ...
+ * ```
  */
 export function createContextSummary(messages: AgentMessage[]): string {
   // Use the enhanced data extraction
@@ -593,6 +767,21 @@ export function createContextSummary(messages: AgentMessage[]): string {
 
 /**
  * Analyze conversation to suggest compaction strategy
+ *
+ * Evaluates conversation size and composition to recommend appropriate
+ * compaction strategy. Categorizes tokens by type and suggests strategy
+ * based on total token count thresholds.
+ *
+ * @param messages - Array of messages to analyze
+ * @returns Analysis object with token breakdown and recommended compaction strategy
+ * @example
+ * ```typescript
+ * const messages: AgentMessage[] = [...];
+ * const analysis = analyzeConversation(messages);
+ * console.log(analysis.totalTokens); // 120000
+ * console.log(analysis.recommendedStrategy); // "summarize"
+ * console.log(analysis.toolResultTokens); // 80000
+ * ```
  */
 export function analyzeConversation(messages: AgentMessage[]): {
   totalTokens: number;

@@ -467,6 +467,87 @@ exports.mcpHelpers = {
             firstError,
         };
     },
+    // ==========================================================================
+    // Server Health Verification Helpers
+    // ==========================================================================
+    /**
+     * Verify server health status after installation
+     */
+    async verifyServerHealth(ctx, serverName) {
+        const validateResult = await exports.mcpHelpers.validate(ctx);
+        const statusResult = await exports.mcpHelpers.status(ctx);
+        const healthy = validateResult.success &&
+            statusResult.stdout.includes(serverName);
+        return {
+            healthy,
+            details: healthy
+                ? `Server ${serverName} is healthy`
+                : `Server ${serverName} health check failed: ${validateResult.stderr || statusResult.stderr}`,
+        };
+    },
+    /**
+     * Run the complete E2E flow as a single scenario
+     * browse → select → install → configure → verify
+     */
+    async runFullFlowScenario(ctx, serverName) {
+        const steps = [];
+        const flowStart = Date.now();
+        const runStep = async (name, action) => {
+            const stepStart = Date.now();
+            try {
+                const result = await action();
+                return {
+                    name,
+                    success: result.success,
+                    duration: Date.now() - stepStart,
+                    error: result.success ? undefined : result.stderr,
+                };
+            }
+            catch (err) {
+                return {
+                    name,
+                    success: false,
+                    duration: Date.now() - stepStart,
+                    error: err instanceof Error ? err.message : String(err),
+                };
+            }
+        };
+        // Step 1: Browse marketplace
+        steps.push(await runStep('browse', () => exports.mcpHelpers.listServers(ctx)));
+        // Step 2: Select (search for server)
+        steps.push(await runStep('select', () => exports.mcpHelpers.searchServers(ctx, serverName)));
+        // Step 3: Install server
+        steps.push(await runStep('install', () => exports.mcpHelpers.installServer(ctx, serverName)));
+        // Step 4: Configure (verify config was applied)
+        const configStepStart = Date.now();
+        try {
+            const config = await exports.mcpHelpers.getConfig(ctx);
+            const serverConfigured = !!config.servers?.[serverName];
+            steps.push({
+                name: 'configure',
+                success: serverConfigured,
+                duration: Date.now() - configStepStart,
+                error: serverConfigured ? undefined : `Server ${serverName} not found in config`,
+            });
+        }
+        catch (err) {
+            steps.push({
+                name: 'configure',
+                success: false,
+                duration: Date.now() - configStepStart,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+        // Step 5: Verify - health check
+        steps.push(await runStep('verify-health', () => exports.mcpHelpers.validate(ctx)));
+        // Step 6: Verify - server responds correctly
+        steps.push(await runStep('verify-response', () => exports.mcpHelpers.status(ctx)));
+        return {
+            success: steps.every(s => s.success),
+            steps,
+            totalDuration: Date.now() - flowStart,
+        };
+    },
 };
 // ============================================================================
 // Mock Server Integration Helpers
