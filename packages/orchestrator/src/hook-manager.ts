@@ -28,6 +28,23 @@ function isPostHookResult(result: PreHookResult | PostHookResult | null | undefi
   return result != null && !('action' in result);
 }
 
+/**
+ * Events emitted by the HookManager during hook execution lifecycle.
+ *
+ * @interface HookManagerEvents
+ * @example
+ * ```typescript
+ * const hookManager = new HookManager(projectPath, store);
+ *
+ * hookManager.on('hook:pre:start', (event) => {
+ *   console.log(`Pre-hook ${event.hookName} starting for ${event.toolName}`);
+ * });
+ *
+ * hookManager.on('hook:behavior:triggered', (event) => {
+ *   console.log(`Behavior mode ${event.behaviorMode} triggered: ${event.reason}`);
+ * });
+ * ```
+ */
 export interface HookManagerEvents {
   'hook:pre:start': (event: HookExecutionStartEvent) => void;
   'hook:pre:complete': (event: HookExecutionCompleteEvent) => void;
@@ -36,6 +53,17 @@ export interface HookManagerEvents {
   'hook:behavior:triggered': (event: BehaviorEventData) => void;
 }
 
+/**
+ * Event data emitted when a hook execution begins.
+ *
+ * @interface HookExecutionStartEvent
+ * @example
+ * ```typescript
+ * hookManager.on('hook:pre:start', (event: HookExecutionStartEvent) => {
+ *   console.log(`Hook ${event.hookName} starting for task ${event.taskId}`);
+ * });
+ * ```
+ */
 export interface HookExecutionStartEvent {
   taskId?: string;
   hookName: string;
@@ -44,6 +72,21 @@ export interface HookExecutionStartEvent {
   timestamp: Date;
 }
 
+/**
+ * Event data emitted when a hook execution completes.
+ *
+ * @interface HookExecutionCompleteEvent
+ * @example
+ * ```typescript
+ * hookManager.on('hook:post:complete', (event: HookExecutionCompleteEvent) => {
+ *   if (event.success) {
+ *     console.log(`Hook completed in ${event.duration}ms`);
+ *   } else {
+ *     console.error(`Hook failed: ${event.error}`);
+ *   }
+ * });
+ * ```
+ */
 export interface HookExecutionCompleteEvent {
   taskId?: string;
   hookName: string;
@@ -69,7 +112,28 @@ export interface HookExecutionResult {
 }
 
 /**
- * HookManager manages lifecycle hooks and tool hooks for the orchestrator
+ * Manages lifecycle hooks and tool hooks for the orchestrator.
+ *
+ * The HookManager provides a flexible hook system for intercepting and modifying
+ * tool executions through pre and post-hooks. It supports behavior modes for
+ * security enforcement, content redaction, and custom processing workflows.
+ *
+ * @example
+ * ```typescript
+ * const hookManager = new HookManager(projectPath, store, lifecycleHooks, toolHookConfig);
+ *
+ * // Execute pre-hooks before tool execution
+ * const preResult = await hookManager.executePreHooks({
+ *   toolName: 'bash',
+ *   taskId: 'task-123',
+ *   arguments: { command: 'ls -la' }
+ * });
+ *
+ * if (preResult.cancelled) {
+ *   console.log('Tool execution cancelled by hook');
+ *   return;
+ * }
+ * ```
  */
 export class HookManager extends EventEmitter<HookManagerEvents> {
   private lifecycleHooks: HookConfig[] = [];

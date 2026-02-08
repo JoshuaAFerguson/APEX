@@ -33,12 +33,16 @@ import { CrossReferenceValidator } from './analyzers/cross-reference-validator';
 
 
 /**
- * Type of update required for an outdated dependency
+ * Type of update required for an outdated dependency based on semantic versioning.
+ *
+ * @typedef {string} UpdateType
  */
 export type UpdateType = 'major' | 'minor' | 'patch';
 
 /**
- * Vulnerability severity level per CVSS scoring
+ * Vulnerability severity level based on Common Vulnerability Scoring System (CVSS).
+ *
+ * @typedef {string} VulnerabilitySeverity
  */
 export type VulnerabilitySeverity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -86,6 +90,21 @@ export interface DeprecatedPackage {
   reason: string;
 }
 
+/**
+ * Comprehensive analysis results of a project including code quality, dependencies, and documentation.
+ *
+ * @interface ProjectAnalysis
+ * @example
+ * ```typescript
+ * const analysis: ProjectAnalysis = {
+ *   codebaseSize: { files: 150, lines: 25000, languages: { typescript: 20000 } },
+ *   dependencies: { outdated: [], security: [] },
+ *   codeQuality: { lintIssues: 5, duplicatedCode: [], complexityHotspots: [] },
+ *   documentation: { coveragePercentage: 75, missingDocs: [] },
+ *   performance: { bundleSize: 2048000, slowTests: [], bottlenecks: [] }
+ * };
+ * ```
+ */
 export interface ProjectAnalysis {
   codebaseSize: {
     files: number;
@@ -179,6 +198,27 @@ export interface ProjectAnalysis {
   };
 }
 
+/**
+ * Events emitted by the IdleProcessor during project analysis and task generation.
+ *
+ * @interface IdleProcessorEvents
+ * @example
+ * ```typescript
+ * const processor = new IdleProcessor(projectPath, config, store);
+ *
+ * processor.on('analysis:started', () => {
+ *   console.log('Starting project analysis...');
+ * });
+ *
+ * processor.on('analysis:completed', (analysis) => {
+ *   console.log(`Found ${analysis.codeQuality.lintIssues} lint issues`);
+ * });
+ *
+ * processor.on('task:suggested', (task) => {
+ *   console.log(`New improvement suggestion: ${task.title}`);
+ * });
+ * ```
+ */
 export interface IdleProcessorEvents {
   // Existing events
   'analysis:started': () => void;
@@ -201,7 +241,24 @@ export interface IdleProcessorEvents {
 }
 
 /**
- * Analyzes the project during idle time and generates improvement tasks
+ * Analyzes the project during idle time and generates improvement tasks.
+ *
+ * The IdleProcessor monitors project activity and performs comprehensive analysis
+ * during idle periods to identify opportunities for code quality improvements,
+ * dependency updates, documentation enhancements, and test coverage gaps.
+ *
+ * @example
+ * ```typescript
+ * const processor = new IdleProcessor(projectPath, config, store);
+ * await processor.start();
+ *
+ * processor.on('task:suggested', (task) => {
+ *   console.log(`New suggestion: ${task.title}`);
+ * });
+ *
+ * // Manually trigger analysis
+ * await processor.processIdleTime();
+ * ```
  */
 export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   private projectPath: string;
@@ -211,6 +268,13 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   private lastAnalysis?: ProjectAnalysis;
   private taskGenerator: IdleTaskGenerator;
 
+  /**
+   * Create a new IdleProcessor instance.
+   *
+   * @param projectPath - Absolute path to the project root directory
+   * @param config - Daemon configuration including idle processing settings
+   * @param store - TaskStore instance for persisting analysis results and tasks
+   */
   constructor(projectPath: string, config: DaemonConfig, store: TaskStore) {
     super();
     this.projectPath = projectPath;
@@ -225,7 +289,18 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 
   /**
-   * Start idle processing if enabled
+   * Start idle processing if enabled in the daemon configuration.
+   *
+   * Sets up periodic monitoring for idle periods and task generation intervals.
+   * Analysis is triggered when the project has been idle for the configured threshold.
+   *
+   * @returns Promise that resolves when monitoring is set up
+   * @example
+   * ```typescript
+   * const processor = new IdleProcessor(projectPath, config, store);
+   * await processor.start();
+   * console.log('Idle processing monitoring started');
+   * ```
    */
   async start(): Promise<void> {
     if (!this.config.idleProcessing?.enabled) {
@@ -254,7 +329,20 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 
   /**
-   * Manually trigger idle processing
+   * Manually trigger idle processing to analyze the project and generate tasks.
+   *
+   * Performs comprehensive project analysis including code quality, dependencies,
+   * documentation, and test coverage. Generates improvement tasks based on findings.
+   *
+   * @returns Promise that resolves when analysis and task generation is complete
+   * @example
+   * ```typescript
+   * // Manually trigger analysis
+   * await processor.processIdleTime();
+   * const analysis = processor.getLastAnalysis();
+   * const tasks = await processor.getGeneratedTasks();
+   * console.log(`Analysis complete: ${tasks.length} tasks generated`);
+   * ```
    */
   async processIdleTime(): Promise<void> {
     if (this.isProcessing) {
@@ -283,21 +371,53 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 
   /**
-   * Get the current project analysis
+   * Get the most recent project analysis results.
+   *
+   * @returns Last project analysis or undefined if no analysis has been performed
+   * @example
+   * ```typescript
+   * const analysis = processor.getLastAnalysis();
+   * if (analysis) {
+   *   console.log(`Codebase has ${analysis.codebaseSize.files} files`);
+   *   console.log(`Found ${analysis.codeQuality.lintIssues} lint issues`);
+   * }
+   * ```
    */
   getLastAnalysis(): ProjectAnalysis | undefined {
     return this.lastAnalysis;
   }
 
   /**
-   * Get generated improvement tasks
+   * Get all generated improvement tasks from idle processing.
+   *
+   * @returns Promise resolving to array of generated idle tasks
+   * @example
+   * ```typescript
+   * const tasks = await processor.getGeneratedTasks();
+   * tasks.forEach(task => {
+   *   console.log(`${task.title} (${task.type}) - Priority: ${task.priority}`);
+   * });
+   * ```
    */
   async getGeneratedTasks(): Promise<IdleTask[]> {
     return await this.store.listIdleTasks();
   }
 
   /**
-   * Convert an idle task to a real task
+   * Convert an idle task suggestion into a real executable task.
+   *
+   * Creates a new task in the task store based on the idle task's description
+   * and marks the idle task as implemented to prevent duplication.
+   *
+   * @param idleTaskId - Unique identifier of the idle task to implement
+   * @returns Promise resolving to the ID of the newly created task
+   * @throws {Error} When idle task is not found or already implemented
+   * @example
+   * ```typescript
+   * const tasks = await processor.getGeneratedTasks();
+   * const taskId = await processor.implementIdleTask(tasks[0].id);
+   * console.log(`Created task ${taskId} from idle suggestion`);
+   * ```
    */
   async implementIdleTask(idleTaskId: string): Promise<string> {
     const idleTask = await this.store.getIdleTask(idleTaskId);
@@ -329,7 +449,16 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 
   /**
-   * Dismiss an idle task suggestion
+   * Dismiss an idle task suggestion by removing it from the task store.
+   *
+   * @param idleTaskId - Unique identifier of the idle task to dismiss
+   * @returns Promise that resolves when the task is dismissed
+   * @example
+   * ```typescript
+   * // Dismiss a task that's not relevant
+   * await processor.dismissIdleTask('idle-task-123');
+   * console.log('Task suggestion dismissed');
+   * ```
    */
   async dismissIdleTask(idleTaskId: string): Promise<void> {
     await this.store.deleteIdleTask(idleTaskId);

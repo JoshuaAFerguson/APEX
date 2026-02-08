@@ -96,6 +96,285 @@ safeJsonParse('{"key": "value"}', {}); // Parse JSON with fallback
 extractCodeBlocks(markdown); // Extract code blocks from markdown
 ```
 
+### Tool Output Utilities
+
+```typescript
+import {
+  truncateToolOutput,
+  type TruncateOptions,
+  type TruncateResult
+} from '@apexcli/core';
+
+// Basic truncation
+const result = truncateToolOutput('Very long output...', { maxLength: 100 });
+console.log(result.output); // Truncated string
+console.log(result.truncated); // true if truncated
+console.log(result.originalLength); // Original length
+console.log(result.truncatedLength); // Final length
+
+// Advanced truncation options
+const advancedResult = truncateToolOutput(longJsonOutput, {
+  maxLength: 5000,
+  suffix: '... [output truncated]',
+  preserveJson: true, // Preserve JSON structure when possible
+  wordBoundary: true // Truncate at word boundaries when possible
+});
+
+// JSON-aware truncation preserves structure
+const jsonData = JSON.stringify({ users: [/*...lots of data...*/] });
+const jsonResult = truncateToolOutput(jsonData, {
+  maxLength: 1000,
+  preserveJson: true
+});
+// Result will be valid JSON with truncation indicators
+```
+
+### Logger System
+
+```typescript
+import {
+  Logger,
+  createPackageLogger,
+  createComponentLogger,
+  createTaskLogger,
+  type LogLevel,
+  type LoggerContext
+} from '@apexcli/core';
+
+// Get singleton logger instance
+const logger = Logger.getInstance();
+logger.info('Application started');
+
+// Create package-specific logger
+const cliLogger = createPackageLogger('cli');
+cliLogger.debug('Processing command', { command: 'init' });
+
+// Create component-specific logger
+const daemonLogger = createComponentLogger('orchestrator', 'daemon');
+daemonLogger.warn('High memory usage', { memory: '512MB' });
+
+// Create task-scoped logger
+const taskLogger = createTaskLogger('task_123');
+taskLogger.error('Task failed', new Error('Network timeout'));
+
+// Child loggers with custom context
+const userLogger = logger.child({
+  userId: '12345',
+  sessionId: 'abc-def-ghi'
+});
+userLogger.info('User action', { action: 'login' });
+```
+
+### Container and Environment Utilities
+
+```typescript
+import {
+  detectContainerRuntime,
+  ContainerManager,
+  ContainerHealthMonitor,
+  ImageBuilder,
+  detectPackageManager,
+  detectEnvironment,
+  type ContainerRuntime,
+  type ContainerConfig,
+  type HealthCheck,
+  type BuildConfig,
+  type PackageManager,
+  type Environment
+} from '@apexcli/core';
+
+// Detect container runtime
+const runtime = await detectContainerRuntime();
+console.log(runtime); // 'docker', 'podman', 'containerd', or null
+
+// Container management
+const manager = new ContainerManager();
+const container = await manager.create({
+  image: 'node:18',
+  command: ['npm', 'test'],
+  workingDir: '/app'
+});
+await manager.start(container.id);
+
+// Health monitoring
+const monitor = new ContainerHealthMonitor();
+await monitor.startMonitoring(container.id, {
+  interval: 30000,
+  timeout: 10000,
+  retries: 3
+});
+
+// Image building
+const builder = new ImageBuilder();
+await builder.build({
+  dockerfilePath: './Dockerfile',
+  context: '.',
+  tags: ['myapp:latest']
+});
+
+// Package manager detection
+const pkgManager = detectPackageManager('/path/to/project');
+console.log(pkgManager); // 'npm', 'yarn', 'pnpm', or null
+
+// Environment detection
+const env = detectEnvironment();
+console.log(env.type); // 'development', 'production', 'test'
+console.log(env.isContainer); // boolean
+console.log(env.ci); // CI provider name or null
+```
+
+### Security and Validation Utilities
+
+```typescript
+import {
+  scanForSecrets,
+  validateDirectoryAccess,
+  detectDangerousOperation,
+  formatError,
+  ApexError,
+  type SecretMatch,
+  type DirectoryAccessResult,
+  type DangerousOperationResult
+} from '@apexcli/core';
+
+// Secret scanning
+const secrets = scanForSecrets('API_KEY=sk_1234567890abcdef');
+console.log(secrets);
+// [{ type: 'api_key', match: 'sk_1234567890abcdef', startIndex: 8, endIndex: 25 }]
+
+// Directory access validation
+const access = validateDirectoryAccess('/some/path');
+console.log(access);
+// { hasAccess: true, isWritable: true, exists: true, error: null }
+
+// Dangerous operation detection
+const operation = detectDangerousOperation('rm -rf /');
+console.log(operation);
+// { isDangerous: true, severity: 'high', reason: 'Recursive deletion of root directory' }
+
+// Error formatting
+const formattedError = formatError(new Error('Something went wrong'), {
+  includeStack: true,
+  colorize: true
+});
+
+// Custom APEX errors
+throw new ApexError('Task failed', 'TASK_EXECUTION_ERROR', {
+  taskId: 'task_123',
+  step: 'validation'
+});
+```
+
+### Connection and Health Utilities
+
+```typescript
+import {
+  ExponentialBackoff,
+  ConnectionHealth,
+  HealthMetrics,
+  type ExponentialBackoffConfig,
+  type ConnectionHealthConfig,
+  type HealthMetricsData,
+  type JitterStrategy,
+  type ReconnectionState
+} from '@apexcli/core';
+
+// Exponential backoff for retries
+const backoff = new ExponentialBackoff({
+  baseDelayMs: 1000,
+  backoffFactor: 2,
+  maxDelayMs: 30000,
+  maxRetries: 5,
+  jitterStrategy: 'equal'
+});
+
+backoff.on('retry', ({ attempt, delayMs }) => {
+  console.log(`Retry attempt ${attempt} after ${delayMs}ms`);
+});
+
+await backoff.retry(async () => {
+  // Your connection logic here
+  const response = await fetch('/api/endpoint');
+  if (!response.ok) throw new Error('Request failed');
+  return response.json();
+});
+
+// Connection health monitoring
+const health = new ConnectionHealth({
+  checkInterval: 30000,
+  timeout: 5000,
+  maxFailures: 3
+});
+
+health.on('statusChange', ({ status, error }) => {
+  console.log(`Connection status: ${status}`, error);
+});
+
+await health.start();
+
+// Health metrics collection
+const metrics = new HealthMetrics();
+metrics.recordLatency('api_request', 250);
+metrics.recordCounter('requests_total', 1, { endpoint: '/api/users' });
+metrics.recordGauge('memory_usage', process.memoryUsage().heapUsed);
+
+const report = metrics.getSnapshot();
+console.log(report); // Current metrics snapshot
+```
+
+### Screenshot and Comparison Utilities
+
+```typescript
+import {
+  ScreenshotComparator,
+  type ComparisonOptions,
+  type ComparisonResult,
+  type DiffPixelData
+} from '@apexcli/core';
+
+// Screenshot comparison
+const comparator = new ScreenshotComparator();
+
+const result = await comparator.compare(
+  '/path/to/baseline.png',
+  '/path/to/current.png',
+  {
+    threshold: 0.1, // 10% difference threshold
+    outputDiffPath: '/path/to/diff.png',
+    includeAA: false // Anti-aliasing detection
+  }
+);
+
+console.log(result);
+// {
+//   match: false,
+//   diffPixels: 1250,
+//   totalPixels: 100000,
+//   diffPercentage: 1.25,
+//   threshold: 0.1,
+//   diffPath: '/path/to/diff.png'
+// }
+```
+
+### Syntax Highlighting
+
+```typescript
+import {
+  highlightCode,
+  type SupportedLanguage,
+  type HighlightOptions
+} from '@apexcli/core';
+
+// Highlight code for terminal output
+const highlighted = highlightCode(
+  'function hello() { return "world"; }',
+  'javascript',
+  { theme: 'dark', lineNumbers: true }
+);
+
+console.log(highlighted); // ANSI colored output for terminal
+```
+
 ### Semantic Versioning Utilities
 
 ```typescript
@@ -300,6 +579,119 @@ console.log(changelog);
 //
 // ### 🐛 Bug Fixes
 // - resolve login bug ([def456](https://github.com/user/repo/commit/def456))
+```
+
+### Tools Module
+
+The `@apexcli/core/tools` module provides foundational abstractions for building custom tools:
+
+```typescript
+import {
+  BaseTool,
+  ToolRegistry,
+  ToolInterface,
+  getToolRegistry,
+  registerTool,
+  type ToolExecutionContext,
+  type ToolInputType,
+  type ToolOutputType
+} from '@apexcli/core/tools';
+
+// Create a custom tool
+class MyCustomTool extends BaseTool<{ input: string }, { output: string }> {
+  name = 'my-custom-tool';
+  description = 'A custom tool example';
+
+  async execute(
+    input: { input: string },
+    context: ToolExecutionContext
+  ): Promise<{ output: string }> {
+    return { output: `Processed: ${input.input}` };
+  }
+}
+
+// Register the tool
+const registry = getToolRegistry();
+await registry.register(new MyCustomTool());
+
+// Use the tool
+const result = await registry.execute('my-custom-tool', { input: 'Hello' });
+console.log(result.output); // "Processed: Hello"
+```
+
+#### Built-in Tools
+
+```typescript
+import {
+  // Filesystem tools
+  ReadTool, EditTool, GlobTool,
+  createReadTool, createEditTool, createGlobTool,
+
+  // Shell tools
+  BashTool, BackgroundTaskManager,
+  createBashTool,
+
+  // Search tools
+  GrepTool,
+
+  // Web tools
+  WebSearchTool,
+  createWebSearchTool,
+
+  // Browser tools
+  BrowserTool
+} from '@apexcli/core/tools';
+
+// Use built-in filesystem tools
+const readTool = createReadTool();
+const content = await readTool.execute({ filePath: '/path/to/file.txt' });
+
+const editTool = createEditTool();
+await editTool.execute({
+  filePath: '/path/to/file.txt',
+  oldString: 'old content',
+  newString: 'new content'
+});
+
+const globTool = createGlobTool();
+const files = await globTool.execute({ pattern: '**/*.ts' });
+
+// Use shell tools
+const bashTool = createBashTool();
+const output = await bashTool.execute({ command: 'ls -la' });
+
+// Use search tools
+const grepTool = new GrepTool();
+const matches = await grepTool.execute({
+  pattern: 'function',
+  path: '/path/to/search'
+});
+
+// Use web tools
+const webSearchTool = createWebSearchTool();
+const results = await webSearchTool.execute({ query: 'APEX AI platform' });
+```
+
+#### Tool Registration
+
+```typescript
+import {
+  registerFilesystemTools,
+  registerShellTools,
+  registerSearchTools,
+  registerWebTools
+} from '@apexcli/core/tools';
+
+// Register all built-in tools
+await registerFilesystemTools();
+await registerShellTools();
+await registerSearchTools();
+await registerWebTools();
+
+// Now all tools are available in the registry
+const registry = getToolRegistry();
+const allTools = registry.getAllTools();
+console.log(allTools.map(tool => tool.name));
 ```
 
 ## Key Types

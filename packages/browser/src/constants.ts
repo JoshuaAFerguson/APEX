@@ -11,7 +11,26 @@ import type {
 } from './types.js';
 
 /**
- * Default browser session configuration
+ * Default browser session configuration.
+ *
+ * Provides sensible defaults for browser automation including
+ * Chromium browser, headless mode, standard viewport, and
+ * security-oriented launch arguments.
+ *
+ * @example
+ * ```typescript
+ * import { defaultBrowserConfig } from '@apexcli/browser';
+ *
+ * // Use defaults directly
+ * const session = new BrowserSession(manager, defaultBrowserConfig);
+ *
+ * // Override specific settings
+ * const customConfig = {
+ *   ...defaultBrowserConfig,
+ *   headless: false,
+ *   viewport: { width: 1920, height: 1080 }
+ * };
+ * ```
  */
 export const defaultBrowserConfig: BrowserSessionConfig = {
   browserType: 'chromium',
@@ -40,7 +59,28 @@ export const defaultBrowserConfig: BrowserSessionConfig = {
 };
 
 /**
- * Default browser manager configuration
+ * Default browser manager configuration.
+ *
+ * Provides balanced settings for browser instance management
+ * including instance limits, reuse behavior, and resource constraints.
+ *
+ * @example
+ * ```typescript
+ * import { defaultManagerConfig } from '@apexcli/browser';
+ *
+ * // Use defaults
+ * const manager = new BrowserManager(defaultManagerConfig);
+ *
+ * // Override for high-concurrency scenarios
+ * const highConcurrencyConfig = {
+ *   ...defaultManagerConfig,
+ *   maxInstances: 20,
+ *   resourceLimits: {
+ *     maxMemoryMB: 4096,
+ *     maxCpuPercent: 90
+ *   }
+ * };
+ * ```
  */
 export const defaultManagerConfig: BrowserManagerConfig = {
   maxInstances: 5,
@@ -54,7 +94,25 @@ export const defaultManagerConfig: BrowserManagerConfig = {
 };
 
 /**
- * Default capture configuration
+ * Default capture configuration.
+ *
+ * Enables comprehensive console and error capture with
+ * reasonable buffer limits for typical automation scenarios.
+ *
+ * @example
+ * ```typescript
+ * import { defaultCaptureConfig } from '@apexcli/browser';
+ *
+ * // Use defaults for full capture
+ * const session = new BrowserSession(manager, {}, defaultCaptureConfig);
+ *
+ * // Customize for error-only capture
+ * const errorOnlyConfig = {
+ *   ...defaultCaptureConfig,
+ *   captureConsole: false,
+ *   consoleLevels: []
+ * };
+ * ```
  */
 export const defaultCaptureConfig: CaptureConfig = {
   captureConsole: true,
@@ -65,7 +123,20 @@ export const defaultCaptureConfig: CaptureConfig = {
 };
 
 /**
- * Browser launch timeouts and limits
+ * Browser launch timeouts and limits.
+ *
+ * Defines timeout values and retry policies for browser operations
+ * to prevent hanging operations and provide reasonable wait times.
+ *
+ * @example
+ * ```typescript
+ * import { BROWSER_LIMITS } from '@apexcli/browser';
+ *
+ * // Use in custom timeout configuration
+ * const customTimeout = BROWSER_LIMITS.NAVIGATION_TIMEOUT_MS * 2;
+ *
+ * await session.navigate(url, { timeout: customTimeout });
+ * ```
  */
 export const BROWSER_LIMITS = {
   /** Maximum time to wait for browser launch */
@@ -81,7 +152,18 @@ export const BROWSER_LIMITS = {
 } as const;
 
 /**
- * Resource monitoring intervals
+ * Resource monitoring intervals.
+ *
+ * Defines intervals for background monitoring tasks including
+ * resource usage checks, cleanup operations, and activity tracking.
+ *
+ * @example
+ * ```typescript
+ * import { MONITORING_INTERVALS } from '@apexcli/browser';
+ *
+ * // Use for custom monitoring setup
+ * setInterval(checkCustomResources, MONITORING_INTERVALS.RESOURCE_CHECK_INTERVAL_MS);
+ * ```
  */
 export const MONITORING_INTERVALS = {
   /** How often to check resource usage (ms) */
@@ -93,7 +175,23 @@ export const MONITORING_INTERVALS = {
 } as const;
 
 /**
- * Error messages for common browser automation failures
+ * Error messages for common browser automation failures.
+ *
+ * Standardized error messages for consistent error reporting
+ * across all browser automation operations.
+ *
+ * @example
+ * ```typescript
+ * import { ERROR_MESSAGES } from '@apexcli/browser';
+ *
+ * // Use in custom error handling
+ * if (!this.page) {
+ *   return {
+ *     success: false,
+ *     error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED
+ *   };
+ * }
+ * ```
  */
 export const ERROR_MESSAGES = {
   BROWSER_NOT_LAUNCHED: 'Browser not launched. Call launch() first.',
@@ -113,7 +211,19 @@ export const ERROR_MESSAGES = {
 } as const;
 
 /**
- * Browser user agent strings for different types
+ * Browser user agent strings for different types.
+ *
+ * Common user agent strings for desktop and mobile browsers
+ * to enable browser-specific testing and user agent spoofing.
+ *
+ * @example
+ * ```typescript
+ * import { USER_AGENTS } from '@apexcli/browser';
+ *
+ * const session = new BrowserSession(manager, {
+ *   userAgent: USER_AGENTS.CHROME_MOBILE
+ * });
+ * ```
  */
 export const USER_AGENTS = {
   CHROME_DESKTOP: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

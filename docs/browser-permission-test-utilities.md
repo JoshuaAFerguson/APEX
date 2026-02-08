@@ -1965,6 +1965,1002 @@ it('should provide complete mock environment for integration tests', async () =>
 
 ---
 
+## API Reference: Browser Permission Simulator
+
+> **Tip:** The `BrowserPermissionSimulator` class provides advanced utilities for simulating browser automation permission scenarios. Use this for comprehensive integration testing of permission flows, including request/response simulation, state management, and error scenario generation.
+
+```typescript
+import {
+  BrowserPermissionSimulator,
+  createBrowserPermissionSimulator,
+  createTestPermissionSimulator,
+  mockBrowserPermissionManager,
+  createBrowserPermissionTestContext
+} from 'tests/test-utils/browser-permission-simulator';
+```
+
+### `BrowserPermissionSimulator`
+
+**Class** - Comprehensive browser permission simulator for testing permission workflows.
+
+```typescript
+const simulator = new BrowserPermissionSimulator({
+  defaultPermissionLevel: 'read',
+  denyOperations: ['dangerous-operation'],
+  restrictedDomains: ['blocked.com'],
+  simulateNetworkFailures: false,
+  simulateTimeouts: false,
+  customRules: [],
+  responseDelay: 0
+});
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `defaultPermissionLevel` | `PermissionLevel` | `'read'` | Default permission level for allowed operations |
+| `denyOperations` | `string[]` | `[]` | Operations to explicitly deny |
+| `restrictedDomains` | `string[]` | `[]` | Domains with restricted access |
+| `simulateNetworkFailures` | `boolean` | `false` | Simulate random network failures (10% chance) |
+| `simulateTimeouts` | `boolean` | `false` | Simulate random timeouts (5% chance) |
+| `customRules` | `BrowserPermissionRule[]` | `[]` | Custom permission rules |
+| `responseDelay` | `number` | `0` | Default response delay in milliseconds |
+
+---
+
+### `.requestPermission(operation, options?)`
+
+Simulates a browser automation permission request with full lifecycle tracking.
+
+```typescript
+const response = await simulator.requestPermission('navigate', {
+  domain: 'https://example.com',
+  params: { timeout: 5000 },
+  bypassCache: false
+});
+
+// Response structure:
+// {
+//   granted: true,
+//   level: 'read',
+//   reason: undefined,
+//   metadata: {
+//     responseTime: 15,
+//     matchedRule: 'default',
+//     browserContext: { ... }
+//   }
+// }
+```
+
+**Parameters:**
+- `operation`: `string` — The browser operation to check (e.g., 'navigate', 'click', 'screenshot')
+- `options.domain`: `string` *(optional)* — Target domain for domain-based rules
+- `options.params`: `Record<string, any>` *(optional)* — Additional operation parameters
+- `options.bypassCache`: `boolean` *(optional)* — Skip cached responses
+
+**Returns:** `Promise<BrowserPermissionResponse>` — The permission response
+
+**Events Emitted:**
+- `permission:requested` — When request is initiated
+- `permission:cache-hit` — When cached response is used
+- `permission:responded` — When response is generated
+
+---
+
+### `.grantPermission(operation, level?)`
+
+Grants permission for a specific operation programmatically.
+
+```typescript
+simulator.grantPermission('navigate', 'full');
+simulator.grantPermission('click'); // Defaults to 'full'
+```
+
+**Parameters:**
+- `operation`: `string` — The operation to grant permission for
+- `level`: `PermissionLevel` *(optional, default: `'full'`)* — Permission level to grant
+
+---
+
+### `.denyPermission(operation, reason?)`
+
+Denies permission for a specific operation.
+
+```typescript
+simulator.denyPermission('evaluate', 'JavaScript execution not allowed');
+```
+
+**Parameters:**
+- `operation`: `string` — The operation to deny
+- `reason`: `string` *(optional)* — Reason for denial
+
+---
+
+### `.clearPermissions()`
+
+Clears all permissions and resets the simulator state.
+
+```typescript
+simulator.clearPermissions();
+// All granted permissions, active denials, cache, and history are cleared
+```
+
+---
+
+### `.createPermissionDeniedError(operation, context?)`
+
+Creates a `BrowserPermissionDeniedError` for testing error handling.
+
+```typescript
+const error = simulator.createPermissionDeniedError('navigate', {
+  target: 'https://blocked.com',
+  denialReason: 'Domain blocked by security policy'
+});
+
+// Use in tests:
+expect(() => { throw error; }).toThrow(BrowserPermissionDeniedError);
+```
+
+---
+
+### `createTestPermissionSimulator()`
+
+Factory function that creates a pre-configured simulator with common test scenarios.
+
+```typescript
+const simulator = createTestPermissionSimulator();
+// Pre-configured with:
+// - denyOperations: ['dangerous-operation', 'restricted-action']
+// - restrictedDomains: ['blocked.com', 'malicious.site']
+// - customRules: Navigation, screenshot, interaction, and file system scenarios
+// - responseDelay: 10ms
+```
+
+---
+
+### `mockBrowserPermissionManager()`
+
+Creates a mock permission manager for unit testing.
+
+```typescript
+const {
+  simulator,
+  checkPermission,
+  grantPermission,
+  denyPermission
+} = mockBrowserPermissionManager();
+
+// Use in tests:
+const result = await checkPermission('navigate', { domain: 'https://example.com' });
+expect(result.granted).toBe(true);
+
+// Verify mock calls:
+expect(checkPermission).toHaveBeenCalledWith('navigate', expect.any(Object));
+```
+
+**Returns:**
+- `simulator`: The underlying `BrowserPermissionSimulator` instance
+- `checkPermission`: Mocked function for checking permissions
+- `grantPermission`: Mocked function for granting permissions
+- `denyPermission`: Mocked function for denying permissions
+
+---
+
+## API Reference: Permission Test Helpers
+
+> **Tip:** The permission test helpers provide focused utilities for testing permission-denied scenarios in browser automation. These helpers include mock permission managers, tracked browsers for leak detection, and assertion helpers specifically designed for comprehensive permission testing.
+
+```typescript
+import {
+  createMockPermissionManager,
+  createTrackedMockBrowser,
+  createPermissionTestContext,
+  createPermissionDenialScenarios,
+  assertCleanResourceState,
+  assertPermissionDeniedResponse,
+  assertPermissionEventsEmitted,
+  assertErrorMessageQuality
+} from 'tests/test-utils/permission-test-helpers';
+```
+
+### `createMockPermissionManager(config?)`
+
+Creates a mock permission manager with configurable behavior for testing.
+
+```typescript
+const permissionManager = createMockPermissionManager({
+  denyOperations: ['evaluate', 'submit'],
+  blockedDomains: ['restricted.com'],
+  defaultPermissionLevel: 'read',
+  simulateFailures: false
+});
+
+// Check permissions:
+const result = await permissionManager.checkToolPermission('Browser', {
+  scope: 'navigate'
+});
+
+// Dynamically deny/grant:
+await permissionManager.denyPermission('Browser', 'screenshot');
+await permissionManager.grantPermission('Browser', 'full', 'click');
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `denyOperations` | `string[]` | `[]` | Operations to deny by default |
+| `blockedDomains` | `string[]` | `[]` | Domains to block |
+| `defaultPermissionLevel` | `PermissionLevel` | `'full'` | Default level for allowed operations |
+| `simulateFailures` | `boolean` | `false` | Throw permission database errors |
+
+---
+
+### `createTrackedMockBrowser()`
+
+Creates a mock browser with resource tracking for leak detection.
+
+```typescript
+const mockBrowser = createTrackedMockBrowser();
+
+// Use the browser:
+const context = await mockBrowser.browser.newContext();
+const page = await context.newPage();
+await page.goto('https://example.com');
+
+// Track operations:
+mockBrowser.markOperationStart();
+// ... perform operation ...
+mockBrowser.markOperationEnd();
+
+// Verify cleanup at end of test:
+await mockBrowser.close();
+mockBrowser.verifyCleanup(); // Throws if resources leaked
+```
+
+**Returns:** `MockTrackedBrowser` with:
+- `browser`: Mock Playwright browser instance
+- `context`: Mock browser context
+- `page`: Mock page with common methods (goto, click, fill, screenshot, etc.)
+- `state`: `BrowserResourceState` tracking resource allocation
+- `verifyCleanup()`: Assertion method for leak detection
+- `markOperationStart()` / `markOperationEnd()`: Operation tracking
+- `close()`: Cleanup method
+
+---
+
+### `createPermissionTestContext(config?)`
+
+Creates a complete permission test context with all dependencies wired together.
+
+```typescript
+const ctx = createPermissionTestContext({
+  denyOperations: ['evaluate'],
+  blockedDomains: ['blocked.com']
+});
+
+// Use the context:
+const result = await ctx.browserTool.execute({
+  operation: 'navigate',
+  params: { url: 'https://example.com' }
+});
+
+// Check events:
+expect(ctx.events).toHaveLength(2); // requested + granted/denied
+
+// Cleanup:
+await ctx.browserTool.cleanup();
+assertCleanResourceState(ctx);
+```
+
+**Returns:** `PermissionTestContext` with:
+- `browserTool`: Mock browser tool with permission checking
+- `permissionManager`: Mock permission manager
+- `eventEmitter`: Event emitter for permission events
+- `events`: Array of captured permission events
+- `mockBrowser`: Tracked mock browser
+- `resourceState`: Current browser resource state
+
+---
+
+### `assertPermissionDeniedResponse(result, expectedOperation)`
+
+Asserts that a browser tool response indicates permission was denied with proper structure.
+
+```typescript
+const result = await browserTool.execute({
+  operation: 'evaluate',
+  params: { script: 'document.title' }
+});
+
+assertPermissionDeniedResponse(result, 'evaluate');
+// Verifies:
+// - result.success === false
+// - result.operation === 'evaluate'
+// - result.permissionDenied === true
+// - result.error is user-friendly string
+// - result.metadata contains deniedBy, timestamp, suggestions
+```
+
+---
+
+### `assertPermissionEventsEmitted(events, expectedType, expectedTool?)`
+
+Asserts that permission events were emitted correctly.
+
+```typescript
+assertPermissionEventsEmitted(ctx.events, 'denied', 'Browser');
+// Verifies:
+// - At least one 'denied' event for 'Browser' tool
+// - Event has valid timestamp
+// - Denied events include denialReason
+```
+
+---
+
+### `assertErrorMessageQuality(errorMessage)`
+
+Asserts that an error message meets user-friendliness standards.
+
+```typescript
+assertErrorMessageQuality(result.error);
+// Verifies:
+// - Message is defined and non-empty (> 10 chars)
+// - No internal details (undefined, null, TypeError, etc.)
+// - No file paths or line numbers
+// - Starts with capital letter
+// - Ends with proper punctuation
+```
+
+---
+
+### `createPermissionDenialScenarios()`
+
+Creates a suite of pre-configured denial scenarios for comprehensive testing.
+
+```typescript
+const scenarios = createPermissionDenialScenarios();
+
+describe('Permission Denial Tests', () => {
+  it('should handle all operations denied', async () => {
+    const ctx = scenarios.denyAllOperations();
+    // All operations will be denied
+  });
+
+  it('should handle navigation denied', async () => {
+    const ctx = scenarios.denyNavigation();
+    // Only navigation is denied
+  });
+
+  it('should handle blocked domains', async () => {
+    const ctx = scenarios.blockDangerous();
+    // malicious.com, dangerous.site, blocked.domain are blocked
+  });
+
+  it('should handle system failures', async () => {
+    const ctx = scenarios.simulateFailure();
+    // Permission checks will throw database errors
+  });
+});
+```
+
+**Available Scenarios:**
+- `denyAllOperations()` — Denies all operations with wildcard
+- `denyNavigation()` — Denies only 'navigate' operation
+- `denyInteraction()` — Denies 'click' and 'type' operations
+- `denyDataExtraction()` — Denies 'getText' and 'getAttribute'
+- `denyScreenshots()` — Denies 'screenshot' operation
+- `denyJavaScript()` — Denies 'evaluate' operation
+- `blockDomains(domains)` — Blocks specified domains
+- `blockDangerous()` — Blocks known dangerous domains
+- `simulateFailure()` — Simulates permission database failures
+- `partialDenial()` — Mixed denial (evaluate, submit, restricted.com)
+
+---
+
+## Common Testing Patterns
+
+> **Tip:** These patterns represent battle-tested recipes for common browser permission testing scenarios. Each pattern includes complete, copy-pasteable code that combines multiple utilities effectively.
+
+### Pattern 1: Permission Lifecycle Testing
+
+Test the complete lifecycle of a permission: request → check → use → revoke.
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createPermissionTestContext, assertCleanResourceState } from 'tests/test-utils/permission-test-helpers';
+
+describe('Permission Lifecycle', () => {
+  let ctx: ReturnType<typeof createPermissionTestContext>;
+
+  beforeEach(() => {
+    ctx = createPermissionTestContext();
+  });
+
+  afterEach(async () => {
+    await ctx.browserTool.cleanup();
+    assertCleanResourceState(ctx);
+  });
+
+  it('should handle full permission lifecycle', async () => {
+    // 1. Initial request (should be granted)
+    let result = await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://example.com' }
+    });
+    expect(result.success).toBe(true);
+
+    // 2. Revoke permission mid-session
+    await ctx.permissionManager.denyPermission('Browser', 'navigate');
+
+    // 3. Subsequent request should be denied
+    result = await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://another.com' }
+    });
+    expect(result.success).toBe(false);
+    expect(result.permissionDenied).toBe(true);
+
+    // 4. Re-grant permission
+    await ctx.permissionManager.grantPermission('Browser', 'full', 'navigate');
+
+    // 5. Should work again
+    result = await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://restored.com' }
+    });
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+---
+
+### Pattern 2: Resource Cleanup on Permission Denial
+
+Ensure browser resources are properly cleaned up when operations are denied mid-stream.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { createPermissionTestContext, assertCleanResourceState } from 'tests/test-utils/permission-test-helpers';
+
+describe('Resource Cleanup on Denial', () => {
+  it('should clean up resources when permission is denied during operation', async () => {
+    const ctx = createPermissionTestContext({
+      denyOperations: ['evaluate']
+    });
+
+    // Navigate first (allowed)
+    await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://example.com' }
+    });
+
+    // Check resource state before denial
+    const stateBefore = ctx.mockBrowser.state;
+    expect(stateBefore.pageActive).toBe(true);
+
+    // Attempt denied operation
+    const result = await ctx.browserTool.execute({
+      operation: 'evaluate',
+      params: { script: 'document.title' }
+    });
+
+    // Operation failed but resources should be stable
+    expect(result.success).toBe(false);
+    expect(ctx.mockBrowser.state.activeOperations).toBe(0);
+
+    // Full cleanup
+    await ctx.browserTool.cleanup();
+    assertCleanResourceState(ctx);
+  });
+});
+```
+
+---
+
+### Pattern 3: Domain Allowlist/Blocklist Testing
+
+Test domain-based permission restrictions with comprehensive coverage.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { createPermissionTestContext } from 'tests/test-utils/permission-test-helpers';
+
+describe('Domain-Based Permissions', () => {
+  it('should allow approved domains and block restricted domains', async () => {
+    const ctx = createPermissionTestContext({
+      blockedDomains: ['evil.com', 'malware.site', 'phishing.net']
+    });
+
+    // Allowed domain
+    const allowed = await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://trusted-site.com/page' }
+    });
+    expect(allowed.success).toBe(true);
+
+    // Blocked domains
+    const testCases = [
+      'https://evil.com/path',
+      'https://subdomain.malware.site',
+      'https://phishing.net/login'
+    ];
+
+    for (const url of testCases) {
+      const result = await ctx.browserTool.execute({
+        operation: 'navigate',
+        params: { url }
+      });
+      expect(result.success).toBe(false);
+      expect(result.permissionDenied).toBe(true);
+      expect(result.metadata.deniedBy).toBe('test-policy');
+    }
+
+    await ctx.browserTool.cleanup();
+  });
+});
+```
+
+---
+
+### Pattern 4: Event-Driven Permission Assertion
+
+Use event tracking to verify permission workflows in detail.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import {
+  createPermissionTestContext,
+  assertPermissionEventsEmitted
+} from 'tests/test-utils/permission-test-helpers';
+
+describe('Permission Event Tracking', () => {
+  it('should emit correct events throughout permission workflow', async () => {
+    const ctx = createPermissionTestContext({
+      denyOperations: ['screenshot']
+    });
+
+    // Clear any setup events
+    ctx.events.length = 0;
+
+    // Successful operation
+    await ctx.browserTool.execute({
+      operation: 'navigate',
+      params: { url: 'https://example.com' }
+    });
+
+    assertPermissionEventsEmitted(ctx.events, 'granted', 'Browser');
+
+    // Denied operation
+    await ctx.browserTool.execute({
+      operation: 'screenshot',
+      params: {}
+    });
+
+    assertPermissionEventsEmitted(ctx.events, 'denied', 'Browser');
+
+    // Verify event ordering and details
+    const deniedEvent = ctx.events.find(e => e.type === 'denied');
+    expect(deniedEvent).toBeDefined();
+    expect(deniedEvent!.scope).toBe('screenshot');
+    expect(deniedEvent!.denialReason).toContain('denied');
+
+    await ctx.browserTool.cleanup();
+  });
+});
+```
+
+---
+
+### Pattern 5: Permission Mocking with Browser State
+
+Combine browser state fixtures with permission testing for integration scenarios.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { browserFixtures, BrowserStateBuilder } from '@apex/core/test-fixtures';
+import { createPermissionTestContext } from 'tests/test-utils/permission-test-helpers';
+
+describe('Permission Testing with Browser State', () => {
+  it('should test permissions in authenticated context', async () => {
+    // Create authenticated browser state
+    const browserState = new BrowserStateBuilder(browserFixtures.loggedInPage())
+      .withLocalStorage({ 'permission-level': 'admin' })
+      .build();
+
+    // Create permission context (simulating admin has full access)
+    const ctx = createPermissionTestContext({
+      defaultPermissionLevel: 'full'
+    });
+
+    // Admin should be able to execute JavaScript
+    const result = await ctx.browserTool.execute({
+      operation: 'evaluate',
+      params: { script: 'window.adminPanel.activate()' }
+    });
+
+    expect(result.success).toBe(true);
+    await ctx.browserTool.cleanup();
+  });
+
+  it('should test permissions in permission-denied browser state', async () => {
+    // Start from permission denied fixture
+    const browserState = browserFixtures.permissionDeniedPage({
+      sessionStorage: {
+        'attempted-resource': '/admin/dangerous-action'
+      }
+    });
+
+    // Create restricted permission context
+    const ctx = createPermissionTestContext({
+      denyOperations: ['evaluate', 'submit', 'navigate']
+    });
+
+    // All sensitive operations should be denied
+    const operations = ['evaluate', 'submit', 'navigate'];
+    for (const op of operations) {
+      const result = await ctx.browserTool.execute({
+        operation: op,
+        params: {}
+      });
+      expect(result.success).toBe(false);
+      expect(result.permissionDenied).toBe(true);
+    }
+
+    await ctx.browserTool.cleanup();
+  });
+});
+```
+
+---
+
+### Pattern 6: Concurrent Permission Request Testing
+
+Test handling of multiple concurrent permission requests.
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { BrowserPermissionSimulator } from 'tests/test-utils/browser-permission-simulator';
+
+describe('Concurrent Permission Requests', () => {
+  it('should handle multiple concurrent requests consistently', async () => {
+    const simulator = new BrowserPermissionSimulator({
+      defaultPermissionLevel: 'read',
+      responseDelay: 50 // Simulate network latency
+    });
+
+    // Fire multiple concurrent requests
+    const requests = [
+      simulator.requestPermission('navigate', { domain: 'example1.com' }),
+      simulator.requestPermission('click', { domain: 'example2.com' }),
+      simulator.requestPermission('screenshot', { domain: 'example3.com' }),
+      simulator.requestPermission('evaluate', { domain: 'example4.com' })
+    ];
+
+    const results = await Promise.all(requests);
+
+    // All should complete successfully
+    expect(results).toHaveLength(4);
+    results.forEach(result => {
+      expect(result.granted).toBe(true);
+      expect(result.metadata?.responseTime).toBeDefined();
+    });
+
+    // Verify request history
+    const state = simulator.getPermissionState();
+    expect(state.requestHistory).toHaveLength(4);
+  });
+
+  it('should handle concurrent requests with mixed outcomes', async () => {
+    const simulator = new BrowserPermissionSimulator({
+      defaultPermissionLevel: 'read',
+      denyOperations: ['evaluate', 'dangerous-op'],
+      responseDelay: 10
+    });
+
+    const requests = [
+      simulator.requestPermission('navigate'),  // Should succeed
+      simulator.requestPermission('evaluate'),  // Should fail
+      simulator.requestPermission('click'),     // Should succeed
+      simulator.requestPermission('dangerous-op') // Should fail
+    ];
+
+    const results = await Promise.all(requests);
+
+    const granted = results.filter(r => r.granted);
+    const denied = results.filter(r => !r.granted);
+
+    expect(granted).toHaveLength(2);
+    expect(denied).toHaveLength(2);
+  });
+});
+```
+
+---
+
+## Troubleshooting Guide
+
+### Issue: Custom Matchers Not Registered
+
+**Symptom:**
+```
+TypeError: expect(...).toBePermissionGranted is not a function
+```
+
+**Cause:** The custom Vitest matchers haven't been registered before the test runs.
+
+**Solution:**
+
+1. Add the setup file to your Vitest config:
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    setupFiles: ['@apex/core/test-setup'],
+  }
+});
+```
+
+2. Or import directly in test file:
+```typescript
+import '@apex/core/test-setup';
+```
+
+3. Or register manually:
+```typescript
+import { expect } from 'vitest';
+import { setupPermissionMatchers } from '@apex/core/test-utils';
+
+setupPermissionMatchers(expect);
+```
+
+---
+
+### Issue: Permission Mock Not Activating
+
+**Symptom:** Permission checks return unexpected results despite mock configuration.
+
+**Cause:** The mock permission manager is not wired to the component under test.
+
+**Solution:**
+
+1. Verify mock is injected correctly:
+```typescript
+const ctx = createPermissionTestContext({ denyOperations: ['navigate'] });
+
+// Wrong: Using a different permission manager
+const wrongResult = await someOtherManager.checkPermission('navigate');
+
+// Correct: Use the context's permission manager
+const correctResult = await ctx.permissionManager.checkToolPermission('Browser', { scope: 'navigate' });
+```
+
+2. Verify operation name matches:
+```typescript
+// Configuration uses exact string match
+const ctx = createPermissionTestContext({ denyOperations: ['navigate'] });
+
+// This will NOT be denied (different operation name)
+await ctx.browserTool.execute({ operation: 'goto' }); // Won't match
+
+// This WILL be denied
+await ctx.browserTool.execute({ operation: 'navigate' }); // Matches
+```
+
+---
+
+### Issue: Browser Resource Leaks in Tests
+
+**Symptom:** `verifyCleanup()` assertion fails with non-zero active resources.
+
+**Cause:** Operations were started but not completed, or cleanup was not called.
+
+**Solution:**
+
+1. Always use try/finally or afterEach for cleanup:
+```typescript
+afterEach(async () => {
+  await ctx.browserTool.cleanup();
+  assertCleanResourceState(ctx);
+});
+```
+
+2. Track operation lifecycle:
+```typescript
+mockBrowser.markOperationStart();
+try {
+  // ... operation code ...
+} finally {
+  mockBrowser.markOperationEnd();
+}
+```
+
+3. Verify all operations complete before cleanup:
+```typescript
+// Wait for pending operations
+await Promise.all(pendingOperations);
+await ctx.browserTool.cleanup();
+```
+
+---
+
+### Issue: Cross-Platform Test Failures
+
+**Symptom:** Tests pass on macOS/Linux but fail on Windows (or vice versa).
+
+**Cause:** Path separators, line endings, or platform-specific behavior differences.
+
+**Solution:**
+
+1. Use platform detection utilities:
+```typescript
+import { isWindows, skipOnWindows, testOnAllPlatforms } from '@apex/core/test-utils';
+
+it('should handle file paths', () => {
+  if (isWindows()) {
+    expect(path).toContain('\\');
+  } else {
+    expect(path).toContain('/');
+  }
+});
+
+// Or skip platform-specific tests
+skipOnWindows();
+it('should use unix sockets', () => { /* ... */ });
+```
+
+2. Use path.join/path.normalize for paths:
+```typescript
+import path from 'path';
+
+const expected = path.join('dir', 'subdir', 'file.txt');
+expect(result.path).toBe(expected);
+```
+
+---
+
+### Issue: Async Permission Test Timeouts
+
+**Symptom:** Tests timeout waiting for permission responses.
+
+**Cause:** Response delay is too long, or the permission check is stuck.
+
+**Solution:**
+
+1. Reduce response delay for tests:
+```typescript
+const simulator = new BrowserPermissionSimulator({
+  responseDelay: 10, // 10ms instead of default or production values
+});
+```
+
+2. Increase test timeout for integration tests:
+```typescript
+it('should handle slow permission checks', async () => {
+  // ...
+}, { timeout: 10000 }); // 10 second timeout
+```
+
+3. Disable failure simulation:
+```typescript
+const ctx = createPermissionTestContext({
+  simulateFailures: false,  // Don't throw database errors
+  simulateTimeouts: false   // Don't simulate timeouts
+});
+```
+
+---
+
+### Issue: TypeScript Type Errors with Matchers
+
+**Symptom:**
+```
+Property 'toBePermissionGranted' does not exist on type 'Assertion<unknown>'
+```
+
+**Cause:** TypeScript doesn't know about the extended matchers.
+
+**Solution:**
+
+Add the type declaration to your test file or a global declaration file:
+
+```typescript
+// In your test file or global.d.ts
+import type { ToolPermissionResult } from '@apex/core';
+
+declare module 'vitest' {
+  interface Assertion<T = any> {
+    toBePermissionGranted(expectedLevel?: string): void;
+    toBePermissionDenied(expectedReason?: string): void;
+    toBePermissionPending(): void;
+    toHavePermissionContext(expectedState: any): void;
+    toHavePermissionHistory(expectedCriteria: any): void;
+  }
+}
+```
+
+Or ensure the setup file is included in your tsconfig:
+```json
+{
+  "include": [
+    "src/**/*",
+    "node_modules/@apex/core/test-setup.d.ts"
+  ]
+}
+```
+
+---
+
+### Issue: Debug Logging Not Visible
+
+**Symptom:** Need to see internal permission flow for debugging.
+
+**Solution:**
+
+1. Use the event emitter for logging:
+```typescript
+const simulator = createTestPermissionSimulator();
+
+simulator.on('permission:requested', (ctx) => {
+  console.log('[Permission Request]', ctx.operation, ctx.domain);
+});
+
+simulator.on('permission:responded', ({ request, response }) => {
+  console.log('[Permission Response]', request.operation, response.granted);
+});
+```
+
+2. Enable verbose logging in test context:
+```typescript
+const ctx = createPermissionTestContext();
+
+// Add debug listener
+ctx.eventEmitter.on('permission:*', (event) => {
+  console.log('[Permission Event]', event);
+});
+```
+
+3. Use Vitest's `--reporter=verbose` flag:
+```bash
+npm test -- --reporter=verbose
+```
+
+---
+
+### Issue: Mock State Persists Between Tests
+
+**Symptom:** Test state from one test affects another test.
+
+**Cause:** Mock state is not reset between tests.
+
+**Solution:**
+
+1. Create fresh context in beforeEach:
+```typescript
+let ctx: PermissionTestContext;
+
+beforeEach(() => {
+  ctx = createPermissionTestContext(); // Fresh for each test
+});
+
+afterEach(async () => {
+  await ctx.browserTool.cleanup();
+});
+```
+
+2. Clear permissions explicitly:
+```typescript
+afterEach(() => {
+  simulator.clearPermissions();
+});
+```
+
+3. Use isolated test files for integration tests that modify global state.
+
+---
+
 ## Related Documentation
 
 - [Mock Helpers API Reference](./mock-helpers-api.md) - Complete API reference for mock helper functions including createOrchestratorMock, createAgentSdkMock, createFileSystemMock, and other test utilities
@@ -1973,3 +2969,5 @@ it('should provide complete mock environment for integration tests', async () =>
 - [System APIs Reference](./system-apis-reference.md) - Type definitions for `ToolPermissionResult`, `PermissionManager`, `BrowserTool`, and other interfaces used in tests
 - [Test Utilities](./test-utilities.md) - Cross-platform test utilities (platform detection, conditional skipping, platform mocking) shared across all test suites
 - [API Reference](./api-reference.md) - REST API and WebSocket endpoints for programmatic permission and browser management
+- [ADR-052](./adr/ADR-052-browser-permission-denied-error.md) - Architecture decision record for BrowserPermissionDeniedError design
+- [ADR-131](./adr/ADR-131-browser-permission-test-utilities-documentation-architecture.md) - Documentation architecture for browser permission test utilities

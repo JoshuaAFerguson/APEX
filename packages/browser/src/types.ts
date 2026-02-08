@@ -54,12 +54,36 @@ export type {
 } from 'playwright';
 
 /**
- * Browser types supported by the automation system
+ * Browser types supported by the automation system.
+ *
+ * @example
+ * ```typescript
+ * import type { SupportedBrowserType } from '@apexcli/browser';
+ *
+ * const browserType: SupportedBrowserType = 'chromium';
+ * ```
  */
 export type SupportedBrowserType = 'chromium' | 'firefox' | 'webkit';
 
 /**
- * Configuration options for browser automation sessions
+ * Configuration options for browser automation sessions.
+ *
+ * Defines the browser settings, viewport dimensions, timeouts,
+ * and other options for creating a browser automation session.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserSessionConfig } from '@apexcli/browser';
+ *
+ * const config: BrowserSessionConfig = {
+ *   browserType: 'chromium',
+ *   headless: false,
+ *   viewport: { width: 1920, height: 1080 },
+ *   timeout: 60000,
+ *   userAgent: 'custom-agent-string',
+ *   ignoreHTTPSErrors: true
+ * };
+ * ```
  */
 export interface BrowserSessionConfig {
   /** Browser type to use */
@@ -84,7 +108,25 @@ export interface BrowserSessionConfig {
 }
 
 /**
- * Browser Manager configuration
+ * Browser Manager configuration options.
+ *
+ * Controls browser instance management, resource limits,
+ * pooling behavior, and cleanup timeouts.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserManagerConfig } from '@apexcli/browser';
+ *
+ * const config: BrowserManagerConfig = {
+ *   maxInstances: 10,
+ *   instanceIdleTimeout: 300000, // 5 minutes
+ *   reuseInstances: true,
+ *   resourceLimits: {
+ *     maxMemoryMB: 2048,
+ *     maxCpuPercent: 90
+ *   }
+ * };
+ * ```
  */
 export interface BrowserManagerConfig {
   /** Maximum number of concurrent browser instances */
@@ -105,7 +147,23 @@ export interface BrowserManagerConfig {
 }
 
 /**
- * Screenshot options for browser automation
+ * Screenshot options for browser automation.
+ *
+ * Defines format, quality, and capture settings for taking
+ * screenshots of web pages or elements.
+ *
+ * @example
+ * ```typescript
+ * import type { ScreenshotOptions } from '@apexcli/browser';
+ *
+ * const options: ScreenshotOptions = {
+ *   fullPage: true,
+ *   type: 'jpeg',
+ *   quality: 90,
+ *   omitBackground: true,
+ *   path: './screenshot.jpg'
+ * };
+ * ```
  */
 export interface ScreenshotOptions {
   /** Full page screenshot */
@@ -121,7 +179,21 @@ export interface ScreenshotOptions {
 }
 
 /**
- * Options for screenshot capture methods (captureViewport, captureFullPage)
+ * Options for screenshot capture methods (captureViewport, captureFullPage).
+ *
+ * Specialized screenshot options for utility methods that provide
+ * simplified interfaces for common screenshot operations.
+ *
+ * @example
+ * ```typescript
+ * import type { ScreenshotCaptureOptions } from '@apexcli/browser';
+ *
+ * const options: ScreenshotCaptureOptions = {
+ *   type: 'png',
+ *   omitBackground: false,
+ *   path: './capture.png'
+ * };
+ * ```
  */
 export interface ScreenshotCaptureOptions {
   /** Image format - PNG or JPEG */
@@ -143,7 +215,21 @@ export interface ElementScreenshotOptions extends ScreenshotCaptureOptions {
 }
 
 /**
- * Navigation options for page navigation
+ * Navigation options for page navigation.
+ *
+ * Controls timing, wait conditions, and referrer for page navigation.
+ * Used with navigate, goto, and other navigation methods.
+ *
+ * @example
+ * ```typescript
+ * import type { NavigationOptions } from '@apexcli/browser';
+ *
+ * const options: NavigationOptions = {
+ *   timeout: 60000,
+ *   waitUntil: 'networkidle',
+ *   referer: 'https://example.com'
+ * };
+ * ```
  */
 export interface NavigationOptions {
   /** Timeout in milliseconds */
@@ -167,7 +253,24 @@ export interface WaitForNavigationOptions {
 }
 
 /**
- * Result of a browser action
+ * Result of a browser action.
+ *
+ * Standard result interface for all browser operations providing
+ * success status, optional data, error information, and timing.
+ *
+ * @template T The type of data returned on success
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserActionResult } from '@apexcli/browser';
+ *
+ * const result: BrowserActionResult<string> = await session.navigate('https://example.com');
+ * if (result.success) {
+ *   console.log(`Navigated to: ${result.data}`);
+ * } else {
+ *   console.error(`Navigation failed: ${result.error}`);
+ * }
+ * ```
  */
 export interface BrowserActionResult<T = unknown> {
   /** Whether the action succeeded */
@@ -181,12 +284,37 @@ export interface BrowserActionResult<T = unknown> {
 }
 
 /**
- * Element selector types supported
+ * Element selector types supported by the browser automation system.
+ *
+ * @example
+ * ```typescript
+ * import type { SelectorType } from '@apexcli/browser';
+ *
+ * const selectorType: SelectorType = 'xpath';
+ * ```
  */
 export type SelectorType = 'css' | 'xpath' | 'text' | 'role' | 'testId';
 
 /**
- * Element selector with type specification
+ * Element selector with type specification.
+ *
+ * Structured selector object that specifies both the selector type
+ * and value for targeting elements in the DOM.
+ *
+ * @example
+ * ```typescript
+ * import type { ElementSelector } from '@apexcli/browser';
+ *
+ * const selector: ElementSelector = {
+ *   type: 'xpath',
+ *   value: '//button[contains(text(), "Submit")]'
+ * };
+ *
+ * const cssSelector: ElementSelector = {
+ *   type: 'css',
+ *   value: '.submit-button'
+ * };
+ * ```
  */
 export interface ElementSelector {
   /** Selector type */
@@ -196,7 +324,20 @@ export interface ElementSelector {
 }
 
 /**
- * Browser instance metadata
+ * Browser instance metadata.
+ *
+ * Information about a managed browser instance including
+ * identification, resource usage, and lifecycle state.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserInstanceInfo } from '@apexcli/browser';
+ *
+ * const instances: BrowserInstanceInfo[] = manager.getInstances();
+ * instances.forEach(instance => {
+ *   console.log(`Browser ${instance.id} (${instance.type}): ${instance.contextCount} contexts`);
+ * });
+ * ```
  */
 export interface BrowserInstanceInfo {
   /** Unique identifier for the browser instance */
@@ -221,7 +362,20 @@ export interface BrowserInstanceInfo {
 }
 
 /**
- * Browser context metadata
+ * Browser context metadata.
+ *
+ * Information about a browser context including its parent browser,
+ * configuration, and activity state.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserContextInfo } from '@apexcli/browser';
+ *
+ * const contexts: BrowserContextInfo[] = manager.getContexts();
+ * contexts.forEach(context => {
+ *   console.log(`Context ${context.id} in browser ${context.browserId}`);
+ * });
+ * ```
  */
 export interface BrowserContextInfo {
   /** Unique identifier for the context */
@@ -239,7 +393,18 @@ export interface BrowserContextInfo {
 }
 
 /**
- * Console message types from browser
+ * Console message types from browser.
+ *
+ * All supported console message levels that can be captured
+ * during browser automation sessions.
+ *
+ * @example
+ * ```typescript
+ * import type { ConsoleLogLevel } from '@apexcli/browser';
+ *
+ * const level: ConsoleLogLevel = 'error';
+ * const levels: ConsoleLogLevel[] = ['log', 'warn', 'error'];
+ * ```
  */
 export type ConsoleLogLevel =
   | 'log'
@@ -263,7 +428,22 @@ export type ConsoleLogLevel =
   | 'timeStamp';
 
 /**
- * Console message captured from the browser
+ * Console message captured from the browser.
+ *
+ * Represents a captured console log, warning, error, or other
+ * console output with metadata about its origin and timing.
+ *
+ * @example
+ * ```typescript
+ * import type { CapturedConsoleMessage } from '@apexcli/browser';
+ *
+ * session.on('consoleMessage', (message: CapturedConsoleMessage) => {
+ *   console.log(`[${message.type}] ${message.text} at ${new Date(message.timestamp)}`);
+ *   if (message.location) {
+ *     console.log(`  from ${message.location.url}:${message.location.lineNumber}`);
+ *   }
+ * });
+ * ```
  */
 export interface CapturedConsoleMessage {
   /** Message type/level */
@@ -283,7 +463,25 @@ export interface CapturedConsoleMessage {
 }
 
 /**
- * JavaScript error captured from browser
+ * JavaScript error captured from browser.
+ *
+ * Represents a JavaScript runtime error with stack trace,
+ * source location, and whether it was caught or uncaught.
+ *
+ * @example
+ * ```typescript
+ * import type { CapturedJavaScriptError } from '@apexcli/browser';
+ *
+ * session.on('javascriptError', (error: CapturedJavaScriptError) => {
+ *   console.error(`${error.name}: ${error.message}`);
+ *   if (error.source) {
+ *     console.error(`  at ${error.source.url}:${error.source.line}`);
+ *   }
+ *   if (error.uncaught) {
+ *     console.error('  (uncaught)');
+ *   }
+ * });
+ * ```
  */
 export interface CapturedJavaScriptError {
   /** Error message */
@@ -305,7 +503,22 @@ export interface CapturedJavaScriptError {
 }
 
 /**
- * Page error event from browser (for runtime errors)
+ * Page error event from browser (for runtime errors).
+ *
+ * Represents an error that occurred during page execution,
+ * typically unhandled exceptions or critical runtime errors.
+ *
+ * @example
+ * ```typescript
+ * import type { PageErrorEvent } from '@apexcli/browser';
+ *
+ * session.on('pageError', (event: PageErrorEvent) => {
+ *   console.error(`Page error: ${event.message}`);
+ *   if (event.filename) {
+ *     console.error(`  at ${event.filename}:${event.lineno}`);
+ *   }
+ * });
+ * ```
  */
 export interface PageErrorEvent {
   /** Error object */
@@ -325,7 +538,23 @@ export interface PageErrorEvent {
 }
 
 /**
- * Console and error capture configuration
+ * Console and error capture configuration.
+ *
+ * Controls what types of console messages and errors are captured,
+ * buffer sizes, and capture behavior during browser automation.
+ *
+ * @example
+ * ```typescript
+ * import type { CaptureConfig } from '@apexcli/browser';
+ *
+ * const config: CaptureConfig = {
+ *   captureConsole: true,
+ *   consoleLevels: ['warn', 'error'],
+ *   captureErrors: true,
+ *   maxBufferSize: 500,
+ *   includeStackTraces: false
+ * };
+ * ```
  */
 export interface CaptureConfig {
   /** Whether to capture console messages */
@@ -341,7 +570,26 @@ export interface CaptureConfig {
 }
 
 /**
- * Event emitter for real-time console and error streaming
+ * Event emitter for real-time console and error streaming.
+ *
+ * Event listener interface for subscribing to console messages,
+ * JavaScript errors, and page errors in real-time during automation.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserCaptureEvents } from '@apexcli/browser';
+ * import { BrowserSession } from '@apexcli/browser';
+ *
+ * const session = new BrowserSession(manager);
+ *
+ * session.on('consoleMessage', (message) => {
+ *   console.log(`Console: ${message.text}`);
+ * });
+ *
+ * session.on('javascriptError', (error) => {
+ *   console.error(`JS Error: ${error.message}`);
+ * });
+ * ```
  */
 export interface BrowserCaptureEvents {
   /** Emitted when a console message is captured */
@@ -353,7 +601,26 @@ export interface BrowserCaptureEvents {
 }
 
 /**
- * Browser Manager events
+ * Browser Manager events.
+ *
+ * Event listener interface for monitoring browser manager lifecycle
+ * events, instance creation/closure, and resource limit violations.
+ *
+ * @example
+ * ```typescript
+ * import type { BrowserManagerEvents } from '@apexcli/browser';
+ * import { BrowserManager } from '@apexcli/browser';
+ *
+ * const manager = new BrowserManager();
+ *
+ * manager.on('browserCreated', (info) => {
+ *   console.log(`Browser created: ${info.id} (${info.type})`);
+ * });
+ *
+ * manager.on('resourceLimitExceeded', (info) => {
+ *   console.warn(`${info.type} limit exceeded: ${info.value}/${info.limit}`);
+ * });
+ * ```
  */
 export interface BrowserManagerEvents {
   /** Emitted when a browser instance is created */

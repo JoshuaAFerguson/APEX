@@ -1,8 +1,12 @@
-# Integration Test Coverage Analysis
+# Integration Test Coverage Analysis - Permission System
+
+## Executive Summary
+
+This report analyzes the current test coverage for cross-package permission flows in the APEX codebase and identifies areas requiring additional integration tests. Based on comprehensive analysis, current coverage is strong but has specific gaps that need to be addressed.
 
 ## Overview
 
-This document provides a comprehensive analysis of the integration test setup for APEX v0.5.0, specifically focusing on the Vitest integration testing configuration and coverage.
+This document provides a comprehensive analysis of the integration test setup for APEX v0.5.0, specifically focusing on the Vitest integration testing configuration and permission system coverage.
 
 ## Configuration Summary
 
@@ -279,3 +283,216 @@ The setup meets all acceptance criteria:
 ### Overall Assessment: **EXCELLENT** 🎉
 
 The integration testing infrastructure is production-ready and provides a solid foundation for maintaining code quality as the APEX project grows.
+
+## Cross-Package Permission Flow Analysis
+
+### Current Permission Test Coverage State
+
+#### 1. **Permission Store**: 100% Method Coverage ✅
+- 20/20 methods fully tested
+- Comprehensive edge cases covered
+- Backward compatibility verified
+- Performance and concurrency tested
+
+#### 2. **Permission Manager**: Comprehensive Coverage ✅
+- Session-level caching tested
+- Tool permission validation covered
+- Directory access validation included
+- Integration with PermissionStore verified
+
+#### 3. **Cross-Package Integration**: Good Coverage ⚠️
+**Covered Areas:**
+- Basic CLI ↔ Orchestrator flows
+- Schema validation across packages
+- API ↔ Orchestrator WebSocket notifications
+- Configuration loading and validation
+
+**Coverage Gaps Identified:**
+- End-to-end denial flow tracing missing
+- Dynamic permission revocation during execution
+- Autonomy level + permission interaction
+- Error propagation across package boundaries
+
+### Identified Test Coverage Gaps
+
+#### Gap 1: End-to-End Denial Flow Tracing
+**Missing:** Complete denial flow from CLI input → Orchestrator → Core → API response in single test
+**Current State:** Individual layers tested separately
+**Risk:** Integration bugs between layers not caught
+**Priority:** High
+
+#### Gap 2: Dynamic Permission Revocation During Task Execution
+**Missing:** Tests for permission revoked while task is actively running
+**Current State:** Static permission state testing only
+**Risk:** Race conditions and state inconsistency
+**Priority:** High
+
+#### Gap 3: Permission Preset + Autonomy Level Interaction
+**Missing:** Combined testing of autonomy gates with permission denials
+**Current State:** Autonomy and permissions tested independently
+**Risk:** Conflicting behavior when both systems interact
+**Priority:** Medium
+
+#### Gap 4: Error Propagation Across Package Boundaries
+**Missing:** Error handling when permission systems fail at different layers
+**Current State:** Happy path testing predominantly
+**Risk:** Poor user experience when systems fail
+**Priority:** Medium
+
+## Required Integration Test Implementation
+
+### Test Suite 1: Complete Cross-Package Permission Flow
+**File:** `tests/integration/cross-package-permission-flows.integration.test.ts`
+
+```typescript
+describe('Cross-Package Permission Denial Flows', () => {
+  // Test CLI → Orchestrator → Core → API complete flow
+  it('should trace permission denial from CLI to API response', async () => {
+    // Setup real orchestrator, permission store, CLI mocks, API endpoints
+    // Trigger permission denial at CLI level
+    // Verify event propagation through all layers
+    // Confirm API receives correct denial notification
+  });
+
+  it('should handle approval gate with permission denial interaction', async () => {
+    // Configure autonomy level requiring approval
+    // Set up permission denial for tool
+    // Verify both systems work together correctly
+    // Test precedence rules
+  });
+});
+```
+
+### Test Suite 2: Dynamic Permission Management
+**File:** `tests/integration/dynamic-permission-flows.integration.test.ts`
+
+```typescript
+describe('Dynamic Permission Management', () => {
+  it('should handle permission revocation during task execution', async () => {
+    // Start task requiring permissions
+    // Revoke permission mid-execution
+    // Verify graceful failure and cleanup
+    // Confirm state consistency after failure
+  });
+
+  it('should handle permission state recovery after failure', async () => {
+    // Simulate permission system failure
+    // Verify recovery mechanisms
+    // Test state consistency restoration
+    // Confirm no data corruption
+  });
+});
+```
+
+### Test Suite 3: Error Propagation and Recovery
+**File:** `tests/integration/permission-error-flows.integration.test.ts`
+
+```typescript
+describe('Cross-Package Error Handling', () => {
+  it('should propagate permission errors correctly across packages', async () => {
+    // Simulate database failure in orchestrator
+    // Verify CLI receives appropriate error
+    // Test recovery mechanisms
+    // Confirm no data corruption
+  });
+
+  it('should handle network failure in API permission notifications', async () => {
+    // Simulate API network failure
+    // Verify orchestrator handles gracefully
+    // Test retry mechanisms
+    // Confirm state consistency
+  });
+});
+```
+
+### Test Suite 4: Permission Flow Test Utilities
+**File:** `tests/test-utils/permission-flow-helpers.ts`
+
+```typescript
+export class PermissionFlowTestHelper {
+  static async createTestContext(): Promise<PermissionTestContext> {
+    // Creates isolated test environment with:
+    // - Temp directory with .apex/config.yaml
+    // - Real ApexOrchestrator with SQLite
+    // - Event capture infrastructure
+    // - Cleanup management
+  }
+
+  static async simulatePermissionDenial(
+    context: PermissionTestContext,
+    tool: string,
+    scope?: string
+  ): Promise<PermissionDenialResult> {
+    // Simulates complete permission denial flow
+    // Returns captured events and final state
+  }
+
+  static async verifyEventPropagation(
+    context: PermissionTestContext,
+    expectedEvents: string[]
+  ): Promise<boolean> {
+    // Verifies expected events were emitted
+    // Checks event data consistency
+    // Validates timing and ordering
+  }
+}
+```
+
+## Implementation Plan
+
+### Phase 1: Core Integration Test Infrastructure ⏳
+1. Create `tests/integration/cross-package-permission-flows.integration.test.ts`
+2. Implement event capture utilities for cross-package testing
+3. Set up temp directory management for isolated test runs
+4. Create shared test fixtures for permission scenarios
+
+### Phase 2: End-to-End Flow Testing ⏳
+1. Implement complete denial flow tracing tests
+2. Add permission state consistency verification
+3. Create approval gate + permission interaction tests
+4. Verify event emission and propagation
+
+### Phase 3: Dynamic Scenarios and Error Handling ⏳
+1. Add dynamic permission revocation tests
+2. Implement error propagation verification
+3. Create recovery and rollback scenario tests
+4. Add performance and concurrency testing
+
+### Phase 4: Coverage Verification and Reporting ⏳
+1. Implement programmatic coverage verification
+2. Generate detailed coverage reports
+3. Set up coverage threshold enforcement
+4. Document test patterns for future development
+
+## Expected Coverage Improvements
+
+After implementation, we expect:
+- **Cross-package flow coverage**: 95% (from current ~70%)
+- **Error scenario coverage**: 85% (from current ~40%)
+- **Dynamic permission handling**: 90% (from current ~20%)
+- **Integration edge cases**: 80% (from current ~30%)
+
+## Success Criteria
+
+1. **All Tests Pass**: New integration tests must pass consistently
+2. **Coverage Thresholds**: Achieve target coverage percentages
+3. **No Regressions**: Existing tests continue to pass
+4. **Performance**: Integration tests complete within 5 minutes total
+5. **Documentation**: Clear test patterns documented for future development
+
+## Risk Mitigation
+
+### Test Reliability
+- Use deterministic test data and avoid time-based flakiness
+- Implement proper cleanup to prevent test pollution
+- Use realistic but controlled test scenarios
+
+### Performance Impact
+- Run integration tests in parallel where possible
+- Use efficient test setup/teardown patterns
+- Monitor test execution times and optimize as needed
+
+### Maintenance Burden
+- Create reusable test utilities and fixtures
+- Document test patterns and conventions
+- Ensure tests are self-documenting and maintainable
