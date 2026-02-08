@@ -33,6 +33,11 @@ export type { HookInput };
 
 const execAsync = promisify(exec);
 
+/**
+ * Context object providing access to task data and services for hook functions.
+ * Contains all necessary state and utilities for hooks to perform validation,
+ * auditing, and other operations during tool execution.
+ */
 export interface HookContext {
   taskId: string;
   store: TaskStore;
@@ -64,6 +69,10 @@ export interface HookContext {
   aliasResolver?: AliasResolver;
 }
 
+/**
+ * Configuration object that maps hook events to their corresponding callback matchers.
+ * Defines which hooks should be executed for different tool lifecycle events.
+ */
 export type HooksConfig = Partial<Record<HookEvent, HookCallbackMatcher[]>>;
 
 // Dangerous command patterns to block
@@ -117,7 +126,11 @@ const SENSITIVE_PATHS = [
   '.pypirc',
 ];
 
-// Tools that modify files and require snapshot capture
+/**
+ * Array of tool names that modify files and require snapshot capture.
+ * Used to identify which tools need before/after file state tracking
+ * for audit trails and change detection.
+ */
 const FILE_MODIFYING_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 const FILE_MODIFYING_TOOLS_MATCHER = FILE_MODIFYING_TOOLS.join('|');
 
@@ -442,7 +455,21 @@ async function resolveToolAlias(
 }
 
 /**
- * Create hooks for the orchestrator
+ * Creates the default set of hooks for the orchestrator with comprehensive tool validation.
+ * Sets up pre-tool and post-tool hooks for security, auditing, and quality control.
+ *
+ * @param context - The hook context containing task data and services
+ * @returns Configuration object mapping hook events to their callbacks
+ *
+ * @example
+ * ```typescript
+ * const context: HookContext = {
+ *   taskId: 'task-123',
+ *   store: taskStore,
+ *   projectPath: '/path/to/project'
+ * };
+ * const hooks = createHooks(context);
+ * ```
  */
 export function createHooks(context: HookContext): HooksConfig {
   return {
@@ -1699,7 +1726,21 @@ async function recordFileModifyingToolAction(
 }
 
 /**
- * Create custom hooks from configuration
+ * Creates custom hooks from user-defined configuration for additional tool validation.
+ * Allows users to define custom rules for allowing, denying, or warning on specific tools.
+ *
+ * @param customHooks - Array of custom hook definitions with tool patterns and actions
+ * @param context - The hook context containing task data and services
+ * @returns Configuration object with custom pre-tool use hooks
+ *
+ * @example
+ * ```typescript
+ * const customHooks = [
+ *   { tool: 'Bash', action: 'deny', pattern: 'rm.*', message: 'File deletion blocked' },
+ *   { tool: 'WebFetch', action: 'warn', message: 'External request detected' }
+ * ];
+ * const hooks = createCustomHooks(customHooks, context);
+ * ```
  */
 export function createCustomHooks(
   customHooks: Array<{

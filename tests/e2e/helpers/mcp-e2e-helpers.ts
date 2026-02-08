@@ -139,6 +139,32 @@ export interface WorkflowStepResult {
 }
 
 /**
+ * Flow step result for full E2E scenarios
+ */
+export interface FlowStep {
+  /** Step name */
+  name: string;
+  /** Whether the step succeeded */
+  success: boolean;
+  /** Duration in milliseconds */
+  duration: number;
+  /** Error details if failed */
+  error?: string;
+}
+
+/**
+ * Full flow scenario result
+ */
+export interface FullFlowResult {
+  /** Whether the entire flow succeeded */
+  success: boolean;
+  /** Individual flow steps */
+  steps: FlowStep[];
+  /** Total duration in milliseconds */
+  totalDuration: number;
+}
+
+/**
  * Complete marketplace workflow result
  */
 export interface MarketplaceWorkflowResult {
@@ -604,6 +630,107 @@ export const mcpHelpers = {
       firstError,
     };
   },
+
+  // ==========================================================================
+  // Server Health Verification Helpers
+  // ==========================================================================
+
+  /**
+   * Verify server health status after installation
+   */
+  async verifyServerHealth(
+    ctx: MCPTestContext,
+    serverName: string
+  ): Promise<{ healthy: boolean; details: string }> {
+    const validateResult = await mcpHelpers.validate(ctx);
+    const statusResult = await mcpHelpers.status(ctx);
+
+    const healthy = validateResult.success &&
+      statusResult.stdout.includes(serverName);
+
+    return {
+      healthy,
+      details: healthy
+        ? `Server ${serverName} is healthy`
+        : `Server ${serverName} health check failed: ${validateResult.stderr || statusResult.stderr}`,
+    };
+  },
+
+  /**
+   * Run the complete E2E flow as a single scenario
+   * browse → select → install → configure → verify
+   */
+  async runFullFlowScenario(
+    ctx: MCPTestContext,
+    serverName: string
+  ): Promise<FullFlowResult> {
+    const steps: FlowStep[] = [];
+    const flowStart = Date.now();
+
+    const runStep = async (
+      name: string,
+      action: () => Promise<CLIResult>
+    ): Promise<FlowStep> => {
+      const stepStart = Date.now();
+      try {
+        const result = await action();
+        return {
+          name,
+          success: result.success,
+          duration: Date.now() - stepStart,
+          error: result.success ? undefined : result.stderr,
+        };
+      } catch (err) {
+        return {
+          name,
+          success: false,
+          duration: Date.now() - stepStart,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    };
+
+    // Step 1: Browse marketplace
+    steps.push(await runStep('browse', () => mcpHelpers.listServers(ctx)));
+
+    // Step 2: Select (search for server)
+    steps.push(await runStep('select', () => mcpHelpers.searchServers(ctx, serverName)));
+
+    // Step 3: Install server
+    steps.push(await runStep('install', () => mcpHelpers.installServer(ctx, serverName)));
+
+    // Step 4: Configure (verify config was applied)
+    const configStepStart = Date.now();
+    try {
+      const config = await mcpHelpers.getConfig(ctx);
+      const serverConfigured = !!config.servers?.[serverName];
+      steps.push({
+        name: 'configure',
+        success: serverConfigured,
+        duration: Date.now() - configStepStart,
+        error: serverConfigured ? undefined : `Server ${serverName} not found in config`,
+      });
+    } catch (err) {
+      steps.push({
+        name: 'configure',
+        success: false,
+        duration: Date.now() - configStepStart,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Step 5: Verify - health check
+    steps.push(await runStep('verify-health', () => mcpHelpers.validate(ctx)));
+
+    // Step 6: Verify - server responds correctly
+    steps.push(await runStep('verify-response', () => mcpHelpers.status(ctx)));
+
+    return {
+      success: steps.every(s => s.success),
+      steps,
+      totalDuration: Date.now() - flowStart,
+    };
+  },
 };
 
 // ============================================================================
@@ -702,6 +829,8 @@ export {
   type ApexConfig,
   type MCPConfigSection,
   type MarketplaceOutputExpectations,
+  type FlowStep,
+  type FullFlowResult,
   // Fixtures
   type MarketplaceEntry,
   type ServerConfig,
