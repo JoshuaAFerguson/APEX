@@ -58,7 +58,7 @@ import { createTestDatabase, cleanupTestDatabase } from './test-utils/db';
 - ✅ Clean teardown/cleanup functions
 - ✅ Better-sqlite3 compatibility
 - ✅ TypeScript type definitions
-- ✅ Foreign key constraint enforcement
+- ✅ Foreign key constraints disabled (matches TaskStore behavior)
 - ✅ Transaction support
 - ✅ Data isolation between test instances
 - ✅ Backward compatibility with existing test imports

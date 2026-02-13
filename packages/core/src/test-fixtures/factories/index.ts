@@ -55,3 +55,41 @@ export {
   createAutonomyVariants,
   validateAutonomyConfig
 } from './autonomy-factory.js';
+
+// Configuration factories
+export {
+  createProjectConfig,
+  createIntegratedConfig,
+  createFullAutoProjectConfig,
+  createReviewBeforeCommitProjectConfig,
+  createReviewAllProjectConfig,
+  createStageSpecificConfigs,
+  createResourceConstrainedConfigs,
+  createAgentSpecificConfigs,
+  ConfigPresets,
+  validateProjectConfig,
+  createAutonomyProjectCollection,
+  createAutonomyComparisonConfigs
+} from './config-factory.js';
+
+// Permission factories
+export {
+  createToolPermission,
+  createToolPermissionResult,
+  createAlwaysAllowPermission,
+  createAllowOncePermission,
+  createDenyPermission,
+  createFileSystemPermissions,
+  createNetworkPermissions,
+  createSystemPermissions,
+  createSearchPermissions,
+  createScopeBasedPermissions,
+  createPermissionResults,
+  createSecurityLevelPermissions,
+  createStageBasedPermissions,
+  PermissionPresets,
+  createUniformPermissions,
+  createPermissionVariants,
+  validateToolPermission,
+  createTimeBasedPermissions
+} from './permission-factory.js';

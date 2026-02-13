@@ -47,6 +47,7 @@ export interface NavLink {
   href: string;
   text: string;
   target?: string;
+  className?: string;
 }
 
 /**
@@ -86,10 +87,14 @@ export function createMockElement(selector: string, overrides: Partial<MockEleme
 /**
  * Create a mock page with a form structure
  */
-export function createMockPageWithForm(formConfig: FormConfig): MockPageObject {
+export function createMockPageWithForm(
+  formConfig: FormConfig,
+  pageOptions?: Partial<MockPageObject>
+): MockPageObject {
   const page = createMockPage({
     title: 'Form Test Page',
-    content: generateFormHTML(formConfig)
+    content: generateFormHTML(formConfig),
+    ...pageOptions
   });
 
   // Add form elements to the elements map
@@ -134,7 +139,8 @@ export function createMockPageWithNavigation(links: NavLink[]): MockPageObject {
       text: link.text,
       attributes: {
         href: link.href,
-        target: link.target || '_self'
+        target: link.target || '_self',
+        ...(link.className && { class: link.className })
       }
     }));
   });
@@ -253,9 +259,10 @@ function generateFormHTML(config: FormConfig): string {
 
 // Helper function to generate navigation HTML
 function generateNavigationHTML(links: NavLink[]): string {
-  const navItems = links.map((link, index) =>
-    `<a id="nav-link-${index}" href="${link.href}" target="${link.target || '_self'}">${link.text}</a>`
-  ).join(' | ');
+  const navItems = links.map((link, index) => {
+    const classAttr = link.className ? ` class="${link.className}"` : '';
+    return `<a id="nav-link-${index}" href="${link.href}" target="${link.target || '_self'}"${classAttr}>${link.text}</a>`;
+  }).join(' | ');
 
   return `
     <html>

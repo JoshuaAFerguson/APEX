@@ -774,5 +774,13 @@ export type {
 };
 
 export {
+  BrowserFixture,
   DEFAULT_BROWSER_CONFIG,
+  setupBrowserFixture,
+  getBrowserFixture,
+  createScopedBrowserFixture,
+  loadPageContent,
+  waitForNetworkIdle,
+  PageUtils,
+  mockBrowserFixtures,
 };

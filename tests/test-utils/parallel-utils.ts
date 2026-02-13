@@ -126,23 +126,17 @@ export {
   Semaphore,
   ReadWriteLock,
   Barrier,
-  createMutex,
-  createSemaphore,
-  createReadWriteLock,
-  createBarrier,
-  sleep,
-  waitFor,
-  retry,
+  coordination,
 } from './parallel-coordination.js';
 
 // Worker coordination
 export {
   WorkerCoordinator,
-  type WorkerMetadata,
+  workerUtils,
+  type WorkerInfo,
   type WorkerMessage,
-  type WorkerBarrier,
-  type WorkerResource,
   type WorkerCoordinatorOptions,
+  type WorkerCoordinatorEvents,
 } from './worker-coordination.js';
 
 // =============================================================================
@@ -414,6 +408,11 @@ export default {
 
   // Coordination utilities
   AsyncMutex,
+  GenericAsyncMutex,
+  Semaphore,
+  ReadWriteLock,
+  Barrier,
+  coordination,
   ResourceLockManager,
   globalResourceLocks,
 

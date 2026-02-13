@@ -248,7 +248,7 @@ describe('Test Utilities Implementation Validation', () => {
         title: 'Test Page'
       });
 
-      expect(result.pass).toBe(true);
+      expect(result.success).toBe(true);
     });
 
     it('should assert element existence', () => {
@@ -259,7 +259,7 @@ describe('Test Utilities Implementation Validation', () => {
       });
 
       const result = assertElementExists(mockPage, '#test-element');
-      expect(result.pass).toBe(true);
+      expect(result.success).toBe(true);
     });
   });
 

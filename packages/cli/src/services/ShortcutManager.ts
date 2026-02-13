@@ -1,63 +1,142 @@
+/**
+ * Represents a key combination for a keyboard shortcut.
+ */
 export interface KeyCombination {
+  /** The key pressed. */
   key: string;
+  /** Whether the Ctrl key is pressed. */
   ctrl?: boolean;
+  /** Whether the Alt key is pressed. */
   alt?: boolean;
+  /** Whether the Shift key is pressed. */
   shift?: boolean;
+  /** Whether the Meta/Command key is pressed. */
   meta?: boolean;
 }
 
+/**
+ * Defines a keyboard shortcut with its configuration and behavior.
+ */
 export interface KeyboardShortcut {
+  /** Unique identifier for the shortcut. */
   id: string;
+  /** Human-readable description of the shortcut's function. */
   description: string;
+  /** The key combination that triggers the shortcut. */
   keys: KeyCombination;
+  /** The action to perform when the shortcut is triggered. */
   action: ShortcutAction;
+  /** The context in which this shortcut is active. */
   context?: ShortcutContext;
+  /** Optional function to dynamically determine if the shortcut is enabled. */
   enabled?: () => boolean;
 }
 
+/**
+ * Represents the type of action a shortcut can perform.
+ */
 export type ShortcutAction =
+  /** Trigger a command. */
   | { type: 'command'; command: string }
+  /** Execute a function handler. */
   | { type: 'function'; handler: () => void | Promise<void> }
+  /** Emit an event with an optional payload. */
   | { type: 'emit'; event: string; payload?: unknown };
 
+/**
+ * Defines the different contexts where a shortcut can be active.
+ */
 export type ShortcutContext =
-  | 'global'
-  | 'input'
-  | 'processing'
-  | 'idle'
-  | 'suggestions'
-  | 'history'
-  | 'modal';
+  | 'global'      // Always active
+  | 'input'       // Active during text input
+  | 'processing'  // Active during task processing
+  | 'idle'        // Active when no active task
+  | 'suggestions' // Active when suggestions are displayed
+  | 'history'     // Active in history navigation
+  | 'modal';      // Active when a modal is open
 
+/**
+ * Represents a keyboard event for shortcut matching.
+ */
 export interface ShortcutEvent {
+  /** The key pressed. */
   key: string;
+  /** Whether the Ctrl key was pressed. */
   ctrl: boolean;
+  /** Whether the Alt key was pressed. */
   alt: boolean;
+  /** Whether the Shift key was pressed. */
   shift: boolean;
+  /** Whether the Meta/Command key was pressed. */
   meta: boolean;
 }
 
+/**
+ * Manages keyboard shortcuts across different application contexts.
+ *
+ * This class provides a flexible system for registering, tracking, and executing
+ * keyboard shortcuts with support for context-aware activation and various
+ * types of actions (function calls, event emissions, command triggers).
+ */
 export class ShortcutManager {
+  /**
+   * Internal map storing registered keyboard shortcuts, keyed by their unique ID.
+   * @private
+   */
   private shortcuts: Map<string, KeyboardShortcut> = new Map();
+
+  /**
+   * Stack tracking the current shortcut context, with 'global' as the default bottom context.
+   * @private
+   */
   private contextStack: ShortcutContext[] = ['global'];
+
+  /**
+   * Map of registered event handlers, allowing dynamic event-based shortcut actions.
+   * @private
+   */
   private eventHandlers: Map<string, Set<(payload?: unknown) => void>> = new Map();
 
+  /**
+   * Initializes the ShortcutManager by registering default keyboard shortcuts.
+   */
   constructor() {
     this.registerDefaultShortcuts();
   }
 
+  /**
+   * Registers a new keyboard shortcut.
+   *
+   * @param {KeyboardShortcut} shortcut - The keyboard shortcut to register
+   */
   register(shortcut: KeyboardShortcut): void {
     this.shortcuts.set(shortcut.id, shortcut);
   }
 
+  /**
+   * Removes a registered shortcut by its unique identifier.
+   *
+   * @param {string} id - The unique ID of the shortcut to unregister
+   */
   unregister(id: string): void {
     this.shortcuts.delete(id);
   }
 
+  /**
+   * Adds a new context to the context stack, affecting shortcut availability.
+   *
+   * @param {ShortcutContext} ctx - The context to push onto the stack
+   */
   pushContext(ctx: ShortcutContext): void {
     this.contextStack.push(ctx);
   }
 
+  /**
+   * Removes and returns the top context from the context stack.
+   * Ensures at least the global context remains.
+   *
+   * @returns {ShortcutContext | undefined} The removed context, or undefined if only global context remains
+   */
   popContext(): ShortcutContext | undefined {
     if (this.contextStack.length > 1) {
       return this.contextStack.pop();
@@ -65,10 +144,21 @@ export class ShortcutManager {
     return undefined;
   }
 
+  /**
+   * Retrieves the current active shortcut context.
+   *
+   * @returns {ShortcutContext} The current context, defaulting to 'global'
+   */
   getCurrentContext(): ShortcutContext {
     return this.contextStack[this.contextStack.length - 1] || 'global';
   }
 
+  /**
+   * Processes a keyboard event and executes the first matching registered shortcut.
+   *
+   * @param {ShortcutEvent} event - The keyboard event to process
+   * @returns {boolean} Whether a matching shortcut was found and executed
+   */
   handleKey(event: ShortcutEvent): boolean {
     const currentContext = this.getCurrentContext();
 
@@ -93,6 +183,12 @@ export class ShortcutManager {
     return false;
   }
 
+  /**
+   * Registers an event handler for a specific event.
+   *
+   * @param {string} event - The event to listen for
+   * @param {Function} handler - The callback function to invoke when the event occurs
+   */
   on(event: string, handler: (payload?: unknown) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());
@@ -100,20 +196,46 @@ export class ShortcutManager {
     this.eventHandlers.get(event)!.add(handler);
   }
 
+  /**
+   * Removes a specific event handler for an event.
+   *
+   * @param {string} event - The event to remove the handler from
+   * @param {Function} handler - The specific handler to remove
+   */
   off(event: string, handler: (payload?: unknown) => void): void {
     this.eventHandlers.get(event)?.delete(handler);
   }
 
+  /**
+   * Retrieves all registered keyboard shortcuts.
+   *
+   * @returns {KeyboardShortcut[]} An array of all registered shortcuts
+   */
   getShortcuts(): KeyboardShortcut[] {
     return Array.from(this.shortcuts.values());
   }
 
+  /**
+   * Retrieves shortcuts applicable to a specific context.
+   *
+   * @param {ShortcutContext} ctx - The context to filter shortcuts for
+   * @returns {KeyboardShortcut[]} Shortcuts valid in the given context
+   */
   getShortcutsForContext(ctx: ShortcutContext): KeyboardShortcut[] {
     return this.getShortcuts().filter(
       s => !s.context || s.context === 'global' || s.context === ctx
     );
   }
 
+  /**
+   * Formats a key combination into a human-readable string.
+   *
+   * @param {KeyCombination} keys - The key combination to format
+   * @returns {string} A formatted string representation of the key combination
+   * @example
+   * // Returns 'Ctrl+Shift+A'
+   * formatKey({ key: 'a', ctrl: true, shift: true })
+   */
   formatKey(keys: KeyCombination): string {
     const parts: string[] = [];
     if (keys.ctrl) parts.push('Ctrl');

@@ -1073,3 +1073,316 @@ export function resetAutonomyTestContext(context: AutonomyTestContext): void {
   // Reset mocks
   vi.clearAllMocks();
 }
+
+// ============================================================================
+// Enhanced Autonomy Boundary Testing
+// ============================================================================
+
+/**
+ * Test autonomy boundary conditions with various edge cases
+ */
+export function createAutonomyBoundaryTestScenarios() {
+  return {
+    // Boundary edge cases
+    autonomyLevelTransitions: () => {
+      const context = createAutonomyTestContext({ defaultLevel: 'full-auto' });
+
+      // Add method to transition between autonomy levels during test
+      (context as any).transitionToLevel = async (newLevel: AutonomyLevel) => {
+        context.config.level = newLevel;
+        context.autonomyManager.checkAutonomyLevel = vi.fn(async () => newLevel);
+
+        context.eventEmitter.emit('boundary_enforced', {
+          action: 'autonomy_transition',
+          level: newLevel,
+          reason: `Autonomy level changed to ${newLevel}`,
+        });
+      };
+
+      return context;
+    },
+
+    conditionalApprovals: () => {
+      const context = createAutonomyTestContext({ defaultLevel: 'review-all' });
+      let approvalCondition: (action: string) => boolean = () => true;
+
+      // Override approval simulator to use conditions
+      const originalRequestApproval = context.autonomyManager.requestApproval;
+      context.autonomyManager.requestApproval = vi.fn(async (params: ApprovalRequest) => {
+        const shouldApprove = approvalCondition(params.action);
+        return {
+          approved: shouldApprove,
+          timestamp: new Date(),
+          reason: shouldApprove ? 'Condition met' : 'Condition not met',
+          metadata: { condition: approvalCondition.toString() },
+        };
+      });
+
+      (context as any).setApprovalCondition = (condition: (action: string) => boolean) => {
+        approvalCondition = condition;
+      };
+
+      return context;
+    },
+
+    approvalTimeouts: () => {
+      const context = createAutonomyTestContext({
+        defaultLevel: 'review-all',
+        approvalTimeout: 1 // 1 second timeout
+      });
+
+      // Override to simulate timeout scenarios
+      context.approvalSimulator.simulateTimeout = vi.fn(async (timeout = 500) => {
+        await new Promise(resolve => setTimeout(resolve, timeout));
+        return {
+          approved: false,
+          timestamp: new Date(),
+          timeout: true,
+          reason: 'Approval request timed out',
+        };
+      });
+
+      return context;
+    },
+
+    resourceLimitViolations: () => {
+      const context = createAutonomyTestContext({
+        defaultLevel: 'full-auto',
+        resourceLimits: {
+          maxTokens: 100,
+          maxCost: 0.10,
+          maxDuration: 1, // 1 second
+          maxRetries: 1,
+          maxFiles: 2,
+          maxFileSize: 1024, // 1KB
+        }
+      });
+
+      // Add method to trigger limit violations
+      (context as any).exceedLimit = (limitType: 'tokens' | 'cost' | 'duration' | 'files') => {
+        const task = context.taskManager.getCurrentTask();
+        if (!task) return;
+
+        const violations = {
+          tokens: () => { task.usage!.totalTokens = 200; },
+          cost: () => { task.usage!.estimatedCost = 0.20; },
+          duration: () => { task.createdAt = new Date(Date.now() - 2000); },
+          files: () => { task.artifacts = [{}, {}, {}] as any; }
+        };
+
+        violations[limitType]();
+
+        context.eventEmitter.emit('limit_exceeded', {
+          action: 'resource_check',
+          reason: `${limitType} limit exceeded`,
+          metadata: { limitType, task: task.id },
+        });
+      };
+
+      return context;
+    },
+
+    gradualAutonomyReduction: () => {
+      const levels: AutonomyLevel[] = ['full-auto', 'review-before-commit', 'review-all'];
+      let currentLevelIndex = 0;
+
+      const context = createAutonomyTestContext({ defaultLevel: levels[0] });
+
+      // Automatically reduce autonomy on each violation
+      const originalEnforceAutonomyBoundary = context.autonomyManager.enforceAutonomyBoundary;
+      context.autonomyManager.enforceAutonomyBoundary = vi.fn(async (action: string, contextData: any) => {
+        const result = await originalEnforceAutonomyBoundary.call(context.autonomyManager, action, contextData);
+
+        if (!result && currentLevelIndex < levels.length - 1) {
+          currentLevelIndex++;
+          const newLevel = levels[currentLevelIndex];
+          context.config.level = newLevel;
+
+          context.eventEmitter.emit('boundary_enforced', {
+            action,
+            level: newLevel,
+            reason: `Autonomy reduced to ${newLevel} due to boundary violation`,
+          });
+        }
+
+        return result;
+      });
+
+      return context;
+    },
+
+    approvalChaining: () => {
+      const context = createAutonomyTestContext({ defaultLevel: 'review-all' });
+      const approvalChain: string[] = [];
+
+      // Track approval chain
+      const originalRequestApproval = context.autonomyManager.requestApproval;
+      context.autonomyManager.requestApproval = vi.fn(async (params: ApprovalRequest) => {
+        approvalChain.push(params.action);
+
+        // Require all actions in chain to be approved for final approval
+        const allApproved = approvalChain.length <= 3; // Max 3 chained approvals
+
+        return {
+          approved: allApproved,
+          timestamp: new Date(),
+          reason: allApproved ? 'Approval chain valid' : 'Approval chain too long',
+          metadata: { chain: [...approvalChain] },
+        };
+      });
+
+      (context as any).getApprovalChain = () => [...approvalChain];
+      (context as any).clearApprovalChain = () => { approvalChain.length = 0; };
+
+      return context;
+    },
+
+    autonomyEscalation: () => {
+      const context = createAutonomyTestContext({ defaultLevel: 'review-all' });
+      let escalationLevel = 0;
+
+      // Simulate escalation process
+      (context as any).escalate = async (reason: string) => {
+        escalationLevel++;
+        const targetLevel: AutonomyLevel = escalationLevel === 1 ? 'review-before-commit' : 'full-auto';
+
+        context.eventEmitter.emit('approval_requested', {
+          action: 'escalate_autonomy',
+          level: targetLevel,
+          reason: `Escalation ${escalationLevel}: ${reason}`,
+          metadata: { escalationLevel, targetLevel },
+        });
+
+        // Auto-approve escalation for testing
+        setTimeout(() => {
+          context.config.level = targetLevel;
+          context.eventEmitter.emit('approval_granted', {
+            action: 'escalate_autonomy',
+            level: targetLevel,
+            reason: 'Escalation approved',
+          });
+        }, 100);
+      };
+
+      (context as any).getEscalationLevel = () => escalationLevel;
+
+      return context;
+    },
+
+    crossAgentPermissions: () => {
+      const context = createAutonomyTestContext({
+        defaultLevel: 'review-all',
+        agentOverrides: {
+          'developer': { level: 'review-before-commit', approvalTimeout: 30 },
+          'tester': { level: 'full-auto', approvalTimeout: 0 },
+          'reviewer': { level: 'review-all', approvalTimeout: 60 },
+        },
+      });
+
+      // Simulate agent switching during workflow
+      (context as any).switchAgent = async (newAgent: string) => {
+        const override = context.config.agentOverrides?.[newAgent];
+        if (override && typeof override === 'object') {
+          context.config.level = override.level;
+
+          context.eventEmitter.emit('boundary_enforced', {
+            action: 'agent_switch',
+            agent: newAgent,
+            level: override.level,
+            reason: `Switched to agent ${newAgent} with level ${override.level}`,
+          });
+        }
+      };
+
+      return context;
+    }
+  };
+}
+
+/**
+ * Advanced approval flow simulation for complex scenarios
+ */
+export function createAdvancedApprovalSimulator(): ApprovalSimulator & {
+  simulateComplexWorkflow: (workflow: ComplexWorkflowStep[]) => Promise<ApprovalResponse[]>;
+  simulateApprovalConflict: () => Promise<ApprovalResponse>;
+  simulatePartialApproval: (approvedActions: string[]) => Promise<ApprovalResponse>;
+} {
+  const baseSimulator = createApprovalSimulator();
+
+  return {
+    ...baseSimulator,
+
+    simulateComplexWorkflow: vi.fn(async (workflow: ComplexWorkflowStep[]) => {
+      const results: ApprovalResponse[] = [];
+
+      for (const step of workflow) {
+        const delay = step.delay || 100;
+        const shouldApprove = step.expectedOutcome !== 'denied';
+
+        const response = shouldApprove
+          ? await baseSimulator.simulateApproval(delay)
+          : await baseSimulator.simulateDenial(step.denialReason, delay);
+
+        results.push({
+          ...response,
+          metadata: {
+            step: step.action,
+            expectedOutcome: step.expectedOutcome,
+            agent: step.agent,
+          },
+        });
+
+        // Break workflow on denial if configured
+        if (!response.approved && step.breakOnDenial) {
+          break;
+        }
+      }
+
+      return results;
+    }),
+
+    simulateApprovalConflict: vi.fn(async () => {
+      // Simulate scenario where multiple approvers give conflicting responses
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return {
+        approved: false,
+        timestamp: new Date(),
+        reason: 'Approval conflict: multiple conflicting responses received',
+        metadata: {
+          conflict: true,
+          responses: [
+            { approver: 'approver1', decision: 'approve' },
+            { approver: 'approver2', decision: 'deny' },
+          ],
+        },
+      };
+    }),
+
+    simulatePartialApproval: vi.fn(async (approvedActions: string[]) => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return {
+        approved: true,
+        timestamp: new Date(),
+        reason: 'Partial approval granted for specific actions',
+        metadata: {
+          partial: true,
+          approvedActions,
+          restrictions: 'Only approved actions may proceed',
+        },
+      };
+    }),
+  };
+}
+
+/**
+ * Configuration for complex workflow steps
+ */
+export interface ComplexWorkflowStep {
+  action: string;
+  agent?: string;
+  expectedOutcome?: 'approved' | 'denied' | 'timeout';
+  delay?: number;
+  denialReason?: string;
+  breakOnDenial?: boolean;
+  prerequisites?: string[];
+}

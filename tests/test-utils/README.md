@@ -6,6 +6,7 @@ A comprehensive test utilities library for the APEX project, providing common he
 
 The APEX test utilities are designed to make writing tests easier, more consistent, and more reliable across the APEX codebase. They provide:
 
+- **Parallel Test Execution Support**: Comprehensive utilities for safe parallel test execution
 - **Test Isolation Patterns**: Complete isolation system for parallel-safe, reproducible tests
 - **Async Utilities**: Helpers for testing asynchronous operations
 - **Assertion Helpers**: Enhanced assertion functions beyond basic `expect()`
@@ -18,6 +19,10 @@ The test utilities are part of the APEX monorepo and can be imported from the ce
 
 ```typescript
 import {
+  // Parallel test execution utilities
+  createParallelTestContext, createComprehensiveTestEnvironment,
+  getTestWorkerId, createWorkerDatabasePath, createWorkerEventEmitter,
+  AsyncMutex, Semaphore, ResourcePool, WorkerCoordinator,
   // Test isolation utilities
   createIsolatedTest, withIsolation, createTestContextFactory, CleanupPriority,
   // Async utilities

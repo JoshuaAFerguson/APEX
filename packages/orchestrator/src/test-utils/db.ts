@@ -50,6 +50,10 @@ export interface TestDatabaseContext {
 export async function createTestDatabase(): Promise<TestDatabaseContext> {
   const db = new Database(':memory:');
 
+  // Set pragmas to match TaskStore behavior
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = OFF');
+
   // Initialize the TaskStore schema
   initializeSchema(db);
 

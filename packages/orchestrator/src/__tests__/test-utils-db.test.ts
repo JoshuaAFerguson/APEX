@@ -127,16 +127,20 @@ describe('Test Utils DB Module', () => {
       expect(updatedTask.status).toBe('in_progress');
     });
 
-    it('should enforce foreign key constraints', async () => {
+    it('should have foreign keys disabled like TaskStore', async () => {
       testDb = await createTestDatabase();
 
-      // Try to insert task log for non-existent task (should fail)
+      // TaskStore disables foreign keys, so this should succeed
       expect(() => {
         testDb.db.prepare(`
           INSERT INTO task_logs (task_id, timestamp, level, message)
           VALUES (?, ?, ?, ?)
         `).run('nonexistent_task', new Date().toISOString(), 'info', 'Test message');
-      }).toThrow();
+      }).not.toThrow();
+
+      // Verify the record was actually inserted
+      const logs = testDb.db.prepare('SELECT * FROM task_logs WHERE task_id = ?').all('nonexistent_task');
+      expect(logs).toHaveLength(1);
     });
   });
 

@@ -7,7 +7,7 @@
 import type { MockPageObject, MockElementState } from './mock-page-objects.js';
 
 export interface AssertionResult {
-  pass: boolean;
+  success: boolean;
   message: string;
   actual?: unknown;
   expected?: unknown;
@@ -60,9 +60,9 @@ export function assertNavigationState(
   }
 
   return {
-    pass: failures.length === 0,
+    success: failures.length === 0,
     message: failures.length === 0
-      ? 'Navigation state matches expectations'
+      ? 'Navigation state matches expected state'
       : failures.join('; '),
     actual: { url: page.url, title: page.title },
     expected
@@ -81,9 +81,9 @@ export function assertPageContent(
     : expectedContent.test(page.content);
 
   return {
-    pass: contentMatches,
+    success: contentMatches,
     message: contentMatches
-      ? `Page content contains expected content`
+      ? `Page content contains expected text`
       : `Page content does not contain expected content: ${expectedContent}`,
     actual: page.content,
     expected: expectedContent
@@ -100,10 +100,10 @@ export function assertElementExists(
   const elementExists = page.elements.has(selector);
 
   return {
-    pass: elementExists,
+    success: elementExists,
     message: elementExists
-      ? `Element "${selector}" exists`
-      : `Element "${selector}" does not exist`,
+      ? `Element found: ${selector}`
+      : `Element not found: ${selector}`,
     actual: elementExists,
     expected: true
   };
@@ -120,15 +120,15 @@ export function assertElementVisible(
 
   if (!element) {
     return {
-      pass: false,
-      message: `Element "${selector}" does not exist`,
+      success: false,
+      message: `Element not found: ${selector}`,
       actual: undefined,
       expected: 'element to exist and be visible'
     };
   }
 
   return {
-    pass: element.visible,
+    success: element.visible,
     message: element.visible
       ? `Element "${selector}" is visible`
       : `Element "${selector}" is not visible`,
@@ -149,8 +149,8 @@ export function assertElementText(
 
   if (!element) {
     return {
-      pass: false,
-      message: `Element "${selector}" does not exist`,
+      success: false,
+      message: `Element not found: ${selector}`,
       actual: undefined,
       expected
     };
@@ -161,9 +161,9 @@ export function assertElementText(
     : expected.test(element.text);
 
   return {
-    pass: textMatches,
+    success: textMatches,
     message: textMatches
-      ? `Element "${selector}" text matches expected value`
+      ? `Element ${selector} has expected text`
       : `Element "${selector}" text "${element.text}" does not match expected: ${expected}`,
     actual: element.text,
     expected
@@ -177,10 +177,10 @@ export function assertNoErrors(page: MockPageObject): AssertionResult {
   const hasNoErrors = page.errors.length === 0;
 
   return {
-    pass: hasNoErrors,
+    success: hasNoErrors,
     message: hasNoErrors
-      ? 'Page has no errors'
-      : `Page has ${page.errors.length} error(s): ${page.errors.join(', ')}`,
+      ? 'No errors found on page'
+      : `Found ${page.errors.length} errors: ${page.errors.join(', ')}`,
     actual: page.errors,
     expected: []
   };
@@ -205,9 +205,9 @@ export function assertConsoleContains(
   const hasMatchingMessage = matchingMessages.length > 0;
 
   return {
-    pass: hasMatchingMessage,
+    success: hasMatchingMessage,
     message: hasMatchingMessage
-      ? `Console contains ${level} message matching: ${text}`
+      ? `Console contains expected message`
       : `Console does not contain ${level} message matching: ${text}`,
     actual: page.consoleMessages.filter(msg => msg.level === level),
     expected: { level, text }
@@ -226,7 +226,7 @@ export function assertBrowserState(
   // Check URL
   if (expected.url !== undefined) {
     const urlResult = assertNavigationState(page, { url: expected.url });
-    if (!urlResult.pass) {
+    if (!urlResult.success) {
       failures.push(urlResult.message);
     }
   }
@@ -234,7 +234,7 @@ export function assertBrowserState(
   // Check title
   if (expected.title !== undefined) {
     const titleResult = assertNavigationState(page, { title: expected.title });
-    if (!titleResult.pass) {
+    if (!titleResult.success) {
       failures.push(titleResult.message);
     }
   }
@@ -255,7 +255,7 @@ export function assertBrowserState(
   if (expected.elementExists) {
     expected.elementExists.forEach(selector => {
       const existsResult = assertElementExists(page, selector);
-      if (!existsResult.pass) {
+      if (!existsResult.success) {
         failures.push(existsResult.message);
       }
     });
@@ -265,7 +265,7 @@ export function assertBrowserState(
   if (expected.elementVisible) {
     expected.elementVisible.forEach(selector => {
       const visibleResult = assertElementVisible(page, selector);
-      if (!visibleResult.pass) {
+      if (!visibleResult.success) {
         failures.push(visibleResult.message);
       }
     });
@@ -275,14 +275,14 @@ export function assertBrowserState(
   if (expected.consoleMessages) {
     expected.consoleMessages.forEach(expectedMsg => {
       const consoleResult = assertConsoleContains(page, expectedMsg.level, expectedMsg.text);
-      if (!consoleResult.pass) {
+      if (!consoleResult.success) {
         failures.push(consoleResult.message);
       }
     });
   }
 
   return {
-    pass: failures.length === 0,
+    success: failures.length === 0,
     message: failures.length === 0
       ? 'All browser state assertions passed'
       : failures.join('; '),
@@ -309,8 +309,8 @@ export function assertElementAttributes(
 
   if (!element) {
     return {
-      pass: false,
-      message: `Element "${selector}" does not exist`,
+      success: false,
+      message: `Element not found: ${selector}`,
       actual: undefined,
       expected: expectedAttributes
     };
@@ -328,9 +328,9 @@ export function assertElementAttributes(
   });
 
   return {
-    pass: failures.length === 0,
+    success: failures.length === 0,
     message: failures.length === 0
-      ? `Element "${selector}" has expected attributes`
+      ? `Element ${selector} has expected attributes`
       : failures.join('; '),
     actual: element.attributes,
     expected: expectedAttributes
@@ -349,8 +349,8 @@ export function assertElementTagName(
 
   if (!element) {
     return {
-      pass: false,
-      message: `Element "${selector}" does not exist`,
+      success: false,
+      message: `Element not found: ${selector}`,
       actual: undefined,
       expected: expectedTagName
     };
@@ -359,9 +359,9 @@ export function assertElementTagName(
   const tagMatches = element.tagName.toLowerCase() === expectedTagName.toLowerCase();
 
   return {
-    pass: tagMatches,
+    success: tagMatches,
     message: tagMatches
-      ? `Element "${selector}" has expected tag name "${expectedTagName}"`
+      ? `Element ${selector} has expected tag name ${expectedTagName}`
       : `Element "${selector}" has tag name "${element.tagName}", expected "${expectedTagName}"`,
     actual: element.tagName,
     expected: expectedTagName
@@ -380,8 +380,8 @@ export function assertElementEnabled(
 
   if (!element) {
     return {
-      pass: false,
-      message: `Element "${selector}" does not exist`,
+      success: false,
+      message: `Element not found: ${selector}`,
       actual: undefined,
       expected: shouldBeEnabled
     };
@@ -390,7 +390,7 @@ export function assertElementEnabled(
   const enabledMatches = element.enabled === shouldBeEnabled;
 
   return {
-    pass: enabledMatches,
+    success: enabledMatches,
     message: enabledMatches
       ? `Element "${selector}" is ${shouldBeEnabled ? 'enabled' : 'disabled'} as expected`
       : `Element "${selector}" is ${element.enabled ? 'enabled' : 'disabled'}, expected ${shouldBeEnabled ? 'enabled' : 'disabled'}`,
@@ -411,8 +411,8 @@ export function assertCookie(
 
   if (!cookie) {
     return {
-      pass: false,
-      message: `Cookie "${name}" does not exist`,
+      success: false,
+      message: `Cookie ${name} not found`,
       actual: page.cookies.map(c => c.name),
       expected: name
     };
@@ -420,7 +420,7 @@ export function assertCookie(
 
   if (expectedValue !== undefined && cookie.value !== expectedValue) {
     return {
-      pass: false,
+      success: false,
       message: `Cookie "${name}" has value "${cookie.value}", expected "${expectedValue}"`,
       actual: cookie.value,
       expected: expectedValue
@@ -428,9 +428,9 @@ export function assertCookie(
   }
 
   return {
-    pass: true,
+    success: true,
     message: expectedValue !== undefined
-      ? `Cookie "${name}" has expected value "${expectedValue}"`
+      ? `Cookie ${name} has expected value`
       : `Cookie "${name}" exists`,
     actual: cookie.value,
     expected: expectedValue
@@ -449,7 +449,7 @@ export function assertLocalStorage(
 
   if (actualValue === undefined) {
     return {
-      pass: false,
+      success: false,
       message: `localStorage key "${key}" does not exist`,
       actual: Array.from(page.localStorage.keys()),
       expected: key
@@ -458,7 +458,7 @@ export function assertLocalStorage(
 
   if (expectedValue !== undefined && actualValue !== expectedValue) {
     return {
-      pass: false,
+      success: false,
       message: `localStorage key "${key}" has value "${actualValue}", expected "${expectedValue}"`,
       actual: actualValue,
       expected: expectedValue
@@ -466,9 +466,9 @@ export function assertLocalStorage(
   }
 
   return {
-    pass: true,
+    success: true,
     message: expectedValue !== undefined
-      ? `localStorage key "${key}" has expected value "${expectedValue}"`
+      ? `LocalStorage ${key} has expected value`
       : `localStorage key "${key}" exists`,
     actual: actualValue,
     expected: expectedValue

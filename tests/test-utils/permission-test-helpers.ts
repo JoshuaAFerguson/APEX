@@ -567,5 +567,89 @@ export function createPermissionDenialScenarios() {
       denyOperations: ['evaluate', 'submit'],
       blockedDomains: ['restricted.com']
     }),
+
+    // Enhanced scenarios for comprehensive testing
+    temporaryDenial: () => {
+      const context = createPermissionTestContext();
+      // Add method to temporarily deny operations with automatic restoration
+      (context as any).temporarilyDeny = async (operation: string, duration: number = 1000) => {
+        await context.permissionManager.denyPermission('Browser', operation);
+        setTimeout(async () => {
+          await context.permissionManager.grantPermission('Browser', 'full', operation);
+        }, duration);
+      };
+      return context;
+    },
+
+    cascadingPermissions: () => {
+      const context = createPermissionTestContext();
+      let deniedCount = 0;
+      // Each permission check increases restrictions
+      const originalCheck = context.permissionManager.checkToolPermission;
+      context.permissionManager.checkToolPermission = vi.fn(async (tool: string, options: { scope: string }) => {
+        deniedCount++;
+        if (deniedCount > 3) {
+          return {
+            allowed: false,
+            level: null,
+            requiresConfirmation: false,
+            denialReason: `Cascading denial after ${deniedCount} requests`,
+          };
+        }
+        return originalCheck.call(context.permissionManager, tool, options);
+      });
+      return context;
+    },
+
+    roleBasedDenial: (role: 'admin' | 'user' | 'guest' = 'user') => {
+      const rolePermissions = {
+        admin: ['*'],
+        user: ['navigate', 'click', 'type', 'screenshot'],
+        guest: ['navigate']
+      };
+      const allowedOperations = rolePermissions[role];
+      const allOperations = ['navigate', 'click', 'type', 'screenshot', 'evaluate', 'submit'];
+      const deniedOperations = allOperations.filter(op => !allowedOperations.includes('*') && !allowedOperations.includes(op));
+
+      return createPermissionTestContext({ denyOperations: deniedOperations });
+    },
+
+    timeBasedRestriction: () => {
+      const context = createPermissionTestContext();
+      let startTime = Date.now();
+      // Deny operations after 2 seconds
+      const originalCheck = context.permissionManager.checkToolPermission;
+      context.permissionManager.checkToolPermission = vi.fn(async (tool: string, options: { scope: string }) => {
+        if (Date.now() - startTime > 2000) {
+          return {
+            allowed: false,
+            level: null,
+            requiresConfirmation: false,
+            denialReason: 'Time-based restriction: operations denied after 2 seconds',
+          };
+        }
+        return originalCheck.call(context.permissionManager, tool, options);
+      });
+      return context;
+    },
+
+    rateLimitedPermissions: (maxRequests: number = 5) => {
+      const context = createPermissionTestContext();
+      let requestCount = 0;
+      const originalCheck = context.permissionManager.checkToolPermission;
+      context.permissionManager.checkToolPermission = vi.fn(async (tool: string, options: { scope: string }) => {
+        requestCount++;
+        if (requestCount > maxRequests) {
+          return {
+            allowed: false,
+            level: null,
+            requiresConfirmation: false,
+            denialReason: `Rate limit exceeded: ${requestCount} requests > ${maxRequests} allowed`,
+          };
+        }
+        return originalCheck.call(context.permissionManager, tool, options);
+      });
+      return context;
+    },
   };
 }

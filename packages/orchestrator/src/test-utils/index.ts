@@ -6,7 +6,7 @@
  */
 
 // Export database utilities
-export * from './db.js';
+export * from './db';
 
 // Re-export everything from the main test-utils file for backward compatibility
-export * from '../test-utils.js';
+export * from '../test-utils';

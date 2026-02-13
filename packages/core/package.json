@@ -99,6 +99,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@apex/test-utils": "*",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.10.0",
     "@types/pixelmatch": "^5.2.6",
