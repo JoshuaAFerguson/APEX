@@ -2484,6 +2484,121 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
       },
     });
   });
+
+  // Permission events - Real-time permission notification broadcasting
+  orchestrator.on('permission:request', (eventData: any) => {
+    broadcast(eventData.taskId || 'permission-global', {
+      type: 'permission:request',
+      taskId: eventData.taskId || 'permission-global',
+      timestamp: new Date(),
+      data: {
+        requestId: eventData.requestId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        operation: eventData.operation,
+        description: eventData.description,
+        reason: eventData.reason,
+        scope: eventData.scope,
+        riskLevel: eventData.riskLevel,
+        metadata: eventData.metadata,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('permission:granted', (eventData: any) => {
+    broadcast(eventData.taskId || 'permission-global', {
+      type: 'permission:granted',
+      taskId: eventData.taskId || 'permission-global',
+      timestamp: new Date(),
+      data: {
+        requestId: eventData.requestId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        level: eventData.level,
+        grantedBy: eventData.grantedBy,
+        grantReason: eventData.grantReason,
+        comment: eventData.comment,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('permission:denied', (eventData: any) => {
+    broadcast(eventData.taskId || 'permission-global', {
+      type: 'permission:denied',
+      taskId: eventData.taskId || 'permission-global',
+      timestamp: new Date(),
+      data: {
+        requestId: eventData.requestId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        deniedBy: eventData.deniedBy,
+        denialReason: eventData.denialReason,
+        reason: eventData.reason,
+        comment: eventData.comment,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  // Dangerous operation events - Real-time dangerous operation notification broadcasting
+  orchestrator.on('dangerous:detected', (eventData: any) => {
+    broadcast(eventData.taskId || 'dangerous-global', {
+      type: 'dangerous:detected',
+      taskId: eventData.taskId || 'dangerous-global',
+      timestamp: new Date(),
+      data: {
+        operationId: eventData.operationId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        operationType: eventData.operationType,
+        operation: eventData.operation,
+        riskLevel: eventData.riskLevel,
+        riskDescription: eventData.riskDescription,
+        description: eventData.description,
+        metadata: eventData.metadata,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('dangerous:confirmed', (eventData: any) => {
+    broadcast(eventData.taskId || 'dangerous-global', {
+      type: 'dangerous:confirmed',
+      taskId: eventData.taskId || 'dangerous-global',
+      timestamp: new Date(),
+      data: {
+        operationId: eventData.operationId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        operationType: eventData.operationType,
+        confirmedBy: eventData.confirmedBy,
+        confirmation: eventData.confirmation,
+        comment: eventData.comment,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('dangerous:blocked', (eventData: any) => {
+    broadcast(eventData.taskId || 'dangerous-global', {
+      type: 'dangerous:blocked',
+      taskId: eventData.taskId || 'dangerous-global',
+      timestamp: new Date(),
+      data: {
+        operationId: eventData.operationId,
+        toolName: eventData.toolName,
+        agentName: eventData.agentName,
+        operationType: eventData.operationType,
+        blockedBy: eventData.blockedBy,
+        blockReason: eventData.blockReason,
+        reason: eventData.reason,
+        comment: eventData.comment,
+        timestamp: eventData.timestamp,
+      },
+    });
+  });
 }
 
 /**

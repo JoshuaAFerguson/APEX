@@ -10,12 +10,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EventEmitter } from 'eventemitter3';
 import type {
   PermissionRequestEventData,
   PermissionGrantedEventData,
   PermissionDeniedEventData
 } from '@apexcli/core';
-import { MockOrchestrator, createMockOrchestrator } from '../ui/components/agents/__tests__/test-utils/MockOrchestrator';
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 
@@ -48,6 +48,36 @@ vi.mock('ora', () => ({
   default: vi.fn(() => mockSpinner)
 }));
 
+
+// Mock orchestrator that extends EventEmitter
+class MockOrchestrator extends EventEmitter {
+  constructor() {
+    super();
+  }
+
+  simulatePermissionRequest(data: PermissionRequestEventData) {
+    this.emit('permission:request', data);
+    return data;
+  }
+
+  simulatePermissionGranted(data: PermissionGrantedEventData) {
+    this.emit('permission:granted', data);
+    return data;
+  }
+
+  simulatePermissionDenied(data: PermissionDeniedEventData) {
+    this.emit('permission:denied', data);
+    return data;
+  }
+
+  cleanup() {
+    this.removeAllListeners();
+  }
+}
+
+function createMockOrchestrator(): MockOrchestrator {
+  return new MockOrchestrator();
+}
 
 /**
  * CLI Permission Notification Display System

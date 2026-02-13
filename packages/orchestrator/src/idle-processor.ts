@@ -1978,9 +1978,19 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
   }
 
   /**
-   * Comprehensive analysis of missing integration tests for critical paths
+   * Comprehensive analysis of missing integration tests for critical paths.
    * Identifies API endpoints, database operations, external service calls,
-   * and complex component interactions that lack proper integration testing
+   * and complex component interactions that lack proper integration testing.
+   *
+   * @returns Promise resolving to array of missing integration test findings
+   * @example
+   * ```typescript
+   * const processor = new IdleProcessor(projectPath, config, store);
+   * const missingTests = await processor.analyzeMissingIntegrationTests();
+   * missingTests.forEach(test => {
+   *   console.log(`Missing test for: ${test.component} at ${test.filePath}:${test.lineNumber}`);
+   * });
+   * ```
    */
   public async analyzeMissingIntegrationTests(): Promise<ProjectAnalysis['testAnalysis']['missingIntegrationTests']> {
     try {
@@ -2011,7 +2021,15 @@ export class IdleProcessor extends EventEmitter<IdleProcessorEvents> {
    * commented-out tests, tests with only console.log, empty test blocks, and
    * tests with hardcoded timeouts.
    *
-   * @returns Promise<TestingAntiPattern[]> Array of detected anti-patterns
+   * @returns Promise resolving to array of detected testing anti-patterns
+   * @example
+   * ```typescript
+   * const processor = new IdleProcessor(projectPath, config, store);
+   * const antiPatterns = await processor.analyzeTestAntiPatterns();
+   * antiPatterns.forEach(pattern => {
+   *   console.log(`Anti-pattern: ${pattern.type} in ${pattern.filePath}:${pattern.lineNumber}`);
+   * });
+   * ```
    */
   public async analyzeTestAntiPatterns(): Promise<TestingAntiPattern[]> {
     try {

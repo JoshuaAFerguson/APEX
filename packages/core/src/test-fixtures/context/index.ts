@@ -110,3 +110,52 @@ export {
   // Cleanup orchestration
   createCleanupOrchestrator,
 } from './isolation-utils.js';
+
+// Parallel test helpers for concurrent execution
+export {
+  // Database isolation
+  createDatabaseIsolation,
+  type DatabaseIsolation,
+  type DatabaseIsolationOptions,
+  // Port allocation
+  createPortAllocator,
+  type PortAllocator,
+  // Memory isolation
+  createMemoryIsolation,
+  type MemoryIsolation,
+  type MemoryContext,
+  // File system isolation
+  createFileSystemIsolation,
+  type FileSystemIsolation,
+  type FileSystemIsolationOptions,
+  // Process isolation
+  createProcessIsolation,
+  type ProcessIsolation,
+  type MockProcess,
+  // Network isolation
+  createNetworkIsolation,
+  type NetworkIsolation,
+} from './parallel-test-helpers.js';
+
+// Performance-optimized utilities for large test suites
+export {
+  // Resource pooling
+  createResourcePool,
+  type ResourcePool,
+  type ResourcePoolOptions,
+  // Batch processing
+  createBatchProcessor,
+  type BatchProcessor,
+  type BatchProcessorOptions,
+  // Lazy context factory
+  createLazyContextFactory,
+  type LazyContextFactory,
+  type LazyContextOptions,
+  // Parallel executor
+  createParallelExecutor,
+  type ParallelExecutor,
+  type ParallelExecutorOptions,
+  // Memory-efficient management
+  createMemoryEfficientManager,
+  type MemoryEfficientManager,
+} from './performance-isolation.js';

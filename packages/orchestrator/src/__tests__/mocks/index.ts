@@ -30,6 +30,35 @@ export type {
   DynamicResponseHandler
 } from './claude-agent-sdk.types';
 
+// Tool Mocking Utilities
+export {
+  MockToolRegistry
+} from './tool-mock-registry';
+
+export {
+  MockToolBuilder,
+  createMockTool,
+  createSimpleTextTool,
+  createFailingTool,
+  createSequenceTool
+} from './tool-mock-builder';
+
+export type {
+  MockToolContent,
+  MockToolResult,
+  ToolInvocationRecord,
+  MockToolConfig,
+  MockToolHandler,
+  MockToolContext,
+  MockToolDefinition,
+  ToolCallVerificationResult,
+  ToolCallExpectation,
+  ToolExecutionOptions,
+  ToolUsageStatistics,
+  ToolCallPattern,
+  PatternMatchResult
+} from './tool-mock.types';
+
 // Permission Revocation Test Utilities
 export {
   InterruptibleStreamController,

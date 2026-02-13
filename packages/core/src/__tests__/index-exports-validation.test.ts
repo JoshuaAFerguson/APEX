@@ -52,11 +52,55 @@ describe('@apexcli/core Index Exports Validation', () => {
 
       // Core utilities
       expect(coreIndex.formatElapsed).toBeDefined();
-      expect(coreIndex.formatSize).toBeDefined();
       expect(coreIndex.formatCost).toBeDefined();
-      expect(coreIndex.calculateTokenCost).toBeDefined();
+      expect(coreIndex.calculateCost).toBeDefined();
 
-      console.log('✓ Utility functions exported successfully');
+      // ID generation functions
+      expect(coreIndex.generateTaskId).toBeDefined();
+      expect(coreIndex.generateIdleTaskId).toBeDefined();
+      expect(coreIndex.generateTaskTemplateId).toBeDefined();
+      expect(coreIndex.generateApprovalId).toBeDefined();
+
+      // String utilities
+      expect(coreIndex.slugify).toBeDefined();
+      expect(coreIndex.generateBranchName).toBeDefined();
+
+      // Formatting utilities
+      expect(coreIndex.formatDuration).toBeDefined();
+      expect(coreIndex.formatTokens).toBeDefined();
+
+      // Version utilities
+      expect(coreIndex.parseSemver).toBeDefined();
+      expect(coreIndex.isPreRelease).toBeDefined();
+      expect(coreIndex.compareVersions).toBeDefined();
+      expect(coreIndex.getUpdateType).toBeDefined();
+
+      // Commit utilities
+      expect(coreIndex.parseConventionalCommit).toBeDefined();
+      expect(coreIndex.createConventionalCommit).toBeDefined();
+      expect(coreIndex.parseGitLog).toBeDefined();
+      expect(coreIndex.groupCommitsByType).toBeDefined();
+      expect(coreIndex.generateChangelogMarkdown).toBeDefined();
+      expect(coreIndex.suggestCommitType).toBeDefined();
+
+      // General utilities
+      expect(coreIndex.safeJsonParse).toBeDefined();
+      expect(coreIndex.deepMerge).toBeDefined();
+      expect(coreIndex.truncate).toBeDefined();
+      expect(coreIndex.truncateToolOutput).toBeDefined();
+      expect(coreIndex.extractCodeBlocks).toBeDefined();
+      expect(coreIndex.retry).toBeDefined();
+      expect(coreIndex.createDeferred).toBeDefined();
+
+      // Conflict resolution utilities
+      expect(coreIndex.detectConflicts).toBeDefined();
+      expect(coreIndex.suggestConflictResolution).toBeDefined();
+      expect(coreIndex.formatConflictReport).toBeDefined();
+
+      // Constants
+      expect(coreIndex.COMMIT_TYPES).toBeDefined();
+
+      console.log('✓ All utility functions exported successfully');
     });
   });
 
@@ -224,7 +268,11 @@ describe('@apexcli/core Index Exports Validation', () => {
         ApexConfigSchema,
         AgentDefinitionSchema,
         formatElapsed,
-        calculateTokenCost,
+        calculateCost,
+        generateTaskId,
+        generateIdleTaskId,
+        generateTaskTemplateId,
+        generateApprovalId,
         createLogger
       } = await import('../index.js');
 
@@ -254,14 +302,27 @@ describe('@apexcli/core Index Exports Validation', () => {
       expect(validAgent.name).toBe('test-agent');
 
       // Test utilities work
-      const elapsed = formatElapsed(1000);
+      const start = new Date(Date.now() - 5000);
+      const elapsed = formatElapsed(start);
       expect(typeof elapsed).toBe('string');
+      expect(elapsed).toMatch(/\d+[smh]/);
 
-      const cost = calculateTokenCost({
-        inputTokens: 100,
-        outputTokens: 50
-      });
+      const cost = calculateCost(100, 50);
       expect(typeof cost).toBe('number');
+      expect(cost).toBeGreaterThan(0);
+
+      // Test ID generation functions
+      const taskId = generateTaskId();
+      expect(taskId).toMatch(/^task_/);
+
+      const idleId = generateIdleTaskId();
+      expect(idleId).toMatch(/^idle_/);
+
+      const templateId = generateTaskTemplateId();
+      expect(templateId).toMatch(/^template_/);
+
+      const approvalId = generateApprovalId();
+      expect(approvalId).toMatch(/^apr_/);
 
       const logger = createLogger('export-test');
       expect(logger).toBeDefined();

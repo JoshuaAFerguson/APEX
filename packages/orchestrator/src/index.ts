@@ -12351,3 +12351,31 @@ export type {
   EscalationReport,
   RepairLoopEvents,
 } from './repair-loop/index.js';
+
+// Parallel Test Execution Support Utilities
+export {
+  getTestWorkerId,
+  isParallelTestExecution,
+  getWorkerUniqueDbPath,
+  getWorkerUniqueTempDir,
+  createWorkerUniqueTempDir,
+  createIsolatedEventEmitter,
+  assertNoSharedMutation,
+  createImmutableSnapshot,
+  AsyncMutex,
+  ResourceLockManager,
+  globalResourceLocks,
+  createParallelTestContext,
+  createParallelSafeTaskStore,
+  createEnvironmentIsolation,
+} from './parallel-test-utils.js';
+export type {
+  EventMap,
+  EventHistoryEntry,
+  IsolatedEventEmitterContext,
+  ReleaseLock,
+  ResourceLock,
+  ParallelTestContextOptions,
+  ParallelTestContext,
+  EnvironmentIsolationContext,
+} from './parallel-test-utils.js';

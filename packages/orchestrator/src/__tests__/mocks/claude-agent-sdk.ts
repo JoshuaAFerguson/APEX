@@ -9,6 +9,8 @@
  */
 
 import { vi } from 'vitest';
+import { z } from 'zod';
+import { MockToolRegistry } from './tool-mock-registry';
 import type {
   MockQueryResponse,
   MockUsage,
@@ -19,6 +21,10 @@ import type {
   ResponseOptions,
   DynamicResponseHandler
 } from './claude-agent-sdk.types';
+import type {
+  MockToolDefinition,
+  MockToolResult
+} from './tool-mock.types';
 import type {
   AgentDefinition as SDKAgentDefinition,
   QueryOptions
@@ -36,9 +42,14 @@ export class MockClaudeAgentSDK {
   private terminations: Array<{ method: string; reason: string; timestamp: Date }> = [];
   private streamingEvents: StreamingEvent[] = [];
 
+  // Tool mocking capabilities
+  private toolRegistry: MockToolRegistry = new MockToolRegistry();
+  private toolMock = vi.fn();
+
   constructor() {
     this.queryMock = vi.fn() as MockQueryFunction;
     this.setupQueryMock();
+    this.setupToolMock();
   }
 
   /**
@@ -144,8 +155,13 @@ export class MockClaudeAgentSDK {
     this.currentlyStreaming = false;
     this.terminations = [];
     this.streamingEvents = [];
+
+    // Reset tool mocking state
+    this.toolRegistry.reset();
+
     vi.clearAllMocks();
     this.setupQueryMock();
+    this.setupToolMock();
   }
 
   /**
@@ -171,6 +187,95 @@ export class MockClaudeAgentSDK {
       reason,
       timestamp: new Date()
     });
+  }
+
+  // ========================================
+  // Tool Mocking Methods
+  // ========================================
+
+  /**
+   * Get the tool registry for registering and managing mock tools
+   */
+  getToolRegistry(): MockToolRegistry {
+    return this.toolRegistry;
+  }
+
+  /**
+   * Get the mock tool() function for vi.mock()
+   */
+  getToolMock(): typeof this.toolMock {
+    return this.toolMock;
+  }
+
+  /**
+   * Register a mock tool (convenience method)
+   */
+  registerTool(definition: MockToolDefinition): this {
+    this.toolRegistry.registerTool(
+      definition.name,
+      definition.description,
+      definition.schema,
+      definition.config
+    );
+
+    // Update the tool mock to handle this tool
+    this.setupToolMock();
+
+    return this;
+  }
+
+  /**
+   * Register multiple tools at once
+   */
+  registerTools(definitions: MockToolDefinition[]): this {
+    definitions.forEach(def => this.registerTool(def));
+    return this;
+  }
+
+  /**
+   * Setup tool mock to return registered tools or call through to original
+   */
+  private setupToolMock(): void {
+    this.toolMock.mockImplementation(
+      (name: string, description: string, schema: Record<string, z.ZodTypeAny>, handler?: Function) => {
+        // If tool is registered in our mock registry, wrap handler with our mock
+        if (this.toolRegistry.hasTool(name)) {
+          return {
+            name,
+            description,
+            inputSchema: schema,
+            handler: async (args: Record<string, unknown>) => {
+              const result = await this.toolRegistry.simulateExecution(name, args);
+
+              // Convert MockToolResult to expected SDK format
+              if (result.isError) {
+                throw new Error(result.content?.[0]?.type === 'text' ? result.content[0].text : 'Tool execution failed');
+              }
+
+              return {
+                content: result.content,
+                ...result.structuredContent
+              };
+            },
+          };
+        }
+
+        // Otherwise, use original handler if provided
+        if (handler) {
+          return { name, description, inputSchema: schema, handler };
+        }
+
+        // Default mock behavior
+        return {
+          name,
+          description,
+          inputSchema: schema,
+          handler: async (args: Record<string, unknown>) => ({
+            content: [{ type: 'text', text: `Mock result for ${name}` }]
+          })
+        };
+      }
+    );
   }
 
   /**
@@ -489,7 +594,7 @@ export function createMockModule(mockSDK: MockClaudeAgentSDK) {
   return {
     query: mockSDK.getQueryMock(),
     createSdkMcpServer: vi.fn(),
-    tool: vi.fn(),
+    tool: mockSDK.getToolMock(),
   };
 }
 

@@ -1058,6 +1058,210 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       updateAutoFixSpinnerStatus(event.taskId);
     };
 
+    // Permission event handlers for CLI notification display
+    const handlePermissionRequest = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      scope?: string;
+      reason?: string;
+      agentName?: string;
+      isDangerous?: boolean;
+      dangerLevel?: 'low' | 'medium' | 'high' | 'critical';
+      riskDescription?: string;
+      parameters?: Record<string, unknown>;
+      permissionStatus?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission request', event);
+
+      // Display permission request notification
+      console.info('🔐 Permission Request');
+      console.log(`Tool: ${event.toolName}`);
+      console.log(`Task: ${event.taskId}`);
+
+      if (event.agentName) {
+        console.log(`Agent: ${event.agentName}`);
+      }
+
+      if (event.scope) {
+        console.log(`Scope: ${event.scope}`);
+      }
+
+      if (event.reason) {
+        console.log(`Reason: ${event.reason}`);
+      }
+
+      if (event.timestamp) {
+        const timeStr = event.timestamp.toLocaleTimeString();
+        console.log(`Time: ${timeStr}`);
+      }
+
+      if (event.permissionStatus === 'inherited') {
+        console.log('Permission: inherited');
+      }
+
+      // Highlight dangerous operations
+      if (event.isDangerous) {
+        console.warn('⚠️ DANGEROUS OPERATION');
+
+        if (event.dangerLevel) {
+          const levelColor = event.dangerLevel === 'critical' ? 'red' :
+                            event.dangerLevel === 'high' ? 'redBright' :
+                            event.dangerLevel === 'medium' ? 'yellow' : 'cyan';
+          console.error(`Risk Level: ${event.dangerLevel}`);
+        }
+
+        if (event.riskDescription) {
+          console.error(event.riskDescription);
+        }
+      }
+    };
+
+    const handlePermissionGranted = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      level: 'allow-always' | 'allow-once';
+      grantedBy?: string;
+      grantReason?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission granted', event);
+
+      // Display permission granted notification
+      console.log('✅ Permission GRANTED');
+      console.log(`Tool: ${event.toolName}`);
+      console.log(`Level: ${event.level}`);
+
+      // Add level-specific indicators
+      if (event.level === 'allow-always') {
+        console.log('🔓 Permanent access granted');
+      } else if (event.level === 'allow-once') {
+        console.log('🔐 Single-use permission');
+      }
+
+      if (event.grantedBy) {
+        console.log(`Granted by: ${event.grantedBy}`);
+      }
+
+      if (event.grantReason) {
+        console.log(`Reason: ${event.grantReason}`);
+      }
+    };
+
+    const handlePermissionDenied = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      denialReason?: string;
+      deniedBy?: string;
+      suggestedAction?: string;
+      alternativeActions?: string[];
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission denied', event);
+
+      // Display permission denied notification with warning styling
+      console.warn('❌ Permission DENIED');
+      console.warn(`Tool: ${event.toolName}`);
+
+      if (event.deniedBy) {
+        console.warn(`Denied by: ${event.deniedBy}`);
+      }
+
+      if (event.denialReason) {
+        console.warn(`Reason: ${event.denialReason}`);
+      }
+
+      // Provide actionable guidance
+      if (event.suggestedAction) {
+        console.warn(`💡 Suggested action: ${event.suggestedAction}`);
+      }
+
+      if (event.alternativeActions && event.alternativeActions.length > 0) {
+        console.warn(`📋 Alternatives: ${event.alternativeActions.join(', ')}`);
+      }
+    };
+
+    const handleDangerousDetected = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      riskLevel: 'low' | 'medium' | 'high' | 'critical';
+      description?: string;
+      metadata?: Record<string, unknown>;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation detected', event);
+
+      // Display dangerous operation detection with error styling
+      console.error('🚨 DANGEROUS OPERATION DETECTED');
+      console.error(`Tool: ${event.toolName}`);
+      console.error(`Risk Level: ${event.riskLevel}`);
+      console.error(`Operation Type: ${event.operationType}`);
+
+      if (event.description) {
+        console.error(`Description: ${event.description}`);
+      }
+
+      // Display impact information if available
+      if (event.metadata?.estimatedImpact) {
+        console.error(`Impact: ${event.metadata.estimatedImpact}`);
+      }
+
+      if (event.metadata?.command) {
+        console.error(`Command: ${event.metadata.command}`);
+      }
+    };
+
+    const handleDangerousConfirmed = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      confirmedBy: string;
+      confirmation?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation confirmed', event);
+
+      console.log('✅ Dangerous operation CONFIRMED');
+      console.log(`Operation: ${event.operationType}`);
+      console.log(`Confirmed by: ${event.confirmedBy}`);
+
+      if (event.confirmation) {
+        console.log(`Confirmation: ${event.confirmation}`);
+      }
+    };
+
+    const handleDangerousBlocked = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      blockReason?: string;
+      blockedBy: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation blocked', event);
+
+      console.error('🚫 Dangerous operation BLOCKED');
+      console.error(`Operation: ${event.operationType}`);
+      console.error(`Blocked by: ${event.blockedBy}`);
+
+      if (event.blockReason) {
+        console.error(`Reason: ${event.blockReason}`);
+      }
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -1087,6 +1291,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('autofix:completed', handleAutoFixCompleted);
     orchestrator.on('autofix:failed', handleAutoFixFailed);
     orchestrator.on('autofix:skipped', handleAutoFixSkipped);
+
+    // Register permission event listeners
+    orchestrator.on('permission:request', handlePermissionRequest);
+    orchestrator.on('permission:granted', handlePermissionGranted);
+    orchestrator.on('permission:denied', handlePermissionDenied);
+    orchestrator.on('dangerous:detected', handleDangerousDetected);
+    orchestrator.on('dangerous:confirmed', handleDangerousConfirmed);
+    orchestrator.on('dangerous:blocked', handleDangerousBlocked);
 
     log('Event listeners registered');
 
@@ -1120,6 +1332,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('autofix:completed', handleAutoFixCompleted);
       orchestrator.off('autofix:failed', handleAutoFixFailed);
       orchestrator.off('autofix:skipped', handleAutoFixSkipped);
+
+      // Cleanup permission event listeners
+      orchestrator.off('permission:request', handlePermissionRequest);
+      orchestrator.off('permission:granted', handlePermissionGranted);
+      orchestrator.off('permission:denied', handlePermissionDenied);
+      orchestrator.off('dangerous:detected', handleDangerousDetected);
+      orchestrator.off('dangerous:confirmed', handleDangerousConfirmed);
+      orchestrator.off('dangerous:blocked', handleDangerousBlocked);
 
       log('Event listeners cleaned up');
     };

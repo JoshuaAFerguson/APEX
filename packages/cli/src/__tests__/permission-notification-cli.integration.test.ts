@@ -5,13 +5,15 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'eventemitter3';
-import { ApexOrchestrator } from '@apex/orchestrator';
+import { ApexOrchestrator } from '@apexcli/orchestrator';
 import {
   PermissionNotification,
   PermissionRequestEventData,
-  PermissionGrantedEventData
-} from '@apex/core';
-import { EventCollector, MockPermissionTrigger } from '@apex/core/src/__tests__/helpers';
+  PermissionGrantedEventData,
+  PermissionDeniedEventData,
+  DangerousOperationDetectedEventData
+} from '@apexcli/core';
+import { EventCollector, MockPermissionTrigger } from '@apexcli/core/dist/__tests__/helpers';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';

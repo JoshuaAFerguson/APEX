@@ -99,15 +99,45 @@ export interface HookExecutionCompleteEvent {
   timestamp: Date;
 }
 
+/**
+ * Result returned after executing hooks with status and optional modifications.
+ *
+ * @interface HookExecutionResult
+ * @example
+ * ```typescript
+ * const result: HookExecutionResult = {
+ *   success: true,
+ *   modifiedArgs: { command: 'ls -la --color=auto' },
+ *   metadata: { hookName: 'security-check', timestamp: new Date() }
+ * };
+ *
+ * // For cancelled execution
+ * const cancelledResult: HookExecutionResult = {
+ *   success: true,
+ *   cancelled: true,
+ *   cancelReason: 'Command blocked by security policy',
+ *   cancelResult: { error: 'Access denied' }
+ * };
+ * ```
+ */
 export interface HookExecutionResult {
+  /** Whether the hook execution was successful */
   success: boolean;
+  /** Modified arguments to be passed to the tool (for pre-hooks) */
   modifiedArgs?: Record<string, unknown>;
+  /** Whether the tool execution was cancelled by a hook */
   cancelled?: boolean;
+  /** Reason for cancellation if cancelled is true */
   cancelReason?: string;
+  /** Result to return instead of executing the tool */
   cancelResult?: any;
+  /** Additional metadata from hook execution */
   metadata?: Record<string, unknown>;
+  /** Behavior mode applied by post-hooks */
   behaviorMode?: BehaviorMode;
+  /** Modified result after post-hook processing */
   modifiedResult?: any;
+  /** Whether the execution was blocked by security policies */
   blocked?: boolean;
 }
 
@@ -151,6 +181,24 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
     await this.store.addLog(taskId, log);
   }
 
+  /**
+   * Create a new HookManager instance.
+   *
+   * @param projectPath - The root path of the project where hook handlers are located
+   * @param store - TaskStore instance for logging hook execution events
+   * @param lifecycleHooks - Array of lifecycle hooks configuration (default: empty array)
+   * @param toolHookConfig - Configuration for tool-specific hooks with default timeout settings
+   * @example
+   * ```typescript
+   * const store = new TaskStore('/project/.apex/apex.db');
+   * const hookManager = new HookManager('/project', store, [], {
+   *   pre: [{ name: 'security-check', handlerPath: './hooks/security.js', tools: ['bash'] }],
+   *   post: [{ name: 'audit-log', handlerPath: './hooks/audit.js', tools: [] }],
+   *   enabled: true,
+   *   defaultTimeoutMs: 30000
+   * });
+   * ```
+   */
   constructor(
     projectPath: string,
     store: TaskStore,
@@ -165,9 +213,23 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   }
 
   /**
-   * Execute pre-hooks before tool execution
-   * @param context Pre-hook context with tool and execution information
-   * @returns Hook execution result with potential modifications
+   * Execute pre-hooks before tool execution.
+   *
+   * @param context - Pre-hook context with tool and execution information
+   * @returns Promise resolving to hook execution result with potential modifications
+   * @example
+   * ```typescript
+   * const result = await hookManager.executePreHooks({
+   *   toolName: 'bash',
+   *   taskId: 'task-123',
+   *   arguments: { command: 'rm -rf /' }
+   * });
+   *
+   * if (result.cancelled) {
+   *   console.log(`Execution cancelled: ${result.cancelReason}`);
+   *   return result.cancelResult;
+   * }
+   * ```
    */
   async executePreHooks(context: PreHookContext): Promise<HookExecutionResult> {
     if (!this.toolHookConfig.enabled) {
@@ -279,9 +341,24 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   }
 
   /**
-   * Execute post-hooks after tool execution
-   * @param context Post-hook context with tool and result information
-   * @returns Hook execution result with behavior mode handling
+   * Execute post-hooks after tool execution.
+   *
+   * @param context - Post-hook context with tool and result information
+   * @returns Promise resolving to hook execution result with behavior mode handling
+   * @example
+   * ```typescript
+   * const result = await hookManager.executePostHooks({
+   *   toolName: 'bash',
+   *   taskId: 'task-123',
+   *   arguments: { command: 'cat /etc/passwd' },
+   *   result: { success: true, output: 'root:x:0:0:root:/root:/bin/bash...' }
+   * });
+   *
+   * if (result.behaviorMode === 'redact') {
+   *   console.log('Sensitive content was redacted');
+   *   return result.modifiedResult;
+   * }
+   * ```
    */
   async executePostHooks(context: PostHookContext): Promise<HookExecutionResult> {
     if (!this.toolHookConfig.enabled) {
@@ -646,7 +723,22 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   }
 
   /**
-   * Update hook configuration
+   * Update hook configuration with new lifecycle and tool hooks.
+   *
+   * @param lifecycleHooks - New lifecycle hooks configuration array
+   * @param toolHookConfig - New tool hook configuration with pre/post hooks
+   * @example
+   * ```typescript
+   * hookManager.updateConfig(
+   *   [{ name: 'task-start', command: 'echo "Task starting"' }],
+   *   {
+   *     pre: [{ name: 'validate', handlerPath: './hooks/validate.js', tools: ['bash'] }],
+   *     post: [{ name: 'cleanup', handlerPath: './hooks/cleanup.js', tools: [] }],
+   *     enabled: true,
+   *     defaultTimeoutMs: 45000
+   *   }
+   * );
+   * ```
    */
   updateConfig(lifecycleHooks: HookConfig[], toolHookConfig: ToolHookConfig): void {
     this.lifecycleHooks = lifecycleHooks;
@@ -654,14 +746,33 @@ export class HookManager extends EventEmitter<HookManagerEvents> {
   }
 
   /**
-   * Get current tool hook configuration
+   * Get current tool hook configuration including pre/post hooks and settings.
+   *
+   * @returns A copy of the current tool hook configuration
+   * @example
+   * ```typescript
+   * const config = hookManager.getToolHookConfig();
+   * console.log(`Hooks enabled: ${config.enabled}`);
+   * console.log(`Pre-hooks: ${config.pre.length}, Post-hooks: ${config.post.length}`);
+   * console.log(`Default timeout: ${config.defaultTimeoutMs}ms`);
+   * ```
    */
   getToolHookConfig(): ToolHookConfig {
     return { ...this.toolHookConfig };
   }
 
   /**
-   * Get current lifecycle hooks
+   * Get current lifecycle hooks configuration.
+   *
+   * @returns A copy of the current lifecycle hooks array
+   * @example
+   * ```typescript
+   * const hooks = hookManager.getLifecycleHooks();
+   * hooks.forEach(hook => {
+   *   console.log(`Lifecycle hook: ${hook.name} (${hook.event})`);
+   *   console.log(`Handler: ${hook.handlerPath}`);
+   * });
+   * ```
    */
   getLifecycleHooks(): HookConfig[] {
     return [...this.lifecycleHooks];

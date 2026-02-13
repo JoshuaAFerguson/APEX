@@ -104,3 +104,17 @@ export {
 export {
   MockScenarios
 } from './mock-scenarios.js';
+
+// Navigation Helpers
+export {
+  goto,
+  waitForNavigation,
+  assertURL,
+  assertPageContent
+} from '../navigation-helpers.js';
+
+export type {
+  AssertURLOptions,
+  AssertPageContentOptions,
+  NavigationHelperResult
+} from '../navigation-helpers.js';

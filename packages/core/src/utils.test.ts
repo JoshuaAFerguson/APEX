@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   generateTaskId,
+  generateIdleTaskId,
+  generateTaskTemplateId,
+  generateApprovalId,
   slugify,
   generateBranchName,
   calculateCost,
   formatDuration,
+  formatElapsed,
   formatTokens,
   formatCost,
   parseSemver,
@@ -1228,6 +1232,169 @@ describe('formatConflictReport', () => {
   });
 });
 
+describe('generateIdleTaskId', () => {
+  it('should generate unique idle task IDs', () => {
+    const id1 = generateIdleTaskId();
+    const id2 = generateIdleTaskId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with idle_ prefix', () => {
+    const id = generateIdleTaskId();
+    expect(id).toMatch(/^idle_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateIdleTaskId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('idle');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateIdleTaskId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('generateTaskTemplateId', () => {
+  it('should generate unique task template IDs', () => {
+    const id1 = generateTaskTemplateId();
+    const id2 = generateTaskTemplateId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with template_ prefix', () => {
+    const id = generateTaskTemplateId();
+    expect(id).toMatch(/^template_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateTaskTemplateId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('template');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateTaskTemplateId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('generateApprovalId', () => {
+  it('should generate unique approval IDs', () => {
+    const id1 = generateApprovalId();
+    const id2 = generateApprovalId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with apr_ prefix', () => {
+    const id = generateApprovalId();
+    expect(id).toMatch(/^apr_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateApprovalId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('apr');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateApprovalId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('formatElapsed', () => {
+  it('should format seconds correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:00:05Z');
+    expect(formatElapsed(start, end)).toBe('5s');
+  });
+
+  it('should format minutes and seconds correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:02:30Z');
+    expect(formatElapsed(start, end)).toBe('2m 30s');
+  });
+
+  it('should format hours and minutes correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T12:05:00Z');
+    expect(formatElapsed(start, end)).toBe('2h 5m');
+  });
+
+  it('should format hours only when no remaining minutes', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T13:00:00Z');
+    expect(formatElapsed(start, end)).toBe('3h');
+  });
+
+  it('should format minutes only when no remaining seconds', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:05:00Z');
+    expect(formatElapsed(start, end)).toBe('5m');
+  });
+
+  it('should show 0s for sub-second durations', () => {
+    const start = new Date('2024-01-01T10:00:00.000Z');
+    const end = new Date('2024-01-01T10:00:00.500Z');
+    expect(formatElapsed(start, end)).toBe('0s');
+  });
+
+  it('should handle negative durations gracefully', () => {
+    const start = new Date('2024-01-01T10:00:05Z');
+    const end = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(start, end)).toBe('0s');
+  });
+
+  it('should handle invalid dates gracefully', () => {
+    const invalidDate = new Date('invalid');
+    const validDate = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(invalidDate, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, invalidDate)).toBe('0s');
+    expect(formatElapsed(invalidDate, invalidDate)).toBe('0s');
+  });
+
+  it('should handle null/undefined dates gracefully', () => {
+    const validDate = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(null as any, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, null as any)).toBe('0s');
+    expect(formatElapsed(undefined as any, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, undefined as any)).toBe('0s');
+  });
+
+  it('should use current time as default end time', () => {
+    const start = new Date(Date.now() - 5000); // 5 seconds ago
+    const result = formatElapsed(start);
+    // Should be approximately 5s (allowing for small timing differences)
+    expect(result).toMatch(/^[45]s$/);
+  });
+
+  it('should handle very large durations', () => {
+    const start = new Date('2024-01-01T00:00:00Z');
+    const end = new Date('2024-01-02T05:30:00Z');
+    expect(formatElapsed(start, end)).toBe('29h 30m');
+  });
+
+  it('should handle dates with millisecond precision', () => {
+    const start = new Date('2024-01-01T10:00:00.123Z');
+    const end = new Date('2024-01-01T10:00:02.456Z');
+    expect(formatElapsed(start, end)).toBe('2s');
+  });
+});
+
 describe('truncateToolOutput', () => {
   it('should truncate long output', () => {
     const longOutput = 'A'.repeat(15000);
@@ -1245,5 +1412,49 @@ describe('truncateToolOutput', () => {
 
     expect(result.truncated).toBe(false);
     expect(result.output).toBe(shortOutput);
+  });
+
+  it('should truncate JSON content preserving structure', () => {
+    const jsonOutput = JSON.stringify({
+      items: Array.from({ length: 1000 }, (_, i) => ({ id: i, value: `item-${i}` }))
+    }, null, 2);
+
+    const result = truncateToolOutput(jsonOutput, { maxLength: 500, preserveJson: true });
+
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedLength).toBeLessThanOrEqual(500);
+    // Should still be valid JSON or indicate truncation
+    expect(() => JSON.parse(result.output.replace(/\.\.\. \[truncated\]$/, ''))).not.toThrow();
+  });
+
+  it('should truncate at word boundaries when enabled', () => {
+    const text = 'This is a long sentence that should be truncated at word boundaries for better readability';
+    const result = truncateToolOutput(text, { maxLength: 40, wordBoundary: true });
+
+    expect(result.truncated).toBe(true);
+    expect(result.output).not.toMatch(/\w\.\.\./); // Should not cut words in half
+  });
+
+  it('should use custom suffix', () => {
+    const longOutput = 'A'.repeat(1000);
+    const result = truncateToolOutput(longOutput, { maxLength: 100, suffix: ' [TRUNCATED]' });
+
+    expect(result.output).toMatch(/\[TRUNCATED\]$/);
+  });
+
+  it('should handle null/undefined input gracefully', () => {
+    expect(truncateToolOutput(null as any)).toEqual({
+      output: '',
+      truncated: false,
+      originalLength: 0,
+      truncatedLength: 0
+    });
+
+    expect(truncateToolOutput(undefined as any)).toEqual({
+      output: '',
+      truncated: false,
+      originalLength: 0,
+      truncatedLength: 0
+    });
   });
 });

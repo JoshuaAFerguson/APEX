@@ -65,21 +65,21 @@ describe('TaskStore - Permission Revocation Integrity', () => {
         timestamp: new Date(),
         level: 'info',
         message: 'Starting task execution',
-        agentId: 'planner',
+        agent: 'planner',
         stage: 'planning',
       },
       {
         timestamp: new Date(),
         level: 'debug',
         message: 'Analyzing project structure',
-        agentId: 'planner',
+        agent: 'planner',
         stage: 'planning',
       },
       {
         timestamp: new Date(),
         level: 'info',
         message: 'Planning stage completed',
-        agentId: 'planner',
+        agent: 'planner',
         stage: 'planning',
       },
     ];
@@ -215,7 +215,7 @@ describe('TaskStore - Permission Revocation Integrity', () => {
       // Verify foreign key relationships are maintained
       logs.forEach(log => {
         expect(log.stage).toBeDefined();
-        expect(log.agentId).toBeDefined();
+        expect(log.agent).toBeDefined();
       });
 
       taskWithData?.artifacts.forEach(artifact => {
@@ -378,7 +378,7 @@ describe('TaskStore - Permission Revocation Integrity', () => {
       }));
 
       const artifactOperations = concurrentArtifacts.map(artifact =>
-        store.addTaskArtifact(testTaskId, artifact)
+        store.addArtifact(testTaskId, artifact)
       );
 
       // Execute concurrently with status update
@@ -545,7 +545,7 @@ describe('TaskStore - Permission Revocation Integrity', () => {
 
         // Insert a log entry
         const logStmt = db.prepare(`
-          INSERT INTO task_logs (task_id, timestamp, level, message, agent_id, stage)
+          INSERT INTO task_logs (task_id, timestamp, level, message, agent, stage)
           VALUES (?, ?, ?, ?, ?, ?)
         `);
         logStmt.run(testTaskId, new Date().toISOString(), 'info', 'Starting implementation', 'developer', 'implementation');
@@ -586,11 +586,11 @@ describe('TaskStore - Permission Revocation Integrity', () => {
 
       // Now try concurrent operations - these should complete without deadlock
       const concurrentOperations = [
-        store.addTaskLog(testTaskId, {
+        store.addLog(testTaskId, {
           timestamp: new Date(),
           level: 'info',
           message: 'Concurrent log during lock',
-          agentId: 'developer',
+          agent: 'developer',
           stage: 'implementation',
         }),
         store.updateTaskStatus(testTaskId, 'paused', 'implementation'),
@@ -657,6 +657,198 @@ describe('TaskStore - Permission Revocation Integrity', () => {
 
       expect(logs.length).toBeGreaterThan(0);
       expect(taskWithData?.artifacts.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Enhanced Checkpoint and Artifact Integrity', () => {
+    it('should handle checkpoint corruption and recovery during permission revocation', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+      await createTaskExecutionData();
+
+      // Create multiple checkpoints to simulate complex state
+      const checkpoints = [
+        {
+          id: 'checkpoint-2',
+          taskId: testTaskId,
+          stage: 'implementation',
+          status: 'in-progress' as const,
+          data: {
+            currentAgent: 'developer',
+            progress: 0.3,
+            files: ['src/main.ts', 'src/utils.ts'],
+          },
+          createdAt: new Date(),
+        },
+        {
+          id: 'checkpoint-3',
+          taskId: testTaskId,
+          stage: 'testing',
+          status: 'in-progress' as const,
+          data: {
+            currentAgent: 'tester',
+            progress: 0.8,
+            testResults: { passed: 5, failed: 1 },
+          },
+          createdAt: new Date(),
+        }
+      ];
+
+      // Save checkpoints concurrently
+      const checkpointOps = checkpoints.map(cp => store.saveCheckpoint(cp));
+      await Promise.allSettled(checkpointOps);
+
+      // Simulate interruption during checkpoint cleanup
+      const db = store.getDatabase();
+      const corruptTransaction = db.transaction(() => {
+        // Update task status
+        const updateStmt = db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?');
+        updateStmt.run('failed', new Date().toISOString(), testTaskId);
+
+        // Simulate partial checkpoint deletion (interrupted before completion)
+        const deleteStmt = db.prepare('DELETE FROM task_checkpoints WHERE task_id = ? AND id = ?');
+        deleteStmt.run(testTaskId, 'checkpoint-2');
+
+        // Simulate interruption
+        throw new Error('Permission revoked during checkpoint cleanup');
+      });
+
+      // Expect transaction to fail
+      expect(() => corruptTransaction()).toThrow('Permission revoked during checkpoint cleanup');
+
+      // Verify checkpoints are still intact after rollback
+      const checkpointList = await store.listCheckpoints(testTaskId);
+      expect(checkpointList).toHaveLength(3); // Original 1 + 2 new ones
+
+      const checkpointIds = checkpointList.map(cp => cp.id).sort();
+      expect(checkpointIds).toContain('checkpoint-1');
+      expect(checkpointIds).toContain('checkpoint-2');
+      expect(checkpointIds).toContain('checkpoint-3');
+
+      // Verify task status remains unchanged due to rollback
+      const taskAfterFailure = await store.getTask(testTaskId);
+      expect(taskAfterFailure?.status).not.toBe('failed');
+    });
+
+    it('should handle artifact metadata corruption during concurrent operations', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Create artifacts with complex metadata that could be corrupted
+      const artifactsWithComplexMetadata = Array.from({ length: 5 }, (_, i) => ({
+        id: `complex-artifact-${i}`,
+        taskId: testTaskId,
+        type: 'file' as const,
+        name: `complex-file-${i}.json`,
+        path: `/tmp/complex-file-${i}.json`,
+        size: 2048 + i * 500,
+        metadata: {
+          stage: 'implementation',
+          checksum: `sha256-${i.toString().repeat(32)}`,
+          dependencies: [`dep-${i}-1`, `dep-${i}-2`],
+          generatedBy: {
+            agent: 'developer',
+            timestamp: new Date().toISOString(),
+            version: '1.0.0'
+          }
+        }
+      }));
+
+      // Simulate concurrent artifact creation with status updates
+      const artifactOperations = artifactsWithComplexMetadata.map(artifact =>
+        store.addArtifact(testTaskId, artifact)
+      );
+
+      const statusOperations = [
+        store.updateTaskStatus(testTaskId, 'in-progress', 'implementation'),
+        store.updateTaskStatus(testTaskId, 'in-progress', 'testing'),
+        store.updateTaskStatus(testTaskId, 'paused', 'testing', 'Rate limited'),
+      ];
+
+      // Execute all operations concurrently
+      await Promise.allSettled([...artifactOperations, ...statusOperations]);
+
+      // Verify all artifacts maintained metadata integrity
+      const finalTask = await store.getTask(testTaskId);
+      expect(finalTask?.artifacts.length).toBeGreaterThanOrEqual(7); // Original 2 + 5 new ones
+
+      const complexArtifacts = finalTask?.artifacts.filter(a => a.name?.startsWith('complex-file-'));
+      expect(complexArtifacts).toHaveLength(5);
+
+      // Verify metadata was preserved correctly
+      complexArtifacts?.forEach(artifact => {
+        expect(artifact.metadata).toBeDefined();
+        if (artifact.metadata) {
+          const metadata = typeof artifact.metadata === 'string' ? JSON.parse(artifact.metadata) : artifact.metadata;
+          expect(metadata.stage).toBe('implementation');
+          expect(metadata.checksum).toMatch(/^sha256-/);
+          expect(metadata.dependencies).toHaveLength(2);
+          expect(metadata.generatedBy).toBeDefined();
+          expect(metadata.generatedBy.agent).toBe('developer');
+        }
+      });
+
+      // Verify task ended in a valid state
+      expect(['in-progress', 'paused']).toContain(finalTask?.status);
+    });
+
+    it('should handle foreign key constraint violations gracefully during interruption', async () => {
+      const task = createTestTask();
+      await store.createTask(task);
+
+      // Simulate corrupted foreign key reference (task_id that doesn't exist)
+      const invalidTaskId = 'non-existent-task-id';
+
+      // These operations should fail gracefully without corrupting existing data
+      const invalidOperations = [
+        store.addLog(invalidTaskId, {
+          level: 'info',
+          message: 'Log for non-existent task',
+          agent: 'developer',
+          stage: 'implementation',
+        }).catch(e => e),
+        store.addArtifact(invalidTaskId, {
+          id: 'invalid-artifact',
+          taskId: invalidTaskId,
+          type: 'file',
+          name: 'invalid.txt',
+          path: '/tmp/invalid.txt',
+          size: 1024,
+          metadata: { test: true }
+        }).catch(e => e),
+        store.saveCheckpoint({
+          id: 'invalid-checkpoint',
+          taskId: invalidTaskId,
+          stage: 'planning',
+          status: 'in-progress',
+          data: { test: true },
+          createdAt: new Date(),
+        }).catch(e => e)
+      ];
+
+      const results = await Promise.allSettled(invalidOperations);
+
+      // All operations should fail (rejected promises or errors)
+      results.forEach(result => {
+        if (result.status === 'fulfilled') {
+          // If fulfilled, the value should be an Error object from our .catch()
+          expect(result.value).toBeInstanceOf(Error);
+        }
+        // If rejected, that's also expected behavior
+      });
+
+      // Verify our valid task remains intact and unaffected
+      const validTask = await store.getTask(testTaskId);
+      expect(validTask).not.toBeNull();
+      expect(validTask?.id).toBe(testTaskId);
+
+      // Verify existing data is still accessible
+      const logs = await store.getLogs(testTaskId);
+      const checkpoints = await store.listCheckpoints(testTaskId);
+
+      expect(logs).toHaveLength(3); // Original logs should remain
+      expect(checkpoints).toHaveLength(1); // Original checkpoint should remain
+      expect(validTask?.artifacts).toHaveLength(2); // Original artifacts should remain
     });
   });
 });
