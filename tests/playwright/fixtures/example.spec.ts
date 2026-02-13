@@ -14,6 +14,12 @@ import {
   captureConsoleMessages,
   BROWSER_CONFIGS,
   VIEWPORT_CONFIGS,
+  createAuthTestPage,
+  assertPageAuthenticated,
+  assertPageUnauthenticated,
+  setupAuthenticatedTest,
+  testUserRole,
+  triggerApiCall
 } from './index';
 
 test.describe('Browser Fixtures Examples', () => {
@@ -381,6 +387,211 @@ test.describe('Browser Fixtures Examples', () => {
 
       // Video is automatically recorded due to configuration
       await expect(videoPage.locator('#output')).toContainText('Button clicked');
+    });
+  });
+
+  test.describe('Authenticated User Scenarios', () => {
+    test('logged-in page fixture example', async ({ loggedInPage }) => {
+      const { page, authFixture, browserState } = loggedInPage;
+
+      // Verify authentication state is set up
+      expect(browserState.isAuthenticated).toBe(true);
+      expect(browserState.localStorage['auth-token']).toBeDefined();
+
+      // Navigate to a test page that checks authentication
+      await page.setContent(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Authenticated Dashboard</title>
+        </head>
+        <body>
+          <div id="auth-status">Loading...</div>
+          <div id="user-info"></div>
+          <button id="logout-btn" style="display: none;">Logout</button>
+          <script>
+            // Simulate checking authentication from localStorage
+            const authToken = localStorage.getItem('auth-token');
+            const userProfile = localStorage.getItem('user-profile');
+
+            if (authToken && userProfile) {
+              document.getElementById('auth-status').textContent = 'Authenticated';
+              const user = JSON.parse(userProfile);
+              document.getElementById('user-info').textContent =
+                'Welcome, ' + user.displayName + ' (' + user.role + ')';
+              document.getElementById('logout-btn').style.display = 'block';
+            } else {
+              document.getElementById('auth-status').textContent = 'Not Authenticated';
+            }
+
+            document.getElementById('logout-btn').addEventListener('click', () => {
+              localStorage.removeItem('auth-token');
+              localStorage.removeItem('user-profile');
+              location.reload();
+            });
+          </script>
+        </body>
+        </html>
+      `);
+
+      // Wait for the page to load and check authentication
+      await page.waitForLoadState('domcontentloaded');
+
+      // Verify the page recognizes the user as authenticated
+      await expect(page.locator('#auth-status')).toHaveText('Authenticated');
+      await expect(page.locator('#user-info')).toContainText('Welcome, Test User (editor)');
+      await expect(page.locator('#logout-btn')).toBeVisible();
+
+      // Test logout simulation through the fixture
+      const loggedOutState = authFixture.simulateLogout();
+      expect(loggedOutState.isAuthenticated).toBe(false);
+
+      // Test login with different user role
+      authFixture.simulateLogin({
+        displayName: 'Admin User',
+        role: 'admin'
+      });
+
+      const updatedState = authFixture.getBrowserState();
+      expect(updatedState.isAuthenticated).toBe(true);
+
+      const updatedProfile = authFixture.getUserProfile();
+      expect(updatedProfile.displayName).toBe('Admin User');
+      expect(updatedProfile.role).toBe('admin');
+    });
+
+    test('logged-in page with custom user profile', async ({ loggedInPage }) => {
+      const { page, authFixture } = loggedInPage;
+
+      // Update user profile during test
+      authFixture.updateUserProfile({
+        displayName: 'Custom Test User',
+        role: 'admin',
+        metadata: {
+          department: 'Engineering',
+          permissions: ['read', 'write', 'admin']
+        }
+      });
+
+      // Verify profile updates are reflected
+      const userProfile = authFixture.getUserProfile();
+      expect(userProfile.displayName).toBe('Custom Test User');
+      expect(userProfile.role).toBe('admin');
+      expect(userProfile.metadata?.department).toBe('Engineering');
+
+      // Test browser state reflects the profile update
+      const browserState = authFixture.getBrowserState();
+      const storedProfile = JSON.parse(browserState.localStorage['user-profile']);
+      expect(storedProfile.displayName).toBe('Custom Test User');
+      expect(storedProfile.role).toBe('admin');
+    });
+
+    test('logged-in page with console and network monitoring', async ({ loggedInPage }) => {
+      const { page, authFixture } = loggedInPage;
+
+      // Set up a page that makes API calls
+      await page.setContent(`
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <button id="api-call">Make API Call</button>
+          <div id="result"></div>
+          <script>
+            document.getElementById('api-call').addEventListener('click', async () => {
+              console.log('Making API call...');
+
+              try {
+                // Simulate an API call (will fail but that's ok for testing)
+                const response = await fetch('https://api.example.com/data', {
+                  headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('auth-token')
+                  }
+                });
+
+                console.log('API response status:', response.status);
+                document.getElementById('result').textContent = 'API call completed';
+              } catch (error) {
+                console.error('API call failed:', error.message);
+                document.getElementById('result').textContent = 'API call failed (expected)';
+              }
+            });
+          </script>
+        </body>
+        </html>
+      `);
+
+      // Click the button to trigger API call and console messages
+      await page.click('#api-call');
+      await page.waitForTimeout(1000); // Wait for async operations
+
+      // Verify console messages were captured by the fixture
+      const browserState = authFixture.getBrowserState();
+      const consoleLogs = browserState.consoleMessages.filter(msg =>
+        msg.message.includes('Making API call')
+      );
+      expect(consoleLogs.length).toBeGreaterThan(0);
+
+      // Verify network requests were captured
+      const apiRequests = browserState.networkRequests.filter(req =>
+        req.url.includes('api.example.com')
+      );
+      expect(apiRequests.length).toBeGreaterThan(0);
+      expect(apiRequests[0].headers?.['Authorization']).toContain('Bearer');
+    });
+
+    test('authentication helpers example', async ({ loggedInPage }) => {
+      const { page, authFixture } = loggedInPage;
+
+      // Use the auth test page helper
+      await createAuthTestPage(page);
+
+      // Assert page shows authenticated state
+      await assertPageAuthenticated(page, {
+        displayName: 'Test User',
+        role: 'editor'
+      });
+
+      // Test API call functionality
+      const apiResult = await triggerApiCall(page);
+      expect(apiResult).toContain('API call');
+
+      // Test user role switching
+      await testUserRole(page, authFixture, 'admin', 'Admin User');
+      await assertPageAuthenticated(page, {
+        displayName: 'Admin User',
+        role: 'admin'
+      });
+
+      // Test logout
+      authFixture.simulateLogout();
+      await page.click('#refresh-auth'); // Refresh to see logout state
+      await assertPageUnauthenticated(page);
+    });
+
+    test('complete authentication workflow', async ({ loggedInPage }) => {
+      const { page, authFixture } = loggedInPage;
+
+      // Set up comprehensive authentication test
+      await setupAuthenticatedTest(page, authFixture, {
+        displayName: 'Workflow Test User',
+        role: 'editor',
+        email: 'workflow@example.com'
+      });
+
+      // Verify the setup worked
+      const profile = authFixture.getUserProfile();
+      expect(profile.displayName).toBe('Workflow Test User');
+      expect(profile.role).toBe('editor');
+
+      // Test various user interactions
+      await triggerApiCall(page);
+
+      // Verify network requests were captured
+      const browserState = authFixture.getBrowserState();
+      const httpbinRequests = browserState.networkRequests.filter(req =>
+        req.url.includes('httpbin.org')
+      );
+      expect(httpbinRequests.length).toBeGreaterThan(0);
     });
   });
 });

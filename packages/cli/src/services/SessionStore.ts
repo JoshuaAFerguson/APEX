@@ -6,67 +6,137 @@ import { promisify } from 'util';
 const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 
+/**
+ * Represents a single message within an APEX session
+ * @interface SessionMessage
+ */
 export interface SessionMessage {
+  /** Unique identifier for the message */
   id: string;
+  /** Sequential index of the message within the session */
   index: number;
+  /** Role of the message sender */
   role: 'user' | 'assistant' | 'system' | 'tool';
+  /** Content of the message */
   content: string;
+  /** Timestamp of when the message was created */
   timestamp: Date;
+  /** Optional agent responsible for the message */
   agent?: string;
+  /** Optional stage of the workflow */
   stage?: string;
+  /** Optional task identifier associated with the message */
   taskId?: string;
+  /** Optional token usage for the message */
   tokens?: { input: number; output: number };
+  /** Optional tool call records associated with the message */
   toolCalls?: ToolCallRecord[];
 }
 
+/**
+ * Represents a record of a tool call within a session
+ * @interface ToolCallRecord
+ */
 export interface ToolCallRecord {
+  /** Unique identifier for the tool call */
   id: string;
+  /** Name of the tool that was called */
   name: string;
+  /** Arguments passed to the tool */
   arguments: Record<string, unknown>;
+  /** Optional result of the tool call */
   result?: unknown;
+  /** Optional error message if the tool call failed */
   error?: string;
+  /** Timestamp of when the tool call was made */
   timestamp: Date;
 }
 
+/**
+ * Represents the state of an APEX session
+ * @interface SessionState
+ */
 export interface SessionState {
+  /** Total token usage across input and output */
   totalTokens: { input: number; output: number };
+  /** Total cost of the session */
   totalCost: number;
+  /** List of tasks created during the session */
   tasksCreated: string[];
+  /** List of tasks completed during the session */
   tasksCompleted: string[];
+  /** Current active task identifier */
   currentTaskId?: string;
+  /** Last Git branch worked on during the session */
   lastGitBranch?: string;
 }
 
+/**
+ * Represents a complete APEX session
+ * @interface Session
+ */
 export interface Session {
+  /** Unique identifier for the session */
   id: string;
+  /** Optional name for the session */
   name?: string;
+  /** Path to the project associated with the session */
   projectPath: string;
+  /** Timestamp of session creation */
   createdAt: Date;
+  /** Timestamp of last update */
   updatedAt: Date;
+  /** Timestamp of last access */
   lastAccessedAt: Date;
+  /** List of messages in the session */
   messages: SessionMessage[];
+  /** History of user inputs */
   inputHistory: string[];
+  /** Current state of the session */
   state: SessionState;
+  /** Optional parent session identifier for branched sessions */
   parentSessionId?: string;
+  /** Optional index where the session was branched from its parent */
   branchPoint?: number;
+  /** List of child session identifiers */
   childSessionIds: string[];
+  /** Tags associated with the session */
   tags: string[];
 }
 
+/**
+ * Represents an index of all sessions
+ * @interface SessionIndex
+ */
 export interface SessionIndex {
+  /** Version of the session index */
   version: number;
+  /** List of session summaries */
   sessions: SessionSummary[];
+  /** Timestamp of last index update */
   lastUpdated: Date;
 }
 
+/**
+ * Provides a summary of a session
+ * @interface SessionSummary
+ */
 export interface SessionSummary {
+  /** Unique identifier for the session */
   id: string;
+  /** Optional name of the session */
   name?: string;
+  /** Total number of messages in the session */
   messageCount: number;
+  /** Total cost of the session */
   totalCost: number;
+  /** Timestamp of session creation */
   createdAt: Date;
+  /** Timestamp of last update */
   updatedAt: Date;
+  /** Tags associated with the session */
   tags: string[];
+  /** Whether the session is archived */
   isArchived: boolean;
 }
 
@@ -78,6 +148,10 @@ export class SessionStore {
   private activePath: string;
   private index: SessionIndex | null = null;
 
+  /**
+   * Constructs a SessionStore for a specific project path
+   * @param {string} projectPath - The base path of the project
+   */
   constructor(projectPath: string) {
     this.projectPath = projectPath;
     this.sessionsDir = path.join(projectPath, '.apex', 'sessions');
@@ -86,12 +160,21 @@ export class SessionStore {
     this.activePath = path.join(this.sessionsDir, 'active.json');
   }
 
+  /**
+   * Initializes the session storage directories
+   * @returns {Promise<void>} - A promise that resolves when initialization is complete
+   */
   async initialize(): Promise<void> {
     await fs.mkdir(this.sessionsDir, { recursive: true });
     await fs.mkdir(this.archiveDir, { recursive: true });
     await this.loadIndex();
   }
 
+  /**
+   * Creates a new session
+   * @param {string} [name] - Optional name for the session
+   * @returns {Promise<Session>} - The newly created session
+   */
   async createSession(name?: string): Promise<Session> {
     const id = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
@@ -122,6 +205,11 @@ export class SessionStore {
     return session;
   }
 
+  /**
+   * Retrieves a session by its ID
+   * @param {string} id - The unique identifier of the session
+   * @returns {Promise<Session | null>} - The session or null if not found
+   */
   async getSession(id: string): Promise<Session | null> {
     const sessionPath = path.join(this.sessionsDir, `${id}.json`);
     try {
@@ -146,6 +234,13 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Updates an existing session with new data
+   * @param {string} id - The unique identifier of the session
+   * @param {Partial<Session>} updates - Partial update data for the session
+   * @returns {Promise<void>}
+   * @throws {Error} If the session is not found and cannot be updated
+   */
   async updateSession(id: string, updates: Partial<Session>): Promise<void> {
     const session = await this.getSession(id);
     if (!session) {
@@ -163,6 +258,11 @@ export class SessionStore {
     await this.updateIndex(updated, 'update');
   }
 
+  /**
+   * Deletes a session permanently
+   * @param {string} id - The unique identifier of the session to delete
+   * @returns {Promise<void>}
+   */
   async deleteSession(id: string): Promise<void> {
     const sessionPath = path.join(this.sessionsDir, `${id}.json`);
     try {
@@ -175,6 +275,15 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Lists sessions with optional filtering and pagination
+   * @param {Object} [options] - Optional filtering and pagination parameters
+   * @param {boolean} [options.all] - Include archived sessions
+   * @param {string} [options.search] - Search query for session name or ID
+   * @param {string[]} [options.tags] - Filter by tags
+   * @param {number} [options.limit] - Limit the number of returned sessions
+   * @returns {Promise<SessionSummary[]>} - List of session summaries
+   */
   async listSessions(options?: {
     all?: boolean;
     search?: string;
@@ -211,6 +320,14 @@ export class SessionStore {
     return options?.limit !== undefined ? sessions.slice(0, options.limit) : sessions;
   }
 
+  /**
+   * Creates a new session branched from an existing session at a specific point
+   * @param {string} id - The ID of the parent session
+   * @param {number} fromIndex - The index point to branch from
+   * @param {string} [name] - Optional name for the new branched session
+   * @returns {Promise<Session>} - The newly created branched session
+   * @throws {Error} If the parent session is not found
+   */
   async branchSession(
     id: string,
     fromIndex: number,
@@ -251,6 +368,14 @@ export class SessionStore {
     return branched;
   }
 
+  /**
+   * Exports a session in a specified format
+   * @param {string} id - The ID of the session to export
+   * @param {'md' | 'json' | 'html'} [format='md'] - The export format
+   * @param {string} [outputPath] - Optional output file path
+   * @returns {Promise<string>} - The exported session content
+   * @throws {Error} If the session is not found
+   */
   async exportSession(
     id: string,
     format: 'md' | 'json' | 'html' = 'md',
@@ -280,6 +405,12 @@ export class SessionStore {
     return exported;
   }
 
+  /**
+   * Archives a session by compressing and moving it to the archive directory
+   * @param {string} id - The ID of the session to archive
+   * @returns {Promise<void>}
+   * @throws {Error} If the session is not found
+   */
   async archiveSession(id: string): Promise<void> {
     const session = await this.getSession(id);
     if (!session) throw new Error(`Session not found: ${id}`);
@@ -294,6 +425,10 @@ export class SessionStore {
     await this.updateIndex({ ...session, isArchived: true } as any, 'archive');
   }
 
+  /**
+   * Retrieves the ID of the currently active session
+   * @returns {Promise<string | null>} - The active session ID or null
+   */
   async getActiveSessionId(): Promise<string | null> {
     try {
       const data = await fs.readFile(this.activePath, 'utf-8');
@@ -303,6 +438,11 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Sets the currently active session
+   * @param {string} id - The ID of the session to set as active
+   * @returns {Promise<void>}
+   */
   async setActiveSession(id: string): Promise<void> {
     await fs.mkdir(this.sessionsDir, { recursive: true });
     await fs.writeFile(this.activePath, JSON.stringify({ sessionId: id }));

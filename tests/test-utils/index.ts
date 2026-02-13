@@ -18,6 +18,14 @@ export * from './cleanup';
 // Export test isolation utilities (see ADR-052)
 export * from './isolation';
 
+// Export parallel execution utilities
+export * from './parallel-execution';
+export * from './parallel-coordination';
+export * from './worker-coordination';
+
+// Export unified parallel utilities
+export * from './parallel-utils';
+
 // Re-export browser test utilities would be available from the browser package if it existed
 // Currently these are commented out as the browser package test utilities are not yet available
 // TODO: Uncomment when browser package test utilities are implemented
@@ -28,6 +36,7 @@ export * from './permission-test-helpers';
 
 // Export browser automation test infrastructure
 export * from './browser-test-base';
+export * from './browser-fixtures';
 export * from './browser-automation-mocks';
 export * from './browser-permission-simulator';
 export * from './browser-test-fixtures';

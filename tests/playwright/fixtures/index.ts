@@ -10,6 +10,12 @@
 
 import { test as base, Browser, BrowserContext, Page, expect } from '@playwright/test';
 import type { BrowserContextOptions, ViewportSize } from '@playwright/test';
+import {
+  createLoggedInPageFixture,
+  type LoggedInPageFixture,
+  type LoggedInPageFixtureConfig,
+  type BrowserState
+} from '@apexcli/core/test-fixtures';
 
 // Fixture configuration types
 export interface BrowserFixtureConfig {
@@ -47,6 +53,7 @@ interface CustomTestFixtures {
   configurablePage: (config?: PageFixtureConfig) => Promise<Page>;
   pageWithConsoleCapture: { page: Page; consoleMessages: any[] };
   pageWithNetworkCapture: { page: Page; networkRequests: any[] };
+  loggedInPage: { page: Page; authFixture: LoggedInPageFixture; browserState: BrowserState };
 }
 
 // Default configuration
@@ -336,10 +343,102 @@ export const test = base.extend<CustomTestFixtures>({
     await use({ page, networkRequests });
     await page.close();
   },
+
+  /**
+   * Logged-in page fixture - combines authenticated browser state with Playwright page
+   * This fixture integrates the core logged-in page fixture with a real browser page,
+   * allowing tests to simulate authenticated user scenarios with actual browser automation.
+   */
+  loggedInPage: async ({ cleanBrowserContext }, use, testInfo) => {
+    // Create the authenticated fixture
+    const authFixture = createLoggedInPageFixture({
+      userProfile: {
+        id: `test-user-${testInfo.title?.replace(/\s+/g, '-').toLowerCase()}`,
+        email: 'test-user@example.com',
+        role: 'editor',
+        displayName: 'Test User'
+      },
+      mockBrowserAutomation: false, // We're using real browser automation
+      customLocalStorage: {
+        'test-id': testInfo.testId || 'playwright-test',
+        'test-name': testInfo.title || 'anonymous-test'
+      }
+    });
+
+    // Initialize the authentication fixture
+    await authFixture.beforeEach();
+
+    // Create a new page
+    const page = await cleanBrowserContext.newPage();
+
+    // Get the authenticated browser state from the fixture
+    const browserState = authFixture.getBrowserState();
+
+    try {
+      // Apply the authenticated state to the actual browser page
+
+      // Set localStorage values
+      if (browserState.localStorage) {
+        await page.addInitScript((localStorageData) => {
+          Object.entries(localStorageData).forEach(([key, value]) => {
+            window.localStorage.setItem(key, value);
+          });
+        }, browserState.localStorage);
+      }
+
+      // Set sessionStorage values
+      if (browserState.sessionStorage) {
+        await page.addInitScript((sessionStorageData) => {
+          Object.entries(sessionStorageData).forEach(([key, value]) => {
+            window.sessionStorage.setItem(key, value);
+          });
+        }, browserState.sessionStorage);
+      }
+
+      // Set cookies
+      if (browserState.cookies && browserState.cookies.length > 0) {
+        for (const cookie of browserState.cookies) {
+          await cleanBrowserContext.addCookies([{
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain || 'localhost',
+            path: cookie.path || '/',
+          }]);
+        }
+      }
+
+      // Set up console message capture to sync with fixture
+      page.on('console', (msg) => {
+        authFixture.addConsoleMessage(
+          msg.type() as 'log' | 'warn' | 'error' | 'info',
+          msg.text()
+        );
+      });
+
+      // Set up network request capture to sync with fixture
+      page.on('request', (request) => {
+        authFixture.addNetworkRequest(
+          request.url(),
+          request.method(),
+          undefined, // Status not available on request
+          request.headers()
+        );
+      });
+
+      await use({ page, authFixture, browserState });
+
+    } finally {
+      await page.close();
+      await authFixture.afterEach();
+    }
+  },
 });
 
 // Export expect for convenience
 export { expect };
+
+// Authentication test helpers
+export * from './auth-helpers';
 
 /**
  * Helper utility to create a test page with common elements

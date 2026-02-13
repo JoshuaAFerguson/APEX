@@ -2,6 +2,11 @@ import chalk from 'chalk';
 import { DaemonManager, ExtendedDaemonStatus } from '@apexcli/orchestrator';
 import { CliContext } from '../index.js'; // Adjust path as necessary
 
+/**
+ * Handles the usage command to display daemon usage and capacity status.
+ *
+ * @param ctx - CLI context containing project path and other configuration
+ */
 export async function handleUsage(ctx: CliContext): Promise<void> {
   const daemonManager = new DaemonManager({ projectPath: ctx.cwd });
 
@@ -52,6 +57,12 @@ export async function handleUsage(ctx: CliContext): Promise<void> {
   }
 }
 
+/**
+ * Formats uptime in milliseconds to a human-readable string (e.g., "2d 5h 30m 15s").
+ *
+ * @param ms - Uptime in milliseconds
+ * @returns Formatted uptime string
+ */
 function formatUptime(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);

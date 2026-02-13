@@ -57,6 +57,9 @@ export * from './mock-helpers.js';
 // Logged-in page fixtures
 export * from './logged-in-page-fixture.js';
 
+// Loading state fixtures
+export * from './loading-state-fixture.js';
+
 // Setup and teardown utilities
 export * from './setup-teardown.js';
 

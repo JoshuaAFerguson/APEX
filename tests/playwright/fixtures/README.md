@@ -129,6 +129,151 @@ test('network capture test', async ({ pageWithNetworkCapture }) => {
 });
 ```
 
+#### `loggedInPage`
+Creates an authenticated page with pre-configured user session and browser state.
+This fixture integrates the core logged-in page fixture with a real Playwright page.
+
+```typescript
+test('authenticated user dashboard', async ({ loggedInPage }) => {
+  const { page, authFixture, browserState } = loggedInPage;
+
+  // Browser state is already authenticated
+  expect(browserState.isAuthenticated).toBe(true);
+  expect(browserState.localStorage['auth-token']).toBeDefined();
+
+  // Navigate to protected page that checks authentication from localStorage
+  await page.setContent(`
+    <!DOCTYPE html>
+    <html>
+    <body>
+      <div id="auth-status">
+        ${localStorage.getItem('auth-token') ? 'Logged In' : 'Not Authenticated'}
+      </div>
+      <div id="user-info"></div>
+      <script>
+        const userProfile = localStorage.getItem('user-profile');
+        if (userProfile) {
+          const user = JSON.parse(userProfile);
+          document.getElementById('user-info').textContent = user.displayName;
+        }
+      </script>
+    </body>
+    </html>
+  `);
+
+  // Page recognizes authentication
+  await expect(page.locator('#auth-status')).toHaveText('Logged In');
+
+  // Test fixture methods
+  authFixture.updateUserProfile({ displayName: 'Updated User' });
+  const updatedProfile = authFixture.getUserProfile();
+  expect(updatedProfile.displayName).toBe('Updated User');
+});
+
+// Test logout simulation
+test('logout flow with fixture', async ({ loggedInPage }) => {
+  const { authFixture } = loggedInPage;
+
+  // Verify initial authenticated state
+  let state = authFixture.getBrowserState();
+  expect(state.isAuthenticated).toBe(true);
+
+  // Simulate logout
+  const loggedOutState = authFixture.simulateLogout();
+  expect(loggedOutState.isAuthenticated).toBe(false);
+  expect(loggedOutState.localStorage).toEqual({});
+});
+
+// Test role switching
+test('admin role access', async ({ loggedInPage }) => {
+  const { authFixture } = loggedInPage;
+
+  // Switch to admin user
+  authFixture.simulateLogin({
+    role: 'admin',
+    displayName: 'Admin User',
+    email: 'admin@example.com'
+  });
+
+  const adminProfile = authFixture.getUserProfile();
+  expect(adminProfile.role).toBe('admin');
+  expect(adminProfile.displayName).toBe('Admin User');
+});
+```
+
+## Authentication Test Helpers
+
+The module also provides specialized helpers for authentication testing scenarios:
+
+### `createAuthTestPage(page)`
+Creates a comprehensive test page that displays authentication status, user information, and provides interactive elements for testing auth flows.
+
+```typescript
+import { createAuthTestPage, assertPageAuthenticated } from './fixtures';
+
+test('auth page setup', async ({ loggedInPage }) => {
+  const { page } = loggedInPage;
+
+  await createAuthTestPage(page);
+  await assertPageAuthenticated(page, {
+    displayName: 'Test User',
+    role: 'editor'
+  });
+});
+```
+
+### `setupAuthenticatedTest(page, authFixture, userProfile?)`
+Convenience function that sets up an authenticated test scenario with a test page.
+
+```typescript
+test('quick auth setup', async ({ loggedInPage }) => {
+  const { page, authFixture } = loggedInPage;
+
+  await setupAuthenticatedTest(page, authFixture, {
+    displayName: 'Custom User',
+    role: 'admin'
+  });
+
+  // Page is now set up and authenticated as admin
+});
+```
+
+### `testUserRole(page, authFixture, role, displayName)`
+Tests switching to different user roles with automatic assertions.
+
+```typescript
+test('role switching', async ({ loggedInPage }) => {
+  const { page, authFixture } = loggedInPage;
+
+  await createAuthTestPage(page);
+
+  // Test admin role
+  await testUserRole(page, authFixture, 'admin', 'Admin User');
+
+  // Test viewer role
+  await testUserRole(page, authFixture, 'viewer', 'Viewer User');
+});
+```
+
+### `triggerApiCall(page)` and other utilities
+Interact with the test page to trigger API calls, capture console messages, etc.
+
+```typescript
+test('api interaction', async ({ loggedInPage }) => {
+  const { page } = loggedInPage;
+
+  await createAuthTestPage(page);
+
+  // Trigger API call through test page UI
+  const result = await triggerApiCall(page);
+  expect(result).toContain('API call completed');
+
+  // Get console messages
+  const messages = await getPageConsoleMessages(page);
+  expect(messages.some(msg => msg.includes('Making API call'))).toBe(true);
+});
+```
+
 ## Configuration Options
 
 ### `BrowserFixtureConfig`

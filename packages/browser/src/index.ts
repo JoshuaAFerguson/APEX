@@ -103,6 +103,14 @@ export type {
   ScreenshotResult,
 } from './screenshot-utility.js';
 
+// Import and export navigation helpers
+import {
+  goto as gotoFn,
+  waitForNavigation as waitForNavigationFn,
+  assertURL as assertURLFn,
+  assertPageContent as assertPageContentFn,
+} from './navigation-helpers.js';
+
 // Import and export permission mocking utilities
 import {
   mockPermissions as mockPermissionsFn,
@@ -318,6 +326,20 @@ export type {
   MockOperationBehavior,
 } from './mocks/index.js';
 
+// Export navigation helpers
+export {
+  gotoFn as goto,
+  waitForNavigationFn as waitForNavigation,
+  assertURLFn as assertURL,
+  assertPageContentFn as assertPageContent,
+};
+
+export type {
+  AssertURLOptions,
+  AssertPageContentOptions,
+  NavigationHelperResult,
+} from './navigation-helpers.js';
+
 // Export test utilities
 export * from './test-utils.js';
 
@@ -332,6 +354,11 @@ export default {
   captureJPEG: captureJPEGFn,
   captureFullPageScreenshot: captureFullPageScreenshotFn,
   captureViewportScreenshot: captureViewportScreenshotFn,
+  // Navigation helpers
+  goto: gotoFn,
+  waitForNavigation: waitForNavigationFn,
+  assertURL: assertURLFn,
+  assertPageContent: assertPageContentFn,
   chromium: chromiumLauncher,
   firefox: firefoxLauncher,
   webkit: webkitLauncher,
