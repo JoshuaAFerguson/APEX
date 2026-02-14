@@ -12405,3 +12405,21 @@ export {
   type ToolInvocationRecord,
   type ToolInvocationStats,
 } from './tool-invocation-recorder.js';
+
+// ============================================================================
+// Approval Flow Testing Utilities (v0.5.0)
+// ============================================================================
+
+export {
+  createMockApprovalState,
+  createMockApprovalGate,
+  createApprovalScenario,
+  ApprovalFlowTestEnvironment,
+  createApprovalFlowTestEnvironment,
+  createWorkflowWithApprovals,
+  ApprovalTestAssertions,
+  type ApprovalStateConfig,
+  type ApprovalGateConfig,
+  type ApprovalScenario,
+  type ApprovalTestEvents,
+} from './approval-test-utils.js';
