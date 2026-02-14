@@ -20,6 +20,12 @@ export * from './browser-assertions';
 // Mock tool types for Claude Agent SDK testing
 export * from './mock-tool-types';
 
+// Claude SDK mock utilities
+export * from './claude-sdk-mock';
+
+// Mock tools executor
+export * from './mock-tools-executor';
+
 // Mock server utilities
 export * from './mock-server';
 

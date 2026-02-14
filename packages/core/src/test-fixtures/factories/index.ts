@@ -93,3 +93,52 @@ export {
   validateToolPermission,
   createTimeBasedPermissions
 } from './permission-factory.js';
+
+// Agent factories
+export {
+  createAgent,
+  createPlannerAgent,
+  createArchitectAgent,
+  createDeveloperAgent,
+  createTesterAgent,
+  createReviewerAgent,
+  createDevOpsAgent,
+  createMinimalAgent,
+  createFullFeaturedAgent,
+  createModelSpecificAgent,
+  AgentPresets,
+  createWorkflowAgentCollection,
+  createAgentVariants,
+  validateAgentDefinition
+} from './agent-factory.js';
+
+// Workflow factories
+export {
+  createWorkflowDefinition,
+  createWorkflowStage,
+  createWorkflowGate,
+  createFeatureWorkflow,
+  createHotfixWorkflow,
+  createBugfixWorkflow,
+  createEnhancementWorkflow,
+  createRefactorWorkflow,
+  createMinimalWorkflow,
+  createParallelWorkflow,
+  createPlanningStage,
+  createArchitectureStage,
+  createImplementationStage,
+  createTestingStage,
+  createReviewStage,
+  createDeploymentStage,
+  createApprovalGate,
+  createQualityGate,
+  createSecurityGate,
+  createDeploymentGate,
+  WorkflowPresets,
+  createWorkflowTypeCollection,
+  createWorkflowStageCollection,
+  createWorkflowVariants,
+  validateWorkflowDefinition,
+  validateWorkflowStage,
+  validateWorkflowGate
+} from './workflow-factory.js';
