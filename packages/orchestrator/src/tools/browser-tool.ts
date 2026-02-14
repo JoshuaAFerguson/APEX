@@ -61,7 +61,10 @@ export type BrowserOperation =
   | 'getHtml'
   | 'scroll'
   | 'hover'
-  | 'generatePdf';
+  | 'generatePdf'
+  | 'goBack'
+  | 'goForward'
+  | 'go';
 
 /**
  * Options for BrowserTool constructor
@@ -275,6 +278,38 @@ export interface BrowserGeneratePdfParams {
 }
 
 /**
+ * Parameters for goBack operation
+ */
+export interface BrowserGoBackParams {
+  /** Maximum time to wait for navigation in milliseconds */
+  timeout?: number;
+  /** Wait condition before considering navigation complete */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+
+/**
+ * Parameters for goForward operation
+ */
+export interface BrowserGoForwardParams {
+  /** Maximum time to wait for navigation in milliseconds */
+  timeout?: number;
+  /** Wait condition before considering navigation complete */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+
+/**
+ * Parameters for go operation
+ */
+export interface BrowserGoParams {
+  /** Number of entries to move in history (negative for back, positive for forward) */
+  delta: number;
+  /** Maximum time to wait for navigation in milliseconds */
+  timeout?: number;
+  /** Wait condition before considering navigation complete */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+
+/**
  * Unified parameters type for all browser operations
  */
 export type BrowserParams =
@@ -291,7 +326,10 @@ export type BrowserParams =
   | { operation: 'getHtml'; params: BrowserGetHtmlParams }
   | { operation: 'scroll'; params: BrowserScrollParams }
   | { operation: 'hover'; params: BrowserHoverParams }
-  | { operation: 'generatePdf'; params: BrowserGeneratePdfParams };
+  | { operation: 'generatePdf'; params: BrowserGeneratePdfParams }
+  | { operation: 'goBack'; params: BrowserGoBackParams }
+  | { operation: 'goForward'; params: BrowserGoForwardParams }
+  | { operation: 'go'; params: BrowserGoParams };
 
 /**
  * Result of browser operation
@@ -852,6 +890,12 @@ export class BrowserTool {
         return params.params.selector || `${params.params.x || 0},${params.params.y || 0}`;
       case 'generatePdf':
         return params.params.path || 'pdf';
+      case 'goBack':
+        return 'history:back';
+      case 'goForward':
+        return 'history:forward';
+      case 'go':
+        return `history:${params.params.delta}`;
       default:
         return 'unknown';
     }
@@ -1835,6 +1879,151 @@ export class BrowserTool {
             },
           };
         }
+      }
+
+      case 'goBack': {
+        const backParams = (params as { params: BrowserGoBackParams }).params;
+        const timeout = backParams.timeout || config?.pageLoadTimeout;
+        const waitUntil = backParams.waitUntil;
+
+        const response = await page.goBack({
+          timeout,
+          waitUntil: this.mapWaitUntil(waitUntil, backend),
+        });
+
+        return {
+          success: true,
+          operation,
+          data: {
+            navigated: response !== null,
+            url: response ? this.getCurrentUrl() : null
+          },
+          metadata: {
+            url: this.getCurrentUrl(),
+            title: await page.title(),
+            executionTime: 0,
+            permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+          },
+        };
+      }
+
+      case 'goForward': {
+        const forwardParams = (params as { params: BrowserGoForwardParams }).params;
+        const timeout = forwardParams.timeout || config?.pageLoadTimeout;
+        const waitUntil = forwardParams.waitUntil;
+
+        const response = await page.goForward({
+          timeout,
+          waitUntil: this.mapWaitUntil(waitUntil, backend),
+        });
+
+        return {
+          success: true,
+          operation,
+          data: {
+            navigated: response !== null,
+            url: response ? this.getCurrentUrl() : null
+          },
+          metadata: {
+            url: this.getCurrentUrl(),
+            title: await page.title(),
+            executionTime: 0,
+            permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+          },
+        };
+      }
+
+      case 'go': {
+        const goParams = (params as { params: BrowserGoParams }).params;
+        const { delta } = goParams;
+        const timeout = goParams.timeout || config?.pageLoadTimeout;
+        const waitUntil = goParams.waitUntil;
+
+        // Validate delta parameter
+        if (!Number.isInteger(delta)) {
+          return {
+            success: false,
+            operation,
+            error: 'Delta parameter must be an integer',
+            metadata: {
+              url: this.getCurrentUrl(),
+              executionTime: 0,
+              permissionGranted: true,
+            },
+          };
+        }
+
+        if (delta === 0) {
+          // No navigation needed, just return current URL
+          return {
+            success: true,
+            operation,
+            data: { navigated: false, url: this.getCurrentUrl() },
+            metadata: {
+              url: this.getCurrentUrl(),
+              title: await page.title(),
+              executionTime: 0,
+              permissionGranted: true,
+              consoleMessages: this.consoleMessages,
+              runtimeErrors: this.runtimeErrors,
+              enhancedConsoleMessages: this.enhancedConsoleMessages,
+              enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+            },
+          };
+        }
+
+        // Use goBack/goForward methods for multi-step navigation
+        const steps = Math.abs(delta);
+        const direction = delta < 0 ? 'back' : 'forward';
+        let response = null;
+
+        for (let i = 0; i < steps; i++) {
+          if (direction === 'back') {
+            response = await page.goBack({
+              timeout,
+              waitUntil: this.mapWaitUntil(waitUntil, backend),
+            });
+          } else {
+            response = await page.goForward({
+              timeout,
+              waitUntil: this.mapWaitUntil(waitUntil, backend),
+            });
+          }
+
+          // If any step returns null, we've hit the end of history
+          if (!response) {
+            break;
+          }
+        }
+
+        return {
+          success: true,
+          operation,
+          data: {
+            navigated: response !== null,
+            url: response ? this.getCurrentUrl() : null,
+            delta,
+            steps: steps
+          },
+          metadata: {
+            url: this.getCurrentUrl(),
+            title: await page.title(),
+            executionTime: 0,
+            permissionGranted: true,
+            consoleMessages: this.consoleMessages,
+            runtimeErrors: this.runtimeErrors,
+            enhancedConsoleMessages: this.enhancedConsoleMessages,
+            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+          },
+        };
       }
 
       default:

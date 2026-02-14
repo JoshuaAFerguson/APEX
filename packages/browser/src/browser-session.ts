@@ -440,6 +440,82 @@ export class BrowserSession extends EventEmitter<BrowserCaptureEvents> implement
   }
 
   /**
+   * Navigates to a specific entry in browser history
+   *
+   * @param delta - Number of entries to move in history (negative for back, positive for forward)
+   * @param options - Navigation options (timeout, waitUntil)
+   * @returns Promise resolving to navigation result with final URL or null
+   */
+  async go(delta: number, options: NavigationOptions = {}): Promise<BrowserActionResult<string | null>> {
+    const startTime = Date.now();
+
+    if (!this.page) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.BROWSER_NOT_LAUNCHED,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // Validate delta parameter
+    if (!Number.isInteger(delta)) {
+      return {
+        success: false,
+        error: 'Delta parameter must be an integer',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (delta === 0) {
+      // No navigation needed, just return current URL
+      return {
+        success: true,
+        data: this.page.url(),
+        duration: Date.now() - startTime,
+      };
+    }
+
+    try {
+      // Use goBack/goForward methods for single-step navigation
+      // For multi-step, we need to call multiple times
+      const steps = Math.abs(delta);
+      const direction = delta < 0 ? 'back' : 'forward';
+
+      let response = null;
+      for (let i = 0; i < steps; i++) {
+        if (direction === 'back') {
+          response = await this.page.goBack({
+            timeout: options.timeout || this.config.timeout,
+            waitUntil: options.waitUntil,
+          });
+        } else {
+          response = await this.page.goForward({
+            timeout: options.timeout || this.config.timeout,
+            waitUntil: options.waitUntil,
+          });
+        }
+
+        // If any step returns null, we've hit the end of history
+        if (!response) {
+          break;
+        }
+      }
+
+      return {
+        success: true,
+        data: response ? this.page.url() : null,
+        duration: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
    * Waits for navigation to complete
    */
   async waitForNavigation(options: WaitForNavigationOptions = {}): Promise<BrowserActionResult<string>> {

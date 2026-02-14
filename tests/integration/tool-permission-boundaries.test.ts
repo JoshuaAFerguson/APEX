@@ -46,7 +46,6 @@ describe('Tool Permission Boundaries', () => {
   let tempDir: string;
   let orchestrator: ApexOrchestrator;
   let permissionManager: PermissionManager;
-  let permissionStore: PermissionStore;
   let testFilePath: string;
   let testDirPath: string;
 
@@ -115,9 +114,8 @@ You are a test agent that validates tool-permission interactions.`
     orchestrator = new ApexOrchestrator(tempDir);
     await orchestrator.initialize();
 
-    // Get component instances for testing
-    permissionManager = orchestrator.permissionManager;
-    permissionStore = orchestrator.permissionStore;
+    // Get permission manager from orchestrator (using type assertion for testing)
+    permissionManager = (orchestrator as any).permissionManager;
   });
 
   afterEach(async () => {
