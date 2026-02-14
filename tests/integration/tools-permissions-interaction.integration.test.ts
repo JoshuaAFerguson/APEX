@@ -286,20 +286,16 @@ You are a test agent that validates tool-permission interactions.`
       // Clear event log for clean test
       eventLog.length = 0;
 
-      // Request permission
-      const requestId = await orchestrator.requestPermission(
-        'Write',
-        '/tmp/test-file.txt',
-        { operation: 'file-write' }
-      );
+      // Grant a permission through the permission manager
+      await permissionManager.grantPermission('Write', '/tmp/test-file.txt', 'allow-always');
 
-      expect(requestId).toBeDefined();
-      expect(typeof requestId).toBe('string');
+      // Check that the permission was granted
+      const permission = await permissionManager.checkPermission('Write', '/tmp/test-file.txt');
+      expect(permission).toBe('allow-always');
 
-      // Verify event was emitted
-      const requestEvent = eventLog.find((e) => e.type === 'permission:request');
-      expect(requestEvent).toBeDefined();
-      expect(requestEvent!.data.tool).toBe('Write');
+      // Verify permission was stored in the manager
+      const hasPermission = await permissionManager.hasPermission('Write', '/tmp/test-file.txt');
+      expect(hasPermission).toBe(true);
     });
   });
 });

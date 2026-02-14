@@ -34,18 +34,9 @@ import type {
 } from '@apexcli/core';
 
 // Import system components
-import { TaskStore } from '@apexcli/orchestrator/src/store';
-import { PermissionStore } from '@apexcli/orchestrator/src/permission-store';
-import { PermissionManager } from '@apexcli/orchestrator/src/permission-manager';
-import { BrowserTool } from '@apexcli/orchestrator/src/tools/browser-tool';
-import { ToolRegistry } from '@apexcli/core/src/tools/tool-registry';
-
-// Import tool implementations
-import { ReadTool } from '@apexcli/core/src/tools/filesystem/read-tool';
-import { WriteTool } from '@apexcli/core/src/tools/filesystem/write-tool';
-import { BashTool } from '@apexcli/core/src/tools/shell/bash-tool';
-import { GrepTool } from '@apexcli/core/src/tools/search/grep-tool';
-import { WebSearchTool } from '@apexcli/core/src/tools/web/web-search-tool';
+import { TaskStore, PermissionStore, PermissionManager } from '@apexcli/orchestrator';
+import { BrowserTool as OrchestratorBrowserTool } from '@apexcli/orchestrator';
+import { ToolRegistry, ReadTool, BashTool, GrepTool, WebSearchTool, BrowserTool } from '@apexcli/core/tools';
 
 // Mock Playwright for browser operations
 vi.mock('playwright', () => ({
