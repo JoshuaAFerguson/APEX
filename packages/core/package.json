@@ -76,6 +76,12 @@
       "import": "./dist/__tests__/helpers/index.js",
       "require": "./dist/__tests__/helpers/index.js",
       "default": "./dist/__tests__/helpers/index.js"
+    },
+    "./factories": {
+      "types": "./dist/factories/index.d.ts",
+      "import": "./dist/factories/index.js",
+      "require": "./dist/factories/index.js",
+      "default": "./dist/factories/index.js"
     }
   },
   "files": [
@@ -89,7 +95,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts src/test-utils/__tests__/**/*.test.ts src/fixtures/__tests__/**/*.test.ts",
+    "test": "vitest run src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts src/test-utils/__tests__/**/*.test.ts src/fixtures/__tests__/**/*.test.ts src/factories/__tests__/**/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

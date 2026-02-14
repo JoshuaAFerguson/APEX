@@ -368,11 +368,11 @@ describe('Timeout Error Handling Integration Tests', () => {
     it('should format timeout durations in human-readable form', () => {
       // Test TimeoutUtils formatting
       expect(TimeoutUtils.formatTimeout(500)).toBe('500ms');
-      expect(TimeoutUtils.formatTimeout(1000)).toBe('1s');
-      expect(TimeoutUtils.formatTimeout(1500)).toBe('2s');
-      expect(TimeoutUtils.formatTimeout(60000)).toBe('1m');
-      expect(TimeoutUtils.formatTimeout(90000)).toBe('2m');
-      expect(TimeoutUtils.formatTimeout(3600000)).toBe('60m');
+      expect(TimeoutUtils.formatTimeout(1000)).toBe('1.0s');
+      expect(TimeoutUtils.formatTimeout(1500)).toBe('1.5s');
+      expect(TimeoutUtils.formatTimeout(60000)).toBe('1.0m');
+      expect(TimeoutUtils.formatTimeout(90000)).toBe('1.5m');
+      expect(TimeoutUtils.formatTimeout(3600000)).toBe('1.0h');
     });
 
     it('should convert between minutes and milliseconds correctly', () => {

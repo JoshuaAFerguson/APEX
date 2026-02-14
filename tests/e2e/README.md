@@ -10,14 +10,40 @@ To run E2E tests locally:
 # Build the CLI first (required for E2E tests)
 npm run build
 
-# Run all E2E tests once
-npm run test:e2e
+# Run all E2E tests using the unified test runner (RECOMMENDED)
+npm run test:unified:e2e
 
 # Run E2E tests in watch mode for development
-npm run test:e2e:watch
+npm run test:unified:e2e -- --watch
+
+# Run only marketplace E2E tests
+npm run test:unified:marketplace
+
+# List all E2E tests without running them
+npm run test:unified:list:e2e
+
+# Alternative: Run E2E tests directly (legacy method)
+npm run test:e2e
 
 # Run specific E2E test file
 npm test -- tests/e2e/browse-marketplace.e2e.test.ts
+```
+
+### Unified Test Runner (Recommended)
+
+The APEX project now includes a consolidated E2E test runner that provides:
+
+- **Comprehensive Discovery**: Finds all E2E tests across the entire monorepo
+- **Marketplace Test Support**: Specialized patterns for marketplace E2E tests
+- **Single Command Interface**: Run all E2E tests with one unified command
+- **Filtering Capabilities**: Filter by package, pattern, or test type
+
+**Key Commands:**
+```bash
+npm run test:unified:e2e              # All E2E tests
+npm run test:unified:marketplace      # Marketplace tests only
+npm run test:unified:cli              # CLI package tests only
+npm run validate:e2e-consolidation   # Validate configuration
 ```
 
 **Requirements:**

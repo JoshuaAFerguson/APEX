@@ -86,8 +86,15 @@ export type {
 
 // Test Pages (migrated utilities)
 export {
+  TemplateProcessor,
   TestPages,
+  NavigationTemplateBuilder,
+  FormTemplateBuilder,
   TestDataGenerators
+} from './test-pages.js';
+
+export type {
+  TemplateVariables
 } from './test-pages.js';
 
 // Validators (migrated utilities)

@@ -88,6 +88,11 @@ export * from './logger';
 // Note: test-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files
 
+// Mock Factories
+// Note: factories is not exported from the main package as it's intended for testing
+// Import directly from '@apex/core/factories' for test files
+// export * from './factories';
+
 // Test Setup Utilities
 // Note: test-setup-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apex/core/test-setup-utils' or '@apex/core/src/test-setup-utils' for test files

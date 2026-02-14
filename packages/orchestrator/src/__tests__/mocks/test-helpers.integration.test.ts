@@ -260,8 +260,10 @@ describe('Enhanced Test Helpers Integration', () => {
       helper.setupFileSystemTools();
 
       // Register additional tools for the workflow
+      const { z } = await import('zod');
+
       toolRegistry.registerTool('Bash', 'Execute shell commands',
-        require('zod').z.object({ command: require('zod').z.string() }),
+        z.object({ command: z.string() }),
         {
           response: {
             content: [{ type: 'text', text: 'Command executed successfully' }],
@@ -271,7 +273,7 @@ describe('Enhanced Test Helpers Integration', () => {
       );
 
       toolRegistry.registerTool('GitCommit', 'Commit changes to git',
-        require('zod').z.object({ message: require('zod').z.string() }),
+        z.object({ message: z.string() }),
         {
           response: {
             content: [{ type: 'text', text: 'Changes committed successfully' }],
