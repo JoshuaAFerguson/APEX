@@ -54,6 +54,30 @@ export {
   permissionAutonomyIntegrationExamples,
 } from './permission-autonomy-integration-examples';
 
+// Permission scenario helpers
+export {
+  PermissionScenarioHelpers,
+  PermissionScenarioPatterns,
+  permissionScenarioHelpers,
+} from './permission-scenario-helpers';
+
+export type {
+  PermissionBoundaryConfig,
+  PermissionDenialScenarioConfig,
+  PermissionGrantScenarioConfig,
+  ToolPermissionMockConfig,
+  PermissionBoundaryResult,
+  PermissionDenialResult,
+  PermissionGrantResult,
+} from './permission-scenario-helpers';
+
+// Additional permission test scenarios
+export {
+  PermissionTestScenarios,
+  permissionTestScenarios,
+  runQuickPermissionTests,
+} from './permission-test-scenarios';
+
 /**
  * Combined test helpers for comprehensive testing scenarios
  */

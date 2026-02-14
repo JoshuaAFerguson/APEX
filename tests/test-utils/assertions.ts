@@ -298,3 +298,424 @@ export function expectToHaveExactShape<T>(
     expect(allowedKeyStrings).toContain(key);
   }
 }
+
+// ============================================================================
+// Tool Assertion Helpers
+// ============================================================================
+
+/**
+ * Interface representing a tool call record for testing
+ */
+export interface ToolCallRecord {
+  toolName: string;
+  parameters: Record<string, unknown>;
+  callIndex?: number;
+  timestamp?: Date;
+  success?: boolean;
+  result?: any;
+}
+
+/**
+ * Mock tool registry for tracking tool calls in tests
+ */
+export interface MockToolRegistry {
+  getInvocations(toolName?: string): ToolCallRecord[];
+  getAllInvocations(): ToolCallRecord[];
+  reset(): void;
+}
+
+/**
+ * Assert that a specific tool was called at least once
+ * Provides clear error messages when tools are not called as expected
+ *
+ * @param toolCalls - Array of tool call records or mock registry
+ * @param toolName - Name of the tool that should have been called
+ * @param message - Optional custom error message
+ *
+ * @example
+ * ```typescript
+ * const mockRegistry = setupMockToolRegistry();
+ * // ... execute test scenario
+ * expectToolCalled(mockRegistry, 'Read');
+ * expectToolCalled(mockRegistry, 'Write', 'Expected file to be written');
+ * ```
+ */
+export function expectToolCalled(
+  toolCalls: ToolCallRecord[] | MockToolRegistry,
+  toolName: string,
+  message?: string
+): void {
+  const calls = Array.isArray(toolCalls)
+    ? toolCalls.filter(call => call.toolName === toolName)
+    : toolCalls.getInvocations(toolName);
+
+  const defaultMessage = `Expected tool '${toolName}' to be called at least once, but it was not called`;
+  const errorMessage = message || defaultMessage;
+
+  expect(calls.length).toBeGreaterThan(0);
+
+  if (calls.length === 0) {
+    const allCalls = Array.isArray(toolCalls)
+      ? toolCalls.map(call => call.toolName)
+      : toolCalls.getAllInvocations().map(call => call.toolName);
+
+    const availableTools = [...new Set(allCalls)].join(', ');
+    throw new Error(
+      `${errorMessage}. Available tools called: [${availableTools}]`
+    );
+  }
+}
+
+/**
+ * Assert that a specific tool was called with specific parameters
+ * Supports partial parameter matching and custom validation functions
+ *
+ * @param toolCalls - Array of tool call records or mock registry
+ * @param toolName - Name of the tool that should have been called
+ * @param expectedParams - Expected parameters (partial match) or validation function
+ * @param options - Additional assertion options
+ *
+ * @example
+ * ```typescript
+ * // Exact parameter match
+ * expectToolCalledWith(mockRegistry, 'Read', { file_path: '/test.txt' });
+ *
+ * // Partial parameter match
+ * expectToolCalledWith(mockRegistry, 'Write', { file_path: '/test.txt' }, { partial: true });
+ *
+ * // Custom validation function
+ * expectToolCalledWith(mockRegistry, 'Bash', (params) => {
+ *   return typeof params.command === 'string' && params.command.includes('git');
+ * });
+ *
+ * // Specific call index
+ * expectToolCalledWith(mockRegistry, 'Read', { file_path: '/config.txt' }, { callIndex: 1 });
+ * ```
+ */
+export function expectToolCalledWith(
+  toolCalls: ToolCallRecord[] | MockToolRegistry,
+  toolName: string,
+  expectedParams: Record<string, unknown> | ((params: Record<string, unknown>) => boolean),
+  options: {
+    /** Only check subset of parameters (default: false) */
+    partial?: boolean;
+    /** Check specific call index (default: any call) */
+    callIndex?: number;
+    /** Custom error message */
+    message?: string;
+  } = {}
+): void {
+  const calls = Array.isArray(toolCalls)
+    ? toolCalls.filter(call => call.toolName === toolName)
+    : toolCalls.getInvocations(toolName);
+
+  // First ensure the tool was called
+  expectToolCalled(toolCalls, toolName, options.message);
+
+  // Get specific call or check all calls
+  const callsToCheck = options.callIndex !== undefined
+    ? [calls[options.callIndex]].filter(Boolean)
+    : calls;
+
+  if (options.callIndex !== undefined && !calls[options.callIndex]) {
+    throw new Error(
+      `Expected tool '${toolName}' to have been called at index ${options.callIndex}, but only ${calls.length} calls were made`
+    );
+  }
+
+  let foundMatch = false;
+  const matchErrors: string[] = [];
+
+  for (const call of callsToCheck) {
+    try {
+      if (typeof expectedParams === 'function') {
+        // Custom validation function
+        const isValid = expectedParams(call.parameters);
+        if (isValid) {
+          foundMatch = true;
+          break;
+        } else {
+          matchErrors.push(`Call parameters ${JSON.stringify(call.parameters)} failed custom validation`);
+        }
+      } else {
+        // Parameter matching
+        if (options.partial) {
+          // Partial match - check that all expected params are present with correct values
+          let matches = true;
+          const missingKeys: string[] = [];
+          const wrongValues: Array<{ key: string; expected: unknown; actual: unknown }> = [];
+
+          for (const [key, expectedValue] of Object.entries(expectedParams)) {
+            if (!(key in call.parameters)) {
+              matches = false;
+              missingKeys.push(key);
+            } else if (!deepEqual(call.parameters[key], expectedValue)) {
+              matches = false;
+              wrongValues.push({ key, expected: expectedValue, actual: call.parameters[key] });
+            }
+          }
+
+          if (matches) {
+            foundMatch = true;
+            break;
+          } else {
+            let errorParts = [];
+            if (missingKeys.length > 0) {
+              errorParts.push(`missing keys: ${missingKeys.join(', ')}`);
+            }
+            if (wrongValues.length > 0) {
+              errorParts.push(`wrong values: ${wrongValues.map(w => `${w.key}(expected: ${JSON.stringify(w.expected)}, got: ${JSON.stringify(w.actual)})`).join(', ')}`);
+            }
+            matchErrors.push(`Partial match failed - ${errorParts.join(', ')}`);
+          }
+        } else {
+          // Exact match
+          if (deepEqual(call.parameters, expectedParams)) {
+            foundMatch = true;
+            break;
+          } else {
+            matchErrors.push(`Exact match failed - expected: ${JSON.stringify(expectedParams)}, got: ${JSON.stringify(call.parameters)}`);
+          }
+        }
+      }
+    } catch (error) {
+      matchErrors.push(`Error comparing parameters: ${error}`);
+    }
+  }
+
+  if (!foundMatch) {
+    const baseMessage = options.message ||
+      `Expected tool '${toolName}' to be called with matching parameters`;
+
+    const detailedMessage = `${baseMessage}. Match attempts:\n${matchErrors.map((err, i) => `  ${i + 1}. ${err}`).join('\n')}`;
+
+    throw new Error(detailedMessage);
+  }
+}
+
+/**
+ * Assert that tools were called in a specific order
+ * Useful for testing workflows and dependencies between tool calls
+ *
+ * @param toolCalls - Array of tool call records or mock registry
+ * @param expectedOrder - Array of tool names in expected order
+ * @param options - Additional assertion options
+ *
+ * @example
+ * ```typescript
+ * // Strict order - tools must be called in exact sequence
+ * expectToolCallOrder(mockRegistry, ['Read', 'Write', 'Bash']);
+ *
+ * // Partial order - only check that specified tools appear in order (others can be interspersed)
+ * expectToolCallOrder(mockRegistry, ['Read', 'Write'], { strict: false });
+ *
+ * // Allow repeated tools
+ * expectToolCallOrder(mockRegistry, ['Read', 'Read', 'Write'], { allowRepeats: true });
+ * ```
+ */
+export function expectToolCallOrder(
+  toolCalls: ToolCallRecord[] | MockToolRegistry,
+  expectedOrder: string[],
+  options: {
+    /** Require exact sequence with no other tools in between (default: true) */
+    strict?: boolean;
+    /** Allow the same tool to appear multiple times in sequence (default: false) */
+    allowRepeats?: boolean;
+    /** Custom error message */
+    message?: string;
+  } = {}
+): void {
+  const allCalls = Array.isArray(toolCalls)
+    ? toolCalls
+    : toolCalls.getAllInvocations();
+
+  const { strict = true, allowRepeats = false } = options;
+
+  if (expectedOrder.length === 0) {
+    return; // Nothing to check
+  }
+
+  // Get sequence of actual tool names
+  const actualSequence = allCalls
+    .sort((a, b) => {
+      // Sort by call index if available, otherwise by timestamp, otherwise preserve order
+      if (a.callIndex !== undefined && b.callIndex !== undefined) {
+        return a.callIndex - b.callIndex;
+      }
+      if (a.timestamp && b.timestamp) {
+        return a.timestamp.getTime() - b.timestamp.getTime();
+      }
+      return 0;
+    })
+    .map(call => call.toolName);
+
+  if (strict) {
+    // Strict mode: exact sequence match
+    let expectedSlice: string[];
+
+    if (!allowRepeats) {
+      // Remove consecutive duplicates from expected order for comparison
+      expectedSlice = expectedOrder.reduce<string[]>((acc, tool, index) => {
+        if (index === 0 || tool !== expectedOrder[index - 1]) {
+          acc.push(tool);
+        }
+        return acc;
+      }, []);
+    } else {
+      expectedSlice = expectedOrder;
+    }
+
+    let actualSlice: string[];
+
+    if (!allowRepeats) {
+      // Remove consecutive duplicates from actual sequence for comparison
+      actualSlice = actualSequence.reduce<string[]>((acc, tool, index) => {
+        if (index === 0 || tool !== actualSequence[index - 1]) {
+          acc.push(tool);
+        }
+        return acc;
+      }, []);
+    } else {
+      actualSlice = actualSequence;
+    }
+
+    // For strict mode, check if the actual sequence starts with the expected sequence
+    const actualPrefix = actualSlice.slice(0, expectedSlice.length);
+
+    if (JSON.stringify(actualPrefix) !== JSON.stringify(expectedSlice)) {
+      const defaultMessage = `Expected tools to be called in strict order: [${expectedSlice.join(', ')}], but got: [${actualSlice.join(', ')}]`;
+      throw new Error(options.message || defaultMessage);
+    }
+  } else {
+    // Non-strict mode: find subsequence
+    let expectedIndex = 0;
+    let lastFoundIndex = -1;
+
+    for (let i = 0; i < actualSequence.length && expectedIndex < expectedOrder.length; i++) {
+      if (actualSequence[i] === expectedOrder[expectedIndex]) {
+        if (!allowRepeats && i <= lastFoundIndex) {
+          continue; // Skip if not allowing repeats and this would be out of order
+        }
+        lastFoundIndex = i;
+        expectedIndex++;
+      }
+    }
+
+    if (expectedIndex < expectedOrder.length) {
+      const foundTools = expectedOrder.slice(0, expectedIndex);
+      const missingTools = expectedOrder.slice(expectedIndex);
+      const defaultMessage = `Expected tool call order [${expectedOrder.join(', ')}] not found in sequence. Found: [${foundTools.join(', ')}], Missing: [${missingTools.join(', ')}]. Actual sequence: [${actualSequence.join(', ')}]`;
+      throw new Error(options.message || defaultMessage);
+    }
+  }
+}
+
+/**
+ * Assert that a specific tool was called a specific number of times
+ * Provides detailed information about actual vs expected call counts
+ *
+ * @param toolCalls - Array of tool call records or mock registry
+ * @param toolName - Name of the tool to check
+ * @param expectedCount - Expected number of calls
+ * @param options - Additional assertion options
+ *
+ * @example
+ * ```typescript
+ * // Exact count
+ * expectToolCallCount(mockRegistry, 'Read', 2);
+ *
+ * // At least N calls
+ * expectToolCallCount(mockRegistry, 'Write', 1, { minimum: true });
+ *
+ * // At most N calls
+ * expectToolCallCount(mockRegistry, 'Bash', 3, { maximum: true });
+ *
+ * // Range of acceptable counts
+ * expectToolCallCount(mockRegistry, 'Grep', 2, { minimum: true });
+ * expectToolCallCount(mockRegistry, 'Grep', 5, { maximum: true });
+ * ```
+ */
+export function expectToolCallCount(
+  toolCalls: ToolCallRecord[] | MockToolRegistry,
+  toolName: string,
+  expectedCount: number,
+  options: {
+    /** Check for minimum count instead of exact (default: false) */
+    minimum?: boolean;
+    /** Check for maximum count instead of exact (default: false) */
+    maximum?: boolean;
+    /** Custom error message */
+    message?: string;
+  } = {}
+): void {
+  const calls = Array.isArray(toolCalls)
+    ? toolCalls.filter(call => call.toolName === toolName)
+    : toolCalls.getInvocations(toolName);
+
+  const actualCount = calls.length;
+  const { minimum = false, maximum = false } = options;
+
+  let conditionMet = false;
+  let comparison = '';
+
+  if (minimum && maximum) {
+    throw new Error('Cannot specify both minimum and maximum options - use separate calls or exact count');
+  } else if (minimum) {
+    conditionMet = actualCount >= expectedCount;
+    comparison = `at least ${expectedCount}`;
+  } else if (maximum) {
+    conditionMet = actualCount <= expectedCount;
+    comparison = `at most ${expectedCount}`;
+  } else {
+    conditionMet = actualCount === expectedCount;
+    comparison = `exactly ${expectedCount}`;
+  }
+
+  if (!conditionMet) {
+    const defaultMessage = `Expected tool '${toolName}' to be called ${comparison} time(s), but it was called ${actualCount} time(s)`;
+
+    // Add helpful context about the calls
+    let contextMessage = '';
+    if (actualCount > 0) {
+      const callDetails = calls.map((call, index) =>
+        `  ${index + 1}. ${JSON.stringify(call.parameters)}`
+      ).join('\n');
+      contextMessage = `\n\nActual calls:\n${callDetails}`;
+    }
+
+    throw new Error((options.message || defaultMessage) + contextMessage);
+  }
+}
+
+/**
+ * Helper function to perform deep equality check for objects
+ * Used internally by tool assertion helpers
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+
+  if (a === null || b === null || a === undefined || b === undefined) {
+    return a === b;
+  }
+
+  if (typeof a !== typeof b) return false;
+
+  if (typeof a !== 'object') return a === b;
+
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => deepEqual(item, b[index]));
+  }
+
+  const keysA = Object.keys(a as object);
+  const keysB = Object.keys(b as object);
+
+  if (keysA.length !== keysB.length) return false;
+
+  return keysA.every(key =>
+    keysB.includes(key) &&
+    deepEqual((a as any)[key], (b as any)[key])
+  );
+}

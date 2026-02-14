@@ -2739,3 +2739,20 @@ export * from './test-utils/sensitive-patterns';
 
 // Export mock tool types and interfaces for Claude Agent SDK testing
 export * from './test-utils/mock-tool-types';
+
+// Export permission scenario test helpers for comprehensive permission testing
+export {
+  PermissionScenarioHelpers,
+  PermissionScenarioPatterns,
+  permissionScenarioHelpers,
+} from './__tests__/helpers/permission-scenario-helpers';
+
+export type {
+  PermissionBoundaryConfig,
+  PermissionDenialScenarioConfig,
+  PermissionGrantScenarioConfig,
+  ToolPermissionMockConfig,
+  PermissionBoundaryResult,
+  PermissionDenialResult,
+  PermissionGrantResult,
+} from './__tests__/helpers/permission-scenario-helpers';
