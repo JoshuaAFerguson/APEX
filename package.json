@@ -64,6 +64,7 @@
     "test:unified:list:e2e": "node scripts/unified-test-runner.js --type=e2e --list",
     "validate:unified-tests": "node scripts/unified-test-runner.js --type=e2e --validate && node scripts/unified-test-runner.js --type=unit --validate && node scripts/unified-test-runner.js --type=integration --validate",
     "validate:e2e-consolidation": "node scripts/validate-e2e-consolidation.js",
+    "validate:sample-integration-test": "node scripts/validate-sample-integration-test.js",
     "playwright:install": "playwright install",
     "playwright:test": "playwright test",
     "playwright:test:headed": "playwright test --headed",

@@ -32,5 +32,8 @@ export * from './mock-server';
 // Autonomy test fixtures and mock factories
 export * from './autonomy-fixtures';
 
+// Enhanced autonomy test fixtures with intuitive naming
+export * from './autonomy-fixtures-enhanced';
+
 // Test context for unique test isolation
 export * from '../test-fixtures/context/index.js';

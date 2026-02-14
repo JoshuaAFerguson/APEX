@@ -1,8 +1,22 @@
 # E2E Tests Documentation
 
-This directory contains end-to-end tests for APEX CLI commands using real git repositories and orchestrator integration.
+> **📖 For comprehensive E2E testing documentation, see [docs/e2e.md](../../docs/e2e.md)**
+>
+> This directory contains end-to-end tests for APEX CLI commands using real git repositories and orchestrator integration.
 
-## Quick Start
+## 🚀 Quick Start for Contributors
+
+**New to APEX E2E testing?** Start here:
+
+1. **📚 Read the full guide**: [docs/e2e.md](../../docs/e2e.md) - Complete setup, architecture, and contribution guidelines
+2. **🛠️ Setup**: [Quick Setup Guide](../../docs/e2e.md#quick-setup-for-new-contributors) - 5-minute setup for new contributors
+3. **📝 Write tests**: [Writing Guide](../../docs/e2e.md#writing-new-e2e-tests) - Step-by-step test creation
+4. **🎯 Examples**: [Templates & Examples](../../docs/e2e.md#examples--templates) - Copy-paste templates for common scenarios
+5. **🤝 Contribute**: [Contribution Guidelines](../../docs/e2e.md#contribution-guidelines) - Standards and review process
+
+## Local Development Quick Reference
+
+> **💡 This is a condensed reference. For detailed instructions, see [docs/e2e.md](../../docs/e2e.md)**
 
 To run E2E tests locally:
 
@@ -31,12 +45,7 @@ npm test -- tests/e2e/browse-marketplace.e2e.test.ts
 
 ### Unified Test Runner (Recommended)
 
-The APEX project now includes a consolidated E2E test runner that provides:
-
-- **Comprehensive Discovery**: Finds all E2E tests across the entire monorepo
-- **Marketplace Test Support**: Specialized patterns for marketplace E2E tests
-- **Single Command Interface**: Run all E2E tests with one unified command
-- **Filtering Capabilities**: Filter by package, pattern, or test type
+The APEX project includes a consolidated E2E test runner:
 
 **Key Commands:**
 ```bash
@@ -46,10 +55,12 @@ npm run test:unified:cli              # CLI package tests only
 npm run validate:e2e-consolidation   # Validate configuration
 ```
 
-**Requirements:**
-- Node.js 18+ (check with `node --version`)
-- Git available in PATH (check with `git --version`)
-- CLI must be built first (`npm run build`)
+**Quick Setup:**
+```bash
+npm install && npm run build && npm run test:unified:e2e
+```
+
+> 📖 **For complete setup instructions and requirements**, see [Setup Instructions](../../docs/e2e.md#setup-instructions)
 
 ## Environment Setup
 
@@ -88,6 +99,8 @@ DEBUG=1 npm run test:e2e
 ```
 
 ## Infrastructure
+
+> 📖 **For detailed architecture documentation**, see [docs/e2e.md#architecture](../../docs/e2e.md#architecture)
 
 The E2E test infrastructure provides:
 
@@ -238,9 +251,13 @@ DEBUG=1 npm run test:e2e
 
 This preserves console output and shows detailed test execution information.
 
-## Browse MCP Marketplace E2E Tests
+## Test Examples & Documentation
 
-### File: `browse-marketplace.e2e.test.ts`
+> 📖 **For comprehensive test examples and templates**, see [docs/e2e.md#examples--templates](../../docs/e2e.md#examples--templates)
+
+### Browse MCP Marketplace E2E Tests
+
+**File: `browse-marketplace.e2e.test.ts`**
 
 Comprehensive end-to-end tests for the APEX MCP marketplace browse command functionality with real CLI execution.
 
@@ -321,9 +338,9 @@ npm test -- tests/e2e/browse-marketplace.e2e.test.ts  # Just browse marketplace 
 
 These tests involve real CLI execution and marketplace network requests. The test framework is configured with appropriate timeouts for CLI operations (30 seconds per command).
 
-## Merge Command E2E Tests
+### Merge Command E2E Tests
 
-### File: `merge-command.test.ts`
+**File: `merge-command.test.ts`**
 
 Comprehensive end-to-end tests for the APEX merge command functionality with real git operations.
 
@@ -398,3 +415,28 @@ npm test -- tests/e2e/merge-command.test.ts   # Just merge tests
 #### Timeout Considerations
 
 These tests involve real git operations and may take longer than unit tests. The test framework is configured with appropriate timeouts for git operations (30 seconds per command).
+
+---
+
+## 📚 Additional Resources
+
+### Documentation
+- **[Complete E2E Testing Guide](../../docs/e2e.md)** - Comprehensive documentation
+- **[Contributing E2E Tests](../../docs/contributing-e2e-tests.md)** - Detailed contribution guide
+- **[E2E Best Practices](../../docs/e2e-best-practices.md)** - Testing best practices
+- **[E2E Debugging Guide](../../docs/e2e-debugging.md)** - Troubleshooting and debugging
+
+### Code References
+- **[Test Utilities](./utils/README.md)** - Core utility functions
+- **[CLI Helpers](./helpers/cli-test-helpers.ts)** - CLI execution helpers
+- **[MCP Utilities](./utils/mcp-test-utils.ts)** - MCP-specific helpers
+
+### Configuration
+- **[E2E Vitest Config](../../vitest.e2e.config.ts)** - E2E test configuration
+- **[Shared Config](../../vitest.shared.config.ts)** - Base configuration
+- **[CI Configuration](../../.github/workflows/ci.yml)** - GitHub Actions setup
+
+### Getting Started
+1. **[Quick Setup](../../docs/e2e.md#quick-setup-for-new-contributors)** - 5-minute setup
+2. **[Test Templates](../../docs/e2e.md#examples--templates)** - Copy-paste templates
+3. **[Contribution Guide](../../docs/e2e.md#contribution-guidelines)** - Standards and process

@@ -54,6 +54,9 @@ export * from './error-page-fixture.js';
 // Mock helpers
 export * from './mock-helpers.js';
 
+// Mock factories for core domain types
+export * from './mock-factories.js';
+
 // Logged-in page fixtures
 export * from './logged-in-page-fixture.js';
 

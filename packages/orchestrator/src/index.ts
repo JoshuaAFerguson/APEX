@@ -12393,3 +12393,15 @@ export {
   createTestAgents,
   createTestWorkflows,
 } from './fixtures.js';
+
+// ============================================================================
+// Tool Invocation Recording (v0.5.0)
+// ============================================================================
+
+export {
+  ToolInvocationRecorder,
+  globalRecorder,
+  type ToolInvocationQueryOptions,
+  type ToolInvocationRecord,
+  type ToolInvocationStats,
+} from './tool-invocation-recorder.js';

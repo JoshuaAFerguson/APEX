@@ -56,6 +56,19 @@ export {
   validateAutonomyConfig
 } from './autonomy-factory.js';
 
+// Enhanced autonomy factories with intuitive naming
+export {
+  AutonomyFixturesEnhanced,
+  createSemiAutoConfig,
+  createManualConfig,
+  createSupervisedConfig,
+  createTestingAutonomyConfig,
+  createApexConfigWithEnhancedAutonomy,
+  getAllAutonomyConfigVariations,
+  validateEnhancedAutonomyConfig,
+  createAutonomyABTestConfigs
+} from '../../test-utils/autonomy-fixtures-enhanced.js';
+
 // Configuration factories
 export {
   createProjectConfig,

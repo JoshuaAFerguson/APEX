@@ -1,19 +1,59 @@
 # End-to-End (E2E) Testing Guide
 
-> Comprehensive documentation for running, writing, and contributing E2E tests in APEX.
+> **Comprehensive documentation for running, writing, and contributing E2E tests in APEX**
+>
+> This guide covers everything you need to know about APEX's E2E testing infrastructure, from basic setup to writing advanced tests and contributing to the test suite.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Quick Setup for New Contributors](#quick-setup-for-new-contributors)
 - [Architecture](#architecture)
-- [Quick Start](#quick-start)
 - [Setup Instructions](#setup-instructions)
 - [Running E2E Tests](#running-e2e-tests)
 - [Writing New E2E Tests](#writing-new-e2e-tests)
 - [Test Infrastructure](#test-infrastructure)
+- [Contribution Guidelines](#contribution-guidelines)
 - [CI/CD Integration](#cicd-integration)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
+- [Examples & Templates](#examples--templates)
+- [Related Documentation](#related-documentation)
+
+---
+
+## Quick Setup for New Contributors
+
+**🚀 Want to start contributing E2E tests immediately?**
+
+### 5-Minute Setup
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Build the project (required for E2E tests)
+npm run build
+
+# 3. Verify setup
+npm run validate:e2e-discovery
+
+# 4. Run E2E tests to ensure everything works
+npm run test:unified:e2e
+
+# 5. Create your first test (see Writing New E2E Tests section)
+cp tests/e2e/browse-marketplace.e2e.test.ts tests/e2e/my-feature.e2e.test.ts
+```
+
+### Prerequisites Checklist
+
+- [ ] **Node.js 18+**: `node --version`
+- [ ] **Git**: `git --version`
+- [ ] **Dependencies installed**: `npm install`
+- [ ] **Project built**: `npm run build`
+- [ ] **CLI available**: `ls packages/cli/dist/index.js`
+
+✅ **Ready to go!** Jump to [Writing New E2E Tests](#writing-new-e2e-tests) or see [Examples & Templates](#examples--templates).
 
 ---
 
@@ -765,6 +805,211 @@ await seedTestData(env, SEED_SCENARIOS.git);
 
 ---
 
+## Contribution Guidelines
+
+### Adding New E2E Tests
+
+#### 1. Choose Test Category
+
+Determine which category your test belongs to:
+
+| **Category** | **File Pattern** | **Purpose** | **Typical Timeout** | **Examples** |
+|-------------|-----------------|-------------|-------------------|-------------|
+| **CLI Commands** | `cli-*.e2e.test.ts` | Direct CLI interactions | 30s | `apex --version`, `apex init` |
+| **Git Operations** | `git-*.e2e.test.ts` | Repository operations | 60s | Branch creation, merging |
+| **Workflows** | `workflow-*.e2e.test.ts` | End-to-end workflows | 120s | Feature workflow, bug fixes |
+| **MCP Features** | `mcp-*.e2e.test.ts` | Marketplace operations | 45s | Server browsing, installation |
+| **API Integration** | `api-*.e2e.test.ts` | Server/API testing | 60s | REST API, WebSocket |
+| **Infrastructure** | `infra-*.e2e.test.ts` | System testing | 90s | Setup verification |
+
+#### 2. Follow File Structure Standard
+
+```typescript
+/**
+ * @fileoverview E2E tests for [feature description]
+ *
+ * Tests covered:
+ * - [List main test scenarios]
+ * - [Include happy path and error cases]
+ * - [Include edge cases]
+ *
+ * Requirements:
+ * - [List any special prerequisites]
+ * - [Note timing considerations]
+ * - [Platform-specific behavior if any]
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  createTestEnvironment,
+  runCLI,
+  seedTestData,
+  SEED_SCENARIOS,
+  type TestEnvironment
+} from './index';
+
+describe('E2E: [Feature Name]', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment({
+      initGit: true,
+      initApexProject: true
+    });
+  });
+
+  afterEach(async () => {
+    await env.cleanup();
+  });
+
+  describe('Happy Path', () => {
+    it('should handle normal operation', async () => {
+      // ARRANGE: Set up test conditions
+      await seedTestData(env, SEED_SCENARIOS.full);
+
+      // ACT: Perform the operation
+      const result = await runCLI('your-command', env.path);
+
+      // ASSERT: Verify outcomes
+      expect(result.success, `Command failed: ${result.stderr}`).toBe(true);
+      expect(result.stdout).toContain('expected output');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle invalid input gracefully', async () => {
+      const result = await runCLI('your-command invalid-input', env.path);
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain('expected error message');
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle empty data', async () => {
+      // Test with no seed data
+      const result = await runCLI('your-command', env.path);
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('no data message');
+    });
+  });
+});
+```
+
+#### 3. Quality Checklist
+
+Before submitting your E2E test:
+
+##### ✅ Functionality
+- [ ] Tests pass locally: `npm test -- your-test-file.e2e.test.ts`
+- [ ] Tests are properly isolated (run individually)
+- [ ] All edge cases and error scenarios covered
+- [ ] Performance is acceptable for operation type
+
+##### ✅ Code Quality
+- [ ] Follows established patterns in existing tests
+- [ ] Uses appropriate test utilities and helpers
+- [ ] Has proper documentation and comments
+- [ ] No code duplication or overly complex logic
+
+##### ✅ Integration
+- [ ] Works with CI/CD pipeline
+- [ ] Compatible with all supported platforms
+- [ ] Doesn't conflict with existing tests
+- [ ] Proper git workflow and conventional commits
+
+#### 4. Test Coverage Requirements
+
+Every new E2E test must include:
+
+- **Happy Path Scenarios** (minimum 2 test cases)
+- **Error Handling** (minimum 3 error scenarios)
+- **Edge Cases** (minimum 1 edge case)
+- **Input Validation** (test invalid inputs)
+- **Resource Cleanup** (proper setup/teardown)
+
+#### 5. Naming Conventions
+
+- **File names**: `feature-name.e2e.test.ts`
+- **Test descriptions**: Start with action verb ("should...")
+- **Environment variables**: Use `UPPERCASE_WITH_UNDERSCORES`
+- **Temporary directories**: Use descriptive prefixes
+
+#### 6. Performance Standards
+
+Set timeouts based on operation complexity:
+
+```typescript
+// Quick operations (CLI help, version)
+it('should show help', { timeout: 10000 }, async () => { /* ... */ });
+
+// Standard operations (init, status, basic commands)
+it('should initialize project', { timeout: 30000 }, async () => { /* ... */ });
+
+// Complex operations (workflows, large files)
+it('should handle complex workflow', { timeout: 60000 }, async () => { /* ... */ });
+
+// Very long operations (comprehensive workflows)
+it('should complete full workflow', { timeout: 120000 }, async () => { /* ... */ });
+```
+
+### Submitting Your Contribution
+
+#### Pre-submission Checklist
+
+Before opening a pull request:
+
+1. **Run tests locally**:
+   ```bash
+   npm test -- your-test-file.e2e.test.ts
+   ```
+
+2. **Check for conflicts**:
+   ```bash
+   npm run test:e2e
+   ```
+
+3. **Validate setup**:
+   ```bash
+   npm run validate:e2e-discovery
+   ```
+
+4. **Follow commit conventions**:
+   ```bash
+   git commit -m "test: add E2E tests for feature X"
+   ```
+
+#### Pull Request Guidelines
+
+**Title**: `test: add E2E tests for [feature name]`
+
+**Description Template**:
+```markdown
+## Description
+Brief description of what E2E tests were added.
+
+## Test Coverage
+- [ ] Happy path scenarios
+- [ ] Error handling
+- [ ] Edge cases
+- [ ] Input validation
+
+## Test Categories
+- [ ] CLI Commands
+- [ ] Git Operations
+- [ ] Workflows
+- [ ] MCP Features
+- [ ] API Integration
+- [ ] Infrastructure
+
+## Checklist
+- [ ] Tests pass locally
+- [ ] Follows existing patterns
+- [ ] Proper documentation
+- [ ] No conflicts with existing tests
+```
+
+---
+
 ## CI/CD Integration
 
 ### GitHub Actions Configuration
@@ -1220,6 +1465,681 @@ This preserves console output and shows:
 2. Review ADRs in `tests/e2e/docs/`
 3. Check test coverage analysis in `tests/e2e/test-coverage-analysis.md`
 4. Open an issue with reproduction steps
+
+---
+
+## Examples & Templates
+
+### Template: Basic CLI Command Test
+
+```typescript
+/**
+ * @fileoverview E2E tests for the [command name] command
+ *
+ * Tests covered:
+ * - Basic command execution with various flags
+ * - Help and version output validation
+ * - Error handling for invalid inputs
+ * - JSON output format validation
+ *
+ * Requirements:
+ * - APEX project initialization (optional/required)
+ * - Git repository (if testing git-related features)
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  createTestEnvironment,
+  runCLI,
+  seedTestData,
+  SEED_SCENARIOS,
+  type TestEnvironment
+} from './index';
+import { runApexCLI, assertCLISuccess } from './helpers/cli-test-helpers';
+
+describe('E2E: [Command Name] Command', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment({
+      initGit: true,
+      initApexProject: true,
+      apexOptions: {
+        projectName: `test-${Date.now()}`,
+        includeAgents: true,
+        includeWorkflows: true
+      }
+    });
+  });
+
+  afterEach(async () => {
+    await env.cleanup();
+  });
+
+  describe('Basic Functionality', () => {
+    it('should execute command successfully', async () => {
+      await seedTestData(env, SEED_SCENARIOS.full);
+
+      const result = await runApexCLI('your-command', { cwd: env.path });
+
+      assertCLISuccess(result);
+      expect(result.stdout).toContain('expected success message');
+    });
+
+    it('should display help when requested', async () => {
+      const result = await runApexCLI('your-command --help', { cwd: env.path });
+
+      assertCLISuccess(result);
+      expect(result.stdout).toContain('Usage:');
+      expect(result.stdout).toContain('Options:');
+    });
+  });
+
+  describe('Output Formats', () => {
+    it('should support JSON output', async () => {
+      const result = await runApexCLI('your-command --json', { cwd: env.path });
+
+      assertCLISuccess(result);
+
+      const output = JSON.parse(result.stdout);
+      expect(output).toHaveProperty('status');
+      expect(output).toHaveProperty('data');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should validate input parameters', async () => {
+      const result = await runApexCLI('your-command --invalid-flag', { cwd: env.path });
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain('Unknown option');
+    });
+
+    it('should handle missing prerequisites', async () => {
+      const emptyEnv = await createTestEnvironment({
+        initGit: false,
+        initApexProject: false
+      });
+
+      try {
+        const result = await runApexCLI('your-command', { cwd: emptyEnv.path });
+
+        if (commandRequiresApexProject) {
+          expect(result.success).toBe(false);
+          expect(result.stderr).toContain('not an APEX project');
+        } else {
+          expect(result.success).toBe(true);
+        }
+      } finally {
+        await emptyEnv.cleanup();
+      }
+    });
+  });
+});
+```
+
+### Template: Git Integration Test
+
+```typescript
+/**
+ * @fileoverview E2E tests for git integration features
+ *
+ * Tests covered:
+ * - Git repository operations (branch, merge, etc.)
+ * - Remote repository interactions
+ * - Conflict detection and resolution
+ * - Branch lifecycle management
+ *
+ * Requirements:
+ * - Git must be available in PATH
+ * - Tests create temporary git repositories
+ * - May involve remote repository simulation
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execSync } from 'child_process';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import {
+  createTestEnvironment,
+  createTempGitRepo,
+  createBareGitRepo,
+  type TestEnvironment
+} from './index';
+
+describe('E2E: Git Integration', () => {
+  let env: TestEnvironment;
+  let remoteRepo: string;
+
+  beforeEach(async () => {
+    // Create working repository
+    env = await createTestEnvironment({
+      initGit: true,
+      initApexProject: true
+    });
+
+    // Create remote repository for push/pull operations
+    remoteRepo = await createBareGitRepo('git-test-remote-');
+
+    // Configure remote
+    execSync(`git remote add origin ${remoteRepo}`, {
+      cwd: env.path,
+      stdio: 'pipe'
+    });
+
+    // Initial push
+    execSync('git push -u origin main', {
+      cwd: env.path,
+      stdio: 'pipe'
+    });
+  });
+
+  afterEach(async () => {
+    await env.cleanup();
+    // Remote repo cleanup handled by global teardown
+  });
+
+  describe('Branch Operations', () => {
+    it('should create and switch to new branch', async () => {
+      const result = await runCLI('checkout -b feature/new-feature', env.path);
+
+      expect(result.success).toBe(true);
+
+      // Verify branch created and active
+      const currentBranch = execSync('git branch --show-current', {
+        cwd: env.path,
+        encoding: 'utf8'
+      }).trim();
+      expect(currentBranch).toBe('feature/new-feature');
+    });
+
+    it('should merge feature branch successfully', async () => {
+      // Create feature branch with changes
+      execSync('git checkout -b feature/test', { cwd: env.path, stdio: 'pipe' });
+
+      await fs.writeFile(
+        path.join(env.path, 'feature.ts'),
+        'export const feature = "implemented";'
+      );
+
+      execSync('git add . && git commit -m "Add feature"', {
+        cwd: env.path,
+        stdio: 'pipe'
+      });
+
+      // Switch back to main
+      execSync('git checkout main', { cwd: env.path, stdio: 'pipe' });
+
+      // Merge feature branch
+      const result = await runCLI('merge feature/test', env.path);
+
+      expect(result.success).toBe(true);
+
+      // Verify file exists on main
+      const featureFile = path.join(env.path, 'feature.ts');
+      const content = await fs.readFile(featureFile, 'utf8');
+      expect(content).toContain('implemented');
+    });
+  });
+
+  describe('Remote Operations', () => {
+    it('should push and pull from remote', async () => {
+      // Make changes
+      await fs.writeFile(
+        path.join(env.path, 'remote-test.ts'),
+        'export const remoteTest = true;'
+      );
+
+      execSync('git add . && git commit -m "Add remote test"', {
+        cwd: env.path,
+        stdio: 'pipe'
+      });
+
+      // Push to remote
+      const pushResult = await runCLI('push origin main', env.path);
+      expect(pushResult.success).toBe(true);
+
+      // Verify push successful by checking remote
+      const logOutput = execSync('git log --oneline -1', {
+        cwd: env.path,
+        encoding: 'utf8'
+      });
+      expect(logOutput).toContain('Add remote test');
+    });
+  });
+
+  describe('Conflict Handling', () => {
+    it('should detect merge conflicts', async () => {
+      // Create two conflicting branches
+      const createConflictingBranch = async (branchName: string, content: string) => {
+        execSync(`git checkout -b ${branchName}`, { cwd: env.path, stdio: 'pipe' });
+
+        await fs.writeFile(
+          path.join(env.path, 'conflict.ts'),
+          `export const value = "${content}";`
+        );
+
+        execSync('git add . && git commit -m "Add conflicting content"', {
+          cwd: env.path,
+          stdio: 'pipe'
+        });
+
+        execSync('git checkout main', { cwd: env.path, stdio: 'pipe' });
+      };
+
+      await createConflictingBranch('branch1', 'value1');
+      await createConflictingBranch('branch2', 'value2');
+
+      // Merge first branch
+      const merge1 = await runCLI('merge branch1', env.path);
+      expect(merge1.success).toBe(true);
+
+      // Second merge should conflict
+      const merge2 = await runCLI('merge branch2', env.path);
+      expect(merge2.success).toBe(false);
+      expect(merge2.stderr.toLowerCase()).toMatch(/conflict|merge/);
+
+      // Verify repo is in clean state after failed merge
+      const status = execSync('git status --porcelain', {
+        cwd: env.path,
+        encoding: 'utf8'
+      });
+      expect(status.trim()).toBe(''); // Should be clean
+    });
+  });
+});
+```
+
+### Template: MCP Feature Test
+
+```typescript
+/**
+ * @fileoverview E2E tests for MCP marketplace features
+ *
+ * Tests covered:
+ * - Marketplace browsing and server listing
+ * - Server installation and configuration
+ * - Error handling for network issues
+ * - JSON output format validation
+ *
+ * Requirements:
+ * - Network access for marketplace operations
+ * - APEX project initialization
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  createTestEnvironment,
+  seedTestData,
+  SEED_SCENARIOS,
+  type TestEnvironment
+} from './index';
+import {
+  execMCPCommand,
+  assertMarketplaceOutput,
+  createTestProjectWithServers
+} from './utils/mcp-test-utils';
+
+describe('E2E: MCP Features', () => {
+  let env: TestEnvironment;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment({
+      initGit: true,
+      initApexProject: true
+    });
+  });
+
+  afterEach(async () => {
+    await env.cleanup();
+  });
+
+  describe('Marketplace Browsing', () => {
+    it('should list available MCP servers', async () => {
+      const result = await execMCPCommand('list', env.path);
+
+      assertMarketplaceOutput(result, { hasServers: true });
+      expect(result.stdout).toContain('Available MCP Servers');
+      expect(result.stdout).toMatch(/\d+ servers available/);
+    });
+
+    it('should support JSON output format', async () => {
+      const result = await execMCPCommand('list --json', env.path);
+
+      expect(result.success).toBe(true);
+
+      const servers = JSON.parse(result.stdout);
+      expect(Array.isArray(servers)).toBe(true);
+      if (servers.length > 0) {
+        expect(servers[0]).toHaveProperty('name');
+        expect(servers[0]).toHaveProperty('description');
+        expect(servers[0]).toHaveProperty('verified');
+      }
+    });
+
+    it('should handle empty marketplace gracefully', async () => {
+      // Mock empty marketplace response
+      const result = await execMCPCommand('list', env.path, {
+        mockEmpty: true
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('No MCP servers found');
+    });
+  });
+
+  describe('Server Installation', () => {
+    it('should install MCP server successfully', async () => {
+      const result = await execMCPCommand('install github', env.path);
+
+      expect(result.success).toBe(true);
+      expect(result.stdout).toContain('github server installed');
+
+      // Verify configuration updated
+      const config = await readApexConfig(env.path);
+      expect(config.mcp?.servers).toHaveProperty('github');
+    });
+
+    it('should handle invalid server names', async () => {
+      const result = await execMCPCommand('install nonexistent-server', env.path);
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain('Server not found');
+    });
+
+    it('should prevent duplicate installations', async () => {
+      // Install server first time
+      const install1 = await execMCPCommand('install github', env.path);
+      expect(install1.success).toBe(true);
+
+      // Try to install again
+      const install2 = await execMCPCommand('install github', env.path);
+      expect(install2.success).toBe(false);
+      expect(install2.stderr).toContain('already installed');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle network errors gracefully', { timeout: 45000 }, async () => {
+      const result = await execMCPCommand('list', env.path, {
+        mockNetworkError: true
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toMatch(/network|connection|timeout/i);
+    });
+
+    it('should validate project requirements', async () => {
+      const nonApexEnv = await createTestEnvironment({
+        initGit: true,
+        initApexProject: false
+      });
+
+      try {
+        const result = await execMCPCommand('list', nonApexEnv.path);
+
+        expect(result.success).toBe(false);
+        expect(result.stderr).toContain('not an APEX project');
+      } finally {
+        await nonApexEnv.cleanup();
+      }
+    });
+  });
+});
+
+// Helper function for reading APEX config
+async function readApexConfig(projectPath: string) {
+  const configPath = path.join(projectPath, '.apex', 'config.yaml');
+  const configContent = await fs.readFile(configPath, 'utf8');
+  return yaml.parse(configContent);
+}
+```
+
+### Template: Workflow Integration Test
+
+```typescript
+/**
+ * @fileoverview E2E tests for complete workflow integration
+ *
+ * Tests covered:
+ * - Full workflow execution from start to finish
+ * - Agent handoffs and task progression
+ * - Workflow state persistence and recovery
+ * - Resource cleanup after workflow completion
+ *
+ * Requirements:
+ * - Extended timeout for complete workflows
+ * - APEX project with agents and workflows
+ * - May require mock external services
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  createTestEnvironment,
+  seedTestData,
+  SEED_SCENARIOS,
+  type TestEnvironment
+} from './index';
+import { ApexOrchestrator } from '@apex/orchestrator';
+
+describe('E2E: Workflow Integration', () => {
+  let env: TestEnvironment;
+  let orchestrator: ApexOrchestrator;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment({
+      initGit: true,
+      initApexProject: true,
+      apexOptions: {
+        includeAgents: true,
+        includeWorkflows: true
+      }
+    });
+
+    await seedTestData(env, SEED_SCENARIOS.full);
+
+    orchestrator = new ApexOrchestrator({ projectRoot: env.path });
+    globalThis.apexE2EHelpers.registerOrchestrator(orchestrator);
+  });
+
+  afterEach(async () => {
+    await env.cleanup();
+  });
+
+  describe('Complete Workflows', () => {
+    it('should execute feature workflow end-to-end', { timeout: 120000 }, async () => {
+      // Start feature workflow
+      const taskId = await orchestrator.createTask({
+        type: 'feature',
+        description: 'Add user authentication system',
+        workflow: 'feature'
+      });
+
+      expect(taskId).toBeDefined();
+
+      // Execute workflow stages
+      const result = await orchestrator.executeWorkflow(taskId);
+
+      expect(result.success).toBe(true);
+      expect(result.completed).toBe(true);
+
+      // Verify task progression
+      const task = await orchestrator.getTask(taskId);
+      expect(task.status).toBe('completed');
+      expect(task.stages).toHaveLength(5); // planning, architecture, implementation, testing, review
+
+      // Verify all stages completed
+      for (const stage of task.stages) {
+        expect(stage.status).toBe('completed');
+        expect(stage.outputs).toBeDefined();
+      }
+    });
+
+    it('should handle workflow errors gracefully', { timeout: 90000 }, async () => {
+      // Create task with invalid configuration
+      const taskId = await orchestrator.createTask({
+        type: 'invalid-type',
+        description: 'This should fail',
+        workflow: 'nonexistent-workflow'
+      });
+
+      const result = await orchestrator.executeWorkflow(taskId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+
+      // Verify task marked as failed
+      const task = await orchestrator.getTask(taskId);
+      expect(task.status).toBe('failed');
+    });
+
+    it('should persist workflow state during execution', { timeout: 90000 }, async () => {
+      const taskId = await orchestrator.createTask({
+        type: 'feature',
+        description: 'Add API endpoint',
+        workflow: 'feature'
+      });
+
+      // Start workflow execution (non-blocking)
+      const executionPromise = orchestrator.executeWorkflow(taskId);
+
+      // Check intermediate state
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      const intermediateTask = await orchestrator.getTask(taskId);
+      expect(['running', 'completed']).toContain(intermediateTask.status);
+
+      // Wait for completion
+      const result = await executionPromise;
+      expect(result.success).toBe(true);
+
+      // Verify final state
+      const finalTask = await orchestrator.getTask(taskId);
+      expect(finalTask.status).toBe('completed');
+    });
+  });
+
+  describe('Agent Handoffs', () => {
+    it('should handle agent handoffs correctly', { timeout: 90000 }, async () => {
+      const taskId = await orchestrator.createTask({
+        type: 'feature',
+        description: 'Implement payment processing',
+        workflow: 'feature'
+      });
+
+      // Track agent handoffs
+      const agentHandoffs: string[] = [];
+      orchestrator.on('agentHandoff', (event) => {
+        agentHandoffs.push(event.agent);
+      });
+
+      const result = await orchestrator.executeWorkflow(taskId);
+
+      expect(result.success).toBe(true);
+
+      // Verify expected agent sequence
+      expect(agentHandoffs).toEqual([
+        'planner',
+        'architect',
+        'developer',
+        'tester',
+        'reviewer'
+      ]);
+    });
+  });
+
+  describe('Resource Management', () => {
+    it('should clean up resources after workflow completion', { timeout: 60000 }, async () => {
+      const taskId = await orchestrator.createTask({
+        type: 'feature',
+        description: 'Add logging system',
+        workflow: 'feature'
+      });
+
+      const result = await orchestrator.executeWorkflow(taskId);
+      expect(result.success).toBe(true);
+
+      // Verify no orphaned processes
+      const processes = await getOrchestatorProcesses();
+      expect(processes).toHaveLength(1); // Only main orchestrator
+
+      // Verify temporary files cleaned up
+      const tempFiles = await findTemporaryFiles(env.path);
+      expect(tempFiles).toHaveLength(0);
+    });
+  });
+});
+
+// Helper functions
+async function getOrchestatorProcesses() {
+  // Implementation depends on process tracking
+  return [];
+}
+
+async function findTemporaryFiles(projectPath: string) {
+  // Implementation to find temporary files
+  return [];
+}
+```
+
+### Common Patterns & Utilities
+
+#### Using Test Utilities Effectively
+
+```typescript
+// Environment creation with options
+const env = await createTestEnvironment({
+  initGit: true,                    // Create git repository
+  initApexProject: true,            // Initialize APEX project
+  apexOptions: {
+    projectName: 'test-project',    // Unique project name
+    includeAgents: true,            // Include agent definitions
+    includeWorkflows: true          // Include workflow definitions
+  }
+});
+
+// Seed data for different scenarios
+await seedTestData(env, SEED_SCENARIOS.minimal);   // Basic project structure
+await seedTestData(env, SEED_SCENARIOS.full);      // Complete project
+await seedTestData(env, SEED_SCENARIOS.mcp);       // MCP-focused
+await seedTestData(env, SEED_SCENARIOS.git);       // Git-focused
+
+// CLI execution patterns
+const result = await runCLI('command --flag', env.path);
+const apexResult = await runApexCLI('agent list', { cwd: env.path });
+
+// Resource registration for cleanup
+globalThis.apexE2EHelpers.registerOrchestrator(orchestrator);
+globalThis.apexE2EHelpers.registerServer(server);
+globalThis.apexE2EHelpers.registerStore(store);
+```
+
+#### Assertion Patterns
+
+```typescript
+// CLI success assertions
+expect(result.success, `Command failed: ${result.stderr}`).toBe(true);
+expect(result.exitCode).toBe(0);
+expect(result.stdout).toContain('expected message');
+expect(result.stderr).toBe('');
+
+// CLI failure assertions
+expect(result.success).toBe(false);
+expect(result.exitCode).not.toBe(0);
+expect(result.stderr).toMatch(/error|failed|invalid/i);
+
+// JSON output validation
+const output = JSON.parse(result.stdout);
+expect(output).toHaveProperty('status', 'success');
+expect(Array.isArray(output.data)).toBe(true);
+
+// File system verification
+const files = await fs.readdir(env.path);
+expect(files).toContain('expected-file.ts');
+
+const content = await fs.readFile(filePath, 'utf8');
+expect(content).toContain('expected content');
+```
 
 ---
 
