@@ -6,7 +6,7 @@
  * cleanup functions for proper test isolation.
  */
 
-import Database from 'better-sqlite3';
+import Database = require('better-sqlite3');
 
 /**
  * Context returned by createTestDatabase containing the database and cleanup function
@@ -522,6 +522,34 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_success ON audit_logs(success);
   `);
+}
+
+/**
+ * Creates a TaskStore instance that uses a test database context.
+ * This provides a more integrated approach for testing TaskStore operations.
+ *
+ * @param testDb - The test database context
+ * @param projectPath - Optional project path (defaults to '/tmp/test')
+ * @returns TaskStore instance using the test database
+ *
+ * @example
+ * ```typescript
+ * const testDb = await createTestDatabase();
+ * const taskStore = createTaskStoreWithTestDb(testDb);
+ * // Use taskStore for testing...
+ * testDb.cleanup();
+ * ```
+ */
+export function createTaskStoreWithTestDb(testDb: TestDatabaseContext, projectPath = '/tmp/test'): any {
+  // Import TaskStore dynamically to avoid circular dependencies
+  const { TaskStore } = require('../store');
+  const store = new TaskStore(projectPath);
+
+  // Replace the database instance with our test database
+  (store as any).db = testDb.db;
+  (store as any).dbPath = ':memory:';
+
+  return store;
 }
 
 /**

@@ -211,9 +211,31 @@ export function createE2ETestConfig(options: SharedConfigOptions = {}) {
     hookTimeout: 30000,
     ...options,
     additionalIncludes: [
+      // Standard E2E test patterns
       'src/**/*.e2e.test.ts',
       'tests/e2e/**/*.test.ts',
+      'tests/e2e/**/*.e2e.test.ts',
+
+      // Comprehensive E2E test discovery patterns
+      '**/*e2e*.test.ts',                    // Files with e2e in the name
+      '**/e2e-*.test.ts',                    // Files starting with e2e-
+      'tests/integration/**/*e2e*.test.ts',  // Integration directory E2E tests
+      'tests/test-utils/**/*e2e*.test.ts',   // Test utilities E2E tests
+
       ...(options.additionalIncludes || []),
+    ],
+    additionalExcludes: [
+      // Exclude non-E2E test types
+      '**/*.unit.test.ts',
+      '**/*.spec.ts',
+
+      // Exclude utilities and fixtures that aren't tests
+      'tests/*/helpers/**',
+      'tests/*/mocks/**',
+      'tests/*/fixtures/**/*.ts',
+      'tests/*/utils/**/*.ts',
+
+      ...(options.additionalExcludes || []),
     ],
   });
 }

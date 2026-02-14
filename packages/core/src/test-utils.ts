@@ -2736,3 +2736,6 @@ export function setupPermissionMatchers(expectInstance: ExpectStatic): void {
 }
 // Export sensitive patterns utilities
 export * from './test-utils/sensitive-patterns';
+
+// Export mock tool types and interfaces for Claude Agent SDK testing
+export * from './test-utils/mock-tool-types';

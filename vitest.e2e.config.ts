@@ -33,19 +33,52 @@ export default mergeConfig(
   createE2ETestConfig(),
   defineConfig({
     test: {
-      // Include E2E tests from packages and top-level tests directory
+      // Include ALL E2E tests across the entire monorepo
+      // Comprehensive patterns to capture all E2E test variations
       include: [
+        // Standard E2E test patterns
         'packages/*/src/**/*.e2e.test.ts',
         'tests/e2e/**/*.test.ts',
         'tests/e2e/**/*.e2e.test.ts',
+
+        // Additional E2E test patterns found in the codebase
+        '**/*e2e*.test.ts',                    // Files like thoughts-e2e.test.ts, container-resource-limits-e2e.test.ts
+        '**/e2e-*.test.ts',                    // Files like e2e-infrastructure-validation.test.ts
+        'tests/integration/**/*e2e*.test.ts',  // Integration directory E2E tests
+        'tests/test-utils/**/*e2e*.test.ts',   // Test utilities E2E tests
+
+        // Marketplace-specific E2E tests
+        'tests/e2e/**/mcp-*.test.ts',
+        'tests/e2e/**/marketplace*.test.ts',
+
+        // Browser automation E2E tests
+        'packages/browser/src/**/*e2e*.test.ts',
+        'packages/orchestrator/src/**/*e2e*.test.ts',
+
+        // Workflow and integration E2E tests
+        'packages/orchestrator/src/__tests__/**/*e2e*.test.ts',
+        'packages/core/src/__tests__/**/*e2e*.test.ts',
+        'packages/cli/src/__tests__/**/*e2e*.test.ts',
       ],
 
-      // Exclude non-test files specific to E2E context
+      // Exclude non-test files and common build artifacts
       exclude: [
         '**/node_modules/**',
         '**/dist/**',
-        '**/fixtures/**',
+        '**/build/**',
+        '**/coverage/**',
+        '**/*.d.ts',
         '**/*.md',
+
+        // Exclude specific non-E2E test types to keep focus on E2E
+        '**/*.unit.test.ts',
+        '**/*.spec.ts',
+
+        // Exclude test utilities and fixtures that aren't actual tests
+        'tests/*/helpers/**',
+        'tests/*/mocks/**',
+        'tests/*/fixtures/**/*.ts',
+        'tests/*/utils/**/*.ts',
       ],
 
       // Global setup file for E2E resource management

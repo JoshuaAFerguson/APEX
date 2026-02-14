@@ -533,6 +533,442 @@ export class AutonomyTestHelpers {
   }
 
   /**
+   * Simulate sequential approval gates (each gate depends on previous approval)
+   */
+  simulateSequentialApprovals(gates: ApprovalGate[], outcomes: Array<'approved' | 'denied' | 'timeout'>): Array<{
+    gate: ApprovalGate;
+    response: ApprovalResponse;
+    completed: boolean;
+  }> {
+    const results: Array<{
+      gate: ApprovalGate;
+      response: ApprovalResponse;
+      completed: boolean;
+    }> = [];
+
+    for (let i = 0; i < gates.length; i++) {
+      const gate = gates[i];
+      const outcome = outcomes[i] || 'approved';
+
+      // If previous gate was denied/timeout, mark remaining as not completed
+      const previousFailed = results.some(r => !r.completed);
+      if (previousFailed) {
+        const mockResponse: ApprovalResponse = {
+          requestId: `seq-${i}-${Date.now()}`,
+          approvalId: `seq-${i}-${Date.now()}`,
+          taskId: `seq-task-${Date.now()}`,
+          gateName: gate.name,
+          action: 'deny',
+          response: 'denied',
+          reason: 'Previous gate failed - sequence aborted',
+          timestamp: new Date(),
+          requestedAt: new Date(),
+          responseTimeMs: 0,
+        };
+
+        results.push({
+          gate,
+          response: mockResponse,
+          completed: false,
+        });
+        continue;
+      }
+
+      const response = this.simulateApprovalFlow({
+        gate,
+        outcome,
+        responseTimeMs: 2000 + (i * 1000), // Incremental timing
+      });
+
+      results.push({
+        gate,
+        response,
+        completed: outcome === 'approved',
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Simulate parallel approval gates (all gates must approve independently)
+   */
+  simulateParallelApprovals(
+    gates: ApprovalGate[],
+    outcomes: Array<'approved' | 'denied' | 'timeout'>,
+    options?: {
+      requireAllApprovals?: boolean;
+      minimumApprovals?: number;
+    }
+  ): {
+    results: Array<{
+      gate: ApprovalGate;
+      response: ApprovalResponse;
+    }>;
+    overallResult: 'approved' | 'denied' | 'partial';
+    approvalCount: number;
+  } {
+    const requireAll = options?.requireAllApprovals ?? true;
+    const minApprovals = options?.minimumApprovals ?? gates.length;
+
+    const results = gates.map((gate, i) => {
+      const outcome = outcomes[i] || 'approved';
+      const response = this.simulateApprovalFlow({
+        gate,
+        outcome,
+        responseTimeMs: 2000 + Math.random() * 1000, // Random timing for parallel
+      });
+
+      return { gate, response };
+    });
+
+    const approvalCount = results.filter(r => r.response.response === 'approved').length;
+
+    let overallResult: 'approved' | 'denied' | 'partial';
+    if (requireAll) {
+      overallResult = approvalCount === gates.length ? 'approved' : 'denied';
+    } else {
+      overallResult = approvalCount >= minApprovals ? 'approved' :
+                     approvalCount > 0 ? 'partial' : 'denied';
+    }
+
+    return {
+      results,
+      overallResult,
+      approvalCount,
+    };
+  }
+
+  /**
+   * Test multi-approver scenarios with quorum handling
+   */
+  testApprovalQuorumHandling(
+    minApprovals: number,
+    approverResponses: Array<{
+      approver: string;
+      response: 'approve' | 'deny';
+      reason?: string;
+    }>
+  ): {
+    quorumMet: boolean;
+    totalApprovals: number;
+    totalDenials: number;
+    finalDecision: 'approved' | 'denied' | 'pending';
+  } {
+    const approvals = approverResponses.filter(r => r.response === 'approve');
+    const denials = approverResponses.filter(r => r.response === 'deny');
+
+    const quorumMet = approvals.length >= minApprovals;
+    const totalResponses = approverResponses.length;
+
+    // Determine if enough denials exist to prevent quorum even with remaining approvers
+    const remainingApprovers = Math.max(0, 10 - totalResponses); // Assume max 10 approvers
+    const maxPossibleApprovals = approvals.length + remainingApprovers;
+    const canStillReachQuorum = maxPossibleApprovals >= minApprovals;
+
+    let finalDecision: 'approved' | 'denied' | 'pending';
+    if (quorumMet) {
+      finalDecision = 'approved';
+    } else if (!canStillReachQuorum) {
+      finalDecision = 'denied';
+    } else {
+      finalDecision = 'pending';
+    }
+
+    return {
+      quorumMet,
+      totalApprovals: approvals.length,
+      totalDenials: denials.length,
+      finalDecision,
+    };
+  }
+
+  /**
+   * Test resource limit boundary conditions
+   */
+  testResourceLimitBoundary(
+    limits: TaskResourceLimits,
+    currentUsage: Partial<TaskResourceLimits>
+  ): {
+    withinLimits: boolean;
+    exceedingLimits: Array<keyof TaskResourceLimits>;
+    utilizationPercentage: Record<keyof TaskResourceLimits, number>;
+    recommendedAction: 'proceed' | 'warn' | 'deny';
+  } {
+    const exceedingLimits: Array<keyof TaskResourceLimits> = [];
+    const utilizationPercentage: Record<keyof TaskResourceLimits, number> = {} as any;
+
+    // Check each limit type
+    const limitChecks = [
+      { limit: 'maxExecutionTimeMs', current: currentUsage.maxExecutionTimeMs ?? 0 },
+      { limit: 'maxMemoryMB', current: currentUsage.maxMemoryMB ?? 0 },
+      { limit: 'maxCpuPercent', current: currentUsage.maxCpuPercent ?? 0 },
+      { limit: 'maxDiskUsageMB', current: currentUsage.maxDiskUsageMB ?? 0 },
+      { limit: 'maxNetworkRequestsPerMinute', current: currentUsage.maxNetworkRequestsPerMinute ?? 0 },
+    ];
+
+    limitChecks.forEach(({ limit, current }) => {
+      const limitValue = (limits as any)[limit];
+      if (limitValue !== undefined) {
+        const utilization = (current / limitValue) * 100;
+        utilizationPercentage[limit as keyof TaskResourceLimits] = utilization;
+
+        if (current > limitValue) {
+          exceedingLimits.push(limit as keyof TaskResourceLimits);
+        }
+      }
+    });
+
+    const withinLimits = exceedingLimits.length === 0;
+    const maxUtilization = Math.max(...Object.values(utilizationPercentage));
+
+    let recommendedAction: 'proceed' | 'warn' | 'deny';
+    if (!withinLimits) {
+      recommendedAction = 'deny';
+    } else if (maxUtilization > 80) {
+      recommendedAction = 'warn';
+    } else {
+      recommendedAction = 'proceed';
+    }
+
+    return {
+      withinLimits,
+      exceedingLimits,
+      utilizationPercentage,
+      recommendedAction,
+    };
+  }
+
+  /**
+   * Test rejection behavior effects with different scenarios
+   */
+  testRejectionBehaviorEffect(
+    rejectionBehavior: RejectionBehavior,
+    scenario: {
+      gatesFailed: number;
+      totalGates: number;
+      criticalGateFailed: boolean;
+    }
+  ): {
+    workflowContinues: boolean;
+    stepsSkipped: number;
+    terminationReason?: string;
+    nextAction: 'continue' | 'skip-stage' | 'abort-workflow' | 'retry';
+  } {
+    let workflowContinues = true;
+    let stepsSkipped = 0;
+    let terminationReason: string | undefined;
+    let nextAction: 'continue' | 'skip-stage' | 'abort-workflow' | 'retry';
+
+    switch (rejectionBehavior) {
+      case 'abort':
+        if (scenario.gatesFailed > 0 || scenario.criticalGateFailed) {
+          workflowContinues = false;
+          terminationReason = scenario.criticalGateFailed
+            ? 'Critical approval gate failed'
+            : 'Approval gate failed with abort behavior';
+          nextAction = 'abort-workflow';
+        } else {
+          nextAction = 'continue';
+        }
+        break;
+
+      case 'skip':
+        if (scenario.gatesFailed > 0) {
+          stepsSkipped = scenario.gatesFailed;
+          nextAction = scenario.criticalGateFailed ? 'abort-workflow' : 'skip-stage';
+          workflowContinues = !scenario.criticalGateFailed;
+          if (scenario.criticalGateFailed) {
+            terminationReason = 'Critical gate failed even with skip behavior';
+          }
+        } else {
+          nextAction = 'continue';
+        }
+        break;
+
+      default:
+        nextAction = 'retry';
+    }
+
+    return {
+      workflowContinues,
+      stepsSkipped,
+      terminationReason,
+      nextAction,
+    };
+  }
+
+  /**
+   * Test approval timeout with rejection behavior interaction
+   */
+  testApprovalTimeoutWithBehavior(
+    timeoutMinutes: number,
+    rejectionBehavior: RejectionBehavior,
+    scenario: {
+      isCriticalGate?: boolean;
+      hasRetryPolicy?: boolean;
+      maxRetries?: number;
+    }
+  ): {
+    timeoutResponse: ApprovalResponse;
+    workflowEffect: ReturnType<typeof this.testRejectionBehaviorEffect>;
+    retryAllowed: boolean;
+    escalationTriggered: boolean;
+  } {
+    const timeoutResponse = this.simulateApprovalTimeout('custom', timeoutMinutes);
+
+    const workflowEffect = this.testRejectionBehaviorEffect(rejectionBehavior, {
+      gatesFailed: 1,
+      totalGates: 1,
+      criticalGateFailed: scenario.isCriticalGate ?? false,
+    });
+
+    const retryAllowed = scenario.hasRetryPolicy ?? false;
+    const escalationTriggered = scenario.isCriticalGate ?? false;
+
+    return {
+      timeoutResponse: timeoutResponse!,
+      workflowEffect,
+      retryAllowed,
+      escalationTriggered,
+    };
+  }
+
+  /**
+   * Test agent override conflicts and resolution
+   */
+  simulateAgentOverrideConflict(
+    baseConfig: AutonomyConfig,
+    agentOverrides: Record<string, AutonomyLevel | AgentAutonomyOverride>,
+    stageOverrides?: Record<string, AutonomyLevel>
+  ): {
+    conflicts: Array<{
+      agent: string;
+      stage?: string;
+      agentLevel: AutonomyLevel | AgentAutonomyOverride;
+      stageLevel?: AutonomyLevel;
+      resolution: AutonomyLevel;
+      resolutionReason: string;
+    }>;
+    finalConfig: AutonomyConfig;
+  } {
+    const conflicts: Array<{
+      agent: string;
+      stage?: string;
+      agentLevel: AutonomyLevel | AgentAutonomyOverride;
+      stageLevel?: AutonomyLevel;
+      resolution: AutonomyLevel;
+      resolutionReason: string;
+    }> = [];
+
+    // Detect conflicts between agent and stage overrides
+    if (stageOverrides) {
+      Object.entries(agentOverrides).forEach(([agent, agentLevel]) => {
+        Object.entries(stageOverrides).forEach(([stage, stageLevel]) => {
+          const agentAutonomyLevel = typeof agentLevel === 'string' ? agentLevel : agentLevel.level;
+
+          if (agentAutonomyLevel !== stageLevel) {
+            // Resolution: Agent override takes precedence over stage override
+            conflicts.push({
+              agent,
+              stage,
+              agentLevel,
+              stageLevel,
+              resolution: agentAutonomyLevel,
+              resolutionReason: 'Agent-specific override takes precedence over stage override',
+            });
+          }
+        });
+      });
+    }
+
+    const finalConfig: AutonomyConfig = {
+      ...baseConfig,
+      agentOverrides,
+      stageOverrides,
+    };
+
+    return {
+      conflicts,
+      finalConfig,
+    };
+  }
+
+  /**
+   * Test approval retry mechanisms after failures
+   */
+  testApprovalRetry(
+    gate: ApprovalGate,
+    failedAttempts: Array<{
+      attempt: number;
+      failureReason: 'timeout' | 'denial' | 'insufficient-approvals';
+      retryDelay?: number;
+    }>
+  ): {
+    retryResults: Array<{
+      attempt: number;
+      success: boolean;
+      response?: ApprovalResponse;
+      retryAllowed: boolean;
+      escalated: boolean;
+    }>;
+    finalOutcome: 'success' | 'failure' | 'escalated';
+    totalRetryTime: number;
+  } {
+    const retryResults: Array<{
+      attempt: number;
+      success: boolean;
+      response?: ApprovalResponse;
+      retryAllowed: boolean;
+      escalated: boolean;
+    }> = [];
+
+    let totalRetryTime = 0;
+    let finalOutcome: 'success' | 'failure' | 'escalated' = 'failure';
+
+    failedAttempts.forEach((attempt, index) => {
+      const retryAllowed = attempt.attempt <= 3; // Max 3 retries
+      const escalated = !retryAllowed && attempt.failureReason !== 'denial';
+
+      totalRetryTime += attempt.retryDelay ?? 30000; // 30 second default
+
+      if (escalated) {
+        finalOutcome = 'escalated';
+      }
+
+      // Simulate retry outcome (last attempt succeeds for testing)
+      const isLastAttempt = index === failedAttempts.length - 1;
+      const success = isLastAttempt && retryAllowed;
+
+      if (success) {
+        finalOutcome = 'success';
+      }
+
+      const response = success
+        ? this.simulateApprovalFlow({
+            gate,
+            outcome: 'approved',
+            responseTimeMs: 5000,
+          })
+        : undefined;
+
+      retryResults.push({
+        attempt: attempt.attempt,
+        success,
+        response,
+        retryAllowed,
+        escalated,
+      });
+    });
+
+    return {
+      retryResults,
+      finalOutcome,
+      totalRetryTime,
+    };
+  }
+
+  /**
    * Reset all mock state
    */
   reset(): void {

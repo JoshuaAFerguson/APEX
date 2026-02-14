@@ -115,6 +115,254 @@ export class MockServer {
       }
       return reply.status(code).send({ status: code, message: `Status ${code}` });
     });
+
+    // Navigation scenario routes
+    this.setupNavigationScenarios();
+  }
+
+  /**
+   * Sets up navigation scenario routes for testing
+   */
+  private setupNavigationScenarios(): void {
+    if (!this.app) return;
+
+    // Redirect scenarios with configurable status codes and targets
+    this.setupRedirectRoutes();
+
+    // Error scenarios that return specific HTTP errors
+    this.setupErrorRoutes();
+
+    // Delay scenarios with configurable response times
+    this.setupDelayRoutes();
+  }
+
+  /**
+   * Sets up redirect route handlers
+   */
+  private setupRedirectRoutes(): void {
+    if (!this.app) return;
+
+    // Permanent redirect (301)
+    this.app.get('/redirect/301/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(301, targetPath);
+    });
+
+    // Temporary redirect (302)
+    this.app.get('/redirect/302/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(302, targetPath);
+    });
+
+    // Temporary redirect with method preservation (307)
+    this.app.get('/redirect/307/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(307, targetPath);
+    });
+
+    // Generic redirect route with query parameters for status and target
+    this.app.get('/redirect', async (request, reply) => {
+      const query = request.query as any;
+      const status = parseInt(query.status || '302', 10);
+      const target = query.target || '/';
+
+      // Validate redirect status codes
+      if (![301, 302, 307, 308].includes(status)) {
+        return reply.status(400).send({
+          error: 'Invalid redirect status code. Must be 301, 302, 307, or 308.'
+        });
+      }
+
+      return reply.redirect(status, target);
+    });
+
+    // Chain redirects for testing multiple redirects
+    this.app.get('/redirect-chain-start', async (request, reply) => {
+      return reply.redirect(302, '/redirect-chain-middle');
+    });
+
+    this.app.get('/redirect-chain-middle', async (request, reply) => {
+      return reply.redirect(302, '/redirect-chain-end');
+    });
+
+    this.app.get('/redirect-chain-end', async () => {
+      return {
+        message: 'Redirect chain completed',
+        timestamp: new Date().toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Sets up error route handlers
+   */
+  private setupErrorRoutes(): void {
+    if (!this.app) return;
+
+    // 404 Not Found
+    this.app.get('/error/404', async (request, reply) => {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'The requested resource was not found',
+        path: request.url,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // 500 Internal Server Error
+    this.app.get('/error/500', async (request, reply) => {
+      return reply.status(500).send({
+        error: 'Internal Server Error',
+        message: 'An internal server error occurred',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // 401 Unauthorized
+    this.app.get('/error/401', async (request, reply) => {
+      return reply.status(401).send({
+        error: 'Unauthorized',
+        message: 'Authentication required',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // 403 Forbidden
+    this.app.get('/error/403', async (request, reply) => {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Access denied',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // 503 Service Unavailable
+    this.app.get('/error/503', async (request, reply) => {
+      return reply.status(503).send({
+        error: 'Service Unavailable',
+        message: 'Service temporarily unavailable',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Generic error route with query parameter for status code
+    this.app.get('/error', async (request, reply) => {
+      const query = request.query as any;
+      const status = parseInt(query.status || '500', 10);
+      const message = query.message || `Error ${status}`;
+
+      // Validate error status codes
+      if (status < 400 || status >= 600) {
+        return reply.status(400).send({
+          error: 'Invalid error status code. Must be between 400-599.'
+        });
+      }
+
+      return reply.status(status).send({
+        error: `HTTP ${status}`,
+        message: message,
+        timestamp: new Date().toISOString(),
+      });
+    });
+  }
+
+  /**
+   * Sets up delay route handlers with configurable response times
+   */
+  private setupDelayRoutes(): void {
+    if (!this.app) return;
+
+    // Delay route with configurable delay in milliseconds
+    this.app.get('/delay/:ms', async (request, reply) => {
+      const delayMs = parseInt((request.params as any).ms, 10);
+
+      if (isNaN(delayMs) || delayMs < 0 || delayMs > 30000) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-30000 milliseconds.'
+        });
+      }
+
+      // Add delay
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      return {
+        message: `Response delayed by ${delayMs}ms`,
+        delayMs: delayMs,
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    // Delay with query parameter
+    this.app.get('/delay', async (request, reply) => {
+      const query = request.query as any;
+      const delayMs = parseInt(query.ms || '1000', 10);
+
+      if (isNaN(delayMs) || delayMs < 0 || delayMs > 30000) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-30000 milliseconds.'
+        });
+      }
+
+      // Add delay
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      return {
+        message: `Response delayed by ${delayMs}ms`,
+        delayMs: delayMs,
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    // Delay with error response
+    this.app.get('/delay-error/:ms/:status', async (request, reply) => {
+      const params = request.params as any;
+      const delayMs = parseInt(params.ms, 10);
+      const status = parseInt(params.status, 10);
+
+      if (isNaN(delayMs) || delayMs < 0 || delayMs > 30000) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-30000 milliseconds.'
+        });
+      }
+
+      if (isNaN(status) || status < 400 || status >= 600) {
+        return reply.status(400).send({
+          error: 'Invalid error status code. Must be between 400-599.'
+        });
+      }
+
+      // Add delay
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      return reply.status(status).send({
+        error: `HTTP ${status}`,
+        message: `Delayed error response (${delayMs}ms delay)`,
+        delayMs: delayMs,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Slow redirect scenario
+    this.app.get('/slow-redirect/:ms/:target', async (request, reply) => {
+      const params = request.params as any;
+      const delayMs = parseInt(params.ms, 10);
+      const target = params.target;
+
+      if (isNaN(delayMs) || delayMs < 0 || delayMs > 30000) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-30000 milliseconds.'
+        });
+      }
+
+      // Add delay before redirect
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(302, targetPath);
+    });
   }
 
   /**

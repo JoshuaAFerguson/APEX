@@ -43,6 +43,30 @@ export {
   createSequenceTool
 } from './tool-mock-builder';
 
+// Core Tool Mock Types (ADR-095)
+export type {
+  MockTool,
+  MockToolResponse,
+  ToolInvocation,
+  MockToolExecutor,
+  ToolContentBlock,
+  ToolExecutionContext,
+  MockToolOptions,
+  ToolSequenceVerificationResult,
+  MockToolFactory,
+  MockToolBuilder,
+} from './tool-mock-core.types';
+
+export {
+  isMockToolResponse,
+  isToolInvocation,
+  isToolContentBlock,
+  createTextResponse,
+  createErrorResponse,
+  createStructuredResponse,
+} from './tool-mock-core.types';
+
+// Re-export existing tool mock types for compatibility
 export type {
   MockToolContent,
   MockToolResult,
@@ -71,3 +95,18 @@ export type {
   RevocationSimulationResult,
   TrackedToolCall
 } from './permission-revocation.types';
+
+// Enhanced Test Helper Utilities
+export {
+  TestHelper,
+  TestPatterns,
+  createTestHelper,
+  setupTestEnvironment,
+  verifyToolInteractionPattern
+} from './test-helpers';
+
+export type {
+  TestScenarioConfig,
+  TestPattern,
+  ToolExecutionExpectation
+} from './test-helpers';

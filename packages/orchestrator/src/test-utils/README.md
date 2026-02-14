@@ -8,6 +8,7 @@ This directory contains test utilities for the APEX Orchestrator package, provid
 SQLite test database setup/teardown utility module that provides:
 - **`createTestDatabase()`**: Creates an in-memory SQLite database with complete TaskStore schema
 - **`cleanupTestDatabase()`**: Safely closes the database connection
+- **`createTaskStoreWithTestDb()`**: Creates a TaskStore instance using a test database context
 - **`TestDatabaseContext`**: TypeScript interface for the database context
 
 ### `index.ts`
@@ -39,16 +40,50 @@ describe('My tests', () => {
 });
 ```
 
+### Using TaskStore with Test Database
+
+```typescript
+import { createTestDatabase, cleanupTestDatabase, createTaskStoreWithTestDb } from './test-utils/db';
+import type { TaskStore } from '../store';
+
+describe('TaskStore integration tests', () => {
+  let testDb: TestDatabaseContext;
+  let taskStore: TaskStore;
+
+  beforeEach(async () => {
+    testDb = await createTestDatabase();
+    taskStore = createTaskStoreWithTestDb(testDb);
+  });
+
+  afterEach(() => {
+    cleanupTestDatabase(testDb);
+  });
+
+  it('should create and retrieve tasks', async () => {
+    const task = await taskStore.createTask({
+      description: 'Test task',
+      workflow: 'feature',
+      autonomy: 'full'
+    });
+
+    expect(task.id).toBeDefined();
+
+    const retrieved = await taskStore.getTask(task.id);
+    expect(retrieved?.description).toBe('Test task');
+  });
+});
+```
+
 ### Import from Index (Recommended)
 
 ```typescript
-import { createTestDatabase, cleanupTestDatabase, createMockTask } from './test-utils';
+import { createTestDatabase, cleanupTestDatabase, createTaskStoreWithTestDb } from './test-utils';
 ```
 
 ### Direct Import
 
 ```typescript
-import { createTestDatabase, cleanupTestDatabase } from './test-utils/db';
+import { createTestDatabase, cleanupTestDatabase, createTaskStoreWithTestDb } from './test-utils/db';
 ```
 
 ## Features
@@ -56,6 +91,7 @@ import { createTestDatabase, cleanupTestDatabase } from './test-utils/db';
 - ✅ In-memory SQLite database creation
 - ✅ Complete TaskStore schema initialization (all tables, indexes, constraints)
 - ✅ Clean teardown/cleanup functions
+- ✅ TaskStore integration utilities for seamless testing
 - ✅ Better-sqlite3 compatibility
 - ✅ TypeScript type definitions
 - ✅ Foreign key constraints disabled (matches TaskStore behavior)

@@ -347,6 +347,206 @@ describe('MockServer', () => {
   });
 });
 
+describe('Navigation Scenarios', () => {
+  let mockServer: MockServer;
+
+  beforeEach(async () => {
+    mockServer = new MockServer();
+    await mockServer.start();
+  });
+
+  afterEach(async () => {
+    if (mockServer && mockServer.isRunning()) {
+      await mockServer.stop();
+    }
+  });
+
+  describe('Redirect Scenarios', () => {
+    it('should handle 301 permanent redirects', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect/301/page2`, {
+        redirect: 'manual',
+      });
+      expect(response.status).toBe(301);
+      expect(response.headers.get('location')).toBe('/page2');
+    });
+
+    it('should handle 302 temporary redirects', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect/302/page3`, {
+        redirect: 'manual',
+      });
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/page3');
+    });
+
+    it('should handle 307 temporary redirects with method preservation', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect/307/home`, {
+        redirect: 'manual',
+      });
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toBe('/');
+    });
+
+    it('should handle generic redirect with query parameters', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect?status=308&target=/test`, {
+        redirect: 'manual',
+      });
+      expect(response.status).toBe(308);
+      expect(response.headers.get('location')).toBe('/test');
+    });
+
+    it('should reject invalid redirect status codes', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect?status=200&target=/test`);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('Invalid redirect status code');
+    });
+
+    it('should follow redirect chain', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/redirect-chain-start`);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.message).toBe('Redirect chain completed');
+    });
+  });
+
+  describe('Error Scenarios', () => {
+    it('should handle 404 Not Found errors', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error/404`);
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toBe('Not Found');
+      expect(data.message).toBe('The requested resource was not found');
+      expect(data).toHaveProperty('timestamp');
+    });
+
+    it('should handle 500 Internal Server Error', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error/500`);
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.error).toBe('Internal Server Error');
+      expect(data.message).toBe('An internal server error occurred');
+      expect(data).toHaveProperty('timestamp');
+    });
+
+    it('should handle 401 Unauthorized errors', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error/401`);
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toBe('Unauthorized');
+      expect(data.message).toBe('Authentication required');
+    });
+
+    it('should handle 403 Forbidden errors', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error/403`);
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toBe('Forbidden');
+      expect(data.message).toBe('Access denied');
+    });
+
+    it('should handle 503 Service Unavailable errors', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error/503`);
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.error).toBe('Service Unavailable');
+      expect(data.message).toBe('Service temporarily unavailable');
+    });
+
+    it('should handle generic error with query parameters', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error?status=418&message=I'm a teapot`);
+      expect(response.status).toBe(418);
+      const data = await response.json();
+      expect(data.error).toBe('HTTP 418');
+      expect(data.message).toBe("I'm a teapot");
+    });
+
+    it('should reject invalid error status codes', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/error?status=200`);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('Invalid error status code');
+    });
+  });
+
+  describe('Delay Scenarios', () => {
+    it('should handle configurable delays', async () => {
+      const startTime = Date.now();
+      const response = await fetch(`${mockServer.getUrl()}/delay/500`);
+      const duration = Date.now() - startTime;
+
+      expect(response.status).toBe(200);
+      expect(duration).toBeGreaterThanOrEqual(490); // Allow 10ms tolerance
+
+      const data = await response.json();
+      expect(data.message).toBe('Response delayed by 500ms');
+      expect(data.delayMs).toBe(500);
+      expect(data).toHaveProperty('timestamp');
+    });
+
+    it('should handle delay with query parameter', async () => {
+      const startTime = Date.now();
+      const response = await fetch(`${mockServer.getUrl()}/delay?ms=200`);
+      const duration = Date.now() - startTime;
+
+      expect(response.status).toBe(200);
+      expect(duration).toBeGreaterThanOrEqual(190);
+
+      const data = await response.json();
+      expect(data.delayMs).toBe(200);
+    });
+
+    it('should handle delay with error response', async () => {
+      const startTime = Date.now();
+      const response = await fetch(`${mockServer.getUrl()}/delay-error/300/404`);
+      const duration = Date.now() - startTime;
+
+      expect(response.status).toBe(404);
+      expect(duration).toBeGreaterThanOrEqual(290);
+
+      const data = await response.json();
+      expect(data.error).toBe('HTTP 404');
+      expect(data.message).toBe('Delayed error response (300ms delay)');
+      expect(data.delayMs).toBe(300);
+    });
+
+    it('should handle slow redirect', async () => {
+      const startTime = Date.now();
+      const response = await fetch(`${mockServer.getUrl()}/slow-redirect/250/home`, {
+        redirect: 'manual',
+      });
+      const duration = Date.now() - startTime;
+
+      expect(response.status).toBe(302);
+      expect(duration).toBeGreaterThanOrEqual(240);
+      expect(response.headers.get('location')).toBe('/');
+    });
+
+    it('should reject invalid delay values', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/delay/50000`);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('Invalid delay value');
+    });
+
+    it('should reject negative delay values', async () => {
+      const response = await fetch(`${mockServer.getUrl()}/delay/-100`);
+      expect(response.status).toBe(400);
+    });
+
+    it('should default to 1000ms when no delay specified in query', async () => {
+      const startTime = Date.now();
+      const response = await fetch(`${mockServer.getUrl()}/delay`);
+      const duration = Date.now() - startTime;
+
+      expect(response.status).toBe(200);
+      expect(duration).toBeGreaterThanOrEqual(990);
+
+      const data = await response.json();
+      expect(data.delayMs).toBe(1000);
+    });
+  });
+});
+
 describe('MockServer acceptance criteria', () => {
   let mockServer: MockServer;
 
@@ -356,7 +556,7 @@ describe('MockServer acceptance criteria', () => {
     }
   });
 
-  it('should meet all acceptance criteria', async () => {
+  it('should meet all basic acceptance criteria', async () => {
     // MockServer class exists with start(), stop(), and getUrl() methods
     mockServer = new MockServer();
     expect(typeof mockServer.start).toBe('function');
@@ -379,5 +579,36 @@ describe('MockServer acceptance criteria', () => {
     expect(data).toHaveProperty('status', 'ok');
     expect(data).toHaveProperty('timestamp');
     expect(data).toHaveProperty('uptime');
+  });
+
+  it('should meet navigation scenario acceptance criteria', async () => {
+    mockServer = new MockServer();
+    await mockServer.start();
+    const baseUrl = mockServer.getUrl();
+
+    // MockServer supports redirect routes with configurable status codes and targets
+    const redirectResponse = await fetch(`${baseUrl}/redirect/301/page2`, { redirect: 'manual' });
+    expect(redirectResponse.status).toBe(301);
+    expect(redirectResponse.headers.get('location')).toBe('/page2');
+
+    // MockServer supports error routes that return specific HTTP errors
+    const errorResponse = await fetch(`${baseUrl}/error/404`);
+    expect(errorResponse.status).toBe(404);
+    const errorData = await errorResponse.json();
+    expect(errorData.error).toBe('Not Found');
+
+    // MockServer supports delay routes with configurable response time
+    const startTime = Date.now();
+    const delayResponse = await fetch(`${baseUrl}/delay/100`);
+    const duration = Date.now() - startTime;
+    expect(delayResponse.status).toBe(200);
+    expect(duration).toBeGreaterThanOrEqual(90);
+    const delayData = await delayResponse.json();
+    expect(delayData.delayMs).toBe(100);
+
+    // Each scenario is accessible via predictable URL patterns
+    expect(`${baseUrl}/redirect/301/target`).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/redirect\/301\/target$/);
+    expect(`${baseUrl}/error/404`).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/error\/404$/);
+    expect(`${baseUrl}/delay/500`).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/delay\/500$/);
   });
 });

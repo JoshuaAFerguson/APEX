@@ -103,3 +103,15 @@ export {
   type NavigationTestConfig,
   type NavigationTestContext,
 } from './setup';
+
+// Re-export template system
+export * from './templates';
+
+// Re-export enhanced mock server
+export {
+  EnhancedMockNavigationServer,
+  EnhancedMockServerLifecycle,
+  createEnhancedMockNavigationServer,
+  type TemplateScenario,
+  type EnhancedMockServerOptions,
+} from './enhanced-mock-server';

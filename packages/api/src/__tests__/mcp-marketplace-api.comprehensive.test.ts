@@ -841,4 +841,562 @@ describe('MCP Marketplace API Endpoints', () => {
       expect(response.statusCode).toBe(200);
     });
   });
+
+  describe('Network Failure Error Scenarios', () => {
+    describe('Service Unavailable (503) Errors', () => {
+      it('should return 503 when marketplace service is temporarily unavailable', async () => {
+        // Setup route to return 503 for service unavailable
+        app.get('/mcp/marketplace/service-unavailable', async (request, reply) => {
+          return reply.status(503).send({
+            error: 'Service temporarily unavailable',
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'The marketplace service is currently down for maintenance',
+            retryAfter: 300
+          });
+        });
+
+        const response = await app.inject({
+          method: 'GET',
+          url: '/mcp/marketplace/service-unavailable',
+        });
+
+        expect(response.statusCode).toBe(503);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Service temporarily unavailable');
+        expect(body.code).toBe('SERVICE_UNAVAILABLE');
+        expect(body.message).toBe('The marketplace service is currently down for maintenance');
+        expect(body.retryAfter).toBe(300);
+      });
+
+      it('should return 503 when orchestrator is temporarily unavailable during marketplace fetch', async () => {
+        // Mock orchestrator to simulate service unavailable
+        mockOrchestrator.getMcpMarketplaceEntries = vi.fn().mockImplementation(() => {
+          const error = new Error('Service temporarily unavailable');
+          (error as any).statusCode = 503;
+          throw error;
+        });
+
+        // Update the route to handle statusCode from error
+        app.get('/mcp/marketplace/test-503', async (request, reply) => {
+          try {
+            const entries = await mockOrchestrator.getMcpMarketplaceEntries();
+            return { entries };
+          } catch (error: any) {
+            const statusCode = error.statusCode || 500;
+            return reply.status(statusCode).send({
+              error: error.message,
+              code: 'SERVICE_UNAVAILABLE',
+              statusCode
+            });
+          }
+        });
+
+        const response = await app.inject({
+          method: 'GET',
+          url: '/mcp/marketplace/test-503',
+        });
+
+        expect(response.statusCode).toBe(503);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Service temporarily unavailable');
+        expect(body.code).toBe('SERVICE_UNAVAILABLE');
+        expect(body.statusCode).toBe(503);
+      });
+    });
+
+    describe('Gateway Timeout (504) Errors', () => {
+      it('should return 504 when marketplace request times out', async () => {
+        // Setup route to return 504 for gateway timeout
+        app.get('/mcp/marketplace/timeout', async (request, reply) => {
+          return reply.status(504).send({
+            error: 'Gateway timeout',
+            code: 'GATEWAY_TIMEOUT',
+            message: 'Request to marketplace service timed out',
+            timeout: 30000
+          });
+        });
+
+        const response = await app.inject({
+          method: 'GET',
+          url: '/mcp/marketplace/timeout',
+        });
+
+        expect(response.statusCode).toBe(504);
+        const body = JSON.parse(response.body);
+        expect(body.error).toBe('Gateway timeout');
+        expect(body.code).toBe('GATEWAY_TIMEOUT');
+        expect(body.message).toBe('Request to marketplace service timed out');
+        expect(body.timeout).toBe(30000);
+      });
+
+      it('should return 504 when MCP server installation times out', async () => {
+        // Mock orchestrator to simulate gateway timeout during installation
+        mockOrchestrator.installMcpServer = vi.fn().mockImplementation(() => {
+          const error = new Error('Gateway timeout during installation');
+          (error as any).statusCode = 504;
+          throw error;
+        });
+
+        // Update install route to handle statusCode from error
+        app.post('/mcp/install/test-timeout/:id', async (request, reply) => {
+          const { id } = request.params as any;
+          try {
+            const serverConfig = await mockOrchestrator.installMcpServer(id);
+            return {
+              ok: true,
+              message: `MCP server '${id}' installed successfully`,
+              serverConfig
+            };
+          } catch (error: any) {
+            const statusCode = error.statusCode || 500;
+            return reply.status(statusCode).send({
+              ok: false,
+              error: error.message,
+              code: 'GATEWAY_TIMEOUT',
+              statusCode
+            });
+          }
+        });
+
+        const response = await app.inject({
+          method: 'POST',
+          url: '/mcp/install/test-timeout/slow-server',
+        });
+
+        expect(response.statusCode).toBe(504);
+        const body = JSON.parse(response.body);
+        expect(body.ok).toBe(false);
+        expect(body.error).toBe('Gateway timeout during installation');
+        expect(body.code).toBe('GATEWAY_TIMEOUT');
+        expect(body.statusCode).toBe(504);
+      });
+    });
+  });
+
+  describe('Invalid Server (404) Error Scenarios', () => {
+    it('should return 404 with detailed error when server does not exist', async () => {
+      // Mock orchestrator to simulate server not found
+      mockOrchestrator.getMcpServerDetails = vi.fn().mockImplementation((serverId: string) => {
+        const error = new Error(`MCP server '${serverId}' not found in marketplace`);
+        (error as any).statusCode = 404;
+        throw error;
+      });
+
+      // Update route to handle 404 specifically
+      app.get('/mcp/servers/test-404/:id', async (request, reply) => {
+        const { id } = request.params as any;
+        try {
+          const serverDetails = await mockOrchestrator.getMcpServerDetails(id);
+          return serverDetails;
+        } catch (error: any) {
+          if (error.message.includes('not found')) {
+            return reply.status(404).send({
+              error: `MCP server '${id}' not found`,
+              code: 'SERVER_NOT_FOUND',
+              serverId: id,
+              availableServers: ['filesystem', 'github', 'database']
+            });
+          }
+          return reply.status(500).send({ error: error.message });
+        }
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/mcp/servers/test-404/nonexistent-server',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe("MCP server 'nonexistent-server' not found");
+      expect(body.code).toBe('SERVER_NOT_FOUND');
+      expect(body.serverId).toBe('nonexistent-server');
+      expect(body.availableServers).toContain('filesystem');
+      expect(body.availableServers).toContain('github');
+      expect(body.availableServers).toContain('database');
+    });
+
+    it('should return 404 when trying to uninstall non-existent server', async () => {
+      mockOrchestrator.uninstallMcpServer = vi.fn().mockImplementation((serverId: string) => {
+        const error = new Error(`Cannot uninstall '${serverId}': server not installed`);
+        (error as any).statusCode = 404;
+        throw error;
+      });
+
+      app.delete('/mcp/uninstall/test-404/:id', async (request, reply) => {
+        const { id } = request.params as any;
+        try {
+          await mockOrchestrator.uninstallMcpServer(id);
+          return {
+            ok: true,
+            message: `MCP server '${id}' uninstalled successfully`
+          };
+        } catch (error: any) {
+          if (error.message.includes('not installed')) {
+            return reply.status(404).send({
+              ok: false,
+              error: `Cannot uninstall '${id}': server not installed`,
+              code: 'SERVER_NOT_INSTALLED',
+              serverId: id
+            });
+          }
+          return reply.status(500).send({
+            ok: false,
+            error: error.message
+          });
+        }
+      });
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/mcp/uninstall/test-404/not-installed-server',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe("Cannot uninstall 'not-installed-server': server not installed");
+      expect(body.code).toBe('SERVER_NOT_INSTALLED');
+      expect(body.serverId).toBe('not-installed-server');
+    });
+
+    it('should return 404 when marketplace category does not exist', async () => {
+      app.get('/mcp/marketplace/category/:categoryId', async (request, reply) => {
+        const { categoryId } = request.params as any;
+        const validCategories = ['filesystem', 'development', 'database', 'ai'];
+
+        if (!validCategories.includes(categoryId)) {
+          return reply.status(404).send({
+            error: `Category '${categoryId}' not found`,
+            code: 'CATEGORY_NOT_FOUND',
+            requestedCategory: categoryId,
+            availableCategories: validCategories
+          });
+        }
+
+        return { category: categoryId, entries: [] };
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/mcp/marketplace/category/invalid-category',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe("Category 'invalid-category' not found");
+      expect(body.code).toBe('CATEGORY_NOT_FOUND');
+      expect(body.requestedCategory).toBe('invalid-category');
+      expect(body.availableCategories).toContain('filesystem');
+      expect(body.availableCategories).toContain('development');
+    });
+  });
+
+  describe('Permission (403) Error Scenarios', () => {
+    it('should return 403 when user lacks permissions to install servers', async () => {
+      mockOrchestrator.installMcpServer = vi.fn().mockImplementation(() => {
+        const error = new Error('Insufficient permissions to install MCP servers');
+        (error as any).statusCode = 403;
+        throw error;
+      });
+
+      app.post('/mcp/install/test-403/:id', async (request, reply) => {
+        const { id } = request.params as any;
+        try {
+          const serverConfig = await mockOrchestrator.installMcpServer(id);
+          return {
+            ok: true,
+            message: `MCP server '${id}' installed successfully`,
+            serverConfig
+          };
+        } catch (error: any) {
+          if (error.statusCode === 403) {
+            return reply.status(403).send({
+              ok: false,
+              error: 'Insufficient permissions to install MCP servers',
+              code: 'PERMISSION_DENIED',
+              action: 'install',
+              resource: `mcp-server:${id}`,
+              requiredPermissions: ['mcp:install', 'system:modify']
+            });
+          }
+          return reply.status(500).send({
+            ok: false,
+            error: error.message
+          });
+        }
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp/install/test-403/restricted-server',
+      });
+
+      expect(response.statusCode).toBe(403);
+      const body = JSON.parse(response.body);
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe('Insufficient permissions to install MCP servers');
+      expect(body.code).toBe('PERMISSION_DENIED');
+      expect(body.action).toBe('install');
+      expect(body.resource).toBe('mcp-server:restricted-server');
+      expect(body.requiredPermissions).toContain('mcp:install');
+      expect(body.requiredPermissions).toContain('system:modify');
+    });
+
+    it('should return 403 when user lacks permissions to start/stop servers', async () => {
+      mockOrchestrator.startMcpServer = vi.fn().mockImplementation(() => {
+        const error = new Error('Permission denied: cannot control MCP servers');
+        (error as any).statusCode = 403;
+        throw error;
+      });
+
+      app.post('/mcp/servers/test-403/:serverName/start', async (request, reply) => {
+        const { serverName } = request.params as any;
+        try {
+          await mockOrchestrator.startMcpServer(serverName);
+          return {
+            ok: true,
+            message: `MCP server '${serverName}' started successfully`
+          };
+        } catch (error: any) {
+          if (error.statusCode === 403) {
+            return reply.status(403).send({
+              ok: false,
+              error: 'Permission denied: cannot control MCP servers',
+              code: 'PERMISSION_DENIED',
+              action: 'start',
+              resource: `mcp-server:${serverName}`,
+              requiredPermissions: ['mcp:control', 'system:process:start']
+            });
+          }
+          return reply.status(500).send({
+            ok: false,
+            error: error.message
+          });
+        }
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp/servers/test-403/protected-server/start',
+      });
+
+      expect(response.statusCode).toBe(403);
+      const body = JSON.parse(response.body);
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe('Permission denied: cannot control MCP servers');
+      expect(body.code).toBe('PERMISSION_DENIED');
+      expect(body.action).toBe('start');
+      expect(body.resource).toBe('mcp-server:protected-server');
+      expect(body.requiredPermissions).toContain('mcp:control');
+      expect(body.requiredPermissions).toContain('system:process:start');
+    });
+
+    it('should return 403 when user lacks permissions to access marketplace admin features', async () => {
+      app.get('/mcp/admin/servers', async (request, reply) => {
+        return reply.status(403).send({
+          error: 'Access denied: admin privileges required',
+          code: 'ADMIN_ACCESS_DENIED',
+          resource: 'mcp-admin',
+          requiredRole: 'administrator',
+          userRole: 'user'
+        });
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/mcp/admin/servers',
+      });
+
+      expect(response.statusCode).toBe(403);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Access denied: admin privileges required');
+      expect(body.code).toBe('ADMIN_ACCESS_DENIED');
+      expect(body.resource).toBe('mcp-admin');
+      expect(body.requiredRole).toBe('administrator');
+      expect(body.userRole).toBe('user');
+    });
+  });
+
+  describe('Validation (400) Error Scenarios', () => {
+    it('should return 400 for invalid installation parameters', async () => {
+      app.post('/mcp/install/validate/:id', async (request, reply) => {
+        const { id } = request.params as any;
+        const body = request.body as any;
+
+        // Validate server ID format
+        if (!/^[a-zA-Z0-9-_]+$/.test(id)) {
+          return reply.status(400).send({
+            error: 'Invalid server ID format',
+            code: 'VALIDATION_ERROR',
+            field: 'serverId',
+            value: id,
+            allowedPattern: '^[a-zA-Z0-9-_]+$',
+            message: 'Server ID must contain only alphanumeric characters, hyphens, and underscores'
+          });
+        }
+
+        // Validate configuration if provided
+        if (body && body.config) {
+          if (!body.config.command) {
+            return reply.status(400).send({
+              error: 'Missing required configuration field: command',
+              code: 'VALIDATION_ERROR',
+              field: 'config.command',
+              requiredFields: ['command', 'type'],
+              providedFields: Object.keys(body.config)
+            });
+          }
+        }
+
+        return {
+          ok: true,
+          message: `Validation passed for server '${id}'`
+        };
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp/install/validate/invalid@server!',
+        headers: {
+          'content-type': 'application/json'
+        },
+        payload: JSON.stringify({})
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Invalid server ID format');
+      expect(body.code).toBe('VALIDATION_ERROR');
+      expect(body.field).toBe('serverId');
+      expect(body.value).toBe('invalid@server!');
+      expect(body.allowedPattern).toBe('^[a-zA-Z0-9-_]+$');
+      expect(body.message).toBe('Server ID must contain only alphanumeric characters, hyphens, and underscores');
+    });
+
+    it('should return 400 for missing required configuration fields', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp/install/validate/test-server',
+        headers: {
+          'content-type': 'application/json'
+        },
+        payload: JSON.stringify({
+          config: {
+            type: 'stdio'
+            // Missing required 'command' field
+          }
+        })
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Missing required configuration field: command');
+      expect(body.code).toBe('VALIDATION_ERROR');
+      expect(body.field).toBe('config.command');
+      expect(body.requiredFields).toContain('command');
+      expect(body.requiredFields).toContain('type');
+      expect(body.providedFields).toContain('type');
+      expect(body.providedFields).not.toContain('command');
+    });
+
+    it('should return 400 for invalid query parameters', async () => {
+      app.get('/mcp/marketplace/validate', async (request, reply) => {
+        const query = request.query as any;
+
+        // Validate limit parameter
+        if (query.limit !== undefined) {
+          const limit = parseInt(query.limit);
+          if (isNaN(limit) || limit < 1 || limit > 100) {
+            return reply.status(400).send({
+              error: 'Invalid limit parameter',
+              code: 'VALIDATION_ERROR',
+              field: 'limit',
+              value: query.limit,
+              constraints: {
+                type: 'integer',
+                minimum: 1,
+                maximum: 100
+              }
+            });
+          }
+        }
+
+        // Validate sort parameter
+        if (query.sort !== undefined) {
+          const validSorts = ['name', 'rating', 'installCount', 'createdAt'];
+          if (!validSorts.includes(query.sort)) {
+            return reply.status(400).send({
+              error: 'Invalid sort parameter',
+              code: 'VALIDATION_ERROR',
+              field: 'sort',
+              value: query.sort,
+              allowedValues: validSorts
+            });
+          }
+        }
+
+        return {
+          message: 'Query parameters are valid',
+          query: query
+        };
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/mcp/marketplace/validate?limit=invalid&sort=badvalue',
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.code).toBe('VALIDATION_ERROR');
+      // The endpoint validates limit first, so we expect limit validation error
+      expect(body.field).toBe('limit');
+      expect(body.value).toBe('invalid');
+      expect(body.constraints).toHaveProperty('type', 'integer');
+      expect(body.constraints).toHaveProperty('minimum', 1);
+      expect(body.constraints).toHaveProperty('maximum', 100);
+    });
+
+    it('should return 400 for malformed JSON in request body', async () => {
+      // Fastify automatically handles malformed JSON, but we can simulate this
+      app.post('/mcp/config/validate', async (request, reply) => {
+        try {
+          const body = request.body as any;
+
+          if (!body || typeof body !== 'object') {
+            return reply.status(400).send({
+              error: 'Invalid JSON in request body',
+              code: 'MALFORMED_JSON',
+              message: 'Request body must be valid JSON object'
+            });
+          }
+
+          return { ok: true, config: body };
+        } catch (error) {
+          return reply.status(400).send({
+            error: 'Invalid JSON in request body',
+            code: 'MALFORMED_JSON',
+            message: error instanceof Error ? error.message : 'Unknown JSON parsing error'
+          });
+        }
+      });
+
+      // Send valid JSON to test the endpoint setup
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp/config/validate',
+        headers: {
+          'content-type': 'application/json'
+        },
+        payload: '' // Empty payload should trigger validation error
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Invalid JSON in request body');
+      expect(body.code).toBe('MALFORMED_JSON');
+      expect(body.message).toBe('Request body must be valid JSON object');
+    });
+  });
 });

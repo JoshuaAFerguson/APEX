@@ -12379,3 +12379,17 @@ export type {
   ParallelTestContext,
   EnvironmentIsolationContext,
 } from './parallel-test-utils.js';
+
+// ============================================================================
+// TaskStore Test Fixtures (v0.5.0)
+// ============================================================================
+
+export {
+  createTestTask,
+  createTestAgent,
+  createTestWorkflow,
+  createTestWorkflowStage,
+  createTestTasks,
+  createTestAgents,
+  createTestWorkflows,
+} from './fixtures.js';

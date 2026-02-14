@@ -386,6 +386,476 @@ export class PermissionTestHelpers {
   }
 
   /**
+   * Test permission boundary conditions with exact scope matching
+   */
+  testPermissionBoundary(
+    tool: string,
+    scope: string,
+    testCases: Array<{
+      testScope: string;
+      expectedAllowed: boolean;
+      description: string;
+    }>
+  ): Array<{
+    testCase: {
+      testScope: string;
+      expectedAllowed: boolean;
+      description: string;
+    };
+    result: ToolPermissionResult;
+    matches: boolean;
+  }> {
+    // Configure base permission
+    this.mockManager.configurePermissionCheck(tool, scope, {
+      allowed: true,
+      level: 'allow-always',
+      requiresConfirmation: false,
+    });
+
+    return testCases.map(testCase => {
+      const result = this.mockManager.checkPermission(tool, { scope: testCase.testScope });
+      const matches = result.allowed === testCase.expectedAllowed;
+
+      return {
+        testCase,
+        result,
+        matches,
+      };
+    });
+  }
+
+  /**
+   * Simulate permission denial with escalation workflow
+   */
+  simulatePermissionDenialEscalation(
+    tool: string,
+    scope?: string,
+    escalationSteps?: Array<{
+      escalationLevel: 'supervisor' | 'admin' | 'security-team';
+      autoApprove: boolean;
+      timeout?: number;
+      reason?: string;
+    }>
+  ): {
+    initialDenial: ToolPermissionResult;
+    escalationSteps: Array<{
+      level: string;
+      approved: boolean;
+      reason: string;
+      responseTime: number;
+    }>;
+    finalDecision: 'approved' | 'denied' | 'escalated-further';
+  } {
+    const initialDenial = this.simulatePermissionDenial(
+      tool,
+      scope,
+      'Permission denied - escalation required'
+    );
+
+    const defaultEscalationSteps = escalationSteps || [
+      { escalationLevel: 'supervisor', autoApprove: false, timeout: 30 },
+      { escalationLevel: 'admin', autoApprove: false, timeout: 60 },
+      { escalationLevel: 'security-team', autoApprove: true, timeout: 120 },
+    ];
+
+    const escalationResults = defaultEscalationSteps.map(step => {
+      const approved = step.autoApprove || Math.random() > 0.3; // 70% approval rate for testing
+      return {
+        level: step.escalationLevel,
+        approved,
+        reason: approved
+          ? `Approved by ${step.escalationLevel} after review`
+          : `Denied by ${step.escalationLevel} - insufficient justification`,
+        responseTime: (step.timeout || 30) * 1000,
+      };
+    });
+
+    const finalApproval = escalationResults.find(step => step.approved);
+    const finalDecision = finalApproval
+      ? 'approved'
+      : escalationResults.length >= 3
+      ? 'escalated-further'
+      : 'denied';
+
+    return {
+      initialDenial,
+      escalationSteps: escalationResults,
+      finalDecision,
+    };
+  }
+
+  /**
+   * Test dangerous operation denial with context
+   */
+  testDangerousOperationDenial(
+    operation: string,
+    riskLevel: 'low' | 'medium' | 'high' | 'critical',
+    context?: {
+      affectedFiles?: string[];
+      reversible?: boolean;
+      requiresBackup?: boolean;
+      productionSystem?: boolean;
+    }
+  ): {
+    riskAssessment: {
+      level: string;
+      factors: string[];
+      score: number;
+      recommendation: 'allow' | 'warn' | 'deny' | 'escalate';
+    };
+    permissionResult: ToolPermissionResult;
+    requiredApprovals?: Array<{
+      approver: string;
+      reason: string;
+    }>;
+  } {
+    const riskFactors: string[] = [];
+    let riskScore = 0;
+
+    // Calculate risk score
+    switch (riskLevel) {
+      case 'low':
+        riskScore = 25;
+        break;
+      case 'medium':
+        riskScore = 50;
+        break;
+      case 'high':
+        riskScore = 75;
+        break;
+      case 'critical':
+        riskScore = 100;
+        break;
+    }
+
+    if (context) {
+      if (context.productionSystem) {
+        riskScore += 25;
+        riskFactors.push('Production system impact');
+      }
+      if (!context.reversible) {
+        riskScore += 20;
+        riskFactors.push('Irreversible operation');
+      }
+      if (context.affectedFiles && context.affectedFiles.length > 10) {
+        riskScore += 15;
+        riskFactors.push('Large number of affected files');
+      }
+      if (!context.requiresBackup) {
+        riskScore += 10;
+        riskFactors.push('No backup required - high data loss risk');
+      }
+    }
+
+    // Determine recommendation
+    let recommendation: 'allow' | 'warn' | 'deny' | 'escalate';
+    if (riskScore >= 90) {
+      recommendation = 'deny';
+    } else if (riskScore >= 70) {
+      recommendation = 'escalate';
+    } else if (riskScore >= 40) {
+      recommendation = 'warn';
+    } else {
+      recommendation = 'allow';
+    }
+
+    // Generate permission result
+    let permissionResult: ToolPermissionResult;
+    let requiredApprovals: Array<{ approver: string; reason: string }> | undefined;
+
+    switch (recommendation) {
+      case 'allow':
+        permissionResult = this.simulatePermissionApproval(operation);
+        break;
+      case 'warn':
+        permissionResult = this.simulatePermissionRequiringConfirmation(operation);
+        break;
+      case 'deny':
+        permissionResult = this.simulatePermissionDenial(
+          operation,
+          undefined,
+          `Dangerous operation blocked: risk score ${riskScore}`
+        );
+        break;
+      case 'escalate':
+        permissionResult = this.simulatePermissionRequiringConfirmation(operation);
+        requiredApprovals = [
+          { approver: 'tech-lead', reason: 'Technical review required' },
+          { approver: 'security-team', reason: 'Security assessment required' },
+        ];
+        if (context?.productionSystem) {
+          requiredApprovals.push({
+            approver: 'production-manager',
+            reason: 'Production system change approval',
+          });
+        }
+        break;
+    }
+
+    return {
+      riskAssessment: {
+        level: riskLevel,
+        factors: riskFactors,
+        score: Math.min(riskScore, 100),
+        recommendation,
+      },
+      permissionResult,
+      requiredApprovals,
+    };
+  }
+
+  /**
+   * Test permission conflicts between overlapping rules
+   */
+  testPermissionConflicts(
+    tool: string,
+    conflictingRules: Array<{
+      scope: string;
+      level: PermissionLevel;
+      priority?: number;
+    }>
+  ): {
+    conflicts: Array<{
+      scope1: string;
+      scope2: string;
+      level1: PermissionLevel;
+      level2: PermissionLevel;
+      conflictType: 'overlapping-scopes' | 'contradictory-levels' | 'priority-conflict';
+    }>;
+    resolution: {
+      resolvedScope: string;
+      resolvedLevel: PermissionLevel;
+      resolutionStrategy: 'most-restrictive' | 'highest-priority' | 'most-specific-scope';
+      explanation: string;
+    };
+  } {
+    const conflicts: Array<{
+      scope1: string;
+      scope2: string;
+      level1: PermissionLevel;
+      level2: PermissionLevel;
+      conflictType: 'overlapping-scopes' | 'contradictory-levels' | 'priority-conflict';
+    }> = [];
+
+    // Detect conflicts
+    for (let i = 0; i < conflictingRules.length; i++) {
+      for (let j = i + 1; j < conflictingRules.length; j++) {
+        const rule1 = conflictingRules[i];
+        const rule2 = conflictingRules[j];
+
+        // Check for overlapping scopes
+        const scopesOverlap = rule1.scope.includes(rule2.scope) || rule2.scope.includes(rule1.scope);
+        const levelsContradict = (rule1.level === 'allow-always' && rule2.level === 'deny') ||
+                                (rule1.level === 'deny' && rule2.level === 'allow-always');
+
+        if (scopesOverlap || levelsContradict) {
+          let conflictType: 'overlapping-scopes' | 'contradictory-levels' | 'priority-conflict';
+
+          if (levelsContradict) {
+            conflictType = 'contradictory-levels';
+          } else if (scopesOverlap) {
+            conflictType = 'overlapping-scopes';
+          } else {
+            conflictType = 'priority-conflict';
+          }
+
+          conflicts.push({
+            scope1: rule1.scope,
+            scope2: rule2.scope,
+            level1: rule1.level,
+            level2: rule2.level,
+            conflictType,
+          });
+        }
+      }
+    }
+
+    // Resolve conflicts (most restrictive wins)
+    const sortedRules = [...conflictingRules].sort((a, b) => {
+      // Priority order: deny > allow-once > allow-always
+      const levelPriority = { deny: 3, 'allow-once': 2, 'allow-always': 1 };
+      return levelPriority[b.level] - levelPriority[a.level];
+    });
+
+    const resolvedRule = sortedRules[0];
+    const resolution = {
+      resolvedScope: resolvedRule.scope,
+      resolvedLevel: resolvedRule.level,
+      resolutionStrategy: 'most-restrictive' as const,
+      explanation: `Applied most restrictive rule: ${resolvedRule.level} for scope ${resolvedRule.scope}`,
+    };
+
+    return { conflicts, resolution };
+  }
+
+  /**
+   * Simulate scoped wildcard denial patterns
+   */
+  simulateScopedWildcardDenial(
+    tool: string,
+    patterns: Array<{
+      pattern: string;
+      level: PermissionLevel;
+    }>,
+    testPaths: string[]
+  ): Array<{
+    path: string;
+    matchedPattern?: string;
+    result: ToolPermissionResult;
+    reason: string;
+  }> {
+    return testPaths.map(path => {
+      // Find matching pattern (first match wins)
+      const matchedRule = patterns.find(rule => {
+        const regex = new RegExp(rule.pattern.replace(/\*/g, '.*'));
+        return regex.test(path);
+      });
+
+      if (matchedRule) {
+        const result = matchedRule.level === 'deny'
+          ? this.simulatePermissionDenial(tool, path, `Blocked by pattern: ${matchedRule.pattern}`)
+          : this.simulatePermissionApproval(tool, path);
+
+        return {
+          path,
+          matchedPattern: matchedRule.pattern,
+          result,
+          reason: `Matched pattern: ${matchedRule.pattern}`,
+        };
+      } else {
+        // No pattern matched - default to allowing
+        const result = this.simulatePermissionApproval(tool, path);
+        return {
+          path,
+          result,
+          reason: 'No pattern matched - default allow',
+        };
+      }
+    });
+  }
+
+  /**
+   * Verify permission audit trail with comprehensive tracking
+   */
+  verifyPermissionAuditTrail(
+    tool: string,
+    scope: string,
+    actions: Array<{
+      action: 'request' | 'approve' | 'deny' | 'consume' | 'expire';
+      timestamp: Date;
+      actor: string;
+      reason?: string;
+    }>
+  ): {
+    auditTrail: Array<{
+      action: string;
+      timestamp: Date;
+      actor: string;
+      reason?: string;
+      valid: boolean;
+      issues?: string[];
+    }>;
+    isCompliant: boolean;
+    missingEntries: string[];
+    suspiciousActivity: Array<{
+      issue: string;
+      severity: 'low' | 'medium' | 'high';
+      actions: Array<{ action: string; actor: string; timestamp: Date }>;
+    }>;
+  } {
+    const auditTrail = actions.map(action => {
+      const issues: string[] = [];
+      let valid = true;
+
+      // Validate timestamp order
+      const previousAction = actions[actions.indexOf(action) - 1];
+      if (previousAction && action.timestamp < previousAction.timestamp) {
+        issues.push('Timestamp out of order');
+        valid = false;
+      }
+
+      // Validate required fields
+      if (!action.actor) {
+        issues.push('Missing actor');
+        valid = false;
+      }
+
+      // Validate action sequences
+      if (action.action === 'consume' && !actions.some(a => a.action === 'approve' && a.timestamp < action.timestamp)) {
+        issues.push('Consume action without prior approval');
+        valid = false;
+      }
+
+      return {
+        action: action.action,
+        timestamp: action.timestamp,
+        actor: action.actor,
+        reason: action.reason,
+        valid,
+        issues: issues.length > 0 ? issues : undefined,
+      };
+    });
+
+    // Check for missing entries
+    const missingEntries: string[] = [];
+    const hasRequest = actions.some(a => a.action === 'request');
+    const hasResponse = actions.some(a => a.action === 'approve' || a.action === 'deny');
+
+    if (!hasRequest) {
+      missingEntries.push('Initial permission request');
+    }
+    if (hasRequest && !hasResponse) {
+      missingEntries.push('Approval or denial response');
+    }
+
+    // Detect suspicious activity
+    const suspiciousActivity: Array<{
+      issue: string;
+      severity: 'low' | 'medium' | 'high';
+      actions: Array<{ action: string; actor: string; timestamp: Date }>;
+    }> = [];
+
+    // Check for rapid-fire approvals
+    const approvals = actions.filter(a => a.action === 'approve');
+    if (approvals.length > 1) {
+      const timeDiffs = approvals.slice(1).map((approval, i) =>
+        approval.timestamp.getTime() - approvals[i].timestamp.getTime()
+      );
+      if (timeDiffs.some(diff => diff < 1000)) { // Less than 1 second apart
+        suspiciousActivity.push({
+          issue: 'Rapid consecutive approvals',
+          severity: 'medium',
+          actions: approvals.map(a => ({ action: a.action, actor: a.actor, timestamp: a.timestamp })),
+        });
+      }
+    }
+
+    // Check for self-approval
+    const selfApprovals = actions.filter(a =>
+      a.action === 'approve' &&
+      actions.some(req => req.action === 'request' && req.actor === a.actor)
+    );
+    if (selfApprovals.length > 0) {
+      suspiciousActivity.push({
+        issue: 'Self-approval detected',
+        severity: 'high',
+        actions: selfApprovals.map(a => ({ action: a.action, actor: a.actor, timestamp: a.timestamp })),
+      });
+    }
+
+    const isCompliant = auditTrail.every(entry => entry.valid) &&
+                       missingEntries.length === 0 &&
+                       suspiciousActivity.filter(s => s.severity === 'high').length === 0;
+
+    return {
+      auditTrail,
+      isCompliant,
+      missingEntries,
+      suspiciousActivity,
+    };
+  }
+
+  /**
    * Reset all mock state for clean testing
    */
   reset(): void {

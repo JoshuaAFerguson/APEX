@@ -55,6 +55,11 @@ export * from './mcp-test-base';
 export * from './mcp-permission-helpers';
 export * from './mock-server-factory';
 
+// Export enhanced integration testing utilities
+export * from './integration-test-utilities';
+export * from './test-setup-teardown';
+export * from './enhanced-mock-factories';
+
 // Re-export commonly used vitest functions for convenience
 export { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 

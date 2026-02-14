@@ -109,6 +109,18 @@
     "./parallel-utils": {
       "types": "./dist/parallel-utils.d.ts",
       "import": "./dist/parallel-utils.js"
+    },
+    "./integration-test-utilities": {
+      "types": "./dist/integration-test-utilities.d.ts",
+      "import": "./dist/integration-test-utilities.js"
+    },
+    "./test-setup-teardown": {
+      "types": "./dist/test-setup-teardown.d.ts",
+      "import": "./dist/test-setup-teardown.js"
+    },
+    "./enhanced-mock-factories": {
+      "types": "./dist/enhanced-mock-factories.d.ts",
+      "import": "./dist/enhanced-mock-factories.js"
     }
   },
   "scripts": {
@@ -120,7 +132,9 @@
   "dependencies": {
     "vitest": "workspace:*",
     "playwright": "workspace:*",
-    "eventemitter3": "^5.0.1"
+    "eventemitter3": "^5.0.1",
+    "@apexcli/core": "workspace:*",
+    "@apexcli/orchestrator": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "workspace:*",

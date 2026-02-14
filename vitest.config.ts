@@ -31,6 +31,12 @@ export default mergeConfig(
         'packages/*/src/**/*.e2e.test.ts',
         'tests/**/*.test.ts',
         'docs/tests/**/*.test.ts',
+
+        // Additional E2E test patterns to ensure comprehensive discovery
+        '**/*e2e*.test.ts',                    // Files with e2e in the name
+        '**/e2e-*.test.ts',                    // Files starting with e2e-
+        'tests/integration/**/*e2e*.test.ts',  // Integration directory E2E tests
+        'tests/test-utils/**/*e2e*.test.ts',   // Test utilities E2E tests
       ],
 
       // Monorepo-specific coverage configuration

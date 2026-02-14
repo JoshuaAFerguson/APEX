@@ -70,6 +70,12 @@
       "import": "./dist/fixtures/index.js",
       "require": "./dist/fixtures/index.js",
       "default": "./dist/fixtures/index.js"
+    },
+    "./test-helpers": {
+      "types": "./dist/__tests__/helpers/index.d.ts",
+      "import": "./dist/__tests__/helpers/index.js",
+      "require": "./dist/__tests__/helpers/index.js",
+      "default": "./dist/__tests__/helpers/index.js"
     }
   },
   "files": [

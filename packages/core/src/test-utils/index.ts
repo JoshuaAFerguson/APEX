@@ -23,5 +23,8 @@ export * from './mock-tool-types';
 // Mock server utilities
 export * from './mock-server';
 
+// Autonomy test fixtures and mock factories
+export * from './autonomy-fixtures';
+
 // Test context for unique test isolation
 export * from '../test-fixtures/context/index.js';

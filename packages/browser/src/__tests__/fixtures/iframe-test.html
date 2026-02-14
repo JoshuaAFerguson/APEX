@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iframe Navigation Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .iframe-section {
+            margin: 20px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .iframe-section h3 {
+            margin: 0;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+        }
+        iframe {
+            width: 100%;
+            border: none;
+            display: block;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .frameset-container {
+            border: 2px solid #6c757d;
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .frameset-demo {
+            height: 300px;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+        }
+        .frame-header {
+            background: #6c757d;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .frame-content {
+            flex: 1;
+            display: flex;
+        }
+        .left-frame, .right-frame {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .left-frame {
+            background: #e3f2fd;
+            border-right: 1px solid #ccc;
+        }
+        .right-frame {
+            background: #fff3e0;
+        }
+        #iframe-log {
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="page-title">Iframe & Frame Navigation Test Page</h1>
+        <p>This page tests iframe navigation, frame communication, and cross-frame interactions for browser automation testing.</p>
+
+        <div class="status">
+            <strong>Page Status:</strong> Loaded at <span id="load-time"></span><br>
+            <strong>Active Iframes:</strong> <span id="iframe-count">0</span>
+        </div>
+
+        <!-- Basic Iframe Section -->
+        <div class="iframe-section">
+            <h3>Basic Iframe - Navigation Test Page</h3>
+            <iframe
+                id="iframe-basic"
+                src="test-page.html"
+                height="300"
+                title="Basic navigation test iframe">
+            </iframe>
+        </div>
+
+        <!-- Secondary Iframe Section -->
+        <div class="iframe-section">
+            <h3>Secondary Iframe - Page 2</h3>
+            <iframe
+                id="iframe-secondary"
+                src="page2.html"
+                height="250"
+                title="Secondary navigation test iframe">
+            </iframe>
+        </div>
+
+        <!-- External Content Iframe (about:blank initially) -->
+        <div class="iframe-section">
+            <h3>Dynamic Iframe - Programmatically Controlled</h3>
+            <iframe
+                id="iframe-dynamic"
+                src="about:blank"
+                height="200"
+                title="Dynamic content iframe">
+            </iframe>
+        </div>
+
+        <!-- Iframe Controls -->
+        <div class="controls">
+            <strong>Iframe Controls:</strong><br>
+            <button onclick="loadIframe('iframe-dynamic', 'test-page.html')">Load Test Page in Dynamic Iframe</button>
+            <button onclick="loadIframe('iframe-dynamic', 'page2.html')">Load Page 2 in Dynamic Iframe</button>
+            <button onclick="loadIframe('iframe-dynamic', 'page3.html')">Load Page 3 in Dynamic Iframe</button>
+            <button onclick="loadIframe('iframe-dynamic', 'about:blank')">Clear Dynamic Iframe</button>
+            <button onclick="communicateWithIframes()">Test Iframe Communication</button>
+            <button onclick="countIframes()">Count Iframes</button>
+        </div>
+
+        <!-- Frameset Simulation (using CSS since framesets are deprecated) -->
+        <div class="frameset-container">
+            <h3 style="margin: 0; padding: 10px; background: #f8f9fa; border-bottom: 1px solid #ddd;">
+                Frameset Simulation (CSS-based)
+            </h3>
+            <div class="frameset-demo">
+                <div class="frame-header">Simulated Frameset Layout</div>
+                <div class="frame-content">
+                    <div class="left-frame" id="left-frame">
+                        <h4>Left Frame</h4>
+                        <p>This simulates a left navigation frame</p>
+                        <button onclick="updateRightFrame('Content A')">Load Content A</button>
+                        <button onclick="updateRightFrame('Content B')">Load Content B</button>
+                    </div>
+                    <div class="right-frame" id="right-frame">
+                        <h4>Right Frame</h4>
+                        <p>This simulates a main content frame</p>
+                        <div id="frame-content">Default content</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Communication Log -->
+        <div class="controls">
+            <strong>Communication Log:</strong>
+            <div id="iframe-log"></div>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <!-- Navigation Links for Testing -->
+        <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <strong>Parent Page Navigation:</strong><br>
+            <button onclick="location.href='test-page.html'">Go to Test Page</button>
+            <button onclick="location.href='page2.html'">Go to Page 2</button>
+            <button onclick="location.href='page3.html'">Go to Page 3</button>
+        </div>
+    </div>
+
+    <script>
+        // Set load timestamp
+        document.getElementById('load-time').textContent = new Date().toISOString();
+
+        // Initialize iframe count
+        countIframes();
+
+        let logCounter = 0;
+
+        function logMessage(message) {
+            const log = document.getElementById('iframe-log');
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            const entry = document.createElement('div');
+            entry.textContent = `[${timestamp}] ${++logCounter}: ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function loadIframe(iframeId, src) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                iframe.src = src;
+                logMessage(`Loading ${src} into ${iframeId}`);
+
+                iframe.onload = () => {
+                    logMessage(`${iframeId} loaded successfully: ${src}`);
+                    countIframes();
+                };
+
+                iframe.onerror = () => {
+                    logMessage(`Error loading ${src} into ${iframeId}`);
+                };
+            } else {
+                logMessage(`Iframe ${iframeId} not found`);
+            }
+        }
+
+        function communicateWithIframes() {
+            const iframes = document.querySelectorAll('iframe');
+            logMessage(`Found ${iframes.length} iframes on page`);
+
+            iframes.forEach((iframe, index) => {
+                try {
+                    const src = iframe.src || 'about:blank';
+                    const title = iframe.title || `iframe-${index}`;
+                    logMessage(`Iframe ${index}: ${title} - Source: ${src}`);
+
+                    // Try to access iframe document (will fail for cross-origin)
+                    try {
+                        const iframeDoc = iframe.contentDocument;
+                        if (iframeDoc) {
+                            const iframeTitle = iframeDoc.title || 'No title';
+                            logMessage(`Iframe ${index} document title: ${iframeTitle}`);
+                        } else {
+                            logMessage(`Cannot access iframe ${index} document (possibly cross-origin)`);
+                        }
+                    } catch (e) {
+                        logMessage(`Cross-origin restriction for iframe ${index}: ${e.message}`);
+                    }
+                } catch (e) {
+                    logMessage(`Error communicating with iframe ${index}: ${e.message}`);
+                }
+            });
+        }
+
+        function countIframes() {
+            const iframes = document.querySelectorAll('iframe');
+            const count = iframes.length;
+            document.getElementById('iframe-count').textContent = count;
+            logMessage(`Total iframes on page: ${count}`);
+            return count;
+        }
+
+        function updateRightFrame(content) {
+            const rightFrame = document.getElementById('frame-content');
+            const timestamp = new Date().toLocaleTimeString();
+            rightFrame.innerHTML = `
+                <h5>${content}</h5>
+                <p>Updated at: ${timestamp}</p>
+                <p>This demonstrates frame communication in the simulated frameset.</p>
+            `;
+            logMessage(`Updated right frame with: ${content}`);
+        }
+
+        function clearLog() {
+            document.getElementById('iframe-log').innerHTML = '';
+            logCounter = 0;
+            logMessage('Log cleared');
+        }
+
+        // Add a unique identifier for this page instance
+        window.pageInstance = Math.random().toString(36).substr(2, 9);
+
+        // Expose test helpers to global scope
+        window.testHelpers = {
+            getPageInstance: () => window.pageInstance,
+            getLoadTime: () => document.getElementById('load-time').textContent,
+            getIframeCount: () => document.querySelectorAll('iframe').length,
+            getIframeById: (id) => document.getElementById(id),
+            loadIframeContent: loadIframe,
+            communicateWithIframes: communicateWithIframes,
+            getLogEntries: () => document.getElementById('iframe-log').children.length,
+            clearLog: clearLog
+        };
+
+        // Log page loads
+        window.addEventListener('load', () => {
+            logMessage('Iframe test page loaded successfully');
+            console.log('Iframe test page loaded:', window.location.href);
+        });
+
+        // Monitor iframe loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const iframes = document.querySelectorAll('iframe');
+            iframes.forEach((iframe, index) => {
+                iframe.addEventListener('load', () => {
+                    logMessage(`Iframe ${index} (${iframe.id}) finished loading`);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

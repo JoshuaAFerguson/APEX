@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{title}}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 40px;
+      background: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .form-section {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+    }
+    .form-section h3 {
+      margin-top: 0;
+      color: #495057;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #495057;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #007acc;
+      box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
+    }
+    input[type="checkbox"], input[type="radio"] {
+      width: auto;
+      margin-right: 8px;
+    }
+    .checkbox-group, .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .checkbox-item, .radio-item {
+      display: flex;
+      align-items: center;
+    }
+    .submit-button {
+      background: #007acc;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+      margin-right: 10px;
+    }
+    .submit-button:hover {
+      background: #005a9e;
+    }
+    .reset-button {
+      background: #6c757d;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    .reset-button:hover {
+      background: #5a6268;
+    }
+    .nav-button {
+      background: #28a745;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 12px;
+      transition: background-color 0.2s;
+      margin: 5px 5px 5px 0;
+    }
+    .nav-button:hover {
+      background: #218838;
+    }
+    .info {
+      background: #e7f3ff;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+      border-left: 4px solid #007acc;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .form-data {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    {{custom_css}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>{{heading}}</h1>
+    <p>{{description}}</p>
+
+    <div class="info" id="page-info">
+      <strong>Page Information:</strong><br>
+      Current URL: <span id="current-url"></span><br>
+      Page Title: <span id="page-title"></span><br>
+      Form Count: <span id="form-count"></span><br>
+      Input Count: <span id="input-count"></span><br>
+      Timestamp: <span id="timestamp"></span>
+    </div>
+
+    <!-- Main Test Form -->
+    <form id="main-form" method="{{form_method}}" action="{{form_action}}" onsubmit="return handleFormSubmit(event, 'main-form')">
+      <!-- Basic Text Inputs -->
+      <div class="form-section">
+        <h3>📝 Basic Text Inputs</h3>
+
+        <div class="form-group">
+          <label for="text-input">Text Input:</label>
+          <input type="text" id="text-input" name="textInput" placeholder="Enter some text" value="{{default_text}}">
+        </div>
+
+        <div class="form-group">
+          <label for="password-input">Password Input:</label>
+          <input type="password" id="password-input" name="passwordInput" placeholder="Enter password">
+        </div>
+
+        <div class="form-group">
+          <label for="email-input">Email Input:</label>
+          <input type="email" id="email-input" name="emailInput" placeholder="user@example.com">
+        </div>
+
+        <div class="form-group">
+          <label for="url-input">URL Input:</label>
+          <input type="url" id="url-input" name="urlInput" placeholder="https://example.com">
+        </div>
+
+        <div class="form-group">
+          <label for="tel-input">Phone Number:</label>
+          <input type="tel" id="tel-input" name="telInput" placeholder="+1-555-123-4567">
+        </div>
+      </div>
+
+      <!-- Numeric and Date Inputs -->
+      <div class="form-section">
+        <h3>🔢 Numeric and Date Inputs</h3>
+
+        <div class="form-group">
+          <label for="number-input">Number Input:</label>
+          <input type="number" id="number-input" name="numberInput" min="0" max="100" value="50">
+        </div>
+
+        <div class="form-group">
+          <label for="range-input">Range Input (0-100):</label>
+          <input type="range" id="range-input" name="rangeInput" min="0" max="100" value="25" oninput="updateRangeValue(this)">
+          <span id="range-value">25</span>
+        </div>
+
+        <div class="form-group">
+          <label for="date-input">Date Input:</label>
+          <input type="date" id="date-input" name="dateInput">
+        </div>
+
+        <div class="form-group">
+          <label for="time-input">Time Input:</label>
+          <input type="time" id="time-input" name="timeInput">
+        </div>
+
+        <div class="form-group">
+          <label for="datetime-input">DateTime Local:</label>
+          <input type="datetime-local" id="datetime-input" name="datetimeInput">
+        </div>
+      </div>
+
+      <!-- Selection Inputs -->
+      <div class="form-section">
+        <h3>📋 Selection Inputs</h3>
+
+        <div class="form-group">
+          <label for="select-input">Select Dropdown:</label>
+          <select id="select-input" name="selectInput">
+            <option value="">Choose an option</option>
+            <option value="option1">Option 1</option>
+            <option value="option2">Option 2</option>
+            <option value="option3">Option 3</option>
+            {{select_options}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="multi-select">Multi-Select:</label>
+          <select id="multi-select" name="multiSelect" multiple size="4">
+            <option value="item1">Item 1</option>
+            <option value="item2">Item 2</option>
+            <option value="item3">Item 3</option>
+            <option value="item4">Item 4</option>
+            {{multi_select_options}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Radio Buttons:</label>
+          <div class="radio-group">
+            <div class="radio-item">
+              <input type="radio" id="radio1" name="radioInput" value="choice1">
+              <label for="radio1">Choice 1</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="radio2" name="radioInput" value="choice2">
+              <label for="radio2">Choice 2</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="radio3" name="radioInput" value="choice3">
+              <label for="radio3">Choice 3</label>
+            </div>
+            {{radio_options}}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Checkboxes:</label>
+          <div class="checkbox-group">
+            <div class="checkbox-item">
+              <input type="checkbox" id="check1" name="checkboxInput" value="option1">
+              <label for="check1">Option 1</label>
+            </div>
+            <div class="checkbox-item">
+              <input type="checkbox" id="check2" name="checkboxInput" value="option2">
+              <label for="check2">Option 2</label>
+            </div>
+            <div class="checkbox-item">
+              <input type="checkbox" id="check3" name="checkboxInput" value="option3">
+              <label for="check3">Option 3</label>
+            </div>
+            {{checkbox_options}}
+          </div>
+        </div>
+      </div>
+
+      <!-- Text Area and File Input -->
+      <div class="form-section">
+        <h3>📄 Text and File Inputs</h3>
+
+        <div class="form-group">
+          <label for="textarea-input">Textarea:</label>
+          <textarea id="textarea-input" name="textareaInput" rows="4" placeholder="Enter multiple lines of text here...">{{default_textarea}}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="file-input">File Input:</label>
+          <input type="file" id="file-input" name="fileInput" accept="{{file_accept}}">
+        </div>
+
+        <div class="form-group">
+          <label for="file-multiple">Multiple File Input:</label>
+          <input type="file" id="file-multiple" name="fileMultiple" multiple accept="{{file_accept}}">
+        </div>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="form-section">
+        <h3>🚀 Form Actions</h3>
+        <button type="submit" class="submit-button">Submit Form</button>
+        <button type="reset" class="reset-button">Reset Form</button>
+      </div>
+
+      {{custom_form_sections}}
+    </form>
+
+    <!-- Secondary Form (for testing multiple forms) -->
+    <form id="secondary-form" method="GET" action="/form-result" onsubmit="return handleFormSubmit(event, 'secondary-form')" style="{{secondary_form_style}}">
+      <div class="form-section">
+        <h3>📋 Secondary Form</h3>
+
+        <div class="form-group">
+          <label for="search-input">Search Query:</label>
+          <input type="search" id="search-input" name="query" placeholder="Search...">
+        </div>
+
+        <div class="form-group">
+          <label for="color-input">Color Picker:</label>
+          <input type="color" id="color-input" name="color" value="#007acc">
+        </div>
+
+        <button type="submit" class="submit-button">Search</button>
+      </div>
+    </form>
+
+    <!-- Navigation -->
+    <div style="margin-top: 30px;">
+      <h3>🔗 Navigation</h3>
+      <a href="/" class="nav-button">🏠 Home</a>
+      <a href="/page1" class="nav-button">Page 1</a>
+      <a href="/form-result" class="nav-button">Form Results</a>
+      {{navigation_links}}
+    </div>
+
+    <!-- Form Data Display -->
+    <div id="form-data-display" class="form-data" style="display: none;">
+      <strong>Last Form Data:</strong>
+      <pre id="form-data-content"></pre>
+    </div>
+
+    <div id="test-data"
+         data-page="{{page_id}}"
+         data-template="form-page"
+         data-form-count="0"
+         data-input-count="0">
+    </div>
+  </div>
+
+  <script>
+    // Update page information
+    document.getElementById('current-url').textContent = window.location.href;
+    document.getElementById('page-title').textContent = document.title;
+    document.getElementById('timestamp').textContent = new Date().toISOString();
+
+    // Count forms and inputs
+    function countFormElements() {
+      const formCount = document.querySelectorAll('form').length;
+      const inputCount = document.querySelectorAll('input, select, textarea').length;
+
+      document.getElementById('form-count').textContent = formCount;
+      document.getElementById('input-count').textContent = inputCount;
+
+      document.querySelector('[data-form-count]').setAttribute('data-form-count', formCount);
+      document.querySelector('[data-input-count]').setAttribute('data-input-count', inputCount);
+
+      return { formCount, inputCount };
+    }
+
+    // Update range value display
+    function updateRangeValue(rangeInput) {
+      const valueDisplay = document.getElementById('range-value');
+      if (valueDisplay) {
+        valueDisplay.textContent = rangeInput.value;
+      }
+    }
+
+    // Handle form submission
+    function handleFormSubmit(event, formId) {
+      console.log('Form submitted:', formId);
+
+      const form = event.target;
+      const formData = new FormData(form);
+      const data = {};
+
+      // Convert FormData to regular object
+      for (let [key, value] of formData.entries()) {
+        if (data[key]) {
+          // Handle multiple values (like checkboxes)
+          if (Array.isArray(data[key])) {
+            data[key].push(value);
+          } else {
+            data[key] = [data[key], value];
+          }
+        } else {
+          data[key] = value;
+        }
+      }
+
+      // Display form data
+      const display = document.getElementById('form-data-display');
+      const content = document.getElementById('form-data-content');
+      content.textContent = JSON.stringify(data, null, 2);
+      display.style.display = 'block';
+
+      // Track form submission
+      window.navigationTestFormSubmissions = window.navigationTestFormSubmissions || [];
+      window.navigationTestFormSubmissions.push({
+        formId: formId,
+        data: data,
+        timestamp: Date.now(),
+        page: '{{page_id}}'
+      });
+
+      console.log('Form data:', data);
+
+      {{form_submit_handler}}
+
+      // Prevent actual submission for testing (return false to prevent, true to allow)
+      return {{allow_form_submit}};
+    }
+
+    // Track form interactions
+    document.addEventListener('change', function(event) {
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'SELECT' || event.target.tagName === 'TEXTAREA') {
+        console.log('Form field changed:', {
+          field: event.target.name,
+          value: event.target.value,
+          type: event.target.type,
+          timestamp: Date.now()
+        });
+
+        window.navigationTestFormInteractions = window.navigationTestFormInteractions || [];
+        window.navigationTestFormInteractions.push({
+          field: event.target.name,
+          value: event.target.value,
+          type: event.target.type,
+          timestamp: Date.now(),
+          page: '{{page_id}}'
+        });
+      }
+    });
+
+    // Initialize page
+    const elementCounts = countFormElements();
+
+    // Log page load for testing
+    console.log('Form page template loaded: {{page_id}}');
+    console.log('Form data:', {
+      pageId: '{{page_id}}',
+      template: 'form-page',
+      url: window.location.href,
+      historyLength: history.length,
+      formCount: elementCounts.formCount,
+      inputCount: elementCounts.inputCount
+    });
+
+    // Track navigation history
+    window.navigationTestHistory = window.navigationTestHistory || [];
+    window.navigationTestHistory.push({
+      url: window.location.href,
+      timestamp: Date.now(),
+      title: document.title,
+      template: 'form-page',
+      pageId: '{{page_id}}',
+      formCount: elementCounts.formCount,
+      inputCount: elementCounts.inputCount
+    });
+
+    {{custom_script}}
+  </script>
+</body>
+</html>

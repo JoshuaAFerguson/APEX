@@ -7,6 +7,3 @@
 
 // Export database utilities
 export * from './db';
-
-// Re-export everything from the main test-utils file for backward compatibility
-export * from '../test-utils';

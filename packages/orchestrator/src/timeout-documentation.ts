@@ -238,6 +238,10 @@ export class SetTimeoutWithCleanupPattern {
       this.timeoutHandle = undefined;
     }
   }
+
+  isTimeoutActive(): boolean {
+    return this.timeoutHandle !== undefined;
+  }
 }
 
 /**
@@ -265,7 +269,7 @@ export class ExponentialBackoffPattern {
         lastError = error as Error;
 
         if (attempt === options.maxAttempts) {
-          throw lastError;
+          throw new Error(`Operation failed after ${options.maxAttempts} attempts. Last error: ${lastError.message}`);
         }
 
         const delay = Math.min(
@@ -516,7 +520,7 @@ export class TimeoutUtils {
   static createTimeout(ms: number, message?: string): Promise<never> {
     return new Promise((_, reject) => {
       setTimeout(() => {
-        reject(new Error(message || `Operation timed out after ${ms}ms`));
+        reject(new Error(message || `Timeout after ${ms}ms`));
       }, ms);
     });
   }
@@ -553,12 +557,16 @@ export class TimeoutUtils {
    * Format timeout for display
    */
   static formatTimeout(ms: number): string {
-    if (ms < 1000) {
+    if (ms === 0) {
+      return 'No timeout';
+    } else if (ms < 1000) {
       return `${ms}ms`;
     } else if (ms < 60000) {
-      return `${Math.round(ms / 1000)}s`;
+      return `${(ms / 1000).toFixed(1)}s`;
+    } else if (ms < 3600000) {
+      return `${(ms / 60000).toFixed(1)}m`;
     } else {
-      return `${Math.round(ms / 60000)}m`;
+      return `${(ms / 3600000).toFixed(1)}h`;
     }
   }
 }
@@ -604,6 +612,13 @@ export class TimeoutDebugUtils {
    */
   static unregisterTimeout(id: string): void {
     this.activeTimeouts.delete(id);
+  }
+
+  /**
+   * Clear all registered timeouts
+   */
+  static clearAll(): void {
+    this.activeTimeouts.clear();
   }
 
   /**
