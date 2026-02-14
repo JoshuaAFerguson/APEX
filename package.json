@@ -80,6 +80,8 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "jsdoc:coverage": "ts-node scripts/jsdoc-coverage.ts",
+    "jsdoc:validate": "ts-node scripts/validate-jsdoc-comprehensive.ts",
+    "jsdoc:validate:json": "ts-node scripts/validate-jsdoc-comprehensive.ts --json",
     "apex": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
