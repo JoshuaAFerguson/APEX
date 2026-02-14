@@ -3,28 +3,68 @@ import { SocketModeClient } from '@slack/socket-mode';
 import type { SlackIntegrationConfig, Task } from '@apexcli/core';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
+/**
+ * Context information for a Slack slash command invocation.
+ *
+ * @interface SlackCommandContext
+ */
 export interface SlackCommandContext {
+  /** ID of the Slack channel where command was invoked */
   channelId: string;
+  /** Name of the Slack channel (optional) */
   channelName?: string;
+  /** ID of the user who invoked the command */
   userId: string;
+  /** ID of the Slack team/workspace (optional) */
   teamId?: string;
+  /** URL for sending response messages back to Slack (optional) */
   responseUrl?: string;
+  /** The command text and arguments provided by the user */
   text: string;
 }
 
+/**
+ * Configuration options for initializing the SlackService.
+ *
+ * @interface SlackServiceOptions
+ */
 export interface SlackServiceOptions {
+  /** APEX orchestrator instance for task management */
   orchestrator: ApexOrchestrator;
+  /** Slack integration configuration (optional, can be resolved from environment) */
   config?: SlackIntegrationConfig;
+  /** Environment variables to use for configuration (defaults to process.env) */
   env?: NodeJS.ProcessEnv;
+  /** Custom logger interface (defaults to console) */
   logger?: { info: (message: string) => void; warn: (message: string) => void; error: (message: string) => void };
 }
 
+/**
+ * Result of parsing a Slack command text string.
+ *
+ * @interface SlackCommandParseResult
+ */
 export interface SlackCommandParseResult {
+  /** The command name (e.g., 'run', 'status') */
   command: string;
+  /** Arguments provided with the command */
   args: string;
+  /** Channel override specified with --channel flag (optional) */
   channelOverride?: string;
 }
 
+/**
+ * Parses Slack command text to extract command, arguments, and channel overrides.
+ *
+ * @param text - The raw command text from Slack
+ * @returns Parsed command information
+ *
+ * @example
+ * ```typescript
+ * const result = parseSlackCommandText('run "Create a new feature" --channel #dev');
+ * // Returns: { command: 'run', args: 'Create a new feature', channelOverride: '#dev' }
+ * ```
+ */
 export function parseSlackCommandText(text: string): SlackCommandParseResult {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -45,6 +85,30 @@ export function parseSlackCommandText(text: string): SlackCommandParseResult {
   };
 }
 
+/**
+ * Service for integrating APEX with Slack using Socket Mode.
+ *
+ * Handles slash commands, task notifications, and real-time updates
+ * through Slack's Socket Mode API. Supports threaded conversations
+ * and configurable notification channels.
+ *
+ * @class SlackService
+ *
+ * @example
+ * ```typescript
+ * const slackService = new SlackService({
+ *   orchestrator,
+ *   config: {
+ *     enabled: true,
+ *     appToken: 'xapp-...',
+ *     botToken: 'xoxb-...',
+ *     defaultChannel: '#apex'
+ *   }
+ * });
+ *
+ * await slackService.start();
+ * ```
+ */
 export class SlackService {
   private orchestrator: ApexOrchestrator;
   private config: SlackIntegrationConfig;
@@ -61,10 +125,24 @@ export class SlackService {
     this.config = this.resolveConfig(options.config);
   }
 
+  /**
+   * Checks if the Slack integration is properly configured and enabled.
+   *
+   * @returns True if Slack is enabled and has required tokens
+   */
   isEnabled(): boolean {
     return Boolean(this.config.enabled && this.config.appToken && this.config.botToken);
   }
 
+  /**
+   * Starts the Slack Socket Mode connection and registers event handlers.
+   *
+   * Initializes WebClient and SocketModeClient, sets up event listeners
+   * for slash commands, and registers orchestrator event handlers for
+   * task status updates.
+   *
+   * @throws {Error} If Slack connection fails
+   */
   async start(): Promise<void> {
     if (!this.isEnabled()) {
       this.logger.info('Slack integration disabled or missing tokens.');
@@ -121,6 +199,11 @@ export class SlackService {
     this.logger.info('Slack Socket Mode connected.');
   }
 
+  /**
+   * Stops the Slack Socket Mode connection and cleans up resources.
+   *
+   * @throws {Error} If disconnect fails
+   */
   async stop(): Promise<void> {
     if (this.socketClient) {
       await this.socketClient.disconnect();
