@@ -11,12 +11,10 @@ This directory contains the comprehensive test infrastructure for validating the
 ```
 tests/e2e/tri-system-integration/
 ├── README.md                           # This documentation
-├── test-utils.ts                       # Core test infrastructure
-├── test-utils.test.ts                  # Basic infrastructure tests (23 tests)
-├── tri-system-integration.test.ts     # Comprehensive E2E tests (45+ tests)
-├── utilities-validation.test.ts       # Utility validation tests (35+ tests)
-├── test-coverage-report.md            # Detailed coverage analysis
-└── validate-tests.js                  # Test validation script
+├── test-utils.ts                       # Core test infrastructure (1844 lines)
+├── event-coordination.e2e.test.ts     # Comprehensive E2E tests (858 lines, 13 tests)
+├── vitest.config.ts                   # Specialized E2E test configuration
+└── test-coverage-report.md            # Detailed coverage analysis
 ```
 
 ## 🚀 Quick Start
@@ -28,14 +26,11 @@ npm run test:e2e -- tests/e2e/tri-system-integration/
 
 ### Running Specific Test Files
 ```bash
-# Basic infrastructure tests
-npm run test:e2e -- tests/e2e/tri-system-integration/test-utils.test.ts
+# Event coordination E2E tests
+npm run test -- tests/e2e/tri-system-integration/event-coordination.e2e.test.ts
 
-# Comprehensive E2E tests
-npm run test:e2e -- tests/e2e/tri-system-integration/tri-system-integration.test.ts
-
-# Utility validation tests
-npm run test:e2e -- tests/e2e/tri-system-integration/utilities-validation.test.ts
+# All tri-system integration tests
+npm run test -- "tests/e2e/tri-system-integration/**/*.test.ts"
 ```
 
 ### Watch Mode (Development)
@@ -114,27 +109,21 @@ assertPermissionEnforced(result, 'denied');
 
 ### Test Categories
 
-#### 🔄 **Integration Tests** (`tri-system-integration.test.ts`)
-- Complete system initialization and health checks
-- Tool execution with permission integration
-- Browser operations with session management
-- Cross-system event flow and correlation
-- Autonomy mode scenarios (full/supervised)
-- Error handling and resource management
-- Performance and concurrency testing
+#### 🔄 **Event Coordination Tests** (`event-coordination.e2e.test.ts`)
+- **Event Propagation Across All Systems** - Cross-system event flow verification
+- **Concurrent Operations with Permission Checks** - Race condition prevention and mixed scenarios
+- **Event Ordering Validation** - Sequential operation timing and permission delays
+- **System State Consistency** - Failure recovery and partial system recovery testing
+- **Complex Integration Scenarios** - Multi-system workflows and permission escalation
 
-#### 🔧 **Utility Tests** (`utilities-validation.test.ts`)
-- Mock factory function validation
-- Scenario factory testing
-- Assertion helper validation
-- Edge case handling
-- TypeScript compilation verification
-
-#### 🏗️ **Infrastructure Tests** (`test-utils.test.ts`)
-- Basic environment creation
-- Event capture functionality
-- Mock system integration
-- Resource cleanup validation
+**Test Coverage:**
+- 13 comprehensive test cases
+- 858 lines of test code
+- Cross-system event correlation
+- High-load event ordering
+- Permission enforcement scenarios
+- Browser automation integration
+- Error recovery workflows
 
 ## 🎯 Usage Examples
 

@@ -27,7 +27,15 @@
       "@apex/api": ["./packages/api/src"],
       "@apex/api/*": ["./packages/api/src/*"],
       "@apex/test-utils": ["./tests/test-utils"],
-      "@apex/test-utils/*": ["./tests/test-utils/*"]
+      "@apex/test-utils/*": ["./tests/test-utils/*"],
+      "@apexcli/core": ["./packages/core/src"],
+      "@apexcli/core/*": ["./packages/core/src/*"],
+      "@apexcli/orchestrator": ["./packages/orchestrator/src"],
+      "@apexcli/orchestrator/*": ["./packages/orchestrator/src/*"],
+      "@apexcli/cli": ["./packages/cli/src"],
+      "@apexcli/cli/*": ["./packages/cli/src/*"],
+      "@apexcli/api": ["./packages/api/src"],
+      "@apexcli/api/*": ["./packages/api/src/*"]
     }
   },
   "exclude": [
