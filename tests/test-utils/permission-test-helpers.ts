@@ -273,7 +273,7 @@ export function createTrackedMockBrowser(): MockTrackedBrowser {
       expect(state.contextActive).toBe(false);
       expect(state.pageActive).toBe(false);
       expect(state.activeOperations).toBe(0);
-      expect(state.lifecycleState).toBeOneOf(['idle', 'destroyed']);
+      expect(['idle', 'destroyed']).toContain(state.lifecycleState);
     },
 
     markOperationStart() {
