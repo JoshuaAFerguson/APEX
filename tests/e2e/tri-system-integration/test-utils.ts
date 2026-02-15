@@ -59,11 +59,10 @@ import type {
   TaskPriority,
   AutonomyLevel,
   AgentModel
-} from '@apex/core/types.js';
+} from '@apexcli/core';
 
 // Import orchestrator components
-import { ApexOrchestrator } from '@apex/orchestrator/index.js';
-import { TaskStore } from '@apex/orchestrator/store.js';
+import { ApexOrchestrator, TaskStore } from '@apexcli/orchestrator';
 
 // Import mock factories
 import {
@@ -71,7 +70,7 @@ import {
   createMockAgentDefinition,
   createMockWorkflowDefinition,
   createMockApexConfig
-} from '@apex/core/test-fixtures/mock-factories.js';
+} from '@apexcli/core/src/test-fixtures/mock-factories';
 
 // For now, create minimal mock implementations for missing dependencies
 // These can be replaced with actual implementations when they become available
@@ -103,19 +102,123 @@ interface MockTrackedBrowser {
 function createMockPermissionManager(config: MockPermissionManagerConfig = {}): MockPermissionManager {
   const {
     denyOperations = [],
-    defaultPermissionLevel = 'full',
+    blockedDomains = [],
+    defaultPermissionLevel = 'allow-always',
     simulateFailures = false
   } = config;
 
+  // Track granted permissions for allow-once behavior
+  const grantedPermissions = new Map<string, { level: string; uses: number }>();
+  const allowAlwaysPermissions = new Set<string>();
+
   return {
-    checkToolPermission: vi.fn().mockResolvedValue({
-      allowed: !denyOperations.includes('*') && !denyOperations.some(op => op === 'tool'),
-      level: defaultPermissionLevel,
-      denialReason: denyOperations.includes('*') ? 'All operations denied' : null
+    checkToolPermission: vi.fn(async (tool: string, options: { scope: string }) => {
+      const { scope = 'default' } = options;
+      const permissionKey = `${tool}:${scope}`;
+
+      // Check if this specific domain is blocked
+      if (blockedDomains.length > 0) {
+        const isBlocked = blockedDomains.some(domain => {
+          if (scope.includes('://')) {
+            try {
+              const url = new URL(scope);
+              return url.hostname === domain || url.hostname.endsWith(`.${domain}`);
+            } catch {
+              return scope.includes(domain);
+            }
+          }
+          return scope.includes(domain);
+        });
+
+        if (isBlocked) {
+          return {
+            allowed: false,
+            level: null,
+            denialReason: `Domain ${scope} is blocked`
+          };
+        }
+      }
+
+      // Check if tool is explicitly denied
+      if (denyOperations.includes('*') || denyOperations.includes(tool)) {
+        return {
+          allowed: false,
+          level: null,
+          denialReason: `Tool ${tool} is denied`
+        };
+      }
+
+      // Check for allow-always permissions
+      if (allowAlwaysPermissions.has(tool) || allowAlwaysPermissions.has(permissionKey)) {
+        return {
+          allowed: true,
+          level: 'allow-always',
+          denialReason: null
+        };
+      }
+
+      // Check for allow-once permissions
+      const granted = grantedPermissions.get(permissionKey);
+      if (granted) {
+        if (granted.level === 'allow-once' && granted.uses > 0) {
+          // Consume the permission
+          granted.uses--;
+          if (granted.uses <= 0) {
+            grantedPermissions.delete(permissionKey);
+          }
+          return {
+            allowed: true,
+            level: 'allow-once',
+            denialReason: null
+          };
+        } else if (granted.level === 'allow-always') {
+          return {
+            allowed: true,
+            level: 'allow-always',
+            denialReason: null
+          };
+        }
+      }
+
+      // Default behavior based on configuration
+      if (defaultPermissionLevel === 'deny' || denyOperations.includes('*')) {
+        return {
+          allowed: false,
+          level: null,
+          denialReason: 'Default permission denied'
+        };
+      }
+
+      return {
+        allowed: true,
+        level: defaultPermissionLevel,
+        denialReason: null
+      };
     }),
-    grantPermission: vi.fn().mockResolvedValue(undefined),
-    denyPermission: vi.fn().mockResolvedValue(undefined),
-    clearPermissions: vi.fn()
+
+    grantPermission: vi.fn(async (tool: string, level: string, scope?: string) => {
+      const permissionKey = scope ? `${tool}:${scope}` : tool;
+
+      if (level === 'allow-always') {
+        allowAlwaysPermissions.add(permissionKey);
+        grantedPermissions.set(permissionKey, { level: 'allow-always', uses: Infinity });
+      } else if (level === 'allow-once') {
+        grantedPermissions.set(permissionKey, { level: 'allow-once', uses: 1 });
+      }
+    }),
+
+    denyPermission: vi.fn(async (tool: string, scope?: string) => {
+      const permissionKey = scope ? `${tool}:${scope}` : tool;
+      allowAlwaysPermissions.delete(permissionKey);
+      grantedPermissions.delete(permissionKey);
+      denyOperations.push(tool);
+    }),
+
+    clearPermissions: vi.fn(() => {
+      grantedPermissions.clear();
+      allowAlwaysPermissions.clear();
+      denyOperations.length = 0;
+    })
   };
 }
 
@@ -526,6 +629,78 @@ export async function createTriSystemTestEnvironment(
 
   await orchestrator.initialize();
 
+  // Now properly integrate the permission system with the tool executor
+  const originalExecuteWithPermissionCheck = toolSystem.executor.executeWithPermissionCheck;
+  toolSystem.executor.executeWithPermissionCheck = async (
+    toolName: AgentTool,
+    operation: string,
+    params: any
+  ): Promise<ToolExecutionResult> => {
+    const startTime = Date.now();
+
+    // First, check permissions
+    eventEmitter.emit('permission:requested', {
+      tool: toolName,
+      operation,
+      scope: params.params?.url || params.params?.selector || 'default',
+      timestamp: new Date()
+    });
+
+    // Check permission using the permission system
+    const permissionResult = await permissionSystem.manager.checkToolPermission(toolName, {
+      scope: params.params?.url || 'default'
+    });
+
+    if (!permissionResult.allowed) {
+      eventEmitter.emit('permission:denied', {
+        tool: toolName,
+        operation,
+        denialReason: permissionResult.denialReason,
+        timestamp: new Date()
+      });
+
+      const result: ToolExecutionResult = {
+        success: false,
+        error: permissionResult.denialReason || 'Permission denied',
+        permissionDenied: true,
+        metadata: {
+          tool: toolName,
+          operation,
+          timestamp: new Date().toISOString(),
+          executionTime: Date.now() - startTime,
+          permissionLevel: permissionResult.level
+        }
+      };
+
+      eventEmitter.emit('tool:execution:error', {
+        tool: toolName,
+        operation,
+        error: result.error,
+        result,
+        timestamp: new Date()
+      });
+
+      return result;
+    }
+
+    eventEmitter.emit('permission:granted', {
+      tool: toolName,
+      operation,
+      level: permissionResult.level,
+      timestamp: new Date()
+    });
+
+    // If permission is granted, proceed with execution
+    const result = await toolSystem.executor.execute(toolName, params);
+
+    // Update metadata with permission level
+    if (result.metadata) {
+      result.metadata.permissionLevel = permissionResult.level as PermissionLevel;
+    }
+
+    return result;
+  };
+
   // Set up cross-system event capture
   const systemEvents = createTriSystemEventCapture(eventEmitter, eventConfig);
 
@@ -673,7 +848,7 @@ async function createToolSystemContext(
     }
   }
 
-  // Create tool executor
+  // Create tool executor (will be updated after environment creation)
   const executor: ToolExecutor = {
     execute: async (toolName: AgentTool, params: any): Promise<ToolExecutionResult> => {
       const startTime = Date.now();
@@ -740,7 +915,7 @@ async function createToolSystemContext(
       operation: string,
       params: any
     ): Promise<ToolExecutionResult> => {
-      // This will be implemented by the permission system integration
+      // This will be properly implemented when the environment is created
       return executor.execute(toolName, params);
     }
   };
