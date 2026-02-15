@@ -163,6 +163,13 @@ export class MockServer {
       return reply.redirect(307, targetPath);
     });
 
+    // Permanent redirect with method preservation (308)
+    this.app.get('/redirect/308/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(308, targetPath);
+    });
+
     // Generic redirect route with query parameters for status and target
     this.app.get('/redirect', async (request, reply) => {
       const query = request.query as any;
@@ -191,6 +198,58 @@ export class MockServer {
     this.app.get('/redirect-chain-end', async () => {
       return {
         message: 'Redirect chain completed',
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    // Configurable multi-hop redirect chain
+    this.app.get('/redirect-chain/:hops', async (request, reply) => {
+      const hops = parseInt((request.params as any).hops, 10);
+      if (isNaN(hops) || hops < 0 || hops > 20) {
+        return reply.status(400).send({
+          error: 'Invalid hops value. Must be between 0-20.'
+        });
+      }
+
+      if (hops > 1) {
+        return reply.redirect(302, `/redirect-chain/${hops - 1}`);
+      }
+
+      return {
+        message: 'Redirect chain completed',
+        hops: 0,
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    // POST redirect test endpoints for method preservation testing
+    this.app.post('/redirect/307/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(307, targetPath);
+    });
+
+    this.app.post('/redirect/308/:target', async (request, reply) => {
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+      return reply.redirect(308, targetPath);
+    });
+
+    // Target endpoints that accept POST requests to verify method preservation
+    this.app.post('/api', async (request) => {
+      return {
+        message: 'POST method preserved successfully',
+        method: 'POST',
+        body: request.body,
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    this.app.post('/data', async (request) => {
+      return {
+        message: 'POST request received',
+        method: 'POST',
+        body: request.body,
         timestamp: new Date().toISOString(),
       };
     });
@@ -362,6 +421,188 @@ export class MockServer {
 
       const targetPath = target === 'home' ? '/' : `/${target}`;
       return reply.redirect(302, targetPath);
+    });
+
+    // JavaScript redirect pages
+    this.setupJavaScriptRedirects();
+
+    // Meta refresh redirect pages
+    this.setupMetaRefreshRedirects();
+  }
+
+  /**
+   * Sets up JavaScript redirect route handlers
+   */
+  private setupJavaScriptRedirects(): void {
+    if (!this.app) return;
+
+    // JavaScript redirect page generator
+    this.app.get('/js-redirect/:type/:target', async (request, reply) => {
+      const type = (request.params as any).type;
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+
+      // Validate redirect type
+      const validTypes = ['href', 'assign', 'replace'];
+      if (!validTypes.includes(type)) {
+        return reply.status(400).send({
+          error: `Invalid redirect type. Must be one of: ${validTypes.join(', ')}`
+        });
+      }
+
+      const jsCode = {
+        'href': `window.location.href = '${targetPath}';`,
+        'assign': `window.location.assign('${targetPath}');`,
+        'replace': `window.location.replace('${targetPath}');`,
+      };
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JS Redirect - ${type}</title>
+</head>
+<body>
+  <h1>JavaScript Redirect Test</h1>
+  <p>Redirecting using: window.location.${type}</p>
+  <p>Target: ${targetPath}</p>
+  <script>
+    // Small delay to ensure page is loaded for tests
+    setTimeout(function() {
+      ${jsCode[type]}
+    }, 100);
+  </script>
+</body>
+</html>`;
+
+      return reply.type('text/html').send(html);
+    });
+
+    // Delayed JavaScript redirect for testing
+    this.app.get('/js-redirect/:type/:target/:delay', async (request, reply) => {
+      const type = (request.params as any).type;
+      const target = (request.params as any).target;
+      const delayMs = parseInt((request.params as any).delay, 10);
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+
+      if (isNaN(delayMs) || delayMs < 0 || delayMs > 30000) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-30000 milliseconds.'
+        });
+      }
+
+      const validTypes = ['href', 'assign', 'replace'];
+      if (!validTypes.includes(type)) {
+        return reply.status(400).send({
+          error: `Invalid redirect type. Must be one of: ${validTypes.join(', ')}`
+        });
+      }
+
+      const jsCode = {
+        'href': `window.location.href = '${targetPath}';`,
+        'assign': `window.location.assign('${targetPath}');`,
+        'replace': `window.location.replace('${targetPath}');`,
+      };
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Delayed JS Redirect - ${type}</title>
+</head>
+<body>
+  <h1>Delayed JavaScript Redirect Test</h1>
+  <p>Redirecting using: window.location.${type}</p>
+  <p>Target: ${targetPath}</p>
+  <p>Delay: ${delayMs}ms</p>
+  <script>
+    setTimeout(function() {
+      ${jsCode[type]}
+    }, ${delayMs});
+  </script>
+</body>
+</html>`;
+
+      return reply.type('text/html').send(html);
+    });
+  }
+
+  /**
+   * Sets up meta refresh redirect route handlers
+   */
+  private setupMetaRefreshRedirects(): void {
+    if (!this.app) return;
+
+    // Meta refresh redirect page generator
+    this.app.get('/meta-redirect/:delay/:target', async (request, reply) => {
+      const delay = parseInt((request.params as any).delay, 10);
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+
+      if (isNaN(delay) || delay < 0 || delay > 300) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-300 seconds.'
+        });
+      }
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="${delay};url=${targetPath}">
+  <title>Meta Refresh Redirect</title>
+</head>
+<body>
+  <h1>Meta Refresh Redirect Test</h1>
+  <p>Redirecting to: ${targetPath}</p>
+  <p>Delay: ${delay} seconds</p>
+  <p>This page will automatically redirect in ${delay} second${delay === 1 ? '' : 's'}...</p>
+</body>
+</html>`;
+
+      return reply.type('text/html').send(html);
+    });
+
+    // Meta refresh with JavaScript fallback
+    this.app.get('/meta-redirect-fallback/:delay/:target', async (request, reply) => {
+      const delay = parseInt((request.params as any).delay, 10);
+      const target = (request.params as any).target;
+      const targetPath = target === 'home' ? '/' : `/${target}`;
+
+      if (isNaN(delay) || delay < 0 || delay > 300) {
+        return reply.status(400).send({
+          error: 'Invalid delay value. Must be between 0-300 seconds.'
+        });
+      }
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="${delay};url=${targetPath}">
+  <title>Meta Refresh with JS Fallback</title>
+</head>
+<body>
+  <h1>Meta Refresh with JavaScript Fallback</h1>
+  <p>Redirecting to: ${targetPath}</p>
+  <p>Delay: ${delay} seconds</p>
+  <p>Using both meta refresh and JavaScript fallback...</p>
+  <script>
+    // JavaScript fallback in case meta refresh doesn't work
+    setTimeout(function() {
+      if (!document.hidden) {
+        window.location.href = '${targetPath}';
+      }
+    }, ${delay * 1000 + 100});
+  </script>
+</body>
+</html>`;
+
+      return reply.type('text/html').send(html);
     });
   }
 

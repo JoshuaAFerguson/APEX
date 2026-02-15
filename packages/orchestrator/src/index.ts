@@ -1309,9 +1309,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private interactionManager!: InteractionManager;
   private worktreeManager?: WorktreeManager;
   private workspaceManager!: WorkspaceManager;
-  private permissionStore!: PermissionStore;
-  private permissionManager!: PermissionManager;
-  private permissionPresetManager!: PermissionPresetManager;
+  private _permissionStore!: PermissionStore;
+  private _permissionManager!: PermissionManager;
+  private _permissionPresetManager!: PermissionPresetManager;
   private browserManager!: BrowserManager;
   private policyEnforcer!: PolicyEnforcer;
   private autonomyEnforcer!: AutonomyEnforcer;
@@ -1506,13 +1506,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     await this.workspaceManager.initialize();
 
     // Initialize permission managers
-    this.permissionStore = new PermissionStore(this.projectPath);
-    await this.permissionStore.initialize();
+    this._permissionStore = new PermissionStore(this.projectPath);
+    await this._permissionStore.initialize();
 
-    this.permissionManager = new PermissionManager(this.permissionStore);
+    this._permissionManager = new PermissionManager(this._permissionStore);
 
-    this.permissionPresetManager = new PermissionPresetManager(
-      this.permissionStore,
+    this._permissionPresetManager = new PermissionPresetManager(
+      this._permissionStore,
       this.effectiveConfig.permissions.preset
     );
 
@@ -1532,7 +1532,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Initialize browser manager with permission manager integration
     this.browserManager = new BrowserManager({
-      permissionManager: this.permissionManager,
+      permissionManager: this._permissionManager,
       browserTool,
       defaultConfig: (browserToolConfig as Record<string, unknown>)?.browserConfig as Record<string, unknown> || {},
     });
@@ -3566,7 +3566,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       store: this.store,
       projectPath: this.projectPath,
       errorFeedbackLoop: this.errorFeedbackLoop,
-      permissionPresetManager: this.permissionPresetManager,
+      permissionPresetManager: this._permissionPresetManager,
       onToolUse: (tool, input) => {
         this.emit('agent:tool-use', task.id, tool, input);
       },
@@ -5304,7 +5304,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async getCurrentPreset(): Promise<PermissionPreset> {
     await this.ensureInitialized();
-    return this.permissionPresetManager.getCurrentPreset();
+    return this._permissionPresetManager.getCurrentPreset();
   }
 
   /**
@@ -10582,6 +10582,38 @@ Parent: ${parentTask.description}`;
    */
   getInteractionManager(): InteractionManager {
     return this.interactionManager;
+  }
+
+  /**
+   * Get the permission manager instance
+   * Provides access to permission checking and management capabilities
+   */
+  get permissionManager(): PermissionManager {
+    return this._permissionManager;
+  }
+
+  /**
+   * Get the permission store instance
+   * Provides access to permission storage capabilities
+   */
+  get permissionStore(): PermissionStore {
+    return this._permissionStore;
+  }
+
+  /**
+   * Get the permission preset manager instance
+   * Provides access to permission preset management capabilities
+   */
+  get presetManager(): PermissionPresetManager {
+    return this._permissionPresetManager;
+  }
+
+  /**
+   * Get the custom tools server instance
+   * Provides access to custom tools server capabilities
+   */
+  get customToolsServer(): CustomToolsServer | undefined {
+    return this.customToolsServer;
   }
 
   /**
