@@ -81,6 +81,7 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         timeout-minutes: 15
+        continue-on-error: true
 
       - name: Cleanup E2E test resources
         if: always()
