@@ -475,6 +475,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
 - ⚪ **Test framework detection** - Know how to run tests
 - ⚪ **Workspace health checks** - `apex doctor` validates toolchain and config per package
+- ⚪ **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
 
 ### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
 
