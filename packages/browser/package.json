@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/browser",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Browser automation capabilities for APEX using Playwright",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

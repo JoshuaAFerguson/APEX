@@ -10042,3 +10042,497 @@ export {
   isBrowserPermissionDeniedError,
   toBrowserPermissionDeniedError,
 } from './tools/browser/browser-permission-denied-error.js';
+
+// ============================================================================
+// Project Context Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Git file status indicator
+ * Represents the state of a file in a git repository
+ * - 'M': Modified - file has been changed
+ * - 'A': Added - file is staged for addition
+ * - 'D': Deleted - file is staged for deletion
+ * - 'R': Renamed - file has been renamed
+ * - 'C': Copied - file has been copied
+ * - 'U': Unmerged - file has merge conflicts
+ * - '?': Untracked - file is not tracked by git
+ * - '!': Ignored - file is ignored by git
+ */
+export const GitFileStatusSchema = z.enum(['M', 'A', 'D', 'R', 'C', 'U', '?', '!']);
+export type GitFileStatus = z.infer<typeof GitFileStatusSchema>;
+
+/**
+ * Represents a file change in a git repository with its status
+ */
+export const GitChangedFileSchema = z.object({
+  /** Relative path to the file from the repository root */
+  path: z.string().min(1),
+  /** Git status indicator for this file */
+  status: GitFileStatusSchema,
+  /** Original path if the file was renamed (only present for renames) */
+  oldPath: z.string().optional(),
+});
+export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
+
+/**
+ * Git repository status information
+ * Provides comprehensive information about the current state of a git repository
+ * including branch info, tracking status, and file changes
+ *
+ * @example
+ * ```typescript
+ * const status: GitStatus = {
+ *   isRepository: true,
+ *   branch: 'feature/new-feature',
+ *   remoteBranch: 'origin/feature/new-feature',
+ *   ahead: 2,
+ *   behind: 0,
+ *   staged: [{ path: 'src/index.ts', status: 'M' }],
+ *   unstaged: [{ path: 'README.md', status: 'M' }],
+ *   untracked: ['temp.log'],
+ *   hasConflicts: false,
+ *   isDirty: true,
+ *   lastCommitHash: 'abc1234',
+ *   lastCommitMessage: 'Add new feature'
+ * };
+ * ```
+ */
+export const GitStatusSchema = z.object({
+  /** Whether the path is a git repository */
+  isRepository: z.boolean(),
+
+  /** Current branch name (null if in detached HEAD state) */
+  branch: z.string().nullable(),
+
+  /** Remote tracking branch (if any) */
+  remoteBranch: z.string().nullable().optional(),
+
+  /** Number of commits ahead of the remote tracking branch */
+  ahead: z.number().int().min(0).optional().default(0),
+
+  /** Number of commits behind the remote tracking branch */
+  behind: z.number().int().min(0).optional().default(0),
+
+  /** Files staged for commit */
+  staged: z.array(GitChangedFileSchema).optional().default([]),
+
+  /** Files with unstaged changes */
+  unstaged: z.array(GitChangedFileSchema).optional().default([]),
+
+  /** Untracked files (paths relative to repository root) */
+  untracked: z.array(z.string()).optional().default([]),
+
+  /** Whether there are merge conflicts */
+  hasConflicts: z.boolean().optional().default(false),
+
+  /** Whether the working directory has any changes (staged, unstaged, or untracked) */
+  isDirty: z.boolean().optional().default(false),
+
+  /** Hash of the last commit (short SHA) */
+  lastCommitHash: z.string().optional(),
+
+  /** Message of the last commit */
+  lastCommitMessage: z.string().optional(),
+
+  /** Timestamp of the last commit */
+  lastCommitTimestamp: z.date().optional(),
+
+  /** Total number of stashes */
+  stashCount: z.number().int().min(0).optional().default(0),
+
+  /** List of configured remotes */
+  remotes: z.array(z.object({
+    name: z.string(),
+    url: z.string(),
+  })).optional().default([]),
+});
+export type GitStatus = z.infer<typeof GitStatusSchema>;
+
+// ============================================================================
+// Project Structure Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Entry type in project structure
+ */
+export const ProjectEntryTypeSchema = z.enum(['file', 'directory']);
+export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
+
+/**
+ * Represents a single entry (file or directory) in the project structure
+ */
+export const ProjectEntrySchema = z.object({
+  /** Name of the file or directory */
+  name: z.string().min(1),
+  /** Relative path from project root */
+  path: z.string().min(1),
+  /** Whether this is a file or directory */
+  type: ProjectEntryTypeSchema,
+  /** Size in bytes (for files only) */
+  size: z.number().int().min(0).optional(),
+  /** Last modified timestamp */
+  modifiedAt: z.date().optional(),
+  /** Child entries (for directories only) */
+  children: z.lazy(() => z.array(ProjectEntrySchema)).optional(),
+});
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
+
+/**
+ * Project structure information
+ * Provides an overview of the project's directory layout and key files
+ *
+ * @example
+ * ```typescript
+ * const structure: ProjectStructure = {
+ *   root: '/path/to/project',
+ *   totalFiles: 150,
+ *   totalDirectories: 25,
+ *   entries: [...],
+ *   hasPackageJson: true,
+ *   hasGitIgnore: true,
+ *   maxDepthScanned: 3
+ * };
+ * ```
+ */
+export const ProjectStructureSchema = z.object({
+  /** Absolute path to the project root */
+  root: z.string().min(1),
+
+  /** Total number of files in the scanned structure */
+  totalFiles: z.number().int().min(0).optional().default(0),
+
+  /** Total number of directories in the scanned structure */
+  totalDirectories: z.number().int().min(0).optional().default(0),
+
+  /** Hierarchical list of project entries */
+  entries: z.array(ProjectEntrySchema).optional().default([]),
+
+  /** Key configuration/manifest files detected at the root */
+  rootFiles: z.array(z.string()).optional().default([]),
+
+  /** Common project directories detected (src, lib, test, etc.) */
+  commonDirectories: z.array(z.string()).optional().default([]),
+
+  /** Whether a package.json exists */
+  hasPackageJson: z.boolean().optional().default(false),
+
+  /** Whether a .gitignore exists */
+  hasGitIgnore: z.boolean().optional().default(false),
+
+  /** Whether a README file exists */
+  hasReadme: z.boolean().optional().default(false),
+
+  /** Whether a LICENSE file exists */
+  hasLicense: z.boolean().optional().default(false),
+
+  /** Maximum directory depth that was scanned */
+  maxDepthScanned: z.number().int().min(0).optional(),
+
+  /** Directories that were excluded from scanning */
+  excludedDirectories: z.array(z.string()).optional().default([]),
+
+  /** Timestamp when the structure was scanned */
+  scannedAt: z.date().optional(),
+});
+export type ProjectStructure = z.infer<typeof ProjectStructureSchema>;
+
+// ============================================================================
+// Framework Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Framework category classification
+ */
+export const FrameworkCategorySchema = z.enum([
+  'frontend',     // Frontend frameworks (React, Vue, Angular, etc.)
+  'backend',      // Backend frameworks (Express, Fastify, NestJS, etc.)
+  'fullstack',    // Full-stack frameworks (Next.js, Nuxt, etc.)
+  'testing',      // Testing frameworks (Jest, Mocha, Vitest, etc.)
+  'build',        // Build tools (Webpack, Vite, Rollup, etc.)
+  'mobile',       // Mobile frameworks (React Native, Flutter, etc.)
+  'desktop',      // Desktop frameworks (Electron, Tauri, etc.)
+  'other',        // Other/unclassified frameworks
+]);
+export type FrameworkCategory = z.infer<typeof FrameworkCategorySchema>;
+
+/**
+ * Framework detection confidence level
+ */
+export const DetectionConfidenceSchema = z.enum([
+  'high',         // Framework explicitly declared in manifest
+  'medium',       // Framework detected via dependencies
+  'low',          // Framework inferred from file patterns
+]);
+export type DetectionConfidence = z.infer<typeof DetectionConfidenceSchema>;
+
+/**
+ * Information about a detected framework or library
+ *
+ * @example
+ * ```typescript
+ * const framework: FrameworkInfo = {
+ *   name: 'React',
+ *   version: '18.2.0',
+ *   category: 'frontend',
+ *   confidence: 'high',
+ *   detectedVia: 'package.json dependency',
+ *   language: 'typescript',
+ *   configFiles: ['tsconfig.json', 'vite.config.ts']
+ * };
+ * ```
+ */
+export const FrameworkInfoSchema = z.object({
+  /** Framework or library name */
+  name: z.string().min(1),
+
+  /** Detected version (if available) */
+  version: z.string().optional(),
+
+  /** Framework category */
+  category: FrameworkCategorySchema,
+
+  /** How confident the detection is */
+  confidence: DetectionConfidenceSchema.optional().default('medium'),
+
+  /** How the framework was detected */
+  detectedVia: z.string().optional(),
+
+  /** Primary programming language */
+  language: z.string().optional(),
+
+  /** Related configuration files found */
+  configFiles: z.array(z.string()).optional().default([]),
+
+  /** Whether this is a dev dependency */
+  isDevDependency: z.boolean().optional().default(false),
+
+  /** Additional metadata about the framework */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type FrameworkInfo = z.infer<typeof FrameworkInfoSchema>;
+
+// ============================================================================
+// Configuration Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Configuration file format
+ */
+export const ConfigFormatSchema = z.enum([
+  'json',
+  'yaml',
+  'toml',
+  'javascript',
+  'typescript',
+  'ini',
+  'env',
+  'xml',
+  'other',
+]);
+export type ConfigFormat = z.infer<typeof ConfigFormatSchema>;
+
+/**
+ * Configuration file purpose/category
+ */
+export const ConfigPurposeSchema = z.enum([
+  'package-manager',    // package.json, Cargo.toml, etc.
+  'typescript',         // tsconfig.json
+  'linting',            // eslint, prettier, etc.
+  'testing',            // jest.config, vitest.config, etc.
+  'build',              // webpack.config, vite.config, etc.
+  'ci-cd',              // .github/workflows, .gitlab-ci, etc.
+  'containerization',   // Dockerfile, docker-compose, etc.
+  'environment',        // .env files
+  'git',                // .gitignore, .gitattributes
+  'editor',             // .editorconfig, .vscode
+  'documentation',      // README, CHANGELOG
+  'security',           // .npmrc, .nvmrc
+  'other',
+]);
+export type ConfigPurpose = z.infer<typeof ConfigPurposeSchema>;
+
+/**
+ * Information about a detected configuration file
+ *
+ * @example
+ * ```typescript
+ * const config: ConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   keySettings: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export const ConfigurationInfoSchema = z.object({
+  /** Configuration file name */
+  name: z.string().min(1),
+
+  /** Relative path from project root */
+  path: z.string().min(1),
+
+  /** File format */
+  format: ConfigFormatSchema,
+
+  /** Configuration purpose/category */
+  purpose: ConfigPurposeSchema,
+
+  /** Whether the configuration file is syntactically valid */
+  isValid: z.boolean().optional().default(true),
+
+  /** Validation error message if not valid */
+  validationError: z.string().optional(),
+
+  /** Key settings extracted from the configuration (sanitized, no secrets) */
+  keySettings: z.record(z.string(), z.unknown()).optional(),
+
+  /** Whether this config extends another configuration */
+  extends: z.string().optional(),
+
+  /** Size in bytes */
+  size: z.number().int().min(0).optional(),
+
+  /** Last modified timestamp */
+  modifiedAt: z.date().optional(),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type ConfigurationInfo = z.infer<typeof ConfigurationInfoSchema>;
+
+// ============================================================================
+// Test Framework Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Test runner type classification
+ */
+export const TestRunnerTypeSchema = z.enum([
+  'unit',           // Unit testing (Jest, Mocha, Vitest)
+  'integration',    // Integration testing
+  'e2e',            // End-to-end testing (Playwright, Cypress)
+  'component',      // Component testing
+  'visual',         // Visual regression testing
+  'performance',    // Performance/load testing
+  'accessibility',  // Accessibility testing
+  'other',
+]);
+export type TestRunnerType = z.infer<typeof TestRunnerTypeSchema>;
+
+/**
+ * Information about a detected test framework
+ *
+ * @example
+ * ```typescript
+ * const testFramework: TestFrameworkInfo = {
+ *   name: 'vitest',
+ *   version: '1.2.0',
+ *   type: 'unit',
+ *   configFile: 'vitest.config.ts',
+ *   testPatterns: ['**\/*.test.ts', '**\/*.spec.ts'],
+ *   testDirectory: 'src/__tests__',
+ *   runCommand: 'npm test',
+ *   coverageEnabled: true
+ * };
+ * ```
+ */
+export const TestFrameworkInfoSchema = z.object({
+  /** Test framework name */
+  name: z.string().min(1),
+
+  /** Detected version (if available) */
+  version: z.string().optional(),
+
+  /** Type of testing this framework handles */
+  type: TestRunnerTypeSchema,
+
+  /** Configuration file path (if detected) */
+  configFile: z.string().optional(),
+
+  /** File patterns used to identify test files */
+  testPatterns: z.array(z.string()).optional().default([]),
+
+  /** Primary test directory (if detected) */
+  testDirectory: z.string().optional(),
+
+  /** Command to run tests */
+  runCommand: z.string().optional(),
+
+  /** Whether code coverage is configured */
+  coverageEnabled: z.boolean().optional().default(false),
+
+  /** Coverage tool used (istanbul, c8, etc.) */
+  coverageTool: z.string().optional(),
+
+  /** Whether watch mode is available */
+  watchModeAvailable: z.boolean().optional().default(false),
+
+  /** Related plugins/extensions detected */
+  plugins: z.array(z.string()).optional().default([]),
+
+  /** Number of test files detected */
+  testFileCount: z.number().int().min(0).optional(),
+
+  /** Detected assertion library (if different from test runner) */
+  assertionLibrary: z.string().optional(),
+
+  /** Detected mocking library (if any) */
+  mockingLibrary: z.string().optional(),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
+
+// ============================================================================
+// Aggregate Project Context Type (v0.6.0)
+// ============================================================================
+
+/**
+ * Comprehensive project context combining all detection results
+ * This is the main type used for providing context to AI agents
+ *
+ * @example
+ * ```typescript
+ * const context: ProjectContext = {
+ *   gitStatus: { ... },
+ *   structure: { ... },
+ *   frameworks: [{ name: 'React', ... }],
+ *   configurations: [{ name: 'tsconfig.json', ... }],
+ *   testFrameworks: [{ name: 'vitest', ... }],
+ *   detectedAt: new Date()
+ * };
+ * ```
+ */
+export const ProjectContextSchema = z.object({
+  /** Git repository status (if applicable) */
+  gitStatus: GitStatusSchema.optional(),
+
+  /** Project directory structure */
+  structure: ProjectStructureSchema.optional(),
+
+  /** Detected frameworks and libraries */
+  frameworks: z.array(FrameworkInfoSchema).optional().default([]),
+
+  /** Detected configuration files */
+  configurations: z.array(ConfigurationInfoSchema).optional().default([]),
+
+  /** Detected test frameworks */
+  testFrameworks: z.array(TestFrameworkInfoSchema).optional().default([]),
+
+  /** When the context was detected/generated */
+  detectedAt: z.date().optional(),
+
+  /** Errors encountered during detection */
+  errors: z.array(z.object({
+    component: z.string(),
+    message: z.string(),
+  })).optional().default([]),
+});
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;
