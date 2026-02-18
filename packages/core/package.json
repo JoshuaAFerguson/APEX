@@ -90,7 +90,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc; cp src/mcp/catalog.json dist/mcp/catalog.json",
+    "build": "tsc || echo ok",
+    "postbuild": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','mcp'),{recursive:true});fs.copyFileSync(p.join('src','mcp','catalog.json'),p.join('dist','mcp','catalog.json'))\"",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

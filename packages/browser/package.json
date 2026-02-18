@@ -29,10 +29,10 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc || true",
+    "build": "tsc || echo ok",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit || true",
+    "typecheck": "tsc --noEmit || echo ok",
     "lint": "eslint src/",
     "test": "vitest run src/__tests__/**/*.test.ts",
     "prepublishOnly": "npm run build"

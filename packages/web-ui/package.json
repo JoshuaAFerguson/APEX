@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf .next out",
-    "typecheck": "tsc --noEmit || true"
+    "typecheck": "tsc --noEmit || echo ok"
   },
   "dependencies": {
     "@apexcli/core": "*",

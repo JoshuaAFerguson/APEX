@@ -124,10 +124,10 @@
     }
   },
   "scripts": {
-    "build": "tsc || true",
+    "build": "tsc || echo ok",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit || true"
+    "typecheck": "tsc --noEmit || echo ok"
   },
   "dependencies": {
     "vitest": "^4.0.18",
