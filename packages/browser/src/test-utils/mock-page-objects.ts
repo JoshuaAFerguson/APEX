@@ -200,7 +200,7 @@ export function setLocalStorage(page: MockPageObject, key: string, value: string
 function generateFormHTML(config: FormConfig): string {
   const fields = config.fields.map(field => {
     switch (field.type) {
-      case 'select':
+      case 'select': {
         const options = field.options?.map(option =>
           `<option value="${option}">${option}</option>`
         ).join('') || '';
@@ -210,6 +210,7 @@ function generateFormHTML(config: FormConfig): string {
             ${options}
           </select>
         `;
+      }
       case 'textarea':
         return `
           <label for="${field.name}">${field.label}</label>

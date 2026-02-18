@@ -462,6 +462,12 @@ class BrowserTool {
                 return params.params.selector || `${params.params.x || 0},${params.params.y || 0}`;
             case 'generatePdf':
                 return params.params.path || 'pdf';
+            case 'goBack':
+                return 'history:back';
+            case 'goForward':
+                return 'history:forward';
+            case 'go':
+                return `history:${params.params.delta}`;
             default:
                 return 'unknown';
         }
@@ -1336,6 +1342,139 @@ class BrowserTool {
                         },
                     };
                 }
+            }
+            case 'goBack': {
+                const backParams = params.params;
+                const timeout = backParams.timeout || config?.pageLoadTimeout;
+                const waitUntil = backParams.waitUntil;
+                const response = await page.goBack({
+                    timeout,
+                    waitUntil: this.mapWaitUntil(waitUntil, backend),
+                });
+                return {
+                    success: true,
+                    operation,
+                    data: {
+                        navigated: response !== null,
+                        url: response ? this.getCurrentUrl() : null
+                    },
+                    metadata: {
+                        url: this.getCurrentUrl(),
+                        title: await page.title(),
+                        executionTime: 0,
+                        permissionGranted: true,
+                        consoleMessages: this.consoleMessages,
+                        runtimeErrors: this.runtimeErrors,
+                        enhancedConsoleMessages: this.enhancedConsoleMessages,
+                        enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+                    },
+                };
+            }
+            case 'goForward': {
+                const forwardParams = params.params;
+                const timeout = forwardParams.timeout || config?.pageLoadTimeout;
+                const waitUntil = forwardParams.waitUntil;
+                const response = await page.goForward({
+                    timeout,
+                    waitUntil: this.mapWaitUntil(waitUntil, backend),
+                });
+                return {
+                    success: true,
+                    operation,
+                    data: {
+                        navigated: response !== null,
+                        url: response ? this.getCurrentUrl() : null
+                    },
+                    metadata: {
+                        url: this.getCurrentUrl(),
+                        title: await page.title(),
+                        executionTime: 0,
+                        permissionGranted: true,
+                        consoleMessages: this.consoleMessages,
+                        runtimeErrors: this.runtimeErrors,
+                        enhancedConsoleMessages: this.enhancedConsoleMessages,
+                        enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+                    },
+                };
+            }
+            case 'go': {
+                const goParams = params.params;
+                const { delta } = goParams;
+                const timeout = goParams.timeout || config?.pageLoadTimeout;
+                const waitUntil = goParams.waitUntil;
+                // Validate delta parameter
+                if (!Number.isInteger(delta)) {
+                    return {
+                        success: false,
+                        operation,
+                        error: 'Delta parameter must be an integer',
+                        metadata: {
+                            url: this.getCurrentUrl(),
+                            executionTime: 0,
+                            permissionGranted: true,
+                        },
+                    };
+                }
+                if (delta === 0) {
+                    // No navigation needed, just return current URL
+                    return {
+                        success: true,
+                        operation,
+                        data: { navigated: false, url: this.getCurrentUrl() },
+                        metadata: {
+                            url: this.getCurrentUrl(),
+                            title: await page.title(),
+                            executionTime: 0,
+                            permissionGranted: true,
+                            consoleMessages: this.consoleMessages,
+                            runtimeErrors: this.runtimeErrors,
+                            enhancedConsoleMessages: this.enhancedConsoleMessages,
+                            enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+                        },
+                    };
+                }
+                // Use goBack/goForward methods for multi-step navigation
+                const steps = Math.abs(delta);
+                const direction = delta < 0 ? 'back' : 'forward';
+                let response = null;
+                for (let i = 0; i < steps; i++) {
+                    if (direction === 'back') {
+                        response = await page.goBack({
+                            timeout,
+                            waitUntil: this.mapWaitUntil(waitUntil, backend),
+                        });
+                    }
+                    else {
+                        response = await page.goForward({
+                            timeout,
+                            waitUntil: this.mapWaitUntil(waitUntil, backend),
+                        });
+                    }
+                    // If any step returns null, we've hit the end of history
+                    if (!response) {
+                        break;
+                    }
+                }
+                return {
+                    success: true,
+                    operation,
+                    data: {
+                        navigated: response !== null,
+                        url: response ? this.getCurrentUrl() : null,
+                        delta,
+                        steps: steps
+                    },
+                    metadata: {
+                        url: this.getCurrentUrl(),
+                        title: await page.title(),
+                        executionTime: 0,
+                        permissionGranted: true,
+                        consoleMessages: this.consoleMessages,
+                        runtimeErrors: this.runtimeErrors,
+                        enhancedConsoleMessages: this.enhancedConsoleMessages,
+                        enhancedRuntimeErrors: this.enhancedRuntimeErrors,
+                    },
+                };
             }
             default:
                 return {

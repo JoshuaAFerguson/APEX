@@ -325,7 +325,7 @@ function buildFormField(field: FormField): string {
   const value = field.value ? ` value="${field.value}"` : '';
 
   switch (field.type) {
-    case 'select':
+    case 'select': {
       const options = field.options?.map(option =>
         `<option value="${option}"${field.value === option ? ' selected' : ''}>${option}</option>`
       ).join('') || '';
@@ -336,6 +336,7 @@ function buildFormField(field: FormField): string {
       ${options}
     </select>
   </div>`;
+    }
 
     case 'textarea':
       return `

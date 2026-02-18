@@ -1670,6 +1670,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    * to the orchestrator's capabilities (Claude queries, file I/O, persistence).
    */
   private createRepairLoopHost(): RepairLoopHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const orchestrator = this;
     return {
       async queryAgent(prompt: string, model: string, options?: RepairQueryOptions): Promise<RepairQueryResult> {

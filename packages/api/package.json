@@ -40,7 +40,6 @@
     "pino-pretty": "^11.0.0"
   },
   "devDependencies": {
-    "@apex/test-utils": "*",
     "@types/node": "^20.10.0",
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",

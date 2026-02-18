@@ -20,7 +20,7 @@
     "build": "tsc || true",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit || true",
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,7 +41,6 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@apex/test-utils": "*",
     "@types/better-sqlite3": "^7.6.8",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.10.0",

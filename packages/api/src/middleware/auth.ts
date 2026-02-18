@@ -161,4 +161,4 @@ const authPlugin = fp(authMiddleware, {
 });
 
 export default authPlugin;
-export { authMiddleware, AuthMiddlewareOptions };
+export { authMiddleware };

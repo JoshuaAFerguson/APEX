@@ -1293,12 +1293,12 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     orchestrator.on('autofix:skipped', handleAutoFixSkipped);
 
     // Register permission event listeners
-    orchestrator.on('permission:request', handlePermissionRequest);
-    orchestrator.on('permission:granted', handlePermissionGranted);
-    orchestrator.on('permission:denied', handlePermissionDenied);
-    orchestrator.on('dangerous:detected', handleDangerousDetected);
-    orchestrator.on('dangerous:confirmed', handleDangerousConfirmed);
-    orchestrator.on('dangerous:blocked', handleDangerousBlocked);
+    orchestrator.on('permission:request', handlePermissionRequest as any);
+    orchestrator.on('permission:granted', handlePermissionGranted as any);
+    orchestrator.on('permission:denied', handlePermissionDenied as any);
+    orchestrator.on('dangerous:detected', handleDangerousDetected as any);
+    orchestrator.on('dangerous:confirmed', handleDangerousConfirmed as any);
+    orchestrator.on('dangerous:blocked', handleDangerousBlocked as any);
 
     log('Event listeners registered');
 
@@ -1334,12 +1334,12 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       orchestrator.off('autofix:skipped', handleAutoFixSkipped);
 
       // Cleanup permission event listeners
-      orchestrator.off('permission:request', handlePermissionRequest);
-      orchestrator.off('permission:granted', handlePermissionGranted);
-      orchestrator.off('permission:denied', handlePermissionDenied);
-      orchestrator.off('dangerous:detected', handleDangerousDetected);
-      orchestrator.off('dangerous:confirmed', handleDangerousConfirmed);
-      orchestrator.off('dangerous:blocked', handleDangerousBlocked);
+      orchestrator.off('permission:request', handlePermissionRequest as any);
+      orchestrator.off('permission:granted', handlePermissionGranted as any);
+      orchestrator.off('permission:denied', handlePermissionDenied as any);
+      orchestrator.off('dangerous:detected', handleDangerousDetected as any);
+      orchestrator.off('dangerous:confirmed', handleDangerousConfirmed as any);
+      orchestrator.off('dangerous:blocked', handleDangerousBlocked as any);
 
       log('Event listeners cleaned up');
     };

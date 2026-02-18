@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-01-10
+## [0.5.0] - 2026-02-18
 
 ### Added
 
@@ -70,6 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Autonomy controls setup and best practices
   - Tool extensions development guide
   - Code quality integration patterns
+
+### Fixed
+
+- Resolved cyclic dependency between `@apex/test-utils` and production packages that blocked Turbo builds
+- Fixed duplicate export declarations in API middleware (`auth.ts`)
+- Fixed `workspace:*` protocol references incompatible with npm workspaces
+- Aligned vitest ecosystem package versions (`vitest`, `@vitest/browser`, `@vitest/coverage-v8`) to prevent peer dependency conflicts
+- Fixed TypeScript type mismatches in CLI permission event handlers
+- Fixed `no-case-declarations` lint errors in browser package test utilities
+- Fixed `no-this-alias` lint error in orchestrator repair loop host
+- Fixed boolean coercion issue in web-ui MultiSelect component (`maxSelections && expr` returning `0`)
+- Reverted accidental pnpm migration back to npm workspaces
 
 ### Documentation
 

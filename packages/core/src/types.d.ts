@@ -25472,7 +25472,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled: boolean;
         tags: string[];
         version: string;
-        enforcement: "warn" | "strict" | "audit" | "disabled";
+        enforcement: "strict" | "warn" | "audit" | "disabled";
         metadata?: Record<string, unknown> | undefined;
         name?: string | undefined;
         description?: string | undefined;
@@ -25548,7 +25548,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled?: boolean | undefined;
         tags?: string[] | undefined;
         version?: string | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         allowedPaths?: {
             maxDepth?: number | undefined;
             mode?: "allowlist" | "blocklist" | undefined;
@@ -25655,7 +25655,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }, {
             name: string;
             severity: "critical" | "high" | "medium" | "low";
@@ -25666,7 +25666,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }>, "many">;
         /** Severity levels configuration for this policy */
         severityLevels: z.ZodOptional<z.ZodObject<{
@@ -25700,7 +25700,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled: boolean;
         tags: string[];
         id: string;
-        enforcement: "warn" | "strict" | "audit" | "disabled";
+        enforcement: "strict" | "warn" | "audit" | "disabled";
         rules: {
             name: string;
             enabled: boolean;
@@ -25711,7 +25711,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
@@ -25735,7 +25735,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
@@ -25744,7 +25744,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         tags?: string[] | undefined;
         version?: string | undefined;
         updatedAt?: Date | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         severityLevels?: {
             default: "critical" | "high" | "medium" | "low";
             overrides?: Record<string, "critical" | "high" | "medium" | "low"> | undefined;
@@ -27791,7 +27791,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 action: "deny" | "warn" | "allow" | "require_approval";
                 metadata?: Record<string, unknown> | undefined;
                 description?: string | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }, {
                 name: string;
                 severity: "critical" | "high" | "medium" | "low";
@@ -27802,7 +27802,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 description?: string | undefined;
                 enabled?: boolean | undefined;
                 tags?: string[] | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }>, "many">>>;
         }, "strip", z.ZodTypeAny, {
             enabled: boolean;
@@ -27816,7 +27816,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 action: "deny" | "warn" | "allow" | "require_approval";
                 metadata?: Record<string, unknown> | undefined;
                 description?: string | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[];
             enforcement?: "warn" | "block" | "audit" | undefined;
             policyPath?: string | undefined;
@@ -27833,7 +27833,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 description?: string | undefined;
                 enabled?: boolean | undefined;
                 tags?: string[] | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[] | undefined;
             policyPath?: string | undefined;
         }>>;
@@ -28030,7 +28030,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 action: "deny" | "warn" | "allow" | "require_approval";
                 metadata?: Record<string, unknown> | undefined;
                 description?: string | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[];
             enforcement?: "warn" | "block" | "audit" | undefined;
             policyPath?: string | undefined;
@@ -28085,7 +28085,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 description?: string | undefined;
                 enabled?: boolean | undefined;
                 tags?: string[] | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[] | undefined;
             policyPath?: string | undefined;
         } | undefined;
@@ -28345,7 +28345,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled: boolean;
         tags: string[];
         id: string;
-        enforcement: "warn" | "strict" | "audit" | "disabled";
+        enforcement: "strict" | "warn" | "audit" | "disabled";
         rules: {
             name: string;
             enabled: boolean;
@@ -28356,7 +28356,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
@@ -29089,7 +29089,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled: boolean;
         tags: string[];
         version: string;
-        enforcement: "warn" | "strict" | "audit" | "disabled";
+        enforcement: "strict" | "warn" | "audit" | "disabled";
         metadata?: Record<string, unknown> | undefined;
         name?: string | undefined;
         description?: string | undefined;
@@ -29224,7 +29224,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 action: "deny" | "warn" | "allow" | "require_approval";
                 metadata?: Record<string, unknown> | undefined;
                 description?: string | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[];
             enforcement?: "warn" | "block" | "audit" | undefined;
             policyPath?: string | undefined;
@@ -29969,7 +29969,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         enabled?: boolean | undefined;
         tags?: string[] | undefined;
         version?: string | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         allowedPaths?: {
             maxDepth?: number | undefined;
             mode?: "allowlist" | "blocklist" | undefined;
@@ -30049,7 +30049,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
@@ -30058,7 +30058,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
         tags?: string[] | undefined;
         version?: string | undefined;
         updatedAt?: Date | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         severityLevels?: {
             default: "critical" | "high" | "medium" | "low";
             overrides?: Record<string, "critical" | "high" | "medium" | "low"> | undefined;
@@ -30200,7 +30200,7 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 description?: string | undefined;
                 enabled?: boolean | undefined;
                 tags?: string[] | undefined;
-                enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+                enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
             }[] | undefined;
             policyPath?: string | undefined;
         } | undefined;
@@ -35342,7 +35342,7 @@ export declare const PolicyConfigSchema: z.ZodObject<{
     enabled: boolean;
     tags: string[];
     version: string;
-    enforcement: "warn" | "strict" | "audit" | "disabled";
+    enforcement: "strict" | "warn" | "audit" | "disabled";
     metadata?: Record<string, unknown> | undefined;
     name?: string | undefined;
     description?: string | undefined;
@@ -35418,7 +35418,7 @@ export declare const PolicyConfigSchema: z.ZodObject<{
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
     version?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     allowedPaths?: {
         maxDepth?: number | undefined;
         mode?: "allowlist" | "blocklist" | undefined;
@@ -35570,7 +35570,7 @@ export declare const PolicyRuleSchema: z.ZodObject<{
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     name: string;
     severity: "critical" | "high" | "medium" | "low";
@@ -35581,7 +35581,7 @@ export declare const PolicyRuleSchema: z.ZodObject<{
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>;
 export type PolicyRule = z.infer<typeof PolicyRuleSchema>;
 /**
@@ -35681,7 +35681,7 @@ export declare const PathPolicySchema: z.ZodObject<{
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "path";
     name: string;
@@ -35701,7 +35701,7 @@ export declare const PathPolicySchema: z.ZodObject<{
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>;
 export type PathPolicy = z.infer<typeof PathPolicySchema>;
 /**
@@ -35904,7 +35904,7 @@ export declare const TestPolicySchema: z.ZodObject<{
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "test";
     name: string;
@@ -35936,7 +35936,7 @@ export declare const TestPolicySchema: z.ZodObject<{
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>;
 export type TestPolicy = z.infer<typeof TestPolicySchema>;
 /**
@@ -36296,7 +36296,7 @@ export declare const ApprovalPolicySchema: z.ZodObject<{
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "approval";
     name: string;
@@ -36345,7 +36345,7 @@ export declare const ApprovalPolicySchema: z.ZodObject<{
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>;
 export type ApprovalPolicy = z.infer<typeof ApprovalPolicySchema>;
 /**
@@ -36390,7 +36390,7 @@ export declare const PolicySchema: z.ZodObject<{
         action: "deny" | "warn" | "allow" | "require_approval";
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     }, {
         name: string;
         severity: "critical" | "high" | "medium" | "low";
@@ -36401,7 +36401,7 @@ export declare const PolicySchema: z.ZodObject<{
         description?: string | undefined;
         enabled?: boolean | undefined;
         tags?: string[] | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     }>, "many">;
     /** Severity levels configuration for this policy */
     severityLevels: z.ZodOptional<z.ZodObject<{
@@ -36435,7 +36435,7 @@ export declare const PolicySchema: z.ZodObject<{
     enabled: boolean;
     tags: string[];
     id: string;
-    enforcement: "warn" | "strict" | "audit" | "disabled";
+    enforcement: "strict" | "warn" | "audit" | "disabled";
     rules: {
         name: string;
         enabled: boolean;
@@ -36446,7 +36446,7 @@ export declare const PolicySchema: z.ZodObject<{
         action: "deny" | "warn" | "allow" | "require_approval";
         metadata?: Record<string, unknown> | undefined;
         description?: string | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     }[];
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
@@ -36470,7 +36470,7 @@ export declare const PolicySchema: z.ZodObject<{
         description?: string | undefined;
         enabled?: boolean | undefined;
         tags?: string[] | undefined;
-        enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     }[];
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
@@ -36479,7 +36479,7 @@ export declare const PolicySchema: z.ZodObject<{
     tags?: string[] | undefined;
     version?: string | undefined;
     updatedAt?: Date | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
     severityLevels?: {
         default: "critical" | "high" | "medium" | "low";
         overrides?: Record<string, "critical" | "high" | "medium" | "low"> | undefined;
@@ -36584,7 +36584,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "path";
     name: string;
@@ -36604,7 +36604,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>, z.ZodObject<{
     /** Unique identifier for this rule */
     id: z.ZodString;
@@ -36802,7 +36802,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "test";
     name: string;
@@ -36834,7 +36834,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>, z.ZodObject<{
     /** Unique identifier for this rule */
     id: z.ZodString;
@@ -37189,7 +37189,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     action: "deny" | "warn" | "allow" | "require_approval";
     metadata?: Record<string, unknown> | undefined;
     description?: string | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }, {
     type: "approval";
     name: string;
@@ -37238,7 +37238,7 @@ export declare const LegacyPolicySchema: z.ZodDiscriminatedUnion<"type", [z.ZodO
     description?: string | undefined;
     enabled?: boolean | undefined;
     tags?: string[] | undefined;
-    enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
 }>]>;
 export type LegacyPolicy = z.infer<typeof LegacyPolicySchema>;
 /**
@@ -37625,7 +37625,7 @@ export declare const TaskPolicyCheckResultSchema: z.ZodObject<{
         resolution?: string | undefined;
     }[];
     checkedAt: Date;
-    enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
     policyName?: string | undefined;
 }, {
     passed: boolean;
@@ -37647,7 +37647,7 @@ export declare const TaskPolicyCheckResultSchema: z.ZodObject<{
         resolution?: string | undefined;
     }[];
     checkedAt: Date;
-    enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
     policyName?: string | undefined;
 }>;
 export type TaskPolicyCheckResult = z.infer<typeof TaskPolicyCheckResultSchema>;
@@ -37771,7 +37771,7 @@ export declare const PolicyCheckResultSchema: z.ZodObject<{
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
     status: "deny" | "allow";
-    enforcementMode: "warn" | "strict" | "audit" | "disabled";
+    enforcementMode: "strict" | "warn" | "audit" | "disabled";
     violations: {
         timestamp: Date;
         message: string;
@@ -37797,7 +37797,7 @@ export declare const PolicyCheckResultSchema: z.ZodObject<{
     rulesFailed?: number | undefined;
 }, {
     status: "deny" | "allow";
-    enforcementMode: "warn" | "strict" | "audit" | "disabled";
+    enforcementMode: "strict" | "warn" | "audit" | "disabled";
     violations: {
         timestamp: Date;
         message: string;
@@ -37901,11 +37901,11 @@ export declare const PolicyCheckOptionsSchema: z.ZodObject<{
     continueOnViolation: boolean;
     includeWarnings: boolean;
     timeoutMs?: number | undefined;
-    enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
     policyIds?: string[] | undefined;
 }, {
     timeoutMs?: number | undefined;
-    enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+    enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
     maxViolations?: number | undefined;
     policyIds?: string[] | undefined;
     continueOnViolation?: boolean | undefined;
@@ -38269,7 +38269,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }, {
             name: string;
             severity: "critical" | "high" | "medium" | "low";
@@ -38280,7 +38280,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }>, "many">>>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
@@ -38294,7 +38294,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         enforcement?: "warn" | "block" | "audit" | undefined;
         policyPath?: string | undefined;
@@ -38311,7 +38311,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[] | undefined;
         policyPath?: string | undefined;
     }>>;
@@ -38508,7 +38508,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             action: "deny" | "warn" | "allow" | "require_approval";
             metadata?: Record<string, unknown> | undefined;
             description?: string | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[];
         enforcement?: "warn" | "block" | "audit" | undefined;
         policyPath?: string | undefined;
@@ -38563,7 +38563,7 @@ export declare const GuardrailConfigSchema: z.ZodObject<{
             description?: string | undefined;
             enabled?: boolean | undefined;
             tags?: string[] | undefined;
-            enforcement?: "warn" | "strict" | "audit" | "disabled" | undefined;
+            enforcement?: "strict" | "warn" | "audit" | "disabled" | undefined;
         }[] | undefined;
         policyPath?: string | undefined;
     } | undefined;
@@ -38951,7 +38951,7 @@ export declare const GuardrailEvaluationResultSchema: z.ZodObject<{
             resolution?: string | undefined;
         }[];
         checkedAt: Date;
-        enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
         policyName?: string | undefined;
     }, {
         passed: boolean;
@@ -38973,7 +38973,7 @@ export declare const GuardrailEvaluationResultSchema: z.ZodObject<{
             resolution?: string | undefined;
         }[];
         checkedAt: Date;
-        enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
         policyName?: string | undefined;
     }>>;
     /** Timestamp when evaluation was performed */
@@ -39048,7 +39048,7 @@ export declare const GuardrailEvaluationResultSchema: z.ZodObject<{
             resolution?: string | undefined;
         }[];
         checkedAt: Date;
-        enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
         policyName?: string | undefined;
     } | undefined;
     evaluationDurationMs?: number | undefined;
@@ -39120,7 +39120,7 @@ export declare const GuardrailEvaluationResultSchema: z.ZodObject<{
             resolution?: string | undefined;
         }[];
         checkedAt: Date;
-        enforcementMode?: "warn" | "strict" | "audit" | "disabled" | undefined;
+        enforcementMode?: "strict" | "warn" | "audit" | "disabled" | undefined;
         policyName?: string | undefined;
     } | undefined;
     evaluationDurationMs?: number | undefined;

@@ -24,7 +24,7 @@ export type BrowserToolLifecycleState = 'idle' | 'launching' | 'active' | 'clean
 /**
  * Supported browser operations
  */
-export type BrowserOperation = 'navigate' | 'click' | 'type' | 'screenshot' | 'compareScreenshot' | 'evaluate' | 'submit' | 'waitForSelector' | 'getAttribute' | 'getText' | 'getHtml' | 'scroll' | 'hover' | 'generatePdf';
+export type BrowserOperation = 'navigate' | 'click' | 'type' | 'screenshot' | 'compareScreenshot' | 'evaluate' | 'submit' | 'waitForSelector' | 'getAttribute' | 'getText' | 'getHtml' | 'scroll' | 'hover' | 'generatePdf' | 'goBack' | 'goForward' | 'go';
 /**
  * Options for BrowserTool constructor
  */
@@ -222,6 +222,35 @@ export interface BrowserGeneratePdfParams {
     footerTemplate?: string;
 }
 /**
+ * Parameters for goBack operation
+ */
+export interface BrowserGoBackParams {
+    /** Maximum time to wait for navigation in milliseconds */
+    timeout?: number;
+    /** Wait condition before considering navigation complete */
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+/**
+ * Parameters for goForward operation
+ */
+export interface BrowserGoForwardParams {
+    /** Maximum time to wait for navigation in milliseconds */
+    timeout?: number;
+    /** Wait condition before considering navigation complete */
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+/**
+ * Parameters for go operation
+ */
+export interface BrowserGoParams {
+    /** Number of entries to move in history (negative for back, positive for forward) */
+    delta: number;
+    /** Maximum time to wait for navigation in milliseconds */
+    timeout?: number;
+    /** Wait condition before considering navigation complete */
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+/**
  * Unified parameters type for all browser operations
  */
 export type BrowserParams = {
@@ -266,6 +295,15 @@ export type BrowserParams = {
 } | {
     operation: 'generatePdf';
     params: BrowserGeneratePdfParams;
+} | {
+    operation: 'goBack';
+    params: BrowserGoBackParams;
+} | {
+    operation: 'goForward';
+    params: BrowserGoForwardParams;
+} | {
+    operation: 'go';
+    params: BrowserGoParams;
 };
 /**
  * Result of browser operation

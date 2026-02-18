@@ -226,7 +226,7 @@ const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  disabled={maxSelections && value.length >= maxSelections}
+                  disabled={!!maxSelections && value.length >= maxSelections}
                   className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid={`${testId}-select-all`}
                 >
@@ -253,7 +253,7 @@ const MultiSelect = forwardRef<HTMLButtonElement, MultiSelectProps>(
             {/* Options */}
             {filteredOptions.map((option) => {
               const isSelected = value.includes(option.value)
-              const isDisabled = option.disabled || (maxSelections && !isSelected && value.length >= maxSelections)
+              const isDisabled = option.disabled || (!!maxSelections && !isSelected && value.length >= maxSelections)
 
               return (
                 <div
