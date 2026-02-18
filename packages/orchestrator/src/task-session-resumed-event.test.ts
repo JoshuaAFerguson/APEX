@@ -126,6 +126,7 @@ Test agent for session resumed events.
         'paused',
         'failed',
         'waiting-approval',
+        'awaiting-approval',
         'planning',
         'in-progress'
       ];

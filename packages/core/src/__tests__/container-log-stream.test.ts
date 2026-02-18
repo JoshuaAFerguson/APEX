@@ -6,10 +6,15 @@ import { ContainerRuntime } from '../container-runtime';
 import { ContainerLogStreamOptions, ContainerLogEntry } from '../types';
 
 // Mock child_process.spawn
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 // Mock ContainerRuntime
 vi.mock('../container-runtime');

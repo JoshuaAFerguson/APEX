@@ -24,6 +24,14 @@ import {
   PLATFORMS,
   isValidPlatform,
   type Platform,
+  // Permission mock utilities
+  createMockPermission,
+  createMockExtendedPermission,
+  createMockPermissionQuery,
+  createMockToolPermissionResult,
+  mockAgentPermissions,
+  mockToolPermissions,
+  createMockPermissionContext,
 } from '../test-utils.js';
 
 // Mock os module
@@ -409,8 +417,17 @@ describe('Usage examples', () => {
     // This would skip on Windows platforms
     // skipOnWindows();
 
-    // Test Unix-specific functionality
-    expect(true).toBe(true);
+    const restore = mockPlatform('linux');
+
+    try {
+      const unixResult = runOnUnix(() => 'unix-only');
+      const windowsResult = runOnWindows(() => 'windows-only');
+
+      expect(unixResult).toBe('unix-only');
+      expect(windowsResult).toBeUndefined();
+    } finally {
+      restore();
+    }
   });
 
   it('demonstrates conditional execution', () => {
@@ -444,5 +461,214 @@ describe('Usage examples', () => {
         restore();
       }
     }
+  });
+});
+
+// Tests for permission mock utilities
+describe('Permission Mock Utilities', () => {
+  describe('createMockPermission', () => {
+    it('should create a basic mock permission with defaults', () => {
+      const permission = createMockPermission();
+
+      expect(permission).toMatchObject({
+        tool: 'Read',
+        level: 'allow-always',
+        createdAt: expect.any(Date)
+      });
+    });
+
+    it('should allow overriding properties', () => {
+      const permission = createMockPermission({
+        tool: 'Write',
+        level: 'allow-once',
+        scope: '/workspace/**'
+      });
+
+      expect(permission).toMatchObject({
+        tool: 'Write',
+        level: 'allow-once',
+        scope: '/workspace/**',
+        createdAt: expect.any(Date)
+      });
+    });
+  });
+
+  describe('createMockExtendedPermission', () => {
+    it('should create an extended permission with defaults', () => {
+      const permission = createMockExtendedPermission();
+
+      expect(permission).toMatchObject({
+        tool: 'Read',
+        level: 'allow-always',
+        createdAt: expect.any(Date)
+      });
+    });
+
+    it('should allow overriding all properties', () => {
+      const permission = createMockExtendedPermission({
+        tool: 'Bash',
+        level: 'allow-once',
+        grantReason: 'Shell access for testing',
+        grantedBy: 'user-123'
+      });
+
+      expect(permission).toMatchObject({
+        tool: 'Bash',
+        level: 'allow-once',
+        grantReason: 'Shell access for testing',
+        grantedBy: 'user-123'
+      });
+    });
+  });
+
+  describe('mockAgentPermissions', () => {
+    it('should create an agent permission context', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once' })
+      ];
+
+      const context = mockAgentPermissions('developer', permissions);
+
+      expect(context.agent).toBe('developer');
+      expect(context.permissions).toEqual(permissions);
+      expect(context.checkPermission).toBeInstanceOf(Function);
+      expect(context.hasPermission).toBeInstanceOf(Function);
+      expect(vi.isMockFunction(context.grantPermission)).toBe(true);
+      expect(vi.isMockFunction(context.revokePermission)).toBe(true);
+    });
+
+    it('should check permissions correctly', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' }),
+        createMockPermission({ tool: 'Write', level: 'allow-once', scope: '/workspace' })
+      ];
+
+      const context = mockAgentPermissions('developer', permissions);
+
+      // Check existing permission
+      const result1 = context.checkPermission('Read');
+      expect(result1.allowed).toBe(true);
+      expect(result1.level).toBe('allow-always');
+
+      // Check non-existing permission
+      const result2 = context.checkPermission('Bash');
+      expect(result2.allowed).toBe(false);
+      expect(result2.level).toBe(null);
+
+      // Check scoped permission
+      const result3 = context.checkPermission('Write', '/workspace');
+      expect(result3.allowed).toBe(true);
+      expect(result3.level).toBe('allow-once');
+    });
+
+    it('should check hasPermission correctly', () => {
+      const permissions = [
+        createMockPermission({ tool: 'Read', level: 'allow-always' })
+      ];
+
+      const context = mockAgentPermissions('developer', permissions);
+
+      expect(context.hasPermission('Read')).toBe(true);
+      expect(context.hasPermission('Write')).toBe(false);
+    });
+  });
+
+  describe('mockToolPermissions', () => {
+    it('should create a tool permission context', () => {
+      const permissions = [
+        { level: 'allow-always' as const, scope: '/workspace/**' },
+        { level: 'deny' as const, scope: '/system/**' }
+      ];
+
+      const context = mockToolPermissions('Read', permissions);
+
+      expect(context.tool).toBe('Read');
+      expect(context.permissions).toHaveLength(2);
+      expect(context.checkAccess).toBeInstanceOf(Function);
+      expect(context.isAllowed).toBeInstanceOf(Function);
+      expect(context.requiresConfirmation).toBeInstanceOf(Function);
+    });
+
+    it('should check access correctly', () => {
+      const permissions = [
+        { level: 'allow-always' as const, scope: '/workspace/**' },
+        { level: 'deny' as const, scope: '/system/**' }
+      ];
+
+      const context = mockToolPermissions('Read', permissions);
+
+      const result1 = context.checkAccess('/workspace/file.txt');
+      expect(result1.allowed).toBe(true);
+      expect(result1.level).toBe('allow-always');
+
+      const result2 = context.checkAccess('/system/file.txt');
+      expect(result2.allowed).toBe(false);
+      expect(result2.level).toBe('deny');
+    });
+
+    it('should handle permission checks correctly', () => {
+      const permissions = [
+        { level: 'allow-once' as const },
+        { level: 'deny' as const, scope: '/restricted' }
+      ];
+
+      const context = mockToolPermissions('Bash', permissions);
+
+      expect(context.isAllowed()).toBe(true);
+      expect(context.isAllowed('/restricted')).toBe(false);
+      expect(context.requiresConfirmation()).toBe(true);
+    });
+  });
+
+  describe('createMockPermissionContext', () => {
+    it('should create a comprehensive permission context', () => {
+      const context = createMockPermissionContext({
+        preset: 'autonomous',
+        agents: {
+          developer: [
+            { tool: 'Read', level: 'allow-always' }
+          ]
+        },
+        tools: {
+          Write: [{ level: 'allow-once' }]
+        }
+      });
+
+      expect(context.preset).toBe('autonomous');
+      expect(context.agents.developer).toBeDefined();
+      expect(context.tools.Write).toBeDefined();
+      expect(context.checkGlobalPermission).toBeInstanceOf(Function);
+      expect(vi.isMockFunction(context.grantPermission)).toBe(true);
+    });
+
+    it('should handle global permission checks', () => {
+      const context = createMockPermissionContext({
+        preset: 'review-all',
+        tools: {
+          Read: [{ level: 'allow-always', scope: '/workspace/**' }]
+        }
+      });
+
+      // Tool-specific permission should take precedence
+      const result1 = context.checkGlobalPermission('Read', '/workspace/file.txt');
+      expect(result1.allowed).toBe(true);
+      expect(result1.level).toBe('allow-always');
+
+      // Should fall back to preset behavior
+      const result2 = context.checkGlobalPermission('Bash');
+      expect(result2.allowed).toBe(false);
+      expect(result2.reason).toContain('Preset behavior');
+    });
+
+    it('should handle autonomous preset correctly', () => {
+      const context = createMockPermissionContext({
+        preset: 'autonomous'
+      });
+
+      const result = context.checkGlobalPermission('any-tool');
+      expect(result.allowed).toBe(true);
+      expect(result.level).toBe('allow-once');
+    });
   });
 });

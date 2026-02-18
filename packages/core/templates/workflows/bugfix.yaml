@@ -1,0 +1,34 @@
+name: bugfix
+description: Bug investigation and fix workflow
+trigger:
+  - manual
+  - apex:bugfix
+
+stages:
+  - name: investigation
+    agent: developer
+    description: Investigate and locate the bug
+    outputs:
+      - root_cause
+      - affected_files
+
+  - name: fix
+    agent: developer
+    description: Implement the fix
+    dependsOn: [investigation]
+    outputs:
+      - code_changes
+
+  - name: testing
+    agent: tester
+    description: Add regression tests
+    dependsOn: [fix]
+    outputs:
+      - test_files
+
+  - name: review
+    agent: reviewer
+    description: Review the fix
+    dependsOn: [fix, testing]
+    outputs:
+      - review_findings

@@ -1,0 +1,96 @@
+# Schema Violations Fixtures
+# Tool configurations that violate schema constraints for error testing
+
+# Name exceeds max length (64 characters)
+- name: ThisIsAVeryLongToolNameThatExceedsTheMaximumAllowedLengthOfSixtyFourCharacters
+  description: Tool with name that is too long
+  command: echo
+  enabled: true
+
+# Negative timeout
+- name: NegativeTimeoutTool
+  description: Tool with negative timeout
+  command: echo
+  timeoutMs: -1000
+  enabled: true
+
+# Zero timeout (should fail minimum constraint)
+- name: ZeroTimeoutTool
+  description: Tool with zero timeout
+  command: echo
+  timeoutMs: 0
+  enabled: true
+
+# Timeout as float (should be integer)
+- name: FloatTimeoutTool
+  description: Tool with float timeout
+  command: echo
+  timeoutMs: 5000.5
+  enabled: true
+
+# Invalid outputParser enum value
+- name: WrongEnumTool
+  description: Tool with wrong enum value
+  command: echo
+  outputParser: csv
+  enabled: true
+
+# Parameters with invalid type property
+- name: InvalidParamTypeTool
+  description: Tool with invalid parameter type
+  command: echo
+  parameters:
+    type: object
+    properties:
+      invalid:
+        type: invalid_type
+    additionalProperties: false
+  enabled: true
+
+# Parameters missing type (root level)
+- name: NoParamTypeTool
+  description: Tool with missing parameters type
+  command: echo
+  parameters:
+    properties:
+      field:
+        type: string
+  enabled: true
+
+# Invalid parameter property type
+- name: BadPropertyTypeTool
+  description: Tool with bad property type
+  command: echo
+  parameters:
+    type: object
+    properties:
+      field:
+        type: undefined
+    additionalProperties: false
+  enabled: true
+
+# Env values that aren't strings
+- name: NonStringEnvValuesTool
+  description: Tool with non-string env values
+  command: echo
+  env:
+    STRING_VAL: "valid"
+    NUMBER_VAL: 12345
+    BOOL_VAL: true
+    OBJECT_VAL:
+      nested: value
+  enabled: true
+
+# Required parameter not in properties
+- name: InvalidRequiredTool
+  description: Tool with required param not in properties
+  command: echo
+  parameters:
+    type: object
+    properties:
+      existingParam:
+        type: string
+    required:
+      - nonExistentParam
+    additionalProperties: false
+  enabled: true

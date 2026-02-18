@@ -56,7 +56,7 @@ describe('TaskSessionResumedEvent Implementation Coverage', () => {
     it('should support all valid TaskStatus values for previousStatus field', () => {
       const validStatuses: TaskStatus[] = [
         'pending', 'queued', 'planning', 'in-progress', 'waiting-approval',
-        'paused', 'completed', 'failed', 'cancelled'
+        'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'
       ];
 
       validStatuses.forEach(status => {

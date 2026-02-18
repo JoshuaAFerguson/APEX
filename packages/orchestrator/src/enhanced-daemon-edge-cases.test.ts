@@ -262,8 +262,7 @@ Test agent for edge cases.
         expect(eventHandler).toHaveBeenCalledTimes(1);
       }
 
-      // Should not throw errors
-      expect(true).toBe(true);
+      expect((enhancedDaemon as any).isRunning).toBe(false);
     });
 
     it('should handle restart scenarios with pending events', async () => {
@@ -585,8 +584,7 @@ Test agent for edge cases.
         // Expected if orchestrator was shut down
       }
 
-      // No errors should be thrown during cleanup
-      expect(true).toBe(true);
+      expect((enhancedDaemon as any).isRunning).toBe(false);
     });
   });
 });

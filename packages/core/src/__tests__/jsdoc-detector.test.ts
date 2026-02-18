@@ -13,7 +13,7 @@ import {
   type OutdatedDocumentation,
 } from '../jsdoc-detector.js';
 
-describe.skip('JSDoc Detector', () => {
+describe('JSDoc Detector', () => {
   describe('parseJSDocComment', () => {
     it('parses simple JSDoc comment', () => {
       const comment = '/** This is a simple description */';

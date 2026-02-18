@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Form Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f8ff;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .form-section {
+            margin: 25px 0;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .form-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .form-row > div {
+            flex: 1;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease;
+        }
+        input:focus, textarea:focus, select:focus {
+            border-color: #007bff;
+            outline: none;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+        }
+        input[type="checkbox"], input[type="radio"] {
+            width: auto;
+            margin-right: 8px;
+        }
+        .checkbox-group, .radio-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        .checkbox-item, .radio-item {
+            display: flex;
+            align-items: center;
+            min-width: 120px;
+        }
+        .checkbox-item label, .radio-item label {
+            margin: 0 0 0 5px;
+            font-weight: normal;
+        }
+        button {
+            padding: 12px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #545b62;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.success:hover {
+            background: #1e7e34;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .validation-message {
+            color: #dc3545;
+            font-size: 12px;
+            margin: 5px 0;
+        }
+        .success-message {
+            color: #28a745;
+            font-size: 12px;
+            margin: 5px 0;
+        }
+        .form-actions {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .navigation {
+            margin: 20px 0;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        #validation-results {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 4px;
+            min-height: 20px;
+        }
+        .field-counter {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="page-title">Comprehensive Form Test Page</h1>
+        <p>This page contains extensive form controls for testing browser automation, form filling, validation, and interaction capabilities.</p>
+
+        <div class="status">
+            <strong>Page Status:</strong> Loaded at <span id="load-time"></span><br>
+            <strong>Total Form Fields:</strong> <span id="field-count">0</span><br>
+            <strong>Form Sections:</strong> <span id="section-count">0</span>
+        </div>
+
+        <form id="comprehensive-form" novalidate>
+            <!-- Basic Text Inputs -->
+            <div class="form-section">
+                <h3>Text Input Fields</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="firstName">First Name *:</label>
+                        <input type="text" id="firstName" name="firstName" placeholder="Enter first name" required>
+                        <div id="firstName-validation" class="validation-message"></div>
+                    </div>
+                    <div>
+                        <label for="lastName">Last Name *:</label>
+                        <input type="text" id="lastName" name="lastName" placeholder="Enter last name" required>
+                        <div id="lastName-validation" class="validation-message"></div>
+                    </div>
+                </div>
+
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" placeholder="Choose a username" maxlength="20">
+                <div class="field-counter">Max 20 characters</div>
+
+                <label for="bio">Bio/Description:</label>
+                <textarea id="bio" name="bio" rows="3" placeholder="Tell us about yourself..." maxlength="500"></textarea>
+                <div class="field-counter">Max 500 characters</div>
+            </div>
+
+            <!-- Contact Information -->
+            <div class="form-section">
+                <h3>Contact Information</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="email">Email Address *:</label>
+                        <input type="email" id="email" name="email" placeholder="user@example.com" required>
+                        <div id="email-validation" class="validation-message"></div>
+                    </div>
+                    <div>
+                        <label for="confirmEmail">Confirm Email:</label>
+                        <input type="email" id="confirmEmail" name="confirmEmail" placeholder="Confirm email">
+                        <div id="confirmEmail-validation" class="validation-message"></div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="phone">Phone Number:</label>
+                        <input type="tel" id="phone" name="phone" placeholder="(555) 123-4567" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}">
+                    </div>
+                    <div>
+                        <label for="website">Website:</label>
+                        <input type="url" id="website" name="website" placeholder="https://example.com">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security -->
+            <div class="form-section">
+                <h3>Security Settings</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="password">Password *:</label>
+                        <input type="password" id="password" name="password" placeholder="Enter secure password" required minlength="8">
+                        <div id="password-validation" class="validation-message"></div>
+                        <div class="field-counter">Minimum 8 characters</div>
+                    </div>
+                    <div>
+                        <label for="confirmPassword">Confirm Password:</label>
+                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm password">
+                        <div id="confirmPassword-validation" class="validation-message"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Numbers and Dates -->
+            <div class="form-section">
+                <h3>Numbers and Dates</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="age">Age:</label>
+                        <input type="number" id="age" name="age" min="13" max="120" placeholder="Enter age">
+                    </div>
+                    <div>
+                        <label for="salary">Annual Salary:</label>
+                        <input type="number" id="salary" name="salary" min="0" step="1000" placeholder="50000">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="birthDate">Date of Birth:</label>
+                        <input type="date" id="birthDate" name="birthDate">
+                    </div>
+                    <div>
+                        <label for="startTime">Preferred Contact Time:</label>
+                        <input type="time" id="startTime" name="startTime">
+                    </div>
+                </div>
+
+                <label for="appointmentDateTime">Appointment Date & Time:</label>
+                <input type="datetime-local" id="appointmentDateTime" name="appointmentDateTime">
+
+                <label for="experienceYears">Years of Experience:</label>
+                <input type="range" id="experienceYears" name="experienceYears" min="0" max="50" value="5" oninput="updateRangeValue(this)">
+                <div id="experienceYears-value" class="field-counter">5 years</div>
+            </div>
+
+            <!-- Selection Fields -->
+            <div class="form-section">
+                <h3>Selection Fields</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="country">Country:</label>
+                        <select id="country" name="country" required>
+                            <option value="">Select a country</option>
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="UK">United Kingdom</option>
+                            <option value="AU">Australia</option>
+                            <option value="DE">Germany</option>
+                            <option value="FR">France</option>
+                            <option value="JP">Japan</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="timezone">Timezone:</label>
+                        <select id="timezone" name="timezone">
+                            <option value="">Auto-detect</option>
+                            <option value="EST">Eastern Standard Time</option>
+                            <option value="CST">Central Standard Time</option>
+                            <option value="MST">Mountain Standard Time</option>
+                            <option value="PST">Pacific Standard Time</option>
+                            <option value="UTC">UTC</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label for="skills">Skills (Multiple Selection):</label>
+                <select id="skills" name="skills" multiple size="6">
+                    <option value="javascript">JavaScript</option>
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="csharp">C#</option>
+                    <option value="cpp">C++</option>
+                    <option value="php">PHP</option>
+                    <option value="ruby">Ruby</option>
+                    <option value="go">Go</option>
+                </select>
+                <div class="field-counter">Hold Ctrl/Cmd to select multiple</div>
+            </div>
+
+            <!-- Radio Buttons -->
+            <div class="form-section">
+                <h3>Radio Button Groups</h3>
+                <label>Gender:</label>
+                <div class="radio-group">
+                    <div class="radio-item">
+                        <input type="radio" id="gender-male" name="gender" value="male">
+                        <label for="gender-male">Male</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="gender-female" name="gender" value="female">
+                        <label for="gender-female">Female</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="gender-other" name="gender" value="other">
+                        <label for="gender-other">Other</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="gender-prefer-not" name="gender" value="prefer-not-to-say" checked>
+                        <label for="gender-prefer-not">Prefer not to say</label>
+                    </div>
+                </div>
+
+                <label>Employment Status:</label>
+                <div class="radio-group">
+                    <div class="radio-item">
+                        <input type="radio" id="emp-full" name="employment" value="full-time">
+                        <label for="emp-full">Full-time</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="emp-part" name="employment" value="part-time">
+                        <label for="emp-part">Part-time</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="emp-freelance" name="employment" value="freelance">
+                        <label for="emp-freelance">Freelance</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="emp-unemployed" name="employment" value="unemployed">
+                        <label for="emp-unemployed">Unemployed</label>
+                    </div>
+                    <div class="radio-item">
+                        <input type="radio" id="emp-student" name="employment" value="student">
+                        <label for="emp-student">Student</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Checkboxes -->
+            <div class="form-section">
+                <h3>Checkbox Groups</h3>
+                <label>Interests (Check all that apply):</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-tech" name="interests" value="technology">
+                        <label for="interest-tech">Technology</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-sports" name="interests" value="sports">
+                        <label for="interest-sports">Sports</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-music" name="interests" value="music" checked>
+                        <label for="interest-music">Music</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-travel" name="interests" value="travel">
+                        <label for="interest-travel">Travel</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-reading" name="interests" value="reading" checked>
+                        <label for="interest-reading">Reading</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="interest-cooking" name="interests" value="cooking">
+                        <label for="interest-cooking">Cooking</label>
+                    </div>
+                </div>
+
+                <label>Notification Preferences:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="notif-email" name="notifications" value="email" checked>
+                        <label for="notif-email">Email notifications</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="notif-sms" name="notifications" value="sms">
+                        <label for="notif-sms">SMS notifications</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="notif-push" name="notifications" value="push">
+                        <label for="notif-push">Push notifications</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Upload -->
+            <div class="form-section">
+                <h3>File Upload</h3>
+                <label for="avatar">Profile Picture:</label>
+                <input type="file" id="avatar" name="avatar" accept="image/*">
+
+                <label for="resume">Resume/CV:</label>
+                <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx">
+
+                <label for="portfolio">Portfolio Files (Multiple):</label>
+                <input type="file" id="portfolio" name="portfolio" multiple accept="image/*,.pdf">
+            </div>
+
+            <!-- Agreement and Terms -->
+            <div class="form-section">
+                <h3>Agreements</h3>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="terms" name="terms" value="agreed" required>
+                    <label for="terms">I agree to the Terms and Conditions *</label>
+                </div>
+                <div id="terms-validation" class="validation-message"></div>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="newsletter" name="newsletter" value="subscribed">
+                    <label for="newsletter">Subscribe to our newsletter</label>
+                </div>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="marketing" name="marketing" value="allowed">
+                    <label for="marketing">Allow marketing communications</label>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="form-actions">
+                <button type="submit" id="submit-btn">Submit Form</button>
+                <button type="reset" id="reset-btn" class="secondary">Reset Form</button>
+                <button type="button" id="validate-btn" class="success" onclick="validateForm()">Validate Form</button>
+                <button type="button" id="fill-test-btn" onclick="fillFormWithTestData()">Fill Test Data</button>
+                <button type="button" id="clear-btn" class="secondary" onclick="clearForm()">Clear All</button>
+            </div>
+        </form>
+
+        <!-- Validation Results -->
+        <div id="validation-results"></div>
+
+        <!-- Form Status -->
+        <div class="status">
+            <strong>Form Status:</strong><br>
+            <div id="form-status">Ready for input</div>
+            <div id="field-summary"></div>
+        </div>
+
+        <!-- Navigation Links -->
+        <div class="navigation">
+            <strong>Test Navigation:</strong><br>
+            <button onclick="location.href='test-page.html'">Basic Test Page</button>
+            <button onclick="location.href='page2.html'">Page 2</button>
+            <button onclick="location.href='page3.html'">Page 3</button>
+            <button onclick="location.href='iframe-test.html'">Iframe Test</button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('load-time').textContent = new Date().toISOString();
+            updateFieldCounts();
+        });
+
+        function updateFieldCounts() {
+            const fields = document.querySelectorAll('#comprehensive-form input, #comprehensive-form textarea, #comprehensive-form select');
+            const sections = document.querySelectorAll('.form-section');
+            document.getElementById('field-count').textContent = fields.length;
+            document.getElementById('section-count').textContent = sections.length;
+
+            // Update field summary
+            const summary = {
+                text: document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"]').length,
+                number: document.querySelectorAll('input[type="number"], input[type="range"]').length,
+                date: document.querySelectorAll('input[type="date"], input[type="time"], input[type="datetime-local"]').length,
+                select: document.querySelectorAll('select').length,
+                checkbox: document.querySelectorAll('input[type="checkbox"]').length,
+                radio: document.querySelectorAll('input[type="radio"]').length,
+                file: document.querySelectorAll('input[type="file"]').length,
+                textarea: document.querySelectorAll('textarea').length
+            };
+
+            document.getElementById('field-summary').innerHTML =
+                `Text: ${summary.text}, Numbers: ${summary.number}, Dates: ${summary.date}, Selects: ${summary.select}, Checkboxes: ${summary.checkbox}, Radios: ${summary.radio}, Files: ${summary.file}, Textareas: ${summary.textarea}`;
+        }
+
+        function updateStatus(message) {
+            const statusElement = document.getElementById('form-status');
+            const timestamp = new Date().toISOString();
+            statusElement.innerHTML = `${message} at ${timestamp}`;
+        }
+
+        function updateRangeValue(range) {
+            const valueDisplay = document.getElementById(range.id + '-value');
+            if (valueDisplay) {
+                valueDisplay.textContent = `${range.value} years`;
+            }
+        }
+
+        function validateForm() {
+            const results = [];
+            let isValid = true;
+
+            // Clear previous validation messages
+            document.querySelectorAll('.validation-message').forEach(el => el.textContent = '');
+
+            // Validate required fields
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName = document.getElementById('lastName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const confirmEmail = document.getElementById('confirmEmail').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const terms = document.getElementById('terms').checked;
+            const country = document.getElementById('country').value;
+
+            // First name validation
+            if (!firstName) {
+                results.push('❌ First name is required');
+                document.getElementById('firstName-validation').textContent = 'First name is required';
+                isValid = false;
+            } else {
+                results.push('✅ First name is valid');
+            }
+
+            // Last name validation
+            if (!lastName) {
+                results.push('❌ Last name is required');
+                document.getElementById('lastName-validation').textContent = 'Last name is required';
+                isValid = false;
+            } else {
+                results.push('✅ Last name is valid');
+            }
+
+            // Email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!email) {
+                results.push('❌ Email is required');
+                document.getElementById('email-validation').textContent = 'Email is required';
+                isValid = false;
+            } else if (!emailRegex.test(email)) {
+                results.push('❌ Email format is invalid');
+                document.getElementById('email-validation').textContent = 'Invalid email format';
+                isValid = false;
+            } else {
+                results.push('✅ Email is valid');
+            }
+
+            // Confirm email validation
+            if (confirmEmail && confirmEmail !== email) {
+                results.push('❌ Emails do not match');
+                document.getElementById('confirmEmail-validation').textContent = 'Emails do not match';
+                isValid = false;
+            } else if (confirmEmail) {
+                results.push('✅ Email confirmation matches');
+            }
+
+            // Password validation
+            if (!password) {
+                results.push('❌ Password is required');
+                document.getElementById('password-validation').textContent = 'Password is required';
+                isValid = false;
+            } else if (password.length < 8) {
+                results.push('❌ Password must be at least 8 characters');
+                document.getElementById('password-validation').textContent = 'Password must be at least 8 characters';
+                isValid = false;
+            } else {
+                results.push('✅ Password is valid');
+            }
+
+            // Confirm password validation
+            if (confirmPassword && confirmPassword !== password) {
+                results.push('❌ Passwords do not match');
+                document.getElementById('confirmPassword-validation').textContent = 'Passwords do not match';
+                isValid = false;
+            } else if (confirmPassword) {
+                results.push('✅ Password confirmation matches');
+            }
+
+            // Terms validation
+            if (!terms) {
+                results.push('❌ You must agree to the terms and conditions');
+                document.getElementById('terms-validation').textContent = 'You must agree to the terms';
+                isValid = false;
+            } else {
+                results.push('✅ Terms accepted');
+            }
+
+            // Country validation
+            if (!country) {
+                results.push('⚠️ Country selection recommended');
+            } else {
+                results.push('✅ Country selected');
+            }
+
+            // Display results
+            const resultsDiv = document.getElementById('validation-results');
+            resultsDiv.innerHTML = results.join('<br>');
+            resultsDiv.style.background = isValid ? '#d4edda' : '#f8d7da';
+            resultsDiv.style.color = isValid ? '#155724' : '#721c24';
+            resultsDiv.style.padding = '10px';
+
+            updateStatus(isValid ? 'Form validation passed' : 'Form validation failed');
+            return isValid;
+        }
+
+        function fillFormWithTestData() {
+            // Fill all form fields with realistic test data
+            document.getElementById('firstName').value = 'John';
+            document.getElementById('lastName').value = 'Doe';
+            document.getElementById('username').value = 'johndoe123';
+            document.getElementById('email').value = 'john.doe@example.com';
+            document.getElementById('confirmEmail').value = 'john.doe@example.com';
+            document.getElementById('phone').value = '(555) 123-4567';
+            document.getElementById('website').value = 'https://johndoe.dev';
+            document.getElementById('password').value = 'SecurePass123!';
+            document.getElementById('confirmPassword').value = 'SecurePass123!';
+            document.getElementById('bio').value = 'Software developer with 5+ years of experience in web technologies.';
+
+            document.getElementById('age').value = '28';
+            document.getElementById('salary').value = '75000';
+            document.getElementById('birthDate').value = '1995-06-15';
+            document.getElementById('startTime').value = '09:00';
+            document.getElementById('appointmentDateTime').value = '2023-12-15T14:30';
+            document.getElementById('experienceYears').value = '7';
+            updateRangeValue(document.getElementById('experienceYears'));
+
+            document.getElementById('country').value = 'US';
+            document.getElementById('timezone').value = 'EST';
+
+            // Select multiple skills
+            const skillsSelect = document.getElementById('skills');
+            skillsSelect.options[0].selected = true; // javascript
+            skillsSelect.options[1].selected = true; // python
+            skillsSelect.options[2].selected = true; // java
+
+            // Select radio buttons
+            document.getElementById('gender-male').checked = true;
+            document.getElementById('emp-full').checked = true;
+
+            // Check some checkboxes
+            document.getElementById('interest-tech').checked = true;
+            document.getElementById('interest-music').checked = true;
+            document.getElementById('interest-reading').checked = true;
+            document.getElementById('notif-email').checked = true;
+            document.getElementById('notif-push').checked = true;
+            document.getElementById('terms').checked = true;
+            document.getElementById('newsletter').checked = true;
+
+            updateStatus('Form filled with comprehensive test data');
+        }
+
+        function clearForm() {
+            document.getElementById('comprehensive-form').reset();
+            document.querySelectorAll('.validation-message').forEach(el => el.textContent = '');
+            document.getElementById('validation-results').innerHTML = '';
+            document.getElementById('validation-results').style.background = '';
+            updateRangeValue(document.getElementById('experienceYears'));
+            updateStatus('Form cleared');
+        }
+
+        // Form submission handler
+        document.getElementById('comprehensive-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            if (validateForm()) {
+                // Collect all form data
+                const formData = new FormData(e.target);
+                const data = {};
+
+                // Handle regular form fields
+                for (let [key, value] of formData.entries()) {
+                    if (data[key]) {
+                        // Convert to array if multiple values exist
+                        if (Array.isArray(data[key])) {
+                            data[key].push(value);
+                        } else {
+                            data[key] = [data[key], value];
+                        }
+                    } else {
+                        data[key] = value;
+                    }
+                }
+
+                console.log('Form data collected:', data);
+                updateStatus('Form submitted successfully (test mode)');
+
+                document.getElementById('validation-results').innerHTML =
+                    '✅ Form submitted successfully! Check console (F12) for form data.';
+                document.getElementById('validation-results').style.background = '#d4edda';
+                document.getElementById('validation-results').style.color = '#155724';
+                document.getElementById('validation-results').style.padding = '10px';
+            }
+        });
+
+        // Add a unique identifier for this page instance
+        window.pageInstance = Math.random().toString(36).substr(2, 9);
+
+        // Expose test helpers to global scope
+        window.testHelpers = {
+            getPageInstance: () => window.pageInstance,
+            fillForm: fillFormWithTestData,
+            validateForm: validateForm,
+            clearForm: clearForm,
+            getFormData: () => {
+                const formData = new FormData(document.getElementById('comprehensive-form'));
+                const data = {};
+                for (let [key, value] of formData.entries()) {
+                    if (data[key]) {
+                        if (Array.isArray(data[key])) {
+                            data[key].push(value);
+                        } else {
+                            data[key] = [data[key], value];
+                        }
+                    } else {
+                        data[key] = value;
+                    }
+                }
+                return data;
+            },
+            getFieldCount: () => document.querySelectorAll('#comprehensive-form input, #comprehensive-form textarea, #comprehensive-form select').length,
+            getValidationErrors: () => {
+                const errors = [];
+                document.querySelectorAll('.validation-message').forEach(el => {
+                    if (el.textContent.trim()) errors.push(el.textContent);
+                });
+                return errors;
+            },
+            submitForm: () => document.getElementById('comprehensive-form').dispatchEvent(new Event('submit')),
+            resetForm: () => document.getElementById('comprehensive-form').reset()
+        };
+
+        // Log page loads
+        window.addEventListener('load', () => {
+            console.log('Comprehensive form test page loaded:', window.location.href);
+        });
+    </script>
+</body>
+</html>

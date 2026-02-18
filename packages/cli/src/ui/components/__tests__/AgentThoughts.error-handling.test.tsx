@@ -252,7 +252,7 @@ describe('AgentThoughts Error Handling Tests', () => {
       instances.forEach(unmount => unmount());
 
       // Should not have memory leaks or errors
-      expect(true).toBe(true); // Test passes if no errors thrown
+      expect(document.body.textContent).toBe('');
     });
 
     it('should handle rapid mounting and unmounting', () => {
@@ -264,7 +264,7 @@ describe('AgentThoughts Error Handling Tests', () => {
       }
 
       // Should not have memory leaks
-      expect(true).toBe(true); // Test passes if no errors thrown
+      expect(document.body.textContent).toBe('');
     });
 
     it('should handle components with identical props', () => {

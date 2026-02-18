@@ -17,6 +17,22 @@ apex serve --port 3000
 
 Currently, the API does not require authentication. In future versions, API key authentication will be added.
 
+## v0.5.0 Features
+
+APEX v0.5.0 adds comprehensive tool system capabilities:
+
+- **Browser Automation** - Headless browser testing with screenshot capture
+- **Permission System** - Fine-grained permission controls with presets
+- **Autonomy Controls** - Budget, token, time, and change limits
+- **Code Quality Integration** - Lint-after-edit and auto-fix capabilities
+- **Tool Extensions** - Custom tools and MCP server support
+
+For detailed configuration, see:
+- [Browser Automation Guide](./browser-automation.md)
+- [Permission System Guide](./permission-system.md)
+- [Autonomy Controls Guide](./autonomy-controls.md)
+- [Tool Extensions Guide](./tool-extensions.md)
+
 ## Endpoints
 
 ### Health Check
@@ -31,7 +47,7 @@ GET /health
 ```json
 {
   "status": "ok",
-  "version": "0.1.0"
+  "version": "0.5.0"
 }
 ```
 

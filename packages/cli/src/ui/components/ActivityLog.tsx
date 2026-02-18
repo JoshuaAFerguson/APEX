@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useStdoutDimensions, type Breakpoint } from '../hooks/index.js';
+import { formatDuration } from '@apexcli/core';
 
 // Helper functions moved outside components for reuse
 const getLevelIcon = (level: string): { icon: string; color: string } => {
@@ -160,11 +161,6 @@ export function ActivityLog({
     )
     .slice(-maxEntries);
 
-  const formatDuration = (ms: number): string => {
-    if (ms < 1000) return `${Math.round(ms)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
-  };
 
   const toggleEntryCollapse = (entryId: string) => {
     const newCollapsed = new Set(collapsedEntries);

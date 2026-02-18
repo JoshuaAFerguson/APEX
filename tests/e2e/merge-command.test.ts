@@ -18,8 +18,8 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { ApexOrchestrator, type MergeTaskBranchResult } from '@apexcli/orchestrator';
-import type { Task } from '@apexcli/core';
+import { ApexOrchestrator, type MergeTaskBranchResult } from '@apex/orchestrator';
+import type { Task } from '@apex/core';
 
 const execAsync = promisify(exec);
 

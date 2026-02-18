@@ -11,41 +11,42 @@ import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId
 import type { Task } from '@apexcli/core'
 
 export default function DashboardPage() {
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [stats, setStats] = useState<{
+    byStatus: Record<string, number>
+    totalCost: number
+    totalTokens: number
+  } | null>(null)
+  const [recentTasks, setRecentTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadTasks()
+    loadDashboard()
   }, [])
 
-  async function loadTasks() {
+  async function loadDashboard() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiClient.listTasks()
-      setTasks(response.tasks || [])
+      const [statsData, recentData] = await Promise.all([
+        apiClient.getTaskStats(),
+        apiClient.listTasks({ limit: 5 }),
+      ])
+      setStats(statsData)
+      setRecentTasks(recentData.tasks || [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tasks')
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard')
     } finally {
       setLoading(false)
     }
   }
 
-  // Calculate statistics
-  const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'queued').length
-  const activeTasks = tasks.filter(t =>
-    t.status === 'planning' || t.status === 'in-progress' || t.status === 'waiting-approval'
-  ).length
-  const pausedTasks = tasks.filter(t => t.status === 'paused').length
-  const completedTasks = tasks.filter(t => t.status === 'completed').length
-  const failedTasks = tasks.filter(t => t.status === 'failed').length
-  const totalCost = tasks.reduce((sum, t) => sum + (t.usage?.estimatedCost || 0), 0)
-
-  // Get recent tasks (last 5, sorted by date)
-  const recentTasks = [...tasks]
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
-    .slice(0, 5)
+  const pendingTasks = (stats?.byStatus['pending'] || 0) + (stats?.byStatus['queued'] || 0)
+  const activeTasks = (stats?.byStatus['planning'] || 0) + (stats?.byStatus['in-progress'] || 0) + (stats?.byStatus['waiting-approval'] || 0)
+  const pausedTasks = stats?.byStatus['paused'] || 0
+  const completedTasks = stats?.byStatus['completed'] || 0
+  const failedTasks = stats?.byStatus['failed'] || 0
+  const totalCost = stats?.totalCost || 0
 
   if (loading) {
     return (
@@ -74,7 +75,7 @@ export default function DashboardPage() {
                   apex serve --port 3002
                 </code>
                 <div className="mt-4">
-                  <Button onClick={loadTasks}>Retry</Button>
+                  <Button onClick={loadDashboard}>Retry</Button>
                 </div>
               </div>
             </CardContent>
@@ -89,7 +90,7 @@ export default function DashboardPage() {
       <Header
         title="Dashboard"
         description="Overview of your APEX project and recent activity"
-        actions={<Button onClick={loadTasks}>Refresh</Button>}
+        actions={<Button onClick={loadDashboard}>Refresh</Button>}
       />
 
       <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

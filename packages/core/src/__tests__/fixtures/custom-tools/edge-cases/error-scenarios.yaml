@@ -1,0 +1,159 @@
+# Error Scenario Fixtures
+# Tools designed to test various error conditions and recovery scenarios
+
+# Tool that always fails with non-zero exit code
+- name: AlwaysFailsTool
+  description: Tool that always exits with failure
+  command: false
+  args: []
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with nonexistent command
+- name: NonexistentCommandTool
+  description: Tool with command that doesn't exist
+  command: nonexistent-command-xyz123
+  args:
+    - "this"
+    - "should"
+    - "fail"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that produces malformed JSON
+- name: MalformedJsonTool
+  description: Tool that outputs invalid JSON when JSON parser is expected
+  command: echo
+  args:
+    - "{invalid json: missing quotes and brackets"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: json
+  enabled: true
+
+# Tool that outputs to stderr
+- name: StderrOutputTool
+  description: Tool that writes to stderr instead of stdout
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Error message' >&2 && echo 'Regular output'"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that produces no output
+- name: NoOutputTool
+  description: Tool that produces no output
+  command: true
+  args: []
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with invalid working directory
+- name: InvalidWorkdirTool
+  description: Tool with nonexistent working directory
+  command: echo
+  args:
+    - "test"
+  workingDirectory: "/nonexistent/directory/path"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that fails during JSON parsing
+- name: JsonParseFailureTool
+  description: Tool that outputs valid text but fails JSON parsing
+  command: echo
+  args:
+    - "This is plain text, not JSON"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: json  # Expects JSON but gets plain text
+  enabled: true
+
+# Tool with permission errors (if run in restricted environment)
+- name: PermissionErrorTool
+  description: Tool that may encounter permission errors
+  command: sh
+  args:
+    - "-c"
+    - "touch /root/test-file 2>/dev/null || echo 'Permission denied'"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that produces mixed output formats
+- name: MixedOutputTool
+  description: Tool that outputs both structured and unstructured data
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Starting process...' && echo '{\"status\": \"running\"}' && echo 'Process completed'"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text  # Plain text parser for mixed content
+  enabled: true
+
+# Tool with invalid environment variables
+- name: InvalidEnvTool
+  description: Tool with problematic environment variable setup
+  command: sh
+  args:
+    - "-c"
+    - "echo 'ENV_VAR='$INVALID_ENV_VAR"
+  env:
+    INVALID_ENV_VAR: ""  # Empty environment variable
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that exits with various error codes
+- name: CustomExitCodeTool
+  description: Tool that exits with specified error code
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Exiting with code {{input.exit_code}}' && exit {{input.exit_code}}"
+  parameters:
+    type: object
+    properties:
+      exit_code:
+        type: integer
+        minimum: 0
+        maximum: 255
+        default: 1
+        description: Exit code to return
+    additionalProperties: false
+  outputParser: text
+  enabled: true

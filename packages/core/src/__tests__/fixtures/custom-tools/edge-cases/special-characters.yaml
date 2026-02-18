@@ -1,0 +1,97 @@
+# Special Characters Edge Cases
+# Tools with special characters in various fields
+
+# Name with underscores
+- name: my_custom_tool
+  description: Tool with underscores in name
+  command: echo
+  enabled: true
+
+# Name with hyphens
+- name: my-custom-tool
+  description: Tool with hyphens in name
+  command: echo
+  enabled: true
+
+# Name with numbers
+- name: tool123
+  description: Tool with numbers in name
+  command: echo
+  enabled: true
+
+# Name with mixed case
+- name: MyCustomTool
+  description: Tool with camelCase name
+  command: echo
+  enabled: true
+
+# Description with special characters
+- name: SpecialDescTool
+  description: "Tool with 'quotes', \"double quotes\", and special chars: @#$%^&*()"
+  command: echo
+  enabled: true
+
+# Description with unicode
+- name: UnicodeTool
+  description: Tool description with unicode characters
+  command: echo
+  enabled: true
+
+# Description with newlines (multiline)
+- name: MultilineDescTool
+  description: |
+    Line 1 of description
+    Line 2 of description
+    Line 3 with special chars: <>&
+  command: echo
+  enabled: true
+
+# Args with special characters
+- name: SpecialArgsTool
+  description: Tool with special characters in args
+  command: echo
+  args:
+    - "Hello, World!"
+    - "--flag=value"
+    - '-x "quoted arg"'
+    - "${VARIABLE}"
+    - "$(command)"
+  enabled: true
+
+# Env vars with special values
+- name: SpecialEnvTool
+  description: Tool with special env var values
+  command: echo
+  env:
+    PATH_WITH_SPACES: "/path/to/dir with spaces"
+    QUOTED_VALUE: "value with 'quotes'"
+    URL_VALUE: "https://example.com?foo=bar&baz=qux"
+    JSON_VALUE: '{"key": "value"}'
+  enabled: true
+
+# Working directory with spaces (edge case)
+- name: SpacePathTool
+  description: Tool with space in working directory
+  command: pwd
+  workingDirectory: "./path with spaces"
+  enabled: true
+
+# Parameter names with special patterns
+- name: SpecialParamNamesTool
+  description: Tool with special parameter names
+  command: echo
+  parameters:
+    type: object
+    properties:
+      snake_case_param:
+        type: string
+      camelCaseParam:
+        type: string
+      UPPERCASE_PARAM:
+        type: string
+      param123:
+        type: string
+      _underscoreStart:
+        type: string
+    additionalProperties: false
+  enabled: true

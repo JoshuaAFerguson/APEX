@@ -23,6 +23,8 @@ import {
   type VerboseDebugData,
   type Task,
   type TaskUsage,
+  type ApprovalRequiredEventData,
+  type BrowserToolConfig,
   getPlatformShell,
   isWindows,
   resolveExecutable,
@@ -36,6 +38,7 @@ import {
   handleSession as handleSessionCommand,
   type SessionContext
 } from './handlers/session-handlers.js';
+import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 
 // ============================================================================
 // Context
@@ -289,7 +292,7 @@ async function handleWorkflows(): Promise<void> {
   const lines = ['**Available Workflows:**\n'];
   for (const workflow of workflows) {
     lines.push(`  **${workflow.name}** - ${workflow.description || 'No description'}`);
-    const stages = workflow.stages?.map((s: { name?: string; agent: string }) => s.name || s.agent).join(' → ') || 'No stages';
+    const stages = workflow.stages?.map((s: any) => s.name || s.agent).join(' → ') || 'No stages';
     lines.push(`    Stages: ${stages}`);
   }
 
@@ -333,6 +336,87 @@ async function handleConfig(args: string[]): Promise<void> {
       content: '```yaml\n' + JSON.stringify(ctx.config, null, 2) + '\n```',
     });
   }
+}
+
+async function handleBrowser(args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.config) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'APEX not initialized. Run /init first.',
+    });
+    return;
+  }
+
+  const [subcommand, value] = args;
+  if (!subcommand || subcommand === 'show') {
+    const browserConfig = ctx.config.tools?.Browser || {};
+    ctx.app?.addMessage({
+      type: 'assistant',
+      content: `Browser tool config: ${JSON.stringify(browserConfig, null, 2)}`,
+    });
+    return;
+  }
+
+  if (subcommand !== 'backend' && subcommand !== 'engine' && subcommand !== 'headless') {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'Usage: /browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>',
+    });
+    return;
+  }
+
+  ctx.config.tools = ctx.config.tools || {};
+  const browserConfig = {
+    ...(ctx.config.tools.Browser || {}),
+  } as BrowserToolConfig;
+
+  if (!value) {
+    ctx.app?.addMessage({
+      type: 'system',
+      content: 'Missing value. See: /browser show',
+    });
+    return;
+  }
+
+  if (subcommand === 'backend') {
+    if (value !== 'playwright' && value !== 'puppeteer') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid backend. Use "playwright" or "puppeteer".',
+      });
+      return;
+    }
+    browserConfig.backend = value;
+  }
+
+  if (subcommand === 'engine') {
+    if (value !== 'chromium' && value !== 'firefox' && value !== 'webkit') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid engine. Use "chromium", "firefox", or "webkit".',
+      });
+      return;
+    }
+    browserConfig.engine = value;
+  }
+
+  if (subcommand === 'headless') {
+    if (value !== 'true' && value !== 'false') {
+      ctx.app?.addMessage({
+        type: 'system',
+        content: 'Invalid headless flag. Use "true" or "false".',
+      });
+      return;
+    }
+    browserConfig.headless = value === 'true';
+  }
+
+  ctx.config.tools.Browser = browserConfig;
+  await saveConfig(ctx.cwd, ctx.config);
+  ctx.app?.addMessage({
+    type: 'system',
+    content: `Browser setting updated: ${subcommand} = ${value}.`,
+  });
 }
 
 async function handleServe(args: string[]): Promise<void> {
@@ -969,6 +1053,7 @@ async function persistPreviewConfig(previewConfig: {
     previewConfidence: previewConfig.confidenceThreshold,
     autoExecuteHighConfidence: previewConfig.autoExecuteHighConfidence,
     previewTimeout: previewConfig.timeoutMs,
+    diffPreview: ctx.config.ui?.diffPreview ?? true,
   };
 
   // Persist to file
@@ -1233,6 +1318,9 @@ async function handleCommand(command: string, args: string[]): Promise<void> {
       break;
     case 'config':
       await handleConfig(args);
+      break;
+    case 'browser':
+      await handleBrowser(args);
       break;
     case 'serve':
       await handleServe(args);
@@ -1707,6 +1795,84 @@ export async function startInkREPL(): Promise<void> {
             (currentVerboseData.agentDebug.errorCounts[agent] || 0) + 1;
           updatePerformanceMetrics();
           ctx.app?.updateState({ verboseData: { ...currentVerboseData } });
+        }
+      });
+
+      // Handle approval required events
+      ctx.orchestrator.on('approval:required', async (eventData: ApprovalRequiredEventData) => {
+        try {
+          // Show system message about approval requirement
+          ctx.app?.addMessage({
+            type: 'system',
+            content: `⚠️ Approval required for ${eventData.gateName} (Task: ${eventData.taskId.slice(0, 12)}...)`,
+          });
+
+          // Show the interactive approval prompt
+          await showApprovalPrompt({
+            eventData,
+            onSelection: async (response) => {
+              try {
+                // Call the orchestrator's respondToApproval method
+                await ctx.orchestrator?.respondToApproval(eventData.approvalId, response);
+
+                // Show response confirmation
+                const actionText = response.response === 'approved' ? 'approved' :
+                                  response.response === 'denied' ? 'denied' :
+                                  'requested more info for';
+                ctx.app?.addMessage({
+                  type: 'system',
+                  content: `✅ Approval ${actionText} for ${eventData.gateName}`,
+                });
+
+                // Handle info-requested follow-up
+                if (response.response === 'info-requested') {
+                  // Listen for info-requested events and prompt for additional information
+                  const handleInfoRequested = async (infoData: any) => {
+                    if (infoData.requestId === eventData.approvalId) {
+                      try {
+                        const additionalInfo = await promptForAdditionalInfo(
+                          eventData,
+                          response.message || 'Additional information requested'
+                        );
+
+                        // Send the additional information back through the orchestrator
+                        // Note: This would need a corresponding method in the orchestrator
+                        ctx.app?.addMessage({
+                          type: 'system',
+                          content: `📝 Additional information provided: ${additionalInfo.substring(0, 100)}${additionalInfo.length > 100 ? '...' : ''}`,
+                        });
+
+                        // Remove the one-time listener
+                        ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
+                      } catch (infoError) {
+                        console.error('Error handling info request:', infoError);
+                        ctx.app?.addMessage({
+                          type: 'error',
+                          content: `❌ Error handling info request: ${infoError instanceof Error ? infoError.message : String(infoError)}`,
+                        });
+                        ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
+                      }
+                    }
+                  };
+
+                  // Set up temporary listener for info requests
+                  ctx.orchestrator?.on('approval:info-requested', handleInfoRequested);
+                }
+              } catch (responseError) {
+                console.error('Error responding to approval:', responseError);
+                ctx.app?.addMessage({
+                  type: 'error',
+                  content: `❌ Error responding to approval: ${responseError instanceof Error ? responseError.message : String(responseError)}`,
+                });
+              }
+            }
+          });
+        } catch (approvalError) {
+          console.error('Error handling approval prompt:', approvalError);
+          ctx.app?.addMessage({
+            type: 'error',
+            content: `❌ Error handling approval prompt: ${approvalError instanceof Error ? approvalError.message : String(approvalError)}`,
+          });
         }
       });
 

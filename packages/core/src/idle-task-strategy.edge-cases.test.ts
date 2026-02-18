@@ -320,8 +320,13 @@ describe.skip('IdleTaskStrategy Edge Cases', () => {
         expect(result).toBeDefined();
       }
 
-      // If this completes without throwing, memory handling is likely okay
-      expect(true).toBe(true);
+      const sample = StrategyWeightsSchema.parse({
+        maintenance: 0.3,
+        refactoring: 0.3,
+        docs: 0.2,
+        tests: 0.2,
+      });
+      expect(sample.maintenance).toBe(0.3);
     });
   });
 });

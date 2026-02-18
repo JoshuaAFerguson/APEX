@@ -1,0 +1,51 @@
+name: tdd
+description: Test-Driven Development workflow with planning, red-green-refactor stages
+trigger:
+  - manual
+  - apex:tdd
+  - apex:test-driven
+
+stages:
+  - name: planning
+    agent: planner
+    description: Plan the TDD implementation approach and identify test scenarios
+    outputs:
+      - implementation_plan
+      - test_scenarios
+      - acceptance_criteria
+
+  - name: test-first
+    agent: tdd-tester
+    description: Write failing test cases first (Red phase)
+    dependsOn: [planning]
+    outputs:
+      - test_files
+      - test_requirements
+      - failure_confirmation
+
+  - name: implementation
+    agent: tdd-developer
+    description: Write minimal code to make tests pass (Green phase)
+    dependsOn: [test-first]
+    outputs:
+      - code_changes
+      - implementation_notes
+      - branch_name
+
+  - name: refactor
+    agent: developer
+    description: Improve code design while keeping tests green (Refactor phase)
+    dependsOn: [implementation]
+    outputs:
+      - refactored_code
+      - design_improvements
+      - refactor_notes
+
+  - name: verification
+    agent: tdd-tester
+    description: Run full test suite and validate final implementation
+    dependsOn: [refactor]
+    outputs:
+      - final_test_results
+      - coverage_report
+      - quality_metrics

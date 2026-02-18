@@ -17,6 +17,10 @@ import type {
   TaskTemplate,
   IterationEntry,
   IterationHistory,
+  FileSnapshot,
+  AuditLogEntry,
+  AuditEventType,
+  AuditSeverity,
 } from '@apexcli/core';
 import { generateIdleTaskId, generateTaskTemplateId } from '@apexcli/core';
 
@@ -2857,6 +2861,1032 @@ describe('TaskStore', () => {
         expect(results).toHaveLength(1);
         expect(results[0].id).toBe(template.id);
       });
+    });
+  });
+
+  describe('Snapshot Persistence', () => {
+    const createTestSnapshot = (taskId: string, actionId: string, toolName = 'edit') => {
+      return {
+        taskId,
+        actionId,
+        toolName,
+        fileSnapshots: [
+          {
+            id: `snap_${Date.now()}`,
+            filePath: '/test/file.ts',
+            content: 'const test = "hello world";',
+            checksum: 'abc123def456',
+            fileSize: 25,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true,
+            metadata: { type: 'typescript' }
+          }
+        ],
+        description: `Snapshot for ${toolName} operation`
+      };
+    };
+
+    describe('saveSnapshot', () => {
+      it('should save a snapshot successfully', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const { taskId, actionId, toolName, fileSnapshots, description } = createTestSnapshot(task.id, 'action_1');
+
+        await expect(store.saveSnapshot(taskId, actionId, toolName, fileSnapshots, description)).resolves.not.toThrow();
+      });
+
+      it('should save snapshot with minimal data', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'minimal_snap',
+          filePath: '/test/minimal.js',
+          content: '',
+          checksum: 'empty',
+          fileSize: 0,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: false
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'action_minimal', 'write', fileSnapshots)).resolves.not.toThrow();
+      });
+
+      it('should handle multiple file snapshots in single operation', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [
+          {
+            id: 'file1_snap',
+            filePath: '/test/file1.ts',
+            content: 'file 1 content',
+            checksum: 'hash1',
+            fileSize: 14,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          },
+          {
+            id: 'file2_snap',
+            filePath: '/test/file2.js',
+            content: 'file 2 content',
+            checksum: 'hash2',
+            fileSize: 14,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          }
+        ];
+
+        await expect(store.saveSnapshot(task.id, 'multi_action', 'edit', fileSnapshots, 'Multiple file edit')).resolves.not.toThrow();
+      });
+
+      it('should fail when saving snapshot for non-existent task', async () => {
+        const fileSnapshots = [{
+          id: 'test_snap',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await expect(store.saveSnapshot('non_existent_task', 'action_1', 'edit', fileSnapshots)).rejects.toThrow();
+      });
+
+      it('should enforce unique constraint on task_id and action_id', async () => {
+        const task = createTestTask();
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'test_snap',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        // First save should succeed
+        await expect(store.saveSnapshot(task.id, 'duplicate_action', 'edit', fileSnapshots)).resolves.not.toThrow();
+
+        // Second save with same task_id and action_id should fail
+        await expect(store.saveSnapshot(task.id, 'duplicate_action', 'edit', fileSnapshots)).rejects.toThrow();
+      });
+    });
+
+    describe('getSnapshots', () => {
+      beforeEach(async () => {
+        // Setup test data
+        const task = createTestTask();
+        task.id = 'snapshot_test_task';
+        await store.createTask(task);
+
+        // Create multiple snapshots
+        const snapshots = [
+          createTestSnapshot('snapshot_test_task', 'action_1', 'edit'),
+          createTestSnapshot('snapshot_test_task', 'action_2', 'write'),
+          createTestSnapshot('snapshot_test_task', 'action_3', 'delete'),
+          createTestSnapshot('snapshot_test_task', 'action_1', 'read'), // Different tool for same action
+        ];
+
+        for (const snapshot of snapshots) {
+          try {
+            await store.saveSnapshot(
+              snapshot.taskId,
+              snapshot.actionId,
+              snapshot.toolName,
+              snapshot.fileSnapshots,
+              snapshot.description
+            );
+          } catch (error) {
+            // Skip duplicate constraint errors for testing
+            if (!(error as Error).message.includes('UNIQUE constraint')) {
+              throw error;
+            }
+          }
+        }
+      });
+
+      it('should retrieve all snapshots for a task', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task');
+        expect(snapshots.length).toBeGreaterThan(0);
+        expect(snapshots.every(s => s.taskId === 'snapshot_test_task')).toBe(true);
+      });
+
+      it('should filter snapshots by action ID', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task', 'action_2');
+        expect(snapshots).toHaveLength(1);
+        expect(snapshots[0].actionId).toBe('action_2');
+        expect(snapshots[0].toolName).toBe('write');
+      });
+
+      it('should return empty array for task with no snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'no_snapshots_task';
+        await store.createTask(task);
+
+        const snapshots = await store.getSnapshots('no_snapshots_task');
+        expect(snapshots).toEqual([]);
+      });
+
+      it('should return empty array for non-existent task', async () => {
+        const snapshots = await store.getSnapshots('non_existent_task');
+        expect(snapshots).toEqual([]);
+      });
+
+      it('should include all snapshot properties', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task', 'action_1');
+        expect(snapshots.length).toBeGreaterThan(0);
+
+        const snapshot = snapshots[0];
+        expect(snapshot).toHaveProperty('id');
+        expect(snapshot).toHaveProperty('taskId');
+        expect(snapshot).toHaveProperty('actionId');
+        expect(snapshot).toHaveProperty('toolName');
+        expect(snapshot).toHaveProperty('fileSnapshots');
+        expect(snapshot).toHaveProperty('timestamp');
+        expect(snapshot).toHaveProperty('description');
+        expect(snapshot).toHaveProperty('canUndo');
+
+        // Verify fileSnapshots is properly parsed
+        expect(Array.isArray(snapshot.fileSnapshots)).toBe(true);
+        if (snapshot.fileSnapshots.length > 0) {
+          const fileSnapshot = snapshot.fileSnapshots[0];
+          expect(fileSnapshot).toHaveProperty('id');
+          expect(fileSnapshot).toHaveProperty('filePath');
+          expect(fileSnapshot).toHaveProperty('content');
+          expect(fileSnapshot).toHaveProperty('checksum');
+        }
+      });
+
+      it('should order snapshots by timestamp (newest first)', async () => {
+        const snapshots = await store.getSnapshots('snapshot_test_task');
+        expect(snapshots.length).toBeGreaterThanOrEqual(2);
+
+        // Check that timestamps are in descending order
+        for (let i = 1; i < snapshots.length; i++) {
+          expect(snapshots[i-1].timestamp.getTime()).toBeGreaterThanOrEqual(snapshots[i].timestamp.getTime());
+        }
+      });
+    });
+
+    describe('getLatestSnapshot', () => {
+      beforeEach(async () => {
+        const task = createTestTask();
+        task.id = 'latest_snapshot_task';
+        await store.createTask(task);
+
+        // Create snapshots with slight delays to ensure different timestamps
+        const snapshot1 = createTestSnapshot('latest_snapshot_task', 'action_latest', 'edit');
+        await store.saveSnapshot(snapshot1.taskId, snapshot1.actionId, snapshot1.toolName, snapshot1.fileSnapshots, 'First snapshot');
+
+        // Small delay to ensure different timestamp
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const snapshot2 = createTestSnapshot('latest_snapshot_task', 'action_latest_2', 'write');
+        await store.saveSnapshot(snapshot2.taskId, snapshot2.actionId, snapshot2.toolName, snapshot2.fileSnapshots, 'Second snapshot');
+      });
+
+      it('should return the most recent snapshot for a task', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task');
+        expect(snapshot).not.toBeNull();
+        expect(snapshot!.taskId).toBe('latest_snapshot_task');
+        expect(snapshot!.description).toBe('Second snapshot');
+      });
+
+      it('should return the most recent snapshot for a specific action', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task', 'action_latest');
+        expect(snapshot).not.toBeNull();
+        expect(snapshot!.actionId).toBe('action_latest');
+        expect(snapshot!.description).toBe('First snapshot');
+      });
+
+      it('should return null for task with no snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'no_latest_snapshots';
+        await store.createTask(task);
+
+        const snapshot = await store.getLatestSnapshot('no_latest_snapshots');
+        expect(snapshot).toBeNull();
+      });
+
+      it('should return null for non-existent action', async () => {
+        const snapshot = await store.getLatestSnapshot('latest_snapshot_task', 'non_existent_action');
+        expect(snapshot).toBeNull();
+      });
+    });
+
+    describe('deleteSnapshots', () => {
+      beforeEach(async () => {
+        const task = createTestTask();
+        task.id = 'delete_snapshot_task';
+        await store.createTask(task);
+
+        // Create test snapshots
+        const snapshots = [
+          createTestSnapshot('delete_snapshot_task', 'delete_action_1', 'edit'),
+          createTestSnapshot('delete_snapshot_task', 'delete_action_2', 'write'),
+          createTestSnapshot('delete_snapshot_task', 'delete_action_3', 'delete'),
+        ];
+
+        for (const snapshot of snapshots) {
+          await store.saveSnapshot(
+            snapshot.taskId,
+            snapshot.actionId,
+            snapshot.toolName,
+            snapshot.fileSnapshots,
+            snapshot.description
+          );
+        }
+      });
+
+      it('should delete all snapshots for a task', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task');
+        expect(deletedCount).toBe(3);
+
+        const remaining = await store.getSnapshots('delete_snapshot_task');
+        expect(remaining).toEqual([]);
+      });
+
+      it('should delete snapshots for a specific action', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task', 'delete_action_2');
+        expect(deletedCount).toBe(1);
+
+        const remaining = await store.getSnapshots('delete_snapshot_task');
+        expect(remaining).toHaveLength(2);
+        expect(remaining.every(s => s.actionId !== 'delete_action_2')).toBe(true);
+      });
+
+      it('should return 0 when deleting non-existent snapshots', async () => {
+        const deletedCount = await store.deleteSnapshots('non_existent_task');
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should return 0 when deleting non-existent action', async () => {
+        const deletedCount = await store.deleteSnapshots('delete_snapshot_task', 'non_existent_action');
+        expect(deletedCount).toBe(0);
+      });
+
+      it('should properly clean up after deletion', async () => {
+        // Verify initial state
+        const initialSnapshots = await store.getSnapshots('delete_snapshot_task');
+        expect(initialSnapshots).toHaveLength(3);
+
+        // Delete specific action
+        await store.deleteSnapshots('delete_snapshot_task', 'delete_action_1');
+
+        // Verify state after partial deletion
+        const afterPartial = await store.getSnapshots('delete_snapshot_task');
+        expect(afterPartial).toHaveLength(2);
+
+        // Delete all remaining
+        const remainingCount = await store.deleteSnapshots('delete_snapshot_task');
+        expect(remainingCount).toBe(2);
+
+        // Verify complete cleanup
+        const final = await store.getSnapshots('delete_snapshot_task');
+        expect(final).toEqual([]);
+      });
+    });
+
+    describe('Database Schema and Migration', () => {
+      it('should create snapshots table with correct schema', async () => {
+        // The snapshots table should be created during store initialization
+        // We can verify by attempting to query its structure
+        const tableInfo = store['db'].prepare("PRAGMA table_info(snapshots)").all() as Array<{name: string, type: string, pk: boolean}>;
+
+        const expectedColumns = [
+          'id', 'task_id', 'action_id', 'tool_name',
+          'file_snapshots', 'timestamp', 'description', 'can_undo'
+        ];
+
+        const actualColumns = tableInfo.map(col => col.name);
+        expectedColumns.forEach(col => {
+          expect(actualColumns).toContain(col);
+        });
+
+        // Verify primary key
+        const primaryKeys = tableInfo.filter(col => col.pk).map(col => col.name);
+        expect(primaryKeys).toEqual(['id']);
+      });
+
+      it('should create proper indexes on snapshots table', async () => {
+        const indexes = store['db'].prepare("PRAGMA index_list(snapshots)").all() as Array<{name: string}>;
+        const indexNames = indexes.map(idx => idx.name);
+
+        expect(indexNames).toContain('idx_snapshots_task_id');
+        expect(indexNames).toContain('idx_snapshots_action_id');
+        expect(indexNames).toContain('idx_snapshots_tool_name');
+      });
+
+      it('should enforce foreign key constraint on task_id', async () => {
+        const fileSnapshots = [{
+          id: 'constraint_test',
+          filePath: '/test/file.ts',
+          content: 'test',
+          checksum: 'test',
+          fileSize: 4,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        // Should fail due to foreign key constraint
+        await expect(store.saveSnapshot('non_existent_task_fk', 'action_1', 'edit', fileSnapshots))
+          .rejects.toThrow();
+      });
+    });
+
+    describe('Edge Cases and Error Handling', () => {
+      it('should handle large file snapshots', async () => {
+        const task = createTestTask();
+        task.id = 'large_snapshot_task';
+        await store.createTask(task);
+
+        const largeContent = 'x'.repeat(1000000); // 1MB of content
+        const fileSnapshots = [{
+          id: 'large_snap',
+          filePath: '/test/large_file.txt',
+          content: largeContent,
+          checksum: 'large_hash',
+          fileSize: largeContent.length,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'large_action', 'write', fileSnapshots, 'Large file snapshot'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        expect(retrieved[0].fileSnapshots[0].content).toBe(largeContent);
+      });
+
+      it('should handle special characters in file paths and content', async () => {
+        const task = createTestTask();
+        task.id = 'special_chars_task';
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'special_snap',
+          filePath: '/test/файл with émojis 🚀 and "quotes".ts',
+          content: 'const message = "Hello, 世界! 🌍";\n/* Special chars: éñ */\nlet π = 3.14159;',
+          checksum: 'special_hash',
+          fileSize: 50,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true,
+          metadata: { encoding: 'utf-8', language: 'typescript' }
+        }];
+
+        await expect(store.saveSnapshot(task.id, 'special_action', 'edit', fileSnapshots, 'Special chars test'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        const snap = retrieved[0].fileSnapshots[0];
+        expect(snap.filePath).toBe('/test/файл with émojis 🚀 and "quotes".ts');
+        expect(snap.content).toContain('世界! 🌍');
+        expect(snap.metadata).toEqual({ encoding: 'utf-8', language: 'typescript' });
+      });
+
+      it('should handle empty fileSnapshots array', async () => {
+        const task = createTestTask();
+        task.id = 'empty_snapshots_task';
+        await store.createTask(task);
+
+        await expect(store.saveSnapshot(task.id, 'empty_action', 'cleanup', [], 'No files changed'))
+          .resolves.not.toThrow();
+
+        const retrieved = await store.getSnapshots(task.id);
+        expect(retrieved).toHaveLength(1);
+        expect(retrieved[0].fileSnapshots).toEqual([]);
+      });
+
+      it('should handle concurrent snapshot operations', async () => {
+        const task = createTestTask();
+        task.id = 'concurrent_task';
+        await store.createTask(task);
+
+        const createSnapshot = (actionId: string) => {
+          const fileSnapshots = [{
+            id: `snap_${actionId}`,
+            filePath: `/test/${actionId}.ts`,
+            content: `content for ${actionId}`,
+            checksum: `hash_${actionId}`,
+            fileSize: 20,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
+            existed: true
+          }];
+          return store.saveSnapshot(task.id, actionId, 'edit', fileSnapshots, `Snapshot ${actionId}`);
+        };
+
+        // Run multiple snapshot operations concurrently
+        const operations = [
+          createSnapshot('concurrent_1'),
+          createSnapshot('concurrent_2'),
+          createSnapshot('concurrent_3'),
+          createSnapshot('concurrent_4'),
+          createSnapshot('concurrent_5')
+        ];
+
+        await expect(Promise.all(operations)).resolves.not.toThrow();
+
+        const allSnapshots = await store.getSnapshots(task.id);
+        expect(allSnapshots).toHaveLength(5);
+      });
+
+      it('should handle invalid JSON in fileSnapshots gracefully', async () => {
+        const task = createTestTask();
+        task.id = 'json_test_task';
+        await store.createTask(task);
+
+        const fileSnapshots = [{
+          id: 'json_snap',
+          filePath: '/test/file.ts',
+          content: 'test content',
+          checksum: 'test_hash',
+          fileSize: 12,
+          lastModified: new Date(),
+          snapshotTime: new Date(),
+          existed: true
+        }];
+
+        await store.saveSnapshot(task.id, 'json_action', 'edit', fileSnapshots);
+
+        // Manually corrupt the JSON in the database to test error handling
+        store['db'].prepare(`
+          UPDATE snapshots
+          SET file_snapshots = 'invalid json'
+          WHERE task_id = ? AND action_id = ?
+        `).run(task.id, 'json_action');
+
+        // Should handle corrupted JSON gracefully
+        await expect(store.getSnapshots(task.id, 'json_action')).rejects.toThrow();
+      });
+    });
+  });
+
+  describe('Audit Log Query Methods', () => {
+    const createTestAuditLogEntry = (
+      overrides: Partial<AuditLogEntry> = {}
+    ): AuditLogEntry => ({
+      id: `audit_${Date.now()}_${Math.random()}`,
+      taskId: 'test-task-id',
+      eventType: 'task.created' as AuditEventType,
+      severity: 'info' as AuditSeverity,
+      timestamp: new Date(),
+      actor: 'test-user',
+      message: 'Test audit log entry',
+      stage: 'planning',
+      agent: 'planner',
+      metadata: { test: 'data' },
+      previousState: undefined,
+      newState: undefined,
+      durationMs: 1000,
+      success: true,
+      error: undefined,
+      correlationId: undefined,
+      sessionId: 'test-session',
+      ...overrides,
+    });
+
+    beforeEach(async () => {
+      // Set up test audit log entries with different properties for filtering tests
+      const baseTime = new Date('2024-01-01T10:00:00Z');
+
+      const entries = [
+        createTestAuditLogEntry({
+          id: 'audit-1',
+          taskId: 'task-1',
+          eventType: 'task.created',
+          actor: 'user-alice',
+          timestamp: new Date(baseTime.getTime()),
+          message: 'Task created by alice',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-2',
+          taskId: 'task-1',
+          eventType: 'task.approved',
+          actor: 'user-bob',
+          timestamp: new Date(baseTime.getTime() + 60000), // +1 minute
+          message: 'Task approved by bob',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-3',
+          taskId: 'task-2',
+          eventType: 'task.rejected',
+          actor: 'user-alice',
+          timestamp: new Date(baseTime.getTime() + 120000), // +2 minutes
+          message: 'Task rejected by alice',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-4',
+          taskId: 'task-2',
+          eventType: 'stage.approved',
+          actor: 'user-charlie',
+          timestamp: new Date(baseTime.getTime() + 180000), // +3 minutes
+          message: 'Stage approved by charlie',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-5',
+          taskId: 'task-1',
+          eventType: 'task.failed',
+          actor: 'system',
+          timestamp: new Date(baseTime.getTime() + 240000), // +4 minutes
+          message: 'Task failed',
+        }),
+        createTestAuditLogEntry({
+          id: 'audit-6',
+          taskId: 'task-3',
+          eventType: 'stage.rejected',
+          actor: 'user-bob',
+          timestamp: new Date(baseTime.getTime() + 300000), // +5 minutes
+          message: 'Stage rejected by bob',
+        }),
+      ];
+
+      // Add all test entries to the database
+      for (const entry of entries) {
+        await store.addAuditLog(entry);
+      }
+    });
+
+    describe('getAuditLog', () => {
+      it('should retrieve all audit logs for a specific task', async () => {
+        const logs = await store.getAuditLog('task-1');
+
+        expect(logs).toHaveLength(3);
+        expect(logs.map(l => l.id).sort()).toEqual(['audit-1', 'audit-2', 'audit-5']);
+
+        // Should be ordered by timestamp DESC
+        expect(logs[0].id).toBe('audit-5'); // Most recent
+        expect(logs[2].id).toBe('audit-1'); // Oldest
+      });
+
+      it('should return empty array for non-existent task', async () => {
+        const logs = await store.getAuditLog('non-existent-task');
+        expect(logs).toHaveLength(0);
+      });
+
+      it('should return properly typed AuditLogEntry objects', async () => {
+        const logs = await store.getAuditLog('task-1');
+
+        expect(logs.length).toBeGreaterThan(0);
+        const log = logs[0];
+
+        // Verify all required properties are present and typed correctly
+        expect(typeof log.id).toBe('string');
+        expect(log.taskId).toBe('task-1');
+        expect(typeof log.eventType).toBe('string');
+        expect(typeof log.severity).toBe('string');
+        expect(log.timestamp).toBeInstanceOf(Date);
+        expect(typeof log.actor).toBe('string');
+        expect(typeof log.message).toBe('string');
+      });
+    });
+
+    describe('queryAuditLog', () => {
+      it('should return all logs when no filters are provided', async () => {
+        const logs = await store.queryAuditLog();
+        expect(logs).toHaveLength(6);
+      });
+
+      it('should filter by taskId', async () => {
+        const logs = await store.queryAuditLog({ taskId: 'task-2' });
+        expect(logs).toHaveLength(2);
+        expect(logs.every(log => log.taskId === 'task-2')).toBe(true);
+      });
+
+      it('should filter by actionType (eventType)', async () => {
+        const logs = await store.queryAuditLog({ actionType: 'task.approved' });
+        expect(logs).toHaveLength(1);
+        expect(logs[0].eventType).toBe('task.approved');
+        expect(logs[0].actor).toBe('user-bob');
+      });
+
+      it('should filter by approver (actor)', async () => {
+        const logs = await store.queryAuditLog({ approver: 'user-alice' });
+        expect(logs).toHaveLength(2);
+        expect(logs.every(log => log.actor === 'user-alice')).toBe(true);
+        expect(logs.map(l => l.id).sort()).toEqual(['audit-1', 'audit-3']);
+      });
+
+      it('should filter by startDate', async () => {
+        const startDate = new Date('2024-01-01T10:02:00Z'); // 2 minutes after base time
+        const logs = await store.queryAuditLog({ startDate });
+
+        expect(logs).toHaveLength(4); // audit-3, audit-4, audit-5, audit-6
+        expect(logs.every(log => log.timestamp >= startDate)).toBe(true);
+      });
+
+      it('should filter by endDate', async () => {
+        const endDate = new Date('2024-01-01T10:02:00Z'); // 2 minutes after base time
+        const logs = await store.queryAuditLog({ endDate });
+
+        expect(logs).toHaveLength(3); // audit-1, audit-2, audit-3
+        expect(logs.every(log => log.timestamp <= endDate)).toBe(true);
+      });
+
+      it('should filter by date range', async () => {
+        const startDate = new Date('2024-01-01T10:01:00Z'); // 1 minute after base
+        const endDate = new Date('2024-01-01T10:03:30Z');   // 3.5 minutes after base
+
+        const logs = await store.queryAuditLog({ startDate, endDate });
+
+        expect(logs).toHaveLength(2); // audit-2, audit-3
+        expect(logs.every(log =>
+          log.timestamp >= startDate && log.timestamp <= endDate
+        )).toBe(true);
+      });
+
+      it('should combine multiple filters', async () => {
+        const logs = await store.queryAuditLog({
+          taskId: 'task-1',
+          approver: 'user-bob',
+        });
+
+        expect(logs).toHaveLength(1);
+        expect(logs[0].taskId).toBe('task-1');
+        expect(logs[0].actor).toBe('user-bob');
+        expect(logs[0].eventType).toBe('task.approved');
+      });
+
+      it('should return empty array when filters match nothing', async () => {
+        const logs = await store.queryAuditLog({
+          taskId: 'non-existent-task',
+          approver: 'non-existent-user',
+        });
+
+        expect(logs).toHaveLength(0);
+      });
+
+      it('should handle edge case filters gracefully', async () => {
+        // Test with very old date
+        const veryOldDate = new Date('2020-01-01T00:00:00Z');
+        const logs = await store.queryAuditLog({ startDate: veryOldDate });
+        expect(logs).toHaveLength(6); // All logs should be after this date
+
+        // Test with future date
+        const futureDate = new Date('2030-01-01T00:00:00Z');
+        const futureLogs = await store.queryAuditLog({ endDate: futureDate });
+        expect(futureLogs).toHaveLength(6); // All logs should be before this date
+      });
+    });
+
+    describe('getApprovalHistory', () => {
+      it('should return all approval-related events when no approver filter', async () => {
+        const history = await store.getApprovalHistory();
+
+        expect(history).toHaveLength(4);
+        const eventTypes = history.map(h => h.eventType);
+        expect(eventTypes).toContain('task.approved');
+        expect(eventTypes).toContain('task.rejected');
+        expect(eventTypes).toContain('stage.approved');
+        expect(eventTypes).toContain('stage.rejected');
+      });
+
+      it('should filter approval history by approver', async () => {
+        const history = await store.getApprovalHistory('user-bob');
+
+        expect(history).toHaveLength(2);
+        expect(history.every(h => h.actor === 'user-bob')).toBe(true);
+        expect(history.map(h => h.eventType)).toContain('task.approved');
+        expect(history.map(h => h.eventType)).toContain('stage.rejected');
+      });
+
+      it('should return empty array for non-existent approver', async () => {
+        const history = await store.getApprovalHistory('non-existent-user');
+        expect(history).toHaveLength(0);
+      });
+
+      it('should only include approval/rejection events', async () => {
+        const history = await store.getApprovalHistory();
+
+        const allowedEvents = ['task.approved', 'task.rejected', 'stage.approved', 'stage.rejected'];
+        expect(history.every(h => allowedEvents.includes(h.eventType))).toBe(true);
+
+        // Should not include other event types like 'task.created' or 'task.failed'
+        expect(history.some(h => h.eventType === 'task.created')).toBe(false);
+        expect(history.some(h => h.eventType === 'task.failed')).toBe(false);
+      });
+
+      it('should be ordered by timestamp DESC (most recent first)', async () => {
+        const history = await store.getApprovalHistory();
+
+        expect(history.length).toBeGreaterThan(1);
+        for (let i = 1; i < history.length; i++) {
+          expect(history[i-1].timestamp.getTime()).toBeGreaterThanOrEqual(
+            history[i].timestamp.getTime()
+          );
+        }
+      });
+
+      it('should return properly typed AuditLogEntry objects', async () => {
+        const history = await store.getApprovalHistory('user-alice');
+
+        expect(history.length).toBeGreaterThan(0);
+        const entry = history[0];
+
+        expect(typeof entry.id).toBe('string');
+        expect(typeof entry.taskId).toBe('string');
+        expect(typeof entry.eventType).toBe('string');
+        expect(typeof entry.severity).toBe('string');
+        expect(entry.timestamp).toBeInstanceOf(Date);
+        expect(typeof entry.actor).toBe('string');
+        expect(typeof entry.message).toBe('string');
+      });
+    });
+
+    describe('Error Handling and Edge Cases', () => {
+      it('should handle SQL injection attempts safely', async () => {
+        // Test with malicious SQL in filters - should be safely parameterized
+        const maliciousInput = "'; DROP TABLE audit_logs; --";
+
+        await expect(store.queryAuditLog({
+          taskId: maliciousInput
+        })).resolves.not.toThrow();
+
+        await expect(store.queryAuditLog({
+          approver: maliciousInput
+        })).resolves.not.toThrow();
+
+        await expect(store.getApprovalHistory(maliciousInput)).resolves.not.toThrow();
+
+        // Verify table still exists by querying for legitimate data
+        const logs = await store.queryAuditLog();
+        expect(logs).toHaveLength(6);
+      });
+
+      it('should handle null and undefined values correctly', async () => {
+        await expect(store.getAuditLog('')).resolves.toEqual([]);
+
+        const logs = await store.queryAuditLog({
+          taskId: undefined,
+          approver: undefined,
+          startDate: undefined,
+          endDate: undefined,
+        });
+        expect(logs).toHaveLength(6); // Should return all logs
+      });
+
+      it('should handle invalid date objects', async () => {
+        const invalidDate = new Date('invalid-date');
+
+        // Should not throw, but may return empty results due to invalid date comparison
+        await expect(store.queryAuditLog({
+          startDate: invalidDate
+        })).resolves.not.toThrow();
+      });
+    });
+  });
+
+  describe('APEX_HOME Environment Variable Integration', () => {
+    let originalApexHome: string | undefined;
+    let apexHomeTestDir: string;
+
+    beforeEach(async () => {
+      originalApexHome = process.env.APEX_HOME;
+      apexHomeTestDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-home-integration-'));
+    });
+
+    afterEach(async () => {
+      if (originalApexHome !== undefined) {
+        process.env.APEX_HOME = originalApexHome;
+      } else {
+        delete process.env.APEX_HOME;
+      }
+      try {
+        await fs.rm(apexHomeTestDir, { recursive: true, force: true });
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    });
+
+    it('should use APEX_HOME directory when environment variable is set', async () => {
+      // Close current store
+      store.close();
+
+      // Set APEX_HOME environment variable
+      process.env.APEX_HOME = apexHomeTestDir;
+
+      // Create new store instance
+      const apexHomeStore = new TaskStore(testDir);
+      await apexHomeStore.initialize();
+
+      const task = createTestTask();
+      task.id = 'apex_home_test_task';
+      await apexHomeStore.createTask(task);
+
+      // Verify task exists in the store
+      const retrieved = await apexHomeStore.getTask('apex_home_test_task');
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe('apex_home_test_task');
+
+      // Verify database file exists in APEX_HOME directory
+      const apexHomeDbPath = path.join(apexHomeTestDir, 'apex.db');
+      const dbExists = await fs.access(apexHomeDbPath).then(() => true).catch(() => false);
+      expect(dbExists).toBe(true);
+
+      apexHomeStore.close();
+
+      // Recreate store for other tests
+      store = new TaskStore(testDir);
+      await store.initialize();
+    });
+  });
+
+  describe('Cleanup Methods', () => {
+    beforeEach(async () => {
+      // Create some test data
+      const task = createTestTask();
+      await store.createTask(task);
+
+      await store.addLog(task.id, {
+        level: 'info',
+        stage: 'test',
+        agent: 'test-agent',
+        message: 'Test log entry',
+        timestamp: new Date(),
+      });
+
+      await store.addArtifact(task.id, {
+        name: 'test-artifact',
+        type: 'file',
+        path: '/test/path',
+        content: 'test content',
+        metadata: {},
+      });
+    });
+
+    it('should clear all tasks and related data with clearAllTasks', async () => {
+      // Verify data exists before cleanup
+      const tasksBeforeCleanup = await store.listTasks();
+      expect(tasksBeforeCleanup).toHaveLength(1);
+
+      const logsBeforeCleanup = await store.getLogs(tasksBeforeCleanup[0].id);
+      expect(logsBeforeCleanup).toHaveLength(1);
+
+      const artifactsBeforeCleanup = await store.getArtifacts(tasksBeforeCleanup[0].id);
+      expect(artifactsBeforeCleanup).toHaveLength(1);
+
+      // Clear all tasks
+      store.clearAllTasks();
+
+      // Verify all data is cleared
+      const tasksAfterCleanup = await store.listTasks();
+      expect(tasksAfterCleanup).toHaveLength(0);
+
+      const logsAfterCleanup = await store.getLogs('non-existent-task');
+      expect(logsAfterCleanup).toHaveLength(0);
+
+      const artifactsAfterCleanup = await store.getArtifacts('non-existent-task');
+      expect(artifactsAfterCleanup).toHaveLength(0);
+    });
+
+    it('should reset database completely with resetDatabase', async () => {
+      // Verify data exists before reset
+      const tasksBeforeReset = await store.listTasks();
+      expect(tasksBeforeReset).toHaveLength(1);
+
+      // Reset the database
+      store.resetDatabase();
+
+      // Verify all data is cleared and tables are recreated
+      const tasksAfterReset = await store.listTasks();
+      expect(tasksAfterReset).toHaveLength(0);
+
+      // Verify we can still create new data after reset
+      const newTask = createTestTask();
+      await store.createTask(newTask);
+
+      const retrievedTask = await store.getTask(newTask.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.id).toBe(newTask.id);
+    });
+
+    it('should handle clearAllTasks when database is empty', () => {
+      store.clearAllTasks();
+      // Should not throw any errors
+      expect(true).toBe(true);
+    });
+
+    it('should handle resetDatabase when database is empty', () => {
+      store.resetDatabase();
+      // Should not throw any errors
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('createTestInstance static method', () => {
+    it('should create a test instance with in-memory database', async () => {
+      const testStore = TaskStore.createTestInstance();
+      await testStore.initialize();
+
+      // Verify it's working with in-memory database
+      const task = createTestTask();
+      await testStore.createTask(task);
+
+      const retrievedTask = await testStore.getTask(task.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.id).toBe(task.id);
+
+      testStore.close();
+    });
+
+    it('should create test instance with custom project path', async () => {
+      const customPath = '/custom/test/path';
+      const testStore = TaskStore.createTestInstance(customPath);
+      await testStore.initialize();
+
+      // Verify the store works
+      const task = createTestTask();
+      task.projectPath = customPath; // Use custom project path
+      await testStore.createTask(task);
+
+      const retrievedTask = await testStore.getTask(task.id);
+      expect(retrievedTask).not.toBeNull();
+      expect(retrievedTask?.projectPath).toBe(customPath);
+
+      testStore.close();
+    });
+
+    it('should create independent test instances', async () => {
+      const testStore1 = TaskStore.createTestInstance();
+      const testStore2 = TaskStore.createTestInstance();
+
+      await testStore1.initialize();
+      await testStore2.initialize();
+
+      // Add different tasks to each store
+      const task1 = createTestTask();
+      task1.id = 'task1';
+      await testStore1.createTask(task1);
+
+      const task2 = createTestTask();
+      task2.id = 'task2';
+      await testStore2.createTask(task2);
+
+      // Verify isolation
+      const retrievedFromStore1 = await testStore1.getTask('task2');
+      expect(retrievedFromStore1).toBeNull();
+
+      const retrievedFromStore2 = await testStore2.getTask('task1');
+      expect(retrievedFromStore2).toBeNull();
+
+      testStore1.close();
+      testStore2.close();
     });
   });
 });

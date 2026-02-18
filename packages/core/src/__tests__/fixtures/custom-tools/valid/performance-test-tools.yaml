@@ -1,0 +1,173 @@
+# Performance Test Tool Fixtures
+# Tools designed for testing performance characteristics and edge cases
+
+# Fast execution tool for performance testing
+- name: FastTool
+  description: Tool that executes quickly for performance benchmarks
+  command: echo
+  args:
+    - "fast-result"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 1000
+  enabled: true
+
+# Tool with minimal parameters for performance testing
+- name: MinimalPerformanceTool
+  description: Minimal tool configuration for performance testing
+  command: true
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  enabled: true
+
+# Tool that generates large output
+- name: LargeOutputTool
+  description: Tool that generates substantial output for testing
+  command: sh
+  args:
+    - "-c"
+    - "for i in $(seq 1 {{input.lines}}); do echo 'Line $i: Lorem ipsum dolor sit amet consectetur adipiscing elit'; done"
+  parameters:
+    type: object
+    properties:
+      lines:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+        description: Number of lines to generate
+    additionalProperties: false
+  outputParser: lines
+  timeoutMs: 30000
+  enabled: true
+
+# Tool with complex parameter validation for performance testing
+- name: ComplexValidationTool
+  description: Tool with complex parameter schema for validation performance
+  command: echo
+  args:
+    - '{"processed": true, "input": {{input}}}'
+  parameters:
+    type: object
+    properties:
+      config:
+        type: object
+        properties:
+          database:
+            type: object
+            properties:
+              host:
+                type: string
+                pattern: "^[a-zA-Z0-9.-]+$"
+                minLength: 1
+                maxLength: 255
+              port:
+                type: integer
+                minimum: 1
+                maximum: 65535
+              credentials:
+                type: object
+                properties:
+                  username:
+                    type: string
+                    minLength: 1
+                    maxLength: 50
+                  password:
+                    type: string
+                    minLength: 8
+                    maxLength: 128
+                required:
+                  - username
+                  - password
+            required:
+              - host
+              - port
+              - credentials
+          features:
+            type: array
+            items:
+              type: string
+              enum: ["logging", "caching", "monitoring", "analytics"]
+            minItems: 1
+            maxItems: 4
+            uniqueItems: true
+          settings:
+            type: object
+            properties:
+              timeout:
+                type: number
+                minimum: 0.1
+                maximum: 300.0
+              retries:
+                type: integer
+                minimum: 0
+                maximum: 10
+              debug:
+                type: boolean
+                default: false
+        required:
+          - database
+          - features
+    required:
+      - config
+    additionalProperties: false
+  outputParser: json
+  timeoutMs: 15000
+  enabled: true
+
+# Tool for concurrent execution testing
+- name: ConcurrentTool
+  description: Tool designed for testing concurrent execution
+  command: sh
+  args:
+    - "-c"
+    - "sleep {{input.delay}} && echo 'Concurrent execution {{input.id}} completed'"
+  parameters:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Unique identifier for this execution
+      delay:
+        type: number
+        minimum: 0.1
+        maximum: 5.0
+        default: 1.0
+        description: Delay in seconds before completion
+    required:
+      - id
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 10000
+  enabled: true
+
+# Tool with heavy computation simulation
+- name: ComputeIntensiveTool
+  description: Tool that simulates compute-intensive operations
+  command: sh
+  args:
+    - "-c"
+    - |
+      result=0;
+      for i in $(seq 1 {{input.iterations}}); do
+        result=$((result + i));
+      done;
+      echo "Computed sum: $result"
+  parameters:
+    type: object
+    properties:
+      iterations:
+        type: integer
+        minimum: 1
+        maximum: 10000
+        default: 1000
+        description: Number of iterations to perform
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 60000
+  enabled: true

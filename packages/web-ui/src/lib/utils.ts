@@ -59,6 +59,7 @@ export function getStatusVariant(
     case 'in-progress':
       return 'info'
     case 'waiting-approval':
+    case 'awaiting-approval':
     case 'paused':
       return 'warning'
     case 'completed':

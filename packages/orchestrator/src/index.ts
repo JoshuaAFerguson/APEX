@@ -1,12 +1,27 @@
-import { query, type AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { RepairLoop, resolveRepairConfig, ErrorClassifier } from './repair-loop/index.js';
+import type { RepairLoopHost, RepairQueryOptions, RepairQueryResult, RepairContext, RepairLoopEvents, RepairConfig } from './repair-loop/index.js';
 import { EventEmitter } from 'eventemitter3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as crypto from 'crypto';
+import { promises as fs, existsSync, writeFileSync, unlinkSync, readFileSync, statSync } from 'fs';
+import type { Stats } from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml'; // Added js-yaml import
 import {
   ApexConfig,
   AgentDefinition,
   WorkflowDefinition,
   WorkflowStage,
+  WorkflowGate,
+  ApprovalGate,
+  ApprovalState,
+  ApprovalRequiredEventData,
+  ApprovalGrantedEventData,
+  ApprovalDeniedEventData,
+  ApprovalRequest,
+  ApprovalResponse,
   Task,
   TaskStatus,
   TaskUsage,
@@ -20,13 +35,25 @@ import {
   SubtaskDefinition,
   TaskDecomposition,
   SessionLimitStatus,
+  PermissionLevel,
+  PermissionPreset,
+  PermissionNotification,
+  ToolExecution,
+  ToolStartHookContext,
+  ToolStartHookCallback,
+  ToolCompleteHookContext,
+  ToolCompleteHookCallback,
+  ToolErrorHookContext,
+  ToolErrorHookCallback,
   loadConfig,
   loadAgents,
+  loadWorkflows,
   loadWorkflow,
   getEffectiveConfig,
   generateTaskId,
   generateBranchName,
   generateTaskTemplateId,
+  generateApprovalId,
   calculateCost,
   OutdatedDocumentation,
   MissingReadmeSection,
@@ -36,10 +63,51 @@ import {
   CreateTaskRequest,
   TaskTemplate,
   WorktreeInfo,
+  UndoOperationResult,
+  FileSnapshot,
+  SecretDetection,
+  SecretFinding,
+  SecretDetectionBehavior,
+  RejectionBehavior,
+  PolicyViolation,
+  PolicyEnforcementMode,
+  PolicyCheckContext,
+  PolicyCheckResult,
+  ApprovalCheckpointType,
+  ApprovalOperationType,
+  AutonomyLevel,
+  ApexRule, // Added ApexRule
+  MCPServerConfig,
+  MCPMarketplaceEntry,
+  MCPInstallation,
+  MCPConnection,
+  HealthCheckResult,
+  AutoFixStageResults,
+  AutoFixStageConfig,
+  AutoFixEvent,
+  VisualComparisonEventData,
+  TestReport,
+  TestReportSchema,
+  TestResult,
+  TestResultSchema,
+  TestArtifact,
+  TestArtifactSchema,
+  TestSummary,
+  TestSummarySchema,
+  VisualRegressionSummary,
+  VisualRegressionSummarySchema,
+  TestVisualComparison,
+  TestVisualComparisonSchema,
+  getMCPServers,
+  sanitizeErrorMessage,
 } from '@apexcli/core';
-import { TaskStore } from './store';
+import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
-import { WorkspaceManager, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
+import { AliasResolver } from './alias-resolver';
+import { PolicyEnforcer, createPolicyEnforcer, type ApprovalCheckContext, type ApprovalRequirement } from './policy';
+import type { PolicyEngine } from './policy-engine';
+import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
+import { WorkspaceManager, type WorkspaceInfo, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
@@ -48,21 +116,144 @@ import {
   buildResumePrompt,
   parseDecompositionRequest,
   isPlanningStage,
+  isCodeGenerationStage,
   type DecompositionRequest,
 } from './prompts';
-import { createHooks } from './hooks';
+import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
+import { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
 import { estimateConversationTokens, createContextSummary } from './context';
 import { IdleProcessor, type ProjectAnalysis } from './idle-processor';
 import { ThoughtCaptureManager } from './thought-capture';
 import { InteractionManager } from './interaction-manager';
+import { PermissionStore } from './permission-store';
+import { PermissionManager } from './permission-manager';
+import { PermissionPresetManager } from './permission-preset-manager';
+import { BrowserManager, type BrowserManagerOptions, type BrowserManagerEvents } from './browser-manager';
+import { LinterService, ESLintPlugin, PrettierPlugin } from './linter';
+import { ErrorFeedbackLoop } from './error-feedback';
+import { SecretScanner, type SecretScannerConfig as OrchestratorSecretScannerConfig } from './scanner';
+import { SecretOutputProcessor } from './secret-output-processor';
+import { generateFileDiff, type DiffResult } from './utils/diff';
+import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
+import { MCPServerManager } from './mcp/server-manager';
+import { MCPInstaller, type InstalledMCPResult } from './mcp-installer';
+import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
+import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
+import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
+import { buildMCPProxyServer, type MCPProxyServer } from './mcp-proxy-server';
+import { type ClaudeSDKTool } from './schema-translator';
+import { buildBrowserToolsServer, type BrowserToolsServer } from './browser-mcp';
+import { browserTool } from './tools';
+import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDIterationResult } from './tdd-executor';
+import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
+import type { ImportFixResult, MissingImportAnalysis } from './import-auto-fixer/types';
+import { TestReportGenerator, type TestReportGeneratorOptions, type TestStartInfo, type TestCompleteInfo } from './test-report-generator';
 
 const execAsync = promisify(exec);
 
+/**
+ * Configuration options for ApexOrchestrator initialization
+ *
+ * @interface OrchestratorOptions
+ */
 export interface OrchestratorOptions {
+  /** Project root path for file operations and workspace management */
   projectPath: string;
+  /** Optional API server URL for external integrations */
   apiUrl?: string;
+  /** Optional custom autonomy enforcer for dependency injection */
+  autonomyEnforcer?: AutonomyEnforcer;
+  /** Optional policy engine for custom policy validation */
+  policyEngine?: PolicyEngine;
 }
 
+/**
+ * Policy violation event payload data
+ */
+export interface PolicyViolationEventData {
+  /** Task ID where the violation occurred */
+  taskId: string;
+  /** Agent that triggered the violation */
+  agent: string;
+  /** Action that caused the violation */
+  action: string;
+  /** Details about the violation */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the violation occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy blocked event payload data
+ */
+export interface PolicyBlockedEventData {
+  /** Task ID that was blocked */
+  taskId: string;
+  /** Agent that was blocked */
+  agent: string;
+  /** Action that was blocked */
+  action: string;
+  /** Details about the violations that caused the block */
+  violations: PolicyViolation[];
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the block occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy warning event payload data
+ */
+export interface PolicyWarnedEventData {
+  /** Task ID where the warning occurred */
+  taskId: string;
+  /** Agent that triggered the warning */
+  agent: string;
+  /** Action that caused the warning */
+  action: string;
+  /** Details about the violation that caused the warning */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the warning occurred */
+  timestamp: Date;
+}
+
+/**
+ * Policy audited event payload data
+ */
+export interface PolicyAuditedEventData {
+  /** Task ID where the audit event occurred */
+  taskId: string;
+  /** Agent that triggered the audit */
+  agent: string;
+  /** Action that was audited */
+  action: string;
+  /** Details about the violation that was audited */
+  violation: PolicyViolation;
+  /** Enforcement mode applied */
+  enforcementMode: PolicyEnforcementMode;
+  /** Timestamp when the audit occurred */
+  timestamp: Date;
+}
+
+/**
+ * Event interface defining all events emitted by ApexOrchestrator
+ *
+ * Events are organized into categories:
+ * - Task lifecycle: created, started, completed, failed, etc.
+ * - Agent interactions: messages, thinking, tool usage, transitions
+ * - System events: daemon state, capacity management, auto-resume
+ * - Container events: lifecycle and health monitoring
+ * - Permission events: requests, grants, denials
+ * - Tool events: calls, progress, completion
+ * - Security events: secret detection, dangerous operations
+ * - Linting events: automated code quality checks
+ * - Browser events: automation and error tracking
+ * - MCP events: server management and health monitoring
+ */
 export interface OrchestratorEvents {
   'task:created': (task: Task) => void;
   'task:started': (task: Task) => void;
@@ -126,9 +317,137 @@ export interface OrchestratorEvents {
   'dependency:install-started': (event: DependencyInstallEventData) => void;
   'dependency:install-completed': (event: DependencyInstallCompletedEventData) => void;
 
+  // Permission management events (v0.5.0)
+  'permission:request': (event: PermissionRequestEventData) => void;
+  'permission:granted': (event: PermissionGrantedEventData) => void;
+  'permission:denied': (event: PermissionDeniedEventData) => void;
+  'permission:notification': (event: PermissionNotification) => void;
+  'dangerous:detected': (event: DangerousOperationDetectedEventData) => void;
+  'dangerous:confirmed': (event: DangerousOperationConfirmedEventData) => void;
+  'dangerous:blocked': (event: DangerousOperationBlockedEventData) => void;
+
+  // Approval gate events
+  'approval:required': (event: ApprovalRequiredEventData) => void;
+  'approval:request': (event: ApprovalRequest) => void;
+  'approval:approved': (event: ApprovalGrantedEventData) => void;
+  'approval:denied': (event: ApprovalDeniedEventData) => void;
+  'approval:info-requested': (event: {
+    approvalId: string;
+    taskId: string;
+    requester: string;
+    message?: string;
+    timestamp: Date;
+  }) => void;
+  'approval:decision': (event: {
+    approvalId: string;
+    decision: 'approved' | 'denied';
+    approver: string;
+    comment?: string;
+    reason?: string;
+  }) => void;
+
+  // Policy violation events (v0.5.0)
+  'policy:violation': (event: PolicyViolationEventData) => void;
+  'policy:blocked': (event: PolicyBlockedEventData) => void;
+  'policy:warned': (event: PolicyWarnedEventData) => void;
+  'policy:audited': (event: PolicyAuditedEventData) => void;
+
   // Template events
   'template:created': (template: TaskTemplate) => void;
   'template:updated': (template: TaskTemplate) => void;
+
+  // Resource limit events
+  'limit:warning': (event: LimitWarningEvent) => void;
+  'limit:exceeded': (event: LimitExceededEvent) => void;
+
+  // Tool call events (v0.5.0)
+  'tool:start': (event: ToolCallStartEvent) => void;
+  'tool:progress': (event: ToolCallProgressEvent) => void;
+  'tool:complete': (event: ToolCallCompleteEvent) => void;
+  'secret:detected': (event: SecretDetectedEvent) => void;
+
+  // Diff preview events (v0.5.0)
+  'diff:preview': (event: DiffPreviewEvent) => void;
+
+  // Lint events (v0.5.0)
+  'lint:started': (event: LintStartedEventData) => void;
+  'lint:completed': (event: LintCompletedEventData) => void;
+  'lint:issue': (event: LintIssueEventData) => void;
+  'lint:fix-applied': (event: LintFixAppliedEventData) => void;
+
+  // MCP Connection events (v0.5.0)
+  'mcp:connected': (event: MCPConnectionEventData) => void;
+  'mcp:disconnected': (event: MCPDisconnectionEventData) => void;
+  'mcp:error': (event: MCPErrorEventData) => void;
+  'mcp:reconnecting': (event: MCPReconnectingEventData) => void;
+  'mcp:health-check': (event: MCPHealthCheckEventData) => void;
+  'mcp:state-change': (event: MCPStateChangeEventData) => void;
+  'mcp:pool-change': (event: MCPPoolChangeEventData) => void;
+  'mcp:tool-start': (event: { serverId: string; serverName: string; toolName: string; callId: string; timestamp: Date }) => void;
+  'mcp:tool-complete': (event: { serverId: string; serverName: string; toolName: string; callId: string; durationMs: number; timestamp: Date }) => void;
+  'mcp:tool-error': (event: { serverId: string; serverName: string; toolName: string; callId: string; error: string; errorCode?: string; retriable: boolean; timestamp: Date }) => void;
+
+  // Auto-fix events (v0.5.0)
+  'autofix:requested': (event: AutoFixRequestedEventData) => void;
+  'autofix:started': (event: AutoFixStartedEventData) => void;
+  'autofix:progress': (event: AutoFixProgressEventData) => void;
+  'autofix:completed': (event: AutoFixCompletedEventData) => void;
+  'autofix:failed': (event: AutoFixFailedEventData) => void;
+  'autofix:skipped': (event: AutoFixSkippedEventData) => void;
+
+  // Auto-fix events with standardized event names (v0.5.0)
+  'auto-fix-start': (event: AutoFixEvent) => void;
+  'auto-fix-progress': (event: AutoFixEvent) => void;
+  'auto-fix-complete': (event: AutoFixEvent) => void;
+  'auto-fix-error': (event: AutoFixEvent) => void;
+
+  // Undo events (v0.5.0)
+  'undo:start': (taskId: string) => void;
+  'undo:complete': (taskId: string, actionId: string, restoredFiles: string[]) => void;
+  'undo:error': (taskId: string, actionId: string | null, error: string) => void;
+
+  // Hook events (v0.5.0)
+  'hook:pre:start': (event: HookExecutionStartEvent) => void;
+  'hook:pre:complete': (event: HookExecutionCompleteEvent) => void;
+  'hook:post:start': (event: HookExecutionStartEvent) => void;
+  'hook:post:complete': (event: HookExecutionCompleteEvent) => void;
+
+  // Browser events (v0.5.0) - Integration with browser automation streaming
+  'browser:console': (event: BrowserConsoleEvent) => void;
+  'browser:error': (event: BrowserErrorEvent) => void;
+  'browser:network-error': (event: BrowserNetworkErrorEvent) => void;
+  'browser:performance-warning': (event: BrowserPerformanceWarningEvent) => void;
+  'browser:security-violation': (event: BrowserSecurityViolationEvent) => void;
+  'browser:session-started': (event: BrowserSessionStartedEvent) => void;
+  'browser:session-ended': (event: BrowserSessionEndedEvent) => void;
+
+  // Browser Manager events (v0.5.0) - Browser instance lifecycle management
+  'browser:launched': (event: BrowserManagerLaunchedEvent) => void;
+  'browser:closed': (event: BrowserManagerClosedEvent) => void;
+  'browser:context-created': (event: BrowserManagerContextCreatedEvent) => void;
+  'browser:context-closed': (event: BrowserManagerContextClosedEvent) => void;
+  'browser:page-created': (event: BrowserManagerPageCreatedEvent) => void;
+  'browser:page-closed': (event: BrowserManagerPageClosedEvent) => void;
+  'browser:manager-error': (event: BrowserManagerErrorEvent) => void;
+
+  // Visual comparison events (v0.5.0)
+  'visual:comparison:failed': (event: VisualComparisonEventData) => void;
+  'visual:comparison:passed': (event: VisualComparisonEventData) => void;
+
+  // Generic APEX events (v0.5.0) - for TDD and other subsystems
+  'apex-event': (event: ApexEvent) => void;
+
+  // Self-repair loop events (v0.5.0) - autonomous error recovery
+  'repair:started': RepairLoopEvents['repair:started'];
+  'repair:state-change': RepairLoopEvents['repair:state-change'];
+  'repair:diagnosis': RepairLoopEvents['repair:diagnosis'];
+  'repair:fix-planned': RepairLoopEvents['repair:fix-planned'];
+  'repair:fix-applied': RepairLoopEvents['repair:fix-applied'];
+  'repair:validation-passed': RepairLoopEvents['repair:validation-passed'];
+  'repair:validation-failed': RepairLoopEvents['repair:validation-failed'];
+  'repair:resolved': RepairLoopEvents['repair:resolved'];
+  'repair:escalated': RepairLoopEvents['repair:escalated'];
+  'repair:terminated': RepairLoopEvents['repair:terminated'];
 }
 
 /**
@@ -209,6 +528,739 @@ export interface ContainerDiedEventData extends ContainerEventData {
  */
 export type ContainerLifecycleOperation = 'created' | 'started' | 'stopped' | 'removed' | 'died';
 
+/**
+ * Event payload for permission:request event
+ * Emitted when an agent requests permission to use a tool
+ */
+export interface PermissionRequestEventData {
+  requestId: string;
+  tool: string;
+  scope?: string;
+  description: string;
+  isDangerous: boolean;
+  agent?: string;
+  timestamp: Date;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Event payload for permission:granted event
+ * Emitted when a permission request is approved
+ */
+export interface PermissionGrantedEventData {
+  requestId: string;
+  tool: string;
+  scope?: string;
+  level: PermissionLevel;
+  grantedBy: string;
+  timestamp: Date;
+  reason?: string;
+}
+
+/**
+ * Event payload for permission:denied event
+ * Emitted when a permission request is rejected
+ */
+export interface PermissionDeniedEventData {
+  requestId: string;
+  tool: string;
+  scope?: string;
+  deniedBy: string;
+  timestamp: Date;
+  reason: string;
+}
+
+/**
+ * Event payload for dangerous:detected event
+ * Emitted when a potentially dangerous operation is detected
+ */
+export interface DangerousOperationDetectedEventData {
+  operationId: string;
+  tool: string;
+  operation: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  riskDescription: string;
+  agent: string;
+  timestamp: Date;
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Event payload for dangerous:confirmed event
+ * Emitted when a user confirms a dangerous operation should proceed
+ */
+export interface DangerousOperationConfirmedEventData {
+  operationId: string;
+  tool: string;
+  operation: string;
+  confirmedBy: string;
+  timestamp: Date;
+  reason?: string;
+}
+
+/**
+ * Event payload for dangerous:blocked event
+ * Emitted when a dangerous operation is blocked for safety
+ */
+export interface DangerousOperationBlockedEventData {
+  operationId: string;
+  tool: string;
+  operation: string;
+  blockedBy: string;
+  timestamp: Date;
+  reason: string;
+}
+
+/**
+ * Event payload for limit warning events
+ */
+export interface LimitWarningEvent {
+  taskId: string;
+  limitType: 'tokens' | 'cost' | 'time' | 'files';
+  currentValue: number;
+  limitValue: number;
+  percentage: number;
+  utilizationPercent?: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for limit exceeded events
+ */
+export interface LimitExceededEvent {
+  taskId: string;
+  limitType: 'tokens' | 'cost' | 'time' | 'files';
+  currentValue: number;
+  limitValue: number;
+  percentage: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for tool:start event (v0.5.0)
+ * Emitted when a tool call begins
+ */
+export interface ToolCallStartEvent {
+  taskId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  timestamp: Date;
+  callId: string;
+}
+
+/**
+ * Event payload for tool:progress event (v0.5.0)
+ * Emitted during long-running tool operations
+ */
+export interface ToolCallProgressEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  progress: {
+    message: string;
+    percentage?: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for tool:complete event (v0.5.0)
+ * Emitted when a tool call completes
+ */
+export interface ToolCallCompleteEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  result: {
+    success: boolean;
+    output?: unknown;
+    error?: string;
+  };
+  timing: {
+    startTime: Date;
+    endTime: Date;
+    duration: number; // milliseconds
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for secret:detected event (v0.5.0)
+ * Emitted when secrets are detected in tool outputs
+ */
+export interface SecretDetectedEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  findings: SecretFinding[];
+  count: number;
+  severityCounts: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  behavior: SecretDetectionBehavior;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for diff:preview event (v0.5.0)
+ * Emitted when a file edit is about to be applied and diff preview is enabled
+ */
+export interface DiffPreviewEvent {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  filePath: string;
+  diff: string;
+  addedLines: number;
+  removedLines: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:started event (v0.5.0)
+ * Emitted when a linter starts execution
+ */
+export interface LintStartedEventData {
+  taskId: string;
+  linterId: string;
+  files: string[];
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:completed event (v0.5.0)
+ * Emitted when a linter completes execution
+ */
+export interface LintCompletedEventData {
+  taskId: string;
+  linterId: string;
+  result: {
+    success: boolean;
+    issues: unknown[];
+    filesChecked: number;
+    filesWithIssues: number;
+    duration: number; // milliseconds
+    error?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:issue event (v0.5.0)
+ * Emitted when a linter finds an issue
+ */
+export interface LintIssueEventData {
+  taskId: string;
+  linterId: string;
+  issue: {
+    filePath: string;
+    line: number;
+    column: number;
+    endLine?: number;
+    endColumn?: number;
+    severity: 'error' | 'warning' | 'info' | 'hint';
+    ruleId: string;
+    message: string;
+    fix?: {
+      range: [number, number];
+      text: string;
+    };
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for lint:fix-applied event (v0.5.0)
+ * Emitted when a lint fix is successfully applied
+ */
+export interface LintFixAppliedEventData {
+  taskId: string;
+  linterId: string;
+  filePath: string;
+  issuesFixed: number;
+  fixDetails: {
+    ruleId: string;
+    line: number;
+    column: number;
+    originalText: string;
+    fixedText: string;
+  }[];
+  timestamp: Date;
+}
+
+// ============================================================================
+// Auto-Fix Event Types (v0.5.0)
+// ============================================================================
+
+/**
+ * Event payload when auto-fix is requested for a file
+ * Emitted when an agent or hook triggers auto-fix for a file
+ */
+export interface AutoFixRequestedEventData {
+  taskId: string;
+  filePath: string;
+  fixTypes: Array<'syntax' | 'imports' | 'formatting'>;
+  triggeredBy: 'agent' | 'hook' | 'manual';
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix operation begins
+ * Emitted when the auto-fixer starts processing a file
+ */
+export interface AutoFixStartedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesDetected: number;
+  timestamp: Date;
+}
+
+/**
+ * Event payload for auto-fix progress updates
+ * Emitted during auto-fix to report incremental progress
+ */
+export interface AutoFixProgressEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesFixed: number;
+  issuesRemaining: number;
+  currentFix?: string; // Description of current fix being applied
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix completes successfully
+ * Emitted when all requested fixes have been applied to a file
+ */
+export interface AutoFixCompletedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  issuesDetected: number;
+  issuesFixed: number;
+  duration: number; // milliseconds
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix fails
+ * Emitted when auto-fix encounters an unrecoverable error
+ */
+export interface AutoFixFailedEventData {
+  taskId: string;
+  filePath: string;
+  fixType: 'syntax' | 'imports' | 'formatting';
+  error: string;
+  issuesDetected: number;
+  issuesFixed: number; // How many were fixed before failure
+  timestamp: Date;
+}
+
+/**
+ * Event payload when auto-fix is skipped
+ * Emitted when auto-fix is not performed for a file
+ */
+export interface AutoFixSkippedEventData {
+  taskId: string;
+  filePath: string;
+  reason: 'disabled' | 'no_issues' | 'unsupported_file' | 'manual_override';
+  timestamp: Date;
+}
+
+/**
+ * MCP Connection event payload data
+ */
+export interface MCPConnectionEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Connection timestamp */
+  timestamp: Date;
+  /** Server configuration details */
+  config: {
+    type: string;
+    command?: string;
+    url?: string;
+  };
+}
+
+/**
+ * MCP Disconnection event payload data
+ */
+export interface MCPDisconnectionEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Disconnection reason */
+  reason?: string;
+  /** Disconnection timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Error event payload data
+ */
+export interface MCPErrorEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Error message */
+  error: string;
+  /** Error timestamp */
+  timestamp: Date;
+  /** Error code if available */
+  code?: string;
+}
+
+/**
+ * MCP Reconnecting event payload data
+ */
+export interface MCPReconnectingEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Current reconnection attempt number */
+  attempt: number;
+  /** Maximum reconnection attempts */
+  maxAttempts: number;
+  /** Reconnection timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Health Check event payload data
+ */
+export interface MCPHealthCheckEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Health check success status */
+  success: boolean;
+  /** Response latency in milliseconds (if successful) */
+  latencyMs?: number;
+  /** Error details (if failed) */
+  error?: string;
+  /** Number of consecutive failures */
+  consecutiveFailures: number;
+  /** Whether connection is considered healthy */
+  isHealthy: boolean;
+  /** Health check timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP State Change event payload data
+ */
+export interface MCPStateChangeEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Previous connection state */
+  previousState: string;
+  /** New connection state */
+  newState: string;
+  /** State change timestamp */
+  timestamp: Date;
+}
+
+/**
+ * MCP Pool Change event payload data
+ */
+export interface MCPPoolChangeEventData {
+  /** Server identifier */
+  serverId: string;
+  /** Server name */
+  serverName: string;
+  /** Total pool size */
+  poolSize: number;
+  /** Number of active connections */
+  activeConnections: number;
+  /** Pool change timestamp */
+  timestamp: Date;
+}
+
+/**
+ * Browser Events - Integrating browser automation events with orchestrator streaming
+ * These events provide real-time visibility into browser automation activities
+ * and include task context correlation for proper event tracking.
+ */
+
+/**
+ * Event payload for browser console messages
+ * Emitted when a console message is captured from browser automation
+ */
+export interface BrowserConsoleEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Console message details */
+  message: {
+    type: string;
+    text: string;
+    timestamp: Date;
+    level: import('./browser-console-stream').ConsoleLogLevel;
+    args?: unknown[];
+    location?: {
+      url: string;
+      lineNumber?: number;
+      columnNumber?: number;
+    };
+    stack?: string;
+    sessionId?: string;
+    pageContext?: {
+      url: string;
+      title: string;
+      userAgent: string;
+    };
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser runtime errors
+ * Emitted when a JavaScript error or runtime error occurs in browser automation
+ */
+export interface BrowserErrorEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Runtime error details */
+  error: {
+    message: string;
+    name?: string;
+    stack?: string;
+    timestamp: Date;
+    source?: {
+      url: string;
+      line: number;
+      column: number;
+    };
+    category: 'javascript' | 'network' | 'security' | 'permission' | 'resource' | 'unknown';
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    context?: {
+      userAgent: string;
+      pageUrl: string;
+      pageTitle: string;
+      viewport: { width: number; height: number };
+      timestamp: Date;
+    };
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser network errors
+ * Emitted when network requests fail during browser automation
+ */
+export interface BrowserNetworkErrorEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Network error details */
+  error: {
+    url: string;
+    method: string;
+    status: number;
+    statusText: string;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser performance warnings
+ * Emitted when performance issues are detected during browser automation
+ */
+export interface BrowserPerformanceWarningEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Performance warning details */
+  warning: {
+    type: 'slow-script' | 'memory-high' | 'layout-thrashing' | 'long-task';
+    message: string;
+    duration?: number;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser security violations
+ * Emitted when security violations are detected during browser automation
+ */
+export interface BrowserSecurityViolationEvent {
+  taskId: string;
+  /** Agent name that initiated the browser action */
+  agentName: string;
+  /** Security violation details */
+  violation: {
+    type: 'csp' | 'cors' | 'mixed-content' | 'unsafe-eval';
+    message: string;
+    blockedURI?: string;
+    timestamp: Date;
+    sessionId?: string;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser session start
+ * Emitted when a browser automation session starts
+ */
+export interface BrowserSessionStartedEvent {
+  taskId: string;
+  /** Agent name that initiated the browser session */
+  agentName: string;
+  /** Browser session details */
+  session: {
+    sessionId: string;
+    browserType: string;
+    userAgent: string;
+    viewport: { width: number; height: number };
+    headless: boolean;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Event payload for browser session end
+ * Emitted when a browser automation session ends
+ */
+export interface BrowserSessionEndedEvent {
+  taskId: string;
+  /** Agent name that ended the browser session */
+  agentName: string;
+  /** Browser session details */
+  session: {
+    sessionId: string;
+    duration: number; // milliseconds
+    pagesVisited: number;
+    errorsCount: number;
+    consoleMessagesCount: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser instance is launched by BrowserManager
+ */
+export interface BrowserManagerLaunchedEvent {
+  taskId: string;
+  /** Agent name that requested the browser launch */
+  agentName: string;
+  /** Browser instance information */
+  browserInfo: {
+    id: string;
+    engine: string;
+    version: string;
+    isConnected: boolean;
+    pid?: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser instance is closed by BrowserManager
+ */
+export interface BrowserManagerClosedEvent {
+  taskId: string;
+  /** Agent name that closed the browser */
+  agentName: string;
+  /** Browser instance ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser context is created by BrowserManager
+ */
+export interface BrowserManagerContextCreatedEvent {
+  taskId: string;
+  /** Agent name that requested the context */
+  agentName: string;
+  /** Context information */
+  contextInfo: {
+    id: string;
+    browserId: string;
+    pageCount: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a browser context is closed by BrowserManager
+ */
+export interface BrowserManagerContextClosedEvent {
+  taskId: string;
+  /** Agent name that closed the context */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a page is created within a browser context
+ */
+export interface BrowserManagerPageCreatedEvent {
+  taskId: string;
+  /** Agent name that triggered the page creation */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when a page is closed within a browser context
+ */
+export interface BrowserManagerPageClosedEvent {
+  taskId: string;
+  /** Agent name that closed the page */
+  agentName: string;
+  /** Context ID */
+  contextId: string;
+  /** Browser ID */
+  browserId: string;
+  timestamp: Date;
+}
+
+/**
+ * Emitted when an error occurs in BrowserManager operations
+ */
+export interface BrowserManagerErrorEvent {
+  taskId: string;
+  /** Agent name that was executing when the error occurred */
+  agentName: string;
+  /** Error details */
+  error: {
+    message: string;
+    name?: string;
+    stack?: string;
+    operation?: string; // The BrowserManager operation that failed
+  };
+  timestamp: Date;
+}
+
 export interface PRResult {
   success: boolean;
   prUrl?: string;
@@ -223,46 +1275,209 @@ export interface MergeTaskBranchResult {
   commitHash?: string;
 }
 
+/**
+ * Main orchestrator class for managing AI agents, workflows, and task execution
+ *
+ * Provides high-level coordination of:
+ * - Agent lifecycle management and workflow execution
+ * - Task storage, checkpointing, and result tracking
+ * - Permission management and security controls
+ * - Tool execution with hooks and validation
+ * - Event emission for real-time monitoring
+ * - Integration with Claude Agent SDK
+ *
+ * @extends EventEmitter<OrchestratorEvents>
+ * @example
+ * ```typescript
+ * const orchestrator = new ApexOrchestrator({ projectPath: '/path/to/project' });
+ * await orchestrator.initialize();
+ *
+ * const task = await orchestrator.executeWorkflow('feature-development', {
+ *   description: 'Add user authentication'
+ * });
+ * ```
+ */
 export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private config!: ApexConfig;
   private effectiveConfig!: ReturnType<typeof getEffectiveConfig>;
   private agents: Record<string, AgentDefinition> = {};
-  private store!: TaskStore;
+  private workflows: Record<string, WorkflowDefinition> = {};
+  private gates: Map<string, ApprovalGate> = new Map();
+  public store!: TaskStore;
+  private toolActionStore!: ToolActionStore;
   private thoughtCaptureManager!: ThoughtCaptureManager;
   private interactionManager!: InteractionManager;
   private worktreeManager?: WorktreeManager;
   private workspaceManager!: WorkspaceManager;
+  private _permissionStore!: PermissionStore;
+  private _permissionManager!: PermissionManager;
+  private _permissionPresetManager!: PermissionPresetManager;
+  private browserManager!: BrowserManager;
+  private policyEnforcer!: PolicyEnforcer;
+  private autonomyEnforcer!: AutonomyEnforcer;
+  private policyEngine?: PolicyEngine;  // Optional PolicyEngine instance
+  private aliasResolver!: AliasResolver;
+  private linterService!: LinterService;
+  private errorFeedbackLoop = new ErrorFeedbackLoop();
+  private repairLoop!: RepairLoop;
+  private repairErrorClassifier = new ErrorClassifier();
+  private secretScanner?: SecretScanner;
+  private secretOutputProcessor = new SecretOutputProcessor();
+  private hookManager!: HookManager;
+  private customToolsServer?: CustomToolsServer;
+  private mcpServerManager?: MCPServerManager;
+  private mcpInstaller?: MCPInstaller;
+  private mcpMarketplaceService?: MCPMarketplaceService;
+  private mcpConnectionManager?: MCPConnectionManager;
+  private mcpToolRegistry?: MCPToolRegistry;
+  private browserToolsServer?: BrowserToolsServer;
+  private tddExecutor?: TDDExecutor;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
+
+  // Task execution tracking
+  private currentTaskId: string | null = null;
+  private currentAgentName: string | null = null;
+
+  // Combined tools (built-in + MCP) for current task execution
+  private currentTaskTools: string[] = [];
+
+  // CLI flags for current task
+  private currentTaskCliFlags: { diffPreview?: boolean } | undefined = undefined;
 
   // Concurrent execution state
   private runningTasks: Map<string, Promise<void>> = new Map();
   private taskRunnerInterval: ReturnType<typeof setInterval> | null = null;
   private isRunnerActive = false;
 
-  constructor(options: OrchestratorOptions) {
+  // Resource tracking state
+  private taskResourceTracker: Map<string, {
+    startTime: Date;
+    fileChangeCount: number;
+    initialUsage: TaskUsage;
+    lastCheckTimestamp: Date;
+  }> = new Map();
+  private fileChangesByTask: Map<string, { created: string[]; modified: string[] }> = new Map();
+
+  // Tool execution tracking with full timing information
+  private activeToolExecutions: Map<string, ToolExecution> = new Map();
+
+  // Store hooks context for accessing file snapshots during tool completion
+  private currentHookContext: HookContext | null = null;
+
+  // Approval promise management for respondToApproval API
+  private pendingApprovalPromises: Map<string, {
+    resolve: (response: ApprovalResponse) => void;
+    reject: (error: Error) => void;
+  }> = new Map();
+
+  /**
+   * Create a new ApexOrchestrator instance
+   * @param options - Configuration options for the orchestrator
+   * @param options.projectPath - Project root path for file operations and workspace management
+   * @param options.apiUrl - Optional API server URL for external integrations
+   * @param options.autonomyEnforcer - Optional custom autonomy enforcer for dependency injection
+   * @param options.policyEngine - Optional policy engine for custom policy validation
+   */
+  constructor(private options: OrchestratorOptions) {
     super();
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
+    this.policyEngine = options.policyEngine;  // Store the optional PolicyEngine
   }
 
   /**
-   * Initialize the orchestrator
+   * Initialize the orchestrator with all required services and components
+   *
+   * Sets up configuration, database connections, agents, workflows, and all necessary
+   * services for task execution including permission management, browser automation,
+   * and policy enforcement.
+   *
+   * @returns Promise that resolves when initialization is complete
+   * @throws {Error} When configuration cannot be loaded or services fail to initialize
+   *
+   * @example
+   * ```typescript
+   * const orchestrator = new ApexOrchestrator({ projectPath: '/path/to/project' });
+   * await orchestrator.initialize();
+   * console.log('Orchestrator ready for task execution');
+   * ```
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Load configuration
-    this.config = await loadConfig(this.projectPath);
+    // Load configuration (with fallback for test environments)
+    try {
+      this.config = await loadConfig(this.projectPath);
+    } catch {
+      // Use minimal default config if config file is missing (e.g., test environments)
+      this.config = {
+        version: '0.1.0',
+        project: { name: 'apex-project', language: 'typescript', framework: 'node' },
+        autonomy: { level: 'supervised' as const, gates: [], stageOverrides: {}, agentOverrides: {} },
+        agents: { enabled: [], disabled: [] },
+        workflows: {},
+        models: { planning: 'opus', implementation: 'sonnet', review: 'haiku' },
+        limits: { maxTokensPerTask: 100000, maxCostPerTask: 10, maxRetries: 3 },
+        gates: [],
+        git: { branchPrefix: 'apex/', commitFormat: 'conventional', autoPush: false, defaultBranch: 'main' },
+        aliases: [],
+      } as unknown as ApexConfig;
+    }
     this.effectiveConfig = getEffectiveConfig(this.config);
+
+    // Initialize alias resolver with config aliases
+    this.aliasResolver = new AliasResolver(this.config.aliases || []);
+
+    // Initialize MCP server manager and marketplace service (v0.5.0)
+    // Note: MCPInstaller requires this.store, which is initialized later
+    this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
+    this.mcpMarketplaceService = new MCPMarketplaceService(this.projectPath, this.config);
+    this.mcpConnectionManager = new MCPConnectionManager({
+      projectPath: this.projectPath,
+      config: this.config
+    });
+
+    // Set up MCP event forwarding
+    this.setupMCPEventForwarding();
+
+    // Initialize MCP tool registry for tool discovery
+    if (this.mcpConnectionManager) {
+      this.mcpToolRegistry = new MCPToolRegistry({
+        operationTimeoutMs: 30000,
+        autoRefresh: false, // We'll manually refresh during execution
+      });
+      this.mcpToolRegistry.setConnectionManager(this.mcpConnectionManager);
+
+      // Connect to enabled servers and discover tools
+      await this.discoverAndRegisterMcpTools();
+    }
 
     // Load agent definitions
     this.agents = await loadAgents(this.projectPath);
 
+    // Initialize custom tools (v0.5.0)
+    const customToolsServer = buildCustomToolsServer(this.effectiveConfig.customTools, this.projectPath);
+    if (customToolsServer) {
+      this.customToolsServer = customToolsServer;
+    }
+
+    // Load workflow definitions and gates
+    await this.loadGates();
+
+    // Load APEX project rules
+    await this.loadApexRules();
+
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize MCP installer (requires store to be initialized)
+    this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
+
+    // Initialize tool action store
+    this.toolActionStore = new ToolActionStore(this.store, this.config.toolActionRetention);
 
     // Initialize thought capture manager
     this.thoughtCaptureManager = new ThoughtCaptureManager(this.projectPath, this.store);
@@ -290,6 +1505,108 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     });
     await this.workspaceManager.initialize();
 
+    // Initialize permission managers
+    this._permissionStore = new PermissionStore(this.projectPath);
+    await this._permissionStore.initialize();
+
+    this._permissionManager = new PermissionManager(this._permissionStore);
+
+    this._permissionPresetManager = new PermissionPresetManager(
+      this._permissionStore,
+      this.effectiveConfig.permissions.preset
+    );
+
+    if (this.effectiveConfig.tools && Object.keys(this.effectiveConfig.tools).length > 0) {
+      for (const [toolName, toolConfig] of Object.entries(this.effectiveConfig.tools)) {
+        this.permissionManager.setToolConfig(toolName, toolConfig ?? null);
+      }
+    }
+
+    // Wire browser tool permissions + MCP server
+    browserTool.setPermissionManager(this.permissionManager);
+    browserTool.setEventEmitter(this);
+    const browserToolConfig = this.effectiveConfig.tools?.Browser;
+    if (browserToolConfig?.enabled !== false) {
+      this.browserToolsServer = buildBrowserToolsServer(browserTool);
+    }
+
+    // Initialize browser manager with permission manager integration
+    this.browserManager = new BrowserManager({
+      permissionManager: this._permissionManager,
+      browserTool,
+      defaultConfig: (browserToolConfig as Record<string, unknown>)?.browserConfig as Record<string, unknown> || {},
+    });
+
+    // Initialize browser event integration with task context correlation
+    this.setupBrowserEventIntegration();
+
+    // Setup task and agent context tracking for event correlation
+    this.setupContextTracking();
+
+    // Initialize policy enforcer
+    this.policyEnforcer = createPolicyEnforcer(this.config.policy);
+    this.policyEnforcer.on('policy:violation', event => {
+      this.emit('policy:violation', {
+        taskId: event.taskId || this.currentTaskId || 'unknown',
+        agent: event.agentId || 'unknown',
+        action: event.violation.policyType || 'policy',
+        violation: event.violation,
+        enforcementMode: this.resolvePolicyEnforcementMode(),
+        timestamp: event.timestamp || new Date(),
+      });
+    });
+
+    // Initialize autonomy enforcer
+    if (this.options.autonomyEnforcer) {
+      this.autonomyEnforcer = this.options.autonomyEnforcer;
+    } else {
+      this.autonomyEnforcer = new AutonomyEnforcer(
+        this.buildAutonomyEnforcerConfig(),
+        this
+      );
+    }
+    this.setupAutonomyEnforcerEvents();
+
+    // Setup approval event handlers for external approval resolution
+    this.setupApprovalEventHandlers();
+
+    // Initialize linter service
+    this.linterService = new LinterService({
+      projectPath: this.projectPath,
+      defaultTimeout: this.config.linter?.global?.timeoutMs,
+      maxConcurrency: this.config.linter?.global?.maxConcurrency,
+      autoFix: {
+        enabled: this.config.linter?.global?.enabled ?? false,
+      },
+    });
+    await this.linterService.initialize();
+
+    // Register available linter plugins
+    await this.registerAvailableLinterPlugins();
+
+    // Initialize secret scanner if configured
+    const secretScannerConfig = this.resolveSecretScannerConfig();
+    if (secretScannerConfig) {
+      this.secretScanner = new SecretScanner(secretScannerConfig);
+      console.log('SecretScanner initialized with configuration');
+    } else {
+      console.log('SecretScanner not configured - scanner will be disabled');
+    }
+
+    // Initialize hook manager
+    this.hookManager = new HookManager(
+      this.projectPath,
+      this.store,
+      this.config.hooks || [],
+      this.config.toolHooks || { pre: [], post: [], enabled: true, defaultTimeoutMs: 30000 }
+    );
+
+    // Forward hook events from hook manager
+    this.setupHookEventForwarding();
+
+    // Forward linter events from linter service
+    this.setupLinterEventForwarding();
+
     // Forward container events from workspace manager
     this.setupContainerEventForwarding();
 
@@ -299,11 +1616,340 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Setup automatic workspace cleanup on task completion
     this.setupAutomaticWorkspaceCleanup();
 
+    // Initialize TDD executor if configured
+    await this.initializeTDDExecutor();
+
+    // Initialize self-repair loop
+    const repairConfig = resolveRepairConfig(this.config.repair);
+    this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
+
     this.initialized = true;
   }
 
+  // --------------------------------------------------------------------------
+  // Self-Repair Loop Helpers
+  // --------------------------------------------------------------------------
+
   /**
-   * Create a new task
+   * Get the resolved repair loop configuration from the project config.
+   */
+  private getRepairConfig(): RepairConfig {
+    return resolveRepairConfig(this.config.repair);
+  }
+
+  /**
+   * Determine whether the repair loop should attempt to fix a stage failure.
+   * Returns false for planning stages, unrecoverable errors, or skipped categories.
+   */
+  private isRepairEligible(stage: WorkflowStage, error: Error, result: StageResult): boolean {
+    const config = this.getRepairConfig();
+
+    // Don't repair planning stages — they decompose tasks, not produce code
+    if (stage.name.toLowerCase().includes('plan')) return false;
+
+    // Check if error category is in skip list
+    const classified = this.repairErrorClassifier.classify(
+      error,
+      result as unknown as import('./repair-loop/repair-types.js').StageResult,
+      [],
+    );
+    if (classified.length > 0) {
+      const primaryCategory = classified[0].category;
+      if (config.skipCategories.includes(primaryCategory)) return false;
+      if (classified.every(e => !e.isRecoverable)) return false;
+    }
+
+    // Check parallel stage setting
+    if (stage.parallel && !config.repairParallelStages) return false;
+
+    return true;
+  }
+
+  /**
+   * Create the RepairLoopHost implementation that bridges the repair loop
+   * to the orchestrator's capabilities (Claude queries, file I/O, persistence).
+   */
+  private createRepairLoopHost(): RepairLoopHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const orchestrator = this;
+    return {
+      async queryAgent(prompt: string, model: string, options?: RepairQueryOptions): Promise<RepairQueryResult> {
+        let text = '';
+        let tokensUsed = 0;
+
+        for await (const message of query({
+          prompt,
+          options: {
+            model,
+            permissionMode: 'acceptEdits',
+            maxTurns: options?.maxTurns || 20,
+            cwd: options?.cwd || orchestrator.projectPath,
+            tools: options?.tools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+          },
+        })) {
+          // Collect text from response
+          const msg = message as Record<string, unknown>;
+          if (msg.type === 'result' && typeof msg.result === 'string') {
+            text += msg.result;
+          } else if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
+            const assistantMsg = msg.message as { content?: Array<{ type: string; text?: string }> };
+            if (Array.isArray(assistantMsg.content)) {
+              for (const block of assistantMsg.content) {
+                if (block.type === 'text' && block.text) {
+                  text += block.text;
+                }
+              }
+            }
+            // Track tokens from usage info
+            const usage = (msg.message as Record<string, unknown>).usage as { input_tokens?: number; output_tokens?: number } | undefined;
+            if (usage) {
+              tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0);
+            }
+          }
+        }
+
+        // Estimate cost based on tokens (rough approximation)
+        const costUsd = tokensUsed * 0.000015; // ~$15/MTok average
+
+        return { text, tokensUsed, costUsd };
+      },
+
+      async rerunStage(taskId: string, stageName: string): Promise<import('./repair-loop/repair-types.js').StageResult> {
+        const task = await orchestrator.store.getTask(taskId);
+        if (!task) throw new Error(`Task ${taskId} not found for re-run`);
+
+        const workflow = orchestrator.workflows[task.workflow || 'default'];
+        if (!workflow) throw new Error(`Workflow not found for task ${taskId}`);
+
+        const stage = workflow.stages.find(s => s.name === stageName);
+        if (!stage) throw new Error(`Stage "${stageName}" not found in workflow`);
+
+        const agent = orchestrator.agents[stage.agent] || { name: stage.agent, role: stage.agent, model: 'sonnet' };
+        const stageResults = new Map<string, StageResult>();
+
+        try {
+          const result = await orchestrator.executeWorkflowStage(task, stage, agent, workflow, stageResults, undefined);
+          return result as unknown as import('./repair-loop/repair-types.js').StageResult;
+        } catch (err) {
+          return {
+            stageName,
+            agent: stage.agent,
+            status: 'failed' as const,
+            outputs: {},
+            artifacts: [],
+            summary: `Re-run failed: ${(err as Error).message}`,
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
+            error: (err as Error).message,
+            startedAt: new Date(),
+            completedAt: new Date(),
+          };
+        }
+      },
+
+      async readFiles(filePaths: string[]): Promise<Record<string, string>> {
+        const contents: Record<string, string> = {};
+        for (const filePath of filePaths) {
+          try {
+            const fullPath = path.isAbsolute(filePath)
+              ? filePath
+              : path.join(orchestrator.projectPath, filePath);
+            contents[filePath] = await fs.readFile(fullPath, 'utf-8');
+          } catch {
+            // File not found or unreadable — skip
+          }
+        }
+        return contents;
+      },
+
+      async getTask(taskId: string): Promise<Task | null> {
+        return orchestrator.store.getTask(taskId);
+      },
+
+      async addFixAttempt(taskId: string, attempt: import('@apexcli/core').FixAttempt): Promise<void> {
+        await orchestrator.store.addFixAttempt(taskId, attempt);
+      },
+
+      async getFixAttemptHistory(taskId: string): Promise<import('@apexcli/core').FixAttemptHistory> {
+        return orchestrator.store.getFixAttemptHistory(taskId);
+      },
+
+      async getFixAttemptsForError(taskId: string, errorHash: string): Promise<import('@apexcli/core').FixAttempt[]> {
+        return orchestrator.store.getFixAttemptsForError(taskId, errorHash);
+      },
+
+      emit<K extends keyof RepairLoopEvents>(event: K, ...args: Parameters<RepairLoopEvents[K]>): void {
+        (orchestrator as unknown as { emit(event: string, ...args: unknown[]): void }).emit(event, ...args);
+      },
+
+      async addLog(taskId: string, log: { level: 'error' | 'debug' | 'info' | 'warn'; message: string; stage?: string }): Promise<void> {
+        await orchestrator.store.addLog(taskId, log);
+      },
+    };
+  }
+
+  /**
+   * Discover and register MCP tools from all enabled servers
+   * Called during initialization and can be called to refresh tools
+   */
+  private async discoverAndRegisterMcpTools(): Promise<void> {
+    if (!this.mcpConnectionManager || !this.mcpToolRegistry) {
+      return;
+    }
+
+    // Discover available servers from config
+    const servers = this.mcpConnectionManager.discoverServers();
+
+    if (servers.length === 0) {
+      return;
+    }
+
+    // Connect to servers in parallel with a timeout
+    const normalizedServers = getMCPServers(this.config);
+    const connectionTimeout = 5000; // 5 second timeout per connection
+
+    const connectionPromises = servers.map(async (serverConfig) => {
+      // Find the config key by matching the server name
+      const serverId = Object.keys(normalizedServers).find(key => {
+        const configEntry = normalizedServers[key];
+        return configEntry.name === serverConfig.name || key === serverConfig.name;
+      });
+
+      if (!serverId) return null;
+
+      try {
+        // Add timeout wrapper to prevent slow connections from blocking startup
+        const connection = await Promise.race([
+          this.mcpConnectionManager!.connect(serverId),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Connection timeout after ${connectionTimeout}ms`)), connectionTimeout)
+          )
+        ]);
+        return { serverId, connection };
+      } catch (error) {
+        console.warn(`Failed to connect to MCP server '${serverId}':`, error instanceof Error ? error.message : error);
+        return null;
+      }
+    });
+
+    // Wait for all connections to complete (or fail)
+    const results = await Promise.allSettled(connectionPromises);
+
+    // Add successful connections to registry
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value?.connection) {
+        try {
+          await this.mcpToolRegistry.addConnection(result.value.connection);
+        } catch (error) {
+          console.warn(`Failed to register MCP server '${result.value.serverId}':`, error);
+        }
+      }
+    }
+
+    // Refresh tools from all connected servers (with timeout)
+    try {
+      await Promise.race([
+        this.mcpToolRegistry.refreshAllTools(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Tool refresh timeout')), 10000)
+        )
+      ]);
+    } catch (error) {
+      console.warn('MCP tool refresh timed out or failed:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  /**
+   * Load workflow definitions and parse gates configuration
+   */
+  private async loadGates(): Promise<void> {
+    // Load all workflows
+    this.workflows = await loadWorkflows(this.projectPath);
+
+    // Clear existing gates
+    this.gates.clear();
+
+    // Extract gates from config
+    if (this.config.autonomy?.gates) {
+      for (const gate of this.config.autonomy.gates) {
+        const gateId = gate.id || gate.name || `gate-${this.gates.size}`;
+        this.gates.set(gateId, { ...gate, id: gateId });
+      }
+    }
+
+    // Extract gates from workflows
+    for (const [workflowName, workflow] of Object.entries(this.workflows)) {
+      if (workflow.gates) {
+        for (const workflowGate of workflow.gates) {
+          // Create an ApprovalGate from the WorkflowGate
+          const approvalGate: ApprovalGate = {
+            id: workflowGate.id,
+            type: 'custom',
+            name: workflowGate.name || workflowGate.id,
+            description: workflowGate.description || `Gate ${workflowGate.id} for workflow ${workflowName}`,
+            required: workflowGate.required !== false, // default to true
+            autoApprove: workflowGate.autoApprove || false,
+            autoApproveOnTimeout: false,
+            minApprovals: 1,
+            timeout: workflowGate.timeout,
+            tags: workflowGate.tags || [],
+          };
+          this.gates.set(workflowGate.id, approvalGate);
+        }
+      }
+
+      // Parse stage.gate references
+      if (workflow.stages) {
+        for (const stage of workflow.stages) {
+          if (stage.gate && !this.gates.has(stage.gate)) {
+            // Create a default gate for stage references that don't exist
+            const defaultGate: ApprovalGate = {
+              id: stage.gate,
+              type: 'custom',
+              name: stage.gate,
+              description: `Approval gate for stage ${stage.name} in workflow ${workflowName}`,
+              required: true,
+              autoApprove: false,
+              autoApproveOnTimeout: false,
+              minApprovals: 1,
+              tags: [`workflow:${workflowName}`, `stage:${stage.name}`],
+            };
+            this.gates.set(stage.gate, defaultGate);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Create a new task with specified configuration and options
+   *
+   * @param options - Task creation options
+   * @param options.description - Human-readable description of what needs to be accomplished
+   * @param options.acceptanceCriteria - Optional criteria that define when the task is complete
+   * @param options.workflow - Workflow name to use (defaults to 'feature')
+   * @param options.autonomy - Autonomy level for the task (defaults to config setting)
+   * @param options.priority - Task priority: low, normal, high, critical (defaults to 'normal')
+   * @param options.effort - Expected effort level: small, medium, large, epic (defaults to 'medium')
+   * @param options.maxRetries - Maximum number of retry attempts (defaults to config setting)
+   * @param options.dependsOn - Array of task IDs that must complete before this task
+   * @param options.parentTaskId - Parent task ID if this is a subtask
+   * @param options.subtaskStrategy - Strategy for handling subtask decomposition
+   * @param options.dryRun - If true, create task but don't execute (for testing)
+   *
+   * @returns Promise resolving to the created Task object
+   * @throws {Error} When task creation fails or dependencies are invalid
+   *
+   * @example
+   * ```typescript
+   * const task = await orchestrator.createTask({
+   *   description: 'Add user authentication to the dashboard',
+   *   acceptanceCriteria: 'Users can log in and access protected routes',
+   *   workflow: 'feature-development',
+   *   priority: 'high',
+   *   effort: 'medium'
+   * });
+   * console.log('Created task:', task.id);
+   * ```
    */
   async createTask(options: {
     description: string;
@@ -316,12 +1962,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     dependsOn?: string[];
     parentTaskId?: string;
     subtaskStrategy?: SubtaskStrategy;
+    dryRun?: boolean;
   }): Promise<Task> {
     await this.ensureInitialized();
 
     const taskId = generateTaskId();
     const workflow = options.workflow || 'feature';
-    const autonomy = options.autonomy || this.effectiveConfig.autonomy.default;
+    const autonomy = options.autonomy || this.effectiveConfig.autonomy.level;
     const priority = options.priority || 'normal';
     const effort = options.effort || 'medium';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
@@ -358,6 +2005,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       parentTaskId: options.parentTaskId,
       subtaskIds: [],
       subtaskStrategy: options.subtaskStrategy,
+      dryRun: options.dryRun || false,
       createdAt: new Date(),
       updatedAt: new Date(),
       usage: {
@@ -365,6 +2013,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         outputTokens: 0,
         totalTokens: 0,
         estimatedCost: 0,
+        totalCostCents: 0,
+        executionTimeMs: 0,
       },
       logs: [],
       artifacts: [],
@@ -423,14 +2073,57 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Execute a task with automatic retries
+   * Execute a task with its assigned workflow and handle retries, failures, and checkpointing
+   *
+   * Orchestrates the complete task execution including:
+   * - Workflow stage progression with designated agents
+   * - Automatic retry logic on failures
+   * - Progress tracking and event emission
+   * - Permission and policy enforcement
+   * - Resource usage monitoring
+   *
+   * @param taskId - Unique identifier of the task to execute
+   * @param options - Execution options
+   * @param options.autoRetry - Enable automatic retries on failure (defaults to true)
+   * @param options.cliFlags - CLI-specific flags for execution behavior
+   * @param options.cliFlags.diffPreview - Show diff preview before applying changes
+   *
+   * @returns Promise that resolves when task execution completes (successfully or failed)
+   * @throws {Error} When task is not found, already running, or initialization fails
+   *
+   * @example
+   * ```typescript
+   * // Execute a task with automatic retries
+   * await orchestrator.executeTask('task-abc123', {
+   *   autoRetry: true,
+   *   cliFlags: { diffPreview: true }
+   * });
+   *
+   * // Listen to execution events
+   * orchestrator.on('task:completed', (task) => {
+   *   console.log('Task completed:', task.id);
+   * });
+   * ```
    */
-  async executeTask(taskId: string, options?: { autoRetry?: boolean }): Promise<void> {
+  async executeTask(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     await this.ensureInitialized();
+
+    // Store CLI flags for current task
+    this.currentTaskCliFlags = options?.cliFlags;
 
     const task = await this.store.getTask(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Handle dry-run mode - skip actual execution but simulate the process
+    if (task.dryRun) {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: '🚀 DRY-RUN MODE: Simulating task execution without making actual changes',
+      });
+      await this.executeDryRunTask(taskId, task);
+      return;
     }
 
     // Check if this task already has subtasks that need to be continued
@@ -483,9 +2176,120 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       });
     }
 
+    // Check policy before task starts execution
+    const policyCheckResult = this.policyEnforcer.checkTaskStart(task);
+
+    // Log policy check results
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Policy check completed: ${policyCheckResult.passed ? 'passed' : 'failed'} (${policyCheckResult.failedCount} errors, ${policyCheckResult.warningCount} warnings)`,
+    });
+
+    // Map results to PolicyViolation format
+    const violations = policyCheckResult.results
+      .filter(result => !result.passed)
+      .map(result => ({
+        id: crypto.randomUUID(),
+        rule: result.ruleId,
+        message: result.message,
+        severity: (result.severity === 'error' ? 'critical' :
+                   result.severity === 'warning' ? 'high' : 'low') as 'low' | 'medium' | 'high' | 'critical',
+        blocking: result.severity === 'error',
+        policyType: result.ruleType,
+        timestamp: new Date(),
+        resolved: false,
+        context: result.details,
+      }));
+
+    // Update task with policy check results
+    await this.store.updateTask(taskId, {
+      policyCheckResult: {
+        passed: policyCheckResult.passed,
+        blocked: policyCheckResult.failedCount > 0,
+        violationCount: violations.length,
+        violations,
+        checkedAt: policyCheckResult.evaluatedAt,
+        policyName: policyCheckResult.policyName,
+        enforcementMode: this.policyEnforcer.enforcementMode,
+      },
+      updatedAt: new Date(),
+    });
+
+    // If policy check failed with error-level violations, block the task
+    if (!policyCheckResult.passed && policyCheckResult.failedCount > 0) {
+      await this.updateTaskStatus(taskId, 'failed', 'Task blocked by policy violations');
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`,
+      });
+      throw new Error(`Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`);
+    }
+
     // Update status
     await this.updateTaskStatus(taskId, 'in-progress');
     this.emit('task:started', task);
+
+    // Set current task for event tracking
+    this.currentTaskId = taskId;
+
+    // Discover MCP tools at task start and merge with built-in tools
+    let discoveredMcpTools: string[] = [];
+    let builtInTools: string[] = [];
+
+    try {
+      // Refresh MCP tools to ensure we have the latest available tools
+      if (this.mcpToolRegistry) {
+        await this.mcpToolRegistry.refreshAllTools();
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: 'Refreshed MCP tool registry at task start',
+        });
+
+        // Get available MCP tool names
+        const mcpTools = this.mcpToolRegistry.getAvailableTools();
+        discoveredMcpTools = mcpTools.map(tool => tool.claudeTool.name);
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Discovered ${discoveredMcpTools.length} MCP tools: ${discoveredMcpTools.join(', ')}`,
+        });
+      }
+
+      // Define built-in tools that should always be available
+      // These are the core Claude Code tools that APEX workflows depend on
+      builtInTools = [
+        'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'LSP',
+        'Task', 'AskUserQuestion', 'TodoWrite', 'WebFetch', 'WebSearch',
+        'EnterPlanMode', 'ExitPlanMode'
+      ];
+
+      // Merge discovered MCP tools with built-in tools (remove duplicates)
+      const combinedTools = Array.from(new Set([...builtInTools, ...discoveredMcpTools]));
+
+      // Store combined tools for use during workflow execution
+      this.currentTaskTools = combinedTools;
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Task ${taskId} configured with ${combinedTools.length} total tools (${builtInTools.length} built-in + ${discoveredMcpTools.length} MCP)`,
+      });
+
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Failed to discover MCP tools: ${(error as Error).message}. Using built-in tools only.`,
+      });
+
+      // Fallback to built-in tools only
+      this.currentTaskTools = [
+        'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'LSP',
+        'Task', 'AskUserQuestion', 'TodoWrite', 'WebFetch', 'WebSearch',
+        'EnterPlanMode', 'ExitPlanMode'
+      ];
+    }
+
+    // Resource tracking is initialized via the task's usage object
+    // No separate initialization needed - usage is tracked incrementally
 
     const autoRetry = options?.autoRetry ?? true;
     const maxRetries = task.maxRetries;
@@ -521,6 +2325,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           const completedTask = await this.store.getTask(taskId);
           this.emit('task:completed', completedTask!);
 
+          // Clear current task tracking if this was the current task
+          if (this.currentTaskId === taskId) {
+            this.currentTaskId = null;
+            this.currentTaskTools = [];
+          }
+
           // Handle git operations (push and PR creation) for parent tasks only
           if (!task.parentTaskId && completedTask) {
             try {
@@ -539,6 +2349,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               });
             }
           }
+
+          // If this is a subtask, check if all sibling subtasks are complete
+          // and update the parent task status accordingly
+          if (task.parentTaskId && completedTask) {
+            await this.checkAndCompleteParentTask(task.parentTaskId);
+          }
         }
         // If shouldComplete is false, subtasks are paused/incomplete
         // Task stays in-progress and can be resumed later
@@ -547,7 +2363,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } catch (error) {
         lastError = error as Error;
 
-        // Check if this is a pausable error (rate limit or usage limit)
+        // Check if this is a pausable error (rate limit, usage limit, or token limit)
         const pauseReason = this.isPausableError(lastError);
         if (pauseReason) {
           if (pauseReason === 'rate_limit') {
@@ -557,6 +2373,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               message: `Rate limit reached. Pausing task for ${retryAfterSeconds} seconds.`,
             });
             await this.pauseTask(taskId, 'rate_limit', retryAfterSeconds);
+          } else if (pauseReason === 'token_limit') {
+            // Token/context limit - task needs to be resumed with context summarization
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Token/context limit reached. Task paused. Consider breaking into smaller subtasks or resume to continue with context summarization.`,
+            });
+            await this.pauseTask(taskId, 'token_limit');
           } else {
             // Usage limit - no auto-resume, user needs to add credits or wait for reset
             await this.store.addLog(taskId, {
@@ -577,6 +2400,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           await this.updateTaskStatus(taskId, 'failed', enhancedError);
           const failedTask = await this.store.getTask(taskId);
           this.emit('task:failed', failedTask!, lastError);
+
+          // Clear current task tracking if this was the current task
+          if (this.currentTaskId === taskId) {
+            this.currentTaskId = null;
+            this.currentTaskTools = [];
+          }
           throw lastError;
         }
 
@@ -654,17 +2483,44 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
            message.includes('daily limit') ||
            // Claude Code specific patterns
            message.includes('limit reached') ||
-           (message.includes('resets') && message.includes('upgrade')) ||
+           message.includes('hit your limit') ||
+           message.includes("you've hit your limit") ||
+           (message.includes('resets') && (message.includes('limit') || message.includes('upgrade'))) ||
            message.includes('/upgrade') ||
-           message.includes('extra-usage');
+           message.includes('extra-usage') ||
+           // Token/context limit errors - should pause, not fail
+           message.includes('token limit') ||
+           message.includes('context length') ||
+           message.includes('context window') ||
+           message.includes('max_tokens') ||
+           message.includes('maximum context') ||
+           message.includes('conversation too long') ||
+           message.includes('input too long');
   }
 
   /**
-   * Check if an error should pause the task (rate limit or usage limit)
+   * Check if an error is specifically a token/context limit error
    */
-  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | false {
+  private isTokenLimitError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('token limit') ||
+           message.includes('context length') ||
+           message.includes('context window') ||
+           message.includes('max_tokens') ||
+           message.includes('maximum context') ||
+           message.includes('conversation too long') ||
+           message.includes('input too long');
+  }
+
+  /**
+   * Check if an error should pause the task (rate limit, usage limit, or token limit)
+   */
+  private isPausableError(error: Error): 'rate_limit' | 'usage_limit' | 'token_limit' | false {
     if (this.isRateLimitError(error)) {
       return 'rate_limit';
+    }
+    if (this.isTokenLimitError(error)) {
+      return 'token_limit';
     }
     if (this.isUsageLimitError(error)) {
       return 'usage_limit';
@@ -706,7 +2562,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async pauseTask(
     taskId: string,
-    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure',
+    reason: 'rate_limit' | 'usage_limit' | 'budget' | 'manual' | 'session_limit' | 'container_failure' | 'token_limit' | 'approval_gate',
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
@@ -854,7 +2710,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       return false;
     }
 
-    // Clear pause-related fields
+    // Store original pause state in case we need to rollback
+    const originalPauseState = {
+      pausedAt: task.pausedAt,
+      pauseReason: task.pauseReason,
+      resumeAfter: task.resumeAfter,
+    };
+
+    // Clear pause-related fields and set to in-progress
     await this.store.updateTask(taskId, {
       status: 'in-progress',
       pausedAt: undefined,
@@ -868,49 +2731,102 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: 'Task resumed',
     });
 
-    // Resume execution from checkpoint
-    const resumed = await this.resumeTask(taskId);
+    try {
+      // Resume execution from checkpoint
+      const resumed = await this.resumeTask(taskId);
 
-    // If this is a subtask, check if parent should also resume
-    if (task.parentTaskId) {
-      await this.checkAndResumeParent(task.parentTaskId);
+      // If this is a subtask, check if parent should also resume
+      if (task.parentTaskId) {
+        await this.checkAndResumeParent(task.parentTaskId);
+      }
+
+      return resumed;
+    } catch (error) {
+      // Check if this is a rate limit error - if so, rollback to paused state
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (this.isUsageLimitError(err)) {
+        // Get current task to find current resumeAttempts (which was incremented by resumeTask)
+        const currentTask = await this.store.getTask(taskId);
+        const rolledBackAttempts = Math.max(0, (currentTask?.resumeAttempts ?? 1) - 1);
+
+        // Rollback to paused state - don't count this as a resume attempt
+        await this.store.updateTask(taskId, {
+          status: 'paused',
+          pausedAt: originalPauseState.pausedAt || new Date(),
+          pauseReason: 'usage_limit',
+          resumeAfter: originalPauseState.resumeAfter,
+          resumeAttempts: rolledBackAttempts,
+          updatedAt: new Date(),
+        });
+
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Resume failed due to usage limit - task remains paused (attempts rolled back to ${rolledBackAttempts}). Error: ${err.message}`,
+        });
+
+        // Re-throw so caller knows it failed
+        throw err;
+      }
+
+      // For other errors, task stays in-progress but we should re-throw
+      throw error;
     }
-
-    return resumed;
   }
 
   /**
    * Check if a parent task should resume (all subtasks are no longer paused)
+   * Recursively cascades up the parent chain
    */
   private async checkAndResumeParent(parentTaskId: string): Promise<void> {
     const parentTask = await this.store.getTask(parentTaskId);
-    if (!parentTask || parentTask.status !== 'paused') {
+    if (!parentTask) {
       return;
     }
 
-    // Check if the pause was due to a subtask
-    if (!parentTask.pauseReason?.startsWith('subtask_paused:')) {
+    // If parent is completed, failed, or cancelled — nothing to do
+    if (['completed', 'failed', 'cancelled'].includes(parentTask.status)) {
       return;
     }
 
-    // Check if all subtasks are no longer paused
-    const subtasks = await this.getSubtasks(parentTaskId);
-    const anyPaused = subtasks.some(s => s.status === 'paused');
+    // If parent is already in-progress, just propagate up
+    if (parentTask.status === 'in-progress') {
+      if (parentTask.parentTaskId) {
+        await this.checkAndResumeParent(parentTask.parentTaskId);
+      }
+      return;
+    }
 
-    if (!anyPaused) {
-      // All subtasks are no longer paused, resume parent
-      await this.store.updateTask(parentTaskId, {
-        status: 'in-progress',
-        pausedAt: undefined,
-        pauseReason: undefined,
-        resumeAfter: undefined,
-        updatedAt: new Date(),
-      });
+    // Parent is paused or pending — check if it should become in-progress
+    if (parentTask.status === 'paused') {
+      // For subtask_paused: check if all subtasks are no longer paused
+      if (parentTask.pauseReason?.startsWith('subtask_paused:')) {
+        const subtasks = await this.getSubtasks(parentTaskId);
+        const anyPaused = subtasks.some(s => s.status === 'paused');
+        if (anyPaused) {
+          return; // Still have paused subtasks, can't resume
+        }
+      }
+      // For usage_limit/token_limit/other: a child is now running so the limit has passed
+    }
 
-      await this.store.addLog(parentTaskId, {
-        level: 'info',
-        message: 'Parent task resumed - all subtasks unpaused',
-      });
+    // Resume the parent (from paused or pending)
+    await this.store.updateTask(parentTaskId, {
+      status: 'in-progress',
+      currentStage: 'subtask-execution',
+      pausedAt: undefined,
+      pauseReason: undefined,
+      resumeAfter: undefined,
+      updatedAt: new Date(),
+    });
+
+    await this.store.addLog(parentTaskId, {
+      level: 'info',
+      message: `Parent task resumed from ${parentTask.status} - child task is active`,
+    });
+
+    // Recursively propagate up
+    if (parentTask.parentTaskId) {
+      await this.checkAndResumeParent(parentTask.parentTaskId);
     }
   }
 
@@ -921,40 +2837,41 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private parseErrorMessage(error: Error): string {
     const message = error.message || String(error);
     const lowerMessage = message.toLowerCase();
+    const sanitizedMessage = sanitizeErrorMessage(message);
 
     // Token/context limit errors
     if (lowerMessage.includes('token') || lowerMessage.includes('context length') ||
         lowerMessage.includes('max_tokens') || lowerMessage.includes('context window')) {
-      return `Token limit exceeded: The conversation became too long. Consider breaking down the task into smaller subtasks. Original error: ${message}`;
+      return `Token limit exceeded: The conversation became too long. Consider breaking down the task into smaller subtasks. Original error: ${sanitizedMessage}`;
     }
 
     // Rate limiting
     if (lowerMessage.includes('rate limit') || lowerMessage.includes('too many requests') ||
         lowerMessage.includes('429')) {
-      return `Rate limit exceeded: Too many API requests. The task will be retried automatically after a delay. Original error: ${message}`;
+      return `Rate limit exceeded: Too many API requests. The task will be retried automatically after a delay. Original error: ${sanitizedMessage}`;
     }
 
     // Authentication errors
     if (lowerMessage.includes('unauthorized') || lowerMessage.includes('authentication') ||
         lowerMessage.includes('api key') || lowerMessage.includes('401')) {
-      return `Authentication error: Invalid or missing API credentials. Please check your API key configuration. Original error: ${message}`;
+      return `Authentication error: Invalid or missing API credentials. Please check your API key configuration. Original error: ${sanitizedMessage}`;
     }
 
     // Permission/access errors
     if (lowerMessage.includes('forbidden') || lowerMessage.includes('permission') ||
         lowerMessage.includes('403')) {
-      return `Permission denied: You don't have access to the requested resource. Original error: ${message}`;
+      return `Permission denied: You don't have access to the requested resource. Original error: ${sanitizedMessage}`;
     }
 
     // Network errors
     if (lowerMessage.includes('network') || lowerMessage.includes('connection') ||
         lowerMessage.includes('econnrefused') || lowerMessage.includes('timeout')) {
-      return `Network error: Failed to connect to the API. Please check your internet connection and try again. Original error: ${message}`;
+      return `Network error: Failed to connect to the API. Please check your internet connection and try again. Original error: ${sanitizedMessage}`;
     }
 
     // Budget exceeded
     if (lowerMessage.includes('budget') || lowerMessage.includes('cost limit')) {
-      return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${message}`;
+      return `Budget limit exceeded: The task exceeded the configured cost limit. Original error: ${sanitizedMessage}`;
     }
 
     // Usage/billing limit exceeded
@@ -964,7 +2881,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         lowerMessage.includes('exceeded your') || lowerMessage.includes('monthly limit') ||
         lowerMessage.includes('daily limit') || lowerMessage.includes('limit reached') ||
         lowerMessage.includes('/upgrade') || lowerMessage.includes('extra-usage')) {
-      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${message}`;
+      return `Usage limit reached: Your API usage limit has been exceeded. The task has been paused. Resume when your limit resets or add more credits. Original error: ${sanitizedMessage}`;
     }
 
     // Process exit errors
@@ -981,23 +2898,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         return `Process terminated (exit code 143): The process was gracefully terminated by a signal.`;
       }
 
-      return `Process failed with exit code ${exitCode}. Original error: ${message}`;
+      return `Process failed with exit code ${exitCode}. Original error: ${sanitizedMessage}`;
     }
 
     // Server errors
     if (lowerMessage.includes('500') || lowerMessage.includes('502') ||
         lowerMessage.includes('503') || lowerMessage.includes('internal server error')) {
-      return `Server error: The API service encountered an internal error. This is usually temporary - please try again. Original error: ${message}`;
+      return `Server error: The API service encountered an internal error. This is usually temporary - please try again. Original error: ${sanitizedMessage}`;
     }
 
     // Invalid request
     if (lowerMessage.includes('invalid') || lowerMessage.includes('bad request') ||
         lowerMessage.includes('400')) {
-      return `Invalid request: The request was malformed or contained invalid parameters. Original error: ${message}`;
+      return `Invalid request: The request was malformed or contained invalid parameters. Original error: ${sanitizedMessage}`;
     }
 
-    // Default: return the original message but ensure it's informative
-    return message.length > 0 ? message : 'An unknown error occurred during task execution';
+    // Default: return the sanitized original message
+    return sanitizedMessage.length > 0 ? sanitizedMessage : 'An unknown error occurred during task execution';
   }
 
   /**
@@ -1005,6 +2922,52 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Check if a stage should pause for approval gate
+   */
+  private shouldPauseForGate(stage: WorkflowStage): { pause: boolean; gate?: ApprovalGate } {
+    // No gate configured
+    if (!stage.gate) {
+      return { pause: false };
+    }
+
+    // Lookup gate definition
+    const gate = this.gates.get(stage.gate);
+    if (!gate) {
+      // Log warning but don't block execution
+      console.warn(`Gate "${stage.gate}" referenced by stage "${stage.name}" not found`);
+      return { pause: false };
+    }
+
+    // Auto-approve gates don't pause
+    if (gate.autoApprove) {
+      return { pause: false };
+    }
+
+    // Non-required gates can be skipped (optional behavior)
+    if (!gate.required) {
+      // Could emit advisory event but not pause
+      return { pause: false };
+    }
+
+    return { pause: true, gate };
+  }
+
+  /**
+   * Summarize completed stages for approval context
+   */
+  private summarizeCompletedStages(stageResults: Map<string, StageResult>): string {
+    if (stageResults.size === 0) {
+      return 'No stages completed yet.';
+    }
+
+    const summaries = Array.from(stageResults.entries()).map(([stageName, result]) => {
+      return `${stageName}: ${result.status} - ${result.summary.substring(0, 100)}`;
+    });
+
+    return summaries.join('\n');
   }
 
   /**
@@ -1069,6 +3032,37 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       level: 'info',
       message: `Starting workflow "${workflow.name}" with ${workflow.stages.length} stages`,
     });
+
+    // If this task already has subtasks from a previous decomposition, skip workflow stages
+    // and go directly to subtask execution. This prevents duplicate subtask creation on retry.
+    const currentTaskState = await this.store.getTask(task.id);
+    if (currentTaskState?.subtaskIds && currentTaskState.subtaskIds.length > 0) {
+      await this.store.addLog(task.id, {
+        level: 'info',
+        message: `Task already has ${currentTaskState.subtaskIds.length} subtasks from previous decomposition. Resuming subtask execution.`,
+      });
+
+      await this.store.updateTask(task.id, {
+        status: 'in-progress',
+        currentStage: 'subtask-execution',
+        updatedAt: new Date(),
+      });
+
+      const allSubtasksComplete = await this.executeSubtasks(task.id);
+      if (allSubtasksComplete) {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `All subtasks completed. Workflow finished via decomposition.`,
+        });
+        return true;
+      } else {
+        await this.store.addLog(task.id, {
+          level: 'info',
+          message: `Subtask execution incomplete. Task will remain in-progress.`,
+        });
+        return false;
+      }
+    }
 
     // Continue until all stages are complete
     while (completedStages.size < allStages.size) {
@@ -1162,6 +3156,156 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         inProgressStages.add(stage.name);
       }
 
+      // Check for approval gates before executing stages
+      for (const stage of readyStages) {
+        const gateCheck = this.shouldPauseForGate(stage);
+        if (gateCheck.pause && gateCheck.gate) {
+          // Stage has a required gate - pause task for approval
+          const agent = this.agents[stage.agent];
+          if (!agent) {
+            throw new Error(`Agent "${stage.agent}" not found for stage "${stage.name}"`);
+          }
+
+          // Create ApprovalState
+          const approvalState: ApprovalState = {
+            id: generateApprovalId(),
+            taskId: task.id,
+            gateName: stage.gate!,
+            status: 'pending',
+            requestedAt: new Date(),
+            stage: stage.name,
+            agent: stage.agent,
+            approvalsReceived: 0,
+            approvalsRequired: gateCheck.gate.minApprovals || 1,
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: gateCheck.gate.timeout ? new Date(Date.now() + gateCheck.gate.timeout * 60000) : undefined,
+            context: {
+              workflowName: workflow.name,
+              stageDescription: stage.description,
+              gateDescription: gateCheck.gate.description,
+            },
+          };
+
+          // Save approval state to database
+          await this.store.saveApprovalState(approvalState);
+
+          // Log approval request for audit
+          await this.store.logApprovalRequest(task.id, `Approval gate: ${stage.gate} - ${gateCheck.gate.description || 'No description'}`);
+
+          // Log autonomy mode change for audit (transitioning to approval-required state)
+          await this.store.logModeChange(
+            task.id,
+            task.autonomy,
+            'supervised',
+            `Approval gate triggered: ${stage.gate} - requiring manual oversight`
+          );
+
+          // Get current conversation state for checkpoint
+          const currentTask = await this.store.getTask(task.id);
+          const conversationState = currentTask?.conversation || [];
+
+          // Save checkpoint with gate context
+          const checkpointId = await this.saveCheckpoint(task.id, {
+            stage: stage.name,
+            stageIndex: workflow.stages.findIndex(s => s.name === stage.name),
+            conversationState,
+            metadata: {
+              pauseReason: 'approval_gate',
+              gateName: stage.gate,
+              gateId: gateCheck.gate.id,
+              approvalId: approvalState.id,
+              resumePoint: 'pre_stage_gate',
+              completedStages: Array.from(completedStages),
+              inProgressStages: [], // Stage hasn't started yet
+              stageResults: Object.fromEntries(stageResults),
+            },
+          });
+
+          // Create Gate record in store
+          await this.store.setGate(task.id, {
+            name: stage.gate!,
+            status: 'pending',
+            requiredAt: approvalState.requestedAt,
+          });
+
+          // Update task status to awaiting-approval
+          await this.store.updateTask(task.id, {
+            status: 'awaiting-approval',
+            pausedAt: new Date(),
+            pauseReason: 'approval_gate',
+            updatedAt: new Date(),
+          });
+
+          // Approval URL can be configured via environment or passed in context
+          const approvalUrl: string | undefined = undefined;
+
+          // Emit approval-required event
+          const eventData: ApprovalRequiredEventData = {
+            approvalId: approvalState.id,
+            taskId: task.id,
+            gateName: stage.gate!,
+            gateType: gateCheck.gate.type,
+            description: gateCheck.gate.description,
+            approvers: gateCheck.gate.approvers,
+            minApprovals: gateCheck.gate.minApprovals || 1,
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: approvalState.expiresAt,
+            stage: stage.name,
+            agent: stage.agent,
+            timestamp: new Date(),
+            context: approvalState.context,
+            changesSummary: this.summarizeCompletedStages(stageResults),
+            blocking: gateCheck.gate.required ?? true,
+            approvalUrl,
+          };
+
+          this.emit('approval:required', eventData);
+
+          // Emit approval:request event with ApprovalRequest payload
+          const approvalRequestData: ApprovalRequest = {
+            requestId: approvalState.id,
+            taskId: task.id,
+            description: `Approval required for ${gateCheck.gate.description || stage.gate}`,
+            reason: `Workflow stage "${stage.name}" requires approval via gate "${stage.gate}" before proceeding`,
+            resourceImpact: this.calculateResourceImpact(task, stage),
+            id: approvalState.id, // Legacy field
+            gateName: stage.gate || '',
+            gateType: gateCheck.gate.type,
+            approvers: gateCheck.gate.approvers,
+            minApprovals: gateCheck.gate.minApprovals || 1,
+            requestedAt: new Date(),
+            timeoutMinutes: gateCheck.gate.timeout,
+            expiresAt: approvalState.expiresAt,
+            stage: stage.name,
+            agent: stage.agent,
+            context: {
+              taskId: task.id,
+              taskDescription: task.description,
+              taskPriority: task.priority,
+              taskWorkflow: task.workflow,
+              acceptanceCriteria: task.acceptanceCriteria,
+              currentStage: stage.name,
+              currentAgent: stage.agent,
+              approvalUrl,
+              blocking: gateCheck.gate.required ?? true,
+            },
+            changesSummary: this.summarizeCompletedStages(stageResults),
+            affectedFiles: this.getAffectedFiles(task.id),
+          };
+
+          this.emit('approval:request', approvalRequestData);
+
+          await this.store.addLog(task.id, {
+            level: 'info',
+            message: `Task paused at stage "${stage.name}" for approval gate "${stage.gate}". Checkpoint ${checkpointId} saved.`,
+            stage: stage.name,
+            agent: stage.agent,
+          });
+
+          return false; // Workflow incomplete - task is paused
+        }
+      }
+
       // Execute ready stages in parallel
       const stagePromises = readyStages.map(async (stage) => {
         const agent = this.agents[stage.agent];
@@ -1198,7 +3342,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             agent: agent.name,
           });
 
-          return { stage, result, error: null, decompositionRequest: result.decompositionRequest };
+          return { stage, result, error: null as any, decompositionRequest: result.decompositionRequest };
         } catch (error) {
           // Parse and enhance the error message for better feedback
           const rawError = error instanceof Error ? error : new Error(String(error));
@@ -1218,13 +3362,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             outputs: {},
             artifacts: [],
             summary: `Stage failed: ${enhancedErrorMessage}`,
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
             error: enhancedErrorMessage,
             startedAt: new Date(),
             completedAt: new Date(),
           };
 
-          return { stage, result: failedResult, error: rawError };
+          return { stage, result: failedResult, error: rawError, decompositionRequest: undefined as any };
         }
       });
 
@@ -1250,8 +3394,59 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           },
         });
 
-        if (error && !firstError) {
-          firstError = error;
+        // Determine the effective error for this stage
+        let stageError = error;
+        if (!stageError && result.status === 'failed') {
+          stageError = new Error(result.error || `Stage "${stage.name}" failed: ${result.summary}`);
+        }
+
+        // Attempt self-repair if the stage failed
+        if (stageError && !firstError) {
+          const repairConfig = this.getRepairConfig();
+          if (repairConfig.enabled && this.isRepairEligible(stage, stageError, result)) {
+            const history = await this.store.getFixAttemptHistory(task.id);
+            const repairContext: RepairContext = {
+              taskId: task.id,
+              stageName: stage.name,
+              stageAgent: stage.agent,
+              workflowName: workflow.name,
+              failedResult: result as unknown as import('./repair-loop/repair-types.js').StageResult,
+              originalError: stageError,
+              stageOutput: result.summary ? [result.summary] : [],
+              history,
+              config: repairConfig,
+              currentState: 'idle',
+              stateEnteredAt: new Date(),
+              iterationCount: 0,
+              repairCostSoFar: 0,
+              repairTokensUsed: 0,
+              loopStartedAt: new Date(),
+            };
+
+            const repairResult = await this.repairLoop.attemptRepair(repairContext);
+
+            if (repairResult.resolved && repairResult.stageResult) {
+              // Repair succeeded — replace the failed result
+              stageResults.set(stage.name, repairResult.stageResult as unknown as StageResult);
+              await this.store.addLog(task.id, {
+                level: 'info',
+                message: `Self-repair resolved stage "${stage.name}" after ${repairResult.attempts.length} attempt(s)`,
+                stage: stage.name,
+              });
+            } else {
+              // Repair could not fix — propagate failure
+              firstError = stageError;
+              if (repairResult.escalationReport) {
+                await this.store.addLog(task.id, {
+                  level: 'error',
+                  message: `Self-repair escalation: ${repairResult.escalationReport.summary}`,
+                  stage: stage.name,
+                });
+              }
+            }
+          } else {
+            firstError = stageError;
+          }
         }
 
         // Capture decomposition request from planning stage
@@ -1366,14 +3561,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       stagePrompt = `${resumeContext}\n\n${stagePrompt}`;
     }
 
-    // Create hooks for this stage
-    const hooks = createHooks({
+    // Create hooks context for this stage
+    const hookContext: HookContext = {
       taskId: task.id,
       store: this.store,
+      projectPath: this.projectPath,
+      errorFeedbackLoop: this.errorFeedbackLoop,
+      permissionPresetManager: this._permissionPresetManager,
       onToolUse: (tool, input) => {
         this.emit('agent:tool-use', task.id, tool, input);
       },
-    });
+      eventEmitter: {
+        emit: (event: string, data: unknown) => {
+          this.emit(event as any, data);
+        },
+      },
+      linterService: this.linterService,
+      toolActionStore: this.toolActionStore,
+      currentAgent: agent.name,
+      currentStage: stage.name,
+      toolStartTimes: new Map(),
+      config: this.effectiveConfig,
+      cliFlags: this.currentTaskCliFlags,
+      aliasResolver: this.aliasResolver,
+    };
+
+    // Store the context for access during tool completion
+    this.currentHookContext = hookContext;
+
+    // Create hooks for this stage
+    const hooks = this.createHooksWithManager(hookContext, agent.name, stage.name, workflow.name);
 
     // Track usage for this stage
     let stageUsage: TaskUsage = {
@@ -1381,6 +3598,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
     };
 
     // Collect all messages to extract summary
@@ -1471,6 +3690,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
     try {
+    // Log MCP tool availability for observability (debug level)
+    const mcpServers = this.buildQueryMcpServers();
+    const registryStats = this.mcpToolRegistry?.getStats();
+    if (mcpServers && Object.keys(mcpServers).length > 0 && process.env.DEBUG) {
+      console.log(`MCP Integration: ${Object.keys(mcpServers).length} servers available: ${Object.keys(mcpServers).join(', ')}`);
+      if (registryStats && registryStats.totalTools > 0) {
+        console.log(`MCP Tools: ${registryStats.totalTools} tools discovered across ${registryStats.activeConnections} connections`);
+      }
+
+      // Log connection status through MCPConnectionManager
+      const connections = this.mcpConnectionManager?.listConnections() ?? [];
+      const connectedServers = connections.filter(c => c.state === 'connected').map(c => c.serverId);
+      if (connectedServers.length > 0) {
+        console.log(`MCP Connections: ${connectedServers.length} active connections: ${connectedServers.join(', ')}`);
+      }
+    }
+
     for await (const message of query({
       prompt: stagePrompt,
       options: {
@@ -1478,6 +3714,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         permissionMode: 'acceptEdits',
         maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
         settingSources: ['project'],
+        mcpServers: mcpServers,
+        tools: this.currentTaskTools, // Combined built-in and MCP tools
         cwd: workingDirectory,
         env: {
           ...process.env,
@@ -1516,6 +3754,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               type: string;
               text?: string;
               thinking?: string;
+              // Tool call fields
+              id?: string;
+              name?: string;
+              input?: Record<string, unknown>;
+              tool_use_id?: string;
+              content?: unknown;
+              is_error?: boolean;
             }>;
             thinking?: string;
           };
@@ -1527,6 +3772,168 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
                 // Extract thinking content from content blocks
                 thinkingContent += block.thinking;
+              } else if (block.type === 'tool_use' && block.name && block.id) {
+                // Tool call started
+                const callId = block.id;
+                const toolName = block.name;
+                const input = block.input || {};
+                const timestamp = new Date();
+
+                // Create a new ToolExecution record
+                const toolExecution: ToolExecution = {
+                  callId,
+                  toolName,
+                  input,
+                  taskId: task.id,
+                  agentName: stage.agent,
+                  stageName: stage.name,
+                  startTime: timestamp,
+                  status: 'running',
+                };
+
+                // Store the active tool execution
+                this.activeToolExecutions.set(callId, toolExecution);
+
+                this.emit('tool:start', {
+                  taskId: task.id,
+                  toolName,
+                  input,
+                  timestamp,
+                  callId,
+                });
+              } else if (block.type === 'tool_result' && block.tool_use_id) {
+                // Tool call completed
+                const callId = block.tool_use_id;
+                const endTime = new Date();
+                const toolExecution = this.activeToolExecutions.get(callId);
+
+                if (toolExecution) {
+                  const duration = endTime.getTime() - toolExecution.startTime.getTime();
+                  let success = !block.is_error;
+                  let outputForEvents: unknown = block.content;
+                  let toolError = block.is_error ? String(block.content) : undefined;
+
+                  // Scan tool output for secrets if scanner is configured
+                  if (this.secretScanner && success && block.content) {
+                    try {
+                      // Convert output to string for scanning
+                      const outputContent = this.normalizeSecretScanContent(block.content);
+
+                      // Scan for secrets in the tool output
+                      const detections = this.secretScanner.scan(
+                        outputContent,
+                        `tool:${toolExecution.toolName}:${callId}`
+                      );
+                      const findings = this.mapSecretDetectionsToFindings(detections);
+
+                      // If secrets detected, emit secret:detected event
+                      if (findings.length > 0) {
+                        const behavior = this.resolveSecretDetectionBehavior();
+                        const processed = this.secretOutputProcessor.processOutput(
+                          outputForEvents as string | Record<string, unknown>,
+                          findings,
+                          behavior
+                        );
+
+                        outputForEvents = processed.output;
+                        if (processed.shouldBlock) {
+                          success = false;
+                          toolError = processed.blockError || 'Tool output blocked due to secret detection';
+                        }
+
+                        const severityCounts = {
+                          critical: findings.filter(f => f.severity === 'critical').length,
+                          high: findings.filter(f => f.severity === 'high').length,
+                          medium: findings.filter(f => f.severity === 'medium').length,
+                          low: findings.filter(f => f.severity === 'low').length,
+                        };
+
+                        this.emit('secret:detected', {
+                          taskId: task.id,
+                          toolName: toolExecution.toolName,
+                          callId,
+                          findings,
+                          count: findings.length,
+                          severityCounts,
+                          behavior,
+                          timestamp: new Date(),
+                        });
+
+                        // Log the detection
+                        await this.store.addLog(task.id, {
+                          level: processed.logLevel,
+                          message: `Secrets detected in tool output: ${toolExecution.toolName} (${findings.length} findings)`,
+                          metadata: {
+                            toolName: toolExecution.toolName,
+                            callId,
+                            secretCount: findings.length,
+                            severityCounts,
+                            behavior,
+                          },
+                        });
+                      }
+                    } catch (scanError) {
+                      // Log scanner errors but don't fail the tool execution
+                      await this.store.addLog(task.id, {
+                        level: 'error',
+                        message: `Secret scanner error for tool ${toolExecution.toolName}: ${String(scanError)}`,
+                        metadata: {
+                          toolName: toolExecution.toolName,
+                          callId,
+                          scanError: String(scanError),
+                        },
+                      });
+                    }
+                  }
+
+                  // Update the tool execution record
+                  const completedExecution: ToolExecution = {
+                    ...toolExecution,
+                    endTime,
+                    duration,
+                    status: success ? 'completed' : 'failed',
+                    result: {
+                      success,
+                      output: outputForEvents,
+                      error: success ? undefined : toolError,
+                    },
+                  };
+
+                  this.emit('tool:complete', {
+                    taskId: task.id,
+                    toolName: toolExecution.toolName,
+                    callId,
+                    result: {
+                      success,
+                      output: outputForEvents,
+                      error: success ? undefined : toolError,
+                    },
+                    timing: {
+                      startTime: toolExecution.startTime,
+                      endTime,
+                      duration,
+                    },
+                    timestamp: endTime,
+                  });
+
+                  // Record tool action for file-modifying tools
+                  try {
+                    await this.recordFileModifyingToolAction(task.id, completedExecution);
+                  } catch (error) {
+                    await this.store.addLog(task.id, {
+                      level: 'error',
+                      message: `Failed to record tool action for ${toolExecution.toolName}: ${String(error)}`,
+                      metadata: {
+                        toolName: toolExecution.toolName,
+                        callId,
+                        error: String(error),
+                      },
+                    });
+                  }
+
+                  // Clean up active execution tracking
+                  this.activeToolExecutions.delete(callId);
+                }
               }
             }
           }
@@ -1602,9 +4009,14 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       // This catches cases where "Limit reached" is logged before process exits
       const fullOutput = messages.join('\n').toLowerCase();
       const isLimitError = fullOutput.includes('limit reached') ||
+                          fullOutput.includes('hit your limit') ||
+                          fullOutput.includes("you've hit your limit") ||
                           fullOutput.includes('/upgrade') ||
                           fullOutput.includes('extra-usage') ||
-                          fullOutput.includes('resets') && fullOutput.includes('upgrade');
+                          fullOutput.includes('usage limit') ||
+                          fullOutput.includes('token limit') ||
+                          fullOutput.includes('context length') ||
+                          (fullOutput.includes('resets') && (fullOutput.includes('limit') || fullOutput.includes('upgrade')));
 
       if (isLimitError) {
         // Rethrow with limit-specific message so it can be detected and paused
@@ -1618,19 +4030,168 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Extract stage summary and outputs from the final messages
     const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
 
-    // For planning stages, check if the output contains a decomposition request
-    let decompositionRequest: DecompositionRequest | undefined;
-    if (isPlanner) {
-      const fullOutput = messages.join('\n');
-      decompositionRequest = parseDecompositionRequest(fullOutput);
+    // Check if the output indicates the task was blocked by permission restrictions
+    // Skip these heuristic checks for planning stages - they don't run tests or write files,
+    // and their output often discusses previous failures which triggers false positives
+    const fullOutputLower = messages.join('\n').toLowerCase();
 
-      if (decompositionRequest.shouldDecompose) {
+    if (isPlanner) {
+      // Planning stages skip test failure and permission heuristics entirely
+      // They only plan/decompose - false positives here cause "Workflow stuck" errors
+      const decompositionRequest2 = parseDecompositionRequest(messages.join('\n'));
+      if (decompositionRequest2.shouldDecompose) {
         await this.store.addLog(task.id, {
           level: 'info',
-          message: `Planner requested decomposition: ${decompositionRequest.subtasks.length} subtasks (${decompositionRequest.strategy})`,
+          message: `Planner requested decomposition: ${decompositionRequest2.subtasks.length} subtasks (${decompositionRequest2.strategy})`,
           stage: stage.name,
         });
       }
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'completed',
+        outputs,
+        artifacts,
+        summary,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        decompositionRequest: decompositionRequest2,
+      };
+    }
+
+    const permissionBlockedPatterns = [
+      'need user confirmation',
+      'tool access restrictions',
+      'blocked from using',
+      'cannot proceed without',
+      'requires user confirmation',
+      'need to get approval',
+      'encountering tool access',
+      'need explicit.*confirmation',
+      'i apologize.*cannot.*permission',
+      'i\'m unable to.*without.*confirmation',
+      'waiting for.*permission',
+      'permission denied',
+    ];
+
+    const isPermissionBlocked = permissionBlockedPatterns.some(pattern =>
+      fullOutputLower.includes(pattern) || new RegExp(pattern, 'i').test(fullOutputLower)
+    );
+
+    if (isPermissionBlocked) {
+      // Task was blocked by permission restrictions - mark as failed
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Stage "${stage.name}" failed: Task was blocked by permission restrictions and could not complete its work`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'failed',
+        outputs,
+        artifacts,
+        summary: `Failed: Permission restrictions prevented task completion. ${summary}`,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        error: 'Task was blocked by permission restrictions and could not complete its work',
+      };
+    }
+
+    // Check for test failures in the agent's output
+    // Only apply to testing/review stages - other stages produce false positives
+    // when they discuss errors, failures, or code issues in their output text.
+    // Genuine build/test failures in implementation stages are caught by tool exit codes.
+    const isTestOrReviewStage = ['testing', 'review', 'test', 'qa'].includes(stage.name.toLowerCase());
+
+    // These patterns are designed to match ACTUAL test runner output, not discussions about code.
+    // Be specific to avoid false positives when agents discuss potential issues.
+    const testFailurePatterns = [
+      // Specific test runner output patterns
+      'FAIL\\s+[\\w/]+\\.test\\.',     // Jest/Vitest FAIL output
+      '✗\\s+\\d+\\s+test',              // Test runner failure symbols
+      '×\\s+\\d+\\s+test',              // Test runner failure symbols
+      'npm test.*exited.*code [1-9]',   // npm test with exit code
+      'vitest.*exited.*code [1-9]',     // vitest with exit code
+      'jest.*exited.*code [1-9]',       // jest with exit code
+      '[1-9]\\d*\\s+failed,?\\s+\\d+\\s+passed', // "X failed, Y passed" pattern (excludes "0 failed")
+      'error:\\s+tests? did not pass',  // Explicit error message
+      'test suite failed',              // Jest test suite failure
+      'Tests:\\s+[1-9]\\d*\\s+failed',  // Jest summary with failures
+      'npm ERR!.*test',                 // npm test errors
+      'Error:\\s+Command failed',       // Build command failures
+      'error TS\\d+:',                  // TypeScript compiler errors (specific format)
+      'SyntaxError:',                   // JavaScript syntax errors
+      'ReferenceError:',                // JavaScript reference errors
+      'ENOENT.*package\\.json',         // Missing package.json
+    ];
+
+    const isTestFailure = isTestOrReviewStage && testFailurePatterns.some(pattern =>
+      new RegExp(pattern, 'i').test(fullOutputLower)
+    );
+
+    // Also check for explicit "Status: failed" in structured output (testing/review only)
+    const hasExplicitFailure = isTestOrReviewStage && (
+      /\*\*status\*\*:\s*failed/i.test(fullOutputLower) ||
+      /status:\s*failed/i.test(fullOutputLower)
+    );
+
+    if (isTestFailure || hasExplicitFailure) {
+      // Tests or build failed - mark stage as failed
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Stage "${stage.name}" failed: Tests or build did not pass`,
+        stage: stage.name,
+        agent: agent.name,
+      });
+
+      return {
+        stageName: stage.name,
+        agent: agent.name,
+        status: 'failed',
+        outputs,
+        artifacts,
+        summary: `Failed: Tests or build did not pass. ${summary}`,
+        usage: stageUsage,
+        startedAt,
+        completedAt: new Date(),
+        error: 'Tests or build did not pass',
+      };
+    }
+
+    // Note: Planning stages return early above and never reach this point.
+    // Non-planning stages do not produce decomposition requests.
+
+    // Create preliminary stage result for auto-fix processing
+    const preliminaryResult: StageResult = {
+      stageName: stage.name,
+      agent: agent.name,
+      status: 'completed',
+      outputs,
+      artifacts,
+      summary,
+      usage: stageUsage,
+      startedAt,
+      completedAt: new Date(),
+    };
+
+    // Execute auto-fix if this is a code generation stage
+    let autoFixResults: AutoFixStageResults | null = null;
+    try {
+      autoFixResults = await this.executeAutoFixForStage(task.id, stage, preliminaryResult);
+    } catch (error) {
+      // Log auto-fix error but don't fail the stage
+      await this.store.addLog(task.id, {
+        level: 'warn',
+        message: `Auto-fix hook failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+        agent: agent.name,
+      });
     }
 
     return {
@@ -1643,7 +4204,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       usage: stageUsage,
       startedAt,
       completedAt: new Date(),
-      decompositionRequest,
+      autoFixResults: autoFixResults || undefined,
     };
   }
 
@@ -1713,6 +4274,436 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputs,
       artifacts: [...new Set(artifacts)], // Deduplicate
     };
+  }
+
+  /**
+   * Execute auto-fix on files modified during a code generation stage
+   *
+   * @param taskId - The task ID
+   * @param stage - The stage that was executed
+   * @param stageResult - The stage execution result with artifacts
+   * @returns Auto-fix results or null if skipped
+   */
+  private async executeAutoFixForStage(
+    taskId: string,
+    stage: WorkflowStage,
+    stageResult: StageResult
+  ): Promise<AutoFixStageResults | null> {
+    // Check if auto-fix is enabled in configuration
+    const autoFixConfig = this.effectiveConfig.codeQuality?.autoFix;
+    if (!autoFixConfig?.enabled) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'disabled',
+      };
+    }
+
+    // Check if stage failed and we should skip on failure
+    if (stageResult.status === 'failed' && autoFixConfig.skipOnStageFailure) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'stage_failed',
+      };
+    }
+
+    // Check if this is a code generation stage that should trigger auto-fix
+    const shouldTrigger =
+      isCodeGenerationStage(stage) ||
+      autoFixConfig.triggerStages.includes(stage.name.toLowerCase()) ||
+      autoFixConfig.triggerAgents.includes(stage.agent.toLowerCase());
+
+    if (!shouldTrigger) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    // Get files modified by this stage from tool action store
+    let modifiedFiles: string[] = [];
+
+    try {
+      // Get all tool actions for this stage (filter by actionGroup which contains stage name)
+      const toolActions = await this.toolActionStore.getToolActions(taskId);
+      const stageActions = toolActions.filter(action =>
+        action.actionGroup === stage.name &&
+        action.modifiedFiles &&
+        action.modifiedFiles.length > 0
+      );
+
+      // Collect all modified files from this stage
+      const allFiles = new Set<string>();
+      for (const action of stageActions) {
+        for (const file of action.modifiedFiles) {
+          allFiles.add(file);
+        }
+      }
+
+      // Include artifacts from stage result as well
+      if (stageResult.artifacts) {
+        for (const artifact of stageResult.artifacts) {
+          allFiles.add(artifact);
+        }
+      }
+
+      modifiedFiles = Array.from(allFiles);
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Failed to get modified files for auto-fix: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+      });
+
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'failed_to_identify_files',
+      };
+    }
+
+    if (modifiedFiles.length === 0) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    // Filter files by supported extensions
+    const supportedFiles = modifiedFiles.filter(file => {
+      const ext = path.extname(file);
+      return autoFixConfig.fileExtensions.includes(ext);
+    });
+
+    // Limit number of files to process
+    const filesToProcess = supportedFiles.slice(0, autoFixConfig.maxFilesPerStage);
+
+    if (filesToProcess.length === 0) {
+      return {
+        applied: false,
+        filesProcessed: [],
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [],
+        skipReason: 'no_code_files',
+      };
+    }
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Auto-fix triggered for ${filesToProcess.length} files after ${stage.name} stage completion`,
+      stage: stage.name,
+    });
+
+    // Emit auto-fix requested event
+    for (const filePath of filesToProcess) {
+      this.emit('autofix:requested', {
+        taskId,
+        filePath,
+        fixTypes: ['imports'], // Currently only supporting import fixes
+        triggeredBy: 'hook',
+        timestamp: new Date(),
+      });
+    }
+
+    try {
+      // Create auto-fixer instance
+      const autoFixer = new ImportAutoFixer({
+        projectPath: this.projectPath,
+        detector: 'auto',
+      });
+
+      // Check if auto-fixer is available
+      if (!(await autoFixer.isAvailable())) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: 'Auto-fix service unavailable, skipping import fixes',
+          stage: stage.name,
+        });
+
+        for (const filePath of filesToProcess) {
+          this.emit('autofix:skipped', {
+            taskId,
+            filePath,
+            reason: 'no_issues',
+            timestamp: new Date(),
+          });
+        }
+
+        return {
+          applied: false,
+          filesProcessed: filesToProcess,
+          filesModified: [],
+          totalImportsAdded: 0,
+          totalDuration: 0,
+          errors: [],
+          skipReason: 'no_code_files',
+        };
+      }
+
+      // Execute auto-fix on all files
+      const fixResults: ImportFixResult[] = [];
+
+      // First analyze files to get accurate issue counts
+      const analysisResults = await autoFixer.analyze(filesToProcess);
+
+      // Process files individually to emit started/progress events
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const filePath = filesToProcess[i];
+        const analysis = analysisResults[i];
+
+        // Emit started event with accurate issue count
+        this.emit('autofix:started', {
+          taskId,
+          filePath,
+          fixType: 'imports',
+          issuesDetected: analysis?.missingImports.length || 0,
+          timestamp: new Date(),
+        });
+
+        // Emit standardized auto-fix-start event
+        this.emit('auto-fix-start', {
+          id: `${taskId}-${crypto.randomUUID()}`,
+          eventType: 'auto-fix-start',
+          taskId,
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: 0,
+          totalIterations: filesToProcess.length,
+          currentFile: filePath,
+          status: 'running',
+          timestamp: new Date(),
+          metadata: {
+            fixType: 'imports',
+            issuesDetected: analysis?.missingImports.length || 0,
+          },
+        });
+
+        // Execute fix for this file
+        const fileResults = await autoFixer.fix([filePath]);
+        fixResults.push(...fileResults);
+
+        // Emit progress event
+        const result = fileResults[0];
+        if (result) {
+          const issuesFixed = result.success ? result.importsAdded.length : 0;
+          const issuesDetected = analysis?.missingImports.length || 0;
+          this.emit('autofix:progress', {
+            taskId,
+            filePath,
+            fixType: 'imports',
+            issuesFixed,
+            issuesRemaining: Math.max(0, issuesDetected - issuesFixed),
+            currentFix: result.success && issuesFixed > 0 ? `Added ${issuesFixed} imports` : undefined,
+            timestamp: new Date(),
+          });
+
+          // Emit standardized auto-fix-progress event
+          this.emit('auto-fix-progress', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-progress',
+            taskId,
+            filesModified: [filePath],
+            issuesFixed: result.success && issuesFixed > 0 ? [{
+              type: 'import',
+              description: `Added ${issuesFixed} imports: ${result.importsAdded.join(', ')}`,
+              filePath,
+              line: 1,
+              column: 1,
+              severity: 'warning' as const,
+            }] : [],
+            iterationCount: i + 1,
+            totalIterations: filesToProcess.length,
+            currentFile: filePath,
+            status: 'running',
+            timestamp: new Date(),
+            metadata: {
+              fixType: 'imports',
+              issuesFixed,
+              issuesRemaining: Math.max(0, issuesDetected - issuesFixed),
+              currentFix: result.success && issuesFixed > 0 ? `Added ${issuesFixed} imports` : undefined,
+            },
+          });
+        }
+      }
+
+      const summary = autoFixer.getSummary(fixResults);
+
+      // Emit completion/failure events
+      for (const result of fixResults) {
+        if (result.success) {
+          this.emit('autofix:completed', {
+            taskId,
+            filePath: result.filePath,
+            fixType: 'imports',
+            issuesDetected: result.importsAdded.length,
+            issuesFixed: result.importsAdded.length,
+            duration: result.duration,
+            timestamp: new Date(),
+          });
+
+          // Emit standardized auto-fix-complete event
+          this.emit('auto-fix-complete', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-complete',
+            taskId,
+            filesModified: [result.filePath],
+            issuesFixed: result.importsAdded.map(importName => ({
+              type: 'import',
+              description: `Added import statement for ${importName}`,
+              filePath: result.filePath,
+              line: 1,
+              column: 1,
+              severity: 'warning' as const,
+            })),
+            iterationCount: fixResults.indexOf(result) + 1,
+            totalIterations: fixResults.length,
+            currentFile: result.filePath,
+            status: 'success',
+            timestamp: new Date(),
+            metadata: {
+              fixType: 'imports',
+              issuesDetected: result.importsAdded.length,
+              issuesFixed: result.importsAdded.length,
+              duration: result.duration,
+            },
+          });
+        } else {
+          this.emit('autofix:failed', {
+            taskId,
+            filePath: result.filePath,
+            fixType: 'imports',
+            error: result.errors.map(e => e.message).join('; '),
+            issuesDetected: 0,
+            issuesFixed: 0,
+            timestamp: new Date(),
+          });
+
+          // Emit standardized auto-fix-error event
+          this.emit('auto-fix-error', {
+            id: `${taskId}-${crypto.randomUUID()}`,
+            eventType: 'auto-fix-error',
+            taskId,
+            filesModified: [],
+            issuesFixed: [],
+            iterationCount: fixResults.indexOf(result) + 1,
+            totalIterations: fixResults.length,
+            currentFile: result.filePath,
+            status: 'failed',
+            timestamp: new Date(),
+            error: result.errors.map(e => e.message).join('; '),
+            metadata: {
+              fixType: 'imports',
+              issuesDetected: 0,
+              issuesFixed: 0,
+              errors: result.errors.map(e => ({
+                type: e.type,
+                message: e.message,
+              })),
+            },
+          });
+        }
+      }
+
+      const errors = fixResults.flatMap(result =>
+        result.errors.map(error => ({
+          filePath: result.filePath,
+          error: error.message,
+          type: error.type as 'io' | 'resolution' | 'syntax',
+        }))
+      );
+
+      await this.store.addLog(taskId, {
+        level: summary.totalErrors > 0 ? 'warn' : 'info',
+        message: `Auto-fix completed: ${summary.filesModified}/${summary.filesProcessed} files modified, ${summary.totalImportsAdded} imports added`,
+        stage: stage.name,
+      });
+
+      return {
+        applied: true,
+        filesProcessed: filesToProcess,
+        filesModified: fixResults.filter(r => r.importsAdded.length > 0).map(r => r.filePath),
+        totalImportsAdded: summary.totalImportsAdded,
+        totalDuration: summary.totalDuration,
+        errors,
+      };
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Auto-fix failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        stage: stage.name,
+      });
+
+      for (const filePath of filesToProcess) {
+        this.emit('autofix:failed', {
+          taskId,
+          filePath,
+          fixType: 'imports',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          issuesDetected: 0,
+          issuesFixed: 0,
+          timestamp: new Date(),
+        });
+
+        // Emit standardized auto-fix-error event
+        this.emit('auto-fix-error', {
+          id: `${taskId}-${crypto.randomUUID()}`,
+          eventType: 'auto-fix-error',
+          taskId,
+          filesModified: [],
+          issuesFixed: [],
+          iterationCount: filesToProcess.indexOf(filePath) + 1,
+          totalIterations: filesToProcess.length,
+          currentFile: filePath,
+          status: 'failed',
+          timestamp: new Date(),
+          error: error instanceof Error ? error.message : 'Unknown error',
+          metadata: {
+            fixType: 'imports',
+            issuesDetected: 0,
+            issuesFixed: 0,
+            errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+          },
+        });
+      }
+
+      return {
+        applied: false,
+        filesProcessed: filesToProcess,
+        filesModified: [],
+        totalImportsAdded: 0,
+        totalDuration: 0,
+        errors: [{
+          filePath: 'all',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          type: 'io',
+        }],
+      };
+    }
   }
 
   /**
@@ -1829,9 +4820,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       updatedAt: new Date(),
       ...(status === 'completed' ? {
         completedAt: new Date(),
-        resumeAttempts: 0  // Reset resume attempts counter on successful completion
+        resumeAttempts: 0,  // Reset resume attempts counter on successful completion
+        pauseReason: undefined,  // Clear stale pause metadata
+        pausedAt: undefined,
+        resumeAfter: undefined,
       } : {}),
     });
+
+    // Propagate in-progress status up the ancestor chain
+    if (status === 'in-progress') {
+      const task = await this.store.getTask(taskId);
+      if (task?.parentTaskId) {
+        try {
+          await this.checkAndResumeParent(task.parentTaskId);
+        } catch (err) {
+          // Don't fail the status update if propagation fails
+        }
+      }
+    }
 
     // Handle worktree cleanup for completed, failed, or cancelled tasks
     if ((status === 'completed' || status === 'failed' || status === 'cancelled') && this.worktreeManager) {
@@ -2093,10 +5099,112 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       outputTokens,
       totalTokens,
       estimatedCost,
+      totalCostCents: Math.round(estimatedCost * 100),
+      executionTimeMs: 0, // Will be updated by task completion
     };
 
     await this.store.updateTask(taskId, { usage });
     this.emit('usage:updated', taskId, usage);
+
+    await this.checkResourceLimits(taskId);
+  }
+
+  /**
+   * Update tracked file changes for a task and check resource limits.
+   */
+  private async updateFileChanges(
+    taskId: string,
+    changes: { created?: string[]; modified?: string[] }
+  ): Promise<void> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    const currentChanges = this.fileChangesByTask.get(taskId) || {
+      created: [],
+      modified: [],
+    };
+
+    const created = new Set([...currentChanges.created, ...(changes.created ?? [])]);
+    const modified = new Set([...currentChanges.modified, ...(changes.modified ?? [])]);
+
+    const updatedChanges = {
+      created: Array.from(created),
+      modified: Array.from(modified),
+    };
+
+    this.fileChangesByTask.set(taskId, updatedChanges);
+
+    await this.store.updateTask(taskId, {
+      fileChanges: updatedChanges,
+    } as unknown as Parameters<typeof this.store.updateTask>[1]);
+
+    await this.checkResourceLimits(taskId);
+  }
+
+  /**
+   * Evaluate resource limits for a task and emit warning/exceeded events.
+   */
+  private async checkResourceLimits(taskId: string): Promise<void> {
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    const limits = this.effectiveConfig.limits;
+    const warningThreshold = 80;
+
+    const usage = task.usage || {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
+    };
+
+    const checkLimit = (limitType: LimitWarningEvent['limitType'], currentValue: number, limitValue: number) => {
+      if (!limitValue || limitValue <= 0) {
+        return;
+      }
+
+      const utilizationPercent = (currentValue / limitValue) * 100;
+
+      if (utilizationPercent >= 100) {
+        this.emit('limit:exceeded', {
+          taskId,
+          limitType,
+          currentValue,
+          limitValue,
+          percentage: utilizationPercent,
+          timestamp: new Date(),
+        });
+      } else if (utilizationPercent >= warningThreshold) {
+        this.emit('limit:warning', {
+          taskId,
+          limitType,
+          currentValue,
+          limitValue,
+          percentage: utilizationPercent,
+          timestamp: new Date(),
+        });
+      }
+    };
+
+    checkLimit('tokens', usage.totalTokens, limits.maxTokensPerTask);
+    checkLimit('cost', usage.estimatedCost, limits.maxCostPerTask);
+
+    const executionTime = (task as Task & { executionTime?: number }).executionTime
+      ?? usage.executionTimeMs
+      ?? 0;
+    checkLimit('time', executionTime, limits.maxExecutionTime);
+
+    const fileChanges = this.fileChangesByTask.get(taskId)
+      ?? (task as Task & { fileChanges?: { created: string[]; modified: string[] } }).fileChanges
+      ?? { created: [], modified: [] };
+    const totalFileChanges = (fileChanges.created?.length || 0) + (fileChanges.modified?.length || 0);
+    checkLimit('files', totalFileChanges, limits.maxFileChanges);
   }
 
   /**
@@ -2108,17 +5216,55 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Get the currently active task, if any.
+   */
+  async getCurrentTask(): Promise<Task | null> {
+    await this.ensureInitialized();
+    if (!this.currentTaskId) {
+      return null;
+    }
+
+    return this.store.getTask(this.currentTaskId);
+  }
+
+  /**
    * List all tasks
    */
   async listTasks(options?: {
     status?: TaskStatus;
     limit?: number;
+    offset?: number;
     orderByPriority?: boolean;
     includeTrashed?: boolean;
     includeArchived?: boolean;
+    lightweight?: boolean;
   }): Promise<Task[]> {
     await this.ensureInitialized();
     return this.store.listTasks(options);
+  }
+
+  /**
+   * Get task statistics (counts and cost, no per-task loading).
+   */
+  async getTaskStats(): Promise<{
+    byStatus: Record<string, number>;
+    totalCost: number;
+    totalTokens: number;
+  }> {
+    await this.ensureInitialized();
+    return this.store.getTaskStats();
+  }
+
+  /**
+   * Count tasks matching filters.
+   */
+  async countTasks(options?: {
+    status?: TaskStatus;
+    includeTrashed?: boolean;
+    includeArchived?: boolean;
+  }): Promise<{ total: number; byStatus: Record<string, number> }> {
+    await this.ensureInitialized();
+    return this.store.countTasks(options);
   }
 
   /**
@@ -2130,11 +5276,45 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Get linter service instance
+   */
+  getLinterService(): LinterService {
+    if (!this.initialized) {
+      throw new Error('Orchestrator must be initialized before accessing LinterService');
+    }
+    return this.linterService;
+  }
+
+  /**
+   * Get current task ID being executed (for event tracking)
+   */
+  private getCurrentTaskId(): string | null {
+    return this.currentTaskId;
+  }
+
+  /**
    * Get configuration
    */
   async getConfig(): Promise<ApexConfig> {
     await this.ensureInitialized();
     return this.config;
+  }
+
+  /**
+   * Get the currently active permission preset
+   */
+  async getCurrentPreset(): Promise<PermissionPreset> {
+    await this.ensureInitialized();
+    return this._permissionPresetManager.getCurrentPreset();
+  }
+
+  /**
+   * Set the permission preset and apply it
+   * @param preset The permission preset to apply
+   */
+  async setPreset(preset: PermissionPreset): Promise<void> {
+    await this.ensureInitialized();
+    await this.permissionPresetManager.applyPreset(preset);
   }
 
   /**
@@ -2183,6 +5363,661 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async getPendingGates(taskId: string): Promise<import('@apexcli/core').Gate[]> {
     await this.ensureInitialized();
     return this.store.getPendingGates(taskId);
+  }
+
+  // ============================================================================
+  // Undo Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Undo the last action for a task
+   * Restores files from snapshot based on operation type:
+   * - write: restore content
+   * - create: delete file
+   * - delete: restore file
+   * Emits undo lifecycle events and removes used snapshot from store
+   *
+   * @param taskId The task ID to undo the last action for
+   * @returns UndoOperationResult containing details about the undo operation
+   */
+  async undoLastAction(taskId: string): Promise<UndoOperationResult> {
+    await this.ensureInitialized();
+
+    this.emit('undo:start', taskId);
+
+    try {
+      // Get undoable actions for the task
+      const undoableActions = await this.toolActionStore.getUndoableActions(taskId);
+
+      if (undoableActions.length === 0) {
+        throw new Error('No undoable actions found for task');
+      }
+
+      const lastAction = undoableActions[0];
+      const restoredFiles: string[] = [];
+      const failedFiles: { path: string; error: string; }[] = [];
+
+      // Process each file based on operation type
+      for (const snapshot of lastAction.beforeSnapshots) {
+        try {
+          // Determine operation type based on tool name and file state
+          const toolName = lastAction.execution.toolName;
+          const filePath = snapshot.filePath;
+          const fileExists = existsSync(filePath);
+
+          if (toolName === 'Write' || toolName === 'Edit') {
+            // Write/Edit: restore content from snapshot
+            if (snapshot.existed) {
+              writeFileSync(filePath, snapshot.content, 'utf8');
+              restoredFiles.push(filePath);
+            } else if (fileExists) {
+              // File was created, so delete it
+              unlinkSync(filePath);
+              restoredFiles.push(filePath);
+            }
+          } else if (toolName === 'Bash' && snapshot.existed && !fileExists) {
+            // File was deleted by bash command, restore it
+            writeFileSync(filePath, snapshot.content, 'utf8');
+            restoredFiles.push(filePath);
+          } else if (!snapshot.existed && fileExists) {
+            // File was created, delete it
+            unlinkSync(filePath);
+            restoredFiles.push(filePath);
+          } else if (snapshot.existed) {
+            // File was modified, restore original content
+            writeFileSync(filePath, snapshot.content, 'utf8');
+            restoredFiles.push(filePath);
+          }
+        } catch (error) {
+          failedFiles.push({
+            path: snapshot.filePath,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+      // Mark action as undone in the database
+      await this.markActionAsUndone(lastAction.id);
+
+      // Remove used snapshots from store (clean up)
+      await this.removeActionSnapshots(lastAction.id);
+
+      const result: UndoOperationResult = {
+        success: failedFiles.length === 0,
+        actionId: lastAction.id,
+        restoredFiles,
+        failedFiles,
+        completedAt: new Date(),
+        error: failedFiles.length > 0 ? `Failed to restore ${failedFiles.length} files` : undefined
+      };
+
+      if (result.success) {
+        this.emit('undo:complete', taskId, lastAction.id, restoredFiles);
+      } else {
+        this.emit('undo:error', taskId, lastAction.id, result.error!);
+      }
+
+      return result;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.emit('undo:error', taskId, null, errorMessage);
+
+      return {
+        success: false,
+        actionId: '',
+        restoredFiles: [],
+        failedFiles: [],
+        completedAt: new Date(),
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Mark a tool action as undone in the database
+   */
+  private async markActionAsUndone(actionId: string): Promise<void> {
+    const db = this.toolActionStore['taskStore']['db'];
+    db.prepare(`
+      UPDATE tool_actions
+      SET was_undone = 1, undone_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), actionId);
+  }
+
+  /**
+   * Remove snapshots associated with an action from the store
+   */
+  private async removeActionSnapshots(actionId: string): Promise<void> {
+    const db = this.toolActionStore['taskStore']['db'];
+
+    // Get snapshot IDs from the action
+    const action = db.prepare(`
+      SELECT before_snapshots, after_snapshots FROM tool_actions WHERE id = ?
+    `).get(actionId) as { before_snapshots: string; after_snapshots: string } | undefined;
+
+    if (!action) return;
+
+    const beforeSnapshotIds = JSON.parse(action.before_snapshots) as string[];
+    const afterSnapshotIds = JSON.parse(action.after_snapshots) as string[];
+    const allSnapshotIds = [...beforeSnapshotIds, ...afterSnapshotIds];
+
+    // Remove snapshots from file_snapshots table
+    if (allSnapshotIds.length > 0) {
+      const placeholders = allSnapshotIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM file_snapshots WHERE id IN (${placeholders})`).run(...allSnapshotIds);
+    }
+  }
+
+  // ============================================================================
+  // Permission Management Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Request permission for a tool operation and emit a permission:request event
+   * @param taskId The task requesting permission
+   * @param tool The tool requiring permission
+   * @param scope Optional scope/context for the permission
+   * @param description Description of what the tool will do
+   * @param isDangerous Whether this is flagged as a dangerous operation
+   * @param agent The agent requesting the permission
+   * @param metadata Additional metadata about the request
+   * @returns The generated request ID for tracking the permission request
+   */
+  async requestPermission(
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    description: string,
+    isDangerous = false,
+    agent: string,
+    metadata?: Record<string, unknown>
+  ): Promise<string> {
+    await this.ensureInitialized();
+
+    const requestId = `perm-req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date();
+
+    const eventData: PermissionRequestEventData = {
+      requestId,
+      tool,
+      scope,
+      description,
+      isDangerous,
+      agent,
+      timestamp,
+      metadata,
+    };
+
+    this.emit('permission:request', eventData);
+
+    return requestId;
+  }
+
+  /**
+   * Grant permission for a pending request
+   * @param requestId The permission request ID to grant
+   * @param taskId The task ID
+   * @param tool The tool being granted permission
+   * @param scope Optional scope for the permission
+   * @param level The permission level to grant
+   * @param grantedBy Who is granting the permission
+   * @param reason Optional reason for granting permission
+   */
+  async grantPermissionConfirmation(
+    requestId: string,
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    level: PermissionLevel,
+    grantedBy: string,
+    reason?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Save the permission to the permission store
+    await this.permissionManager.grantPermission(tool, scope, level);
+
+    const timestamp = new Date();
+    const eventData: PermissionGrantedEventData = {
+      requestId,
+      tool,
+      scope,
+      level,
+      grantedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('permission:granted', eventData);
+  }
+
+  /**
+   * Deny permission for a pending request
+   * @param requestId The permission request ID to deny
+   * @param taskId The task ID
+   * @param tool The tool being denied permission
+   * @param scope Optional scope for the permission
+   * @param deniedBy Who is denying the permission
+   * @param reason Reason for denying permission
+   */
+  async denyPermissionConfirmation(
+    requestId: string,
+    taskId: string,
+    tool: string,
+    scope: string | undefined,
+    deniedBy: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Save a deny permission to the permission store
+    await this.permissionManager.grantPermission(tool, scope, 'deny');
+
+    const timestamp = new Date();
+    const eventData: PermissionDeniedEventData = {
+      requestId,
+      tool,
+      scope,
+      deniedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('permission:denied', eventData);
+  }
+
+  /**
+   * Detect and flag a dangerous operation
+   * @param taskId The task attempting the operation
+   * @param tool The tool involved in the dangerous operation
+   * @param operation Details about the dangerous operation
+   * @param riskLevel The risk level of the operation
+   * @param riskDescription Description of the potential risks
+   * @param agent The agent attempting the operation
+   * @param context Additional context about the operation
+   * @returns The generated operation ID for tracking
+   */
+  async flagDangerousOperation(
+    taskId: string,
+    tool: string,
+    operation: string,
+    riskLevel: 'low' | 'medium' | 'high' | 'critical',
+    riskDescription: string,
+    agent: string,
+    context?: Record<string, unknown>
+  ): Promise<string> {
+    await this.ensureInitialized();
+
+    const operationId = `danger-op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date();
+
+    const eventData: DangerousOperationDetectedEventData = {
+      operationId,
+      tool,
+      operation,
+      riskLevel,
+      riskDescription,
+      agent,
+      timestamp,
+      context,
+    };
+
+    this.emit('dangerous:detected', eventData);
+
+    return operationId;
+  }
+
+  /**
+   * Confirm a dangerous operation after user approval
+   * @param operationId The dangerous operation ID to confirm
+   * @param taskId The task ID
+   * @param tool The tool executing the dangerous operation
+   * @param operation Details about the operation
+   * @param confirmedBy Who confirmed the operation
+   * @param reason Optional reason for confirming the operation
+   */
+  async confirmDangerousOperation(
+    operationId: string,
+    taskId: string,
+    tool: string,
+    operation: string,
+    confirmedBy: string,
+    reason?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const timestamp = new Date();
+    const eventData: DangerousOperationConfirmedEventData = {
+      operationId,
+      tool,
+      operation,
+      confirmedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('dangerous:confirmed', eventData);
+  }
+
+  /**
+   * Block a dangerous operation after user denial
+   * @param operationId The dangerous operation ID to block
+   * @param taskId The task ID
+   * @param tool The tool that was blocked
+   * @param operation Details about the blocked operation
+   * @param blockedBy Who blocked the operation
+   * @param reason Reason for blocking the operation
+   */
+  async blockDangerousOperation(
+    operationId: string,
+    taskId: string,
+    tool: string,
+    operation: string,
+    blockedBy: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    const timestamp = new Date();
+    const eventData: DangerousOperationBlockedEventData = {
+      operationId,
+      tool,
+      operation,
+      blockedBy,
+      timestamp,
+      reason,
+    };
+
+    this.emit('dangerous:blocked', eventData);
+  }
+
+  // ============================================================================
+  // Approval Operations (v0.5.0)
+  // ============================================================================
+
+  /**
+   * Grant an approval request and resume the task from checkpoint
+   * @param approvalId The approval request ID to grant
+   * @param approver Who is granting the approval
+   * @param comment Optional comment from the approver
+   */
+  async grantApproval(
+    approvalId: string,
+    approver: string,
+    comment?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Get the approval request from storage to validate it exists
+    const approvalState = await this.store.getApprovalStateById(approvalId);
+    if (!approvalState) {
+      throw new Error(`Approval request not found: ${approvalId}`);
+    }
+
+    if (approvalState.status !== 'pending') {
+      throw new Error(`Approval request ${approvalId} is not pending (status: ${approvalState.status})`);
+    }
+
+    const timestamp = new Date();
+    const taskId = approvalState.taskId;
+
+    // Verify task exists
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found for approval: ${taskId}`);
+    }
+
+    // Update approval state in database
+    await this.store.updateApprovalState(approvalId, {
+      status: 'approved',
+      approver,
+      respondedAt: timestamp,
+      comment,
+      approvalsReceived: (approvalState.approvalsReceived || 0) + 1
+    });
+
+    // Create and emit the approval:approved event
+    const eventData: ApprovalGrantedEventData = {
+      approvalId,
+      taskId,
+      approver,
+      comment,
+      timestamp,
+    };
+
+    this.emit('approval:approved', eventData);
+
+    // Log approval response for audit
+    await this.store.logApprovalResponse(taskId, approver, true, comment || 'No comment provided');
+
+    // Log autonomy mode change for audit (resuming from supervised back to original autonomy)
+    await this.store.logModeChange(
+      taskId,
+      'supervised',
+      task.autonomy,
+      `Approval granted by ${approver} - resuming with original autonomy level`
+    );
+
+    // Resume the task from its checkpoint
+    try {
+      const resumed = await this.resumeTask(taskId);
+      if (!resumed) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Failed to resume task after approval grant: no checkpoint available`,
+          metadata: { approvalId, approver },
+        });
+      } else {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Task resumed successfully after approval grant`,
+          metadata: { approvalId, approver, comment },
+        });
+      }
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error resuming task after approval grant: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: { approvalId, approver },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Deny an approval request and mark the task as failed
+   * @param approvalId The approval request ID to deny
+   * @param approver Who is denying the approval
+   * @param reason Reason for denying the approval
+   */
+  async denyApproval(
+    approvalId: string,
+    approver: string,
+    reason: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    if (!reason || reason.trim().length === 0) {
+      throw new Error('Reason is required when denying an approval');
+    }
+
+    const timestamp = new Date();
+
+    // Get the approval request from storage to validate it exists
+    const approvalState = await this.store.getApprovalStateById(approvalId);
+    if (!approvalState) {
+      throw new Error(`Approval request not found: ${approvalId}`);
+    }
+
+    if (approvalState.status !== 'pending') {
+      throw new Error(`Approval request ${approvalId} is not pending (status: ${approvalState.status})`);
+    }
+
+    const taskId = approvalState.taskId;
+
+    // Verify task exists
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found for approval: ${taskId}`);
+    }
+
+    // Update approval state in database
+    await this.store.updateApprovalState(approvalId, {
+      status: 'denied',
+      approver,
+      respondedAt: timestamp,
+      comment: reason
+    });
+
+    // Create and emit the approval:denied event
+    const eventData: ApprovalDeniedEventData = {
+      approvalId,
+      taskId,
+      approver,
+      reason,
+      timestamp,
+    };
+
+    this.emit('approval:denied', eventData);
+
+    // Log approval response for audit
+    await this.store.logApprovalResponse(taskId, approver, false, reason);
+
+    // Log autonomy mode change for audit (transitioning to manual due to denial)
+    await this.store.logModeChange(
+      taskId,
+      'supervised',
+      'manual',
+      `Approval denied by ${approver} - requiring manual intervention: ${reason}`
+    );
+
+    // Mark the task as failed with the denial reason
+    try {
+      await this.updateTaskStatus(taskId, 'failed', `Approval denied by ${approver}: ${reason}`);
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `Task failed due to approval denial`,
+        metadata: { approvalId, approver, reason },
+      });
+    } catch (error) {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Error updating task status after approval denial: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        metadata: { approvalId, approver },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for an approval response for a specific request
+   * This creates a promise that will be resolved when respondToApproval is called
+   * @param requestId The approval request ID to wait for
+   * @param timeoutMs Optional timeout in milliseconds (default: 30 minutes)
+   * @returns Promise<ApprovalResponse> that resolves when the approval is responded to
+   */
+  waitForApproval(requestId: string, timeoutMs: number = 30 * 60 * 1000): Promise<ApprovalResponse> {
+    if (!requestId || requestId.trim().length === 0) {
+      throw new Error('Request ID is required');
+    }
+
+    // If there's already a pending promise for this request, return it
+    const existing = this.pendingApprovalPromises.get(requestId);
+    if (existing) {
+      throw new Error(`Already waiting for approval response to request: ${requestId}`);
+    }
+
+    return new Promise<ApprovalResponse>((resolve, reject) => {
+      // Store the promise resolvers
+      this.pendingApprovalPromises.set(requestId, { resolve, reject });
+
+      // Set up timeout if specified
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          const pendingPromise = this.pendingApprovalPromises.get(requestId);
+          if (pendingPromise) {
+            this.pendingApprovalPromises.delete(requestId);
+            pendingPromise.reject(new Error(`Approval request ${requestId} timed out after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+      }
+    });
+  }
+
+  /**
+   * Respond to an approval request with a decision and resolve pending promises
+   * This provides a unified interface that delegates to grantApproval or denyApproval
+   * while also resolving any pending approval promises for the request
+   * @param requestId The approval request ID to respond to
+   * @param response The approval response containing decision and context
+   * @returns Promise<void> that resolves when the approval is processed
+   */
+  async respondToApproval(
+    requestId: string,
+    response: ApprovalResponse
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    // Validate required fields
+    if (!requestId || requestId.trim().length === 0) {
+      throw new Error('Request ID is required');
+    }
+
+    if (!response.response) {
+      throw new Error('Approval decision is required');
+    }
+
+    try {
+      // Delegate to appropriate method based on response type
+      if (response.response === 'approved') {
+        await this.grantApproval(requestId, response.approver || 'Unknown', response.message);
+      } else if (response.response === 'denied') {
+        const reason = response.message || 'No reason provided';
+        await this.denyApproval(requestId, response.approver || 'Unknown', reason);
+      } else if (response.response === 'info-requested') {
+        // For info requests, we don't change the approval state but emit an event
+        // This allows external systems to handle information requests as needed
+        await this.store.addLog(response.taskId, {
+          level: 'info',
+          message: `Information requested for approval ${requestId}: ${response.message || 'No message provided'}`,
+          metadata: {
+            approvalId: requestId,
+            requester: response.approver || 'Unknown',
+            infoRequest: true
+          },
+        });
+
+        // Emit a custom event for info requests
+        this.emit('approval:info-requested', {
+          approvalId: requestId,
+          taskId: response.taskId,
+          requester: response.approver || 'Unknown',
+          message: response.message,
+          timestamp: new Date(),
+        });
+      } else {
+        throw new Error(`Invalid approval response: ${response.response}`);
+      }
+
+      // Resolve any pending approval promises for this request
+      const pendingPromise = this.pendingApprovalPromises.get(requestId);
+      if (pendingPromise) {
+        this.pendingApprovalPromises.delete(requestId);
+        pendingPromise.resolve(response);
+      }
+
+    } catch (error) {
+      // If there's a pending promise, reject it with the error
+      const pendingPromise = this.pendingApprovalPromises.get(requestId);
+      if (pendingPromise) {
+        this.pendingApprovalPromises.delete(requestId);
+        pendingPromise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+      throw error;
+    }
   }
 
   // ============================================================================
@@ -2297,6 +6132,122 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       return stdout.trim().length > 0;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Scan staged files for secrets before committing
+   * @returns Promise that resolves to secret findings from all staged files
+   */
+  private mapSecretDetectionsToFindings(detections: SecretDetection[]): SecretFinding[] {
+    return detections.map(detection => {
+      const line = detection.lineNumber ?? 1;
+      const column = detection.columnNumber ?? 1;
+      const endColumn = column + Math.max(0, detection.maskedMatch.length - 1);
+
+      return {
+        file: detection.filePath ?? 'unknown',
+        line,
+        column,
+        endColumn,
+        secretType: detection.secretType,
+        match: detection.maskedMatch,
+        confidence: 1,
+        patternName: detection.patternName,
+        severity: detection.severity,
+        context: detection.context,
+      };
+    });
+  }
+
+  private resolveSecretDetectionBehavior(): SecretDetectionBehavior {
+    // Check if secret scanning is enabled and get enforcement mode
+    const secretScanning = this.effectiveConfig.secretScanning;
+    if (secretScanning?.enabled !== false && secretScanning?.enforcementMode) {
+      // Map enforcement modes to detection behaviors
+      switch (secretScanning.enforcementMode) {
+        case 'audit':
+          return 'log';   // audit mode logs detections for auditing without blocking
+        case 'block':
+          return 'block'; // block mode prevents operations when secrets are detected
+        case 'warn':
+          return 'mask';  // warn mode masks secrets in outputs before storage/emission
+      }
+    }
+
+    // Fallback to legacy guardrails/scanner configuration
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailSecrets = guardrailsEnabled && guardrails?.secrets?.enabled !== false
+      ? guardrails.secrets
+      : undefined;
+
+    return guardrailSecrets?.onDetection
+      ?? this.effectiveConfig.scanner?.onSecretDetected
+      ?? 'warn';
+  }
+
+  private resolveSecretScannerConfig(): OrchestratorSecretScannerConfig | null {
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailSecrets = guardrailsEnabled && guardrails?.secrets?.enabled !== false
+      ? guardrails.secrets
+      : undefined;
+    const baseScanner = this.effectiveConfig.scanner;
+
+    const customPatterns = guardrailSecrets?.customPatterns ?? baseScanner?.customPatterns;
+    const includeBuiltInPatterns = guardrailSecrets?.includeBuiltInPatterns ?? baseScanner?.includeBuiltInPatterns;
+
+    if (!customPatterns && includeBuiltInPatterns === undefined && !baseScanner) {
+      return null;
+    }
+
+    return {
+      customPatterns: customPatterns || [],
+      includeBuiltInPatterns,
+      maxLineLength: baseScanner?.maxLineLength,
+      maskSecrets: baseScanner?.maskSecrets,
+      contextLength: baseScanner?.contextLength,
+    };
+  }
+
+  private normalizeSecretScanContent(output: unknown): string {
+    if (typeof output === 'string') {
+      return output;
+    }
+
+    try {
+      return JSON.stringify(output, null, 2);
+    } catch {
+      return String(output);
+    }
+  }
+
+  async scanStagedFilesForSecrets(): Promise<SecretFinding[]> {
+    if (!this.secretScanner) {
+      return [];
+    }
+
+    try {
+      // Get list of staged files
+      const { stdout } = await execAsync('git diff --cached --name-only', { cwd: this.projectPath });
+      const stagedFiles = stdout.trim().split('\n').filter(line => line.length > 0);
+
+      if (stagedFiles.length === 0) {
+        return [];
+      }
+
+      // Convert relative paths to absolute paths
+      const absolutePaths = stagedFiles.map(file =>
+        path.resolve(this.projectPath, file)
+      );
+
+      // Use the new scanFiles method to scan all staged files
+      const detections = await this.secretScanner.scanFiles(absolutePaths);
+      return this.mapSecretDetectionsToFindings(detections);
+    } catch (error) {
+      console.warn('Error scanning staged files for secrets:', error);
+      return [];
     }
   }
 
@@ -3288,8 +7239,12 @@ Parent: ${parentTask.description}`;
       return false; // No checkpoint to resume from
     }
 
-    // Update task status to in-progress
-    await this.updateTaskStatus(taskId, 'in-progress', `Resuming from checkpoint: ${checkpoint.checkpointId}`);
+    // Update task status to in-progress (don't pass checkpoint ref as error — it's not an error)
+    await this.updateTaskStatus(taskId, 'in-progress');
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Resuming from checkpoint: ${checkpoint.checkpointId}`,
+    });
 
     // Generate resume context from checkpoint conversation state
     let resumeContext: string | undefined;
@@ -3345,10 +7300,26 @@ Parent: ${parentTask.description}`;
     const completedStageNames = (checkpoint.metadata?.completedStages as string[]) || [];
 
     // Reconstruct stage results from checkpoint
+    // Note: stageResults is saved as Object.fromEntries(stageResults) in the checkpoint metadata
+    const savedStageResults = checkpoint.metadata?.stageResults as Record<string, StageResult> | undefined;
     for (const stageName of completedStageNames) {
-      const stageData = checkpoint.metadata?.[`stage_${stageName}`] as StageResult | undefined;
+      const stageData = savedStageResults?.[stageName];
       if (stageData) {
         stageResults.set(stageName, stageData);
+      } else {
+        // If no stage data found, create a minimal completed result to satisfy dependency checks
+        const now = new Date();
+        stageResults.set(stageName, {
+          stageName,
+          agent: 'unknown',
+          status: 'completed',
+          outputs: {},
+          artifacts: [],
+          summary: 'Restored from checkpoint',
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCost: 0, totalCostCents: 0, executionTimeMs: 0 },
+          startedAt: now,
+          completedAt: now,
+        });
       }
     }
 
@@ -3421,6 +7392,12 @@ Parent: ${parentTask.description}`;
     const completedTask = await this.store.getTask(taskId);
     if (completedTask) {
       this.emit('task:completed', completedTask);
+
+      // If this is a subtask, check if all sibling subtasks are complete
+      // and update the parent task status accordingly
+      if (task.parentTaskId) {
+        await this.checkAndCompleteParentTask(task.parentTaskId);
+      }
     }
 
     return true;
@@ -3672,6 +7649,15 @@ Parent: ${parentTask.description}`;
     const completedSubtasks = new Set<string>();
     const inProgressSubtasks = new Set<string>();
 
+    // Initialize completedSubtasks from database - critical for resuming interrupted execution
+    // Without this, restarted parent tasks don't recognize previously completed subtasks
+    for (const subtaskId of subtaskIds) {
+      const subtask = await this.store.getTask(subtaskId);
+      if (subtask && (subtask.status === 'completed' || subtask.status === 'cancelled')) {
+        completedSubtasks.add(subtaskId);
+      }
+    }
+
     while (completedSubtasks.size < subtaskIds.size) {
       // Check if parent was cancelled
       const currentParent = await this.store.getTask(parentTask.id);
@@ -3792,6 +7778,50 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Check if all subtasks of a parent task are complete and update parent status
+   * Called when a subtask completes to potentially mark the parent as complete
+   */
+  private async checkAndCompleteParentTask(parentTaskId: string): Promise<void> {
+    const parentTask = await this.store.getTask(parentTaskId);
+    if (!parentTask) return;
+
+    // Only process if parent is still in-progress
+    if (parentTask.status !== 'in-progress') return;
+
+    // Check if all subtasks are complete
+    const allComplete = await this.aggregateSubtaskResults(parentTaskId);
+
+    if (allComplete) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: 'All subtasks completed. Marking parent task as complete.',
+      });
+
+      await this.updateTaskStatus(parentTaskId, 'completed');
+      const completedParent = await this.store.getTask(parentTaskId);
+      if (completedParent) {
+        this.emit('task:completed', completedParent);
+
+        // Handle git operations for the completed parent task
+        try {
+          const prResult = await this.handleTaskGitOperations(completedParent);
+          if (prResult?.success && prResult.prUrl) {
+            await this.store.addLog(parentTaskId, {
+              level: 'info',
+              message: `Pull request created: ${prResult.prUrl}`,
+            });
+          }
+        } catch (error) {
+          await this.store.addLog(parentTaskId, {
+            level: 'warn',
+            message: `Git operations failed: ${(error as Error).message}`,
+          });
+        }
+      }
+    }
+  }
+
+  /**
    * Aggregate results from all subtasks into the parent task
    * Returns true if all subtasks are complete, false if some are still pending
    */
@@ -3831,12 +7861,15 @@ Parent: ${parentTask.description}`;
     }
 
     // Update parent task with aggregated usage
+    const totalCost = calculateCost(totalInputTokens, totalOutputTokens);
     await this.store.updateTask(parentTaskId, {
       usage: {
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
         totalTokens: totalInputTokens + totalOutputTokens,
-        estimatedCost: calculateCost(totalInputTokens, totalOutputTokens),
+        estimatedCost: totalCost,
+        totalCostCents: Math.round(totalCost * 100),
+        executionTimeMs: 0,
       },
       updatedAt: new Date(),
     });
@@ -3902,6 +7935,22 @@ Parent: ${parentTask.description}`;
         level: 'info',
         message: 'No subtasks need processing (all completed or cancelled)',
       });
+      return;
+    }
+
+    // If ALL subtasks are paused, pause the parent and return
+    // This ensures proper cascade of pause state up the hierarchy
+    if (pausedCount > 0 && pausedCount === subtasksToProcess.length) {
+      await this.store.addLog(parentTaskId, {
+        level: 'info',
+        message: `All ${pausedCount} subtasks are paused - pausing parent task`,
+      });
+
+      // Find the first paused subtask to get the pause reason
+      const firstPausedSubtask = await this.store.getTask(subtasksToProcess[0].id);
+      const pauseReason = firstPausedSubtask?.pauseReason || 'all_subtasks_paused';
+
+      await this.pauseParentTask(parentTaskId, subtasksToProcess[0].id, pauseReason);
       return;
     }
 
@@ -4511,6 +8560,1055 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Set up event forwarding from LinterService events to orchestrator lint events (v0.5.0)
+   */
+  private setupLinterEventForwarding(): void {
+    // Forward linter:started events as lint:started
+    this.linterService.on('linter:started', (event) => {
+      const lintEvent: LintStartedEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        files: event.files,
+        timestamp: event.timestamp,
+      };
+      this.emit('lint:started', lintEvent);
+    });
+
+    // Forward linter:completed events as lint:completed
+    this.linterService.on('linter:completed', (event) => {
+      const lintEvent: LintCompletedEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        result: event.result,
+        timestamp: event.timestamp,
+      };
+      this.emit('lint:completed', lintEvent);
+    });
+
+    // Forward linter:issue events as lint:issue
+    this.linterService.on('linter:issue', (event) => {
+      const lintEvent: LintIssueEventData = {
+        taskId: this.getCurrentTaskId() || 'unknown',
+        linterId: event.linterId,
+        issue: {
+          ruleId: event.issue.ruleId,
+          severity: event.issue.severity,
+          message: event.issue.message,
+          filePath: event.issue.filePath,
+          line: event.issue.line,
+          column: event.issue.column,
+          endLine: event.issue.endLine,
+          endColumn: event.issue.endColumn
+        },
+        timestamp: new Date(),
+      };
+      this.emit('lint:issue', lintEvent);
+    });
+
+    // Forward fix:completed events as lint:fix-applied
+    this.linterService.on('fix:completed', (event) => {
+      // Process each fix result to create separate fix-applied events
+      for (const [linterId, fixResult] of event.result.fixResultsByLinter) {
+        const fixEvent: LintFixAppliedEventData = {
+          taskId: this.getCurrentTaskId() || 'unknown',
+          linterId,
+          filePath: 'unknown',
+          issuesFixed: fixResult.issuesFixed,
+          fixDetails: [],
+          timestamp: event.timestamp,
+        };
+        this.emit('lint:fix-applied', fixEvent);
+      }
+    });
+  }
+
+  /**
+   * Set up hook event forwarding
+   * Forwards hook events from hook manager to orchestrator events
+   */
+  private setupHookEventForwarding(): void {
+    // Forward hook:pre:start events
+    this.hookManager.on('hook:pre:start', (event) => {
+      this.emit('hook:pre:start', event);
+    });
+
+    // Forward hook:pre:complete events
+    this.hookManager.on('hook:pre:complete', (event) => {
+      this.emit('hook:pre:complete', event);
+    });
+
+    // Forward hook:post:start events
+    this.hookManager.on('hook:post:start', (event) => {
+      this.emit('hook:post:start', event);
+    });
+
+    // Forward hook:post:complete events
+    this.hookManager.on('hook:post:complete', (event) => {
+      this.emit('hook:post:complete', event);
+    });
+  }
+
+  /**
+   * Build configuration for the autonomy enforcer from the effective config.
+   */
+  private buildAutonomyEnforcerConfig(): AutonomyEnforcerConfig {
+    return {
+      level: this.effectiveConfig.autonomy.level,
+      gates: this.effectiveConfig.autonomy.gates ?? [],
+      limits: {
+        maxTokens: this.effectiveConfig.limits.maxTokensPerTask,
+        maxCost: this.effectiveConfig.limits.maxCostPerTask,
+        maxTimeMs: this.effectiveConfig.limits.maxExecutionTime || undefined,
+        dailyBudget: this.effectiveConfig.limits.dailyBudget,
+        maxTurns: this.effectiveConfig.limits.maxTurns,
+        maxConcurrentTasks: this.effectiveConfig.limits.maxConcurrentTasks,
+      },
+      warningThresholds: {
+        costWarningPercent: 80,
+        tokenWarningPercent: 80,
+        timeWarningPercent: 80,
+        fileWarningPercent: 80,
+      },
+    };
+  }
+
+  /**
+   * Determine operation type based on tool name and input
+   */
+  private determineOperationType(toolName: string, toolInput: any): 'read' | 'write' | 'execute' | 'network' | 'dangerous' {
+    const tool = toolName.toLowerCase();
+
+    // Read operations
+    if (['read', 'grep', 'glob'].includes(tool)) {
+      return 'read';
+    }
+
+    // Write operations
+    if (['write', 'edit', 'multiedit', 'notebookedit'].includes(tool)) {
+      return 'write';
+    }
+
+    // Network operations
+    if (['webfetch', 'websearch'].includes(tool)) {
+      return 'network';
+    }
+
+    // Execute operations (potentially dangerous)
+    if (tool === 'bash') {
+      const command = toolInput?.command || '';
+      // Check for dangerous commands
+      const dangerousKeywords = ['rm', 'delete', 'drop', 'truncate', 'format', 'sudo'];
+      if (dangerousKeywords.some(keyword => command.includes(keyword))) {
+        return 'dangerous';
+      }
+      return 'execute';
+    }
+
+    // Default to read for unknown tools
+    return 'read';
+  }
+
+  /**
+   * Create hooks that integrate both the existing hook system and the HookManager
+   */
+  private createHooksWithManager(hookContext: HookContext, agentName: string, stageName: string, workflowName: string) {
+    // Get the base hooks from the existing system
+    const baseHooks = createHooks(hookContext);
+
+    // Create additional hooks that integrate with HookManager
+    const hookManagerIntegration = {
+      PreToolUse: [
+        // Add HookManager pre-hook execution at the beginning
+        {
+          hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
+            try {
+              const invocationId = toolUseId ?? input.tool_use_id ?? crypto.randomUUID();
+              // Create action metadata for autonomy check
+              const actionMetadata: ActionMetadata = {
+                agentType: agentName,
+                actionType: input.tool_name || 'unknown',
+                scope: input.tool_input?.file_path || input.tool_input?.path || undefined,
+                toolName: input.tool_name || 'unknown',
+                operationType: this.determineOperationType(input.tool_name || 'unknown', input.tool_input),
+              };
+
+              // Check autonomy requirements first
+              const requiresApproval = await this.autonomyEnforcer.checkAction(actionMetadata);
+              if (requiresApproval) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: 'Autonomy enforcer requires approval for this action',
+                  },
+                };
+              }
+
+              const activeTaskId = hookContext.taskId || this.currentTaskId;
+              if (activeTaskId && this.policyEnforcer?.isEnabled) {
+                const task = await this.store.getTask(activeTaskId);
+                if (task && task.status !== 'awaiting-approval') {
+                  const toolName = input.tool_name || 'unknown';
+                  const filePaths = this.extractApprovalFilePaths(toolName, input.tool_input || {});
+                  const enforcementMode = this.resolvePolicyEnforcementMode();
+
+                  if (filePaths.length > 0 && enforcementMode !== 'disabled') {
+                    const violations = filePaths.flatMap(filePath =>
+                      this.policyEnforcer.validateFilePath(filePath, {
+                        taskId: activeTaskId,
+                        agentId: agentName,
+                        workflowId: workflowName,
+                        metadata: {
+                          stage: stageName,
+                          toolName,
+                        },
+                      })
+                    );
+
+                    if (violations.length > 0) {
+                      const approvalViolations = violations.filter(violation =>
+                        violation.context?.requiresApproval === true || violation.context?.matchType === 'sensitive'
+                      );
+                      const enforcementViolations = violations.filter(violation =>
+                        !approvalViolations.includes(violation)
+                      );
+
+                      if (enforcementViolations.length > 0) {
+                        const handled = await this.handlePolicyViolations(
+                          enforcementViolations,
+                          enforcementMode,
+                          task,
+                          {
+                            action: toolName,
+                            agentName,
+                          }
+                        );
+
+                        if (!handled) {
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason: 'Policy enforcement blocked this action',
+                            },
+                          };
+                        }
+                      }
+
+                      if (approvalViolations.length > 0) {
+                        const approvalOperation = this.resolveApprovalOperation(toolName, input.tool_input || {}) ?? 'modify';
+                        const tokenUsage = task.usage
+                          ? (task.usage.totalTokens ?? ((task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0)))
+                          : undefined;
+
+                        const approvalReq: ApprovalRequirement = {
+                          required: true,
+                          triggeredRules: [],
+                          urgency: 'normal',
+                          timeoutMinutes: 60,
+                          requiredApprovers: [],
+                          minApprovals: 1,
+                          timeoutAction: 'reject',
+                          reason: 'Sensitive path access requires approval',
+                        };
+
+                        await this.requestPolicyApproval(task, approvalReq, {
+                          action: approvalOperation,
+                          toolName,
+                          stageName,
+                          workflowName,
+                          filePaths,
+                          agentName,
+                        });
+
+                        return {
+                          hookSpecificOutput: {
+                            hookEventName: 'PreToolUse' as const,
+                            permissionDecision: 'deny' as const,
+                            permissionDecisionReason: 'Policy approval required: sensitive path access',
+                          },
+                        };
+                      }
+                    }
+                  }
+
+                  const approvalOperation = this.resolveApprovalOperation(
+                    toolName,
+                    input.tool_input || {}
+                  );
+                  if (approvalOperation) {
+                    const tokenUsage = task.usage
+                      ? (task.usage.totalTokens ?? ((task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0)))
+                      : undefined;
+
+                    const approvalContext: ApprovalCheckContext = {
+                      filePaths,
+                      operation: approvalOperation,
+                      estimatedCost: task.usage?.estimatedCost,
+                      tokenUsage,
+                      customContext: {
+                        toolName: input.tool_name || 'unknown',
+                        stage: stageName,
+                        workflow: workflowName,
+                      },
+                    };
+
+                    const approvalReq = this.policyEnforcer.checkApprovalRequired(
+                      task,
+                      approvalOperation,
+                      approvalContext
+                    );
+
+                    if (approvalReq.required) {
+                      await this.requestPolicyApproval(task, approvalReq, {
+                        action: approvalOperation,
+                        toolName: input.tool_name || 'unknown',
+                        stageName,
+                        workflowName,
+                        filePaths: approvalContext.filePaths ?? [],
+                        agentName,
+                      });
+
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: 'PreToolUse' as const,
+                          permissionDecision: 'deny' as const,
+                          permissionDecisionReason: `Policy approval required: ${approvalReq.reason}`,
+                        },
+                      };
+                    }
+                  }
+                }
+              }
+
+              // Check policy requirements if PolicyEngine is available
+              if (this.policyEngine) {
+                try {
+                  const policyContext: PolicyCheckContext = {
+                    action: input.tool_name || 'unknown',
+                    agentId: agentName,
+                    toolName: input.tool_name || 'unknown',
+                    toolArguments: input.tool_input || {},
+                    taskId: this.currentTaskId || 'unknown',
+                    stage: stageName,
+                    resource: input.tool_input?.file_path || input.tool_input?.path,
+                    metadata: {
+                      workflowId: workflowName,
+                      projectPath: this.projectPath,
+                    },
+                  };
+
+                  const policyResult: PolicyCheckResult = await this.policyEngine.checkPolicy(policyContext);
+
+                  if (policyResult.status === 'deny') {
+                    // Policy violation - deny the action and emit policy:blocked event
+                    const violations = policyResult.violations?.map(v => v.message).join('; ') || 'Policy violation';
+
+                    // Emit policy:blocked event when action is blocked by policy
+                    const blockedEventData: PolicyBlockedEventData = {
+                      taskId: this.currentTaskId || 'unknown',
+                      agent: agentName,
+                      action: input.tool_name || 'unknown',
+                      violations: policyResult.violations,
+                      enforcementMode: policyResult.enforcementMode,
+                      timestamp: new Date(),
+                    };
+                    this.emit('policy:blocked', blockedEventData);
+
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: 'PreToolUse' as const,
+                        permissionDecision: 'deny' as const,
+                        permissionDecisionReason: `Policy check failed: ${violations}`,
+                      },
+                    };
+                  } else if (policyResult.status === 'allow' && policyResult.violations && policyResult.violations.length > 0) {
+                    // Policy violations exist but action is allowed
+                    if (policyResult.enforcementMode === 'audit') {
+                      // Audit mode behavior - emit policy:audited events without logging
+                      for (const violation of policyResult.violations) {
+                        // Emit policy:audited event for each violation
+                        const auditedEventData: PolicyAuditedEventData = {
+                          taskId: this.currentTaskId || 'unknown',
+                          agent: agentName,
+                          action: input.tool_name || 'unknown',
+                          violation,
+                          enforcementMode: policyResult.enforcementMode,
+                          timestamp: new Date(),
+                        };
+                        this.emit('policy:audited', auditedEventData);
+                      }
+                      // Continue execution silently - no console logging in audit mode
+                    } else {
+                      // Warn mode behavior - log warnings and emit policy:warned events
+                      for (const violation of policyResult.violations) {
+                        console.warn(
+                          `Policy warning [${violation.severity}]: ${violation.message}`,
+                          {
+                            taskId: this.currentTaskId,
+                            agent: agentName,
+                            tool: input.tool_name,
+                            resource: violation.resource,
+                            enforcementMode: policyResult.enforcementMode,
+                            violationId: violation.id,
+                          }
+                        );
+
+                        // Emit policy:warned event for each violation
+                        const warnedEventData: PolicyWarnedEventData = {
+                          taskId: this.currentTaskId || 'unknown',
+                          agent: agentName,
+                          action: input.tool_name || 'unknown',
+                          violation,
+                          enforcementMode: policyResult.enforcementMode,
+                          timestamp: new Date(),
+                        };
+                        this.emit('policy:warned', warnedEventData);
+                      }
+                    }
+                    // Continue with normal execution - action is allowed despite violations
+                  }
+                } catch (error) {
+                  // Log error but don't block execution unless in strict mode
+                  console.warn('PolicyEngine check failed:', error);
+                  // In production, you might want to fail-safe by allowing the action
+                  // or failing based on configuration
+                }
+              }
+
+              // Create PreHookContext for the HookManager
+              const preHookContext = {
+                toolName: input.tool_name || 'unknown',
+                arguments: input.tool_input || {},
+                invocationId,
+                taskId: hookContext.taskId,
+                agentName,
+                stageName,
+                timestamp: new Date(),
+              };
+
+              // Execute pre-hooks via HookManager
+              const result = await this.hookManager.executePreHooks(preHookContext);
+
+              // Handle hook manager results
+              if (!result.success) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: result.cancelReason || 'Pre-hook failed',
+                  },
+                };
+              }
+
+              if (result.cancelled) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: result.cancelReason || 'Operation cancelled by hook',
+                  },
+                };
+              }
+
+              if (result.modifiedArgs) {
+                // Modify the tool input with the modified arguments
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    updatedInput: {
+                      ...input,
+                      tool_input: result.modifiedArgs,
+                    },
+                  },
+                };
+              }
+
+              return {};
+            } catch (error) {
+              // Log error and allow execution to continue
+              if (hookContext.taskId) {
+                await hookContext.store.addLog(hookContext.taskId, {
+                  level: 'error',
+                  message: `HookManager pre-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                  metadata: { tool: input.tool_name, error: String(error) },
+                });
+              }
+              return {};
+            }
+          }],
+          timeout: 30,
+          priority: 1000, // High priority to run before other hooks
+        },
+        // Include existing pre-hooks
+        ...(baseHooks.PreToolUse || []),
+      ],
+      PostToolUse: [
+        // Include existing post-hooks first
+        ...(baseHooks.PostToolUse || []),
+        // Add HookManager post-hook execution at the end
+        {
+          hooks: [async (input: any, toolUseId: string | undefined, _options: { signal: AbortSignal }) => {
+            try {
+              const invocationId = toolUseId ?? input.tool_use_id ?? crypto.randomUUID();
+              // Create PostHookContext for the HookManager
+              const postHookContext = {
+                toolName: input.tool_name || 'unknown',
+                arguments: input.tool_input || {},
+                invocationId,
+                taskId: hookContext.taskId,
+                agentName,
+                stageName,
+                timestamp: new Date(),
+                result: {
+                  success: true, // Assume success if we reach post-hooks
+                  output: input.output || null,
+                  error: input.error || undefined,
+                  duration: undefined as any, // Would be calculated elsewhere
+                },
+              };
+
+              // Execute post-hooks via HookManager
+              await this.hookManager.executePostHooks(postHookContext);
+
+              return {};
+            } catch (error) {
+              // Log error but don't fail the operation
+              if (hookContext.taskId) {
+                await hookContext.store.addLog(hookContext.taskId, {
+                  level: 'error',
+                  message: `HookManager post-hook error: ${error instanceof Error ? error.message : String(error)}`,
+                  metadata: { tool: input.tool_name, error: String(error) },
+                });
+              }
+              return {};
+            }
+          }],
+          timeout: 30,
+          priority: -1000, // Low priority to run after other hooks
+        },
+      ],
+    };
+
+    return hookManagerIntegration;
+  }
+
+  private buildQueryMcpServers(): Record<string, McpServerConfig> | undefined {
+    // Get MCP server configs from manager and transform to SDK format
+    const internalServers = this.mcpServerManager?.getSdkServerConfigs() ?? {};
+    const servers: Record<string, McpServerConfig> = {};
+
+    // Transform our MCPServerConfig to SDK's McpServerConfig format
+    for (const [name, config] of Object.entries(internalServers)) {
+      const type = config.type ?? 'stdio';
+      if (type === 'stdio') {
+        servers[name] = {
+          type: 'stdio',
+          command: config.command!,
+          args: config.args,
+          env: config.env,
+        };
+      } else if (type === 'http') {
+        servers[name] = {
+          type: 'http',
+          url: config.url!,
+          headers: config.headers,
+        };
+      } else if (type === 'sse') {
+        servers[name] = {
+          type: 'sse',
+          url: config.url!,
+          headers: config.headers,
+        };
+      }
+    }
+
+    if (this.customToolsServer) {
+      servers[this.customToolsServer.name] = this.customToolsServer.config as unknown as McpServerConfig;
+    }
+
+    if (this.browserToolsServer) {
+      servers[this.browserToolsServer.name] = this.browserToolsServer.config as unknown as McpServerConfig;
+    }
+
+    // Add MCP proxy server for routing external MCP tool calls
+    if (this.mcpConnectionManager && this.mcpToolRegistry) {
+      const proxyServer = buildMCPProxyServer({
+        connectionManager: this.mcpConnectionManager,
+        toolRegistry: this.mcpToolRegistry,
+      });
+
+      if (proxyServer) {
+        servers[proxyServer.name] = proxyServer.config as unknown as McpServerConfig;
+      }
+    }
+
+    return Object.keys(servers).length > 0 ? servers : undefined;
+  }
+
+  /**
+   * List all configured MCP servers
+   *
+   * @returns Array of MCP server configurations
+   */
+  public listMcpServers(): MCPServerConfig[] {
+    return this.mcpServerManager?.listServers() ?? [];
+  }
+
+  public async listMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getMarketplaceEntries();
+  }
+
+  /**
+   * Install an MCP server by name
+   *
+   * @param name - Name of the MCP server to install
+   * @returns Promise resolving to the installed server configuration
+   * @throws {Error} When MCP server manager is not initialized or installation fails
+   */
+  public async installMcpServer(name: string): Promise<MCPServerConfig> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    const installed = await this.mcpServerManager.installServer(name);
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager.updateConfig(this.config);
+
+    return installed;
+  }
+
+  public async uninstallMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.uninstallServer(name);
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager.updateConfig(this.config);
+  }
+
+  /**
+   * Get the current status of an MCP server
+   *
+   * @param name - Name of the MCP server to check
+   * @returns Promise resolving to server status information
+   * @throws {Error} When MCP server manager is not initialized or server not found
+   */
+  public async getMcpServerStatus(name: string): Promise<{
+    name: string;
+    status: 'running' | 'stopped' | 'error';
+    lastError?: string;
+  }> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    return this.mcpServerManager.getServerStatus(name);
+  }
+
+  /**
+   * Get detailed MCP server information by ID
+   * @param id - The server ID/name
+   * @returns Full server details including tools, readme, and installation instructions
+   */
+  public async getMcpServerDetails(id: string): Promise<{
+    id: string;
+    name: string;
+    config: MCPServerConfig;
+    status: 'running' | 'stopped' | 'error';
+    tools?: string[];
+    readme?: string;
+    installationInstructions?: string;
+    metadata?: {
+      version?: string;
+      author?: string;
+      description?: string;
+      lastUpdated?: Date;
+    };
+  }> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    return this.mcpServerManager.getServerDetails(id);
+  }
+
+  public async startMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.startServer(name);
+  }
+
+  public async stopMcpServer(name: string): Promise<void> {
+    if (!this.mcpServerManager) {
+      throw new Error('MCP server manager not initialized');
+    }
+
+    await this.mcpServerManager.stopServer(name);
+  }
+
+  /**
+   * Enhanced MCP server installation with SQLite tracking and npm/npx support.
+   * Passes the name as a string to MCPInstaller.install(), which handles
+   * marketplace lookup automatically.
+   */
+  public async installMcpServerEnhanced(
+    nameOrPackage: string,
+    options?: {
+      force?: boolean;
+      args?: string[];
+      env?: Record<string, string>;
+      global?: boolean;
+    }
+  ): Promise<{
+    name: string;
+    config: MCPServerConfig;
+    installedFrom: 'marketplace' | 'npm' | 'npx' | 'manual';
+    installedAt: Date;
+  }> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    // Ensure marketplace cache is populated before install
+    try {
+      await this.updateMcpMarketplaceCache();
+    } catch {
+      // Marketplace cache update may fail, proceed with install anyway
+    }
+
+    // Use string-based install which handles marketplace lookup
+    const result = await this.mcpInstaller.install(nameOrPackage, {
+      force: options?.force,
+      args: options?.args,
+      env: options?.env,
+      global: options?.global,
+    });
+
+    // Update local config after installation
+    try {
+      this.config = await loadConfig(this.projectPath);
+      this.effectiveConfig = getEffectiveConfig(this.config);
+      this.mcpServerManager?.updateConfig(this.config);
+    } catch {
+      // Config reload may fail in test environments
+    }
+
+    return result;
+  }
+
+  /**
+   * Install MCP server from npm/npx directly
+   */
+  public async installMcpServerFromNpm(
+    packageName: string,
+    options?: {
+      force?: boolean;
+      args?: string[];
+      env?: Record<string, string>;
+      global?: boolean;
+    }
+  ): Promise<InstalledMCPResult> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    const result = await this.mcpInstaller.installFromNpm(packageName, {
+      force: options?.force,
+      args: options?.args,
+      env: options?.env,
+      global: options?.global,
+    });
+
+    // Update local config after installation
+    try {
+      this.config = await loadConfig(this.projectPath);
+      this.effectiveConfig = getEffectiveConfig(this.config);
+      this.mcpServerManager?.updateConfig(this.config);
+    } catch {
+      // Config reload may fail in test environments
+    }
+
+    return result;
+  }
+
+  /**
+   * List installed MCP servers with enhanced information
+   */
+  public async listInstalledMcpServers(): Promise<InstalledMCPResult[]> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.listInstalled();
+  }
+
+  /**
+   * Alias for listInstalledMcpServers
+   */
+  public async listMcpServersEnhanced(): Promise<InstalledMCPResult[]> {
+    return this.listInstalledMcpServers();
+  }
+
+  /**
+   * List installed MCP servers as InstalledMCPResult objects
+   */
+  public async listMcpInstallations(): Promise<InstalledMCPResult[]> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.listInstalled();
+  }
+
+  /**
+   * Uninstall an MCP server using enhanced tracking
+   */
+  public async uninstallMcpServerEnhanced(name: string): Promise<void> {
+    if (!this.mcpInstaller) {
+      throw new Error('MCP installer not initialized');
+    }
+
+    await this.mcpInstaller.uninstall(name);
+  }
+
+  /**
+   * Check if an MCP server is installed
+   */
+  public async isMcpServerInstalled(name: string): Promise<boolean> {
+    if (!this.mcpInstaller) {
+      return false;
+    }
+
+    return this.mcpInstaller.isInstalled(name);
+  }
+
+  /**
+   * Update MCP marketplace cache
+   */
+  public async updateMcpMarketplaceCache(): Promise<void> {
+    if (!this.mcpInstaller || !this.mcpMarketplaceService) {
+      return;
+    }
+
+    // Get entries from marketplace service
+    const entries = await this.mcpMarketplaceService.getMarketplaceEntries();
+
+    // Update local SQLite cache
+    await this.mcpInstaller.updateMarketplaceCache(entries);
+  }
+
+  /**
+   * Get marketplace entries with filtering options
+   */
+  /**
+   * Get MCP marketplace entries with optional filtering
+   *
+   * @param options - Filtering options for marketplace entries
+   * @param options.category - Filter by category
+   * @param options.search - Search term to filter entries
+   * @param options.featured - Show only featured entries
+   * @param options.verified - Show only verified entries
+   * @returns Promise resolving to filtered marketplace entries
+   */
+  public async getMcpMarketplaceEntries(options?: {
+    category?: string;
+    search?: string;
+    featured?: boolean;
+    verified?: boolean;
+  }): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getMarketplaceEntries(options);
+  }
+
+  /**
+   * Get marketplace categories
+   */
+  public async getMcpMarketplaceCategories(): Promise<Array<{ name: string; count: number }>> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getCategories();
+  }
+
+  /**
+   * Get featured marketplace entries
+   */
+  public async getFeaturedMcpEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpMarketplaceService) {
+      return [];
+    }
+    return this.mcpMarketplaceService.getFeaturedEntries();
+  }
+
+  /**
+   * Auto-configure standard development tools
+   */
+  public async autoConfigureMcpTools(options?: AutoConfigurationOptions): Promise<{
+    configured: MCPServerConfig[];
+    skipped: string[];
+    errors: Array<{ name: string; error: string }>;
+  }> {
+    if (!this.mcpMarketplaceService) {
+      throw new Error('MCP marketplace service not initialized');
+    }
+
+    const result = await this.mcpMarketplaceService.autoConfigureStandardTools(options);
+
+    // Refresh configuration after auto-configuration
+    this.config = await loadConfig(this.projectPath);
+    this.effectiveConfig = getEffectiveConfig(this.config);
+    this.mcpServerManager?.updateConfig(this.config);
+
+    return result;
+  }
+
+  /**
+   * Get installation recommendations for the current project
+   */
+  public async getMcpInstallationRecommendations(): Promise<{
+    essential: MCPMarketplaceEntry[];
+    recommended: MCPMarketplaceEntry[];
+    optional: MCPMarketplaceEntry[];
+  }> {
+    if (!this.mcpMarketplaceService) {
+      return { essential: [], recommended: [], optional: [] };
+    }
+    return this.mcpMarketplaceService.getInstallationRecommendations();
+  }
+
+  /**
+   * Get MCP marketplace entries from cache
+   */
+  public async getCachedMcpMarketplaceEntries(): Promise<MCPMarketplaceEntry[]> {
+    if (!this.mcpInstaller) {
+      return [];
+    }
+
+    return this.mcpInstaller.getMarketplaceEntries();
+  }
+
+  /**
+   * Get all current MCP connections
+   *
+   * @returns Array of current MCP connections
+   */
+  public getMCPConnections(): MCPConnection[] {
+    return this.mcpConnectionManager?.listConnections() ?? [];
+  }
+
+  /**
+   * Get a specific MCP connection by server ID
+   *
+   * @param serverId - The ID of the MCP server
+   * @returns The MCP connection or undefined if not found
+   */
+  public getMCPConnection(serverId: string): MCPConnection | undefined {
+    return this.mcpConnectionManager?.getConnection(serverId);
+  }
+
+  /**
+   * Get available MCP tools translated to Claude Agent SDK format
+   * for use in agent execution
+   *
+   * @returns Array of Claude SDK compatible tools
+   */
+  public getMcpToolsForAgent(): ClaudeSDKTool[] {
+    if (!this.mcpToolRegistry) {
+      return [];
+    }
+
+    return this.mcpToolRegistry.getAvailableTools()
+      .map(entry => entry.claudeTool);
+  }
+
+  /**
+   * Get statistics about discovered MCP tools
+   *
+   * @returns Registry statistics or undefined if registry not initialized
+   */
+  public getMcpToolStats(): MCPToolRegistryStats | undefined {
+    return this.mcpToolRegistry?.getStats();
+  }
+
+  /**
+   * Refresh MCP tools from all connected servers
+   *
+   * @returns Promise that resolves when refresh is complete
+   */
+  public async refreshMcpTools(): Promise<void> {
+    if (!this.mcpToolRegistry) {
+      return;
+    }
+
+    await this.mcpToolRegistry.refreshAllTools();
+  }
+
+  /**
+   * Connect to an MCP server
+   *
+   * @param serverId - The ID of the MCP server to connect to
+   * @returns Promise that resolves to the MCP connection
+   */
+  public async connectMCPServer(serverId: string): Promise<MCPConnection> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    return this.mcpConnectionManager.connect(serverId);
+  }
+
+  /**
+   * Disconnect from an MCP server
+   *
+   * @param serverId - The ID of the MCP server to disconnect from
+   * @returns Promise that resolves when disconnected
+   */
+  public async disconnectMCPServer(serverId: string): Promise<void> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    return this.mcpConnectionManager.disconnect(serverId);
+  }
+
+  /**
+   * Check the health of an MCP connection
+   *
+   * @param serverId - The ID of the MCP server to check
+   * @returns Promise that resolves to the health check result
+   */
+  public async checkMCPServerHealth(serverId: string): Promise<HealthCheckResult> {
+    if (!this.mcpConnectionManager) {
+      throw new Error('MCP Connection Manager is not initialized');
+    }
+    const mcpResult = await this.mcpConnectionManager.checkHealth(serverId);
+
+    // Convert MCP health check result to core HealthCheckResult format
+    return {
+      id: `health-${serverId}-${Date.now()}`,
+      connectionId: serverId,
+      method: 'ping',
+      startedAt: mcpResult.timestamp || new Date(),
+      completedAt: new Date(),
+      success: mcpResult.success,
+      latencyMs: mcpResult.latencyMs,
+      error: mcpResult.error?.message,
+      status: mcpResult.isHealthy ? 'healthy' : 'unhealthy',
+      consecutiveFailures: mcpResult.consecutiveFailures,
+      isHealthy: mcpResult.isHealthy,
+    };
+  }
+
+  /**
    * Set up interaction event handlers
    * Handles iteration events emitted by the interaction manager
    */
@@ -4523,6 +9621,230 @@ Parent: ${parentTask.description}`;
         await this.interactionManager.completeIteration(taskId, iterationId);
       } catch (error) {
         console.error(`Failed to complete iteration for task ${taskId}:`, error);
+      }
+    });
+  }
+
+  /**
+   * Set up autonomy enforcer event handlers
+   * Handles approval:required events from autonomy enforcer for task pausing
+   */
+  private setupAutonomyEnforcerEvents(): void {
+    // Handle approval:required events from autonomy enforcer
+    this.autonomyEnforcer.on('approval:required', async (gateName: string, context: any) => {
+      try {
+        // Extract task ID from context
+        const taskId = context?.task?.id || context?.taskId;
+        if (!taskId) {
+          console.warn('Autonomy enforcer approval:required event missing task context');
+          return;
+        }
+
+        // Get the task to check current status
+        const task = await this.store.getTask(taskId);
+        if (!task) {
+          console.warn(`Task ${taskId} not found for autonomy enforcer approval`);
+          return;
+        }
+
+        // Only pause if task is currently running
+        if (task.status === 'in-progress') {
+          await this.pauseTask(taskId, 'approval_gate');
+
+          await this.store.addLog(taskId, {
+            level: 'info',
+            message: `Task paused by autonomy enforcer for approval gate: ${gateName}`,
+            timestamp: new Date(),
+            metadata: { gateName, component: 'autonomy-enforcer' }
+          });
+
+          // Log autonomy mode change for audit (autonomy enforcer triggered supervision)
+          await this.store.logModeChange(
+            taskId,
+            task.autonomy,
+            'supervised',
+            `Autonomy enforcer triggered approval gate: ${gateName}`
+          );
+
+          // Create approval state and emit approval:required event
+          const approvalId = `approval_${taskId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const approvalUrl = this.generateApprovalUrl(approvalId);
+          const timestamp = new Date();
+
+          // Create approval state in store
+          await this.store.saveApprovalState({
+            id: approvalId,
+            taskId,
+            gateName,
+            status: 'pending',
+            requestedAt: timestamp,
+            approvalsReceived: 0,
+            approvalsRequired: 1,
+            context: {
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              gateType: this.mapGateNameToType(gateName),
+              ...context
+            },
+            stage: context?.currentStage,
+            agent: context?.agent,
+          });
+
+          // Emit approval:required event with proper event data structure
+          const eventData: ApprovalRequiredEventData = {
+            approvalId,
+            taskId,
+            gateName,
+            gateType: this.mapGateNameToType(gateName),
+            description: this.generateGateDescription(gateName, task.autonomy),
+            minApprovals: 1,
+            timestamp,
+            stage: context?.currentStage,
+            agent: context?.agent,
+            context: {
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              operationType: context?.operationType,
+              ...context
+            },
+            blocking: true,
+            approvalUrl,
+          };
+
+          this.emit('approval:required', eventData);
+
+          // Emit approval:request event for autonomy enforcer approvals
+          const approvalRequestData: ApprovalRequest = {
+            requestId: approvalId,
+            taskId,
+            description: this.generateGateDescription(gateName, task.autonomy),
+            reason: `Autonomy level "${task.autonomy}" requires approval for operation "${context?.operationType || 'unknown'}"`,
+            resourceImpact: this.calculateResourceImpactForAutonomy(task, gateName, context),
+            id: approvalId, // Legacy field
+            gateName,
+            gateType: this.mapGateNameToType(gateName),
+            approvers: ['user'], // Autonomy enforcer approvals typically require user approval
+            minApprovals: 1,
+            requestedAt: timestamp,
+            timeoutMinutes: 30, // Default timeout for autonomy approvals
+            expiresAt: new Date(timestamp.getTime() + 30 * 60 * 1000), // 30 minutes from now
+            stage: context?.currentStage,
+            agent: context?.agent,
+            context: {
+              taskId,
+              taskDescription: task.description,
+              taskPriority: task.priority,
+              taskWorkflow: task.workflow,
+              acceptanceCriteria: task.acceptanceCriteria,
+              currentStage: context?.currentStage,
+              currentAgent: context?.agent,
+              approvalUrl,
+              autonomyLevel: task.autonomy,
+              triggeredBy: 'autonomy-enforcer',
+              operationType: context?.operationType,
+              blocking: true,
+            },
+          };
+
+          this.emit('approval:request', approvalRequestData);
+        }
+      } catch (error) {
+        console.error('Error handling autonomy enforcer approval:required event:', error);
+      }
+    });
+
+    this.autonomyEnforcer.on('limit:warning', (warning) => {
+      const taskId = warning.taskId ?? this.currentTaskId;
+      if (!taskId) {
+        return;
+      }
+
+      const utilizationPercent = warning.limitValue > 0
+        ? (warning.currentValue / warning.limitValue) * 100
+        : warning.threshold;
+
+      this.emit('limit:warning', {
+        taskId,
+        limitType: warning.type,
+        currentValue: warning.currentValue,
+        limitValue: warning.limitValue,
+        percentage: utilizationPercent,
+        timestamp: new Date(),
+      });
+    });
+
+    this.autonomyEnforcer.on('limit:exceeded', async (result, task) => {
+      if (!result.limitType || result.currentValue === undefined || result.limitValue === undefined) {
+        return;
+      }
+
+      if (!['tokens', 'cost', 'time', 'files'].includes(result.limitType)) {
+        return;
+      }
+
+      const limitType = result.limitType as LimitExceededEvent['limitType'];
+
+      this.emit('limit:exceeded', {
+        taskId: task.id,
+        limitType,
+        currentValue: result.currentValue,
+        limitValue: result.limitValue,
+        percentage: (result.currentValue / result.limitValue) * 100,
+        timestamp: new Date(),
+      });
+
+      const pauseReason = limitType === 'cost'
+        ? 'budget'
+        : limitType === 'tokens'
+        ? 'token_limit'
+        : 'usage_limit';
+
+      await this.pauseTask(task.id, pauseReason);
+    });
+  }
+
+  /**
+   * Set up event-based approval resolution mechanism
+   * Allows external systems to resolve approvals via events in addition to direct method calls
+   */
+  private setupApprovalEventHandlers(): void {
+    // Listen for external approval decisions via events
+    this.on('approval:decision', async (event: {
+      approvalId: string;
+      decision: 'approved' | 'denied';
+      approver: string;
+      comment?: string;
+      reason?: string;
+    }) => {
+      try {
+        if (event.decision === 'approved') {
+          await this.grantApproval(event.approvalId, event.approver, event.comment);
+        } else if (event.decision === 'denied') {
+          const reason = event.reason || event.comment || 'No reason provided';
+          await this.denyApproval(event.approvalId, event.approver, reason);
+        }
+      } catch (error) {
+        console.error(`Error processing approval decision event for ${event.approvalId}:`, error);
+
+        // Try to log the error to the associated task if possible
+        try {
+          const approvalState = await this.store.getApprovalStateById(event.approvalId);
+          if (approvalState) {
+            await this.store.addLog(approvalState.taskId, {
+              level: 'error',
+              message: `Failed to process approval decision event: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              timestamp: new Date(),
+              metadata: {
+                approvalId: event.approvalId,
+                decision: event.decision,
+                approver: event.approver,
+                component: 'approval-event-handler'
+              }
+            });
+          }
+        } catch (logError) {
+          console.error('Failed to log approval event error:', logError);
+        }
       }
     });
   }
@@ -4582,6 +9904,593 @@ Parent: ${parentTask.description}`;
         }
       }
     });
+  }
+
+  /**
+   * Initialize TDD executor with current configuration and agents
+   */
+  private async initializeTDDExecutor(): Promise<void> {
+    // Check if TDD is configured in the project config
+    const tddConfig = this.config.tdd;
+    if (!tddConfig?.enabled) {
+      return; // TDD not enabled
+    }
+
+    const config: TDDExecutorConfig = {
+      maxIterations: tddConfig.maxIterations || 3,
+      testCommand: tddConfig.testCommand || 'npm test',
+      workingDirectory: this.projectPath,
+      testTimeout: 60000, // Default timeout since not in TDDModeConfig
+      enableEvents: true,
+    };
+
+    this.tddExecutor = new TDDExecutor(config, this.agents);
+
+    // Forward TDD events to orchestrator events
+    this.setupTDDEventForwarding();
+  }
+
+  /**
+   * Register available linter plugins with the linter service
+   *
+   * Automatically detects and registers ESLint and Prettier plugins
+   * based on configuration and tool availability.
+   */
+  private async registerAvailableLinterPlugins(): Promise<void> {
+    const linterConfig = this.config.linter;
+
+    // Skip if linter is globally disabled
+    if (linterConfig?.global?.enabled === false) {
+      return;
+    }
+
+    // Register ESLint plugin if configured and available
+    if (linterConfig?.eslint?.enabled !== false) {
+      const eslintPlugin = new ESLintPlugin();
+      try {
+        const isAvailable = await eslintPlugin.isAvailable();
+        if (isAvailable) {
+          this.linterService.register(eslintPlugin, {
+            priority: 1,
+            enabled: true,
+            autoFix: linterConfig?.eslint?.autoFix ?? true,
+            timeout: linterConfig?.global?.timeoutMs ?? 60000,
+            include: linterConfig?.eslint?.include || [],
+          });
+          console.log('ESLint plugin registered successfully');
+        } else {
+          console.log('ESLint not found, skipping plugin registration');
+        }
+      } catch (error) {
+        console.warn('Failed to register ESLint plugin:', error);
+      }
+    }
+
+    // Register Prettier plugin if configured and available
+    if (linterConfig?.prettier?.enabled !== false) {
+      const prettierPlugin = new PrettierPlugin();
+      try {
+        const isAvailable = await prettierPlugin.isAvailable();
+        if (isAvailable) {
+          this.linterService.register(prettierPlugin, {
+            priority: 2,
+            enabled: true,
+            autoFix: linterConfig?.prettier?.autoFix ?? true,
+            timeout: linterConfig?.global?.timeoutMs ?? 60000,
+            include: linterConfig?.prettier?.include || [],
+          });
+          console.log('Prettier plugin registered successfully');
+        } else {
+          console.log('Prettier not found, skipping plugin registration');
+        }
+      } catch (error) {
+        console.warn('Failed to register Prettier plugin:', error);
+      }
+    }
+
+    // Register custom linters if configured
+    const customLinters = linterConfig?.custom || [];
+    for (const customConfig of customLinters) {
+      if (customConfig.enabled !== false) {
+        // TODO: Implement custom linter plugin support in future iteration
+        console.log(`Custom linter '${customConfig.name}' configuration found, but custom linter support not yet implemented`);
+      }
+    }
+  }
+
+  /**
+   * Setup event forwarding from TDD executor to orchestrator
+   */
+  private setupTDDEventForwarding(): void {
+    if (!this.tddExecutor) return;
+
+    this.tddExecutor.on('tdd:started', (config, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:started' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { config },
+      });
+    });
+
+    this.tddExecutor.on('tdd:iteration-started', (iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:iteration-started' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:test-run', (testResult, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:test-run' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { testResult, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:fix-generated', (fix, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:fix-generated' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { fix, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:fix-applied', (fixResult, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:fix-applied' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { fixResult, iteration },
+      });
+    });
+
+    this.tddExecutor.on('tdd:iteration-completed', (result, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:iteration-completed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { result },
+      });
+    });
+
+    this.tddExecutor.on('tdd:completed', (result, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:completed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { result },
+      });
+    });
+
+    this.tddExecutor.on('tdd:failed', (error, iteration, taskId) => {
+      this.emit('apex-event', {
+        type: 'tdd:failed' as ApexEventType,
+        taskId,
+        timestamp: new Date(),
+        data: { error: error.message, iteration },
+      });
+    });
+  }
+
+  /**
+   * Setup MCP connection event forwarding
+   * Forwards MCP connection events from MCPConnectionManager to the orchestrator's event system
+   * with proper metadata and timestamps.
+   */
+  private setupMCPEventForwarding(): void {
+    const connManager = this.mcpConnectionManager;
+    if (!connManager) return;
+
+    // Forward connection events
+    connManager.on('connected', (connection) => {
+      const eventData: MCPConnectionEventData = {
+        serverId: connection.serverId,
+        serverName: connection.serverName,
+        timestamp: new Date(),
+        config: {
+          type: connection.config.type || 'stdio',
+          command: connection.config.command,
+          url: connection.config.url,
+        },
+      };
+      this.emit('mcp:connected', eventData);
+    });
+
+    // Forward disconnection events
+    connManager.on('disconnected', (serverId, reason) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPDisconnectionEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        reason,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:disconnected', eventData);
+    });
+
+    // Forward error events
+    connManager.on('error', (serverId, error) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPErrorEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        error: error.message,
+        timestamp: new Date(),
+        code: error.name || 'UNKNOWN_ERROR',
+      };
+      this.emit('mcp:error', eventData);
+    });
+
+    // Forward reconnection events
+    connManager.on('reconnecting', (serverId, attempt, maxAttempts) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPReconnectingEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        attempt,
+        maxAttempts,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:reconnecting', eventData);
+    });
+
+    // Forward health check events
+    connManager.on('healthCheck', (serverId, result) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPHealthCheckEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        success: result.success,
+        latencyMs: result.latencyMs,
+        error: result.error?.message,
+        consecutiveFailures: result.consecutiveFailures,
+        isHealthy: result.isHealthy,
+        timestamp: result.timestamp,
+      };
+      this.emit('mcp:health-check', eventData);
+    });
+
+    // Forward state change events
+    connManager.on('stateChange', (serverId, previousState, newState) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPStateChangeEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        previousState,
+        newState,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:state-change', eventData);
+    });
+
+    // Forward pool change events
+    connManager.on('poolChange', (serverId, poolSize, activeConnections) => {
+      const connection = connManager.getConnection(serverId);
+      const eventData: MCPPoolChangeEventData = {
+        serverId,
+        serverName: connection?.serverName || serverId,
+        poolSize,
+        activeConnections,
+        timestamp: new Date(),
+      };
+      this.emit('mcp:pool-change', eventData);
+    });
+
+    // Forward tool execution events
+    connManager.on('tool:start', (event) => {
+      this.emit('mcp:tool-start', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        timestamp: event.timestamp,
+      });
+    });
+
+    connManager.on('tool:complete', (event) => {
+      this.emit('mcp:tool-complete', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        durationMs: event.durationMs,
+        timestamp: event.timestamp,
+      });
+    });
+
+    connManager.on('tool:error', (event) => {
+      this.emit('mcp:tool-error', {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        toolName: event.toolName,
+        callId: event.callId,
+        error: event.error,
+        errorCode: event.errorCode,
+        retriable: event.retriable,
+        timestamp: event.timestamp,
+      });
+    });
+  }
+
+  /**
+   * Setup browser event integration with task context correlation
+   * Forwards browser automation events from BrowserTool and BrowserConsoleStream
+   * to the orchestrator's event system with proper task and agent context.
+   */
+  private setupBrowserEventIntegration(): void {
+    // Get the console stream from browser tool for event integration
+    const consoleStream = browserTool.getConsoleStream();
+
+    if (consoleStream) {
+      // Forward console messages with task context
+      consoleStream.on('message', (message) => {
+        const browserEvent: BrowserConsoleEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          message: {
+            type: message.type,
+            text: message.text,
+            timestamp: message.timestamp,
+            level: message.level,
+            args: message.args,
+            location: message.location,
+            stack: message.stack,
+            sessionId: message.sessionId,
+            pageContext: message.pageContext,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:console', browserEvent);
+      });
+
+      // Forward runtime errors with task context
+      consoleStream.on('error', (error) => {
+        const browserEvent: BrowserErrorEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          error: {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            timestamp: error.timestamp,
+            source: error.source,
+            category: error.category,
+            severity: error.severity,
+            context: error.context,
+            sessionId: error.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:error', browserEvent);
+      });
+
+      // Forward network errors with task context
+      consoleStream.on('network-error', (networkError) => {
+        const browserEvent: BrowserNetworkErrorEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          error: {
+            url: networkError.url,
+            method: networkError.method,
+            status: networkError.status,
+            statusText: networkError.statusText,
+            timestamp: networkError.timestamp,
+            sessionId: networkError.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:network-error', browserEvent);
+      });
+
+      // Forward performance warnings with task context
+      consoleStream.on('performance-warning', (warning) => {
+        const browserEvent: BrowserPerformanceWarningEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          warning: {
+            type: warning.type,
+            message: warning.message,
+            duration: warning.duration,
+            timestamp: warning.timestamp,
+            sessionId: warning.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:performance-warning', browserEvent);
+      });
+
+      // Forward security violations with task context
+      consoleStream.on('security-violation', (violation) => {
+        const browserEvent: BrowserSecurityViolationEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          violation: {
+            type: violation.type,
+            message: violation.message,
+            blockedURI: violation.blockedURI,
+            timestamp: violation.timestamp,
+            sessionId: violation.sessionId,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:security-violation', browserEvent);
+      });
+
+      // Forward stream lifecycle events
+      consoleStream.on('stream-started', (config) => {
+        const browserEvent: BrowserSessionStartedEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          session: {
+            sessionId: config.sessionId || 'unknown',
+            browserType: 'chromium', // Default, could be made configurable
+            userAgent: 'unknown', // Would need to extract from page context
+            viewport: { width: 1280, height: 720 }, // Default, could be made configurable
+            headless: true, // Default, could be made configurable
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:session-started', browserEvent);
+      });
+
+      consoleStream.on('stream-stopped', () => {
+        const stats = consoleStream.getStats();
+        const browserEvent: BrowserSessionEndedEvent = {
+          taskId: this.currentTaskId || 'unknown',
+          agentName: this.currentAgentName || 'unknown',
+          session: {
+            sessionId: stats.sessionId,
+            duration: 0, // Duration calculation would need to be implemented
+            pagesVisited: 1, // Would need to track this
+            errorsCount: stats.errorsCount,
+            consoleMessagesCount: stats.messagesCount,
+          },
+          timestamp: new Date(),
+        };
+        this.emit('browser:session-ended', browserEvent);
+      });
+    }
+
+    // Forward BrowserManager events with task context correlation
+    // These events provide browser instance lifecycle information
+    this.browserManager.on('browser:launched', (info) => {
+      const event: BrowserManagerLaunchedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        browserInfo: {
+          id: info.id,
+          engine: info.engine,
+          version: info.version,
+          isConnected: info.isConnected,
+          pid: info.pid,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:launched', event);
+    });
+
+    this.browserManager.on('browser:closed', (browserId) => {
+      const event: BrowserManagerClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:closed', event);
+    });
+
+    this.browserManager.on('context:created', (info) => {
+      const event: BrowserManagerContextCreatedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextInfo: {
+          id: info.id,
+          browserId: info.browserId,
+          pageCount: info.pageCount,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:context-created', event);
+    });
+
+    this.browserManager.on('context:closed', (contextId, browserId) => {
+      const event: BrowserManagerContextClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:context-closed', event);
+    });
+
+    this.browserManager.on('page:created', (page, contextId, browserId) => {
+      const event: BrowserManagerPageCreatedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:page-created', event);
+    });
+
+    this.browserManager.on('page:closed', (contextId, browserId) => {
+      const event: BrowserManagerPageClosedEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        contextId,
+        browserId,
+        timestamp: new Date(),
+      };
+      this.emit('browser:page-closed', event);
+    });
+
+    this.browserManager.on('error', (error, operation) => {
+      const event: BrowserManagerErrorEvent = {
+        taskId: this.currentTaskId || 'unknown',
+        agentName: this.currentAgentName || 'unknown',
+        error: {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          operation,
+        },
+        timestamp: new Date(),
+      };
+      this.emit('browser:manager-error', event);
+    });
+  }
+
+  /**
+   * Setup context tracking for task and agent correlation in events
+   * Maintains current task and agent state for proper event attribution
+   */
+  private setupContextTracking(): void {
+    // Track agent transitions to maintain current agent context
+    this.on('agent:transition', (taskId: string, fromAgent: string | null, toAgent: string) => {
+      // Only update current agent if this is for the current task
+      if (this.currentTaskId === taskId) {
+        this.currentAgentName = toAgent;
+      }
+    });
+
+    // Clear agent context when task completes or fails
+    this.on('task:completed', (task) => {
+      if (this.currentTaskId === task.id) {
+        this.currentAgentName = null;
+      }
+    });
+
+    this.on('task:failed', (task) => {
+      if (this.currentTaskId === task.id) {
+        this.currentAgentName = null;
+      }
+    });
+  }
+
+  /**
+   * Execute TDD loop for the current task or specified task
+   */
+  async executeTDD(taskId?: string): Promise<TDDExecutionResult> {
+    if (!this.tddExecutor) {
+      throw new Error('TDD executor not initialized. Ensure TDD is enabled in configuration.');
+    }
+
+    const executionTaskId = taskId || this.currentTaskId || generateTaskId();
+    return await this.tddExecutor.execute(executionTaskId);
+  }
+
+  /**
+   * Check if TDD is enabled and available
+   */
+  isTDDEnabled(): boolean {
+    return this.tddExecutor !== undefined;
   }
 
   /**
@@ -4674,6 +10583,38 @@ Parent: ${parentTask.description}`;
    */
   getInteractionManager(): InteractionManager {
     return this.interactionManager;
+  }
+
+  /**
+   * Get the permission manager instance
+   * Provides access to permission checking and management capabilities
+   */
+  get permissionManager(): PermissionManager {
+    return this._permissionManager;
+  }
+
+  /**
+   * Get the permission store instance
+   * Provides access to permission storage capabilities
+   */
+  get permissionStore(): PermissionStore {
+    return this._permissionStore;
+  }
+
+  /**
+   * Get the permission preset manager instance
+   * Provides access to permission preset management capabilities
+   */
+  get presetManager(): PermissionPresetManager {
+    return this._permissionPresetManager;
+  }
+
+  /**
+   * Get the custom tools server instance
+   * Provides access to custom tools server capabilities
+   */
+  get customToolsServer(): CustomToolsServer | undefined {
+    return this.customToolsServer;
   }
 
   /**
@@ -5084,6 +11025,47 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
   }
 
   /**
+   * Load project-specific APEX rules from the .apexrules file.
+   * This is a private helper called during initialization.
+   */
+  private async loadApexRules(): Promise<void> {
+    const apexRulesPath = path.join(this.projectPath, '.apex', '.apexrules');
+    
+    try {
+      const fileContent = await fs.readFile(apexRulesPath, 'utf8');
+      const parsedRules = yaml.load(fileContent) as { rules?: ApexRule[] };
+      const normalizedRules = (parsedRules?.rules ?? []).map((rule) => ({
+        ...rule,
+        enabled: rule.enabled ?? true,
+      })) as Array<ApexRule & { enabled: boolean }>;
+
+      if (normalizedRules.length > 0) {
+        // Assign to config.projectRules directly
+        this.config.projectRules = normalizedRules.filter(rule => rule.enabled);
+        console.log(`Loaded ${this.config.projectRules.length} APEX rules from ${apexRulesPath}`);
+        
+        // Register these rules with the PolicyEngine
+        if (this.policyEngine) {
+          this.policyEngine.registerApexRules(this.config.projectRules as any);
+          console.log(`Registered ${this.config.projectRules.length} APEX rules with PolicyEngine.`);
+        } else {
+          console.warn('PolicyEngine not initialized. APEX rules will not be enforced.');
+        }
+      } else {
+        console.warn(`APEX rules file ${apexRulesPath} is empty or malformed. No rules loaded.`);
+        this.config.projectRules = []; // Ensure it's an empty array if malformed
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.log(`No .apexrules file found at ${apexRulesPath}. Proceeding without project rules.`);
+      } else {
+        console.error(`Failed to load .apexrules from ${apexRulesPath}:`, error);
+      }
+      this.config.projectRules = []; // Ensure it's an empty array on error
+    }
+  }
+
+  /**
    * Close the orchestrator and cleanup resources
    */
   close(): void {
@@ -5091,11 +11073,940 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
       this.store.close();
     }
   }
+
+  /**
+   * Get all currently active tool executions
+   * @returns Array of currently running tool executions
+   */
+  getActiveToolExecutions(): ToolExecution[] {
+    return Array.from(this.activeToolExecutions.values());
+  }
+
+  /**
+   * Get a specific tool execution by call ID
+   * @param callId The tool call ID
+   * @returns The tool execution if found, undefined otherwise
+   */
+  getToolExecution(callId: string): ToolExecution | undefined {
+    return this.activeToolExecutions.get(callId);
+  }
+
+  /**
+   * Get the count of currently active tool executions
+   * @returns Number of active tool executions
+   */
+  getActiveToolExecutionCount(): number {
+    return this.activeToolExecutions.size;
+  }
+
+  /**
+   * Check if a specific tool call is currently active
+   * @param callId The tool call ID
+   * @returns True if the tool execution is active, false otherwise
+   */
+  isToolExecutionActive(callId: string): boolean {
+    return this.activeToolExecutions.has(callId);
+  }
+
+  /**
+   * Create a FileSnapshot object for a given file path
+   * @param filePath Absolute path to the file
+   * @param existed Whether the file existed before the operation
+   * @returns FileSnapshot object or null if file cannot be read
+   */
+  private async createFileSnapshot(filePath: string, existed: boolean = true): Promise<FileSnapshot | null> {
+    try {
+      let content = '';
+      let fileStats: Stats | null = null;
+
+      if (existed) {
+        try {
+          content = readFileSync(filePath, 'utf8');
+          fileStats = statSync(filePath);
+        } catch (error) {
+          // File doesn't exist, treat as non-existent
+          existed = false;
+        }
+      }
+
+      const checksum = crypto.createHash('sha256').update(content).digest('hex');
+      const now = new Date();
+
+      return {
+        id: crypto.randomUUID(),
+        filePath,
+        content,
+        checksum,
+        fileSize: content.length,
+        lastModified: fileStats?.mtime || now,
+        snapshotTime: now,
+        existed,
+      };
+    } catch (error) {
+      await this.store.addLog(this.currentHookContext?.taskId || '', {
+        level: 'warn',
+        message: `Failed to create file snapshot for ${filePath}: ${String(error)}`,
+        metadata: { filePath, error: String(error) },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Extract file paths from tool input for file-modifying tools
+   * @param toolName Name of the tool
+   * @param toolInput Input parameters for the tool
+   * @returns Array of file paths that might be modified
+   */
+  private extractFilePathsFromToolInput(toolName: string, toolInput: Record<string, unknown>): string[] {
+    const filePaths: string[] = [];
+
+    // Extract file path based on tool type
+    if ('file_path' in toolInput && typeof toolInput.file_path === 'string') {
+      filePaths.push(toolInput.file_path);
+    } else if ('notebook_path' in toolInput && typeof toolInput.notebook_path === 'string') {
+      filePaths.push(toolInput.notebook_path);
+    } else if ('path' in toolInput && typeof toolInput.path === 'string') {
+      filePaths.push(toolInput.path);
+    }
+
+    // For MultiEdit, extract all file paths
+    if (toolName === 'MultiEdit' && 'edits' in toolInput && Array.isArray(toolInput.edits)) {
+      for (const edit of toolInput.edits) {
+        if (typeof edit === 'object' && edit && 'file_path' in edit && typeof edit.file_path === 'string') {
+          filePaths.push(edit.file_path);
+        }
+      }
+    }
+
+    return filePaths;
+  }
+
+  /**
+   * Record tool action for file-modifying tools with before/after snapshots
+   * @param taskId Task ID
+   * @param toolExecution Completed tool execution
+   */
+  private async recordFileModifyingToolAction(taskId: string, toolExecution: ToolExecution): Promise<void> {
+    // Only record for file-modifying tools
+    if (!FILE_MODIFYING_TOOLS.includes(toolExecution.toolName)) {
+      return;
+    }
+
+    // Only record for successful tool executions
+    if (toolExecution.status !== 'completed' || !toolExecution.result?.success) {
+      return;
+    }
+
+    const modifiedFiles: string[] = [];
+    const beforeSnapshots: FileSnapshot[] = [];
+    const afterSnapshots: FileSnapshot[] = [];
+
+    try {
+      // Get file paths from tool input
+      const filePaths = this.extractFilePathsFromToolInput(toolExecution.toolName, toolExecution.input);
+
+      // Get before snapshots from hooks context if available
+      const hookContext = this.currentHookContext;
+      if (hookContext?.fileSnapshots) {
+        for (const filePath of filePaths) {
+          const beforeContent = hookContext.fileSnapshots.get(filePath);
+          if (beforeContent !== undefined) {
+            // Create before snapshot from hooks data
+            const beforeSnapshot = await this.createFileSnapshotFromContent(
+              filePath,
+              beforeContent,
+              true // existed before
+            );
+            if (beforeSnapshot) {
+              beforeSnapshots.push(beforeSnapshot);
+            }
+          }
+        }
+      }
+
+      // Create after snapshots for all modified files
+      for (const filePath of filePaths) {
+        try {
+          const afterSnapshot = await this.createFileSnapshot(filePath, true);
+          if (afterSnapshot) {
+            afterSnapshots.push(afterSnapshot);
+            modifiedFiles.push(filePath);
+          }
+        } catch (error) {
+          // Log but continue with other files
+          await this.store.addLog(taskId, {
+            level: 'warn',
+            message: `Failed to create after snapshot for ${filePath}: ${String(error)}`,
+            metadata: { filePath, error: String(error) },
+          });
+        }
+      }
+
+      // Only record if we have modified files
+      if (modifiedFiles.length > 0) {
+        const createdFiles = beforeSnapshots
+          .filter(snapshot => !snapshot.existed)
+          .map(snapshot => snapshot.filePath);
+        const modifiedFromSnapshots = beforeSnapshots
+          .filter(snapshot => snapshot.existed)
+          .map(snapshot => snapshot.filePath);
+        const remainingModified = modifiedFiles.filter(filePath =>
+          !createdFiles.includes(filePath) && !modifiedFromSnapshots.includes(filePath)
+        );
+
+        await this.updateFileChanges(taskId, {
+          created: createdFiles,
+          modified: [...modifiedFromSnapshots, ...remainingModified],
+        });
+
+        await this.toolActionStore.recordToolAction(
+          taskId,
+          toolExecution,
+          modifiedFiles,
+          beforeSnapshots,
+          afterSnapshots
+        );
+
+        await this.store.addLog(taskId, {
+          level: 'debug',
+          message: `Recorded tool action for ${toolExecution.toolName} with ${modifiedFiles.length} file(s)`,
+          metadata: {
+            toolName: toolExecution.toolName,
+            modifiedFiles,
+            beforeSnapshotsCount: beforeSnapshots.length,
+            afterSnapshotsCount: afterSnapshots.length,
+          },
+        });
+      }
+    } catch (error) {
+      throw new Error(`Failed to record tool action: ${String(error)}`);
+    }
+  }
+
+  /**
+   * Create a FileSnapshot object from existing content (for before snapshots)
+   * @param filePath Absolute path to the file
+   * @param content File content
+   * @param existed Whether the file existed
+   * @returns FileSnapshot object
+   */
+  private async createFileSnapshotFromContent(
+    filePath: string,
+    content: string,
+    existed: boolean = true
+  ): Promise<FileSnapshot | null> {
+    try {
+      const checksum = crypto.createHash('sha256').update(content).digest('hex');
+      const now = new Date();
+
+      // Try to get actual file stats if file exists
+      let fileStats: Stats | null = null;
+      try {
+        fileStats = statSync(filePath);
+      } catch {
+        // File doesn't exist or can't be accessed
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        filePath,
+        content,
+        checksum,
+        fileSize: content.length,
+        lastModified: fileStats?.mtime || now,
+        snapshotTime: now,
+        existed,
+      };
+    } catch (error) {
+      await this.store.addLog(this.currentHookContext?.taskId || '', {
+        level: 'warn',
+        message: `Failed to create file snapshot from content for ${filePath}: ${String(error)}`,
+        metadata: { filePath, error: String(error) },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Get the tool action store instance
+   */
+  getToolActionStore(): ToolActionStore {
+    return this.toolActionStore;
+  }
+
+  /**
+   * Get all pending approvals from the task store
+   */
+  async getPendingApprovals(): Promise<ApprovalState[]> {
+    return await this.store.getPendingApprovals();
+  }
+
+  /**
+   * List all active task workspaces
+   */
+  async listAllWorkspaces(): Promise<WorkspaceInfo[]> {
+    await this.ensureInitialized();
+    return this.workspaceManager.listWorkspaces();
+  }
+
+  /**
+   * Get an approval state by its ID
+   */
+  async getApprovalStateById(approvalId: string): Promise<ApprovalState | null> {
+    return await this.store.getApprovalStateById(approvalId);
+  }
+
+  /**
+   * Execute a task in dry-run mode - simulates execution without making actual changes
+   */
+  private async executeDryRunTask(taskId: string, task: Task): Promise<void> {
+    await this.store.updateTaskStatus(taskId, 'in-progress');
+
+    // Load workflow for simulation
+    const workflow = await loadWorkflow(this.projectPath, task.workflow);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${task.workflow}`);
+    }
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `🎭 Simulating workflow: ${workflow.name} with ${workflow.stages.length} stages`,
+    });
+
+    // Simulate each stage of the workflow
+    for (const [index, stage] of workflow.stages.entries()) {
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `🎭 Simulating stage ${index + 1}/${workflow.stages.length}: ${stage.name} (agent: ${stage.agent})`,
+      });
+
+      // Simulate stage execution time (brief delay to make it feel realistic)
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Update current stage
+      await this.store.updateTask(taskId, {
+        currentStage: stage.name,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(taskId, {
+        level: 'info',
+        message: `✅ Stage ${stage.name} simulated successfully`,
+      });
+    }
+
+    // Complete the dry-run task
+    await this.store.updateTaskStatus(taskId, 'completed');
+    await this.store.updateTask(taskId, {
+      completedAt: new Date(),
+      updatedAt: new Date(),
+      currentStage: undefined,
+    });
+
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: '✅ DRY-RUN COMPLETE: Task simulation finished successfully',
+    });
+
+    // Emit completion event
+    const completedTask = await this.store.getTask(taskId);
+    if (completedTask) {
+      this.emit('task:completed', completedTask);
+    }
+  }
+
+  private resolveApprovalOperation(
+    toolName: string,
+    toolInput: Record<string, unknown>
+  ): ApprovalOperationType | null {
+    if (FILE_MODIFYING_TOOLS.includes(toolName)) {
+      if (toolName === 'Write') {
+        const overwrite = Boolean(toolInput.overwrite);
+        return overwrite ? 'modify' : 'create';
+      }
+      return 'modify';
+    }
+
+    if (toolName === 'Bash') {
+      return 'execute';
+    }
+
+    return null;
+  }
+
+  private extractApprovalFilePaths(toolName: string, toolInput: Record<string, unknown>): string[] {
+    return this.extractFilePathsFromToolInput(toolName, toolInput);
+  }
+
+  private getStageIndex(workflowName: string, stageName: string): number {
+    const workflow = this.workflows[workflowName];
+    if (!workflow) {
+      return 0;
+    }
+
+    const index = workflow.stages.findIndex(stage => stage.name === stageName);
+    return index >= 0 ? index : 0;
+  }
+
+  private async requestPolicyApproval(
+    task: Task,
+    approvalReq: ApprovalRequirement,
+    context: {
+      action: ApprovalOperationType;
+      toolName: string;
+      stageName: string;
+      workflowName: string;
+      filePaths: string[];
+      agentName: string;
+    }
+  ): Promise<void> {
+    if (task.status === 'awaiting-approval') {
+      return;
+    }
+
+    const rule = approvalReq.triggeredRules[0];
+    const ruleId = rule?.id || rule?.name || 'approval';
+    const gateName = `policy-${ruleId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+    const requestedAt = new Date();
+
+    const approvalState: ApprovalState = {
+      id: generateApprovalId(),
+      taskId: task.id,
+      gateName,
+      status: 'pending',
+      requestedAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      approvalsReceived: 0,
+      approvalsRequired: approvalReq.minApprovals || 1,
+      timeoutMinutes: approvalReq.timeoutMinutes,
+      expiresAt: approvalReq.timeoutMinutes ? new Date(Date.now() + approvalReq.timeoutMinutes * 60000) : undefined,
+      context: {
+        workflowName: context.workflowName,
+        toolName: context.toolName,
+        action: context.action,
+        reason: approvalReq.reason,
+        filePaths: context.filePaths,
+        triggeredRuleIds: approvalReq.triggeredRules.map(triggered => triggered.id),
+      },
+    };
+
+    await this.store.saveApprovalState(approvalState);
+    await this.store.logApprovalRequest(task.id, `Policy approval: ${gateName} - ${approvalReq.reason}`);
+    await this.store.logModeChange(
+      task.id,
+      task.autonomy,
+      'supervised',
+      `Policy approval required: ${approvalReq.reason}`
+    );
+
+    const currentTask = await this.store.getTask(task.id);
+    const conversationState = currentTask?.conversation || [];
+    const stageIndex = this.getStageIndex(context.workflowName, context.stageName);
+
+    const checkpointId = await this.saveCheckpoint(task.id, {
+      stage: context.stageName,
+      stageIndex,
+      conversationState,
+      metadata: {
+        pauseReason: 'policy_approval',
+        gateName,
+        approvalId: approvalState.id,
+        resumePoint: 'pre_tool_gate',
+        toolName: context.toolName,
+      },
+    });
+
+    await this.store.setGate(task.id, {
+      name: gateName,
+      status: 'pending',
+      requiredAt: approvalState.requestedAt,
+    });
+
+    await this.store.updateTask(task.id, {
+      status: 'awaiting-approval',
+      pausedAt: new Date(),
+      pauseReason: 'approval_gate',
+      updatedAt: new Date(),
+    });
+
+    const eventData: ApprovalRequiredEventData = {
+      approvalId: approvalState.id,
+      taskId: task.id,
+      gateName,
+      gateType: this.mapGateNameToType(gateName),
+      description: rule?.description || approvalReq.reason,
+      approvers: approvalReq.requiredApprovers,
+      minApprovals: approvalReq.minApprovals,
+      timeoutMinutes: approvalReq.timeoutMinutes,
+      expiresAt: approvalState.expiresAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      timestamp: new Date(),
+      context: approvalState.context,
+      blocking: true,
+      approvalUrl: this.generateApprovalUrl(approvalState.id),
+    };
+
+    this.emit('approval:required', eventData);
+
+    // Emit approval:request event for policy approvals
+    const approvalRequestData: ApprovalRequest = {
+      requestId: approvalState.id,
+      taskId: task.id,
+      description: `Policy approval required for ${gateName}`,
+      reason: `Tool "${context.toolName}" requires policy approval due to enforcement level`,
+      resourceImpact: this.calculateResourceImpactForPolicy(task, context),
+      id: approvalState.id, // Legacy field
+      gateName,
+      gateType: 'before-tool' as any, // Policy gates are typically before tool execution
+      approvers: ['user'], // Policy approvals typically require user approval
+      minApprovals: 1,
+      requestedAt: approvalState.requestedAt,
+      timeoutMinutes: 30, // Default timeout for policy approvals
+      expiresAt: approvalState.expiresAt,
+      stage: context.stageName,
+      agent: context.agentName,
+      context: {
+        taskId: task.id,
+        taskDescription: task.description,
+        taskPriority: task.priority,
+        taskWorkflow: task.workflow,
+        acceptanceCriteria: task.acceptanceCriteria,
+        currentStage: context.stageName,
+        currentAgent: context.agentName,
+        approvalUrl: this.generateApprovalUrl(approvalState.id),
+        toolName: context.toolName,
+        triggeredBy: 'policy-enforcer',
+        blocking: true,
+      },
+    };
+
+    this.emit('approval:request', approvalRequestData);
+
+    await this.store.addLog(task.id, {
+      level: 'info',
+      message: `Task paused for policy approval "${gateName}". Checkpoint ${checkpointId} saved.`,
+      stage: context.stageName,
+      agent: context.agentName,
+    });
+  }
+
+  private resolvePolicyEnforcementMode(): PolicyEnforcementMode {
+    const guardrails = this.effectiveConfig.guardrails;
+    const guardrailsEnabled = guardrails?.enabled !== false;
+    const guardrailPolicies = guardrailsEnabled && guardrails?.policies?.enabled !== false
+      ? guardrails.policies
+      : undefined;
+
+    const guardrailEnforcement = guardrailPolicies?.enforcement ?? guardrails?.enforcement;
+    if (guardrailEnforcement) {
+      return guardrailEnforcement === 'block' ? 'strict' : guardrailEnforcement;
+    }
+
+    return this.policyEnforcer?.enforcementMode ?? 'warn';
+  }
+
+  private async handlePolicyViolations(
+    violations: PolicyViolation[],
+    enforcementMode: PolicyEnforcementMode,
+    task: Task,
+    context: {
+      action: string;
+      agentName: string;
+    }
+  ): Promise<boolean> {
+    if (violations.length === 0 || enforcementMode === 'disabled') {
+      return true;
+    }
+
+    if (enforcementMode === 'strict') {
+      this.emit('policy:blocked', {
+        taskId: task.id,
+        agent: context.agentName,
+        action: context.action,
+        violations,
+        enforcementMode,
+        timestamp: new Date(),
+      });
+
+      await this.store.addLog(task.id, {
+        level: 'error',
+        message: `Policy enforcement blocked action: ${context.action}`,
+        metadata: { violations },
+      });
+
+      return false;
+    }
+
+    const eventType = enforcementMode === 'audit' ? 'policy:audited' : 'policy:warned';
+    const logLevel = enforcementMode === 'audit' ? 'info' : 'warn';
+
+    for (const violation of violations) {
+      if (eventType === 'policy:audited') {
+        this.emit('policy:audited', {
+          taskId: task.id,
+          agent: context.agentName,
+          action: context.action,
+          violation,
+          enforcementMode,
+          timestamp: new Date(),
+        });
+      } else {
+        this.emit('policy:warned', {
+          taskId: task.id,
+          agent: context.agentName,
+          action: context.action,
+          violation,
+          enforcementMode,
+          timestamp: new Date(),
+        });
+      }
+    }
+
+    await this.store.addLog(task.id, {
+      level: logLevel,
+      message: `Policy violations detected for action: ${context.action}`,
+      metadata: { violations, enforcementMode },
+    });
+
+    return true;
+  }
+
+  /**
+   * Maps gate names to approval checkpoint types
+   */
+  private mapGateNameToType(gateName: string): ApprovalCheckpointType {
+    const gateMap: Record<string, ApprovalCheckpointType> = {
+      'before-commit': 'before-commit',
+      'before-deploy': 'before-deploy',
+      'before-destructive': 'before-destructive',
+      'review-all': 'before-deploy', // Default for review-all autonomy
+      'before-merge': 'before-deploy',
+      'before-network': 'before-network',
+    };
+
+    return gateMap[gateName] || 'before-destructive'; // Default to safest option
+  }
+
+  /**
+   * Generates a description for the approval gate based on gate name and autonomy level
+   */
+  private generateGateDescription(gateName: string, autonomyLevel: AutonomyLevel): string {
+    const descriptions: Record<string, string> = {
+      'before-commit': 'Approval required before committing changes to version control',
+      'before-deploy': 'Approval required before deployment operations',
+      'before-destructive': 'Approval required before destructive operations (delete, overwrite)',
+      'before-network': 'Approval required before network operations',
+      'review-all': `Manual review required (autonomy level: ${autonomyLevel})`,
+      'before-merge': 'Approval required before merging changes',
+    };
+
+    return descriptions[gateName] || `Approval required for ${gateName} (autonomy level: ${autonomyLevel})`;
+  }
+
+  /**
+   * Generates approval URL from the configured API URL and approval ID
+   */
+  private generateApprovalUrl(approvalId: string): string | undefined {
+    if (!this.apiUrl) {
+      return undefined;
+    }
+
+    // Ensure the URL ends with a slash for proper concatenation
+    const baseUrl = this.apiUrl.endsWith('/') ? this.apiUrl : `${this.apiUrl}/`;
+    return `${baseUrl}approvals/${approvalId}`;
+  }
+
+  /**
+   * Calculates the resource impact level for a task and stage
+   */
+  private calculateResourceImpact(task: Task, stage: WorkflowStage): string {
+    // Determine resource impact based on task priority, stage type, and agent
+    if (task.priority === 'urgent' || task.priority === 'high') {
+      return 'high';
+    }
+
+    // High impact stages
+    if (stage.name.toLowerCase().includes('deploy') ||
+        stage.name.toLowerCase().includes('production') ||
+        stage.name.toLowerCase().includes('security')) {
+      return 'high';
+    }
+
+    // Medium impact stages
+    if (stage.name.toLowerCase().includes('test') ||
+        stage.name.toLowerCase().includes('build') ||
+        stage.name.toLowerCase().includes('review')) {
+      return 'medium';
+    }
+
+    // Default to low impact
+    return 'low';
+  }
+
+  /**
+   * Calculates resource impact for autonomy enforcer approvals
+   */
+  private calculateResourceImpactForAutonomy(task: Task, gateName: string, context: any): string {
+    // High impact for dangerous operations or file system modifications
+    if (gateName.includes('dangerous') ||
+        context?.operationType === 'file-modify' ||
+        context?.operationType === 'execute' ||
+        task.priority === 'urgent') {
+      return 'high';
+    }
+
+    // Medium impact for network operations or system changes
+    if (context?.operationType === 'network' ||
+        context?.operationType === 'system' ||
+        task.priority === 'high') {
+      return 'medium';
+    }
+
+    // Low impact for read operations and normal priority tasks
+    return 'low';
+  }
+
+  /**
+   * Calculates resource impact for policy approvals
+   */
+  private calculateResourceImpactForPolicy(task: Task, context: any): string {
+    // High impact for file system operations or execution commands
+    if (context?.toolName === 'Bash' ||
+        context?.toolName === 'Write' ||
+        context?.toolName === 'Edit' ||
+        task.priority === 'urgent') {
+      return 'high';
+    }
+
+    // Medium impact for network operations or multifile operations
+    if (context?.toolName === 'WebFetch' ||
+        context?.toolName === 'WebSearch' ||
+        context?.toolName === 'MultiEdit' ||
+        task.priority === 'high') {
+      return 'medium';
+    }
+
+    // Low impact for read operations
+    return 'low';
+  }
+
+  /**
+   * Gets the list of files affected by a task
+   */
+  private getAffectedFiles(taskId: string): string[] | undefined {
+    // This would typically track files that have been modified by the task
+    // For now, return undefined as this is a basic implementation
+    return undefined;
+  }
+
+  // ============================================================================
+  // Tool Execution Hooks API
+  // ============================================================================
+
+  /**
+   * Register a callback to be invoked when a tool starts execution
+   * @param callback Function to call when a tool starts
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolStart(callback: ToolStartHookCallback): () => void {
+    const handler = (event: ToolCallStartEvent) => {
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolStartHookContext = {
+        toolName: event.toolName,
+        input: event.input,
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:start', handler);
+    return () => this.off('tool:start', handler);
+  }
+
+  /**
+   * Register a callback to be invoked when a tool completes successfully
+   * @param callback Function to call when a tool completes
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolComplete(callback: ToolCompleteHookCallback): () => void {
+    const handler = (event: ToolCallCompleteEvent) => {
+      if (!event.result.success) return; // Skip errors, handled by onToolError
+
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolCompleteHookContext = {
+        toolName: event.toolName,
+        input: activeExecution?.input || {},
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        result: event.result,
+        timing: event.timing,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:complete', handler);
+    return () => this.off('tool:complete', handler);
+  }
+
+  /**
+   * Register a callback to be invoked when a tool execution fails
+   * @param callback Function to call when a tool fails
+   * @returns Unsubscribe function to remove the hook
+   */
+  onToolError(callback: ToolErrorHookCallback): () => void {
+    const handler = (event: ToolCallCompleteEvent) => {
+      if (event.result.success) return; // Skip successes, handled by onToolComplete
+
+      const activeExecution = this.getToolExecution(event.callId);
+      const context: ToolErrorHookContext = {
+        toolName: event.toolName,
+        input: activeExecution?.input || {},
+        callId: event.callId,
+        taskId: event.taskId,
+        timestamp: event.timestamp,
+        error: event.result.error || 'Unknown error',
+        timing: event.timing,
+        agentName: activeExecution?.agentName,
+        stageName: activeExecution?.stageName,
+      };
+      callback(context);
+    };
+    this.on('tool:complete', handler);
+    return () => this.off('tool:complete', handler);
+  }
+
+  /**
+   * Gracefully shutdown the orchestrator
+   * Disconnects all MCP servers and cleans up resources
+   */
+  async shutdown(): Promise<void> {
+    // Disconnect all MCP servers with timeout
+    if (this.mcpConnectionManager) {
+      try {
+        await Promise.race([
+          this.mcpConnectionManager.disconnectAll(),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)) // 5 second timeout
+        ]);
+      } catch (error) {
+        console.warn('Error disconnecting MCP servers:', error instanceof Error ? error.message : error);
+      }
+    }
+
+    // Clear tool registry
+    if (this.mcpToolRegistry) {
+      this.mcpToolRegistry.clear();
+    }
+
+    // Close store
+    if (this.store) {
+      this.store.close();
+    }
+
+    this.initialized = false;
+  }
 }
 
-export { TaskStore } from './store';
+export { TaskStore, ToolActionStore } from './store';
+export { PermissionStore } from './permission-store';
+export { MCPServerStore } from './mcp-store';
+// MCPInstaller is exported later with type MCPInstallationOptions
+export { MCPConnectionManager, type MCPConnectionManagerOptions, type MCPConnectionManagerEvents } from './mcp/connection-manager';
+export {
+  MCPToolRegistry,
+  type MCPToolRegistryEntry,
+  type MCPToolRegistryStats,
+  type MCPToolRegistryEvents,
+  type MCPToolRegistryOptions,
+  type MCPConnectionManager as MCPConnectionManagerInterface
+} from './mcp-tool-registry';
+
+// Mock MCP Server Components for Testing
+export {
+  MockMCPServer,
+  MockMCPServerFacade,
+  MockTransport,
+  MockBehaviorEngine,
+  MockMCPProtocolHandler,
+  MockMCPServerBuilder,
+  createMockServerBuilder,
+  createSimpleMockServer,
+  createErrorMockServer,
+  createSlowMockServer,
+  // Preset Factory (ADR-080)
+  createMockMCPServer,
+  createFileSystemMockServer,
+  createDatabaseMockServer,
+  createApiMockServer,
+  createMinimalMockServer,
+  MockAssertionError,
+  // Error Simulation Presets (ADR-072)
+  ERROR_SIMULATION_PRESETS,
+  getErrorPreset,
+  mergePresetWithOverrides,
+  getAvailablePresets,
+  getPresetsByCategory,
+  // Test Wrapper Utilities (ADR-081)
+  withMockMCP,
+  withMockMCPFacade,
+  // Types
+  type ConnectedClient,
+  type MockServerState,
+  type MockServerPreset,
+  type ServerPresetConfig,
+  type CreateMockServerOptions,
+  type RecordedRequest,
+  type RecordedNotification,
+  type MockTransportOptions,
+  type ProtocolState,
+  type MethodHandler,
+  type RegisteredHandler,
+  type ErrorInjectionResult,
+  type ComputedDelay,
+  type MockServerFacadeEvents,
+  type MockServerStats,
+  type ErrorSimulationCheckResult,
+  type ErrorSimulationState,
+  type ErrorSimulationEvents,
+  type WithMockMCPOptions,
+} from './mcp/mock-server/index.js';
+
+export { PermissionManager } from './permission-manager';
+export { PermissionPresetManager } from './permission-preset-manager';
+export {
+  BrowserManager,
+  createBrowserManager,
+  browserManager,
+  type BrowserManagerOptions,
+  type BrowserLaunchConfig,
+  type BrowserContextConfig,
+  type BrowserInfo,
+  type BrowserContextInfo,
+  type BrowserEngine,
+  type CleanupOptions,
+  type BrowserManagerEvents,
+} from './browser-manager';
+export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
+
+// Test utilities for state cleanup and test isolation
+export {
+  TestCleanup,
+  TestHooks,
+  createTestHooks,
+  TestAssertions,
+  TestUtils,
+  type CleanupConfig
+} from './test-cleanup';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
+export { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
 export {
   estimateTokens,
   estimateMessageTokens,
@@ -5195,3 +12106,353 @@ export {
   type CommandBlockedEvent,
 } from './container-execution-proxy';
 export { HealthMonitor } from './health-monitor';
+
+// Tools
+export {
+  WebFetchTool,
+  webFetchTool,
+  webFetch,
+  type WebFetchParams,
+  type WebFetchResult,
+  type HttpMethod,
+  BrowserTool,
+  browserTool,
+  browser,
+  type BrowserOperation,
+  type BrowserParams,
+  type BrowserResult,
+  type BrowserNavigateParams,
+  type BrowserClickParams,
+  type BrowserTypeParams,
+  type BrowserScreenshotParams,
+  type BrowserEvaluateParams,
+  type BrowserSubmitParams,
+  type BrowserWaitForSelectorParams,
+  type BrowserGetAttributeParams,
+  type BrowserGetTextParams,
+  type BrowserGetHtmlParams,
+  type BrowserScrollParams,
+  type BrowserHoverParams,
+  type BrowserToolConfig,
+} from './tools';
+
+// Browser Console Stream
+export {
+  BrowserConsoleStream,
+  createConsoleStream,
+  ConsoleLogLevel,
+  ConsoleFilters,
+  type ConsoleStreamConfig,
+  type BrowserConsoleMessage as EnhancedBrowserConsoleMessage,
+  type BrowserRuntimeError as EnhancedBrowserRuntimeError,
+  type NetworkError,
+  type PerformanceWarning,
+  type SecurityViolation,
+  type ConsoleStreamEvents,
+  type ConsoleMessageFilter,
+} from './browser-console-stream';
+
+// Scanner
+export {
+  SecretScanner,
+  type SecretPattern,
+  type SecretScannerConfig,
+} from './scanner';
+export {
+  SecretOutputProcessor,
+  type SecretProcessingResult,
+} from './secret-output-processor';
+
+// Policy
+export {
+  PolicyEnforcer,
+  createPolicyEnforcer,
+  type ViolationOptions,
+  type PathValidationResult,
+} from './policy';
+
+// Policy Engine
+export {
+  PolicyEngine,
+  createPolicyEngine,
+  type AgentActionContext,
+  type PolicyRule,
+  type PolicyEvaluationResult,
+  type RuleLoadingConfig,
+} from './policy-engine';
+
+// Error Suggestion Matching
+export {
+  SuggestionMatcher,
+  type ErrorPattern,
+  type ErrorPatternCategory,
+  type SuggestionResult
+} from './suggestion-matcher';
+
+// Import Auto-Fixer
+export {
+  ImportAutoFixer,
+  BaseDetector,
+  ESLintDetector,
+  BaseResolver,
+  LocalResolver,
+  AliasResolver as ImportAliasResolver,
+  PackageResolver,
+  type ImportAutoFixerOptions,
+  type ImportAutoFixerConfig,
+  type ImportAutoFixerEvents,
+  type MissingImportAnalysis,
+  type MissingImport,
+  type ImportFixResult,
+  type ImportFixSummary,
+  type AddedImport,
+  type ImportFixError,
+  type IImportDetector,
+  type IImportResolver,
+  type ResolverContext,
+  type ImportResolution,
+  type ExistingImport,
+  type ImportType,
+  type DetectorType,
+  type ImportStyle,
+  type QuoteStyle,
+} from './import-auto-fixer';
+
+// Linter Plugin System
+export * from './linter';
+
+// Approval Gate Controller
+export {
+  ApprovalGateController,
+  type ApprovalGateOptions,
+  type ApprovalResult,
+  type ApprovalGateEvents,
+} from './approval-gate-controller';
+
+// Error Feedback Loop
+export {
+  ErrorFeedbackLoop,
+  type CompilerError,
+  type ErrorReceivedEvent,
+  type ErrorResolvedEvent,
+  type ErrorsClearedEvent,
+  type ErrorFeedbackLoopEvents,
+} from './error-feedback';
+
+// Fix Attempt Tracker
+export {
+  FixAttemptTracker,
+  type FixAttemptTrackerOptions,
+  type FixAttemptTrackerEvents,
+} from './fix-attempt-tracker';
+
+// TDD Mode
+export {
+  TDDMode,
+  type TDDModeOptions,
+  type TDDResult,
+  type CorrectionResult,
+  type RegressionResult,
+  type CommandResult,
+} from './tdd/tdd-mode';
+
+// TDD Executor
+export {
+  TDDExecutor,
+  createTDDExecutor,
+  executeTDD,
+  type TDDExecutorConfig,
+  type TDDExecutionResult,
+  type TDDIterationResult,
+  type TestResult,
+  type TestFailure,
+  type SuggestedFix,
+  type FixResult,
+} from './tdd-executor';
+
+// Test Report Generator
+export {
+  TestReportGenerator,
+  type TestReportGeneratorOptions,
+  type TestStartInfo,
+  type TestCompleteInfo,
+} from './test-report-generator';
+
+// MCP (Model Context Protocol) Module
+export {
+  // JSON-RPC message types
+  type JSONRPCError,
+  type JSONRPCRequest,
+  type JSONRPCSuccessResponse,
+  type JSONRPCErrorResponse,
+  type JSONRPCResponse,
+  type JSONRPCNotification,
+  type JSONRPCMessage,
+
+  // Error codes
+  JSONRPCErrorCodes,
+
+  // Transport error types
+  type MCPTransportErrorCode,
+  MCPTransportError,
+
+  // Transport events
+  type MCPTransportEvents,
+
+  // Type guards
+  isJSONRPCRequest,
+  isJSONRPCResponse,
+  isJSONRPCNotification,
+  isJSONRPCErrorResponse,
+  isJSONRPCSuccessResponse,
+
+  // Factory functions
+  createJSONRPCRequest,
+  createJSONRPCNotification,
+  createJSONRPCSuccessResponse,
+  createJSONRPCErrorResponse,
+
+  // Base transport
+  MCPTransport,
+  type TransportState,
+  type MCPTransportBaseOptions,
+
+  // Stdio transport
+  StdioTransport,
+  type StdioTransportOptions,
+
+  // MCP Client
+  MCPClient,
+  type MCPClientOptions,
+  type MCPClientEvents,
+  type MCPToolDefinition,
+} from './mcp';
+
+// Schema Translator
+export {
+  SchemaTranslator,
+  type JSONSchemaProperty,
+  type ClaudeSDKTool,
+  type SchemaTranslatorOptions,
+} from './schema-translator';
+
+// Tool Alias Resolver
+export { AliasResolver, AliasResolutionError } from './alias-resolver';
+
+// MCP Installer
+export { MCPInstaller, type MCPInstallationOptions, type InstalledMCPResult } from './mcp-installer';
+
+// MCP Dependency Resolver
+export {
+  MCPDependencyResolver,
+  type MCPDependency,
+  type MCPServerWithDependencies,
+  type DependencyResolutionResult,
+  type DependencyResolutionError,
+  type DependencyWarning,
+} from './mcp-dependency-resolver';
+
+// MCP Client Utility
+export {
+  MCPClientUtility,
+  createMCPClientUtility,
+  connectAndDiscoverMCPServer,
+  type MCPClientUtilityOptions,
+  type MCPServerConnection,
+  type MCPConnectionResult,
+  type MCPToolDiscoveryResult,
+  type MCPClientUtilityEvents,
+} from './mcp-client';
+
+// Self-Repair Loop
+export {
+  RepairLoop,
+  ErrorClassifier,
+  resolveRepairConfig,
+  DEFAULT_REPAIR_CONFIG,
+  RepairConfigSchema,
+} from './repair-loop/index.js';
+export type {
+  RepairLoopHost,
+  RepairConfig,
+  RepairContext,
+  RepairResult,
+  RepairDiagnosis,
+  RepairFixPlan,
+  ClassifiedError,
+  RepairTerminationReason,
+  EscalationReport,
+  RepairLoopEvents,
+} from './repair-loop/index.js';
+
+// Parallel Test Execution Support Utilities
+export {
+  getTestWorkerId,
+  isParallelTestExecution,
+  getWorkerUniqueDbPath,
+  getWorkerUniqueTempDir,
+  createWorkerUniqueTempDir,
+  createIsolatedEventEmitter,
+  assertNoSharedMutation,
+  createImmutableSnapshot,
+  AsyncMutex,
+  ResourceLockManager,
+  globalResourceLocks,
+  createParallelTestContext,
+  createParallelSafeTaskStore,
+  createEnvironmentIsolation,
+} from './parallel-test-utils.js';
+export type {
+  EventMap,
+  EventHistoryEntry,
+  IsolatedEventEmitterContext,
+  ReleaseLock,
+  ResourceLock,
+  ParallelTestContextOptions,
+  ParallelTestContext,
+  EnvironmentIsolationContext,
+} from './parallel-test-utils.js';
+
+// ============================================================================
+// TaskStore Test Fixtures (v0.5.0)
+// ============================================================================
+
+export {
+  createTestTask,
+  createTestAgent,
+  createTestWorkflow,
+  createTestWorkflowStage,
+  createTestTasks,
+  createTestAgents,
+  createTestWorkflows,
+} from './fixtures.js';
+
+// ============================================================================
+// Tool Invocation Recording (v0.5.0)
+// ============================================================================
+
+export {
+  ToolInvocationRecorder,
+  globalRecorder,
+  type ToolInvocationQueryOptions,
+  type ToolInvocationRecord,
+  type ToolInvocationStats,
+} from './tool-invocation-recorder.js';
+
+// ============================================================================
+// Approval Flow Testing Utilities (v0.5.0)
+// ============================================================================
+
+export {
+  createMockApprovalState,
+  createMockApprovalGate,
+  createApprovalScenario,
+  ApprovalFlowTestEnvironment,
+  createApprovalFlowTestEnvironment,
+  createWorkflowWithApprovals,
+  ApprovalTestAssertions,
+  type ApprovalStateConfig,
+  type ApprovalGateConfig,
+  type ApprovalScenario,
+  type ApprovalTestEvents,
+} from './approval-test-utils.js';

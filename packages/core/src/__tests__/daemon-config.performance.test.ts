@@ -176,7 +176,7 @@ describe.skip('Daemon Configuration Performance Tests', () => {
       configs.length = 0;
 
       // This test mainly ensures no exceptions are thrown during rapid allocation
-      expect(true).toBe(true);
+      expect(configs).toHaveLength(0);
     });
   });
 

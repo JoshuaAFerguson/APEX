@@ -4,8 +4,8 @@ import { ContainerManager } from '../container-manager';
 import { resolveExecutable } from '../shell-utils';
 
 // Mock child_process to intercept spawn calls
-vi.mock('child_process', () => ({
-  spawn: vi.fn(() => ({
+vi.mock('child_process', () => {
+  const spawnMock = vi.fn(() => ({
     pid: 1234,
     stdout: {
       on: vi.fn(),
@@ -23,10 +23,16 @@ vi.mock('child_process', () => ({
     kill: vi.fn(),
     killed: false,
     unref: vi.fn(),
-  })),
-  exec: vi.fn(),
-  execSync: vi.fn(),
-}));
+  }));
+  const execMock = vi.fn();
+  const execSyncMock = vi.fn();
+  return {
+    spawn: spawnMock,
+    exec: execMock,
+    execSync: execSyncMock,
+    default: { spawn: spawnMock, exec: execMock, execSync: execSyncMock },
+  };
+});
 
 // Mock shell-utils
 vi.mock('../shell-utils', () => ({

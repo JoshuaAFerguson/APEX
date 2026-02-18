@@ -7,6 +7,9 @@ export * from './config';
 // Utilities
 export * from './utils';
 
+// Type Validation (for enhanced complexity metrics)
+export * from './type-validation';
+
 // JSDoc/TSDoc Detection
 export * from './jsdoc-detector';
 
@@ -25,14 +28,71 @@ export * from './image-builder';
 // Dependency Detection
 export * from './dependency-detector';
 
+// Environment Detection
+export * from './environment-detector';
+
 // Package Manager Utilities
 export * from './package-manager-utils';
 
 // Path Utilities
 export * from './path-utils';
 
+// Directory Access Validation
+export * from './directory-access-validator';
+
+// Dangerous Operation Detection
+export * from './dangerous-operation-detector';
+
 // Shell Utilities
 export * from './shell-utils';
 
+// Syntax Highlighting
+export * from './syntax-highlighter';
+
+// Error Formatting
+export * from './error-formatter';
+
+// APEX Error Handling
+export * from './apex-error';
+
+// Secret Scanner
+export * from './secret-scanner';
+
+// Validation Infrastructure
+export * from './validation';
+
+// Tool Abstractions
+export * from './tools';
+
+// Screenshot Comparison
+export * from './screenshot-comparator';
+
+// Exponential Backoff Reconnection
+export * from './exponential-backoff';
+
+// Connection Health Management
+export * from './connection-health';
+
+// Health Metrics Collection and Reporting
+export * from './health-metrics';
+
+// MCP Templates
+export * from './mcp-templates';
+
+// MCP Registry
+export * from './mcp';
+
+// Logging
+export * from './logger';
+
 // Note: test-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files
+
+// Mock Factories
+// Note: factories is not exported from the main package as it's intended for testing
+// Import directly from '@apex/core/factories' for test files
+// export * from './factories';
+
+// Test Setup Utilities
+// Note: test-setup-utils is not exported from the main package as it depends on vitest
+// Import directly from '@apex/core/test-setup-utils' or '@apex/core/src/test-setup-utils' for test files

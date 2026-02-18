@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } fr
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { ApexOrchestrator } from './index';
 import { initializeApex } from '@apexcli/core';
+import type { FileSnapshot } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { exec } from 'child_process';
 
@@ -1136,7 +1138,7 @@ You are a developer agent that implements code changes.
     it('should wait for all running tasks', async () => {
       // With no running tasks, should resolve immediately
       await orchestrator.waitForAllTasks();
-      expect(true).toBe(true); // Just ensuring no hang
+      expect((orchestrator as any).runningTasks.size).toBe(0);
     });
 
     it('should respect concurrency limit in batch processing', async () => {
@@ -4249,6 +4251,741 @@ You are a developer agent that implements code changes.
           const remainingTask = await orchestrator.getTask(task.id);
           expect(remainingTask).toBeDefined();
         });
+      });
+    });
+  });
+
+  // ============================================================================
+  // Undo Operations
+  // ============================================================================
+
+  describe('Undo Operations', () => {
+    let testTask: { id: string; };
+    let testFilePath: string;
+    let originalContent: string;
+
+    // Helper method to create snapshot for non-existing file
+    const createSnapshotForNewFile = (filePath: string): FileSnapshot => ({
+      id: crypto.randomUUID(),
+      filePath: path.resolve(filePath),
+      content: '',
+      checksum: crypto.createHash('sha256').update('').digest('hex'),
+      fileSize: 0,
+      lastModified: new Date(),
+      snapshotTime: new Date(),
+      existed: false,
+      metadata: { isNewFile: true }
+    });
+
+    beforeEach(async () => {
+      testTask = await orchestrator.createTask({
+        description: 'Test undo operations',
+      });
+
+      // Create a test file for operations
+      testFilePath = path.join(testDir, 'test-undo-file.txt');
+      originalContent = 'Original content for testing';
+      await fs.writeFile(testFilePath, originalContent, 'utf8');
+    });
+
+    afterEach(async () => {
+      // Clean up test files
+      try {
+        await fs.unlink(testFilePath);
+      } catch {
+        // File might not exist, ignore
+      }
+    });
+
+    describe('undoLastAction method', () => {
+      it('should throw error when no undoable actions exist', async () => {
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('No undoable actions found for task');
+        expect(result.actionId).toBe('');
+        expect(result.restoredFiles).toEqual([]);
+        expect(result.failedFiles).toEqual([]);
+        expect(result.completedAt).toBeInstanceOf(Date);
+      });
+
+      it('should emit undo:start event when starting undo operation', async () => {
+        const startSpy = vi.fn();
+        orchestrator.on('undo:start', startSpy);
+
+        await orchestrator.undoLastAction(testTask.id);
+
+        expect(startSpy).toHaveBeenCalledOnce();
+        expect(startSpy).toHaveBeenCalledWith(testTask.id);
+      });
+
+      it('should emit undo:error event when no undoable actions exist', async () => {
+        const errorSpy = vi.fn();
+        orchestrator.on('undo:error', errorSpy);
+
+        await orchestrator.undoLastAction(testTask.id);
+
+        expect(errorSpy).toHaveBeenCalledOnce();
+        expect(errorSpy).toHaveBeenCalledWith(
+          testTask.id,
+          null,
+          'No undoable actions found for task'
+        );
+      });
+
+      it('should successfully undo Write tool action by restoring original content', async () => {
+        // Create a file snapshot BEFORE modification using the actual ToolActionStore method
+        const beforeSnapshot = await orchestrator.toolActionStore.createFileSnapshot(testFilePath);
+
+        // Simulate a Write tool action by modifying the file
+        const newContent = 'Modified content by Write tool';
+        await fs.writeFile(testFilePath, newContent, 'utf8');
+
+        const toolAction = {
+          id: 'action1',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath, content: newContent },
+            result: { success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        // Record the tool action using the actual ToolActionStore method
+        await orchestrator.toolActionStore.recordToolAction(
+          testTask.id,
+          toolAction.execution,
+          [testFilePath],
+          [beforeSnapshot],
+          []
+        );
+
+        const completeSpy = vi.fn();
+        orchestrator.on('undo:complete', completeSpy);
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(true);
+        expect(result.actionId).toBe('action1');
+        expect(result.restoredFiles).toEqual([testFilePath]);
+        expect(result.failedFiles).toEqual([]);
+        expect(result.error).toBeUndefined();
+
+        // Verify file was restored
+        const restoredContent = await fs.readFile(testFilePath, 'utf8');
+        expect(restoredContent).toBe(originalContent);
+
+        // Verify event emission
+        expect(completeSpy).toHaveBeenCalledOnce();
+        expect(completeSpy).toHaveBeenCalledWith(testTask.id, 'action1', [testFilePath]);
+      });
+
+      it('should successfully undo Edit tool action by restoring original content', async () => {
+        // Create snapshot before modification
+        const beforeSnapshot = await orchestrator.toolActionStore.createFileSnapshot(testFilePath);
+
+        // Simulate an Edit tool action
+        const modifiedContent = 'Content modified by Edit tool';
+        await fs.writeFile(testFilePath, modifiedContent, 'utf8');
+
+        // Record the tool action using the actual ToolActionStore method
+        await orchestrator.toolActionStore.recordToolAction(
+          testTask.id,
+          {
+            toolName: 'Edit',
+            parameters: { file_path: testFilePath, old_string: 'old', new_string: 'new' },
+            result: { success: true }
+          },
+          [testFilePath],
+          [beforeSnapshot],
+          []
+        );
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(true);
+        expect(result.restoredFiles).toEqual([testFilePath]);
+
+        // Verify file was restored
+        const restoredContent = await fs.readFile(testFilePath, 'utf8');
+        expect(restoredContent).toBe(originalContent);
+      });
+
+      it('should undo Write tool action for new file by deleting it', async () => {
+        const newFilePath = path.join(testDir, 'new-file-created.txt');
+
+        // Create snapshot for non-existing file
+        const beforeSnapshot = createSnapshotForNewFile(newFilePath);
+
+        // Create the file
+        await fs.writeFile(newFilePath, 'New file content', 'utf8');
+
+        // Record the tool action using the actual ToolActionStore method
+        await orchestrator.toolActionStore.recordToolAction(
+          testTask.id,
+          {
+            toolName: 'Write',
+            parameters: { file_path: newFilePath, content: 'New file content' },
+            result: { success: true }
+          },
+          [newFilePath],
+          [beforeSnapshot],
+          []
+        );
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(true);
+        expect(result.restoredFiles).toEqual([newFilePath]);
+
+        // Verify file was deleted
+        await expect(fs.access(newFilePath)).rejects.toThrow();
+      });
+
+      it('should restore deleted file from Bash tool action', async () => {
+        // Simulate file deletion via Bash
+        await fs.unlink(testFilePath);
+
+        const beforeSnapshot = {
+          id: 'snap4',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action4',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Bash',
+            parameters: { command: `rm ${testFilePath}` },
+            result: { stdout: '', success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(true);
+        expect(result.restoredFiles).toEqual([testFilePath]);
+
+        // Verify file was restored
+        const restoredContent = await fs.readFile(testFilePath, 'utf8');
+        expect(restoredContent).toBe(originalContent);
+      });
+
+      it('should handle partial failures and report failed files', async () => {
+        // Create an action with one valid snapshot and one pointing to an invalid location
+        const invalidPath = '/invalid/path/that/does/not/exist/file.txt';
+
+        const validSnapshot = {
+          id: 'snap5a',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const invalidSnapshot = {
+          id: 'snap5b',
+          filePath: invalidPath,
+          content: 'some content',
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action5',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [validSnapshot, invalidSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        const errorSpy = vi.fn();
+        orchestrator.on('undo:error', errorSpy);
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(false);
+        expect(result.restoredFiles).toEqual([testFilePath]);
+        expect(result.failedFiles).toHaveLength(1);
+        expect(result.failedFiles[0].path).toBe(invalidPath);
+        expect(result.failedFiles[0].error).toContain('ENOENT');
+        expect(result.error).toBe('Failed to restore 1 files');
+
+        expect(errorSpy).toHaveBeenCalledOnce();
+        expect(errorSpy).toHaveBeenCalledWith(
+          testTask.id,
+          'action5',
+          'Failed to restore 1 files'
+        );
+      });
+
+      it('should mark action as undone in database', async () => {
+        const beforeSnapshot = {
+          id: 'snap6',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action6',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        await orchestrator.undoLastAction(testTask.id);
+
+        // Verify action is marked as undone
+        const undoableActions = await orchestrator.toolActionStore.getUndoableActions(testTask.id);
+        expect(undoableActions).toHaveLength(0); // Should be no more undoable actions
+      });
+
+      it('should remove snapshots from store after successful undo', async () => {
+        const beforeSnapshot = {
+          id: 'snap7',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action7',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        await orchestrator.undoLastAction(testTask.id);
+
+        // Since snapshots are cleaned up, this should be verified by
+        // checking that no undoable actions remain
+        const remainingActions = await orchestrator.toolActionStore.getUndoableActions(testTask.id);
+        expect(remainingActions).toHaveLength(0);
+      });
+
+      it('should undo only the most recent undoable action', async () => {
+        // Create two actions
+        const firstSnapshot = {
+          id: 'snap8a',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const firstAction = {
+          id: 'action8a',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [firstSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(Date.now() - 1000), // Older action
+          wasUndone: false
+        };
+
+        const secondSnapshot = {
+          id: 'snap8b',
+          filePath: testFilePath,
+          content: 'intermediate content',
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const secondAction = {
+          id: 'action8b',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Edit',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [secondSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(), // Newer action
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(firstAction);
+        await orchestrator.toolActionStore.addToolAction(secondAction);
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(true);
+        expect(result.actionId).toBe('action8b'); // Should undo the more recent action
+
+        // File should be restored to intermediate content, not original
+        const restoredContent = await fs.readFile(testFilePath, 'utf8');
+        expect(restoredContent).toBe('intermediate content');
+      });
+    });
+
+    describe('event emissions', () => {
+      it('should emit correct event sequence for successful undo', async () => {
+        const events: string[] = [];
+        orchestrator.on('undo:start', () => events.push('start'));
+        orchestrator.on('undo:complete', () => events.push('complete'));
+        orchestrator.on('undo:error', () => events.push('error'));
+
+        const beforeSnapshot = {
+          id: 'snap9',
+          filePath: testFilePath,
+          content: originalContent,
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action9',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: testFilePath },
+            result: { success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        await orchestrator.undoLastAction(testTask.id);
+
+        expect(events).toEqual(['start', 'complete']);
+      });
+
+      it('should emit correct event sequence for failed undo', async () => {
+        const events: string[] = [];
+        orchestrator.on('undo:start', () => events.push('start'));
+        orchestrator.on('undo:complete', () => events.push('complete'));
+        orchestrator.on('undo:error', () => events.push('error'));
+
+        // No undoable actions case
+        await orchestrator.undoLastAction(testTask.id);
+
+        expect(events).toEqual(['start', 'error']);
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should handle non-existent task gracefully', async () => {
+        const result = await orchestrator.undoLastAction('non-existent-task');
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('No undoable actions found for task');
+      });
+
+      it('should handle file permission errors gracefully', async () => {
+        const restrictedPath = path.join(testDir, 'restricted-file.txt');
+        await fs.writeFile(restrictedPath, 'content', 'utf8');
+
+        // Make file read-only to simulate permission error
+        await fs.chmod(restrictedPath, 0o444);
+
+        const beforeSnapshot = {
+          id: 'snap10',
+          filePath: restrictedPath,
+          content: 'original content',
+          existed: true,
+          capturedAt: new Date()
+        };
+
+        const toolAction = {
+          id: 'action10',
+          taskId: testTask.id,
+          execution: {
+            toolName: 'Write',
+            parameters: { file_path: restrictedPath },
+            result: { success: true }
+          },
+          beforeSnapshots: [beforeSnapshot],
+          afterSnapshots: [],
+          executedAt: new Date(),
+          wasUndone: false
+        };
+
+        await orchestrator.toolActionStore.addToolAction(toolAction);
+
+        const result = await orchestrator.undoLastAction(testTask.id);
+
+        expect(result.success).toBe(false);
+        expect(result.failedFiles).toHaveLength(1);
+        expect(result.failedFiles[0].path).toBe(restrictedPath);
+        expect(result.failedFiles[0].error).toContain('EACCES');
+
+        // Restore permissions for cleanup
+        await fs.chmod(restrictedPath, 0o644);
+        await fs.unlink(restrictedPath);
+      });
+    });
+  });
+
+  // ============================================================================
+  // Approval Operations (v0.5.0)
+  // ============================================================================
+
+  describe('Approval Operations', () => {
+    let taskId: string;
+    let approvalId: string;
+
+    beforeEach(async () => {
+      // Create a test task
+      taskId = await orchestrator.createTask('Test approval task', 'feature');
+      approvalId = `approval-${taskId}-gate-${Date.now()}`;
+
+      // Create a checkpoint for the task so it can be resumed
+      await orchestrator.createCheckpoint(taskId, 'test-checkpoint', {
+        stageName: 'planning',
+        status: 'awaiting_approval',
+        stageOutputs: { plan: 'test plan' },
+        conversationState: [
+          { type: 'text', text: 'Planning completed, awaiting approval' }
+        ],
+        metadata: { test: true }
+      });
+    });
+
+    describe('grantApproval', () => {
+      it('should grant approval and resume task successfully', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:approved', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user', 'Looks good to proceed');
+
+        // Verify event was emitted
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          comment: 'Looks good to proceed',
+          timestamp: expect.any(Date)
+        });
+
+        // Verify task status was updated to running (from resumeTask)
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('in-progress');
+
+        // Verify logs were created
+        const logs = await orchestrator.getTaskLogs(taskId);
+        const resumeLog = logs.find(log =>
+          log.message.includes('Task resumed successfully after approval grant')
+        );
+        expect(resumeLog).toBeDefined();
+        expect(resumeLog?.metadata).toMatchObject({
+          approvalId,
+          approver: 'test-user',
+          comment: 'Looks good to proceed'
+        });
+      });
+
+      it('should handle approval grant without comment', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:approved', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user');
+
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          comment: undefined,
+          timestamp: expect.any(Date)
+        });
+      });
+
+      it('should throw error for invalid approval ID format', async () => {
+        await expect(orchestrator.grantApproval('invalid-id', 'test-user'))
+          .rejects.toThrow('Invalid approval ID format: invalid-id');
+      });
+
+      it('should throw error for non-existent task', async () => {
+        const invalidApprovalId = 'approval-nonexistent-gate-123';
+
+        await expect(orchestrator.grantApproval(invalidApprovalId, 'test-user'))
+          .rejects.toThrow('Task not found for approval: nonexistent');
+      });
+
+      it('should handle case when task has no checkpoint to resume from', async () => {
+        // Create a task without a checkpoint
+        const noCheckpointTaskId = await orchestrator.createTask('No checkpoint task', 'feature');
+        const noCheckpointApprovalId = `approval-${noCheckpointTaskId}-gate-${Date.now()}`;
+
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:approved', eventSpy);
+
+        await orchestrator.grantApproval(noCheckpointApprovalId, 'test-user', 'Approve anyway');
+
+        // Verify event was still emitted
+        expect(eventSpy).toHaveBeenCalled();
+
+        // Verify warning log was created
+        const logs = await orchestrator.getTaskLogs(noCheckpointTaskId);
+        const warningLog = logs.find(log =>
+          log.message.includes('Failed to resume task after approval grant: no checkpoint available')
+        );
+        expect(warningLog).toBeDefined();
+      });
+    });
+
+    describe('denyApproval', () => {
+      it('should deny approval and fail task with reason', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:denied', eventSpy);
+
+        await orchestrator.denyApproval(approvalId, 'test-user', 'Plan needs more detail');
+
+        // Verify event was emitted
+        expect(eventSpy).toHaveBeenCalledWith({
+          approvalId,
+          taskId,
+          approver: 'test-user',
+          reason: 'Plan needs more detail',
+          timestamp: expect.any(Date)
+        });
+
+        // Verify task was marked as failed
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('failed');
+        expect(task?.result).toBe('Approval denied by test-user: Plan needs more detail');
+
+        // Verify logs were created
+        const logs = await orchestrator.getTaskLogs(taskId);
+        const denialLog = logs.find(log =>
+          log.message.includes('Task failed due to approval denial')
+        );
+        expect(denialLog).toBeDefined();
+        expect(denialLog?.metadata).toMatchObject({
+          approvalId,
+          approver: 'test-user',
+          reason: 'Plan needs more detail'
+        });
+      });
+
+      it('should throw error when reason is empty', async () => {
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', ''))
+          .rejects.toThrow('Reason is required when denying an approval');
+
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', '   '))
+          .rejects.toThrow('Reason is required when denying an approval');
+      });
+
+      it('should throw error for invalid approval ID format', async () => {
+        await expect(orchestrator.denyApproval('invalid-id', 'test-user', 'Invalid format'))
+          .rejects.toThrow('Invalid approval ID format: invalid-id');
+      });
+
+      it('should throw error for non-existent task', async () => {
+        const invalidApprovalId = 'approval-nonexistent-gate-123';
+
+        await expect(orchestrator.denyApproval(invalidApprovalId, 'test-user', 'Task not found'))
+          .rejects.toThrow('Task not found for approval: nonexistent');
+      });
+    });
+
+    describe('Event emission', () => {
+      it('should emit approval-granted event with correct type', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:approved', eventSpy);
+
+        await orchestrator.grantApproval(approvalId, 'test-user', 'Approved');
+
+        const emittedEvent = eventSpy.mock.calls[0][0];
+        expect(emittedEvent).toMatchObject({
+          approvalId: expect.stringContaining(taskId),
+          taskId,
+          approver: 'test-user',
+          comment: 'Approved',
+          timestamp: expect.any(Date)
+        });
+      });
+
+      it('should emit approval-denied event with correct type', async () => {
+        const eventSpy = vi.fn();
+        orchestrator.on('approval:denied', eventSpy);
+
+        await orchestrator.denyApproval(approvalId, 'test-user', 'Rejected for testing');
+
+        const emittedEvent = eventSpy.mock.calls[0][0];
+        expect(emittedEvent).toMatchObject({
+          approvalId: expect.stringContaining(taskId),
+          taskId,
+          approver: 'test-user',
+          reason: 'Rejected for testing',
+          timestamp: expect.any(Date)
+        });
+      });
+    });
+
+    describe('Integration with task lifecycle', () => {
+      it('should handle approval grant after task was already resumed', async () => {
+        // Resume the task first
+        await orchestrator.resumeTask(taskId);
+
+        // Then grant approval (should still work)
+        await expect(orchestrator.grantApproval(approvalId, 'test-user', 'Late approval'))
+          .resolves.not.toThrow();
+
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('in-progress');
+      });
+
+      it('should handle approval denial after task completed', async () => {
+        // Complete the task first
+        await orchestrator.updateTaskStatus(taskId, 'completed', 'Task completed');
+
+        // Then deny approval (should still work for audit purposes)
+        await expect(orchestrator.denyApproval(approvalId, 'test-user', 'Too late to deny'))
+          .resolves.not.toThrow();
+
+        const task = await orchestrator.getTask(taskId);
+        expect(task?.status).toBe('failed'); // Should override to failed
       });
     });
   });

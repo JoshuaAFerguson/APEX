@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation Test Page 2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #e8f5e8;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .nav-buttons {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1e7e34;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            background: #d4edda;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="page-title">Navigation Test Page 2</h1>
+        <p>This is the second page in the navigation test suite.</p>
+
+        <div class="status">
+            <strong>Current Page:</strong> Page 2<br>
+            <span id="timestamp">Loaded at: <span id="load-time"></span></span>
+        </div>
+
+        <div class="nav-buttons">
+            <button onclick="location.href = 'test-page.html'">Back to Page 1</button>
+            <button onclick="location.href = 'page3.html'">Go to Page 3</button>
+            <button onclick="location.reload()">Reload Page</button>
+            <button onclick="history.back()">Go Back</button>
+        </div>
+
+        <p>Use this page to test navigation between multiple pages and verify that the browser correctly maintains navigation history.</p>
+    </div>
+
+    <script>
+        // Set load timestamp
+        document.getElementById('load-time').textContent = new Date().toISOString();
+
+        // Add a unique identifier for this page instance
+        window.pageInstance = Math.random().toString(36).substr(2, 9);
+
+        // Expose test helpers to global scope
+        window.testHelpers = {
+            getPageInstance: () => window.pageInstance,
+            getLoadTime: () => document.getElementById('load-time').textContent,
+            getPageNumber: () => 2
+        };
+
+        // Log page loads
+        window.addEventListener('load', () => {
+            console.log('Page 2 loaded:', window.location.href);
+        });
+    </script>
+</body>
+</html>

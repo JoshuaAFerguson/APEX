@@ -4,28 +4,89 @@ import { EventEmitter } from 'eventemitter3';
 import { ThoughtCapture, CreateTaskRequest } from '@apexcli/core';
 import { TaskStore } from './store';
 
+/**
+ * Event handlers for ThoughtCaptureManager lifecycle events.
+ * Provides type-safe event handling for thought capture operations.
+ *
+ * @interface ThoughtCaptureManagerEvents
+ * @example
+ * ```typescript
+ * manager.on('thought:captured', (thought) => {
+ *   console.log(`New thought captured: ${thought.content}`);
+ * });
+ * ```
+ */
 export interface ThoughtCaptureManagerEvents {
+  /** Fired when a new thought is successfully captured */
   'thought:captured': (thought: ThoughtCapture) => void;
+  /** Fired when a thought is converted into a task for implementation */
   'thought:implemented': (thought: ThoughtCapture, taskId: string) => void;
+  /** Fired when a thought is marked as discarded */
   'thought:discarded': (thought: ThoughtCapture) => void;
 }
 
+/**
+ * Search criteria for filtering captured thoughts.
+ * Supports text search, tag filtering, status/priority filtering, and date ranges.
+ *
+ * @interface ThoughtSearch
+ * @example
+ * ```typescript
+ * const searchCriteria: ThoughtSearch = {
+ *   query: 'authentication',
+ *   tags: ['security', 'user-management'],
+ *   priority: 'high',
+ *   status: 'captured',
+ *   fromDate: new Date('2024-01-01'),
+ *   toDate: new Date()
+ * };
+ * ```
+ */
 export interface ThoughtSearch {
+  /** Text query to search in thought content */
   query: string;
+  /** Optional tags to filter by */
   tags?: string[];
+  /** Optional priority level to filter by */
   priority?: ThoughtCapture['priority'];
+  /** Optional status to filter by */
   status?: ThoughtCapture['status'];
+  /** Optional start date for date range filtering */
   fromDate?: Date;
+  /** Optional end date for date range filtering */
   toDate?: Date;
 }
 
+/**
+ * Statistical information about captured thoughts.
+ * Provides metrics for analysis and reporting of thought capture patterns.
+ *
+ * @interface ThoughtStats
+ * @example
+ * ```typescript
+ * const stats: ThoughtStats = {
+ *   total: 150,
+ *   byStatus: { captured: 100, implemented: 40, discarded: 10 },
+ *   byPriority: { low: 50, medium: 75, high: 25 },
+ *   byTag: { 'feature': 40, 'bugfix': 30, 'refactor': 20 },
+ *   implementationRate: 0.27,
+ *   avgTimeToImplementation: 86400000 // 1 day in milliseconds
+ * };
+ * ```
+ */
 export interface ThoughtStats {
+  /** Total number of thoughts captured */
   total: number;
+  /** Count of thoughts by their current status */
   byStatus: Record<ThoughtCapture['status'], number>;
+  /** Count of thoughts by their priority level */
   byPriority: Record<ThoughtCapture['priority'], number>;
+  /** Count of thoughts by tag */
   byTag: Record<string, number>;
+  /** Ratio of implemented thoughts to total thoughts (0-1) */
   implementationRate: number;
-  avgTimeToImplementation: number; // milliseconds
+  /** Average time from capture to implementation in milliseconds */
+  avgTimeToImplementation: number;
 }
 
 /**

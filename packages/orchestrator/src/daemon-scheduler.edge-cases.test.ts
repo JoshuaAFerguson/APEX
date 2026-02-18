@@ -265,11 +265,12 @@ describe('DaemonScheduler - Edge Cases & Error Handling', () => {
 
       // Make many calls under error conditions
       for (let i = 0; i < 1000; i++) {
-        scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+        expect(() => scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'))).toThrow('Persistent error');
       }
 
-      // Test should complete without memory issues
-      expect(true).toBe(true);
+      mockProvider.clearThrowError();
+      const decision = scheduler.shouldPauseTasks(new Date('2024-01-01T14:00:00'));
+      expect(decision).toBeDefined();
     });
 
     it('should handle rapid consecutive errors efficiently', () => {

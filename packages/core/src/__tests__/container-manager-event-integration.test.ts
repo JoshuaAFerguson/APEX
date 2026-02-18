@@ -12,10 +12,15 @@ import { ContainerRuntime } from '../container-runtime';
 import { ContainerConfig } from '../types';
 
 // Mock child_process.exec
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  const spawnMock = vi.fn();
+  return {
+    exec: execMock,
+    spawn: spawnMock,
+    default: { exec: execMock, spawn: spawnMock },
+  };
+});
 
 const mockExec = vi.mocked(exec);
 

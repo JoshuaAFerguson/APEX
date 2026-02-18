@@ -8,7 +8,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { BaseAnalyzer, TaskCandidate } from './index';
+import { BaseAnalyzer, TaskCandidate } from './base-analyzer';
 import type { ProjectAnalysis } from '../idle-processor';
 
 export interface VersionMismatch {

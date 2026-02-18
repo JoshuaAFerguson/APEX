@@ -3,6 +3,14 @@ import * as path from 'path';
 
 /**
  * Shell configuration for cross-platform command execution
+ *
+ * @example
+ * ```typescript
+ * const config: ShellConfig = {
+ *   shell: '/bin/bash',
+ *   shellArgs: ['-c']
+ * };
+ * ```
  */
 export interface ShellConfig {
   /** The shell executable to use */
@@ -19,6 +27,19 @@ export interface ShellConfig {
  * - Unix-like (macOS, Linux): /bin/sh with -c flag
  *
  * @returns Shell configuration object with shell path and arguments
+ *
+ * @example
+ * ```typescript
+ * const shellConfig = getPlatformShell();
+ * console.log(shellConfig);
+ * // On Windows: { shell: 'cmd.exe', shellArgs: ['/d', '/s', '/c'] }
+ * // On Unix: { shell: '/bin/sh', shellArgs: ['-c'] }
+ *
+ * // Use with child_process.spawn
+ * import { spawn } from 'child_process';
+ * const { shell, shellArgs } = getPlatformShell();
+ * const child = spawn(shell, [...shellArgs, 'echo "Hello World"']);
+ * ```
  */
 export function getPlatformShell(): ShellConfig {
   if (isWindows()) {
@@ -38,6 +59,17 @@ export function getPlatformShell(): ShellConfig {
  * Check if the current platform is Windows
  *
  * @returns true if running on Windows, false otherwise
+ *
+ * @example
+ * ```typescript
+ * if (isWindows()) {
+ *   console.log('Running on Windows');
+ *   // Use Windows-specific logic
+ * } else {
+ *   console.log('Running on Unix-like system');
+ *   // Use Unix-specific logic
+ * }
+ * ```
  */
 export function isWindows(): boolean {
   return os.platform() === 'win32';
@@ -53,6 +85,27 @@ export function isWindows(): boolean {
  * @param pid - The process ID to kill
  * @returns Array of command parts [command, ...args]
  * @throws {Error} If PID is not a valid positive integer
+ *
+ * @example
+ * ```typescript
+ * // Kill a process with PID 1234
+ * const killCmd = getKillCommand(1234);
+ * console.log(killCmd);
+ * // On Windows: ['taskkill', '/f', '/pid', '1234']
+ * // On Unix: ['kill', '-9', '1234']
+ *
+ * // Use with child_process.spawn
+ * import { spawn } from 'child_process';
+ * const [cmd, ...args] = getKillCommand(processId);
+ * spawn(cmd, args);
+ *
+ * // Error handling
+ * try {
+ *   getKillCommand(-1); // Throws error
+ * } catch (error) {
+ *   console.error(error.message); // "PID must be a positive integer"
+ * }
+ * ```
  */
 export function getKillCommand(pid: number): string[] {
   if (!Number.isInteger(pid) || pid <= 0) {
@@ -74,6 +127,28 @@ export function getKillCommand(pid: number): string[] {
  *
  * @param name - The base executable name (e.g., 'node', 'git')
  * @returns The resolved executable name with appropriate extension
+ * @throws {Error} If executable name is not a non-empty string
+ *
+ * @example
+ * ```typescript
+ * // On Windows
+ * const nodeExe = resolveExecutable('node');
+ * console.log(nodeExe); // 'node.exe'
+ *
+ * const gitExe = resolveExecutable('git.exe');
+ * console.log(gitExe); // 'git.exe' (already has extension)
+ *
+ * // On Unix-like systems
+ * const nodeUnix = resolveExecutable('node');
+ * console.log(nodeUnix); // 'node' (no change)
+ *
+ * // Error handling
+ * try {
+ *   resolveExecutable('');
+ * } catch (error) {
+ *   console.error(error.message); // "Executable name must be a non-empty string"
+ * }
+ * ```
  */
 export function resolveExecutable(name: string): string {
   if (typeof name !== 'string' || !name.trim()) {

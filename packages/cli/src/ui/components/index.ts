@@ -44,6 +44,21 @@ export { ThoughtDisplay, type ThoughtDisplayProps } from './ThoughtDisplay.js';
 export { CollapsibleSection, type CollapsibleSectionProps } from './CollapsibleSection.js';
 export { AgentThoughts, type AgentThoughtsProps } from './AgentThoughts.js';
 
+// Status components
+export {
+  TokenCounter,
+  CostTracker,
+  SessionTimer,
+  ResourceUsageDisplay,
+  type TokenCounterProps,
+  type CostTrackerProps,
+  type SessionTimerProps,
+  type ResourceUsageDisplayProps,
+  formatTokenCount,
+  formatCurrency,
+  formatApiCalls
+} from './status/index.js';
+
 // Agent components
 export {
   AgentPanel,

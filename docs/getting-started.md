@@ -145,6 +145,102 @@ APEX will:
 5. Review the changes
 6. Create a pull request (if configured)
 
+## v0.5.0 Features Setup ✨ **NEW**
+
+APEX v0.5.0 introduces powerful new capabilities. Here's how to get started:
+
+### Browser Automation Setup
+
+Install browser dependencies for web testing and automation:
+
+```bash
+# Install Playwright browsers
+npx playwright install chromium
+
+# Test browser connectivity
+apex browser test-connection
+```
+
+### Configure Permissions and Tools
+
+Add v0.5.0 features to your `.apex/config.yaml`:
+
+```yaml
+# Permission system (choose one preset)
+permissions:
+  preset: autonomous    # Full automation (recommended for trusted environments)
+  # preset: reviewAll   # Prompt for every operation (recommended for learning)
+  # preset: readOnly    # Safe exploration mode (no file modifications)
+  persistence: true     # Remember permission decisions
+
+# Browser automation
+tools:
+  browser:
+    enabled: true
+    engine: chromium
+    headless: true
+    allowedDomains:
+      - localhost
+      - '*.local'
+      - 'staging.example.com'
+    blockedDomains:
+      - '*.onion'
+      - 'malicious.site'
+
+# Smart autonomy controls
+autonomy:
+  enabled: true
+  limits:
+    budgetLimit: 10.0      # Stop at $10 USD
+    tokenLimit: 100000     # Stop at 100k tokens
+    timeLimit: 3600000     # Stop after 1 hour
+    changeLimit:
+      files: 20            # Max 20 files modified
+      lines: 1000          # Max 1000 lines changed
+  warningThreshold: 0.8    # Warn at 80% of limits
+
+# Code quality integration
+codeQuality:
+  lintAfterEdit: true      # Auto-lint after file edits
+  autoCorrection: true     # Fix syntax errors automatically
+  tddMode: false          # Test-driven development mode
+  regressionGuard: true   # Prevent breaking changes
+```
+
+### Test v0.5.0 Features
+
+Try these commands to test the new capabilities:
+
+```bash
+# Test browser automation
+apex run "Create a login form with visual regression tests"
+
+# Test permission system
+apex run --autonomy reviewAll "Update database configuration"
+
+# Test tool system with autonomy controls
+apex run "Add authentication middleware with rate limiting"
+```
+
+### Permission Presets Explained
+
+Choose the right permission preset for your workflow:
+
+- **`autonomous`** - Maximum automation efficiency
+  - Most tools auto-approved
+  - Great for trusted, repetitive workflows
+  - Dangerous operations still require confirmation
+
+- **`reviewAll`** - Maximum control and learning
+  - Every tool operation requires approval
+  - Perfect for understanding how APEX works
+  - Ideal for security-sensitive environments
+
+- **`readOnly`** - Safe exploration mode
+  - Blocks all write operations
+  - Perfect for reviewing unknown codebases
+  - No risk of accidental changes
+
 ## Understanding the Output
 
 When you run a task, you'll see:
@@ -536,7 +632,13 @@ apex logs task_abc123_def456
 
 ## Next Steps
 
-### ✨ NEW in v0.3.0 - Enhanced Features
+### 🚀 v0.5.0 - New Feature Guides
+- **[v0.5.0 Features Overview](v050-features.md)** - Complete guide to tools, permissions, and browser automation
+- **[Tool System Guide](tool-system.md)** - Built-in tools (Read, Write, Edit, Bash, Browser, etc.)
+- **[Permission System Guide](permission-system.md)** - Fine-grained security and access controls
+- **[Browser Automation Guide](browser-automation.md)** - Headless browser testing and visual regression
+
+### ✨ v0.3.0 - Enhanced Terminal UI
 - **[Complete v0.3.0 Features Overview](features/v030-features.md)** - Comprehensive guide to all new features and capabilities
 - **[Display Modes Guide](user-guide/display-modes.md)** - Customize how information is displayed (compact, normal, verbose)
 - **[Input Preview Guide](user-guide/input-preview.md)** - Preview commands before execution with intent detection

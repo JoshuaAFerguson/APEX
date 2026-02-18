@@ -1,0 +1,285 @@
+# Real-World Tool Fixtures
+# Tools that simulate realistic custom tool scenarios
+
+# Git status checker tool
+- name: GitStatusTool
+  description: Check git repository status
+  command: git
+  args:
+    - "status"
+    - "--porcelain"
+  workingDirectory: "."
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: lines
+  timeoutMs: 10000
+  enabled: true
+
+# File validator tool
+- name: FileValidatorTool
+  description: Validate file exists and check properties
+  command: sh
+  args:
+    - "-c"
+    - |
+      if [ -f "{{input.filepath}}" ]; then
+        ls -la "{{input.filepath}}"
+        echo "File validation: PASSED"
+      else
+        echo "File validation: FAILED - file not found"
+        exit 1
+      fi
+  parameters:
+    type: object
+    properties:
+      filepath:
+        type: string
+        description: Path to file to validate
+        minLength: 1
+        maxLength: 500
+    required:
+      - filepath
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 5000
+  enabled: true
+
+# Code formatter tool
+- name: CodeFormatterTool
+  description: Format code files using prettier
+  command: npx
+  args:
+    - "prettier"
+    - "--write"
+    - "{{input.filepath}}"
+    - "--config"
+    - "{{input.config_path}}"
+  parameters:
+    type: object
+    properties:
+      filepath:
+        type: string
+        description: Path to file to format
+      config_path:
+        type: string
+        description: Path to prettier config
+        default: ".prettierrc"
+    required:
+      - filepath
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 30000
+  enabled: true
+
+# Database backup tool
+- name: DatabaseBackupTool
+  description: Create database backup
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Creating backup of {{input.database}}' && echo 'Backup completed to {{input.output_path}}'"
+  env:
+    DB_USER: "backup_user"
+    BACKUP_DIR: "/tmp/backups"
+  parameters:
+    type: object
+    properties:
+      database:
+        type: string
+        description: Database name to backup
+        pattern: "^[a-zA-Z0-9_]+$"
+      output_path:
+        type: string
+        description: Output path for backup file
+        default: "/tmp/backup.sql"
+      compress:
+        type: boolean
+        description: Whether to compress the backup
+        default: true
+    required:
+      - database
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 120000
+  enabled: true
+
+# API health checker tool
+- name: ApiHealthCheckTool
+  description: Check API endpoint health
+  command: curl
+  args:
+    - "-f"
+    - "-s"
+    - "-X"
+    - "GET"
+    - "{{input.endpoint}}/health"
+    - "-H"
+    - "Content-Type: application/json"
+    - "--max-time"
+    - "{{input.timeout}}"
+  parameters:
+    type: object
+    properties:
+      endpoint:
+        type: string
+        description: API endpoint base URL
+        pattern: "^https?://[a-zA-Z0-9.-]+(/.*)?$"
+      timeout:
+        type: integer
+        description: Request timeout in seconds
+        minimum: 1
+        maximum: 60
+        default: 10
+    required:
+      - endpoint
+    additionalProperties: false
+  outputParser: json
+  timeoutMs: 65000
+  enabled: true
+
+# Log analyzer tool
+- name: LogAnalyzerTool
+  description: Analyze log files for errors and patterns
+  command: sh
+  args:
+    - "-c"
+    - |
+      if [ ! -f "{{input.logfile}}" ]; then
+        echo "Error: Log file not found"
+        exit 1
+      fi
+
+      errors=$(grep -c "{{input.error_pattern}}" "{{input.logfile}}" || echo "0")
+      warnings=$(grep -c "{{input.warning_pattern}}" "{{input.logfile}}" || echo "0")
+      total_lines=$(wc -l < "{{input.logfile}}")
+
+      echo "{\"total_lines\": $total_lines, \"errors\": $errors, \"warnings\": $warnings}"
+  parameters:
+    type: object
+    properties:
+      logfile:
+        type: string
+        description: Path to log file to analyze
+      error_pattern:
+        type: string
+        description: Pattern to search for errors
+        default: "ERROR"
+      warning_pattern:
+        type: string
+        description: Pattern to search for warnings
+        default: "WARN"
+    required:
+      - logfile
+    additionalProperties: false
+  outputParser: json
+  timeoutMs: 30000
+  enabled: true
+
+# Docker container manager tool
+- name: DockerManagerTool
+  description: Manage Docker containers
+  command: docker
+  args:
+    - "{{input.action}}"
+    - "{{input.container_name}}"
+  parameters:
+    type: object
+    properties:
+      action:
+        type: string
+        enum: ["start", "stop", "restart", "status"]
+        description: Action to perform on container
+      container_name:
+        type: string
+        description: Name of Docker container
+        pattern: "^[a-zA-Z0-9_.-]+$"
+    required:
+      - action
+      - container_name
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 60000
+  enabled: true
+
+# Security scanner tool
+- name: SecurityScannerTool
+  description: Scan code for security vulnerabilities
+  command: sh
+  args:
+    - "-c"
+    - |
+      echo "Scanning {{input.target}} for security issues..."
+      # Simulated security scan
+      case "{{input.scan_type}}" in
+        "dependencies")
+          echo "Checking dependencies for known vulnerabilities..."
+          echo "Found 0 high severity issues"
+          ;;
+        "code")
+          echo "Performing static code analysis..."
+          echo "Found 2 medium severity issues"
+          ;;
+        "full")
+          echo "Running comprehensive security scan..."
+          echo "Found 1 high, 2 medium, 3 low severity issues"
+          ;;
+      esac
+      echo "Scan completed"
+  parameters:
+    type: object
+    properties:
+      target:
+        type: string
+        description: Target to scan (file, directory, or URL)
+      scan_type:
+        type: string
+        enum: ["dependencies", "code", "full"]
+        description: Type of security scan to perform
+        default: "full"
+      output_format:
+        type: string
+        enum: ["json", "text", "sarif"]
+        description: Output format for results
+        default: "text"
+    required:
+      - target
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 300000
+  enabled: true
+
+# Backup verification tool
+- name: BackupVerificationTool
+  description: Verify backup integrity and completeness
+  command: sh
+  args:
+    - "-c"
+    - |
+      backup_file="{{input.backup_path}}"
+      if [ ! -f "$backup_file" ]; then
+        echo "Error: Backup file not found at $backup_file"
+        exit 1
+      fi
+
+      file_size=$(stat -c%s "$backup_file" 2>/dev/null || stat -f%z "$backup_file" 2>/dev/null || echo "unknown")
+      checksum=$(sha256sum "$backup_file" 2>/dev/null | cut -d' ' -f1 || echo "unavailable")
+
+      echo "{\"file_size\": \"$file_size\", \"checksum\": \"$checksum\", \"verified\": true}"
+  parameters:
+    type: object
+    properties:
+      backup_path:
+        type: string
+        description: Path to backup file to verify
+      expected_checksum:
+        type: string
+        description: Expected SHA256 checksum for verification
+        pattern: "^[a-f0-9]{64}$"
+    required:
+      - backup_path
+    additionalProperties: false
+  outputParser: json
+  timeoutMs: 60000
+  enabled: true

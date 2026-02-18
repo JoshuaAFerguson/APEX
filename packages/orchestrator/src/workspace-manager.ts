@@ -24,18 +24,62 @@ import {
 
 const execAsync = promisify(exec);
 
+/**
+ * Configuration options for the WorkspaceManager.
+ *
+ * @interface WorkspaceManagerOptions
+ * @example
+ * ```typescript
+ * const options: WorkspaceManagerOptions = {
+ *   projectPath: '/path/to/project',
+ *   defaultStrategy: 'container',
+ *   containerDefaults: {
+ *     image: 'node:18',
+ *     workingDir: '/app'
+ *   }
+ * };
+ * ```
+ */
 export interface WorkspaceManagerOptions {
+  /** The root path of the project where workspaces will be managed */
   projectPath: string;
+  /** The default workspace isolation strategy to use */
   defaultStrategy: WorkspaceConfig['strategy'];
+  /** Optional default configuration for container-based workspaces */
   containerDefaults?: ContainerDefaults;
 }
 
+/**
+ * Information about a managed workspace and its current state.
+ *
+ * @interface WorkspaceInfo
+ * @example
+ * ```typescript
+ * const workspaceInfo: WorkspaceInfo = {
+ *   taskId: 'task-123',
+ *   config: { strategy: 'container', isolation: { level: 'full' } },
+ *   workspacePath: '/tmp/apex/workspaces/task-123',
+ *   status: 'active',
+ *   createdAt: new Date(),
+ *   lastAccessed: new Date(),
+ *   containerId: 'apex-task-123',
+ *   warnings: [],
+ *   success: true
+ * };
+ * ```
+ */
 export interface WorkspaceInfo {
+  /** The unique task ID associated with this workspace */
   taskId: string;
+  /** The workspace configuration used */
   config: WorkspaceConfig;
+  /** The file system path to the workspace */
   workspacePath: string;
+  /** Current status of the workspace */
   status: 'active' | 'cleanup-pending' | 'cleaned';
+  /** When the workspace was created */
   createdAt: Date;
+  /** When the workspace was last accessed */
   lastAccessed: Date;
   /**
    * Container ID for container-based workspaces
@@ -55,52 +99,136 @@ export interface WorkspaceInfo {
 }
 
 /**
- * Event data for dependency installation start
+ * Event data for dependency installation start.
+ *
+ * @interface DependencyInstallEventData
+ * @example
+ * ```typescript
+ * manager.on('dependency-install-started', (data: DependencyInstallEventData) => {
+ *   console.log(`Installing dependencies for ${data.taskId} with ${data.packageManager}`);
+ * });
+ * ```
  */
 export interface DependencyInstallEventData {
+  /** Unique identifier for the task */
   taskId: string;
+  /** Container ID where installation is happening */
   containerId: string;
+  /** Local workspace path */
   workspacePath: string;
+  /** Command being executed for installation */
   installCommand: string;
+  /** Package manager type being used */
   packageManager: PackageManagerType;
+  /** Programming language of the project */
   language: 'javascript' | 'python' | 'rust';
+  /** When the installation started */
   timestamp: Date;
 }
 
 /**
- * Event data for dependency installation completion
+ * Event data for dependency installation completion.
+ *
+ * @interface DependencyInstallCompletedEventData
+ * @extends DependencyInstallEventData
+ * @example
+ * ```typescript
+ * manager.on('dependency-install-completed', (data: DependencyInstallCompletedEventData) => {
+ *   if (data.success) {
+ *     console.log(`Dependencies installed successfully in ${data.duration}ms`);
+ *   } else {
+ *     console.error(`Installation failed with exit code ${data.exitCode}`);
+ *   }
+ * });
+ * ```
  */
 export interface DependencyInstallCompletedEventData extends DependencyInstallEventData {
+  /** Whether the installation was successful */
   success: boolean;
-  duration: number;  // milliseconds
+  /** Installation duration in milliseconds */
+  duration: number;
+  /** Standard output from the installation command */
   stdout?: string;
+  /** Standard error from the installation command */
   stderr?: string;
+  /** Exit code from the installation command */
   exitCode: number;
+  /** Error message if installation failed */
   error?: string;
 }
 
 /**
- * Event data for dependency installation recovery
+ * Event data for dependency installation recovery attempts.
+ *
+ * @interface DependencyInstallRecoveryEventData
+ * @example
+ * ```typescript
+ * manager.on('dependency-install-recovery', (data: DependencyInstallRecoveryEventData) => {
+ *   console.log(`Recovery attempt ${data.attempt} using ${data.strategy} strategy`);
+ * });
+ * ```
  */
 export interface DependencyInstallRecoveryEventData {
+  /** Unique identifier for the task */
   taskId: string;
+  /** Recovery attempt number (1-based) */
   attempt: number;
+  /** Error message from the previous failed attempt */
   previousError: string;
+  /** Recovery strategy being applied */
   strategy: string;
+  /** Modified command being executed for recovery */
   command: string;
 }
 
 /**
- * Manages isolated workspaces for task execution using various strategies
+ * Events emitted by the WorkspaceManager during workspace lifecycle operations.
+ *
+ * @interface WorkspaceManagerEvents
+ * @example
+ * ```typescript
+ * const manager = new WorkspaceManager(options);
+ *
+ * manager.on('workspace-created', (taskId, workspacePath) => {
+ *   console.log(`Workspace created for ${taskId} at ${workspacePath}`);
+ * });
+ *
+ * manager.on('dependency-install-started', (data) => {
+ *   console.log(`Installing dependencies using ${data.packageManager}`);
+ * });
+ * ```
  */
 export interface WorkspaceManagerEvents {
+  /** Emitted when a workspace is successfully created */
   'workspace-created': (taskId: string, workspacePath: string) => void;
+  /** Emitted when a workspace is cleaned up */
   'workspace-cleaned': (taskId: string) => void;
+  /** Emitted when dependency installation begins */
   'dependency-install-started': (data: DependencyInstallEventData) => void;
+  /** Emitted when dependency installation completes (success or failure) */
   'dependency-install-completed': (data: DependencyInstallCompletedEventData) => void;
+  /** Emitted when dependency installation recovery is attempted */
   'dependency-install-recovery': (data: DependencyInstallRecoveryEventData) => void;
 }
 
+/**
+ * Manages isolated workspaces for task execution using various strategies.
+ * Supports container-based isolation, workspace cloning, and dependency management.
+ *
+ * @example
+ * ```typescript
+ * const manager = new WorkspaceManager({
+ *   projectPath: '/path/to/project',
+ *   defaultStrategy: 'container'
+ * });
+ * await manager.initialize();
+ *
+ * const workspace = await manager.createWorkspace('task-123', {
+ *   strategy: 'container',
+ *   isolation: { level: 'full' }
+ * });
+ * ```
+ */
 export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   private projectPath: string;
   private defaultStrategy: WorkspaceConfig['strategy'];
@@ -131,7 +259,15 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Initialize workspace manager
+   * Initialize the workspace manager and set up container monitoring.
+   *
+   * @returns Promise that resolves when initialization is complete
+   * @example
+   * ```typescript
+   * const manager = new WorkspaceManager(options);
+   * await manager.initialize();
+   * console.log('Workspace manager ready');
+   * ```
    */
   async initialize(): Promise<void> {
     await fs.mkdir(this.workspacesDir, { recursive: true });
@@ -189,7 +325,21 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Create a new isolated workspace for a task using isolation configuration
+   * Create a new isolated workspace for a task using isolation configuration.
+   *
+   * @param task - The task that needs workspace isolation
+   * @param isolationConfig - Configuration specifying isolation requirements
+   * @returns Promise resolving to workspace information
+   * @throws {Error} When isolation mode is unknown or workspace creation fails
+   * @example
+   * ```typescript
+   * const workspace = await manager.createWorkspaceWithIsolation(task, {
+   *   mode: 'full',
+   *   cleanupOnComplete: true,
+   *   container: { image: 'node:18' }
+   * });
+   * console.log(`Workspace created at ${workspace.workspacePath}`);
+   * ```
    */
   async createWorkspaceWithIsolation(task: Task, isolationConfig: IsolationConfig): Promise<WorkspaceInfo> {
     // Convert isolation config to workspace config
@@ -205,7 +355,17 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Create a new isolated workspace for a task
+   * Create a new isolated workspace for a task using the configured strategy.
+   *
+   * @param task - The task requiring workspace creation
+   * @returns Promise resolving to workspace information and metadata
+   * @throws {Error} When workspace strategy is unknown or creation fails
+   * @example
+   * ```typescript
+   * const task = { id: 'task-123', workspace: { strategy: 'container' } };
+   * const workspace = await manager.createWorkspace(task);
+   * console.log(`Container workspace: ${workspace.containerId}`);
+   * ```
    */
   async createWorkspace(task: Task): Promise<WorkspaceInfo> {
     const config = task.workspace || {
@@ -250,14 +410,33 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Get workspace information for a task
+   * Retrieve workspace information for a specific task.
+   *
+   * @param taskId - Unique identifier of the task
+   * @returns Workspace information or null if not found
+   * @example
+   * ```typescript
+   * const workspace = manager.getWorkspace('task-123');
+   * if (workspace) {
+   *   console.log(`Workspace path: ${workspace.workspacePath}`);
+   *   console.log(`Status: ${workspace.status}`);
+   * }
+   * ```
    */
   getWorkspace(taskId: string): WorkspaceInfo | null {
     return this.activeWorkspaces.get(taskId) || null;
   }
 
   /**
-   * Update workspace access time
+   * Update the last accessed time for a workspace to prevent premature cleanup.
+   *
+   * @param taskId - Unique identifier of the task
+   * @returns Promise that resolves when access time is updated
+   * @example
+   * ```typescript
+   * await manager.accessWorkspace('task-123');
+   * // Workspace last accessed time is now updated
+   * ```
    */
   async accessWorkspace(taskId: string): Promise<void> {
     const workspace = this.activeWorkspaces.get(taskId);
@@ -268,7 +447,16 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Clean up a workspace after task completion
+   * Clean up a workspace after task completion based on workspace configuration.
+   *
+   * @param taskId - Unique identifier of the task whose workspace should be cleaned
+   * @returns Promise that resolves when cleanup is complete or skipped
+   * @example
+   * ```typescript
+   * // Clean up workspace after task completion
+   * await manager.cleanupWorkspace('task-123');
+   * // Resources are freed and workspace marked as cleaned
+   * ```
    */
   async cleanupWorkspace(taskId: string): Promise<void> {
     const workspace = this.activeWorkspaces.get(taskId);
@@ -311,7 +499,15 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Clean up all old workspaces
+   * Clean up all workspaces that exceed the specified maximum age.
+   *
+   * @param maxAge - Maximum age in milliseconds before cleanup (default: 7 days)
+   * @returns Promise that resolves when all old workspaces are cleaned
+   * @example
+   * ```typescript
+   * // Clean up workspaces older than 24 hours
+   * await manager.cleanupOldWorkspaces(24 * 60 * 60 * 1000);
+   * ```
    */
   async cleanupOldWorkspaces(maxAge: number = 7 * 24 * 60 * 60 * 1000): Promise<void> {
     const now = Date.now();
@@ -326,28 +522,84 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Get the detected container runtime type
+   * Retrieve a list of all active workspaces managed by this instance.
+   *
+   * @returns Array of workspace information for all active workspaces
+   * @example
+   * ```typescript
+   * const workspaces = manager.listWorkspaces();
+   * console.log(`Managing ${workspaces.length} workspaces`);
+   * workspaces.forEach(ws => {
+   *   console.log(`${ws.taskId}: ${ws.status} (${ws.config.strategy})`);
+   * });
+   * ```
+   */
+  listWorkspaces(): WorkspaceInfo[] {
+    return Array.from(this.activeWorkspaces.values());
+  }
+
+  /**
+   * Get the detected container runtime type available on the system.
+   *
+   * @returns Container runtime type (docker/podman) or null if none available
+   * @example
+   * ```typescript
+   * const runtime = manager.getContainerRuntime();
+   * if (runtime === 'docker') {
+   *   console.log('Docker is available for container workspaces');
+   * } else if (runtime === 'podman') {
+   *   console.log('Podman is available for container workspaces');
+   * } else {
+   *   console.log('No container runtime detected');
+   * }
+   * ```
    */
   getContainerRuntime(): ContainerRuntimeType | null {
     return this.containerRuntimeType;
   }
 
   /**
-   * Check if container workspaces are supported
+   * Check if container workspaces are supported on this system.
+   *
+   * @returns True if container runtime is available and functional
+   * @example
+   * ```typescript
+   * if (manager.supportsContainerWorkspaces()) {
+   *   console.log('Container isolation is available');
+   * } else {
+   *   console.log('Falling back to directory-based isolation');
+   * }
+   * ```
    */
   supportsContainerWorkspaces(): boolean {
     return this.containerRuntimeType !== null && this.containerRuntimeType !== 'none';
   }
 
   /**
-   * Get the container health monitor instance
+   * Get the container health monitor instance for monitoring container status.
+   *
+   * @returns ContainerHealthMonitor instance used by this workspace manager
+   * @example
+   * ```typescript
+   * const healthMonitor = manager.getHealthMonitor();
+   * const stats = healthMonitor.getStats();
+   * console.log(`Monitoring ${stats.containerCount} containers`);
+   * ```
    */
   getHealthMonitor(): ContainerHealthMonitor {
     return this.healthMonitor;
   }
 
   /**
-   * Get the container manager instance
+   * Get the container manager instance for low-level container operations.
+   *
+   * @returns ContainerManager instance used by this workspace manager
+   * @example
+   * ```typescript
+   * const containerManager = manager.getContainerManager();
+   * const containers = await containerManager.listApexContainers('docker');
+   * console.log(`Found ${containers.length} APEX containers`);
+   * ```
    */
   getContainerManager(): ContainerManager {
     return this.containerManager;
@@ -368,7 +620,18 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Get container health status for a specific task
+   * Get container health status for a specific task's workspace.
+   *
+   * @param taskId - Unique identifier of the task
+   * @returns Promise resolving to container health information or null if not found
+   * @example
+   * ```typescript
+   * const health = await manager.getContainerHealth('task-123');
+   * if (health) {
+   *   console.log(`Container health: ${health.status}`);
+   *   console.log(`CPU usage: ${health.cpuUsage}%`);
+   * }
+   * ```
    */
   async getContainerHealth(taskId: string): Promise<any> {
     const containerName = `apex-task-${taskId}`;
@@ -383,7 +646,16 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Get workspace statistics
+   * Get comprehensive statistics about all managed workspaces.
+   *
+   * @returns Promise resolving to workspace statistics including counts, disk usage, and health
+   * @example
+   * ```typescript
+   * const stats = await manager.getWorkspaceStats();
+   * console.log(`Active workspaces: ${stats.activeCount}`);
+   * console.log(`Disk usage: ${(stats.totalDiskUsage / 1024 / 1024).toFixed(2)} MB`);
+   * console.log(`Strategies: ${Object.keys(stats.workspacesByStrategy).join(', ')}`);
+   * ```
    */
   async getWorkspaceStats(): Promise<{
     activeCount: number;
@@ -951,7 +1223,15 @@ export class WorkspaceManager extends EventEmitter<WorkspaceManagerEvents> {
   }
 
   /**
-   * Cleanup workspace manager resources
+   * Cleanup workspace manager resources including container monitoring.
+   *
+   * @returns Promise that resolves when all resources are cleaned up
+   * @example
+   * ```typescript
+   * // Clean shutdown of workspace manager
+   * await manager.cleanup();
+   * console.log('Workspace manager stopped');
+   * ```
    */
   async cleanup(): Promise<void> {
     // Stop container events monitoring

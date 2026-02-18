@@ -16,8 +16,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@apexcli/core": "workspace:*",
-    "@apexcli/orchestrator": "workspace:*",
-    "@apexcli/cli": "workspace:*"
+    "@apexcli/core": "*",
+    "@apexcli/orchestrator": "*",
+    "@apexcli/cli": "*"
   }
 }

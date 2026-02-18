@@ -96,6 +96,6 @@ describe('ContainerManager ImageBuilder Test Validation', () => {
     expect(mockTypes.length).toBe(4);
 
     // This validates that our test structure is consistent
-    expect(true).toBe(true);
+    expect(mockModules).toContain('child_process');
   });
 });

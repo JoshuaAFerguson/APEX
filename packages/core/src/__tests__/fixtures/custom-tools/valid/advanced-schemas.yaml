@@ -1,0 +1,261 @@
+# Advanced Schema Custom Tool Fixtures
+# Tools with complex parameter schemas including enums, defaults, and nested structures
+
+# Enum parameter tool
+- name: EnumParamTool
+  description: Tool with enum parameter constraints
+  command: echo
+  args:
+    - "Level: {{input.level}}, Priority: {{input.priority}}"
+  parameters:
+    type: object
+    properties:
+      level:
+        type: string
+        description: Log level
+        enum:
+          - debug
+          - info
+          - warn
+          - error
+        default: info
+      priority:
+        type: integer
+        description: Task priority
+        enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+        default: 3
+    required:
+      - level
+    additionalProperties: false
+  enabled: true
+
+# Default values tool
+- name: DefaultValuesTool
+  description: Tool with various default values
+  command: echo
+  args:
+    - "{{input.message}} (count: {{input.count}}, enabled: {{input.enabled}})"
+  parameters:
+    type: object
+    properties:
+      message:
+        type: string
+        description: Message to display
+        default: "Hello, World!"
+      count:
+        type: integer
+        description: Iteration count
+        default: 1
+        minimum: 1
+        maximum: 100
+      enabled:
+        type: boolean
+        description: Feature flag
+        default: true
+      ratio:
+        type: number
+        description: Ratio value
+        default: 0.5
+    additionalProperties: false
+  enabled: true
+
+# Deeply nested object schema
+- name: NestedConfigTool
+  description: Tool with deeply nested configuration
+  command: echo
+  args:
+    - "{{input.config}}"
+  parameters:
+    type: object
+    properties:
+      config:
+        type: object
+        description: Application configuration
+        properties:
+          database:
+            type: object
+            description: Database settings
+            properties:
+              connection:
+                type: object
+                properties:
+                  host:
+                    type: string
+                    default: localhost
+                  port:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                    default: 5432
+                  ssl:
+                    type: boolean
+                    default: false
+                required:
+                  - host
+              pool:
+                type: object
+                properties:
+                  min:
+                    type: integer
+                    default: 2
+                  max:
+                    type: integer
+                    default: 10
+            required:
+              - connection
+          logging:
+            type: object
+            properties:
+              level:
+                type: string
+                enum:
+                  - debug
+                  - info
+                  - warn
+                  - error
+                default: info
+              format:
+                type: string
+                enum:
+                  - json
+                  - text
+                default: json
+        required:
+          - database
+    required:
+      - config
+    additionalProperties: false
+  enabled: true
+
+# Multiple required parameters
+- name: MultiRequiredTool
+  description: Tool with multiple required parameters
+  command: echo
+  args:
+    - "{{input.firstName}} {{input.lastName}} <{{input.email}}>"
+  parameters:
+    type: object
+    properties:
+      firstName:
+        type: string
+        description: First name
+        minLength: 1
+      lastName:
+        type: string
+        description: Last name
+        minLength: 1
+      email:
+        type: string
+        description: Email address
+        pattern: "^[^@]+@[^@]+$"
+      phone:
+        type: string
+        description: Optional phone number
+    required:
+      - firstName
+      - lastName
+      - email
+    additionalProperties: false
+  enabled: true
+
+# Array with object items
+- name: ArrayObjectItemsTool
+  description: Tool with array of objects
+  command: echo
+  args:
+    - "{{input.users}}"
+  parameters:
+    type: object
+    properties:
+      users:
+        type: array
+        description: List of users
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            role:
+              type: string
+              enum:
+                - admin
+                - user
+                - guest
+          required:
+            - name
+      options:
+        type: object
+        properties:
+          sortBy:
+            type: string
+            default: name
+          limit:
+            type: integer
+            default: 10
+    required:
+      - users
+    additionalProperties: false
+  enabled: true
+
+# Mixed types with all constraints
+- name: FullSchemaValidationTool
+  description: Tool exercising all schema validation features
+  command: echo
+  args:
+    - "Processing..."
+  parameters:
+    type: object
+    properties:
+      stringRequired:
+        type: string
+        description: Required string with length constraints
+        minLength: 3
+        maxLength: 50
+      integerBounded:
+        type: integer
+        description: Integer with min/max
+        minimum: 0
+        maximum: 100
+      numberPrecise:
+        type: number
+        description: Number with range
+        minimum: 0.0
+        maximum: 1.0
+      booleanFlag:
+        type: boolean
+        description: Boolean flag with default
+        default: false
+      enumChoice:
+        type: string
+        description: Enum string
+        enum:
+          - option_a
+          - option_b
+          - option_c
+      patternString:
+        type: string
+        description: String matching pattern
+        pattern: "^[A-Z]{3}[0-9]{3}$"
+      arrayOfStrings:
+        type: array
+        description: Array of strings
+        items:
+          type: string
+      nestedObject:
+        type: object
+        description: Nested object
+        properties:
+          key:
+            type: string
+          value:
+            type: integer
+    required:
+      - stringRequired
+      - integerBounded
+    additionalProperties: false
+  enabled: true

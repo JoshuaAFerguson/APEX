@@ -4,8 +4,8 @@ authors:
 - family-names: "Ferguson"
   given-names: "Joshua A."
 title: "APEX: Autonomous Product Engineering eXecutor"
-version: 0.3.0
-date-released: 2024-01-01
+version: 0.5.0
+date-released: 2026-01-10
 url: "https://github.com/JoshuaAFerguson/apex"
 keywords:
   - "ai"

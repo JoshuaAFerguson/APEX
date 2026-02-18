@@ -81,6 +81,7 @@ const fullApexConfig: Partial<ApexConfig> = {
     testCommand: 'npm test',
     lintCommand: 'npm run lint',
     buildCommand: 'npm run build',
+    typecheckCommand: 'npm run typecheck',
   },
   daemon: {
     pollInterval: 3000,

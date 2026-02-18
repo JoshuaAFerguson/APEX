@@ -1,0 +1,86 @@
+# Output Parser Custom Tool Fixtures
+# Tools demonstrating different output parsing modes
+
+# Text output parser (default)
+- name: TextOutputTool
+  description: Tool with text output parsing
+  command: echo
+  args:
+    - "Hello, {{input.name}}!"
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+    required:
+      - name
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# JSON output parser
+- name: JsonOutputTool
+  description: Tool that outputs JSON
+  command: echo
+  args:
+    - '{"status": "success", "value": "{{input.value}}"}'
+  parameters:
+    type: object
+    properties:
+      value:
+        type: string
+        description: Value to include in JSON output
+    required:
+      - value
+    additionalProperties: false
+  outputParser: json
+  enabled: true
+
+# Lines output parser
+- name: LinesOutputTool
+  description: Tool that outputs multiple lines
+  command: echo
+  args:
+    - "-e"
+    - "Line 1\nLine 2\nLine 3"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: lines
+  enabled: true
+
+# JSON output with complex structure
+- name: ComplexJsonOutputTool
+  description: Tool producing complex JSON output
+  command: echo
+  args:
+    - '{"items": [{"id": 1, "name": "{{input.item}}"}], "count": 1, "metadata": {"version": "1.0"}}'
+  parameters:
+    type: object
+    properties:
+      item:
+        type: string
+        description: Item name to include
+    required:
+      - item
+    additionalProperties: false
+  outputParser: json
+  enabled: true
+
+# Lines output for file listing
+- name: FileListTool
+  description: List files and parse as lines
+  command: ls
+  args:
+    - "-1"
+  parameters:
+    type: object
+    properties:
+      path:
+        type: string
+        description: Path to list
+        default: "."
+    additionalProperties: false
+  outputParser: lines
+  enabled: true

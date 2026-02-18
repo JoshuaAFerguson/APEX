@@ -1,0 +1,50 @@
+# Empty Parameters Edge Cases
+# Tools with minimal or empty parameter configurations
+
+# Completely empty parameters object
+- name: EmptyParamsTool
+  description: Tool with empty parameters object
+  command: date
+  parameters:
+    type: object
+    properties: {}
+    required: []
+    additionalProperties: false
+  enabled: true
+
+# Parameters with only required array (empty)
+- name: EmptyRequiredTool
+  description: Tool with empty required array
+  command: pwd
+  parameters:
+    type: object
+    properties:
+      optional_field:
+        type: string
+    required: []
+    additionalProperties: false
+  enabled: true
+
+# No parameters key at all (should use defaults)
+- name: NoParamsKeyTool
+  description: Tool without parameters key
+  command: whoami
+  enabled: true
+
+# Parameters with additionalProperties only
+- name: AdditionalPropsOnlyTool
+  description: Tool allowing additional properties
+  command: echo
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: true
+  enabled: true
+
+# Minimal valid parameters
+- name: MinimalParamsTool
+  description: Tool with minimal parameters
+  command: true
+  parameters:
+    type: object
+  enabled: true

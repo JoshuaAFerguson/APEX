@@ -7,6 +7,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 import type { AgentInfo } from '../components/agents/AgentPanel.js';
 import type { VerboseDebugData } from '@apexcli/core';
+import { renderColoredDiff } from '../../diff-renderer.js';
+import chalk from 'chalk';
+import ora, { type Ora } from 'ora';
 
 export interface OrchestratorEventState {
   /** Current active agent */
@@ -100,6 +103,11 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
   const toolStartTimeRef = useRef<Map<string, Date>>(new Map());
   const totalTokensRef = useRef<number>(0);
   const stageStartTimeRef = useRef<Date>(new Date());
+  const lastUsageRef = useRef<Record<string, { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCost: number }>>({});
+
+  // Auto-fix progress tracking
+  const autoFixSpinnersRef = useRef<Map<string, Ora>>(new Map());
+  const autoFixStatsRef = useRef<Map<string, { files: Set<string>; completed: number; failed: number; skipped: number }>>(new Map());
 
   // Debug logging helper
   const log = useCallback((message: string, data?: any) => {
@@ -107,6 +115,33 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       console.log(`[useOrchestratorEvents] ${message}`, data || '');
     }
   }, [debug]);
+
+  // Helper to update auto-fix spinner status
+  const updateAutoFixSpinnerStatus = useCallback((taskId: string) => {
+    const stats = autoFixStatsRef.current.get(taskId);
+    const spinner = autoFixSpinnersRef.current.get(taskId);
+
+    if (!stats || !spinner) return;
+
+    const totalProcessed = stats.completed + stats.failed + stats.skipped;
+    const totalFiles = stats.files.size;
+
+    if (totalProcessed >= totalFiles) {
+      // All files processed, finalize the spinner
+      if (stats.failed > 0) {
+        spinner.fail(`Auto-fix completed with errors: ${stats.completed} fixed, ${stats.failed} failed, ${stats.skipped} skipped`);
+      } else {
+        spinner.succeed(`Auto-fix completed: ${stats.completed} files processed, ${stats.skipped} skipped`);
+      }
+
+      // Clean up
+      autoFixSpinnersRef.current.delete(taskId);
+      autoFixStatsRef.current.delete(taskId);
+    } else {
+      // Update spinner text with progress
+      spinner.text = `Auto-fixing... (${totalProcessed}/${totalFiles} files processed)`;
+    }
+  }, []);
 
   useEffect(() => {
     if (workflow && derivedAgents.length > 0 && stateRef.current.agents.length === 0) {
@@ -382,6 +417,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
 
       log('Task completed', { taskId: task.id });
 
+      // Clean up any remaining auto-fix spinners
+      const spinner = autoFixSpinnersRef.current.get(task.id);
+      if (spinner) {
+        spinner.stop();
+        autoFixSpinnersRef.current.delete(task.id);
+        autoFixStatsRef.current.delete(task.id);
+      }
+
       setState((prev: OrchestratorEventState) => ({
         ...prev,
         currentAgent: undefined,
@@ -397,6 +440,14 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       if (taskId && task.id !== taskId) return;
 
       log('Task failed', { taskId: task.id, error: error.message });
+
+      // Clean up any remaining auto-fix spinners
+      const spinner = autoFixSpinnersRef.current.get(task.id);
+      if (spinner) {
+        spinner.fail(`Task failed: ${error.message}`);
+        autoFixSpinnersRef.current.delete(task.id);
+        autoFixStatsRef.current.delete(task.id);
+      }
 
       setState((prev: OrchestratorEventState) => ({
         ...prev,
@@ -445,6 +496,33 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     ) => {
       if (taskId && eventTaskId !== taskId) return;
 
+      const previousUsage = lastUsageRef.current[eventTaskId];
+      const isTotalUpdate = previousUsage
+        ? usage.totalTokens >= previousUsage.totalTokens
+        : true;
+
+      const deltaInput = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.inputTokens - previousUsage.inputTokens)
+        : usage.inputTokens;
+      const deltaOutput = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.outputTokens - previousUsage.outputTokens)
+        : usage.outputTokens;
+      const deltaTotal = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.totalTokens - previousUsage.totalTokens)
+        : usage.totalTokens;
+      const deltaCost = isTotalUpdate && previousUsage
+        ? Math.max(0, usage.estimatedCost - previousUsage.estimatedCost)
+        : usage.estimatedCost;
+
+      if (isTotalUpdate || !previousUsage) {
+        lastUsageRef.current[eventTaskId] = {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+          estimatedCost: usage.estimatedCost,
+        };
+      }
+
       log('Usage updated', { taskId: eventTaskId, tokens: usage });
 
       // Get current agent name from state
@@ -456,21 +534,23 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
         const prevAgentTokens = prev.agentTokens[currentAgentName] || {
           inputTokens: 0,
           outputTokens: 0,
+          estimatedCost: 0,
         };
+        const previousEstimatedCost = prevAgentTokens.estimatedCost ?? 0;
 
         const newAgentTokens = {
           ...prev.agentTokens,
           [currentAgentName]: {
-            inputTokens: prevAgentTokens.inputTokens + usage.inputTokens,
-            outputTokens: prevAgentTokens.outputTokens + usage.outputTokens,
-            estimatedCost: usage.estimatedCost,
+            inputTokens: prevAgentTokens.inputTokens + deltaInput,
+            outputTokens: prevAgentTokens.outputTokens + deltaOutput,
+            estimatedCost: previousEstimatedCost + deltaCost,
           },
         };
 
         // Calculate tokens per second metric
         const now = Date.now();
         const elapsed = (now - stageStartTimeRef.current.getTime()) / 1000;
-        totalTokensRef.current += usage.totalTokens;
+        totalTokensRef.current += deltaTotal;
         const tokensPerSecond = elapsed > 0 ? totalTokensRef.current / elapsed : 0;
 
         return {
@@ -492,8 +572,8 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           (debugInfo) => ({
             ...debugInfo,
             tokensUsed: {
-              input: (debugInfo?.tokensUsed?.input || 0) + usage.inputTokens,
-              output: (debugInfo?.tokensUsed?.output || 0) + usage.outputTokens,
+              input: (debugInfo?.tokensUsed?.input || 0) + deltaInput,
+              output: (debugInfo?.tokensUsed?.output || 0) + deltaOutput,
             },
           }),
           derivedAgentsByName.get(currentAgentName),
@@ -567,6 +647,71 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
           ),
         }));
       }
+    };
+
+    // Tool timing event handlers (v0.5.0)
+    const handleToolStart = (event: { taskId: string; toolName: string; callId: string; timestamp: Date; input: Record<string, unknown> }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Tool start', { taskId: event.taskId, tool: event.toolName, callId: event.callId });
+
+      // Track individual tool call start time using callId for precise timing
+      toolStartTimeRef.current.set(event.callId, event.timestamp);
+    };
+
+    const handleToolComplete = (event: {
+      taskId: string;
+      toolName: string;
+      callId: string;
+      result: { success: boolean; output?: unknown; error?: string };
+      timing: { startTime: Date; endTime: Date; duration: number };
+      timestamp: Date
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Tool complete', {
+        taskId: event.taskId,
+        tool: event.toolName,
+        callId: event.callId,
+        duration: event.timing.duration,
+        success: event.result.success
+      });
+
+      const currentAgentName = stateRef.current.currentAgent;
+
+      // Update per-tool timing accumulation for existing statistics
+      setVerboseData((prev: VerboseDebugData) => ({
+        ...prev,
+        timing: {
+          ...prev.timing,
+          toolUsageTimes: {
+            ...prev.timing.toolUsageTimes,
+            [event.toolName]: (prev.timing.toolUsageTimes[event.toolName] || 0) + event.timing.duration,
+          },
+        },
+      }));
+
+      // Update agent debugInfo with latest tool completion
+      if (currentAgentName) {
+        setState((prev: OrchestratorEventState) => ({
+          ...prev,
+          agents: updateAgentDebugInfo(
+            prev.agents,
+            currentAgentName,
+            (debugInfo) => ({
+              ...debugInfo,
+              lastToolCall: event.toolName,
+              lastToolDuration: event.timing.duration,
+              lastToolSuccess: event.result.success,
+            }),
+            derivedAgentsByName.get(currentAgentName),
+            Boolean(derivedAgentsByName.get(currentAgentName))
+          ),
+        }));
+      }
+
+      // Clean up the call tracking
+      toolStartTimeRef.current.delete(event.callId);
     };
 
     const handleAgentThinking = (eventTaskId: string, agentName: string, thinking: string) => {
@@ -667,6 +812,456 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       }));
     };
 
+    // Diff preview event handler
+    const handleDiffPreview = (event: {
+      taskId: string;
+      toolName: string;
+      callId: string;
+      filePath: string;
+      diff: string;
+      addedLines: number;
+      removedLines: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Diff preview', {
+        taskId: event.taskId,
+        tool: event.toolName,
+        file: event.filePath,
+        added: event.addedLines,
+        removed: event.removedLines
+      });
+
+      // Display the colored diff with file path header
+      console.log(chalk.bold.blue(`\n📝 ${event.toolName} - ${event.filePath}`));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log(renderColoredDiff(event.diff));
+      console.log(chalk.gray('─'.repeat(80)));
+      console.log(chalk.gray(`+${event.addedLines} -${event.removedLines} lines\n`));
+    };
+
+    // Auto-fix event handlers
+    const handleAutoFixRequested = (event: {
+      taskId: string;
+      filePath: string;
+      fixTypes: string[];
+      triggeredBy: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix requested', {
+        taskId: event.taskId,
+        file: event.filePath,
+        types: event.fixTypes,
+        trigger: event.triggeredBy
+      });
+
+      // Initialize or get stats for this task
+      let stats = autoFixStatsRef.current.get(event.taskId);
+      if (!stats) {
+        stats = { files: new Set(), completed: 0, failed: 0, skipped: 0 };
+        autoFixStatsRef.current.set(event.taskId, stats);
+      }
+      stats.files.add(event.filePath);
+
+      // Create or update spinner for this task
+      let spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (!spinner) {
+        spinner = ora({
+          text: `Auto-fixing code issues (${event.fixTypes.join(', ')})...`,
+          color: 'yellow'
+        }).start();
+        autoFixSpinnersRef.current.set(event.taskId, spinner);
+      }
+
+      spinner.text = `Auto-fixing ${stats.files.size} file(s) (${event.fixTypes.join(', ')})...`;
+    };
+
+    const handleAutoFixStarted = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesDetected: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix started', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        issues: event.issuesDetected
+      });
+
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (spinner && event.issuesDetected > 0) {
+        const fileName = event.filePath.split('/').pop() || event.filePath;
+        spinner.text = `Fixing ${event.issuesDetected} ${event.fixType} issues in ${fileName}...`;
+      }
+    };
+
+    const handleAutoFixProgress = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesFixed: number;
+      issuesRemaining: number;
+      currentFix?: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix progress', {
+        taskId: event.taskId,
+        file: event.filePath,
+        fixed: event.issuesFixed,
+        remaining: event.issuesRemaining,
+        currentFix: event.currentFix
+      });
+
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+      if (spinner) {
+        const fileName = event.filePath.split('/').pop() || event.filePath;
+        const progressInfo = `Fixed ${event.issuesFixed} ${event.fixType} issues`;
+        const currentFixInfo = event.currentFix ? ` - ${event.currentFix}` : '';
+        spinner.text = `${fileName}: ${progressInfo}${currentFixInfo}`;
+      }
+    };
+
+    const handleAutoFixCompleted = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      issuesDetected: number;
+      issuesFixed: number;
+      duration: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix completed', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        detected: event.issuesDetected,
+        fixed: event.issuesFixed,
+        duration: event.duration
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.completed++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      if (event.issuesFixed > 0) {
+        const message = `✅ ${fileName}: Fixed ${event.issuesFixed}/${event.issuesDetected} ${event.fixType} issues (${event.duration}ms)`;
+        if (spinner) {
+          spinner.succeed(message);
+        } else {
+          console.log(chalk.green(message));
+        }
+      } else {
+        const message = `✓ ${fileName}: No ${event.fixType} issues found`;
+        if (spinner) {
+          spinner.info(message);
+        } else {
+          console.log(chalk.gray(message));
+        }
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
+    const handleAutoFixFailed = (event: {
+      taskId: string;
+      filePath: string;
+      fixType: string;
+      error: string;
+      issuesDetected: number;
+      issuesFixed: number;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix failed', {
+        taskId: event.taskId,
+        file: event.filePath,
+        type: event.fixType,
+        error: event.error
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.failed++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      const errorMessage = `❌ ${fileName}: Auto-fix failed - ${event.error}`;
+      if (event.issuesDetected > 0) {
+        const partialMessage = ` (${event.issuesFixed}/${event.issuesDetected} issues fixed before failure)`;
+        if (spinner) {
+          spinner.fail(errorMessage + partialMessage);
+        } else {
+          console.log(chalk.red(errorMessage));
+          console.log(chalk.yellow(`   ${event.issuesFixed}/${event.issuesDetected} issues were fixed before failure`));
+        }
+      } else {
+        if (spinner) {
+          spinner.fail(errorMessage);
+        } else {
+          console.log(chalk.red(errorMessage));
+        }
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
+    const handleAutoFixSkipped = (event: {
+      taskId: string;
+      filePath: string;
+      reason: string;
+      timestamp: Date;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Auto-fix skipped', {
+        taskId: event.taskId,
+        file: event.filePath,
+        reason: event.reason
+      });
+
+      const stats = autoFixStatsRef.current.get(event.taskId);
+      if (stats) {
+        stats.skipped++;
+      }
+
+      const fileName = event.filePath.split('/').pop() || event.filePath;
+      const spinner = autoFixSpinnersRef.current.get(event.taskId);
+
+      const skipMessage = `⏭️ ${fileName}: Skipped - ${event.reason}`;
+      if (spinner) {
+        spinner.info(skipMessage);
+      } else {
+        console.log(chalk.gray(skipMessage));
+      }
+
+      // Check if all files are done and update spinner accordingly
+      updateAutoFixSpinnerStatus(event.taskId);
+    };
+
+    // Permission event handlers for CLI notification display
+    const handlePermissionRequest = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      scope?: string;
+      reason?: string;
+      agentName?: string;
+      isDangerous?: boolean;
+      dangerLevel?: 'low' | 'medium' | 'high' | 'critical';
+      riskDescription?: string;
+      parameters?: Record<string, unknown>;
+      permissionStatus?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission request', event);
+
+      // Display permission request notification
+      console.info('🔐 Permission Request');
+      console.log(`Tool: ${event.toolName}`);
+      console.log(`Task: ${event.taskId}`);
+
+      if (event.agentName) {
+        console.log(`Agent: ${event.agentName}`);
+      }
+
+      if (event.scope) {
+        console.log(`Scope: ${event.scope}`);
+      }
+
+      if (event.reason) {
+        console.log(`Reason: ${event.reason}`);
+      }
+
+      if (event.timestamp) {
+        const timeStr = event.timestamp.toLocaleTimeString();
+        console.log(`Time: ${timeStr}`);
+      }
+
+      if (event.permissionStatus === 'inherited') {
+        console.log('Permission: inherited');
+      }
+
+      // Highlight dangerous operations
+      if (event.isDangerous) {
+        console.warn('⚠️ DANGEROUS OPERATION');
+
+        if (event.dangerLevel) {
+          const levelColor = event.dangerLevel === 'critical' ? 'red' :
+                            event.dangerLevel === 'high' ? 'redBright' :
+                            event.dangerLevel === 'medium' ? 'yellow' : 'cyan';
+          console.error(`Risk Level: ${event.dangerLevel}`);
+        }
+
+        if (event.riskDescription) {
+          console.error(event.riskDescription);
+        }
+      }
+    };
+
+    const handlePermissionGranted = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      level: 'allow-always' | 'allow-once';
+      grantedBy?: string;
+      grantReason?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission granted', event);
+
+      // Display permission granted notification
+      console.log('✅ Permission GRANTED');
+      console.log(`Tool: ${event.toolName}`);
+      console.log(`Level: ${event.level}`);
+
+      // Add level-specific indicators
+      if (event.level === 'allow-always') {
+        console.log('🔓 Permanent access granted');
+      } else if (event.level === 'allow-once') {
+        console.log('🔐 Single-use permission');
+      }
+
+      if (event.grantedBy) {
+        console.log(`Granted by: ${event.grantedBy}`);
+      }
+
+      if (event.grantReason) {
+        console.log(`Reason: ${event.grantReason}`);
+      }
+    };
+
+    const handlePermissionDenied = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      denialReason?: string;
+      deniedBy?: string;
+      suggestedAction?: string;
+      alternativeActions?: string[];
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Permission denied', event);
+
+      // Display permission denied notification with warning styling
+      console.warn('❌ Permission DENIED');
+      console.warn(`Tool: ${event.toolName}`);
+
+      if (event.deniedBy) {
+        console.warn(`Denied by: ${event.deniedBy}`);
+      }
+
+      if (event.denialReason) {
+        console.warn(`Reason: ${event.denialReason}`);
+      }
+
+      // Provide actionable guidance
+      if (event.suggestedAction) {
+        console.warn(`💡 Suggested action: ${event.suggestedAction}`);
+      }
+
+      if (event.alternativeActions && event.alternativeActions.length > 0) {
+        console.warn(`📋 Alternatives: ${event.alternativeActions.join(', ')}`);
+      }
+    };
+
+    const handleDangerousDetected = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      riskLevel: 'low' | 'medium' | 'high' | 'critical';
+      description?: string;
+      metadata?: Record<string, unknown>;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation detected', event);
+
+      // Display dangerous operation detection with error styling
+      console.error('🚨 DANGEROUS OPERATION DETECTED');
+      console.error(`Tool: ${event.toolName}`);
+      console.error(`Risk Level: ${event.riskLevel}`);
+      console.error(`Operation Type: ${event.operationType}`);
+
+      if (event.description) {
+        console.error(`Description: ${event.description}`);
+      }
+
+      // Display impact information if available
+      if (event.metadata?.estimatedImpact) {
+        console.error(`Impact: ${event.metadata.estimatedImpact}`);
+      }
+
+      if (event.metadata?.command) {
+        console.error(`Command: ${event.metadata.command}`);
+      }
+    };
+
+    const handleDangerousConfirmed = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      confirmedBy: string;
+      confirmation?: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation confirmed', event);
+
+      console.log('✅ Dangerous operation CONFIRMED');
+      console.log(`Operation: ${event.operationType}`);
+      console.log(`Confirmed by: ${event.confirmedBy}`);
+
+      if (event.confirmation) {
+        console.log(`Confirmation: ${event.confirmation}`);
+      }
+    };
+
+    const handleDangerousBlocked = (event: {
+      taskId: string;
+      toolName: string;
+      timestamp: Date;
+      operationType: string;
+      blockReason?: string;
+      blockedBy: string;
+    }) => {
+      if (taskId && event.taskId !== taskId) return;
+
+      log('Dangerous operation blocked', event);
+
+      console.error('🚫 Dangerous operation BLOCKED');
+      console.error(`Operation: ${event.operationType}`);
+      console.error(`Blocked by: ${event.blockedBy}`);
+
+      if (event.blockReason) {
+        console.error(`Reason: ${event.blockReason}`);
+      }
+    };
+
     // Register event listeners
     orchestrator.on('agent:transition', handleAgentTransition);
     orchestrator.on('task:stage-changed', handleStageChange);
@@ -681,10 +1276,29 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
     // Register debug event listeners
     orchestrator.on('usage:updated', handleUsageUpdated);
     orchestrator.on('agent:tool-use', handleToolUse);
+    orchestrator.on('tool:start', handleToolStart);
+    orchestrator.on('tool:complete', handleToolComplete);
     orchestrator.on('agent:message', handleAgentMessage);
     orchestrator.on('agent:thinking', handleAgentThinking);
     orchestrator.on('agent:turn', handleAgentTurn);
     orchestrator.on('agent:error', handleError);
+    orchestrator.on('diff:preview', handleDiffPreview);
+
+    // Register auto-fix event listeners
+    orchestrator.on('autofix:requested', handleAutoFixRequested);
+    orchestrator.on('autofix:started', handleAutoFixStarted);
+    orchestrator.on('autofix:progress', handleAutoFixProgress);
+    orchestrator.on('autofix:completed', handleAutoFixCompleted);
+    orchestrator.on('autofix:failed', handleAutoFixFailed);
+    orchestrator.on('autofix:skipped', handleAutoFixSkipped);
+
+    // Register permission event listeners
+    orchestrator.on('permission:request', handlePermissionRequest as any);
+    orchestrator.on('permission:granted', handlePermissionGranted as any);
+    orchestrator.on('permission:denied', handlePermissionDenied as any);
+    orchestrator.on('dangerous:detected', handleDangerousDetected as any);
+    orchestrator.on('dangerous:confirmed', handleDangerousConfirmed as any);
+    orchestrator.on('dangerous:blocked', handleDangerousBlocked as any);
 
     log('Event listeners registered');
 
@@ -703,10 +1317,29 @@ export function useOrchestratorEvents(options: UseOrchestratorEventsOptions = {}
       // Cleanup debug event listeners
       orchestrator.off('usage:updated', handleUsageUpdated);
       orchestrator.off('agent:tool-use', handleToolUse);
+      orchestrator.off('tool:start', handleToolStart);
+      orchestrator.off('tool:complete', handleToolComplete);
       orchestrator.off('agent:message', handleAgentMessage);
       orchestrator.off('agent:thinking', handleAgentThinking);
       orchestrator.off('agent:turn', handleAgentTurn);
       orchestrator.off('agent:error', handleError);
+      orchestrator.off('diff:preview', handleDiffPreview);
+
+      // Cleanup auto-fix event listeners
+      orchestrator.off('autofix:requested', handleAutoFixRequested);
+      orchestrator.off('autofix:started', handleAutoFixStarted);
+      orchestrator.off('autofix:progress', handleAutoFixProgress);
+      orchestrator.off('autofix:completed', handleAutoFixCompleted);
+      orchestrator.off('autofix:failed', handleAutoFixFailed);
+      orchestrator.off('autofix:skipped', handleAutoFixSkipped);
+
+      // Cleanup permission event listeners
+      orchestrator.off('permission:request', handlePermissionRequest as any);
+      orchestrator.off('permission:granted', handlePermissionGranted as any);
+      orchestrator.off('permission:denied', handlePermissionDenied as any);
+      orchestrator.off('dangerous:detected', handleDangerousDetected as any);
+      orchestrator.off('dangerous:confirmed', handleDangerousConfirmed as any);
+      orchestrator.off('dangerous:blocked', handleDangerousBlocked as any);
 
       log('Event listeners cleaned up');
     };

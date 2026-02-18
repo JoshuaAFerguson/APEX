@@ -1,11 +1,23 @@
 import { SessionStore, Session, SessionMessage, SessionState } from './SessionStore.js';
 
+/**
+ * Configuration options for automatic session saving
+ */
 export interface AutoSaveOptions {
+  /** Whether auto-saving is enabled */
   enabled: boolean;
+  /** Auto-save interval in milliseconds */
   intervalMs: number;
+  /** Maximum unsaved messages before triggering save */
   maxUnsavedMessages: number;
 }
 
+/**
+ * Automatic session saving service
+ *
+ * Provides periodic persistence of session data to prevent data loss.
+ * Saves sessions based on time intervals or message count thresholds.
+ */
 export class SessionAutoSaver {
   private store: SessionStore;
   private options: AutoSaveOptions;

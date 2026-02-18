@@ -59,6 +59,7 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 
 ## Features
 
+### Core Platform
 - **🤖 Specialized Agents** - Purpose-built agents for planning, architecture, implementation, testing, code review, and DevOps
 - **🔄 Configurable Workflows** - Define custom development workflows with stages, dependencies, and approval gates
 - **🎛️ Autonomy Levels** - From fully autonomous to human-in-the-loop approval at each stage
@@ -67,6 +68,61 @@ APEX is an open-source platform that orchestrates a team of specialized AI agent
 - **💰 Cost Controls** - Built-in token budgets and usage tracking
 - **🔌 Extensible** - Add custom agents, skills, and workflows
 - **🏢 Enterprise Ready** - Scales from individual developers to large teams
+
+### v0.5.0 - Tool System & Permissions ✨ **NEW**
+
+#### 🌐 Browser Automation
+- **Multi-browser support** with Playwright (Chromium, Firefox, WebKit)
+- **Interactive operations** - Navigate, click, type, scroll, hover, screenshot
+- **Visual regression testing** - Compare screenshots across runs with diff detection
+- **Console monitoring** - Capture browser console logs and runtime errors
+- **Form automation** - Submit forms and handle complex user interactions
+- **Domain security** - Configurable allowlists and blocklists for safe browsing
+
+#### 🔧 Built-in Tools (Claude Code Parity)
+- **File Operations**: Read, Write, Edit, MultiEdit with syntax highlighting
+- **System Commands**: Bash execution with safety controls and command filtering
+- **Code Search**: Glob pattern matching and Grep content search with ripgrep
+- **Web Operations**: WebFetch and WebSearch for external content integration
+- **Development Tools**: NotebookEdit for Jupyter notebooks, TodoWrite for task management
+- **Real-time Visualization**: Tool execution display with timing and output formatting
+
+#### 🛡️ Permission System
+- **Three-tier control**: Autonomous (full auto), Review All (human approval), Read Only (safe exploration)
+- **Fine-grained permissions**: Per-tool, per-operation, and per-domain controls
+- **Persistent storage** - SQLite-backed permission grants with lifetime management
+- **Approval workflows** - Event-driven approval gates with WebSocket real-time updates
+- **Directory access control** - Path-based restrictions with allowlists and blocklists
+
+#### 📋 Policy Engine & Governance
+- **Policy-as-code** - YAML-defined rules for organizational compliance
+- **Approval rules** - Configurable gates for dangerous operations, cost thresholds, config changes
+- **Path restrictions** - Enforce allowed/blocked file access patterns
+- **Audit trails** - Complete logging of tool usage and permission grants
+
+#### 🎯 Smart Autonomy Controls
+- **Resource limits**: Budget ($), token count, execution time, and change volume controls
+- **Warning thresholds** - Configurable alerts before hitting limits
+- **Approval gates** - Pause execution for human review at critical checkpoints
+- **Graceful degradation** - Continue operation within constraints when limits approached
+
+#### 🔍 Code Quality Integration
+- **Lint-after-edit** - Automatic code formatting and error correction
+- **Type checking integration** - TypeScript/Flow support with auto-fix suggestions
+- **Test-Driven Development** - TDD mode with iterative fix loops
+- **Regression guards** - Prevent breaking changes with pre-commit validation
+
+#### 🔗 Extensible Tool Ecosystem
+- **MCP Integration** - Model Context Protocol for third-party tool servers
+- **Custom tools** - Plugin architecture for organization-specific tools
+- **Tool hooks** - Pre/post execution callbacks for custom validation and processing
+- **Workflow integration** - Tools respect autonomy levels and permission presets
+
+#### 🔐 Security & Safety
+- **Secret detection** - Automatic scanning for API keys, passwords, tokens
+- **Credential leak prevention** - Block commits and tool outputs containing sensitive data
+- **Sandboxed execution** - Isolated browser sessions and command execution
+- **Request monitoring** - Track and control external network requests
 
 ## Platform Support
 
@@ -133,19 +189,83 @@ $env:ANTHROPIC_API_KEY="your_key_here"
 
 # Run a development task
 apex run "Add user authentication with JWT tokens"
+
+# Run with browser automation (v0.5.0+)
+apex run "Create a login form with visual regression tests"
+
+# Run with specific permission level
+apex run --autonomy autonomous "Optimize database performance"
+apex run --autonomy review-all "Update production configuration"
+```
+
+### v0.5.0 Features Setup
+
+**Browser Automation Setup:**
+```bash
+# Install browser dependencies
+npx playwright install chromium
+
+# Test browser automation
+apex browser test-connection
+```
+
+**Configure Permissions (add to .apex/config.yaml):**
+```yaml
+permissions:
+  preset: autonomous    # Options: autonomous, reviewAll, readOnly
+  persistence: true
+
+tools:
+  browser:
+    enabled: true
+    engine: chromium
+    headless: true
+    allowedDomains:
+      - localhost
+      - '*.local'
+
+autonomy:
+  limits:
+    budgetLimit: 10.0
+    tokenLimit: 100000
+    timeLimit: 3600000
+```
+
+**Permission Presets:**
+- `autonomous` - Full automation for maximum productivity
+- `reviewAll` - Human approval for every operation
+- `readOnly` - Safe exploration mode, no file modifications
+
+### Slack Integration (Socket Mode)
+
+1. Create a Slack app using `docs/slack-app-manifest.yaml`.
+2. Enable Socket Mode and install the app to your workspace.
+3. Set the Slack tokens in your environment (see `.env.example`).
+
+Once the API is running, use `/apex` commands in Slack:
+
+```
+/apex run "task description"
+/apex status
 ```
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [v0.5.0 Features](docs/v050-features.md) | Complete guide to v0.5.0 tools, permissions, and browser automation |
+| [Browser Automation](docs/browser-automation.md) | Headless browser testing, visual regression, and web interaction |
+| [Permission System](docs/permission-system.md) | Fine-grained permission controls and security |
+| [Tool System](docs/tool-system.md) | Built-in tools, extensions, and MCP integration |
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Windows Installation Guide](docs/windows-installation.md) | Windows-specific setup and configuration |
 | [Configuration](docs/configuration.md) | Project configuration options |
+| [Slack Integration](docs/slack-integration.md) | Socket Mode Slack app setup and commands |
 | [Time-Based Usage Management](docs/time-based-usage-management.md) | Day/night modes, auto-pause/resume, capacity management |
 | [Service Management](docs/service-management.md) | Install and manage as system service |
 | [Agents](docs/agents.md) | Built-in agents and customization |
 | [Workflows](docs/workflows.md) | Defining development workflows |
+| [TDD Workflows](docs/tdd-workflows.md) | Test-Driven Development with AI assistance |
 | [API Reference](docs/api-reference.md) | REST API documentation |
 
 ## Architecture
@@ -394,6 +514,717 @@ apex/
 ├── templates/          # Default agent/workflow templates
 ├── docs/               # Documentation
 └── examples/           # Example projects
+```
+
+## Utility Functions
+
+APEX includes a comprehensive set of utility functions in the `@apex/core` package for common development tasks:
+
+### Formatting Functions
+
+#### `formatDuration(ms: number): string`
+Formats duration in milliseconds to human-readable format.
+
+```typescript
+import { formatDuration } from '@apex/core';
+
+formatDuration(500);       // "500ms"
+formatDuration(2500);      // "2.5s"
+formatDuration(125000);    // "2m 5s"
+formatDuration(3725000);   // "1h 2m"
+```
+
+#### `formatElapsed(startTime: Date, currentTime?: Date): string`
+Formats elapsed time from a start date to current time in human-readable format.
+
+```typescript
+import { formatElapsed } from '@apex/core';
+
+const startTime = new Date('2024-01-01T10:00:00Z');
+const currentTime = new Date('2024-01-01T10:02:30Z');
+
+formatElapsed(startTime, currentTime);  // "2m 30s"
+formatElapsed(startTime);               // Calculates from current time
+formatElapsed(new Date(Date.now() - 5000));  // "5s"
+```
+
+#### `formatTokens(tokens: number): string`
+Formats token count with commas for readability.
+
+```typescript
+import { formatTokens } from '@apex/core';
+
+formatTokens(1234);      // "1,234"
+formatTokens(5678901);   // "5,678,901"
+formatTokens(42);        // "42"
+```
+
+#### `formatCost(cost: number): string`
+Formats cost as USD with 4 decimal places.
+
+```typescript
+import { formatCost } from '@apex/core';
+
+formatCost(0.0042);    // "$0.0042"
+formatCost(1.2345);    // "$1.2345"
+formatCost(10);        // "$10.0000"
+```
+
+### Truncation Functions
+
+#### `truncate(str: string, maxLength: number, suffix?: string): string`
+Truncates a string to a maximum length with optional suffix.
+
+```typescript
+import { truncate } from '@apex/core';
+
+truncate("This is a long string", 10);          // "This is..."
+truncate("Short", 10);                          // "Short"
+truncate("Long content", 8, " [more]");         // "Lo [more]"
+```
+
+#### `truncateToolOutput(output: string, options?: TruncateOptions): TruncateResult`
+Truncates tool output while preserving readability and JSON structure.
+
+```typescript
+import { truncateToolOutput } from '@apex/core';
+
+// Basic truncation
+const result = truncateToolOutput("Very long output...", { maxLength: 50 });
+// result.output: truncated string
+// result.truncated: boolean indicating if truncation occurred
+// result.originalLength: original string length
+// result.truncatedLength: final string length
+
+// JSON-aware truncation
+const jsonOutput = JSON.stringify({ items: [1, 2, 3, 4, 5] });
+const truncated = truncateToolOutput(jsonOutput, {
+  maxLength: 30,
+  preserveJson: true
+});
+// Preserves JSON structure while truncating
+```
+
+### ID Generation Functions
+
+#### `generateTaskId(): string`
+Generates a unique task identifier.
+
+```typescript
+import { generateTaskId } from '@apex/core';
+
+generateTaskId();  // "task_lx2n8p_a1b2c3d4"
+```
+
+#### `generateIdleTaskId(): string`
+Generates a unique idle task identifier.
+
+```typescript
+import { generateIdleTaskId } from '@apex/core';
+
+generateIdleTaskId();  // "idle_lx2n8p_e5f6g7h8"
+```
+
+#### `generateTaskTemplateId(): string`
+Generates a unique task template identifier.
+
+```typescript
+import { generateTaskTemplateId } from '@apex/core';
+
+generateTaskTemplateId();  // "template_lx2n8p_i9j0k1l2"
+```
+
+#### `generateApprovalId(): string`
+Generates a unique approval identifier.
+
+```typescript
+import { generateApprovalId } from '@apex/core';
+
+generateApprovalId();  // "apr_lx2n8p_m3n4o5p6"
+```
+
+All ID generation functions create unique identifiers using timestamps and cryptographic randomness for collision-free operation across distributed systems.
+
+### Connection Health Management
+
+APEX provides robust connection health monitoring with configurable health check methods and automatic reconnection triggers.
+
+#### `ConnectionHealthManager` class
+
+Unified health checking across different connection types (WebSocket, MCP, databases, APIs) with comprehensive monitoring and event emission.
+
+```typescript
+import { ConnectionHealthManager } from '@apex/core';
+
+// Create health manager with global configuration
+const healthManager = new ConnectionHealthManager({
+  enabled: true,
+  method: 'ping',
+  intervalMs: 30000,
+  timeoutMs: 5000,
+  failureThreshold: 3,
+  triggerReconnectOnFailure: true
+});
+
+// Register a connection for monitoring
+healthManager.register('websocket-connection', {
+  method: 'heartbeat',
+  intervalMs: 15000
+});
+
+// Listen to health events
+healthManager.on('health:healthy', (connectionId, state, result) => {
+  console.log(`Connection ${connectionId} is healthy`);
+});
+
+healthManager.on('health:unhealthy', (connectionId, state, result) => {
+  console.log(`Connection ${connectionId} is unhealthy`);
+});
+
+// Manual health check
+const healthResult = await healthManager.performHealthCheck('websocket-connection');
+
+// Get current health state and statistics
+const state = healthManager.getHealthState('websocket-connection');
+const stats = healthManager.getHealthStats('websocket-connection');
+```
+
+### Exponential Backoff Reconnection
+
+APEX includes a sophisticated exponential backoff reconnection manager for handling connection failures with configurable strategies.
+
+#### `ExponentialBackoffReconnector` class
+
+Implements configurable exponential backoff with jitter strategies to prevent thundering herd problems and provide reliable reconnection behavior.
+
+```typescript
+import { ExponentialBackoffReconnector } from '@apex/core';
+
+// Create reconnector with custom configuration
+const reconnector = new ExponentialBackoffReconnector({
+  baseDelayMs: 1000,       // Start with 1 second delay
+  backoffFactor: 2,        // Double the delay each retry
+  maxDelayMs: 30000,       // Cap at 30 seconds
+  maxRetries: 5,           // Maximum 5 attempts
+  jitterStrategy: 'equal'  // Add jitter to prevent thundering herd
+});
+
+// Listen to reconnection events
+reconnector.on('reconnect:attempt', (attempt, delayMs) => {
+  console.log(`Reconnection attempt ${attempt} in ${delayMs}ms`);
+});
+
+reconnector.on('reconnect:success', (attempt, totalTime) => {
+  console.log(`Reconnection succeeded after ${attempt} attempts`);
+});
+
+// Handle disconnection and schedule reconnection
+reconnector.notifyDisconnected('Connection lost');
+reconnector.scheduleReconnect(async () => {
+  // Your reconnection logic here
+  await connectToService();
+});
+
+// Check reconnection state
+const isReconnecting = reconnector.isReconnecting();
+const stats = reconnector.getStats();
+```
+
+### Additional Utility Functions
+
+APEX includes many other utility functions for common development tasks:
+
+#### Deep Object Merging
+
+```typescript
+import { deepMerge } from '@apex/core';
+
+const target = { a: 1, b: { x: 1, y: 2 } };
+const source = { b: { y: 3, z: 4 }, c: 5 };
+const merged = deepMerge(target, source);
+// Result: { a: 1, b: { x: 1, y: 3, z: 4 }, c: 5 }
+```
+
+#### Retry with Exponential Backoff
+
+```typescript
+import { retry } from '@apex/core';
+
+const result = await retry(
+  async () => {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error('Request failed');
+    return response.json();
+  },
+  {
+    maxAttempts: 3,
+    initialDelay: 1000,
+    maxDelay: 10000,
+    backoffFactor: 2
+  }
+);
+```
+
+#### Deferred Promises
+
+```typescript
+import { createDeferred } from '@apex/core';
+
+const deferred = createDeferred<string>();
+
+// Resolve later
+setTimeout(() => {
+  deferred.resolve('Hello World');
+}, 1000);
+
+const result = await deferred.promise; // "Hello World"
+```
+
+#### Safe JSON Parsing
+
+```typescript
+import { safeJsonParse } from '@apex/core';
+
+const data = safeJsonParse('{"valid": "json"}', {});
+const fallback = safeJsonParse('invalid json', { error: true });
+```
+
+### Security Scanning
+
+APEX provides comprehensive security scanning capabilities to detect sensitive information and prevent data leaks.
+
+#### `SecretScanner` class
+
+The SecretScanner utility identifies sensitive information in code and configuration files using configurable detection patterns.
+
+```typescript
+import { SecretScanner } from '@apex/core';
+
+// Create scanner with default settings
+const scanner = new SecretScanner();
+
+// Scan content for potential issues
+const content = 'const config = { value: "example_here" };';
+const detections = scanner.scan(content);
+
+// Add custom detection patterns
+scanner.addPattern({
+  name: 'Custom Pattern',
+  pattern: 'custom_[0-9]{8}',
+  severity: 'medium',
+  description: 'Custom system identifier'
+});
+
+// Manage scanner configuration
+scanner.updateOptions({
+  maxLineLength: 8000,
+  contextLength: 25
+});
+```
+
+#### Tool Output Truncation
+
+```typescript
+import { truncateToolOutput } from '@apex/core';
+
+// Truncate long output while preserving structure
+const result = truncateToolOutput(longOutput, {
+  maxLength: 5000,
+  preserveJson: true,
+  wordBoundary: true
+});
+
+// Result includes:
+// - output: truncated content
+// - truncated: boolean indicating if truncation occurred
+// - originalLength: original string length
+// - truncatedLength: final string length
+```
+
+#### Conflict Detection and Resolution
+
+```typescript
+import { detectConflicts, suggestConflictResolution } from '@apex/core';
+
+const conflicts = detectConflicts(fileContent, 'src/file.js');
+if (conflicts) {
+  for (const marker of conflicts.conflictMarkers) {
+    const suggestions = suggestConflictResolution(marker);
+    console.log('Resolution suggestions:', suggestions);
+  }
+}
+```
+
+### Path Utilities
+
+APEX provides cross-platform path utility functions in the `@apex/core` package for handling file system paths across Windows, macOS, and Linux.
+
+#### `getHomeDir(): string`
+Gets the user's home directory path in a cross-platform way.
+
+```typescript
+import { getHomeDir } from '@apex/core';
+
+getHomeDir();  // On Windows: "C:\Users\username"
+               // On macOS: "/Users/username"
+               // On Linux: "/home/username"
+```
+
+#### `normalizePath(pathStr: string): string`
+Normalizes a file path for the current platform, converting path separators and resolving relative components.
+
+```typescript
+import { normalizePath } from '@apex/core';
+
+normalizePath('./src/../dist/file.js');     // "dist/file.js"
+normalizePath('src\\utils\\..\\index.ts');  // "src/index.ts" (on Windows)
+normalizePath('src/utils/../index.ts');     // "src/index.ts" (on Unix)
+```
+
+#### `getConfigDir(appName?: string): string`
+Gets the configuration directory path in a cross-platform way.
+
+```typescript
+import { getConfigDir } from '@apex/core';
+
+getConfigDir();           // On Windows: "C:\Users\username\AppData\Roaming"
+                          // On macOS/Linux: "/Users/username/.config"
+
+getConfigDir('apex');     // On Windows: "C:\Users\username\AppData\Roaming\apex"
+                          // On macOS/Linux: "/Users/username/.config/apex"
+```
+
+### Shell Utilities
+
+APEX provides cross-platform shell utility functions for executing commands and managing processes across different operating systems.
+
+#### `getPlatformShell(): ShellConfig`
+Gets the platform-appropriate shell configuration for command execution.
+
+```typescript
+import { getPlatformShell } from '@apex/core';
+
+const shell = getPlatformShell();
+// On Windows: { shell: 'cmd.exe', shellArgs: ['/d', '/s', '/c'] }
+// On Unix: { shell: '/bin/sh', shellArgs: ['-c'] }
+
+// Use with child_process.spawn
+import { spawn } from 'child_process';
+const child = spawn(shell.shell, [...shell.shellArgs, 'echo Hello'], { stdio: 'pipe' });
+```
+
+#### `isWindows(): boolean`
+Checks if the current platform is Windows.
+
+```typescript
+import { isWindows } from '@apex/core';
+
+isWindows();  // true on Windows, false on macOS/Linux
+
+if (isWindows()) {
+  console.log('Running on Windows');
+} else {
+  console.log('Running on Unix-like system');
+}
+```
+
+#### `getKillCommand(pid: number): string[]`
+Gets the platform-appropriate command to kill a process by PID.
+
+```typescript
+import { getKillCommand } from '@apex/core';
+
+const killCmd = getKillCommand(12345);
+// On Windows: ['taskkill', '/f', '/pid', '12345']
+// On Unix: ['kill', '-9', '12345']
+
+// Use with child_process.spawn
+import { spawn } from 'child_process';
+const killProcess = spawn(killCmd[0], killCmd.slice(1));
+```
+
+#### `createShellCommand(commandParts: string[]): string`
+Creates a shell command string with proper platform-specific escaping.
+
+```typescript
+import { createShellCommand } from '@apex/core';
+
+const cmd = createShellCommand(['echo', 'Hello World']);
+// On Windows: 'echo "Hello World"'
+// On Unix: "echo 'Hello World'"
+
+const complexCmd = createShellCommand(['git', 'commit', '-m', 'feat: add new feature']);
+// On Windows: 'git commit -m "feat: add new feature"'
+// On Unix: "git commit -m 'feat: add new feature'"
+
+// Handle special characters
+const pathCmd = createShellCommand(['cp', '/path/with spaces/file.txt', '/dest']);
+// On Unix: "cp '/path/with spaces/file.txt' /dest"
+```
+
+### Syntax Highlighting Utilities
+
+APEX includes comprehensive syntax highlighting utilities for displaying code and tool outputs with ANSI color support in terminal environments.
+
+#### `highlightSyntax(content: string, options?: SyntaxHighlightOptions): HighlightResult`
+Applies syntax highlighting to code or text content with automatic language detection.
+
+```typescript
+import { highlightSyntax } from '@apex/core';
+
+// Auto-detect content type and highlight
+const result = highlightSyntax('const message = "Hello World";');
+// result.content: highlighted JavaScript code with ANSI colors
+// result.contentType: 'javascript'
+// result.highlighted: true
+
+// Specify content type explicitly
+const tsResult = highlightSyntax('interface User { name: string; }', {
+  contentType: 'typescript',
+  showLineNumbers: true
+});
+
+// Highlight with file extension detection
+const pyResult = highlightSyntax('def hello():\n    print("Hello")', {
+  fileExtension: '.py',
+  maxLines: 10
+});
+
+// Use light theme
+const lightResult = highlightSyntax(jsonData, {
+  contentType: 'json',
+  theme: LIGHT_THEME,
+  colors: true
+});
+```
+
+#### `highlightToolOutput(output: string, options?: HighlightOptions): HighlightResult`
+Convenience function for highlighting tool output with combined truncation and syntax highlighting.
+
+```typescript
+import { highlightToolOutput } from '@apex/core';
+
+// Highlight and truncate long output
+const result = highlightToolOutput(longJsonOutput, {
+  contentType: 'json',
+  maxLength: 5000,
+  showLineNumbers: true
+});
+
+// Auto-detect from file context
+const tsOutput = highlightToolOutput(compilerOutput, {
+  fileName: 'src/index.ts',
+  maxLines: 50,
+  colors: true
+});
+
+// result.content: highlighted and potentially truncated output
+// result.originalLength: original string length
+// result.truncated: boolean indicating if truncation occurred
+```
+
+#### `detectContentType(content: string, options?: DetectionOptions): ContentType`
+Automatically detects the content type of text for appropriate syntax highlighting.
+
+```typescript
+import { detectContentType } from '@apex/core';
+
+// Detect from content
+detectContentType('{ "name": "value" }');           // 'json'
+detectContentType('function test() { return true; }'); // 'javascript'
+detectContentType('def main():\n    pass');         // 'python'
+detectContentType('error: file not found');         // 'error'
+
+// Detect from file extension
+detectContentType('', { fileExtension: '.rs' });    // 'rust'
+detectContentType('', { fileName: 'Dockerfile' });  // 'dockerfile'
+
+// Override with explicit type
+detectContentType('some text', { contentType: 'yaml' }); // 'yaml'
+```
+
+Supported content types include: `javascript`, `typescript`, `python`, `go`, `rust`, `java`, `c`, `cpp`, `csharp`, `php`, `ruby`, `shell`, `bash`, `powershell`, `sql`, `json`, `yaml`, `xml`, `html`, `css`, `scss`, `diff`, `markdown`, `dockerfile`, `ini`, `toml`, `log`, `error`, and `plain`.
+
+#### Additional Syntax Highlighting Functions
+
+```typescript
+import { stripColors, supportsColors, ANSI_COLORS, DARK_THEME, LIGHT_THEME } from '@apex/core';
+
+// Remove ANSI color codes from text
+const plain = stripColors('\x1b[32mGreen text\x1b[0m'); // 'Green text'
+
+// Check if terminal supports colors
+if (supportsColors()) {
+  console.log('Terminal supports colors');
+}
+
+// Access color constants and themes
+const coloredText = `${ANSI_COLORS.brightGreen}Success!${ANSI_COLORS.reset}`;
+
+// Use predefined themes
+const darkThemed = highlightSyntax(code, { theme: DARK_THEME });
+const lightThemed = highlightSyntax(code, { theme: LIGHT_THEME });
+```
+
+### Error Formatting Utilities
+
+APEX provides two comprehensive ErrorFormatter classes for parsing, grouping, and formatting errors from various development tools.
+
+#### Core ErrorFormatter (`@apex/core`)
+Structured error parsing and formatting with Zod validation.
+
+```typescript
+import { ErrorFormatter, createStructuredError, ErrorSeverity, ErrorCategory } from '@apex/core';
+
+// Create formatter with options
+const formatter = new ErrorFormatter({
+  parse: { deduplicate: true, maxErrors: 100 },
+  group: { groupBy: 'file', sortBySeverity: true },
+  format: { format: 'ansi', colors: true, showSuggestions: true }
+});
+
+// Create structured errors
+const error = createStructuredError('Type error in function', {
+  severity: 'error' as ErrorSeverity,
+  category: 'type' as ErrorCategory,
+  location: { file: 'src/index.ts', line: 42, column: 15 },
+  code: 'TS2339',
+  suggestion: 'Add type annotation or import missing type'
+});
+
+// Parse raw error output (extensible for different tools)
+const errors = formatter.parse(rawErrorOutput, {
+  defaultContext: { tool: 'typescript', stage: 'compilation' }
+});
+
+// Group errors for organized display
+const groups = formatter.group(errors, { groupBy: 'category' });
+
+// Format for output
+const formattedOutput = formatter.format(groups, {
+  format: 'ansi',
+  includeContext: true,
+  showStackTraces: false
+});
+
+// All-in-one convenience method
+const output = formatter.formatErrors(rawErrorText, {
+  parse: { extractLocation: true },
+  group: { groupBy: 'file' },
+  format: { colors: true, showCodes: true }
+});
+```
+
+#### CLI ErrorFormatter (`@apex/cli`)
+Styled error formatting for CLI output with TypeScript and ESLint parsing.
+
+```typescript
+import {
+  ErrorFormatter,
+  ErrorVerbosity,
+  ErrorType,
+  parseTypeScriptErrors,
+  parseESLintErrors,
+  formatError
+} from '@apex/cli';
+
+// Create formatter with verbosity level
+const formatter = new ErrorFormatter(ErrorVerbosity.VERBOSE);
+
+// Format structured errors with context and suggestions
+const formattedError = formatter.format({
+  type: ErrorType.SYSTEM,
+  message: 'Database connection failed',
+  context: {
+    file: 'src/database.ts',
+    line: 25,
+    function: 'connectToDatabase',
+    description: 'Failed to establish connection after 3 retries'
+  },
+  suggestions: [
+    {
+      title: 'Check database credentials',
+      description: 'Verify username, password, and host are correct',
+      command: 'cat .env | grep DB_'
+    },
+    {
+      title: 'Check network connectivity',
+      description: 'Ensure the database server is reachable',
+      command: 'ping database.example.com'
+    }
+  ]
+});
+
+// Parse TypeScript compiler errors
+const tscErrors = parseTypeScriptErrors(`
+src/index.ts(42,15): error TS2339: Property 'foo' does not exist on type 'User'.
+src/utils.ts(18,3): error TS2304: Cannot find name 'logger'.
+`);
+
+// Parse ESLint errors
+const eslintErrors = parseESLintErrors(`
+/path/to/file.js
+  10:5   error    'x' is defined but never used   no-unused-vars
+  15:3   warning  Unexpected console statement     no-console
+`);
+
+// Format multiple errors
+const multipleErrors = formatter.formatMultiple([...tscErrors, ...eslintErrors]);
+
+// Quick formatting with convenience functions
+const systemError = formatError.system('Critical system failure', {
+  file: 'src/app.ts',
+  line: 1,
+  description: 'Application startup failed'
+});
+
+const validationError = formatError.validation('Invalid configuration', {
+  file: '.apex/config.yaml',
+  line: 15
+}, [
+  {
+    title: 'Fix configuration syntax',
+    description: 'Check YAML syntax and required fields',
+    command: 'apex config validate'
+  }
+]);
+```
+
+#### Error Types and Severity Levels
+
+```typescript
+// Error Types (CLI formatter)
+enum ErrorType {
+  SYSTEM = 'system',        // Critical system errors (💥)
+  VALIDATION = 'validation', // User input validation (⚠️)
+  CONFIG = 'config',        // Configuration errors (⚙️)
+  NETWORK = 'network',      // Network/API errors (🌐)
+  FILESYSTEM = 'filesystem', // File system errors (📁)
+  APPLICATION = 'application' // Generic app errors (❌)
+}
+
+// Error Severity (Core formatter)
+enum ErrorSeverity {
+  ERROR = 'error',      // Critical errors that prevent execution
+  WARNING = 'warning',  // Non-critical issues to address
+  INFO = 'info',       // Informational messages
+  HINT = 'hint'        // Suggestions or recommendations
+}
+
+// Error Categories (Core formatter)
+enum ErrorCategory {
+  SYNTAX = 'syntax',       // Parsing/compilation errors
+  TYPE = 'type',          // Type checking errors
+  LINT = 'lint',          // Linting errors
+  TEST = 'test',          // Test failures
+  RUNTIME = 'runtime',    // Runtime errors
+  BUILD = 'build',        // Build/compilation errors
+  DEPENDENCY = 'dependency', // Dependency resolution
+  CONFIG = 'config',      // Configuration errors
+  PERMISSION = 'permission', // Access/permission errors
+  NETWORK = 'network',    // Network-related errors
+  UNKNOWN = 'unknown'     // Unclassified errors
+}
 ```
 
 ## Contributing

@@ -11,10 +11,12 @@ import { KanbanBoard } from '@/components/tasks/KanbanBoard'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId, cn } from '@/lib/utils'
 import type { Task, TaskStatus } from '@apexcli/core'
-import { Filter, RefreshCw, ChevronRight, Plus, XCircle, RotateCcw, LayoutGrid, List } from 'lucide-react'
+import { Filter, RefreshCw, ChevronRight, Plus, XCircle, RotateCcw, LayoutGrid, List, ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 
 type ViewMode = 'list' | 'kanban'
+
+const PAGE_SIZE = 50
 
 const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Tasks' },
@@ -29,31 +31,66 @@ const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
 export default function TasksPage() {
   const router = useRouter()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('kanban') // Default to kanban view
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (pageNum?: number) => {
+    const currentPage = pageNum ?? page
     try {
       setLoading(true)
       setError(null)
-      const response = await apiClient.listTasks(
-        statusFilter === 'all' ? undefined : { status: statusFilter }
-      )
+      const response = await apiClient.listTasks({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        limit: PAGE_SIZE,
+        offset: currentPage * PAGE_SIZE,
+      })
       setTasks(response.tasks)
+      setTotal(response.total || response.count || 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks')
     } finally {
       setLoading(false)
     }
+  }, [statusFilter, page])
+
+  // Load list data when in list mode
+  useEffect(() => {
+    if (viewMode === 'list') {
+      loadTasks()
+    } else {
+      // In kanban mode, just clear loading state (kanban loads its own data)
+      setLoading(false)
+    }
+  }, [loadTasks, viewMode])
+
+  // Reset to page 0 when filter changes
+  useEffect(() => {
+    setPage(0)
   }, [statusFilter])
 
-  useEffect(() => {
-    loadTasks()
-  }, [loadTasks])
+  function handleRefresh() {
+    if (viewMode === 'kanban') {
+      setRefreshKey(k => k + 1)
+    } else {
+      loadTasks()
+    }
+  }
+
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const hasNextPage = page < totalPages - 1
+  const hasPrevPage = page > 0
+
+  function goToPage(p: number) {
+    setPage(p)
+    loadTasks(p)
+  }
 
   async function handleCancel(taskId: string, e: React.MouseEvent) {
     e.preventDefault()
@@ -61,7 +98,7 @@ export default function TasksPage() {
     try {
       setActionLoading(`cancel-${taskId}`)
       await apiClient.cancelTask(taskId)
-      await loadTasks()
+      handleRefresh()
     } catch (err) {
       console.error('Failed to cancel task:', err)
     } finally {
@@ -75,7 +112,7 @@ export default function TasksPage() {
     try {
       setActionLoading(`retry-${taskId}`)
       await apiClient.retryTask(taskId)
-      await loadTasks()
+      handleRefresh()
     } catch (err) {
       console.error('Failed to retry task:', err)
     } finally {
@@ -84,11 +121,11 @@ export default function TasksPage() {
   }
 
   function handleTaskCreated(taskId: string) {
-    loadTasks()
+    handleRefresh()
     router.push(`/tasks/${taskId}`)
   }
 
-  if (loading) {
+  if (loading && viewMode === 'list') {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner size="lg" />
@@ -110,7 +147,7 @@ export default function TasksPage() {
                 apex serve --port 3002
               </code>
               <div className="mt-4">
-                <Button onClick={loadTasks}>Retry</Button>
+                <Button onClick={handleRefresh}>Retry</Button>
               </div>
             </div>
           </CardContent>
@@ -122,7 +159,14 @@ export default function TasksPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Tasks</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Tasks</h1>
+          {viewMode === 'list' && total > 0 && (
+            <p className="text-sm text-foreground-secondary mt-1">
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {/* View toggle */}
           <div className="flex items-center border border-border rounded-md overflow-hidden">
@@ -152,25 +196,23 @@ export default function TasksPage() {
             </button>
           </div>
 
-          {/* Status filter - only show in list view */}
-          {viewMode === 'list' && (
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-foreground-secondary" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as TaskStatus | 'all')}
-                className="bg-background-secondary border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-apex-500"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Status filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-foreground-secondary" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as TaskStatus | 'all')}
+              className="bg-background-secondary border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-apex-500"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <Button onClick={loadTasks} disabled={loading} variant="secondary">
+          <Button onClick={handleRefresh} disabled={loading} variant="secondary">
             <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
             Refresh
           </Button>
@@ -191,10 +233,10 @@ export default function TasksPage() {
       {/* Kanban View */}
       {viewMode === 'kanban' && (
         <KanbanBoard
-          tasks={tasks}
           onCancel={handleCancel}
           onRetry={handleRetry}
           actionLoading={actionLoading}
+          refreshKey={refreshKey}
         />
       )}
 
@@ -320,6 +362,31 @@ export default function TasksPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Pagination (list view only) */}
+      {viewMode === 'list' && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => goToPage(page - 1)}
+            disabled={!hasPrevPage}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Previous
+          </Button>
+          <span className="text-sm text-foreground-secondary">
+            Page {page + 1} of {totalPages}
+          </span>
+          <Button
+            variant="secondary"
+            onClick={() => goToPage(page + 1)}
+            disabled={!hasNextPage}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
       )}
     </div>
   )

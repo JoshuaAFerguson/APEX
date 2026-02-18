@@ -1,0 +1,76 @@
+# GitHub MCP Server Template
+# Provides GitHub API integration capabilities for repository management
+
+id: github
+name: GitHub Integration
+description: MCP server for GitHub API integration and repository management
+package: "@modelcontextprotocol/server-github"
+
+# Base server configuration
+config:
+  name: github
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-github"
+  autoStart: false
+
+# Environment variables
+envVars:
+  - name: GITHUB_PERSONAL_ACCESS_TOKEN
+    description: Personal access token for GitHub API authentication
+    required: true
+    sensitive: true
+    source: user
+  - name: GITHUB_API_URL
+    description: GitHub API base URL (for GitHub Enterprise)
+    required: false
+    sensitive: false
+    defaultValue: "https://api.github.com"
+    source: config
+  - name: GITHUB_ORG
+    description: Default GitHub organization name
+    required: false
+    sensitive: false
+    source: config
+  - name: RATE_LIMIT_REQUESTS
+    description: Maximum API requests per hour
+    required: false
+    sensitive: false
+    defaultValue: "5000"
+    source: config
+  - name: REQUEST_TIMEOUT
+    description: API request timeout in milliseconds
+    required: false
+    sensitive: false
+    defaultValue: "30000"
+    source: config
+
+# Server capabilities
+capabilities:
+  - github
+  - git
+  - repositories
+  - issues
+  - pull-requests
+  - api
+  - version-control
+
+# Template metadata
+verified: true
+defaultEnabled: false
+category: api
+tags:
+  - github
+  - git
+  - api
+  - repositories
+  - issues
+  - pull-requests
+  - ci-cd
+  - version-control
+
+minVersion: "1.0.0"
+documentationUrl: "https://modelcontextprotocol.io/servers/github"
+repositoryUrl: "https://github.com/modelcontextprotocol/servers"

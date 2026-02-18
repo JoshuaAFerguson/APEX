@@ -318,3 +318,14 @@ it('should handle environment variables correctly', () => {
 ## Integration with Existing Code
 
 The test utilities integrate seamlessly with existing APEX packages and can be used alongside other testing frameworks and utilities in the codebase.
+
+---
+
+## Related Documentation
+
+- [Mock Helpers API Reference](./mock-helpers-api.md) - Complete API reference for mock helper functions including createOrchestratorMock, createAgentSdkMock, createFileSystemMock, and other test utilities
+- [Browser Permission Test Utilities](./browser-permission-test-utilities.md) - Browser-specific test utilities including browser state fixtures (cleanState, loggedInPage, errorPage, etc.), browserHelpers methods, BrowserStateBuilder fluent API, custom Vitest matchers, permission assertion helpers, and mock data factories
+- [Browser State Fixtures API](./browser-state-fixtures-api.md) - Detailed API documentation for browserFixtures factory functions, browserHelpers immutable state manipulation, and BrowserStateBuilder fluent interface
+- [System APIs Reference](./system-apis-reference.md) - Type definitions for `ToolPermissionResult`, `PermissionManager`, `BrowserTool`, and other core system interfaces
+- [Browser Automation Guide](./browser-automation.md) - Browser automation configuration, usage patterns, and integration examples
+- [API Reference](./api-reference.md) - REST API and WebSocket endpoints for programmatic access to APEX systems

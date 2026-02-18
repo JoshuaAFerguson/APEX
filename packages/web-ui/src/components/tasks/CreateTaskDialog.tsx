@@ -21,17 +21,16 @@ const WORKFLOWS = [
 ]
 
 const AUTONOMY_LEVELS = [
-  { value: 'manual', label: 'Manual', description: 'Requires approval at each stage' },
-  { value: 'review-before-commit', label: 'Review Before Commit', description: 'Review code before committing' },
-  { value: 'review-before-merge', label: 'Review Before Merge', description: 'Review PR before merging (Recommended)' },
-  { value: 'full', label: 'Full Autonomy', description: 'Runs without manual approval' },
+  { value: 'review-all', label: 'Review All', description: 'Requires approval at each major decision point' },
+  { value: 'review-before-commit', label: 'Review Before Commit', description: 'Review code before committing (Recommended)' },
+  { value: 'full-auto', label: 'Full Autonomy', description: 'Runs without manual approval' },
 ]
 
 export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialogProps) {
   const [description, setDescription] = useState('')
   const [acceptanceCriteria, setAcceptanceCriteria] = useState('')
   const [workflow, setWorkflow] = useState('feature')
-  const [autonomy, setAutonomy] = useState<'full' | 'review-before-commit' | 'review-before-merge' | 'manual'>('review-before-merge')
+  const [autonomy, setAutonomy] = useState<'full-auto' | 'review-before-commit' | 'review-all'>('review-before-commit')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,7 +56,7 @@ export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialo
       setDescription('')
       setAcceptanceCriteria('')
       setWorkflow('feature')
-      setAutonomy('review-before-merge')
+      setAutonomy('review-before-commit')
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create task')

@@ -10,7 +10,9 @@ import { formatTokens } from '@apexcli/core';
 import type { InkAppInstance } from '../ui/index.js';
 import { Session, SessionSummary } from '../services/SessionStore.js';
 
-// Context interface for session handlers
+/**
+ * Context interface for session handlers containing required services and state.
+ */
 export interface SessionContext {
   initialized: boolean;
   sessionStore: {
@@ -31,6 +33,13 @@ export interface SessionContext {
   app: InkAppInstance | null;
 }
 
+/**
+ * Main session command handler that routes to specific session subcommands.
+ *
+ * @param args - Command arguments where first element is the subcommand (list, load, save, etc.)
+ * @param ctx - Session context containing session store and app instance
+ * @throws Will show error message if APEX is not initialized or session store is not available
+ */
 export async function handleSession(args: string[], ctx: SessionContext): Promise<void> {
   if (!ctx.initialized || !ctx.sessionStore) {
     ctx.app?.addMessage({
@@ -72,6 +81,12 @@ export async function handleSession(args: string[], ctx: SessionContext): Promis
   }
 }
 
+/**
+ * Handles the session list command to display available sessions.
+ *
+ * @param args - Command arguments that may include --all and --search flags
+ * @param ctx - Session context containing session store and app instance
+ */
 export async function handleSessionList(args: string[], ctx: SessionContext): Promise<void> {
   if (!ctx.sessionStore) return;
 
@@ -103,6 +118,12 @@ export async function handleSessionList(args: string[], ctx: SessionContext): Pr
   });
 }
 
+/**
+ * Loads a previously saved session by its ID.
+ *
+ * @param sessionId - The ID of the session to load
+ * @param ctx - Session context containing session store and session auto-saver
+ */
 export async function handleSessionLoad(sessionId: string, ctx: SessionContext): Promise<void> {
   if (!ctx.sessionStore || !ctx.sessionAutoSaver || !sessionId) {
     ctx.app?.addMessage({
@@ -148,6 +169,12 @@ export async function handleSessionLoad(sessionId: string, ctx: SessionContext):
   }
 }
 
+/**
+ * Saves the current session with a given name and optional tags.
+ *
+ * @param args - Command arguments where first element is the session name, optional --tags flag
+ * @param ctx - Session context containing session auto-saver
+ */
 export async function handleSessionSave(args: string[], ctx: SessionContext): Promise<void> {
   if (!ctx.sessionAutoSaver || !args[0]) {
     ctx.app?.addMessage({
@@ -179,6 +206,12 @@ export async function handleSessionSave(args: string[], ctx: SessionContext): Pr
   }
 }
 
+/**
+ * Creates a new session branch from the current session at a specific message index.
+ *
+ * @param args - Command arguments that may include branch name and --from flag
+ * @param ctx - Session context containing session store and session auto-saver
+ */
 export async function handleSessionBranch(args: string[], ctx: SessionContext): Promise<void> {
   if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
 
@@ -232,6 +265,12 @@ export async function handleSessionBranch(args: string[], ctx: SessionContext): 
   }
 }
 
+/**
+ * Exports the current session to a file in the specified format (md, json, or html).
+ *
+ * @param args - Command arguments that may include --format and --output flags
+ * @param ctx - Session context containing session store and session auto-saver
+ */
 export async function handleSessionExport(args: string[], ctx: SessionContext): Promise<void> {
   if (!ctx.sessionStore || !ctx.sessionAutoSaver) return;
 
@@ -275,6 +314,12 @@ export async function handleSessionExport(args: string[], ctx: SessionContext): 
   }
 }
 
+/**
+ * Deletes a session by its ID after user confirmation.
+ *
+ * @param sessionId - The ID of the session to delete
+ * @param ctx - Session context containing session store
+ */
 export async function handleSessionDelete(sessionId: string, ctx: SessionContext): Promise<void> {
   if (!ctx.sessionStore || !sessionId) {
     ctx.app?.addMessage({
@@ -307,6 +352,11 @@ export async function handleSessionDelete(sessionId: string, ctx: SessionContext
   }
 }
 
+/**
+ * Displays information about the current session including messages, cost, and metadata.
+ *
+ * @param ctx - Session context containing session auto-saver
+ */
 export async function handleSessionInfo(ctx: SessionContext): Promise<void> {
   if (!ctx.sessionAutoSaver) return;
 

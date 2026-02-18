@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Test Page - APEX Browser Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: #28a745;
+            color: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            max-width: 400px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        .button {
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #218838;
+        }
+        .button.secondary {
+            background: #6c757d;
+        }
+        .button.secondary:hover {
+            background: #545b62;
+        }
+        #form-output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            display: none;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 0.875em;
+            margin-top: 5px;
+        }
+        .success {
+            color: #28a745;
+        }
+        .info {
+            color: #6c757d;
+            font-size: 0.875em;
+            margin-top: 5px;
+        }
+        input[type="file"] {
+            width: 100%;
+            max-width: 400px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Form Test Page</h1>
+            <p>Comprehensive form testing for browser automation</p>
+        </div>
+
+        <form id="test-form" novalidate>
+            <div class="form-group">
+                <label for="username">Username *</label>
+                <input type="text" id="username" name="username" required />
+                <div id="username-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required />
+                <div id="email-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password *</label>
+                <input type="password" id="password" name="password" required minlength="6" />
+                <div id="password-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="age">Age</label>
+                <input type="number" id="age" name="age" min="1" max="120" />
+            </div>
+
+            <div class="form-group">
+                <label for="country">Country</label>
+                <select id="country" name="country">
+                    <option value="">Select a country</option>
+                    <option value="us">United States</option>
+                    <option value="uk">United Kingdom</option>
+                    <option value="ca">Canada</option>
+                    <option value="au">Australia</option>
+                    <option value="de">Germany</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="bio">Bio</label>
+                <textarea id="bio" name="bio" rows="4" placeholder="Tell us about yourself..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="profile-photo">Profile Photo</label>
+                <input type="file" id="profile-photo" name="profile-photo" accept="image/*" />
+                <div id="file-info" class="info"></div>
+                <div id="profile-photo-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="resume">Resume (PDF)</label>
+                <input type="file" id="resume" name="resume" accept=".pdf" />
+                <div id="resume-info" class="info"></div>
+                <div id="resume-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="documents">Additional Documents (Multiple)</label>
+                <input type="file" id="documents" name="documents" multiple />
+                <div id="documents-info" class="info"></div>
+                <div id="documents-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="newsletter" name="newsletter" />
+                    <label for="newsletter">Subscribe to newsletter</label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="terms" name="terms" required />
+                    <label for="terms">I agree to the terms and conditions *</label>
+                </div>
+                <div id="terms-error" class="error"></div>
+            </div>
+
+            <div class="form-group">
+                <button type="submit" id="submit-btn" class="button">Submit Form</button>
+                <button type="reset" id="reset-btn" class="button secondary">Reset Form</button>
+                <button type="button" id="validate-btn" class="button secondary">Validate Only</button>
+            </div>
+        </form>
+
+        <div id="form-output">
+            <h3>Form Data</h3>
+            <pre id="form-data"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Form validation and submission handling
+        const form = document.getElementById('test-form');
+        const output = document.getElementById('form-output');
+        const formData = document.getElementById('form-data');
+
+        function clearErrors() {
+            document.querySelectorAll('.error').forEach(el => el.textContent = '');
+        }
+
+        function showError(fieldName, message) {
+            const errorEl = document.getElementById(`${fieldName}-error`);
+            if (errorEl) {
+                errorEl.textContent = message;
+            }
+        }
+
+        function validateForm() {
+            clearErrors();
+            let isValid = true;
+
+            // Username validation
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                showError('username', 'Username is required');
+                isValid = false;
+            } else if (username.length < 3) {
+                showError('username', 'Username must be at least 3 characters');
+                isValid = false;
+            }
+
+            // Email validation
+            const email = document.getElementById('email').value.trim();
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!email) {
+                showError('email', 'Email is required');
+                isValid = false;
+            } else if (!emailRegex.test(email)) {
+                showError('email', 'Please enter a valid email address');
+                isValid = false;
+            }
+
+            // Password validation
+            const password = document.getElementById('password').value;
+            if (!password) {
+                showError('password', 'Password is required');
+                isValid = false;
+            } else if (password.length < 6) {
+                showError('password', 'Password must be at least 6 characters');
+                isValid = false;
+            }
+
+            // Terms validation
+            const terms = document.getElementById('terms').checked;
+            if (!terms) {
+                showError('terms', 'You must agree to the terms and conditions');
+                isValid = false;
+            }
+
+            // File validation
+            const profilePhoto = document.getElementById('profile-photo').files[0];
+            if (profilePhoto) {
+                if (profilePhoto.size > 5 * 1024 * 1024) { // 5MB limit
+                    showError('profile-photo', 'Profile photo must be smaller than 5MB');
+                    isValid = false;
+                }
+                if (!profilePhoto.type.startsWith('image/')) {
+                    showError('profile-photo', 'Profile photo must be an image file');
+                    isValid = false;
+                }
+            }
+
+            const resume = document.getElementById('resume').files[0];
+            if (resume) {
+                if (resume.type !== 'application/pdf') {
+                    showError('resume', 'Resume must be a PDF file');
+                    isValid = false;
+                }
+                if (resume.size > 10 * 1024 * 1024) { // 10MB limit
+                    showError('resume', 'Resume must be smaller than 10MB');
+                    isValid = false;
+                }
+            }
+
+            const documents = document.getElementById('documents').files;
+            if (documents.length > 5) {
+                showError('documents', 'You can upload at most 5 documents');
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        function showFileInfo(inputId, infoId) {
+            const input = document.getElementById(inputId);
+            const info = document.getElementById(infoId);
+
+            if (input.files.length === 0) {
+                info.textContent = '';
+                return;
+            }
+
+            if (input.multiple) {
+                const fileCount = input.files.length;
+                const totalSize = Array.from(input.files).reduce((sum, file) => sum + file.size, 0);
+                const sizeText = formatFileSize(totalSize);
+                info.textContent = `${fileCount} file(s) selected (${sizeText} total)`;
+            } else {
+                const file = input.files[0];
+                const sizeText = formatFileSize(file.size);
+                info.textContent = `${file.name} (${sizeText})`;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function getFormData() {
+            const data = new FormData(form);
+            const result = {};
+            for (let [key, value] of data.entries()) {
+                if (value instanceof File) {
+                    result[key] = {
+                        name: value.name,
+                        size: value.size,
+                        type: value.type,
+                        lastModified: value.lastModified
+                    };
+                } else {
+                    result[key] = value;
+                }
+            }
+            // Handle checkboxes that aren't checked
+            result.newsletter = document.getElementById('newsletter').checked;
+            result.terms = document.getElementById('terms').checked;
+
+            // Handle multiple files
+            const documents = document.getElementById('documents').files;
+            if (documents.length > 0) {
+                result.documents = Array.from(documents).map(file => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    lastModified: file.lastModified
+                }));
+            }
+
+            return result;
+        }
+
+        // Form submission
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('Form submission attempted');
+
+            if (validateForm()) {
+                const data = getFormData();
+                formData.textContent = JSON.stringify(data, null, 2);
+                output.style.display = 'block';
+                output.scrollIntoView({ behavior: 'smooth' });
+                console.log('Form submitted successfully:', data);
+            } else {
+                console.log('Form validation failed');
+            }
+        });
+
+        // Reset button
+        document.getElementById('reset-btn').addEventListener('click', function() {
+            clearErrors();
+            output.style.display = 'none';
+            console.log('Form reset');
+        });
+
+        // Validate button
+        document.getElementById('validate-btn').addEventListener('click', function() {
+            const isValid = validateForm();
+            console.log('Form validation result:', isValid);
+            if (isValid) {
+                alert('Form is valid!');
+            }
+        });
+
+        // Real-time validation
+        document.getElementById('username').addEventListener('blur', function() {
+            const username = this.value.trim();
+            if (username && username.length < 3) {
+                showError('username', 'Username must be at least 3 characters');
+            }
+        });
+
+        document.getElementById('email').addEventListener('blur', function() {
+            const email = this.value.trim();
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (email && !emailRegex.test(email)) {
+                showError('email', 'Please enter a valid email address');
+            }
+        });
+
+        // File input event listeners
+        document.getElementById('profile-photo').addEventListener('change', function() {
+            showFileInfo('profile-photo', 'file-info');
+            // Clear previous errors on new selection
+            document.getElementById('profile-photo-error').textContent = '';
+        });
+
+        document.getElementById('resume').addEventListener('change', function() {
+            showFileInfo('resume', 'resume-info');
+            // Clear previous errors on new selection
+            document.getElementById('resume-error').textContent = '';
+        });
+
+        document.getElementById('documents').addEventListener('change', function() {
+            showFileInfo('documents', 'documents-info');
+            // Clear previous errors on new selection
+            document.getElementById('documents-error').textContent = '';
+        });
+
+        // Log page load
+        console.log('Form test page loaded');
+    </script>
+</body>
+</html>

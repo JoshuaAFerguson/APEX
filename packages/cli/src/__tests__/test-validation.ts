@@ -8,24 +8,12 @@ import { describe, it, expect } from 'vitest';
 describe('Test File Validation', () => {
   it('should validate that input experience test file is properly structured', () => {
     // Import the test file to check for syntax errors
-    try {
-      require('./input-experience-features.test');
-      expect(true).toBe(true); // If we get here, the file loaded successfully
-    } catch (error) {
-      console.error('Input Experience test file has syntax errors:', error);
-      throw error;
-    }
+    expect(() => require('./input-experience-features.test')).not.toThrow();
   });
 
   it('should validate that shortcuts validation test file is properly structured', () => {
     // Import the test file to check for syntax errors
-    try {
-      require('./input-shortcuts-validation.test');
-      expect(true).toBe(true); // If we get here, the file loaded successfully
-    } catch (error) {
-      console.error('Shortcuts validation test file has syntax errors:', error);
-      throw error;
-    }
+    expect(() => require('./input-shortcuts-validation.test')).not.toThrow();
   });
 
   it('should validate test file naming convention', () => {

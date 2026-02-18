@@ -196,6 +196,10 @@ describe('getStatusVariant', () => {
     expect(getStatusVariant('waiting-approval')).toBe('warning');
   });
 
+  it('should return "warning" for awaiting-approval status', () => {
+    expect(getStatusVariant('awaiting-approval')).toBe('warning');
+  });
+
   it('should return "warning" for paused status', () => {
     expect(getStatusVariant('paused')).toBe('warning');
   });
@@ -219,6 +223,7 @@ describe('getStatusVariant', () => {
       'planning',
       'in-progress',
       'waiting-approval',
+      'awaiting-approval',
       'paused',
       'completed',
       'failed',

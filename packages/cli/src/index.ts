@@ -20,11 +20,29 @@ import {
   ApexConfig,
   Task,
   resolveExecutable,
+  type BrowserToolConfig,
+  type ApprovalRequiredEventData,
+  loadMCPTemplates,
+  getMCPTemplate,
+  getMCPServers,
+  type MCPServerConfig,
+  type MCPTemplate,
+  validateMCPConfig,
 } from '@apexcli/core';
 import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { startServer } from '@apexcli/api';
 import { handleDaemonStart, handleDaemonStop, handleDaemonStatus, handleDaemonLogs } from './handlers/daemon-handlers.js';
 import { handleInstallService, handleUninstallService, handleServiceStatus } from './handlers/service-handlers.js';
+import { handleUsage } from './handlers/usage-handlers.js';
+import {
+  handleWorkspaceList,
+  handleWorkspaceInfo,
+  handleWorkspaceCleanup,
+  handleWorkspaceStats,
+} from './handlers/workspace-handlers.js';
+import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
+import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
+import inquirer from 'inquirer';
 
 const VERSION = '0.1.0';
 
@@ -43,22 +61,43 @@ const banner = `
 // Types
 // ============================================================================
 
+/**
+ * Context object that tracks the global state of the APEX CLI application.
+ * Contains information about initialization status, configuration, active processes, and ports.
+ */
 interface ApexContext {
+  /** Current working directory where the CLI is running */
   cwd: string;
+  /** Whether the current directory has been initialized as an APEX project */
   initialized: boolean;
+  /** Loaded APEX configuration, null if not initialized or failed to load */
   config: ApexConfig | null;
+  /** Active orchestrator instance for task execution, null if not created */
   orchestrator: ApexOrchestrator | null;
+  /** API server child process, null if not running */
   apiProcess: ChildProcess | null;
+  /** Web UI child process, null if not running */
   webUIProcess: ChildProcess | null;
+  /** Port number for the API server */
   apiPort: number;
+  /** Port number for the Web UI server */
   webUIPort: number;
 }
 
+/**
+ * Defines the structure for CLI command definitions.
+ * Each command has a name, aliases, description, optional usage info, and handler function.
+ */
 interface Command {
+  /** Primary command name (used with / prefix in REPL) */
   name: string;
+  /** Alternative names for the command */
   aliases: string[];
+  /** Human-readable description of what the command does */
   description: string;
+  /** Optional usage information showing command syntax */
   usage?: string;
+  /** Async function that executes the command with given context and arguments */
   handler: (ctx: ApexContext, args: string[]) => Promise<void>;
 }
 
@@ -81,7 +120,17 @@ const ctx: ApexContext = {
 // Commands
 // ============================================================================
 
+/**
+ * Exported type alias for ApexContext to be used by external modules.
+ * This provides access to the CLI's internal context state for extensions and plugins.
+ */
 export type CliContext = ApexContext;
+
+/**
+ * Array of all available CLI commands with their definitions.
+ * Each command includes name, aliases, description, and handler function.
+ * Used by the REPL to process user commands and display help information.
+ */
 export const commands: Command[] = [
   {
     name: 'help',
@@ -99,6 +148,68 @@ export const commands: Command[] = [
       }
 
       console.log(chalk.gray('\nOr just type a natural language task description to execute it.\n'));
+    },
+  },
+  {
+    name: 'browser',
+    aliases: ['br'],
+    description: 'Configure browser automation settings',
+    usage: '/browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.config) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      const [subcommand, value] = args;
+      if (!subcommand || subcommand === 'show') {
+        const browserConfig = ctx.config.tools?.Browser || {};
+        console.log(JSON.stringify(browserConfig, null, 2));
+        return;
+      }
+
+      if (subcommand !== 'backend' && subcommand !== 'engine' && subcommand !== 'headless') {
+        console.log(chalk.red('Usage: /browser show | /browser backend <playwright|puppeteer> | /browser engine <chromium|firefox|webkit> | /browser headless <true|false>'));
+        return;
+      }
+
+      ctx.config.tools = ctx.config.tools || {};
+      const browserConfig = {
+        ...(ctx.config.tools.Browser || {}),
+      } as BrowserToolConfig;
+
+      if (!value) {
+        console.log(chalk.red('Missing value. See: /browser show'));
+        return;
+      }
+
+      if (subcommand === 'backend') {
+        if (value !== 'playwright' && value !== 'puppeteer') {
+          console.log(chalk.red('Invalid backend. Use "playwright" or "puppeteer".'));
+          return;
+        }
+        browserConfig.backend = value;
+      }
+
+      if (subcommand === 'engine') {
+        if (value !== 'chromium' && value !== 'firefox' && value !== 'webkit') {
+          console.log(chalk.red('Invalid engine. Use "chromium", "firefox", or "webkit".'));
+          return;
+        }
+        browserConfig.engine = value;
+      }
+
+      if (subcommand === 'headless') {
+        if (value !== 'true' && value !== 'false') {
+          console.log(chalk.red('Invalid headless flag. Use "true" or "false".'));
+          return;
+        }
+        browserConfig.headless = value === 'true';
+      }
+
+      ctx.config.tools.Browser = browserConfig;
+      await saveConfig(ctx.cwd, ctx.config);
+      console.log(chalk.green(`Browser setting updated: ${subcommand} = ${value}.`));
     },
   },
 
@@ -343,10 +454,31 @@ export const commands: Command[] = [
           console.log(chalk.red(`Error: ${task.error}`));
         }
       } else {
-        const tasks = await ctx.orchestrator.listTasks({
-          limit: 10,
-          includeArchived
+        // Display current autonomy level from config
+        const config = ctx.config!;
+        const autonomyLevel = config.autonomy?.level || 'review-before-commit';
+
+        console.log(chalk.cyan('\n📋 APEX Status Overview:\n'));
+        console.log(`${chalk.bold('Autonomy Level:')} ${getAutonomyEmoji(autonomyLevel)} ${autonomyLevel}`);
+        console.log();
+
+        // Calculate and display cumulative resource usage across session
+        const allTasks = await ctx.orchestrator.listTasks({
+          limit: 1000, // Get all tasks for cumulative calculation
+          includeArchived: true
         });
+
+        const sessionUsage = allTasks.reduce((total, task) => ({
+          totalTokens: total.totalTokens + (task.usage?.totalTokens || 0),
+          estimatedCost: total.estimatedCost + (task.usage?.estimatedCost || 0),
+        }), { totalTokens: 0, estimatedCost: 0 });
+
+        console.log(chalk.cyan('💰 Session Resource Usage:'));
+        console.log(`  Total Tokens: ${formatTokens(sessionUsage.totalTokens)}`);
+        console.log(`  Total Cost: ${formatCost(sessionUsage.estimatedCost)}`);
+        console.log();
+
+        const tasks = allTasks.slice(0, 10); // Use the already fetched tasks for recent tasks display
 
         if (tasks.length === 0) {
           console.log(chalk.gray('\nNo tasks found.\n'));
@@ -378,6 +510,37 @@ export const commands: Command[] = [
           );
         }
         console.log();
+
+        // Show pending approvals
+        const pendingApprovals = await ctx.orchestrator.getPendingApprovals();
+        if (pendingApprovals.length > 0) {
+          console.log(chalk.cyan('Pending Approvals:\n'));
+
+          for (const approval of pendingApprovals) {
+            // Get the task to display its description/name
+            const approvalTask = await ctx.orchestrator.getTask(approval.taskId);
+            const taskName = approvalTask?.description || `Task ${approval.taskId.substring(0, 8)}`;
+
+            // Calculate time waiting
+            const timeWaiting = Math.floor((Date.now() - approval.requestedAt.getTime()) / (1000 * 60)); // minutes
+            let timeDisplay: string;
+            if (timeWaiting < 60) {
+              timeDisplay = `${timeWaiting}m`;
+            } else {
+              const hours = Math.floor(timeWaiting / 60);
+              const mins = timeWaiting % 60;
+              timeDisplay = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h ${mins}m`;
+            }
+
+            console.log(
+              `  ${chalk.yellow('⏳')} ${chalk.bold(approval.gateName)} - ${taskName}`
+            );
+            console.log(
+              `    ${chalk.gray(`Waiting: ${timeDisplay} • Task: ${approval.taskId.substring(0, 16)}`)}`
+            );
+            console.log();
+          }
+        }
       }
     },
   },
@@ -524,7 +687,7 @@ export const commands: Command[] = [
       if (effective.project.framework) console.log(`  Framework: ${effective.project.framework}`);
 
       console.log(chalk.bold('\nAutonomy:'));
-      console.log(`  Default: ${effective.autonomy.default}`);
+      console.log(`  Level: ${effective.autonomy.level}`);
 
       console.log(chalk.bold('\nModels:'));
       console.log(`  Planning: ${effective.models.planning}`);
@@ -604,6 +767,32 @@ export const commands: Command[] = [
       const taskId = args[0];
       if (!taskId) {
         console.log(chalk.red('Usage: /cancel <task_id>'));
+        return;
+      }
+
+      // Get task details for better context
+      const task = await ctx.orchestrator.getTask(taskId);
+      if (!task) {
+        console.log(chalk.red(`Task not found: ${taskId}`));
+        return;
+      }
+
+      // Get autonomy level from config
+      const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
+
+      // Request confirmation based on autonomy level
+      const shouldProceed = await requestConfirmation(
+        DangerousOperation.CANCEL_TASK,
+        autonomyLevel,
+        {
+          resourceId: task.id,
+          resourceDescription: task.description,
+          context: `Status: ${task.status}, Stage: ${task.currentStage || 'unknown'}`
+        }
+      );
+
+      if (!shouldProceed) {
+        showOperationCancelled(DangerousOperation.CANCEL_TASK);
         return;
       }
 
@@ -876,7 +1065,7 @@ export const commands: Command[] = [
     name: 'run',
     aliases: ['r'],
     description: 'Run a task with specific options',
-    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>]',
+    usage: '/run "<description>" [--workflow <name>] [--autonomy <level>] [--diff-preview] [--dry-run]',
     handler: async (ctx, args) => {
       if (!ctx.initialized || !ctx.orchestrator) {
         console.log(chalk.red('APEX not initialized. Run /init first.'));
@@ -888,6 +1077,8 @@ export const commands: Command[] = [
       let workflow = 'feature';
       let autonomy: string | undefined;
       let priority: string | undefined;
+      let diffPreview: boolean | undefined;
+      let dryRun = false;
 
       let i = 0;
       // Check if first arg is a quoted string
@@ -914,6 +1105,12 @@ export const commands: Command[] = [
           autonomy = args[++i];
         } else if (args[i] === '--priority' || args[i] === '-p') {
           priority = args[++i];
+        } else if (args[i] === '--diff-preview') {
+          diffPreview = true;
+        } else if (args[i] === '--no-diff-preview') {
+          diffPreview = false;
+        } else if (args[i] === '--dry-run' || args[i] === '-d') {
+          dryRun = true;
         } else if (!description) {
           description = args[i];
         }
@@ -921,11 +1118,11 @@ export const commands: Command[] = [
       }
 
       if (!description) {
-        console.log(chalk.red('Usage: /run "<description>" [--workflow <name>]'));
+        console.log(chalk.red('Usage: /run "<description>" [--workflow <name>] [--dry-run]'));
         return;
       }
 
-      await executeTask(ctx, description, { workflow, autonomy, priority });
+      await executeTask(ctx, description, { workflow, autonomy, priority }, { diffPreview, dryRun });
     },
   },
 
@@ -1205,36 +1402,32 @@ export const commands: Command[] = [
   {
     name: 'workspace',
     aliases: ['ws'],
-    description: 'Manage task workspaces',
-    usage: '/workspace [list|cleanup|info <task-id>]',
+    description: 'Manage task workspaces (list, info, cleanup, stats)',
+    usage: '/workspace [list|info <task-id>|cleanup [<task-id>]|stats]',
     handler: async (ctx, args) => {
-      if (!ctx.orchestrator) {
-        console.log(chalk.red('❌ Orchestrator not available'));
-        return;
-      }
-
       const action = args[0]?.toLowerCase();
 
       switch (action) {
         case 'list':
-          console.log(chalk.blue('📋 Active Workspaces:'));
-          console.log(chalk.gray('Workspace listing not yet implemented'));
-          break;
-        case 'cleanup':
-          console.log(chalk.blue('🧹 Cleaning up old workspaces...'));
-          console.log(chalk.green('✅ Workspace cleanup not yet implemented'));
+          await handleWorkspaceList(ctx);
           break;
         case 'info':
-          const taskId = args[1];
-          if (!taskId) {
-            console.log(chalk.red('Usage: /workspace info <task-id>'));
-            return;
-          }
-          console.log(chalk.blue(`📊 Workspace info for task ${taskId}:`));
-          console.log(chalk.gray('Workspace info not yet implemented'));
+          await handleWorkspaceInfo(ctx, args.slice(1));
+          break;
+        case 'cleanup':
+          await handleWorkspaceCleanup(ctx, args.slice(1));
+          break;
+        case 'stats':
+          await handleWorkspaceStats(ctx);
           break;
         default:
-          console.log(chalk.red('Usage: /workspace [list|cleanup|info <task-id>]'));
+          console.log(chalk.red('Usage: /workspace [list|info <task-id>|cleanup [<task-id>]|stats]'));
+          console.log(chalk.gray('\nSubcommands:'));
+          console.log(chalk.gray('  list           - List all active task workspaces'));
+          console.log(chalk.gray('  info <task-id> - Show detailed info for a specific workspace'));
+          console.log(chalk.gray('  cleanup        - Clean up old, inactive workspaces'));
+          console.log(chalk.gray('  cleanup <task-id> - Clean up a specific task workspace'));
+          console.log(chalk.gray('  stats          - Show aggregate workspace statistics'));
       }
     },
   },
@@ -1682,28 +1875,8 @@ export const commands: Command[] = [
     name: 'usage',
     aliases: ['budget'],
     description: 'View usage statistics and budget management',
-    usage: '/usage [stats|budget|mode]',
-    handler: async (ctx, args) => {
-      const action = args[0]?.toLowerCase();
-
-      switch (action) {
-        case 'stats':
-        case undefined:
-          console.log(chalk.blue('📊 Usage Statistics:'));
-          console.log(chalk.gray('Usage statistics not yet implemented'));
-          break;
-        case 'budget':
-          console.log(chalk.blue('💰 Budget Status:'));
-          console.log(chalk.gray('Budget management not yet implemented'));
-          break;
-        case 'mode':
-          console.log(chalk.blue('🌓 Current Mode:'));
-          console.log(chalk.gray('Time-based mode detection not yet implemented'));
-          break;
-        default:
-          console.log(chalk.red('Usage: /usage [stats|budget|mode]'));
-      }
-    },
+    usage: '/usage',
+    handler: handleUsage,
   },
   {
     name: 'checkout',
@@ -2198,6 +2371,25 @@ export const commands: Command[] = [
           return;
         }
 
+        // Get autonomy level from config
+        const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
+
+        // Request confirmation based on autonomy level
+        const shouldProceed = await requestConfirmation(
+          DangerousOperation.MERGE_TASK,
+          autonomyLevel,
+          {
+            resourceId: task.id,
+            resourceDescription: task.description,
+            context: `Branch: ${task.branchName}, ${isSquash ? 'Squash merge' : 'Standard merge'}`
+          }
+        );
+
+        if (!shouldProceed) {
+          showOperationCancelled(DangerousOperation.MERGE_TASK);
+          return;
+        }
+
         console.log(chalk.cyan(`\n🔀 ${isSquash ? 'Squash merging' : 'Merging'} ${task.branchName} into main...\n`));
         console.log(chalk.gray(`Task: ${task.description}`));
 
@@ -2470,6 +2662,778 @@ export const commands: Command[] = [
       } catch (error) {
         console.log(chalk.red(`❌ Error: ${(error as Error).message}`));
       }
+    },
+  },
+
+  {
+    name: 'mcp',
+    aliases: [],
+    description: 'Manage MCP (Model Context Protocol) marketplace and servers',
+    usage: '/mcp init | /mcp list [--json] | /mcp search <query> [--json] | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate | /mcp status',
+    handler: async (ctx, args) => {
+      // Parse flags
+      let outputJson = false;
+      const filteredArgs: string[] = [];
+
+      for (const arg of args) {
+        if (arg === '--json') {
+          outputJson = true;
+        } else {
+          filteredArgs.push(arg);
+        }
+      }
+
+      const [subcommand, serverName] = filteredArgs;
+
+      if (subcommand === 'init') {
+        // Handle 'mcp init' subcommand for interactive MCP setup
+        try {
+          if (!ctx.initialized) {
+            console.log(chalk.red('❌ APEX not initialized. Run /init first.'));
+            return;
+          }
+
+          console.log(chalk.cyan('\n🛠️  MCP Interactive Setup\n'));
+          console.log(chalk.gray('This will help you configure MCP (Model Context Protocol) for your APEX project.\n'));
+
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          // Initialize MCP config if it doesn't exist
+          config.mcp = config.mcp || { enabled: false, servers: {} };
+
+          // Ask if MCP should be enabled
+          const { enableMCP } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'enableMCP',
+              message: 'Enable MCP (Model Context Protocol) for this project?',
+              default: config.mcp.enabled || false
+            }
+          ]);
+
+          config.mcp.enabled = enableMCP;
+
+          if (!enableMCP) {
+            // Save config and exit if user doesn't want MCP
+            await saveConfig(ctx.cwd, config);
+            console.log(chalk.yellow('✓ MCP disabled for this project.'));
+            return;
+          }
+
+          // Load available templates
+          const templates = await loadMCPTemplates();
+          const templateChoices = Object.values(templates).map(t => ({
+            name: `${t.name} - ${t.description}`,
+            value: t.id,
+            short: t.name
+          }));
+
+          if (templateChoices.length === 0) {
+            console.log(chalk.yellow('⚠️  No MCP templates found. You can manually configure servers later.'));
+            await saveConfig(ctx.cwd, config);
+            return;
+          }
+
+          // Ask which servers to add
+          const { selectedServers } = await inquirer.prompt([
+            {
+              type: 'checkbox',
+              name: 'selectedServers',
+              message: 'Which MCP servers would you like to add?',
+              choices: [
+                ...templateChoices,
+                { name: 'None (configure manually later)', value: 'none' }
+              ],
+              validate: (answer) => {
+                if (answer.length === 0) {
+                  return 'Please select at least one option or choose "None"';
+                }
+                return true;
+              }
+            }
+          ]);
+
+          // Add selected servers to config
+          if (selectedServers.length > 0 && !selectedServers.includes('none')) {
+            console.log(chalk.cyan('\n📦 Adding selected MCP servers...\n'));
+
+            // Normalize servers to Record format
+            const normalizedServers = getMCPServers(config);
+
+            for (const serverId of selectedServers) {
+              const template = templates[serverId];
+              if (!template) continue;
+
+              // Check if server already exists
+              if (normalizedServers[template.id]) {
+                console.log(chalk.yellow(`⚠️  Server '${template.name}' already exists, skipping...`));
+                continue;
+              }
+
+              // Create server config from template
+              const serverConfig: MCPServerConfig = {
+                type: 'stdio', // Default type
+                autoStart: false, // Default autoStart
+                name: template.name,
+                ...template.config, // Spread template config (type, command, args, etc.)
+              };
+
+              // Add environment variables if defined in template
+              if (template.envVars && template.envVars.length > 0) {
+                serverConfig.envVars = template.envVars.map(envVar => ({
+                  ...envVar,
+                  // Only include non-sensitive default values
+                  value: !envVar.sensitive ? envVar.defaultValue : undefined,
+                }));
+              }
+
+              // Add capabilities if defined in template
+              if (template.capabilities && template.capabilities.length > 0) {
+                serverConfig.capabilities = template.capabilities;
+              }
+
+              // Set autoStart based on template default
+              if (template.defaultEnabled !== undefined) {
+                serverConfig.autoStart = template.defaultEnabled;
+              }
+
+              // Add the server to normalized servers
+              normalizedServers[template.id] = serverConfig;
+              console.log(chalk.green(`✓ Added MCP server: ${template.name}`));
+            }
+
+            // Update config with normalized servers
+            config.mcp.servers = normalizedServers;
+          }
+
+          // Save the updated configuration
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green('\n✅ MCP configuration saved successfully!'));
+          console.log(chalk.gray('\nNext steps:'));
+          console.log(chalk.gray('  • Use /mcp validate to check your configuration'));
+          console.log(chalk.gray('  • Use /mcp add <server-name> to add more servers'));
+          console.log(chalk.gray('  • Edit .apex/config.yaml to configure environment variables'));
+          console.log(chalk.gray('  • Restart APEX to apply MCP configuration\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error during MCP setup: ${(error as Error).message}`));
+        }
+      } else if (!subcommand || subcommand === 'list') {
+        // Handle 'mcp list' subcommand
+        try {
+          const templates = await loadMCPTemplates();
+
+          if (!templates || Object.keys(templates).length === 0) {
+            if (outputJson) {
+              console.log(JSON.stringify([], null, 2));
+            } else {
+              console.log(chalk.gray('No MCP servers found in marketplace.'));
+            }
+            return;
+          }
+
+          // Output as JSON if flag present
+          if (outputJson) {
+            const templatesList = Object.values(templates);
+            console.log(JSON.stringify(templatesList, null, 2));
+            return;
+          }
+
+          console.log(chalk.cyan('\n📦 MCP Marketplace - Available Servers:\n'));
+
+          // Calculate max name length for formatting
+          const maxNameLength = Math.max(...Object.values(templates).map(t => t.name.length));
+
+          // Group templates by category for better browsing
+          const categorized: Record<string, MCPTemplate[]> = {};
+          const uncategorized: MCPTemplate[] = [];
+
+          for (const template of Object.values(templates)) {
+            if (template.category) {
+              if (!categorized[template.category]) {
+                categorized[template.category] = [];
+              }
+              categorized[template.category].push(template);
+            } else {
+              uncategorized.push(template);
+            }
+          }
+
+          // Sort categories and templates within each category
+          const sortedCategories = Object.keys(categorized).sort();
+          for (const category of sortedCategories) {
+            categorized[category].sort((a, b) => a.name.localeCompare(b.name));
+          }
+          uncategorized.sort((a, b) => a.name.localeCompare(b.name));
+
+          // Display categorized templates
+          for (const category of sortedCategories) {
+            console.log(chalk.magenta(`📁 ${category.charAt(0).toUpperCase() + category.slice(1)}`));
+            for (const template of categorized[category]) {
+              const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+              const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+              console.log(`    ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+              // Show tags if available
+              if (template.tags && template.tags.length > 0) {
+                const tagDisplay = template.tags.map(tag => chalk.cyan(`#${tag}`)).join(' ');
+                console.log(`      ${chalk.gray('Tags:')} ${tagDisplay}`);
+              }
+            }
+            console.log(); // Empty line after each category
+          }
+
+          // Display uncategorized templates
+          if (uncategorized.length > 0) {
+            console.log(chalk.magenta('📁 Other'));
+            for (const template of uncategorized) {
+              const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+              const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+              console.log(`    ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+              // Show tags if available
+              if (template.tags && template.tags.length > 0) {
+                const tagDisplay = template.tags.map(tag => chalk.cyan(`#${tag}`)).join(' ');
+                console.log(`      ${chalk.gray('Tags:')} ${tagDisplay}`);
+              }
+            }
+            console.log();
+          }
+
+          // Summary and helpful commands
+          const totalServers = Object.keys(templates).length;
+          const verifiedCount = Object.values(templates).filter(t => t.verified).length;
+
+          console.log(chalk.gray(`📊 ${totalServers} server${totalServers === 1 ? '' : 's'} available`));
+          if (verifiedCount > 0) {
+            console.log(chalk.gray(`   ${verifiedCount} verified server${verifiedCount === 1 ? '' : 's'} ${chalk.blue('✓')}`));
+          }
+
+          console.log(chalk.gray('\n🔍 Marketplace commands:'));
+          console.log(chalk.gray('  • Search servers: /mcp search <query>'));
+          console.log(chalk.gray('  • Install server: /mcp install <server-name>'));
+          console.log(chalk.gray('  • View installed: /mcp installed'));
+          console.log(chalk.gray('  • Interactive setup: /mcp init\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error loading MCP marketplace: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'search') {
+        // Handle 'mcp search <query>' subcommand
+        const query = serverName; // serverName is actually the search query in this context
+
+        if (!query) {
+          console.log(chalk.red('❌ Error: Search query is required'));
+          console.log(chalk.gray('Usage: /mcp search <query>'));
+          console.log(chalk.gray('Example: /mcp search filesystem'));
+          return;
+        }
+
+        try {
+          const templates = await loadMCPTemplates();
+          const searchQuery = query.toLowerCase();
+
+          // Search through templates by name, description, tags, and category
+          const matchingTemplates = Object.values(templates).filter(template => {
+            const nameMatch = template.name.toLowerCase().includes(searchQuery);
+            const descMatch = template.description.toLowerCase().includes(searchQuery);
+            const categoryMatch = template.category?.toLowerCase().includes(searchQuery);
+            const tagsMatch = template.tags?.some(tag => tag.toLowerCase().includes(searchQuery));
+            const capabilitiesMatch = template.capabilities?.some(cap => cap.toLowerCase().includes(searchQuery));
+
+            return nameMatch || descMatch || categoryMatch || tagsMatch || capabilitiesMatch;
+          });
+
+          if (matchingTemplates.length === 0) {
+            if (outputJson) {
+              console.log(JSON.stringify([], null, 2));
+            } else {
+              console.log(chalk.yellow(`No MCP servers found matching "${query}"`));
+              console.log(chalk.gray('\nTry:'));
+              console.log(chalk.gray('  • Using broader search terms'));
+              console.log(chalk.gray('  • Running "/mcp list" to see all available servers'));
+            }
+            return;
+          }
+
+          // Calculate max name length for formatting
+          const maxNameLength = Math.max(...matchingTemplates.map(t => t.name.length));
+
+          // Sort results by relevance (exact name match first, then alphabetically)
+          const sortedResults = matchingTemplates.sort((a, b) => {
+            const aExactMatch = a.name.toLowerCase() === searchQuery;
+            const bExactMatch = b.name.toLowerCase() === searchQuery;
+
+            if (aExactMatch && !bExactMatch) return -1;
+            if (!aExactMatch && bExactMatch) return 1;
+
+            return a.name.localeCompare(b.name);
+          });
+
+          // Output as JSON if flag present
+          if (outputJson) {
+            console.log(JSON.stringify(sortedResults, null, 2));
+            return;
+          }
+
+          console.log(chalk.cyan(`\n🔍 Searching MCP marketplace for "${query}"...\n`));
+          console.log(chalk.green(`Found ${matchingTemplates.length} matching server${matchingTemplates.length === 1 ? '' : 's'}:\n`));
+
+          for (const template of sortedResults) {
+            const padding = ' '.repeat(maxNameLength - template.name.length + 2);
+            const verifiedBadge = template.verified ? chalk.blue(' ✓') : '';
+
+            console.log(`  ${chalk.yellow(template.name)}${verifiedBadge}${padding}${chalk.gray(template.description)}`);
+
+            // Show additional details for search results
+            if (template.category) {
+              console.log(`    ${chalk.gray('Category:')} ${chalk.cyan(template.category)}`);
+            }
+            if (template.tags && template.tags.length > 0) {
+              console.log(`    ${chalk.gray('Tags:')} ${template.tags.map(tag => chalk.cyan(tag)).join(', ')}`);
+            }
+            if (template.capabilities && template.capabilities.length > 0) {
+              console.log(`    ${chalk.gray('Capabilities:')} ${template.capabilities.map(cap => chalk.cyan(cap)).join(', ')}`);
+            }
+            console.log(); // Empty line between results
+          }
+
+          console.log(chalk.gray(`\nTo install: /mcp install <server-name>`));
+          console.log(chalk.gray('To see all servers: /mcp list\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error searching MCP marketplace: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'add' || subcommand === 'install') {
+        // Handle 'mcp add <server-name>' or 'mcp install <server-name>' subcommand
+        if (!serverName) {
+          console.log(chalk.red('❌ Error: Server name is required'));
+          console.log(chalk.gray(`Usage: /mcp ${subcommand} <server-name>`));
+          console.log(chalk.gray('Available servers: /mcp list'));
+          return;
+        }
+
+        try {
+          // Load the template
+          const template = await getMCPTemplate(serverName);
+
+          if (!template) {
+            console.log(chalk.red(`❌ Error: Template '${serverName}' not found`));
+            console.log(chalk.gray('Run "/mcp list" to see available templates'));
+            return;
+          }
+
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          // Initialize MCP config if it doesn't exist
+          config.mcp = config.mcp || { enabled: true, servers: {} };
+
+          // Normalize servers to Record format
+          const normalizedServers = getMCPServers(config);
+
+          // Check if server already exists
+          if (normalizedServers[template.id]) {
+            console.log(chalk.yellow(`⚠️  Server '${template.id}' already exists in configuration`));
+            console.log(chalk.gray('Edit .apex/config.yaml to modify or remove existing servers'));
+            return;
+          }
+
+          // Create server config from template
+          const serverConfig: MCPServerConfig = {
+            type: 'stdio', // Default type
+            autoStart: false, // Default autoStart
+            name: template.name,
+            ...template.config, // Spread template config (type, command, args, etc.)
+          };
+
+          // Add environment variables if defined in template
+          if (template.envVars && template.envVars.length > 0) {
+            serverConfig.envVars = template.envVars.map(envVar => ({
+              ...envVar,
+              // Only include non-sensitive default values
+              value: !envVar.sensitive ? envVar.defaultValue : undefined,
+            }));
+          }
+
+          // Add capabilities if defined in template
+          if (template.capabilities && template.capabilities.length > 0) {
+            serverConfig.capabilities = template.capabilities;
+          }
+
+          // Set autoStart based on template default
+          if (template.defaultEnabled !== undefined) {
+            serverConfig.autoStart = template.defaultEnabled;
+          }
+
+          // Add the server to config
+          normalizedServers[template.id] = serverConfig;
+          config.mcp!.servers = normalizedServers;
+
+          // Save the updated config
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green(`✅ Successfully added MCP server '${template.name}' (${template.id})`));
+
+          // Show helpful information about environment variables
+          if (template.envVars && template.envVars.some(env => env.required || env.sensitive)) {
+            console.log(chalk.cyan('\n📝 Configuration Notes:'));
+
+            const requiredVars = template.envVars.filter(env => env.required);
+            const sensitiveVars = template.envVars.filter(env => env.sensitive);
+
+            if (requiredVars.length > 0) {
+              console.log(chalk.yellow('Required environment variables:'));
+              for (const envVar of requiredVars) {
+                console.log(`  • ${envVar.name}: ${envVar.description || 'No description'}`);
+              }
+            }
+
+            if (sensitiveVars.length > 0) {
+              console.log(chalk.yellow('Sensitive environment variables (configure separately):'));
+              for (const envVar of sensitiveVars) {
+                console.log(`  • ${envVar.name}: ${envVar.description || 'No description'}`);
+              }
+            }
+
+            console.log(chalk.gray('\nEdit .apex/config.yaml to configure environment variables'));
+          }
+
+          if (template.documentationUrl) {
+            console.log(chalk.gray(`\nDocumentation: ${template.documentationUrl}`));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error adding MCP server: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'uninstall') {
+        // Handle 'mcp uninstall <server-name>' subcommand
+        if (!serverName) {
+          console.log(chalk.red('❌ Error: Server name is required'));
+          console.log(chalk.gray('Usage: /mcp uninstall <server-name>'));
+          console.log(chalk.gray('Installed servers: /mcp installed'));
+          return;
+        }
+
+        try {
+          // Load current config
+          const config = await loadConfig(ctx.cwd);
+
+          // Normalize servers to Record format
+          const normalizedServers = getMCPServers(config);
+
+          if (Object.keys(normalizedServers).length === 0) {
+            console.log(chalk.yellow('⚠️  No MCP servers are currently installed.'));
+            console.log(chalk.gray('Use "/mcp list" to see available servers or "/mcp install <server>" to install one.'));
+            return;
+          }
+
+          // Find the server to uninstall (support both template ID and server name)
+          let serverKey: string | null = null;
+          let serverConfig: MCPServerConfig | null = null;
+
+          // First, try exact match by key
+          if (normalizedServers[serverName]) {
+            serverKey = serverName;
+            serverConfig = normalizedServers[serverName];
+          } else {
+            // Try to find by name
+            for (const [key, server] of Object.entries(normalizedServers)) {
+              if (server.name === serverName) {
+                serverKey = key;
+                serverConfig = server;
+                break;
+              }
+            }
+          }
+
+          if (!serverKey || !serverConfig) {
+            console.log(chalk.red(`❌ MCP server '${serverName}' is not installed`));
+            console.log(chalk.gray('Use "/mcp installed" to see installed servers'));
+            return;
+          }
+
+          // Confirm uninstallation
+          const { confirm } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'confirm',
+              message: `Are you sure you want to uninstall '${serverConfig.name}' (${serverKey})?`,
+              default: false,
+            },
+          ]);
+
+          if (!confirm) {
+            console.log(chalk.yellow('❌ Uninstallation cancelled'));
+            return;
+          }
+
+          // Remove the server from config
+          delete normalizedServers[serverKey];
+          config.mcp = config.mcp || { enabled: true, servers: {} };
+          config.mcp.servers = normalizedServers;
+
+          // Save the updated config
+          await saveConfig(ctx.cwd, config);
+
+          console.log(chalk.green(`✅ Successfully uninstalled MCP server '${serverConfig.name}' (${serverKey})`));
+          console.log(chalk.gray('   Server configuration has been removed from .apex/config.yaml'));
+          console.log(chalk.gray('   Restart APEX to apply the changes'));
+
+          // Show remaining servers if any
+          const remainingServers = Object.keys(config.mcp.servers || {});
+          if (remainingServers.length > 0) {
+            console.log(chalk.gray(`\nRemaining installed servers: ${remainingServers.length}`));
+          } else {
+            console.log(chalk.gray('\nNo MCP servers are currently installed.'));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error uninstalling MCP server: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'installed') {
+        // Handle 'mcp installed' subcommand to list installed servers
+        try {
+          console.log(chalk.cyan('\n📦 Installed MCP Servers:\n'));
+
+          const config = await loadConfig(ctx.cwd);
+
+          if (!config.mcp || !config.mcp.servers || Object.keys(config.mcp.servers).length === 0) {
+            console.log(chalk.gray('No MCP servers are currently installed.'));
+            console.log(chalk.gray('\nTo install servers:'));
+            console.log(chalk.gray('  • Browse available servers: /mcp list'));
+            console.log(chalk.gray('  • Search for servers: /mcp search <query>'));
+            console.log(chalk.gray('  • Install a server: /mcp install <server-name>'));
+            return;
+          }
+
+          // Calculate max name length for formatting
+          const serverEntries = Object.entries(config.mcp.servers);
+          const maxNameLength = Math.max(...serverEntries.map(([_, server]) => server.name.length));
+          const maxIdLength = Math.max(...serverEntries.map(([id]) => id.length));
+
+          // Sort servers alphabetically by name
+          const sortedServers = serverEntries.sort(([_a, a], [_b, b]) => a.name.localeCompare(b.name));
+
+          for (const [serverId, server] of sortedServers) {
+            const namePadding = ' '.repeat(maxNameLength - server.name.length + 2);
+            const idPadding = ' '.repeat(maxIdLength - serverId.length + 2);
+            const statusIcon = server.autoStart ? chalk.green('●') : chalk.gray('○');
+            const statusText = server.autoStart ? chalk.green('enabled') : chalk.gray('disabled');
+
+            console.log(`  ${chalk.yellow(server.name)}${namePadding}${chalk.gray(`[${serverId}]`)}${idPadding}${statusIcon} ${statusText}`);
+
+            // Show command and args if available
+            if (server.command) {
+              const commandDisplay = server.args && server.args.length > 0
+                ? `${server.command} ${server.args.join(' ')}`
+                : server.command;
+              console.log(`    ${chalk.gray('Command:')} ${chalk.cyan(commandDisplay)}`);
+            }
+
+            // Show capabilities if available
+            if (server.capabilities && server.capabilities.length > 0) {
+              console.log(`    ${chalk.gray('Capabilities:')} ${server.capabilities.map(cap => chalk.cyan(cap)).join(', ')}`);
+            }
+
+            // Show environment variables info if any
+            if (server.envVars && server.envVars.length > 0) {
+              const configuredVars = server.envVars.filter(env => env.value !== undefined).length;
+              const totalVars = server.envVars.length;
+              if (totalVars > configuredVars) {
+                console.log(`    ${chalk.yellow('⚠️  Environment:')} ${configuredVars}/${totalVars} variables configured`);
+              } else {
+                console.log(`    ${chalk.green('✓ Environment:')} ${configuredVars} variables configured`);
+              }
+            }
+
+            console.log(); // Empty line between servers
+          }
+
+          console.log(chalk.gray(`Total: ${serverEntries.length} server${serverEntries.length === 1 ? '' : 's'} installed`));
+          console.log(chalk.gray('\nMCP Status:'), config.mcp.enabled ? chalk.green('enabled') : chalk.red('disabled'));
+
+          if (!config.mcp.enabled) {
+            console.log(chalk.yellow('⚠️  MCP is disabled. Enable it with "/mcp init" to use installed servers.'));
+          }
+
+          console.log(chalk.gray('\nManagement commands:'));
+          console.log(chalk.gray('  • Uninstall: /mcp uninstall <server-name>'));
+          console.log(chalk.gray('  • Validate config: /mcp validate'));
+          console.log(chalk.gray('  • Configure servers: edit .apex/config.yaml\n'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error listing installed MCP servers: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'validate') {
+        // Handle MCP configuration validation
+        try {
+          const config = await loadConfig(ctx.cwd);
+
+          console.log(chalk.cyan('🔍 Validating MCP configuration...'));
+
+          // Validate the MCP configuration
+          const mcpConfig = config.mcp || { enabled: false, servers: {} };
+          const validationResult = await validateMCPConfig(mcpConfig, {
+            checkEnvironmentVars: true,
+            checkCommandExistence: true,
+            validateConnectionConfig: true,
+            baseDirectory: ctx.cwd,
+          });
+
+          // Display validation results
+          if (validationResult.isValid) {
+            console.log(chalk.green('✅ MCP configuration is valid!'));
+
+            if (validationResult.warningCount > 0 || validationResult.infoCount > 0) {
+              console.log(chalk.cyan('\n📋 Additional information:'));
+            }
+          } else {
+            console.log(chalk.red('❌ MCP configuration has validation errors'));
+          }
+
+          // Display summary
+          const totalIssues = validationResult.errorCount + validationResult.warningCount + validationResult.infoCount;
+          if (totalIssues > 0) {
+            console.log(chalk.gray(`\n📊 Summary: ${validationResult.errorCount} errors, ${validationResult.warningCount} warnings, ${validationResult.infoCount} info`));
+
+            // Display issues grouped by severity
+            const errorIssues = validationResult.issues.filter(i => i.severity === 'error');
+            const warningIssues = validationResult.issues.filter(i => i.severity === 'warning');
+            const infoIssues = validationResult.issues.filter(i => i.severity === 'info');
+
+            if (errorIssues.length > 0) {
+              console.log(chalk.red('\n🚨 Errors:'));
+              for (const issue of errorIssues) {
+                console.log(chalk.red(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.yellow(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+
+            if (warningIssues.length > 0) {
+              console.log(chalk.yellow('\n⚠️  Warnings:'));
+              for (const issue of warningIssues) {
+                console.log(chalk.yellow(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.cyan(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+
+            if (infoIssues.length > 0) {
+              console.log(chalk.blue('\nℹ️  Information:'));
+              for (const issue of infoIssues) {
+                console.log(chalk.blue(`  • [${issue.code}] ${issue.message}`));
+                if (issue.path) {
+                  console.log(chalk.gray(`    Path: ${issue.path}`));
+                }
+                if (issue.suggestion) {
+                  console.log(chalk.cyan(`    💡 ${issue.suggestion}`));
+                }
+                console.log(); // Empty line for spacing
+              }
+            }
+          }
+
+          if (!config.mcp || !config.mcp.enabled) {
+            console.log(chalk.gray('\n💡 Note: MCP is currently disabled or not configured'));
+          } else if (!config.mcp.servers || Object.keys(config.mcp.servers).length === 0) {
+            console.log(chalk.gray('\n💡 Note: No MCP servers are configured'));
+          }
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error validating MCP configuration: ${(error as Error).message}`));
+        }
+      } else if (subcommand === 'status') {
+        // Handle 'mcp status' subcommand to show server status
+        try {
+          const config = await loadConfig(ctx.cwd);
+
+          console.log(chalk.cyan('\n📊 MCP Server Status:\n'));
+
+          if (!config.mcp || !config.mcp.enabled) {
+            console.log(chalk.gray('MCP Status:'), chalk.red('disabled'));
+            if (!config.mcp) {
+              console.log(chalk.gray('MCP is not configured.'));
+            } else {
+              console.log(chalk.gray('MCP is currently disabled.'));
+            }
+            console.log(chalk.gray('\n💡 To enable MCP, run /mcp init'));
+            return;
+          }
+
+          console.log(chalk.gray('MCP Status:'), chalk.green('enabled'));
+
+          const servers = config.mcp.servers || {};
+          const serverNames = Object.keys(servers);
+
+          if (serverNames.length === 0) {
+            console.log(chalk.gray('\nNo MCP servers are currently installed.'));
+            console.log(chalk.gray('  • Browse available servers: /mcp list'));
+            console.log(chalk.gray('  • Search for servers: /mcp search <query>'));
+            console.log(chalk.gray('  • Install a server: /mcp install <server-name>'));
+            return;
+          }
+
+          console.log(chalk.gray(`\nConfigured servers: ${serverNames.length}\n`));
+
+          // Display status for each server
+          for (const [serverId, serverConfig] of Object.entries(servers)) {
+            console.log(chalk.yellow(`${serverConfig.name || serverId}`));
+
+            // Determine server status
+            const status = (serverConfig as any).status || 'unknown';
+            const statusColor = status === 'running' ? chalk.green : chalk.red;
+            console.log(chalk.gray('  Status:'), statusColor(status));
+
+            // Show command
+            const commandParts = [serverConfig.command, ...(serverConfig.args || [])];
+            console.log(chalk.gray('  Command:'), chalk.cyan(commandParts.join(' ')));
+
+            // Show auto-start status
+            const autoStartColor = (serverConfig as any).autoStart ? chalk.green : chalk.red;
+            const autoStartText = (serverConfig as any).autoStart ? 'enabled' : 'disabled';
+            console.log(chalk.gray('  Auto-start:'), autoStartColor(autoStartText));
+
+            console.log(); // Empty line between servers
+          }
+
+          console.log(chalk.gray('Use /mcp installed to see more configuration details.'));
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error loading MCP status: ${(error as Error).message}`));
+        }
+      } else {
+        console.log(chalk.red(`Unknown subcommand: ${subcommand}`));
+        console.log(chalk.gray('Usage: /mcp init | /mcp list | /mcp search <query> | /mcp install <server> | /mcp uninstall <server> | /mcp installed | /mcp validate | /mcp status'));
+      }
+    },
+  },
+
+  {
+    name: 'undo',
+    aliases: ['u'],
+    description: 'Undo the last tool action(s) for a task',
+    usage: '/undo [--task-id <taskId>] [--count <number>]',
+    handler: async (ctx, args) => {
+      if (!ctx.initialized || !ctx.orchestrator) {
+        console.log(chalk.red('APEX not initialized. Run /init first.'));
+        return;
+      }
+
+      await handleUndoCommand(ctx, args);
     },
   },
 ];
@@ -2973,6 +3937,25 @@ async function handleTrashTask(ctx: ApexContext, args: string[]): Promise<void> 
       return;
     }
 
+    // Get autonomy level from config
+    const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
+
+    // Request confirmation based on autonomy level
+    const shouldProceed = await requestConfirmation(
+      DangerousOperation.TRASH_TASK,
+      autonomyLevel,
+      {
+        resourceId: task.id,
+        resourceDescription: task.description,
+        context: `Status: ${task.status}, Stage: ${task.currentStage || 'unknown'}`
+      }
+    );
+
+    if (!shouldProceed) {
+      showOperationCancelled(DangerousOperation.TRASH_TASK);
+      return;
+    }
+
     await ctx.orchestrator!.trashTask(task.id);
 
     console.log(chalk.green(`🗑️  Task moved to trash: ${task.id.substring(0, 16)}...`));
@@ -3051,28 +4034,32 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
       return;
     }
 
-    console.log(chalk.yellow(`⚠️  This will permanently delete ${trashedTasks.length} task(s) from trash.`));
-    console.log(chalk.red('⚠️  This action cannot be undone!'));
-    console.log('\nTasks to be deleted:');
+    // Show preview of tasks to be deleted
+    console.log(chalk.yellow(`\n⚠️  This will permanently delete ${trashedTasks.length} task(s) from trash:`));
 
-    for (const task of trashedTasks) {
-      console.log(`  ${chalk.gray(task.id.substring(0, 16))} ${task.description.substring(0, 50)}`);
+    for (const task of trashedTasks.slice(0, 5)) {
+      console.log(chalk.gray(`  • ${task.id.substring(0, 16)}... - ${task.description.substring(0, 50)}`));
     }
 
-    // Simple confirmation - in a real implementation you might want to use inquirer for better UX
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+    if (trashedTasks.length > 5) {
+      console.log(chalk.gray(`  ... and ${trashedTasks.length - 5} more tasks`));
+    }
 
-    const answer = await new Promise<string>((resolve) => {
-      rl.question(chalk.yellow('\nType "yes" to permanently delete all trashed tasks: '), resolve);
-    });
-    rl.close();
+    // Get autonomy level from config
+    const autonomyLevel = ctx.config?.autonomy?.level || 'review-before-commit';
 
-    if (answer.toLowerCase().trim() !== 'yes') {
-      console.log(chalk.gray('Operation cancelled.'));
+    // Request confirmation based on autonomy level - always force confirmation for this dangerous operation
+    const shouldProceed = await requestConfirmation(
+      DangerousOperation.EMPTY_TRASH,
+      autonomyLevel,
+      {
+        context: `${trashedTasks.length} tasks will be permanently deleted`,
+        forceConfirmation: true // Always confirm for empty trash regardless of autonomy level
+      }
+    );
+
+    if (!shouldProceed) {
+      showOperationCancelled(DangerousOperation.EMPTY_TRASH);
       return;
     }
 
@@ -3085,71 +4072,386 @@ async function handleTrashEmpty(ctx: ApexContext): Promise<void> {
 }
 
 // ============================================================================
+// Undo Command Handler
+// ============================================================================
+
+async function handleUndoCommand(ctx: ApexContext, args: string[]): Promise<void> {
+  if (!ctx.initialized || !ctx.orchestrator) {
+    console.log(chalk.red('APEX not initialized. Run /init first.'));
+    return;
+  }
+
+  try {
+    // Parse arguments
+    let taskId: string | null = null;
+    let count = 1;
+    let showUsage = false;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+
+      if (arg === '--help' || arg === '-h') {
+        showUsage = true;
+        break;
+      } else if (arg === '--task-id') {
+        if (i + 1 >= args.length) {
+          console.log(chalk.red('❌ --task-id requires a task ID'));
+          return;
+        }
+        taskId = args[i + 1];
+        i++; // Skip next arg since we consumed it
+      } else if (arg === '--count') {
+        if (i + 1 >= args.length) {
+          console.log(chalk.red('❌ --count requires a number'));
+          return;
+        }
+        const countValue = parseInt(args[i + 1], 10);
+        if (isNaN(countValue) || countValue <= 0) {
+          console.log(chalk.red('❌ Count must be a positive number'));
+          return;
+        }
+        if (countValue > 50) {
+          console.log(chalk.red('❌ Count cannot exceed 50 actions'));
+          return;
+        }
+        count = countValue;
+        i++; // Skip next arg since we consumed it
+      }
+    }
+
+    // Show usage if requested or no args
+    if (showUsage || args.length === 0) {
+      console.log(chalk.cyan('Usage: /undo [--task-id <taskId>] [--count <number>]'));
+      console.log();
+      console.log(chalk.yellow('Options:'));
+      console.log(chalk.gray('  --task-id <taskId>   Specific task to undo actions for (default: current task)'));
+      console.log(chalk.gray('  --count <number>     Number of actions to undo (default: 1, max: 50)'));
+      console.log();
+      console.log(chalk.yellow('Examples:'));
+      console.log(chalk.gray('  /undo                      # Undo last action for current task'));
+      console.log(chalk.gray('  /undo --count 3            # Undo last 3 actions for current task'));
+      console.log(chalk.gray('  /undo --task-id abc123     # Undo last action for specific task'));
+      console.log(chalk.gray('  /undo --task-id abc123 --count 2  # Undo last 2 actions for specific task'));
+      return;
+    }
+
+    // Get the task to undo actions for
+    let task;
+    if (taskId) {
+      task = await ctx.orchestrator.getTask(taskId);
+      if (!task) {
+        console.log(chalk.red(`❌ Task not found: ${taskId}`));
+        return;
+      }
+    } else {
+      task = await ctx.orchestrator.getCurrentTask();
+      if (!task) {
+        console.log(chalk.yellow('⚠️  No current task found. Use --task-id to specify a task.'));
+        return;
+      }
+      taskId = task.id;
+    }
+
+    if (!taskId) {
+      console.log(chalk.yellow('⚠️  No task ID available for undo operation.'));
+      return;
+    }
+
+    // Get undoable actions for preview
+    const undoableActions = await ctx.orchestrator['toolActionStore'].getUndoableActions(taskId);
+
+    if (undoableActions.length === 0) {
+      console.log(chalk.yellow('⚠️  No undoable actions found for this task.'));
+      return;
+    }
+
+    // Limit count to available actions
+    const actualCount = Math.min(count, undoableActions.length);
+    const actionsToUndo = undoableActions.slice(0, actualCount);
+
+    // Show preview of what will be undone
+    console.log(chalk.cyan(`\n📋 The following ${actualCount} action${actualCount === 1 ? '' : 's'} will be undone:`));
+    console.log();
+
+    for (let i = 0; i < actionsToUndo.length; i++) {
+      const action = actionsToUndo[i];
+      const actionNumber = i + 1;
+      console.log(chalk.yellow(`${actionNumber}. ${action.toolName} operation on ${action.filePath || 'unknown file'}`));
+      console.log(chalk.gray(`   Action ID: ${action.id}`));
+      console.log(chalk.gray(`   Time: ${action.timestamp.toLocaleString()}`));
+      console.log();
+    }
+
+    // Request confirmation
+    const { createInterface } = await import('readline');
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const confirmation = await new Promise<string>((resolve) => {
+      rl.question(chalk.yellow('Do you want to proceed? [y/N]: '), resolve);
+    });
+    rl.close();
+
+    if (confirmation.toLowerCase() !== 'y' && confirmation.toLowerCase() !== 'yes') {
+      console.log(chalk.gray('Undo cancelled.'));
+      return;
+    }
+
+    // Perform the undo operations
+    console.log(chalk.cyan('\n🔄 Undoing actions...\n'));
+
+    let successCount = 0;
+    let failedActions: Array<{ actionId: string; error: string }> = [];
+
+    for (let i = 0; i < actualCount; i++) {
+      try {
+        const result = await ctx.orchestrator.undoLastAction(taskId);
+
+        if (result.success) {
+          successCount++;
+          console.log(chalk.green(`✓ Undid action ${i + 1}/${actualCount}: ${result.actionId}`));
+
+          if (result.restoredFiles.length > 0) {
+            console.log(chalk.gray(`  Restored: ${result.restoredFiles.join(', ')}`));
+          }
+        } else {
+          failedActions.push({
+            actionId: result.actionId,
+            error: result.error || 'Unknown error'
+          });
+          console.log(chalk.red(`✗ Failed to undo action ${i + 1}/${actualCount}: ${result.error}`));
+
+          // Stop on failure
+          console.log(chalk.yellow('Stopping due to failure.'));
+          break;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        failedActions.push({
+          actionId: 'unknown',
+          error: errorMessage
+        });
+        console.log(chalk.red(`✗ Failed to undo action ${i + 1}/${actualCount}: ${errorMessage}`));
+
+        // Stop on failure
+        console.log(chalk.yellow('Stopping due to failure.'));
+        break;
+      }
+    }
+
+    // Show summary
+    console.log();
+    if (successCount === actualCount) {
+      console.log(chalk.green(`✓ Successfully undid ${successCount} action${successCount === 1 ? '' : 's'}`));
+    } else if (successCount > 0) {
+      console.log(chalk.yellow(`⚠️  Completed ${successCount} of ${actualCount} undo operations`));
+
+      for (const failed of failedActions) {
+        console.log(chalk.red(`   Failed to undo ${failed.actionId}: ${failed.error}`));
+      }
+    } else {
+      console.log(chalk.red(`❌ Failed to undo any actions`));
+
+      for (const failed of failedActions) {
+        console.log(chalk.red(`   ${failed.actionId}: ${failed.error}`));
+      }
+    }
+
+    if (successCount > 0) {
+      console.log(chalk.gray('\n💡 Tip: Use /diff to see the current state of your files'));
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.log(chalk.red(`❌ Failed to undo: ${errorMessage}`));
+  }
+}
+
+// ============================================================================
 // Task Execution
 // ============================================================================
 
 async function executeTask(
   ctx: ApexContext,
   description: string,
-  options: { workflow?: string; autonomy?: string; priority?: string } = {}
+  options: { workflow?: string; autonomy?: string; priority?: string } = {},
+  cliFlags?: { diffPreview?: boolean; dryRun?: boolean }
 ): Promise<void> {
   if (!ctx.orchestrator) return;
 
-  console.log(chalk.cyan('\n🚀 Starting task...\n'));
+  // Display dry-run mode indicator if enabled
+  if (cliFlags?.dryRun) {
+    console.log(chalk.yellow('🔍 DRY RUN MODE') + ' - Simulating execution without making changes');
+    console.log(chalk.yellow('⚠️ No actual changes will be made to your files or system'));
+    console.log('');
+  }
+
+  const startMessage = cliFlags?.dryRun
+    ? chalk.cyan('\n🚀 Starting task (DRY RUN)...\n')
+    : chalk.cyan('\n🚀 Starting task...\n');
+  console.log(startMessage);
 
   const task = await ctx.orchestrator.createTask({
     description,
     workflow: options.workflow || 'feature',
     autonomy: options.autonomy as any,
     priority: options.priority as any,
+    dryRun: cliFlags?.dryRun || false,
   });
 
-  console.log(chalk.green(`Task created: ${task.id}`));
-  console.log(chalk.gray(`Branch: ${task.branchName}`));
-  console.log(chalk.gray(`Workflow: ${task.workflow}\n`));
+  // Format task creation output for dry-run mode
+  if (cliFlags?.dryRun) {
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.green(`Task created: ${task.id}`));
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.gray(`Branch: ${task.branchName} (simulated)`));
+    console.log(chalk.yellow('[DRY-RUN] ') + chalk.gray(`Workflow: ${task.workflow} (dry-run mode)\n`));
+  } else {
+    console.log(chalk.green(`Task created: ${task.id}`));
+    console.log(chalk.gray(`Branch: ${task.branchName}`));
+    console.log(chalk.gray(`Workflow: ${task.workflow}\n`));
+  }
 
-  await executeTaskWithOutput(ctx, task.id);
+  await executeTaskWithOutput(ctx, task.id, cliFlags);
 }
 
-async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<void> {
+async function executeTaskWithOutput(
+  ctx: ApexContext,
+  taskId: string,
+  cliFlags?: { diffPreview?: boolean; dryRun?: boolean }
+): Promise<void> {
   if (!ctx.orchestrator) return;
+
+  // Get task to check dry-run status
+  const task = await ctx.orchestrator.getTask(taskId);
+  const isDryRun = task?.dryRun || cliFlags?.dryRun || false;
 
   // Set up event handlers
   const stageHandler = (task: any, stage: string) => {
     if (task.id === taskId) {
-      console.log(chalk.blue(`\n📍 Stage: ${stage}`));
+      const stageMessage = isDryRun
+        ? chalk.yellow('[DRY-RUN] ') + chalk.blue(`📍 Stage: ${stage} (simulated)`)
+        : chalk.blue(`\n📍 Stage: ${stage}`);
+      console.log(stageMessage);
     }
   };
 
   const toolHandler = (tId: string, tool: string) => {
     if (tId === taskId) {
-      console.log(chalk.gray(`  🔧 ${tool}`));
+      const toolMessage = isDryRun
+        ? chalk.yellow('[DRY-RUN] ') + chalk.gray(`🔧 ${tool} (simulated)`)
+        : chalk.gray(`  🔧 ${tool}`);
+      console.log(toolMessage);
     }
   };
 
   ctx.orchestrator.on('task:stage-changed', stageHandler);
   ctx.orchestrator.on('agent:tool-use', toolHandler);
 
+  // Handle approval required events
+  const approvalHandler = async (eventData: ApprovalRequiredEventData) => {
+    if (eventData.taskId === taskId) {
+      try {
+        console.log(); // Add spacing
+        console.log(chalk.yellow('⚠️  Approval required for task to continue'));
+
+        await showApprovalPrompt({
+          eventData,
+          onSelection: async (response) => {
+            try {
+              await ctx.orchestrator!.respondToApproval(eventData.approvalId, response);
+
+              // Handle info-requested follow-up
+              if (response.response === 'info-requested') {
+                // Set up a one-time listener for the info-requested event
+                const handleInfoRequested = async (infoEvent: {
+                  approvalId: string;
+                  taskId: string;
+                  requester: string;
+                  message?: string;
+                  timestamp: Date;
+                }) => {
+                  if (infoEvent.approvalId === eventData.approvalId) {
+                    try {
+                      // Prompt for additional information
+                      const additionalInfo = await promptForAdditionalInfo(
+                        eventData,
+                        infoEvent.message || 'Additional information requested'
+                      );
+
+                      // Log the additional info (could be sent back to the system)
+                      console.log(chalk.blue(`📝 Additional info provided: ${additionalInfo}`));
+                    } catch (error) {
+                      console.error(chalk.red(`Error handling info request: ${error}`));
+                    } finally {
+                      ctx.orchestrator?.off('approval:info-requested', handleInfoRequested);
+                    }
+                  }
+                };
+
+                ctx.orchestrator?.on('approval:info-requested', handleInfoRequested);
+              }
+            } catch (error) {
+              console.error(chalk.red(`Error responding to approval: ${error}`));
+            }
+          }
+        });
+      } catch (error) {
+        console.error(chalk.red(`Error handling approval request: ${error}`));
+      }
+    }
+  };
+
+  ctx.orchestrator.on('approval:required', approvalHandler);
+
   try {
     await ctx.orchestrator.executeTask(taskId);
 
     const completedTask = await ctx.orchestrator.getTask(taskId);
     if (completedTask) {
-      console.log(
-        boxen(
-          `${chalk.green('✅ Task Completed')}\n\n` +
-            `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
-            `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
-            `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
-          { padding: 1, borderColor: 'green', borderStyle: 'round' }
-        )
-      );
+      // Format completion message based on dry-run status
+      if (isDryRun) {
+        console.log(
+          boxen(
+            `${chalk.green('✅ DRY RUN COMPLETED')} ${chalk.yellow('(SIMULATION)')}\n\n` +
+              `${chalk.cyan('Simulation Summary:')}\n` +
+              `${chalk.gray('• Task execution was simulated successfully')}\n` +
+              `${chalk.gray('• No actual changes were made to your files')}\n` +
+              `${chalk.gray('• No git operations were performed')}\n` +
+              `${chalk.gray('• No API costs were incurred')}\n\n` +
+              `${chalk.blue('Estimated Impact:')}\n` +
+              `${chalk.gray(`• Tokens that would be used: ${formatTokens(completedTask.usage.totalTokens)}`)}\n` +
+              `${chalk.gray(`• Estimated cost: ${formatCost(completedTask.usage.estimatedCost)}`)}\n` +
+              `${chalk.gray('• Actual cost: $0.00 (dry-run mode)')}\n` +
+              `${chalk.gray(`• Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())} (simulation time)`)}\n\n` +
+              `${chalk.yellow('Next Steps:')}\n` +
+              `${chalk.gray('• Review the changes above')}\n` +
+              `${chalk.gray('• Run without --dry-run flag to apply changes')}\n` +
+              `${chalk.gray('• Use /iterate to refine the approach')}`,
+            { padding: 1, borderColor: 'yellow', borderStyle: 'round' }
+          )
+        );
+      } else {
+        console.log(
+          boxen(
+            `${chalk.green('✅ Task Completed')}\n\n` +
+              `Tokens: ${formatTokens(completedTask.usage.totalTokens)}\n` +
+              `Cost: ${formatCost(completedTask.usage.estimatedCost)}\n` +
+              `Duration: ${formatDuration(Date.now() - completedTask.createdAt.getTime())}`,
+            { padding: 1, borderColor: 'green', borderStyle: 'round' }
+          )
+        );
+      }
     }
   } catch (error) {
-    console.error(chalk.red(`\n❌ Task failed: ${(error as Error).message}\n`));
+    const errorMessage = isDryRun
+      ? chalk.red(`\n❌ Dry-run simulation failed: ${(error as Error).message}\n`)
+      : chalk.red(`\n❌ Task failed: ${(error as Error).message}\n`);
+    console.error(errorMessage);
   } finally {
     ctx.orchestrator.off('task:stage-changed', stageHandler);
     ctx.orchestrator.off('agent:tool-use', toolHandler);
+    ctx.orchestrator.off('approval:required', approvalHandler);
   }
 }
 
@@ -3157,6 +4459,19 @@ async function executeTaskWithOutput(ctx: ApexContext, taskId: string): Promise<
 // Server Management
 // ============================================================================
 
+/**
+ * Starts the APEX API server on the specified port.
+ *
+ * @param ctx - CLI context containing project information
+ * @param port - Port number to start the server on
+ * @param silent - Whether to suppress console output (default: false)
+ * @param keepAlive - Whether to keep the server running indefinitely (default: false)
+ *
+ * @example
+ * ```typescript
+ * await startAPIServer(ctx, 3000, false, true); // Start server on port 3000 and keep alive
+ * ```
+ */
 async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = false, keepAlive: boolean = false): Promise<void> {
   if (!silent) {
     console.log(chalk.cyan(`Starting API server on port ${port}...`));
@@ -3183,6 +4498,14 @@ async function startAPIServer(ctx: ApexContext, port: number, silent: boolean = 
   }
 }
 
+/**
+ * Starts the APEX Web UI server on the specified port.
+ * Spawns a separate Node.js process running the web-ui package.
+ *
+ * @param ctx - CLI context to store the web UI process reference
+ * @param port - Port number to start the Web UI server on
+ * @param silent - Whether to suppress console output (default: false)
+ */
 async function startWebUI(ctx: ApexContext, port: number, silent: boolean = false): Promise<void> {
   if (!silent) {
     console.log(chalk.cyan(`Starting Web UI on port ${port}...`));
@@ -3365,6 +4688,19 @@ async function startREPL(): Promise<void> {
   });
 }
 
+/**
+ * Parses command line input into an array of arguments, respecting quoted strings.
+ * Handles quoted arguments containing spaces and splits unquoted arguments on whitespace.
+ *
+ * @param input - Raw input string to parse
+ * @returns Array of parsed arguments with quotes removed
+ *
+ * @example
+ * ```typescript
+ * parseInput('command arg1 "arg with spaces" arg3')
+ * // Returns: ['command', 'arg1', 'arg with spaces', 'arg3']
+ * ```
+ */
 function parseInput(input: string): string[] {
   const parts: string[] = [];
   let current = '';
@@ -3394,6 +4730,29 @@ function parseInput(input: string): string[] {
 // Helper Functions
 // ============================================================================
 
+/**
+ * Returns an appropriate emoji for the given autonomy level.
+ * Used in UI displays to visually represent automation settings.
+ *
+ * @param level - Autonomy level string ('full-auto', 'review-before-commit', 'review-all')
+ * @returns Corresponding emoji or default gear emoji for unknown levels
+ */
+function getAutonomyEmoji(level: string): string {
+  const emojis: Record<string, string> = {
+    'full-auto': '🤖',
+    'review-before-commit': '👀',
+    'review-all': '🔍',
+  };
+  return emojis[level] || '⚙️';
+}
+
+/**
+ * Returns an appropriate emoji for the given task status.
+ * Provides visual indicators for task lifecycle states in CLI output.
+ *
+ * @param status - Task status string (pending, queued, planning, in-progress, etc.)
+ * @returns Corresponding emoji or question mark for unknown statuses
+ */
 function getStatusEmoji(status: string): string {
   const emojis: Record<string, string> = {
     pending: '⏳',
@@ -3409,6 +4768,13 @@ function getStatusEmoji(status: string): string {
   return emojis[status] || '❓';
 }
 
+/**
+ * Returns a colored string representation of a log level.
+ * Used for consistent log level formatting throughout the CLI.
+ *
+ * @param level - Log level string (debug, info, warn, error)
+ * @returns Chalk-styled colored log level string
+ */
 function getLevelColor(level: string): string {
   switch (level) {
     case 'debug':
@@ -3424,6 +4790,13 @@ function getLevelColor(level: string): string {
   }
 }
 
+/**
+ * Returns an appropriate emoji for different types of documentation issues.
+ * Used to visually categorize documentation problems in CLI output.
+ *
+ * @param type - Documentation issue type (version-mismatch, deprecated-api, broken-link, etc.)
+ * @returns Corresponding emoji or document emoji for unknown types
+ */
 function getDocTypeEmoji(type: string): string {
   const emojis: Record<string, string> = {
     'version-mismatch': '🔢',
@@ -3435,6 +4808,13 @@ function getDocTypeEmoji(type: string): string {
   return emojis[type] || '📄';
 }
 
+/**
+ * Returns an appropriate emoji for different README sections.
+ * Provides visual indicators for different sections of documentation.
+ *
+ * @param section - README section name
+ * @returns Corresponding emoji or default document emoji
+ */
 function getReadmeSectionEmoji(section: string): string {
   const emojis: Record<string, string> = {
     'title': '📝',
@@ -3615,6 +4995,124 @@ You are a DevOps engineer. When working on infrastructure:
 Use declarative configurations where possible.
 Test changes in isolation before applying.
 Document any manual steps required.`,
+
+    'tdd-tester.md': `---
+name: tdd-tester
+description: Test-Driven Development specialist focused on writing failing tests first
+tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
+---
+
+You are a TDD specialist focused on test-first development. Your approach follows the Red-Green-Refactor cycle.
+
+## Red Phase (write-test, run-test stages)
+When writing tests first:
+
+1. **Understand requirements** - Parse the feature/function requirements thoroughly
+2. **Design test cases** - Think about expected behavior, edge cases, and error conditions
+3. **Write failing tests** - Create tests that describe the desired behavior
+4. **Verify tests fail** - Ensure tests fail for the right reason (not syntax errors)
+5. **Write minimal test code** - Start simple, add complexity incrementally
+
+## Green Validation (verify stage)
+When validating implementations:
+
+1. **Run tests** - Execute the test suite to confirm they now pass
+2. **Verify behavior** - Ensure tests pass for the right reasons
+3. **Check coverage** - Confirm the implementation covers the test scenarios
+4. **Document gaps** - Identify any missing test cases or edge cases
+
+## Regression Safety (regression-check stage)
+When checking for regressions:
+
+1. **Full test suite** - Run complete test suite including existing tests
+2. **Integration tests** - Verify new code works with existing functionality
+3. **Performance checks** - Ensure no significant performance regressions
+4. **Error handling** - Validate error paths and edge cases still work
+
+## TDD Principles
+- **Tests define the interface** - Tests should describe how code should be used
+- **Minimal implementation** - Write only enough code to make tests pass
+- **Incremental development** - Add one test case at a time
+- **Refactor with confidence** - Use passing tests as safety net
+
+## Test Quality Guidelines
+- Use descriptive test names that explain the scenario being tested
+- Follow AAA pattern: Arrange, Act, Assert
+- Test behavior, not implementation details
+- Include both happy path and error scenarios
+- Write tests that are fast, isolated, and deterministic
+
+Focus on creating comprehensive test suites that drive good design through test-first thinking.`,
+
+    'tdd-developer.md': `---
+name: tdd-developer
+description: TDD-focused developer who writes minimal code to make tests pass
+tools: Read, Write, Edit, MultiEdit, Bash, Grep, Glob
+model: sonnet
+---
+
+You are a TDD-focused developer who follows the Green phase of Red-Green-Refactor. Your goal is to write the simplest code that makes failing tests pass.
+
+## Green Phase Implementation Strategy
+When implementing code to make tests pass:
+
+1. **Analyze failing tests** - Understand exactly what behavior the tests expect
+2. **Start with simplest solution** - Write the minimal code to make tests pass
+3. **Avoid over-engineering** - Don't add functionality not required by tests
+4. **Follow test-driven design** - Let test expectations guide your implementation
+5. **Incremental progress** - Make one test pass at a time
+
+## TDD Implementation Principles
+
+### Minimal Implementation
+- Write only the code needed to make the current test pass
+- Avoid adding "might need later" functionality
+- Resist the urge to implement beyond test requirements
+- Use the simplest approach that works
+
+### Test-Driven Design
+- Let tests define your API and interface design
+- Use test feedback to improve code structure
+- Trust that tests will guide you to good design
+- Refactor only when tests are green
+
+### Code Quality in TDD
+- Keep methods small and focused
+- Use meaningful variable and function names
+- Write self-documenting code
+- Add comments only when logic is complex
+
+## Implementation Workflow
+
+1. **Read the failing test** - Understand what behavior is expected
+2. **Identify the minimal change** - Find the smallest code change to make test pass
+3. **Implement the change** - Write focused, purposeful code
+4. **Run the specific test** - Verify it now passes
+5. **Check for other failures** - Ensure you didn't break existing functionality
+
+## Common TDD Patterns
+
+### Fake It Till You Make It
+- Start with hardcoded return values
+- Gradually replace with real logic as more tests are added
+
+### Triangulation
+- Use multiple test cases to drive toward the general solution
+- Let the accumulation of tests reveal the true requirements
+
+### Obvious Implementation
+- When the solution is clear, implement it directly
+- Still keep it minimal and focused on current test requirements
+
+## Code Quality Guidelines
+- Follow existing project conventions and patterns
+- Write clean, readable code even when keeping it minimal
+- Handle errors appropriately as defined by tests
+- Use appropriate data structures and algorithms
+- Maintain consistent code style
+
+Remember: Your success is measured by making tests pass with minimal, clean code, not by predicting future requirements.`,
   };
 
   for (const [filename, content] of Object.entries(agents)) {
@@ -3740,6 +5238,53 @@ stages:
     dependsOn: [refactor, testing]
     outputs:
       - review_findings
+`,
+
+    'tdd.yaml': `name: tdd
+description: Test-Driven Development workflow with test-first approach
+trigger:
+  - manual
+  - apex:tdd
+
+stages:
+  - name: write-test
+    agent: tdd-tester
+    description: Write failing tests first (Red phase)
+    outputs:
+      - test_files
+      - failing_test_results
+
+  - name: run-test
+    agent: tdd-tester
+    description: Run tests to confirm they fail (Red validation)
+    dependsOn: [write-test]
+    outputs:
+      - test_execution_results
+      - failure_confirmation
+
+  - name: implement
+    agent: tdd-developer
+    description: Write minimal code to make tests pass (Green phase)
+    dependsOn: [run-test]
+    outputs:
+      - code_changes
+      - implementation_notes
+
+  - name: verify
+    agent: tdd-tester
+    description: Run tests to confirm they pass (Green validation)
+    dependsOn: [implement]
+    outputs:
+      - passing_test_results
+      - coverage_report
+
+  - name: regression-check
+    agent: tdd-tester
+    description: Run full test suite to ensure no regressions (Refactor safety)
+    dependsOn: [verify]
+    outputs:
+      - full_test_results
+      - regression_report
 `,
   };
 

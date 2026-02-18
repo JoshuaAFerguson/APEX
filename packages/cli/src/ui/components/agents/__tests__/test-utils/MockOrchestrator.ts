@@ -5,7 +5,15 @@
 
 import { EventEmitter } from 'events';
 import { vi } from 'vitest';
-import type { OrchestratorEvents } from '@apexcli/orchestrator';
+import type {
+  OrchestratorEvents,
+  PermissionRequestEventData,
+  PermissionGrantedEventData,
+  PermissionDeniedEventData,
+  DangerousOperationDetectedEventData,
+  DangerousOperationConfirmedEventData,
+  DangerousOperationBlockedEventData
+} from '@apexcli/orchestrator';
 
 /**
  * Mock implementation of ApexOrchestrator for testing
@@ -329,6 +337,124 @@ export class MockOrchestrator extends EventEmitter {
    */
   simulateAgentTurn(event: { taskId: string; agentName: string; turnNumber: number }) {
     this.emit('agent:turn', event);
+  }
+
+  /**
+   * Simulate permission request event
+   * Tests permission flow initiation
+   */
+  simulatePermissionRequest(eventData: Partial<PermissionRequestEventData> = {}) {
+    const defaultData: PermissionRequestEventData = {
+      requestId: 'mock-request-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Write',
+      scope: '/test/path',
+      description: 'Mock permission request for testing',
+      isDangerous: false,
+      agent: 'developer',
+      timestamp: new Date(),
+      ...eventData
+    };
+
+    this.emit('permission:request', defaultData);
+    return defaultData;
+  }
+
+  /**
+   * Simulate permission granted event
+   * Tests successful permission grant handling
+   */
+  simulatePermissionGranted(eventData: Partial<PermissionGrantedEventData> = {}) {
+    const defaultData: PermissionGrantedEventData = {
+      requestId: 'mock-request-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Write',
+      scope: '/test/path',
+      level: 'allow-once',
+      grantedBy: 'user',
+      timestamp: new Date(),
+      reason: 'Test permission grant',
+      ...eventData
+    };
+
+    this.emit('permission:granted', defaultData);
+    return defaultData;
+  }
+
+  /**
+   * Simulate permission denied event
+   * Tests permission denial handling
+   */
+  simulatePermissionDenied(eventData: Partial<PermissionDeniedEventData> = {}) {
+    const defaultData: PermissionDeniedEventData = {
+      requestId: 'mock-request-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Write',
+      scope: '/test/path',
+      deniedBy: 'user',
+      timestamp: new Date(),
+      reason: 'Test permission denial',
+      ...eventData
+    };
+
+    this.emit('permission:denied', defaultData);
+    return defaultData;
+  }
+
+  /**
+   * Simulate dangerous operation detected event
+   * Tests dangerous operation detection and warning
+   */
+  simulateDangerousOperationDetected(eventData: Partial<DangerousOperationDetectedEventData> = {}) {
+    const defaultData: DangerousOperationDetectedEventData = {
+      operationId: 'mock-op-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Bash',
+      operation: 'rm -rf /',
+      riskLevel: 'critical',
+      riskDescription: 'This operation could delete system files',
+      agent: 'developer',
+      timestamp: new Date(),
+      context: { command: 'rm -rf /', workingDir: '/' },
+      ...eventData
+    };
+
+    this.emit('dangerous:detected', defaultData);
+    return defaultData;
+  }
+
+  /**
+   * Simulate dangerous operation confirmed event
+   * Tests user confirmation of dangerous operations
+   */
+  simulateDangerousOperationConfirmed(eventData: Partial<DangerousOperationConfirmedEventData> = {}) {
+    const defaultData: DangerousOperationConfirmedEventData = {
+      operationId: 'mock-op-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Bash',
+      operation: 'rm -rf /',
+      confirmedBy: 'user',
+      timestamp: new Date(),
+      reason: 'User confirmed dangerous operation',
+      ...eventData
+    };
+
+    this.emit('dangerous:confirmed', defaultData);
+    return defaultData;
+  }
+
+  /**
+   * Simulate dangerous operation blocked event
+   * Tests blocking of dangerous operations for safety
+   */
+  simulateDangerousOperationBlocked(eventData: Partial<DangerousOperationBlockedEventData> = {}) {
+    const defaultData: DangerousOperationBlockedEventData = {
+      operationId: 'mock-op-' + Math.random().toString(36).substr(2, 9),
+      tool: 'Bash',
+      operation: 'rm -rf /',
+      blockedBy: 'security-policy',
+      timestamp: new Date(),
+      reason: 'Operation blocked due to security policy',
+      ...eventData
+    };
+
+    this.emit('dangerous:blocked', defaultData);
+    return defaultData;
   }
 
   /**

@@ -6,7 +6,8 @@ import { describe, it, expect } from 'vitest';
 
 describe('Thought Display Test Validation', () => {
   it('should validate test environment is working', () => {
-    expect(true).toBe(true);
+    expect(typeof describe).toBe('function');
+    expect(typeof it).toBe('function');
   });
 
   it('should validate string truncation logic', () => {

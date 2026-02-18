@@ -19,7 +19,7 @@ import {
 } from './config';
 import { ApexConfig, ApexConfigSchema } from './types';
 
-describe.skip('parseAgentMarkdown', () => {
+describe('parseAgentMarkdown', () => {
   it('should parse agent markdown with frontmatter', () => {
     const markdown = `---
 name: test-agent
@@ -74,7 +74,7 @@ describe('getEffectiveConfig', () => {
     };
 
     const effective = getEffectiveConfig(config);
-    expect(effective.autonomy.default).toBe('review-before-merge');
+    expect(effective.autonomy.level).toBe('review-before-commit');
     expect(effective.git.branchPrefix).toBe('apex/');
     expect(effective.limits.maxTokensPerTask).toBe(500000);
     expect(effective.api.port).toBe(3000);
@@ -90,7 +90,7 @@ describe('getEffectiveConfig', () => {
         buildCommand: 'npm run build',
       },
       autonomy: {
-        default: 'full',
+        level: 'full-auto',
       },
       limits: {
         maxCostPerTask: 5.0,
@@ -98,7 +98,7 @@ describe('getEffectiveConfig', () => {
     };
 
     const effective = getEffectiveConfig(config);
-    expect(effective.autonomy.default).toBe('full');
+    expect(effective.autonomy.level).toBe('full-auto');
     expect(effective.limits.maxCostPerTask).toBe(5.0);
   });
 
@@ -118,6 +118,7 @@ describe('getEffectiveConfig', () => {
     expect(effective.ui.previewConfidence).toBe(0.7);
     expect(effective.ui.autoExecuteHighConfidence).toBe(false);
     expect(effective.ui.previewTimeout).toBe(5000);
+    expect(effective.ui.diffPreview).toBe(true);
   });
 
   it('should preserve explicit UI config values', () => {
@@ -134,6 +135,7 @@ describe('getEffectiveConfig', () => {
         previewConfidence: 0.9,
         autoExecuteHighConfidence: true,
         previewTimeout: 7500,
+        diffPreview: false,
       },
     };
 
@@ -142,6 +144,218 @@ describe('getEffectiveConfig', () => {
     expect(effective.ui.previewConfidence).toBe(0.9);
     expect(effective.ui.autoExecuteHighConfidence).toBe(true);
     expect(effective.ui.previewTimeout).toBe(7500);
+    expect(effective.ui.diffPreview).toBe(false);
+  });
+
+  it('should handle diffPreview configuration option correctly', () => {
+    // Test default value
+    const configWithoutDiffPreview: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effectiveDefault = getEffectiveConfig(configWithoutDiffPreview);
+    expect(effectiveDefault.ui.diffPreview).toBe(true);
+
+    // Test explicit true
+    const configWithDiffPreviewTrue: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        diffPreview: true,
+      },
+    };
+
+    const effectiveTrue = getEffectiveConfig(configWithDiffPreviewTrue);
+    expect(effectiveTrue.ui.diffPreview).toBe(true);
+
+    // Test explicit false
+    const configWithDiffPreviewFalse: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        diffPreview: false,
+      },
+    };
+
+    const effectiveFalse = getEffectiveConfig(configWithDiffPreviewFalse);
+    expect(effectiveFalse.ui.diffPreview).toBe(false);
+  });
+
+  it('should apply policy defaults when policy section is missing', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy).toBeDefined();
+    expect(effective.policy.enforcement).toBe('warn');
+    expect(effective.policy.enabled).toBe(true);
+    expect(effective.policy.allowedPaths).toBeDefined();
+    expect(effective.policy.allowedPaths.mode).toBe('allowlist');
+    expect(effective.policy.allowedPaths.allow).toContain('src/**');
+    expect(effective.policy.allowedPaths.block).toContain('node_modules/**');
+    expect(effective.policy.allowedPaths.sensitivePatterns).toContain('.env*');
+  });
+
+  it('should preserve explicit policy values', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        name: 'Custom Policy',
+        description: 'Custom policy description',
+        enforcement: 'strict',
+        allowedPaths: {
+          mode: 'blocklist',
+          allow: ['custom/**'],
+          block: ['private/**'],
+          sensitivePatterns: ['*.secret'],
+        },
+        enabled: false,
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy.name).toBe('Custom Policy');
+    expect(effective.policy.description).toBe('Custom policy description');
+    expect(effective.policy.enforcement).toBe('strict');
+    expect(effective.policy.enabled).toBe(false);
+    expect(effective.policy.allowedPaths.mode).toBe('blocklist');
+    expect(effective.policy.allowedPaths.allow).toEqual(['custom/**']);
+    expect(effective.policy.allowedPaths.block).toEqual(['private/**']);
+    expect(effective.policy.allowedPaths.sensitivePatterns).toEqual(['*.secret']);
+  });
+
+  it('should handle partial policy configuration with defaults', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        enforcement: 'audit',
+        // Only set enforcement, other fields should get defaults
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.policy.enforcement).toBe('audit');
+    expect(effective.policy.enabled).toBe(true);
+    expect(effective.policy.allowedPaths.mode).toBe('allowlist');
+    expect(effective.policy.requiredTests).toBeDefined();
+    expect(effective.policy.approvalRules).toBeDefined();
+  });
+
+  it('should apply scanner defaults when scanner section is missing', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner).toBeDefined();
+    expect(effective.scanner.onSecretDetected).toBe('warn');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
+    expect(effective.scanner.maxLineLength).toBe(10000);
+    expect(effective.scanner.maskSecrets).toBe(true);
+    expect(effective.scanner.contextLength).toBe(20);
+    expect(effective.scanner.customPatterns).toEqual([]);
+  });
+
+  it('should preserve explicit scanner values', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'block',
+        includeBuiltInPatterns: false,
+        maxLineLength: 5000,
+        maskSecrets: false,
+        contextLength: 10,
+        customPatterns: [
+          {
+            name: 'Custom API Key',
+            pattern: 'CUSTOM_[A-Z0-9]{32}',
+            severity: 'high',
+            description: 'Custom API key pattern',
+          },
+        ],
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner.onSecretDetected).toBe('block');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(false);
+    expect(effective.scanner.maxLineLength).toBe(5000);
+    expect(effective.scanner.maskSecrets).toBe(false);
+    expect(effective.scanner.contextLength).toBe(10);
+    expect(effective.scanner.customPatterns).toHaveLength(1);
+    expect(effective.scanner.customPatterns[0].name).toBe('Custom API Key');
+    expect(effective.scanner.customPatterns[0].severity).toBe('high');
+  });
+
+  it('should handle partial scanner configuration with defaults', () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'test',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'mask',
+        // Other fields should get defaults
+      },
+    };
+
+    const effective = getEffectiveConfig(config);
+    expect(effective.scanner.onSecretDetected).toBe('mask');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
+    expect(effective.scanner.maxLineLength).toBe(10000);
+    expect(effective.scanner.maskSecrets).toBe(true);
+    expect(effective.scanner.contextLength).toBe(20);
+    expect(effective.scanner.customPatterns).toEqual([]);
   });
 });
 
@@ -211,9 +425,178 @@ describe('loadConfig and saveConfig', () => {
 
     await fs.rm(emptyDir, { recursive: true, force: true });
   });
+
+  it('should save and load config with policy section', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'policy-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      policy: {
+        name: 'Test Policy',
+        description: 'Policy for testing',
+        enforcement: 'warn',
+        allowedPaths: {
+          mode: 'allowlist',
+          allow: ['src/**', 'tests/**'],
+          block: ['node_modules/**'],
+          sensitivePatterns: ['.env*', '*.secret'],
+        },
+        requiredTests: {
+          enforcement: 'warn',
+          rules: [{
+            name: 'Test rule',
+            description: 'Require tests for all source files',
+            sourcePatterns: ['src/**/*.ts'],
+            testPatterns: ['tests/**/*.test.ts'],
+          }],
+        },
+        enabled: true,
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.policy).toBeDefined();
+    expect(loaded.policy?.name).toBe('Test Policy');
+    expect(loaded.policy?.enforcement).toBe('warn');
+    expect(loaded.policy?.allowedPaths?.mode).toBe('allowlist');
+    expect(loaded.policy?.allowedPaths?.allow).toEqual(['src/**', 'tests/**']);
+    expect(loaded.policy?.requiredTests?.rules).toHaveLength(1);
+    expect(loaded.policy?.requiredTests?.rules?.[0]?.name).toBe('Test rule');
+  });
+
+  it('should save and load config with UI section including diffPreview', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'ui-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        previewMode: false,
+        previewConfidence: 0.85,
+        autoExecuteHighConfidence: true,
+        previewTimeout: 8000,
+        diffPreview: false,
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.ui).toBeDefined();
+    expect(loaded.ui?.previewMode).toBe(false);
+    expect(loaded.ui?.previewConfidence).toBe(0.85);
+    expect(loaded.ui?.autoExecuteHighConfidence).toBe(true);
+    expect(loaded.ui?.previewTimeout).toBe(8000);
+    expect(loaded.ui?.diffPreview).toBe(false);
+  });
+
+  it('should save and load config with partial UI section and preserve diffPreview default', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'partial-ui-test-project',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      ui: {
+        previewMode: true,
+        // diffPreview should get default value when parsed
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+    const effective = getEffectiveConfig(loaded);
+
+    expect(loaded.ui).toBeDefined();
+    expect(loaded.ui?.previewMode).toBe(true);
+    expect(loaded.ui?.diffPreview).toBe(true); // default value from schema
+    expect(effective.ui.diffPreview).toBe(true);
+  });
+
+  it('should save and load config with scanner section', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'scanner-test-project',
+        language: 'typescript',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'block',
+        includeBuiltInPatterns: false,
+        maxLineLength: 8000,
+        maskSecrets: false,
+        contextLength: 15,
+        customPatterns: [
+          {
+            name: 'Test API Key',
+            pattern: 'TEST_[A-Z0-9]{24}',
+            severity: 'critical',
+            description: 'Test API key pattern',
+          },
+        ],
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+
+    expect(loaded.scanner).toBeDefined();
+    expect(loaded.scanner?.onSecretDetected).toBe('block');
+    expect(loaded.scanner?.includeBuiltInPatterns).toBe(false);
+    expect(loaded.scanner?.maxLineLength).toBe(8000);
+    expect(loaded.scanner?.maskSecrets).toBe(false);
+    expect(loaded.scanner?.contextLength).toBe(15);
+    expect(loaded.scanner?.customPatterns).toHaveLength(1);
+    expect(loaded.scanner?.customPatterns?.[0]?.name).toBe('Test API Key');
+    expect(loaded.scanner?.customPatterns?.[0]?.pattern).toBe('TEST_[A-Z0-9]{24}');
+    expect(loaded.scanner?.customPatterns?.[0]?.severity).toBe('critical');
+  });
+
+  it('should save and load config with partial scanner section and preserve defaults', async () => {
+    const config: ApexConfig = {
+      version: '1.0',
+      project: {
+        name: 'partial-scanner-test-project',
+        testCommand: 'npm test',
+        lintCommand: 'npm run lint',
+        buildCommand: 'npm run build',
+      },
+      scanner: {
+        onSecretDetected: 'mask',
+        // Other fields should get default values when parsed
+      },
+    };
+
+    await saveConfig(testDir, config);
+    const loaded = await loadConfig(testDir);
+    const effective = getEffectiveConfig(loaded);
+
+    expect(loaded.scanner).toBeDefined();
+    expect(loaded.scanner?.onSecretDetected).toBe('mask');
+    expect(loaded.scanner?.includeBuiltInPatterns).toBe(true); // default value from schema
+    expect(loaded.scanner?.maxLineLength).toBe(10000); // default value from schema
+    expect(effective.scanner.onSecretDetected).toBe('mask');
+    expect(effective.scanner.includeBuiltInPatterns).toBe(true);
+  });
 });
 
-describe.skip('loadAgents', () => {
+describe('loadAgents', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -284,7 +667,7 @@ Write code.`;
   });
 });
 
-describe.skip('loadWorkflows', () => {
+describe('loadWorkflows', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -343,7 +726,7 @@ stages:
   });
 });
 
-describe.skip('loadWorkflow', () => {
+describe('loadWorkflow', () => {
   let testDir: string;
 
   beforeEach(async () => {
@@ -415,9 +798,112 @@ describe('initializeApex', () => {
     expect(config.project.language).toBe('typescript');
     expect(config.project.framework).toBe('nextjs');
   });
+
+  it('should create config with policy section', async () => {
+    await initializeApex(testDir, { projectName: 'policy-project' });
+
+    const config = await loadConfig(testDir);
+    expect(config.policy).toBeDefined();
+    expect(config.policy?.enforcement).toBe('warn');
+    expect(config.policy?.enabled).toBe(true);
+    expect(config.policy?.allowedPaths?.mode).toBe('allowlist');
+    expect(config.policy?.allowedPaths?.allow).toContain('src/**');
+    expect(config.policy?.allowedPaths?.block).toContain('node_modules/**');
+    expect(config.policy?.allowedPaths?.sensitivePatterns).toContain('.env*');
+  });
+
+  it('should initialize project with scanner defaults via getEffectiveConfig', async () => {
+    await initializeApex(testDir, { projectName: 'scanner-init-test' });
+    const config = await loadConfig(testDir);
+    const effective = getEffectiveConfig(config);
+
+    // initializeApex doesn't explicitly set scanner config, so it should use defaults from getEffectiveConfig
+    expect(config.scanner).toBeUndefined();
+    expect(effective.scanner).toEqual({
+      customPatterns: [],
+      includeBuiltInPatterns: true,
+      maxLineLength: 10000,
+      maskSecrets: true,
+      contextLength: 20,
+      onSecretDetected: 'warn',
+    });
+  });
 });
 
-describe.skip('Skills and Scripts', () => {
+describe('Scanner Configuration Validation', () => {
+  it('should validate all valid onSecretDetected enum values', () => {
+    const validBehaviors = ['log', 'warn', 'mask', 'block'];
+
+    for (const behavior of validBehaviors) {
+      const config = ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        scanner: {
+          onSecretDetected: behavior,
+        },
+      });
+
+      expect(config.scanner!.onSecretDetected).toBe(behavior);
+    }
+  });
+
+  it('should reject invalid onSecretDetected values', () => {
+    expect(() => {
+      ApexConfigSchema.parse({
+        project: { name: 'test-project' },
+        scanner: {
+          onSecretDetected: 'invalid',
+        },
+      });
+    }).toThrow();
+  });
+
+  it('should validate custom pattern schema', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      scanner: {
+        customPatterns: [
+          {
+            name: 'Valid Pattern',
+            pattern: '[A-Z0-9]+',
+            severity: 'high',
+            description: 'A valid pattern',
+          },
+        ],
+      },
+    });
+
+    expect(config.scanner!.customPatterns[0]).toEqual({
+      name: 'Valid Pattern',
+      pattern: '[A-Z0-9]+',
+      severity: 'high',
+      description: 'A valid pattern',
+    });
+  });
+
+  it('should apply defaults for missing custom pattern fields', () => {
+    const config = ApexConfigSchema.parse({
+      project: { name: 'test-project' },
+      scanner: {
+        customPatterns: [
+          {
+            name: 'Minimal Pattern',
+            pattern: '[A-Z]+',
+            // severity and description missing, should get defaults
+          },
+        ],
+      },
+    });
+
+    expect(config.scanner!.customPatterns[0]).toEqual({
+      name: 'Minimal Pattern',
+      pattern: '[A-Z]+',
+      severity: 'medium', // default value from schema
+      description: undefined, // optional field
+    });
+  });
+});
+
+describe('Skills and Scripts', () => {
   let testDir: string;
 
   beforeEach(async () => {

@@ -376,89 +376,89 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.5.0 - Tool System & Permissions
+## v0.5.0 - Tool System & Permissions (Complete)
 
 *Powerful tool system with fine-grained permission controls*
 
 ### Browser Automation (inspired by [Cline](https://github.com/cline/cline) & [OpenHands](https://github.com/OpenHands/OpenHands))
 
-- ⚪ **Headless browser** - Launch sites in headless browser for testing
-- ⚪ **Browser actions** - Click, type, scroll, navigate
-- ⚪ **Screenshot capture** - Capture screenshots for visual debugging
-- ⚪ **Console log capture** - Capture browser console for error detection
-- ⚪ **Visual regression testing** - Compare screenshots across runs
-- ⚪ **Runtime error detection** - Detect and fix JavaScript runtime errors
+- 🟢 **Headless browser** - Launch sites in headless browser for testing
+- 🟢 **Browser actions** - Click, type, scroll, navigate
+- 🟢 **Screenshot capture** - Capture screenshots for visual debugging
+- 🟢 **Console log capture** - Capture browser console for error detection
+- 🟢 **Visual regression testing** - Compare screenshots across runs
+- 🟢 **Runtime error detection** - Detect and fix JavaScript runtime errors
 
 ### Built-in Tools (Claude Code parity)
 
-- ⚪ **Read** - Read file contents with line numbers
-- ⚪ **Write** - Create new files
-- ⚪ **Edit** - Surgical edits with old_string/new_string
-- ⚪ **MultiEdit** - Multiple edits in single operation
-- ⚪ **Bash** - Execute shell commands
-- ⚪ **Glob** - Fast file pattern matching
-- ⚪ **Grep** - Content search with ripgrep
-- ⚪ **WebFetch** - Fetch and analyze web content
-- ⚪ **WebSearch** - Search the web for information
-- ⚪ **NotebookEdit** - Edit Jupyter notebooks
-- ⚪ **TodoWrite** - Manage task lists
+- 🟢 **Read** - Read file contents with line numbers
+- 🟢 **Write** - Create new files
+- 🟢 **Edit** - Surgical edits with old_string/new_string
+- 🟢 **MultiEdit** - Multiple edits in single operation
+- 🟢 **Bash** - Execute shell commands
+- 🟢 **Glob** - Fast file pattern matching
+- 🟢 **Grep** - Content search with ripgrep
+- 🟢 **WebFetch** - Fetch and analyze web content
+- 🟢 **WebSearch** - Search the web for information
+- 🟢 **NotebookEdit** - Edit Jupyter notebooks
+- 🟢 **TodoWrite** - Manage task lists
 
 ### Tool Visualization
 
-- ⚪ **Tool call display** - Show tool name, parameters in real-time
-- ⚪ **Tool output formatting** - Syntax highlighted, truncated large outputs
-- ⚪ **Tool timing** - Show execution duration
-- ⚪ **Tool error display** - Clear error messages with context
-- ⚪ **Diff preview** - Show changes before applying
-- ⚪ **Undo capability** - Revert tool actions
-- ⚪ **Dry-run mode** - Simulate tool actions and show planned changes before execution
+- 🟢 **Tool call display** - Show tool name, parameters in real-time
+- 🟢 **Tool output formatting** - Syntax highlighted, truncated large outputs
+- 🟢 **Tool timing** - Show execution duration
+- 🟢 **Tool error display** - Clear error messages with context
+- 🟢 **Diff preview** - Show changes before applying
+- 🟢 **Undo capability** - Revert tool actions
+- 🟢 **Dry-run mode** - Simulate tool actions and show planned changes before execution
 
 ### Permission System
 
-- ⚪ **Permission levels** - Allow always, allow once, deny
-- ⚪ **Per-tool permissions** - Different settings per tool
-- ⚪ **Per-directory permissions** - Restrict access to certain paths
-- ⚪ **Dangerous operation warnings** - Extra confirmation for risky actions
-- ⚪ **Permission presets** - "Autonomous", "Review all", "Read-only"
-- ⚪ **Permission persistence** - Remember choices across sessions
-- ⚪ **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
-- ⚪ **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
+- 🟢 **Permission levels** - Allow always, allow once, deny
+- 🟢 **Per-tool permissions** - Different settings per tool
+- 🟢 **Per-directory permissions** - Restrict access to certain paths
+- 🟢 **Dangerous operation warnings** - Extra confirmation for risky actions
+- 🟢 **Permission presets** - "Autonomous", "Review all", "Read-only"
+- 🟢 **Permission persistence** - Remember choices across sessions
+- 🟢 **Policy-as-code rules** - Enforce repo rules (paths, tests, approvals) via config
+- 🟢 **Secret-leak guardrails** - Block commits/tool outputs matching secret patterns
 
 ### Autonomy Controls
 
-- ⚪ **Autonomy levels** - Full auto, review before commit, review all
-- ⚪ **Approval gates** - Configurable checkpoints requiring approval
-- ⚪ **Budget limits** - Pause when cost threshold reached
-- ⚪ **Token limits** - Pause when token threshold reached
-- ⚪ **Time limits** - Maximum task duration
-- ⚪ **Change limits** - Maximum files/lines changed without approval
+- 🟢 **Autonomy levels** - Full auto, review before commit, review all
+- 🟢 **Approval gates** - Configurable checkpoints requiring approval
+- 🟢 **Budget limits** - Pause when cost threshold reached
+- 🟢 **Token limits** - Pause when token threshold reached
+- 🟢 **Time limits** - Maximum task duration
+- 🟢 **Change limits** - Maximum files/lines changed without approval
 
 ### Code Quality Integration (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
 
-- ⚪ **Lint-after-edit** - Automatically lint code after every edit
-- ⚪ **Auto-fix linting errors** - Fix syntax errors, missing imports automatically
-- ⚪ **Pre-edit validation** - Validate syntax before allowing edits
-- ⚪ **Compiler feedback loop** - Monitor compiler errors and fix proactively
-- ⚪ **Type checking integration** - Run TypeScript/Flow checks after edits
+- 🟢 **Lint-after-edit** - Automatically lint code after every edit
+- 🟢 **Auto-fix linting errors** - Fix syntax errors, missing imports automatically
+- 🟢 **Pre-edit validation** - Validate syntax before allowing edits
+- 🟢 **Compiler feedback loop** - Monitor compiler errors and fix proactively
+- 🟢 **Type checking integration** - Run TypeScript/Flow checks after edits
 
 ### Tool Extensions
 
-- ⚪ **Custom tools** - Define project-specific tools
-- ⚪ **Tool hooks** - Pre/post execution hooks
-- ⚪ **Tool aliases** - Shortcuts for common tool patterns
-- ⚪ **MCP server support** - Model Context Protocol integration
+- 🟢 **Custom tools** - Define project-specific tools
+- 🟢 **Tool hooks** - Pre/post execution hooks
+- 🟢 **Tool aliases** - Shortcuts for common tool patterns
+- 🟢 **MCP server support** - Model Context Protocol integration
 
 ### MCP Ecosystem (Accelerated)
 
-- ⚪ **MCP Marketplace** - Discover and install MCP servers
-- ⚪ **Easy Install** - One-click installation of capabilities
-- ⚪ **Auto-configuration** - Minimal config setup for standard tools
+- 🟢 **MCP Marketplace** - Discover and install MCP servers
+- 🟢 **Easy Install** - One-click installation of capabilities
+- 🟢 **Auto-configuration** - Minimal config setup for standard tools
 
 ### Test-Driven Development (TDD)
 
-- ⚪ **TDD Mode** - "Write test first, then fix" loop
-- ⚪ **Auto-Correction Loop** - Iteratively fix code until tests pass
-- ⚪ **Regression Guard** - Ensure existing tests don't break
+- 🟢 **TDD Mode** - "Write test first, then fix" loop
+- 🟢 **Auto-Correction Loop** - Iteratively fix code until tests pass
+- 🟢 **Regression Guard** - Ensure existing tests don't break
 
 ---
 
@@ -475,6 +475,16 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
 - ⚪ **Test framework detection** - Know how to run tests
 - ⚪ **Workspace health checks** - `apex doctor` validates toolchain and config per package
+
+### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
+
+- ⚪ **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
+- ⚪ **Stack documentation** - Auto-generate stack/technology documentation
+- ⚪ **Architecture documentation** - Auto-document architecture patterns
+- ⚪ **Convention extraction** - Extract and document coding conventions
+- ⚪ **Testing patterns** - Document existing test patterns and coverage
+- ⚪ **Integration mapping** - Map third-party integrations and APIs
+- ⚪ **Technical concerns** - Identify technical debt and concerns
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 
@@ -495,7 +505,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Design mockup input** - Accept Figma/design mockups as input
 - ⚪ **Error screenshot analysis** - Analyze screenshots of errors/bugs
 
-### Conversation Memory
+### Conversation Memory (inspired by [GSD](https://github.com/glittercowboy/get-shit-done) & [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
 
 - ⚪ **Session context** - Remember everything in current session
 - ⚪ **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
@@ -506,6 +516,8 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Explicit memory** - User can tell APEX to remember things
 - ⚪ **Memory search** - Search through remembered information
 - ⚪ **Memory management UI** - View, edit, delete memories
+- ⚪ **Living memory files** - STATE.md-style living memory for multi-session continuity (GSD)
+- ⚪ **Cross-session agent insights** - Agents retain insights and patterns across sessions (Auto-Claude)
 
 ### Cross-Task Context
 
@@ -555,6 +567,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Agent utilization statistics
 - ⚪ Task dependency visualization
 - ⚪ Subtask hierarchy view
+
+### Visual Task Management (inspired by [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
+
+- ⚪ **Visual Kanban board** - Drag-and-drop task management interface
+- ⚪ **Task context injection** - One-click context injection from task cards
+- ⚪ **Parallel task view** - Visualize up to 12 concurrent agent terminals
+- ⚪ **Progress timeline** - Visual timeline of task execution stages
+- ⚪ **Automated changelog display** - View auto-generated changelogs from completed tasks
 
 ### Task Management UI
 
@@ -648,6 +668,16 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **`apex workflows inspect <name>`** - View detailed workflow configuration
 - ⚪ **Workflow step validation** - Validate workflow definitions before execution
 
+### Spec-Driven Development (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
+
+- ⚪ **XML-structured plans** - Precise task definitions with embedded verification steps
+- ⚪ **Verification conditions** - Built-in test conditions (e.g., "curl returns 200")
+- ⚪ **Subagent isolation** - Each task gets fresh context (200k tokens) for quality
+- ⚪ **Atomic task execution** - 2-3 tasks per phase maximum for focus
+- ⚪ **Interactive roadmap generation** - `/apex:new-project` style planning wizard
+- ⚪ **Dynamic phase management** - Add/insert/remove phases mid-project
+- ⚪ **Context files** - PROJECT.md, ROADMAP.md, STATE.md, PLAN.md for context engineering
+
 ### Workflow Engine
 
 - ⚪ Conditional stage execution (if/else)
@@ -669,7 +699,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ File change watchers
 - ⚪ CI/CD pipeline integration
 
-### GitHub Issue Resolver (inspired by [OpenHands](https://github.com/OpenHands/OpenHands))
+### GitHub Issue Resolver (inspired by [OpenHands](https://github.com/OpenHands/OpenHands) & [OpenCode](https://github.com/anomalyco/opencode))
 
 - ⚪ **Auto-fix labeled issues** - Automatically fix issues tagged with `apex-fix` label
 - ⚪ **GitHub Action integration** - Run as GitHub Action in CI/CD
@@ -678,6 +708,8 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **PR review response** - Respond to PR review comments automatically
 - ⚪ **Issue triage** - Auto-label and categorize new issues
 - ⚪ **Duplicate detection** - Identify and link duplicate issues
+- ⚪ **PR comment commands** - `/apex` or `/oc` mentions in PR comments to trigger actions (OpenCode-style)
+- ⚪ **Branch workflow** - Auto-create branches, work in isolation, submit PRs
 
 ### GitHub Integration
 
@@ -688,6 +720,13 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Actions workflow integration
 - ⚪ Project board updates
 - ⚪ Nightly Builds support (NPM @nightly, Homebrew --HEAD)
+
+### AI-Powered Git Features (inspired by [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
+
+- ⚪ **AI merge conflict resolution** - Intelligent resolution of merge conflicts
+- ⚪ **Smart merge suggestions** - AI-powered suggestions for complex merges
+- ⚪ **Conflict context analysis** - Understand intent behind conflicting changes
+- ⚪ **Automated changelog generation** - Generate changelogs from completed tasks
 
 ### GitLab Integration
 
@@ -728,6 +767,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Cost optimization suggestions
 - ⚪ Model selection optimization
 - ⚪ **Adaptive Model Routing** - Smartly route simple tasks to faster/cheaper models
+
+### Code Intelligence (inspired by [OpenCode](https://github.com/anomalyco/opencode))
+
+- ⚪ **LSP integration** - Language Server Protocol for rich code intelligence
+- ⚪ **Semantic completions** - Context-aware code completions via LSP
+- ⚪ **Go-to-definition** - Navigate to definitions using LSP
+- ⚪ **Find references** - Find all references using LSP
+- ⚪ **Diagnostics integration** - Real-time error/warning detection via LSP
 
 ### Quality Improvements
 
@@ -916,15 +963,23 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ Import/export workflows
 - ⚪ Workflow versioning
 
-### Integrations
+### Integrations (inspired by [OpenHands](https://github.com/OpenHands/OpenHands) & [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
 
-- ⚪ Jira integration
-- ⚪ Linear integration
-- ⚪ Asana integration
-- ⚪ Notion integration
-- ⚪ Confluence integration
-- ⚪ Datadog/monitoring integration
-- ⚪ PagerDuty integration
+- ⚪ **Jira integration** - Create/update issues, sync task status
+- ⚪ **Linear integration** - Task synchronization, team tracking (Auto-Claude)
+- ⚪ **Asana integration** - Project and task management
+- ⚪ **Notion integration** - Knowledge base and documentation
+- ⚪ **Confluence integration** - Enterprise documentation
+- ⚪ **Datadog/monitoring integration** - Performance monitoring
+- ⚪ **PagerDuty integration** - Incident management
+- ⚪ **Slack deep integration** - Beyond notifications to full workflow (OpenHands)
+
+### AI Feature Planning (inspired by [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
+
+- ⚪ **Competitor analysis** - AI-assisted analysis of competing solutions
+- ⚪ **Audience targeting** - Feature planning with target audience in mind
+- ⚪ **Ideation tools** - Identify performance improvements and vulnerabilities
+- ⚪ **Strategic planning** - High-level product strategy assistance
 
 ---
 
@@ -1068,7 +1123,25 @@ telemetry:
 
 *Long-term vision and experimental features*
 
-### Multi-LLM Backend Support (inspired by [Rover](https://github.com/endorhq/rover))
+### Desktop Application (inspired by [Auto-Claude](https://github.com/AndyMik90/Auto-Claude) & [OpenCode](https://github.com/anomalyco/opencode))
+
+- 💡 **Electron desktop app** - Native desktop experience across Windows, macOS, Linux
+- 💡 **Integrated terminal** - AI-powered terminal with task context injection
+- 💡 **Visual diff viewer** - Rich diff visualization in desktop app
+- 💡 **Embedded file explorer** - Browse and manage project files
+- 💡 **Auto-updates** - Seamless application updates
+- 💡 **System tray integration** - Background operation with system tray
+
+### Cloud Platform (inspired by [OpenHands](https://github.com/OpenHands/OpenHands))
+
+- 💡 **Hosted APEX Cloud** - Use APEX without local installation
+- 💡 **GitHub/GitLab login** - OAuth-based authentication
+- 💡 **Browser access** - Access from any device with a browser
+- 💡 **Mobile support** - Mobile-friendly interface for monitoring
+- 💡 **Free tier credits** - Trial credits for new users
+- 💡 **Team workspaces** - Shared cloud workspaces for teams
+
+### Multi-LLM Backend Support (inspired by [Rover](https://github.com/endorhq/rover) & [OpenCode](https://github.com/anomalyco/opencode))
 
 - 💡 **Pluggable LLM backends** - Support multiple AI providers
 - 💡 **Claude Code backend** - Current default (via Claude Agent SDK)
@@ -1143,40 +1216,58 @@ telemetry:
 
 ## CLI Feature Comparison
 
-| Feature | Claude Code | Codex CLI | Gemini CLI | Aider | Cline | OpenHands | Rover | APEX |
-|---------|-------------|-----------|------------|-------|-------|-----------|-------|------|
-| Streaming responses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Markdown rendering | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Diff views | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| History navigation | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | 🟢 |
-| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ⚪ |
-| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Session persistence | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
-| **Browser automation** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚪ |
-| **Voice coding** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | 💡 |
-| **Multimodal input (images)** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ⚪ |
-| **Repository map (AST)** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ⚪ |
-| **Lint-after-edit** | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ⚪ |
-| **GitHub issue resolver** | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Confidence scoring** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Auto-documentation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **MCP marketplace** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ⚪ |
-| **24/7 daemon mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ⚪ |
-| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Multi-LLM backends** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | 💡 |
-| **VSCode extension** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ⚪ |
+| Feature | Claude Code | Codex CLI | Gemini CLI | Aider | Cline | OpenHands | Rover | GSD | Auto-Claude | OpenCode | APEX |
+|---------|-------------|-----------|------------|-------|-------|-----------|-------|-----|-------------|----------|------|
+| Streaming responses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| History navigation | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🟢 |
+| Multi-turn conversations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | 🟢 |
+| Session persistence | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | 🟢 |
+| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **Browser automation** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Voice coding** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 💡 |
+| **Multimodal input (images)** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Repository map (AST)** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Lint-after-edit** | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **GitHub issue resolver** | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
+| **Confidence scoring** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Auto-documentation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **MCP marketplace** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **24/7 daemon mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | 🟢 |
+| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | 🟢 |
+| **Multi-LLM backends** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | 💡 |
+| **VSCode extension** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ⚪ |
+| **Parallel agent execution** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | 🟢 |
+| **Visual Kanban board** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Linear integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Self-validating QA loop** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | 🟢 |
+| **AI merge conflict resolution** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Memory layer (cross-session)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚪ |
+| **LSP integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Desktop app** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
+| **Cloud platform** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
+| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ⚪ |
+| **Automated changelog** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **GitHub Actions trigger** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
 
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | 💡 Considering | ✅ Has feature | ❌ No feature
+>
+> **Competitors**:
+>
+> - [GSD (Get-Shit-Done)](https://github.com/glittercowboy/get-shit-done) - Meta-prompting and context engineering for Claude Code
+> - [Auto-Claude](https://github.com/AndyMik90/Auto-Claude) - Autonomous multi-agent desktop app with Kanban board
+> - [OpenCode](https://github.com/anomalyco/opencode) - Provider-agnostic terminal agent with LSP support
 
 ---
 
@@ -1203,18 +1294,18 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 
 | Version | Target Date | Focus |
 |---------|-------------|-------|
-| v0.1.0 | Q1 2025 | Foundation ✅ |
-| v0.2.0 | Q1 2025 | Production Ready ✅ |
-| v0.3.0 | Q2 2025 | Claude Code-like CLI Experience |
-| v0.4.0 | Q2 2025 | Sleepless Mode & Autonomy |
-| v0.5.0 | Q2 2025 | Tool System & Permissions |
-| v0.6.0 | Q3 2025 | Context & Memory |
-| v0.7.0 | Q3 2025 | Web Dashboard & Integrations |
-| v0.8.0 | Q3 2025 | IDE Integration |
-| v0.9.0 | Q4 2025 | Advanced Workflows |
-| v0.10.0 | Q4 2025 | Intelligence & Learning |
-| v0.11.0 | Q1 2026 | Enterprise Features |
-| v0.12.0 | Q1 2026 | Domain-Specific Agent Packs |
+| v0.1.0 | Q4 2025 | Foundation ✅ |
+| v0.2.0 | Q4 2025 | Production Ready ✅ |
+| v0.3.0 | Q4 2025 | Claude Code-like CLI Experience |
+| v0.4.0 | Q4 2025 | Sleepless Mode & Autonomy |
+| v0.5.0 | Q1 2026 | Tool System & Permissions |
+| v0.6.0 | Q1 2026 | Context & Memory |
+| v0.7.0 | Q1 2026 | Web Dashboard & Integrations |
+| v0.8.0 | Q1 2026 | IDE Integration |
+| v0.9.0 | Q1 2026 | Advanced Workflows |
+| v0.10.0 | Q2 2026 | Intelligence & Learning |
+| v0.11.0 | Q2 2026 | Enterprise Features |
+| v0.12.0 | Q2 2026 | Domain-Specific Agent Packs |
 | v0.13.0 | Q2 2026 | Ecosystem & Extensibility |
 | v0.14.0 | Q2 2026 | Scale & Performance |
 | v1.0.0 | Q3 2026 | General Availability |

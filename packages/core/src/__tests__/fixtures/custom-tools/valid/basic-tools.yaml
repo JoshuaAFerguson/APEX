@@ -1,0 +1,61 @@
+# Basic Custom Tool Fixtures
+# Minimal, valid tool configurations for basic testing scenarios
+
+# Simple echo tool with single parameter
+- name: EchoTool
+  description: Echo a message to stdout
+  command: echo
+  args:
+    - "{{input.message}}"
+  parameters:
+    type: object
+    properties:
+      message:
+        type: string
+        description: The message to echo
+    required:
+      - message
+    additionalProperties: false
+  outputParser: text
+  timeoutMs: 5000
+  enabled: true
+
+# Tool with multiple arguments
+- name: DateTool
+  description: Display formatted date
+  command: date
+  args:
+    - "+%Y-%m-%d %H:%M:%S"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with working directory
+- name: ListFiles
+  description: List files in a directory
+  command: ls
+  args:
+    - "-la"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  workingDirectory: "."
+  outputParser: lines
+  enabled: true
+
+# Disabled tool (should not be executed)
+- name: DisabledTool
+  description: This tool is disabled and should be ignored
+  command: echo
+  args:
+    - "This should not run"
+  enabled: false
+
+# Tool with minimum required fields only
+- name: MinimalTool
+  description: Minimal tool configuration
+  command: true

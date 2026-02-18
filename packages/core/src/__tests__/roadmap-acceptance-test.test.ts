@@ -157,7 +157,7 @@ describe('ROADMAP v0.4.0 Acceptance Test', () => {
       console.log('   ✅ Idle processing features included');
       console.log('   ✅ Acceptance criteria met\n');
 
-      expect(true).toBe(true); // Always passes - this is a reporting test
+      expect(v040Section).toContain('🟢');
     });
   });
 });

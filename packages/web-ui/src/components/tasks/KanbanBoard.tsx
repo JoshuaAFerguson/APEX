@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
+import { Button } from '@/components/ui/Button'
+import { apiClient } from '@/lib/api-client'
 import { formatCost, getRelativeTime, truncateId, cn } from '@/lib/utils'
 import type { Task, TaskStatus } from '@apexcli/core'
 import {
@@ -17,6 +19,8 @@ import {
   ChevronRight,
   Layers
 } from 'lucide-react'
+
+const COLUMN_PAGE_SIZE = 20
 
 // Kanban column definitions with their associated statuses
 const KANBAN_COLUMNS: {
@@ -64,31 +68,95 @@ const KANBAN_COLUMNS: {
 ]
 
 interface KanbanBoardProps {
-  tasks: Task[]
   onCancel: (taskId: string, e: React.MouseEvent) => void
   onRetry: (taskId: string, e: React.MouseEvent) => void
   actionLoading: string | null
+  refreshKey?: number
 }
 
-export function KanbanBoard({ tasks, onCancel, onRetry, actionLoading }: KanbanBoardProps) {
-  // Group tasks by column
-  const tasksByColumn = KANBAN_COLUMNS.reduce((acc, column) => {
-    acc[column.id] = tasks.filter(task => column.statuses.includes(task.status))
-    return acc
-  }, {} as Record<string, Task[]>)
+export function KanbanBoard({ onCancel, onRetry, actionLoading, refreshKey }: KanbanBoardProps) {
+  const [columnData, setColumnData] = useState<Record<string, { tasks: Task[]; total: number }>>({})
+  const [stats, setStats] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(true)
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      // Fetch stats and per-column tasks in parallel
+      const [statsData, ...columnResults] = await Promise.all([
+        apiClient.getTaskStats(),
+        // Fetch first page of tasks for each status that has a primary status
+        // For columns with multiple statuses, fetch each separately
+        ...KANBAN_COLUMNS.flatMap(col =>
+          col.statuses.map(status =>
+            apiClient.listTasks({ status, limit: COLUMN_PAGE_SIZE })
+              .then(res => ({ columnId: col.id, status, tasks: res.tasks, total: res.total }))
+          )
+        )
+      ])
+
+      // Set stats for column counts
+      setStats(statsData.byStatus)
+
+      // Merge results per column (some columns have multiple statuses)
+      const merged: Record<string, { tasks: Task[]; total: number }> = {}
+      for (const result of columnResults) {
+        const { columnId, tasks, total } = result
+        if (!merged[columnId]) {
+          merged[columnId] = { tasks: [], total: 0 }
+        }
+        merged[columnId].tasks.push(...tasks)
+        merged[columnId].total += total
+      }
+
+      // Sort tasks within each column by most recently updated
+      for (const col of Object.values(merged)) {
+        col.tasks.sort((a, b) =>
+          new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+        )
+      }
+
+      setColumnData(merged)
+    } catch (err) {
+      console.error('Failed to load kanban data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData, refreshKey])
+
+  if (loading && Object.keys(columnData).length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
-      {KANBAN_COLUMNS.map((column) => (
-        <KanbanColumn
-          key={column.id}
-          column={column}
-          tasks={tasksByColumn[column.id]}
-          onCancel={onCancel}
-          onRetry={onRetry}
-          actionLoading={actionLoading}
-        />
-      ))}
+      {KANBAN_COLUMNS.map((column) => {
+        const data = columnData[column.id] || { tasks: [], total: 0 }
+        // Sum counts from stats for this column's statuses
+        const totalCount = column.statuses.reduce((sum, s) => sum + (stats[s] || 0), 0)
+
+        return (
+          <KanbanColumn
+            key={column.id}
+            column={column}
+            tasks={data.tasks}
+            totalCount={totalCount}
+            shownCount={data.tasks.length}
+            onCancel={onCancel}
+            onRetry={onRetry}
+            actionLoading={actionLoading}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -96,13 +164,16 @@ export function KanbanBoard({ tasks, onCancel, onRetry, actionLoading }: KanbanB
 interface KanbanColumnProps {
   column: typeof KANBAN_COLUMNS[0]
   tasks: Task[]
+  totalCount: number
+  shownCount: number
   onCancel: (taskId: string, e: React.MouseEvent) => void
   onRetry: (taskId: string, e: React.MouseEvent) => void
   actionLoading: string | null
 }
 
-function KanbanColumn({ column, tasks, onCancel, onRetry, actionLoading }: KanbanColumnProps) {
+function KanbanColumn({ column, tasks, totalCount, shownCount, onCancel, onRetry, actionLoading }: KanbanColumnProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const hasMore = totalCount > shownCount
 
   return (
     <div className={cn(
@@ -124,7 +195,7 @@ function KanbanColumn({ column, tasks, onCancel, onRetry, actionLoading }: Kanba
           <h3 className="font-semibold text-sm">{column.title}</h3>
         </div>
         <Badge variant="default" className="text-xs">
-          {tasks.length}
+          {totalCount}
         </Badge>
       </div>
 
@@ -136,15 +207,22 @@ function KanbanColumn({ column, tasks, onCancel, onRetry, actionLoading }: Kanba
               No tasks
             </div>
           ) : (
-            tasks.map((task) => (
-              <KanbanCard
-                key={task.id}
-                task={task}
-                onCancel={onCancel}
-                onRetry={onRetry}
-                actionLoading={actionLoading}
-              />
-            ))
+            <>
+              {tasks.map((task) => (
+                <KanbanCard
+                  key={task.id}
+                  task={task}
+                  onCancel={onCancel}
+                  onRetry={onRetry}
+                  actionLoading={actionLoading}
+                />
+              ))}
+              {hasMore && (
+                <div className="text-center text-foreground-secondary text-xs py-3 opacity-70">
+                  Showing {shownCount} of {totalCount}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

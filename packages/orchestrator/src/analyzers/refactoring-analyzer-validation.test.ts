@@ -162,12 +162,7 @@ describe('RefactoringAnalyzer - Validation', () => {
     expect(prioritized).toBeDefined();
     expect(prioritized?.score).toBeGreaterThan(0);
 
-    // ✅ All acceptance criteria requirements validated:
-    // ✅ Complexity hotspot detection with various metric combinations
-    // ✅ All code smell types detection
-    // ✅ Duplicate pattern detection with different similarity levels
-    // ✅ Edge cases handling
-    // ✅ Priority ordering when multiple issues exist
-    expect(true).toBe(true); // Test passes - all requirements met
+    // Top candidate should map to one of the detected issue categories.
+    expect(prioritized?.candidateId).toMatch(/complexity|duplication|code-smell/);
   });
 });

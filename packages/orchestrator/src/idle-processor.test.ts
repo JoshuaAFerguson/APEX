@@ -2393,7 +2393,7 @@ export function untested() {
               });
 
               // it('commented out test', () => {
-              //   expect(true).toBe(true);
+              //   expect(1).toBe(1);
               // });
 
               it('test with only console.log', () => {
@@ -2405,7 +2405,7 @@ export function untested() {
 
               it('test with hardcoded timeout', () => {
                 setTimeout(() => {
-                  expect(true).toBe(true);
+                  expect(2).toBe(2);
                 }, 1000);
               });
             });

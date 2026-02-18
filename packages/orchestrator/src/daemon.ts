@@ -250,7 +250,9 @@ export class DaemonManager {
 
       const child = fork(entryPoint, [], {
         detached: true,
-        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        // Use 'ignore' for stdout/stderr to prevent EPIPE errors when parent exits
+        // The daemon writes to its own log file instead of stdout/stderr
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
         env: {
           ...process.env,
           APEX_DAEMON_MODE: '1',
@@ -279,20 +281,8 @@ export class DaemonManager {
       // Write PID file with process information
       await this.writePidFile(child.pid, new Date());
 
-      // Set up logging if log file is configured
-      if (child.stdout) {
-        child.stdout.on('data', (data) => {
-          this.writeToLog(`STDOUT: ${data}`);
-          this.options.onOutput?.(data.toString());
-        });
-      }
-
-      if (child.stderr) {
-        child.stderr.on('data', (data) => {
-          this.writeToLog(`STDERR: ${data}`);
-          this.options.onError?.(new Error(data.toString()));
-        });
-      }
+      // Note: stdout/stderr are set to 'ignore' to prevent EPIPE errors
+      // The daemon writes directly to its log file instead
 
       // Handle process exit
       child.on('exit', async (code) => {

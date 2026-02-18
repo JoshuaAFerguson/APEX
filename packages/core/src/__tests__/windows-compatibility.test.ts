@@ -344,7 +344,7 @@ describe('Skip Pattern Analysis', () => {
       }
 
       // Always pass - this is an analysis test, not a requirement
-      expect(true).toBe(true);
+      expect(testFiles.length).toBeGreaterThan(0);
     });
   });
 });

@@ -1,0 +1,123 @@
+# Parameter Types Custom Tool Fixtures
+# Tools demonstrating various JSON Schema parameter types
+
+# String parameter with constraints
+- name: StringParamTool
+  description: Tool with various string parameter constraints
+  command: echo
+  args:
+    - "{{input.name}}"
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+        description: A name with length constraints
+        minLength: 1
+        maxLength: 100
+      email:
+        type: string
+        description: Email address with pattern validation
+        pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+      code:
+        type: string
+        description: An optional code
+    required:
+      - name
+    additionalProperties: false
+  enabled: true
+
+# Number and integer parameters
+- name: NumericParamTool
+  description: Tool with numeric parameter types
+  command: echo
+  args:
+    - "{{input.count}}"
+    - "{{input.ratio}}"
+  parameters:
+    type: object
+    properties:
+      count:
+        type: integer
+        description: An integer count
+        minimum: 0
+        maximum: 1000
+      ratio:
+        type: number
+        description: A floating-point ratio
+        minimum: 0.0
+        maximum: 1.0
+      unboundedNumber:
+        type: number
+        description: A number without bounds
+    required:
+      - count
+    additionalProperties: false
+  enabled: true
+
+# Boolean parameter
+- name: BooleanParamTool
+  description: Tool with boolean parameters
+  command: echo
+  args:
+    - "Verbose: {{input.verbose}}"
+  parameters:
+    type: object
+    properties:
+      verbose:
+        type: boolean
+        description: Enable verbose output
+        default: false
+      dryRun:
+        type: boolean
+        description: Run without making changes
+    additionalProperties: false
+  enabled: true
+
+# Array parameter
+- name: ArrayParamTool
+  description: Tool with array parameters
+  command: echo
+  args:
+    - "{{input.files}}"
+  parameters:
+    type: object
+    properties:
+      files:
+        type: array
+        description: List of files to process
+        items:
+          type: string
+      tags:
+        type: array
+        description: Tags to apply
+        items:
+          type: string
+    required:
+      - files
+    additionalProperties: false
+  enabled: true
+
+# Object/nested parameter
+- name: ObjectParamTool
+  description: Tool with nested object parameters
+  command: echo
+  args:
+    - "{{input.config}}"
+  parameters:
+    type: object
+    properties:
+      config:
+        type: object
+        description: Configuration object
+        properties:
+          host:
+            type: string
+          port:
+            type: integer
+        required:
+          - host
+    required:
+      - config
+    additionalProperties: false
+  enabled: true

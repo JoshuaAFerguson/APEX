@@ -216,7 +216,7 @@ describe('Acceptance Criteria Validation', () => {
       });
 
       // Final confirmation
-      expect(true).toBe(true); // If we reach this point, all requirements are met
+      expect(existingTypes).toHaveLength(7);
     });
   });
 });

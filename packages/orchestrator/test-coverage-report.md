@@ -1,7 +1,8 @@
-# ServiceManager Test Coverage Report
+# MCP Client Utility - Test Coverage Report
 
 ## Overview
-The ServiceManager class has comprehensive test coverage for platform detection, service file generation, and service lifecycle management across both Linux (systemd) and macOS (launchd) platforms.
+
+This document provides a comprehensive overview of the test coverage for the MCP Client Utility (`mcp-client.ts`). The utility has been thoroughly tested with both unit tests and integration tests to ensure reliability and robustness.
 
 ## Test Categories
 

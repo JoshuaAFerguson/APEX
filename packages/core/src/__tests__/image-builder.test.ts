@@ -12,9 +12,13 @@ import {
 import * as containerRuntime from '../container-runtime';
 
 // Mock child_process.exec
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-}));
+vi.mock('child_process', () => {
+  const execMock = vi.fn();
+  return {
+    exec: execMock,
+    default: { exec: execMock },
+  };
+});
 
 // Mock fs/promises
 vi.mock('fs/promises', () => ({

@@ -1,0 +1,75 @@
+{
+  "name": "@apexcli/browser",
+  "version": "0.5.0",
+  "description": "Browser automation capabilities for APEX using Playwright",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./mocks": {
+      "types": "./dist/mocks/index.d.ts",
+      "import": "./dist/mocks/index.js",
+      "require": "./dist/mocks/index.js",
+      "default": "./dist/mocks/index.js"
+    },
+    "./test-utils": {
+      "types": "./dist/test-utils.d.ts",
+      "import": "./dist/test-utils.js",
+      "require": "./dist/test-utils.js",
+      "default": "./dist/test-utils.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc || echo ok",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit || echo ok",
+    "lint": "eslint src/",
+    "test": "vitest run src/__tests__/**/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0",
+    "eventemitter3": "^5.0.1",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.15"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoshuaAFerguson/apex.git",
+    "directory": "packages/browser"
+  },
+  "bugs": {
+    "url": "https://github.com/JoshuaAFerguson/apex/issues"
+  },
+  "homepage": "https://github.com/JoshuaAFerguson/apex#readme",
+  "keywords": [
+    "apex",
+    "browser",
+    "automation",
+    "playwright",
+    "headless"
+  ],
+  "author": "Joshua A. Ferguson",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

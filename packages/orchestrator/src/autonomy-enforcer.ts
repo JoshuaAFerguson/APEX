@@ -1,0 +1,515 @@
+import EventEmitter from 'eventemitter3';
+import type {
+  Task,
+  TaskUsage,
+  ApprovalGate,
+  AutonomyLevel,
+  TaskResourceLimits,
+} from '@apexcli/core';
+import type { TaskStore } from './store.js';
+
+// Events the orchestrator emits that we listen to
+interface OrchestratorEvents {
+  'task:started': (task: Task) => void;
+  'task:completed': (task: Task) => void;
+  'task:failed': (task: Task, error?: Error) => void;
+  'usage:updated': (taskId: string, usage: TaskUsage) => void;
+}
+
+// Interface for the orchestrator dependency - we only need specific functionality
+interface OrchestratorLike extends EventEmitter<Record<string, (...args: any[]) => void>> {
+  store: TaskStore;
+}
+
+export interface AutonomyEnforcerConfig {
+  /** Autonomy level setting */
+  level: AutonomyLevel;
+  /** Approval gates configuration */
+  gates: ApprovalGate[];
+  /** Resource and operational limits */
+  limits: TaskResourceLimits;
+  /** Warning thresholds as percentages */
+  warningThresholds: {
+    costWarningPercent: number;
+    tokenWarningPercent: number;
+    timeWarningPercent: number;
+    fileWarningPercent: number;
+  };
+}
+
+export interface TaskContext {
+  task: Task;
+  currentStage?: string;
+  agent?: string;
+  operationType?: 'read' | 'write' | 'execute' | 'network' | 'dangerous';
+}
+
+export interface ActionMetadata {
+  agentType: string;
+  actionType: string;
+  scope?: string;
+  toolName?: string;
+  operationType?: 'read' | 'write' | 'execute' | 'network' | 'dangerous';
+}
+
+export interface LimitCheckResult {
+  exceeded: boolean;
+  limitType?: 'tokens' | 'cost' | 'time' | 'files' | 'lines' | 'turns';
+  currentValue?: number;
+  limitValue?: number;
+  message?: string;
+}
+
+export interface WarningResult {
+  taskId?: string;
+  type: 'tokens' | 'cost' | 'time' | 'files';
+  threshold: number;
+  currentValue: number;
+  limitValue: number;
+  message: string;
+}
+
+export interface AutonomyEnforcerEvents {
+  'limit:warning': (warning: WarningResult) => void;
+  'limit:exceeded': (result: LimitCheckResult, task: Task) => void;
+  'approval:required': (gateName: string, context: TaskContext) => void;
+  'approval:bypass': (gateName: string, reason: string) => void;
+}
+
+/**
+ * AutonomyEnforcer manages resource limits, approval gates, and safety controls
+ * Implements the policy enforcement and resource tracking for autonomous operation
+ */
+class AutonomyEnforcer extends EventEmitter<AutonomyEnforcerEvents> {
+  private config: AutonomyEnforcerConfig;
+  private orchestrator: OrchestratorLike;
+  private taskUsageMap = new Map<string, TaskUsage>();
+  private taskStartTimes = new Map<string, Date>();
+
+  constructor(config: AutonomyEnforcerConfig, orchestrator: OrchestratorLike) {
+    super();
+    this.config = config;
+    this.orchestrator = orchestrator;
+
+    // Track task usage updates
+    this.setupUsageTracking();
+  }
+
+  /**
+   * Check if an action requires approval based on metadata
+   * @param actionMetadata - Metadata about the action including agent type, action type, and scope
+   * @returns boolean indicating if approval is required
+   */
+  async checkAction(actionMetadata: ActionMetadata): Promise<boolean> {
+    const { level, gates } = this.config;
+
+    // Create a legacy context for compatibility with existing gate checking
+    const context: TaskContext = {
+      task: { id: 'current-task' } as Task, // Minimal task object for context
+      currentStage: 'execution',
+      agent: actionMetadata.agentType,
+      operationType: actionMetadata.operationType,
+    };
+
+    // Full autonomy - no approvals needed unless specifically gated
+    if (level === 'full-auto') {
+      return this.checkSpecificGatesForAction(actionMetadata, gates);
+    }
+
+    // Review before commit - requires approval for commit operations
+    if (level === 'review-before-commit') {
+      const commitActions = ['git-commit', 'git-push', 'deploy', 'publish'];
+      if (commitActions.some(commitAction =>
+        actionMetadata.actionType.includes(commitAction) ||
+        (actionMetadata.toolName && actionMetadata.toolName.includes(commitAction))
+      )) {
+        this.emit('approval:required', 'before-commit', context);
+        return true;
+      }
+      return this.checkSpecificGatesForAction(actionMetadata, gates);
+    }
+
+    // Review all - requires approval for everything except reads
+    if (level === 'review-all') {
+      if (actionMetadata.operationType === 'read') {
+        return false; // Allow read operations without approval
+      }
+      this.emit('approval:required', 'review-all', context);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if an action requires approval based on autonomy level and gates
+   */
+  async checkApprovalRequired(action: string, context: TaskContext): Promise<boolean> {
+    const { level, gates } = this.config;
+
+    // Full autonomy - no approvals needed unless specifically gated
+    if (level === 'full-auto') {
+      return this.checkSpecificGates(action, context, gates);
+    }
+
+    // Review before commit - requires approval for commit operations
+    if (level === 'review-before-commit') {
+      const commitActions = ['git-commit', 'git-push', 'deploy', 'publish'];
+      if (commitActions.some(commitAction => action.includes(commitAction))) {
+        this.emit('approval:required', 'before-commit', context);
+        return true;
+      }
+      return this.checkSpecificGates(action, context, gates);
+    }
+
+    // Review all - requires approval for everything except reads
+    if (level === 'review-all') {
+      if (context.operationType === 'read') {
+        return false; // Allow read operations without approval
+      }
+      this.emit('approval:required', 'review-all', context);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check specific approval gates for action metadata
+   */
+  private checkSpecificGatesForAction(actionMetadata: ActionMetadata, gates: ApprovalGate[]): boolean {
+    // Create a legacy context for compatibility
+    const context: TaskContext = {
+      task: { id: 'current-task' } as Task,
+      currentStage: 'execution',
+      agent: actionMetadata.agentType,
+      operationType: actionMetadata.operationType,
+    };
+
+    for (const gate of gates) {
+      if (this.matchesGateConditionForAction(actionMetadata, gate)) {
+        this.emit('approval:required', gate.type, context);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check specific approval gates
+   */
+  private checkSpecificGates(action: string, context: TaskContext, gates: ApprovalGate[]): boolean {
+    for (const gate of gates) {
+      if (this.matchesGateCondition(action, context, gate)) {
+        this.emit('approval:required', gate.type, context);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if action metadata matches gate condition
+   */
+  private matchesGateConditionForAction(actionMetadata: ActionMetadata, gate: ApprovalGate): boolean {
+    switch (gate.type) {
+      case 'before-commit':
+        return ['git-commit', 'git-push', 'Bash'].some(keyword =>
+          actionMetadata.actionType.includes(keyword) ||
+          (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+        );
+
+      case 'before-destructive':
+        return actionMetadata.operationType === 'dangerous' ||
+               ['delete', 'remove', 'rm', 'drop'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.scope && actionMetadata.scope.includes(keyword))
+               );
+
+      case 'before-network':
+        return actionMetadata.operationType === 'network' ||
+               ['http', 'fetch', 'download', 'upload', 'WebFetch', 'WebSearch'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+               );
+
+      case 'before-file-write':
+        return actionMetadata.operationType === 'write' ||
+               ['write', 'edit', 'create', 'save', 'Write', 'Edit'].some(keyword =>
+                 actionMetadata.actionType.includes(keyword) ||
+                 (actionMetadata.toolName && actionMetadata.toolName.includes(keyword))
+               );
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Check if action matches gate condition
+   */
+  private matchesGateCondition(action: string, context: TaskContext, gate: ApprovalGate): boolean {
+    switch (gate.type) {
+      case 'before-commit':
+        return ['git-commit', 'git-push'].some(cmd => action.includes(cmd));
+
+      case 'before-destructive':
+        return context.operationType === 'dangerous' ||
+               ['delete', 'remove', 'rm', 'drop'].some(keyword => action.includes(keyword));
+
+      case 'before-network':
+        return context.operationType === 'network' ||
+               ['http', 'fetch', 'download', 'upload'].some(keyword => action.includes(keyword));
+
+      case 'before-file-write':
+        return context.operationType === 'write' ||
+               ['write', 'edit', 'create', 'save'].some(keyword => action.includes(keyword));
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Check if any resource limits are exceeded
+   */
+  checkLimits(taskId: string): LimitCheckResult {
+    const usage = this.taskUsageMap.get(taskId);
+    const startTime = this.taskStartTimes.get(taskId);
+
+    if (!usage) {
+      return { exceeded: false };
+    }
+
+    const { limits } = this.config;
+
+    // Check token limit
+    if (limits.maxTokens && usage.totalTokens > limits.maxTokens) {
+      return {
+        exceeded: true,
+        limitType: 'tokens',
+        currentValue: usage.totalTokens,
+        limitValue: limits.maxTokens,
+        message: `Token limit exceeded: ${usage.totalTokens} > ${limits.maxTokens}`,
+      };
+    }
+
+    // Check cost limit
+    if (limits.maxCost && usage.estimatedCost > limits.maxCost) {
+      return {
+        exceeded: true,
+        limitType: 'cost',
+        currentValue: usage.estimatedCost,
+        limitValue: limits.maxCost,
+        message: `Cost limit exceeded: $${usage.estimatedCost.toFixed(2)} > $${limits.maxCost.toFixed(2)}`,
+      };
+    }
+
+    // Check time limit
+    if (limits.maxTimeMs && startTime) {
+      const elapsed = Date.now() - startTime.getTime();
+      if (elapsed > limits.maxTimeMs) {
+        return {
+          exceeded: true,
+          limitType: 'time',
+          currentValue: elapsed,
+          limitValue: limits.maxTimeMs,
+          message: `Time limit exceeded: ${Math.round(elapsed / 1000)}s > ${Math.round(limits.maxTimeMs / 1000)}s`,
+        };
+      }
+    }
+
+    // Additional limits could be checked here (files modified, lines changed, turns)
+
+    return { exceeded: false };
+  }
+
+  /**
+   * Record resource usage for a task
+   */
+  recordUsage(taskId: string, usage: Partial<TaskUsage>): void {
+    if (!usage || typeof usage !== 'object') {
+      return;
+    }
+
+    const existingUsage = this.taskUsageMap.get(taskId) || {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
+    };
+
+    const incomingInput = usage.inputTokens ?? 0;
+    const incomingOutput = usage.outputTokens ?? 0;
+    const incomingTotal = usage.totalTokens ?? (incomingInput + incomingOutput);
+    const isTotalUpdate = incomingTotal >= existingUsage.totalTokens &&
+      (usage.totalTokens !== undefined || incomingInput >= existingUsage.inputTokens || incomingOutput >= existingUsage.outputTokens);
+
+    const newUsage: TaskUsage = isTotalUpdate
+      ? {
+          inputTokens: usage.inputTokens ?? existingUsage.inputTokens,
+          outputTokens: usage.outputTokens ?? existingUsage.outputTokens,
+          totalTokens: usage.totalTokens ?? (incomingInput + incomingOutput),
+          estimatedCost: usage.estimatedCost ?? existingUsage.estimatedCost,
+          totalCostCents: usage.totalCostCents ?? existingUsage.totalCostCents,
+          executionTimeMs: usage.executionTimeMs ?? existingUsage.executionTimeMs,
+        }
+      : {
+          inputTokens: existingUsage.inputTokens + incomingInput,
+          outputTokens: existingUsage.outputTokens + incomingOutput,
+          totalTokens: existingUsage.totalTokens + incomingTotal,
+          estimatedCost: existingUsage.estimatedCost + (usage.estimatedCost || 0),
+          totalCostCents: existingUsage.totalCostCents + (usage.totalCostCents || 0),
+          executionTimeMs: existingUsage.executionTimeMs + (usage.executionTimeMs || 0),
+        };
+
+    this.taskUsageMap.set(taskId, newUsage);
+
+    // Check for warnings
+    this.checkWarningThresholds(taskId, newUsage);
+
+    // Check for limit violations
+    const limitCheck = this.checkLimits(taskId);
+    if (limitCheck.exceeded) {
+      // Fetch task async and emit event
+      this.orchestrator.store.getTask(taskId).then(task => {
+        if (task) {
+          this.emit('limit:exceeded', limitCheck, task);
+        }
+      });
+    }
+  }
+
+  /**
+   * Check if usage is approaching warning thresholds
+   */
+  checkWarningThresholds(taskId: string, usage: TaskUsage): WarningResult[] {
+    const warnings: WarningResult[] = [];
+    const { limits, warningThresholds } = this.config;
+
+    // Token warning
+    if (limits.maxTokens && usage.totalTokens > 0) {
+      const tokenPercent = (usage.totalTokens / limits.maxTokens) * 100;
+      if (tokenPercent >= warningThresholds.tokenWarningPercent) {
+        const warning: WarningResult = {
+          taskId,
+          type: 'tokens',
+          threshold: warningThresholds.tokenWarningPercent,
+          currentValue: usage.totalTokens,
+          limitValue: limits.maxTokens,
+          message: `Token usage at ${tokenPercent.toFixed(1)}% of limit`,
+        };
+        warnings.push(warning);
+        this.emit('limit:warning', warning);
+      }
+    }
+
+    // Cost warning
+    if (limits.maxCost && usage.estimatedCost > 0) {
+      const costPercent = (usage.estimatedCost / limits.maxCost) * 100;
+      if (costPercent >= warningThresholds.costWarningPercent) {
+        const warning: WarningResult = {
+          taskId,
+          type: 'cost',
+          threshold: warningThresholds.costWarningPercent,
+          currentValue: usage.estimatedCost,
+          limitValue: limits.maxCost,
+          message: `Cost usage at ${costPercent.toFixed(1)}% of limit`,
+        };
+        warnings.push(warning);
+        this.emit('limit:warning', warning);
+      }
+    }
+
+    // Time warning
+    const startTime = this.taskStartTimes.get(taskId);
+    if (limits.maxTimeMs && startTime) {
+      const elapsed = Date.now() - startTime.getTime();
+      const timePercent = (elapsed / limits.maxTimeMs) * 100;
+      if (timePercent >= warningThresholds.timeWarningPercent) {
+        const warning: WarningResult = {
+          taskId,
+          type: 'time',
+          threshold: warningThresholds.timeWarningPercent,
+          currentValue: elapsed,
+          limitValue: limits.maxTimeMs,
+          message: `Time usage at ${timePercent.toFixed(1)}% of limit`,
+        };
+        warnings.push(warning);
+        this.emit('limit:warning', warning);
+      }
+    }
+
+    return warnings;
+  }
+
+  /**
+   * Start tracking a task
+   */
+  startTracking(taskId: string): void {
+    this.taskStartTimes.set(taskId, new Date());
+    this.taskUsageMap.set(taskId, {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      totalCostCents: 0,
+      executionTimeMs: 0,
+    });
+  }
+
+  /**
+   * Stop tracking a task and clean up
+   */
+  stopTracking(taskId: string): void {
+    this.taskStartTimes.delete(taskId);
+    this.taskUsageMap.delete(taskId);
+  }
+
+  /**
+   * Get current usage for a task
+   */
+  getTaskUsage(taskId: string): TaskUsage | undefined {
+    return this.taskUsageMap.get(taskId);
+  }
+
+  /**
+   * Get elapsed time for a task
+   */
+  getElapsedTime(taskId: string): number | undefined {
+    const startTime = this.taskStartTimes.get(taskId);
+    return startTime ? Date.now() - startTime.getTime() : undefined;
+  }
+
+  /**
+   * Update autonomy configuration
+   */
+  updateConfig(newConfig: Partial<AutonomyEnforcerConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+  }
+
+  /**
+   * Setup usage tracking from orchestrator events
+   */
+  private setupUsageTracking(): void {
+    this.orchestrator.on('task:started', (task: Task) => {
+      this.startTracking(task.id);
+    });
+
+    this.orchestrator.on('task:completed', (task: Task) => {
+      this.stopTracking(task.id);
+    });
+
+    this.orchestrator.on('task:failed', (task: Task) => {
+      this.stopTracking(task.id);
+    });
+
+    this.orchestrator.on('usage:updated', (taskId: string, usage: TaskUsage) => {
+      this.recordUsage(taskId, usage);
+    });
+  }
+}
+
+export { AutonomyEnforcer };

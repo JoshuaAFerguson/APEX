@@ -77,6 +77,24 @@ export class ContainerRuntime {
 
   /**
    * Detect all available container runtimes
+   * Checks for Docker and Podman availability and returns detection results
+   * @returns Array of runtime detection results for all supported runtimes
+   * @throws {Error} When runtime detection commands fail unexpectedly
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   * const results = await runtime.detectRuntimes();
+   *
+   * results.forEach(result => {
+   *   console.log(`${result.type}: ${result.available ? 'Available' : 'Not available'}`);
+   *   if (result.versionInfo) {
+   *     console.log(`  Version: ${result.versionInfo.version}`);
+   *   }
+   *   if (result.error) {
+   *     console.log(`  Error: ${result.error}`);
+   *   }
+   * });
+   * ```
    */
   async detectRuntimes(): Promise<RuntimeDetectionResult[]> {
     const now = Date.now();
@@ -105,8 +123,25 @@ export class ContainerRuntime {
 
   /**
    * Get the best available container runtime
+   * Prioritizes Docker over Podman, but respects preferred runtime if available
    * @param preferredRuntime Optional preferred runtime type
-   * @returns The best runtime or null if none available
+   * @returns The best runtime type ('docker', 'podman', or 'none' if unavailable)
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   *
+   * // Get best available runtime (prefers Docker)
+   * const best = await runtime.getBestRuntime();
+   * console.log(`Best runtime: ${best}`);
+   *
+   * // Try to use preferred runtime
+   * const preferred = await runtime.getBestRuntime('podman');
+   * if (preferred === 'podman') {
+   *   console.log('Using preferred Podman runtime');
+   * } else {
+   *   console.log(`Podman not available, using: ${preferred}`);
+   * }
+   * ```
    */
   async getBestRuntime(preferredRuntime?: ContainerRuntimeType): Promise<ContainerRuntimeType> {
     const runtimes = await this.detectRuntimes();
@@ -140,6 +175,19 @@ export class ContainerRuntime {
    * Get runtime information for a specific type
    * @param runtimeType The runtime type to get info for
    * @returns Runtime detection result or null if not found
+   * @throws {Error} When runtime detection fails
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   * const dockerInfo = await runtime.getRuntimeInfo('docker');
+   *
+   * if (dockerInfo?.available) {
+   *   console.log(`Docker version: ${dockerInfo.versionInfo?.version}`);
+   *   console.log(`Build info: ${dockerInfo.versionInfo?.buildInfo}`);
+   * } else {
+   *   console.log(`Docker not available: ${dockerInfo?.error}`);
+   * }
+   * ```
    */
   async getRuntimeInfo(runtimeType: ContainerRuntimeType): Promise<RuntimeDetectionResult | null> {
     if (runtimeType === 'none') {
@@ -157,7 +205,23 @@ export class ContainerRuntime {
   /**
    * Check if a specific runtime is available
    * @param runtimeType The runtime type to check
-   * @returns True if available, false otherwise
+   * @returns True if available and functional, false otherwise
+   * @throws {Error} When runtime detection fails
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   *
+   * if (await runtime.isRuntimeAvailable('docker')) {
+   *   console.log('Docker is available and functional');
+   * } else {
+   *   console.log('Docker is not available');
+   * }
+   *
+   * // Check both runtimes
+   * const hasDocker = await runtime.isRuntimeAvailable('docker');
+   * const hasPodman = await runtime.isRuntimeAvailable('podman');
+   * console.log(`Docker: ${hasDocker}, Podman: ${hasPodman}`);
+   * ```
    */
   async isRuntimeAvailable(runtimeType: ContainerRuntimeType): Promise<boolean> {
     const info = await this.getRuntimeInfo(runtimeType);
@@ -167,8 +231,27 @@ export class ContainerRuntime {
   /**
    * Validate runtime compatibility against requirements
    * @param runtimeType The runtime type to validate
-   * @param requirements Compatibility requirements
-   * @returns Compatibility check result
+   * @param requirements Compatibility requirements (version bounds, features)
+   * @returns Compatibility check result with detailed analysis
+   * @throws {Error} When runtime detection fails
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   * const compatibility = await runtime.validateCompatibility('docker', {
+   *   minVersion: '20.0.0',
+   *   maxVersion: '25.0.0',
+   *   requiredFeatures: ['buildkit', 'multi-stage']
+   * });
+   *
+   * if (compatibility.compatible) {
+   *   console.log('Docker meets all requirements');
+   * } else {
+   *   console.log('Compatibility issues found:');
+   *   compatibility.issues.forEach(issue => console.log(`- ${issue}`));
+   *   console.log('Recommendations:');
+   *   compatibility.recommendations.forEach(rec => console.log(`- ${rec}`));
+   * }
+   * ```
    */
   async validateCompatibility(
     runtimeType: ContainerRuntimeType,
@@ -244,6 +327,17 @@ export class ContainerRuntime {
 
   /**
    * Clear detection cache
+   * Forces re-detection of container runtimes on next access
+   * @example
+   * ```typescript
+   * const runtime = new ContainerRuntime();
+   *
+   * // Clear cache to force fresh detection
+   * runtime.clearCache();
+   *
+   * // Next call will re-detect runtimes
+   * const freshResults = await runtime.detectRuntimes();
+   * ```
    */
   clearCache(): void {
     this.detectionCache.clear();
@@ -256,8 +350,8 @@ export class ContainerRuntime {
 
   /**
    * Detect a specific container runtime
-   * @param runtimeType The runtime type to detect
-   * @returns Detection result
+   * @param runtimeType The runtime type to detect ('docker' or 'podman')
+   * @returns Detection result with availability, version, and error info
    */
   private async detectRuntime(runtimeType: 'docker' | 'podman'): Promise<RuntimeDetectionResult> {
     const command = `${runtimeType} --version`;
@@ -319,9 +413,9 @@ export class ContainerRuntime {
 
   /**
    * Parse version output from docker/podman --version
-   * @param output Version command output
-   * @param runtimeType Runtime type for context
-   * @returns Parsed version information
+   * @param output Version command output string
+   * @param runtimeType Runtime type for context ('docker' or 'podman')
+   * @returns Parsed version information with version numbers and build info
    */
   private parseVersionOutput(output: string, runtimeType: string): RuntimeVersionInfo {
     const versionInfo: RuntimeVersionInfo = {
@@ -361,8 +455,8 @@ export class ContainerRuntime {
 
   /**
    * Compare two semantic version strings
-   * @param version1 First version
-   * @param version2 Second version
+   * @param version1 First version string (e.g., "24.0.7")
+   * @param version2 Second version string (e.g., "23.0.1")
    * @returns -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
    */
   private compareVersions(version1: string, version2: string): number {
@@ -385,13 +479,38 @@ export class ContainerRuntime {
 
 /**
  * Singleton instance for global use
+ * Pre-configured ContainerRuntime instance for convenient access throughout the application
+ * @example
+ * ```typescript
+ * import { containerRuntime } from '@apex/core';
+ *
+ * // Use the singleton instance
+ * const best = await containerRuntime.getBestRuntime();
+ * const dockerAvailable = await containerRuntime.isRuntimeAvailable('docker');
+ * ```
  */
 export const containerRuntime = new ContainerRuntime();
 
 /**
  * Convenience function to detect the best available runtime
- * @param preferredRuntime Optional preferred runtime
- * @returns The best available runtime type
+ * Uses the singleton containerRuntime instance for detection
+ * @param preferredRuntime Optional preferred runtime type
+ * @returns The best available runtime type ('docker', 'podman', or 'none')
+ * @throws {Error} When runtime detection fails
+ * @example
+ * ```typescript
+ * // Get best available runtime
+ * const runtime = await detectContainerRuntime();
+ * console.log(`Using runtime: ${runtime}`);
+ *
+ * // Try to use preferred runtime
+ * const preferredRuntime = await detectContainerRuntime('podman');
+ * if (preferredRuntime === 'podman') {
+ *   console.log('Using preferred Podman');
+ * } else {
+ *   console.log(`Podman not available, fallback: ${preferredRuntime}`);
+ * }
+ * ```
  */
 export async function detectContainerRuntime(preferredRuntime?: ContainerRuntimeType): Promise<ContainerRuntimeType> {
   return containerRuntime.getBestRuntime(preferredRuntime);
@@ -399,8 +518,24 @@ export async function detectContainerRuntime(preferredRuntime?: ContainerRuntime
 
 /**
  * Convenience function to check if a runtime is available
- * @param runtimeType Runtime type to check
- * @returns True if the runtime is available
+ * Uses the singleton containerRuntime instance for checking
+ * @param runtimeType Runtime type to check ('docker' or 'podman')
+ * @returns True if the runtime is available and functional
+ * @throws {Error} When runtime detection fails
+ * @example
+ * ```typescript
+ * // Check if Docker is available
+ * if (await isContainerRuntimeAvailable('docker')) {
+ *   console.log('Docker is ready to use');
+ * } else {
+ *   console.log('Docker is not available');
+ * }
+ *
+ * // Check multiple runtimes
+ * const dockerOk = await isContainerRuntimeAvailable('docker');
+ * const podmanOk = await isContainerRuntimeAvailable('podman');
+ * console.log(`Available runtimes: Docker=${dockerOk}, Podman=${podmanOk}`);
+ * ```
  */
 export async function isContainerRuntimeAvailable(runtimeType: ContainerRuntimeType): Promise<boolean> {
   return containerRuntime.isRuntimeAvailable(runtimeType);
@@ -408,8 +543,28 @@ export async function isContainerRuntimeAvailable(runtimeType: ContainerRuntimeT
 
 /**
  * Convenience function to get runtime version info
- * @param runtimeType Runtime type to get info for
- * @returns Runtime information or null if not available
+ * Uses the singleton containerRuntime instance for version detection
+ * @param runtimeType Runtime type to get info for ('docker' or 'podman')
+ * @returns Runtime version information or null if not available
+ * @throws {Error} When runtime detection fails
+ * @example
+ * ```typescript
+ * // Get Docker version info
+ * const dockerVersion = await getContainerRuntimeInfo('docker');
+ * if (dockerVersion) {
+ *   console.log(`Docker version: ${dockerVersion.version}`);
+ *   console.log(`Build info: ${dockerVersion.buildInfo}`);
+ *   console.log(`API version: ${dockerVersion.apiVersion}`);
+ * } else {
+ *   console.log('Docker version info not available');
+ * }
+ *
+ * // Compare versions
+ * const podmanVersion = await getContainerRuntimeInfo('podman');
+ * if (dockerVersion && podmanVersion) {
+ *   console.log(`Docker: ${dockerVersion.version}, Podman: ${podmanVersion.version}`);
+ * }
+ * ```
  */
 export async function getContainerRuntimeInfo(runtimeType: ContainerRuntimeType): Promise<RuntimeVersionInfo | null> {
   const info = await containerRuntime.getRuntimeInfo(runtimeType);

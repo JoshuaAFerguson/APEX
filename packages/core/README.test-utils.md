@@ -1,6 +1,6 @@
 # APEX Core Test Utilities
 
-Cross-platform test utilities for handling platform-specific testing scenarios in the APEX ecosystem.
+Cross-platform test utilities and permission mocking for testing in the APEX ecosystem.
 
 ## Quick Start
 
@@ -11,7 +11,11 @@ import {
   describeWindows,
   runOnWindows,
   mockPlatform,
-  testOnAllPlatforms
+  testOnAllPlatforms,
+  // Permission mocking utilities
+  createMockPermission,
+  mockAgentPermissions,
+  createMockPermissionContext
 } from '@apex/core';
 
 // Skip tests on specific platforms
@@ -27,16 +31,29 @@ describeWindows('Windows tests', () => {
   });
 });
 
-// Conditional execution
-it('should handle platform differences', () => {
-  const result = runOnWindows(() => 'windows-value') || 'default-value';
-  expect(result).toBeDefined();
+// Permission mocking for agent testing
+it('should test agent permissions', () => {
+  const permissions = [
+    createMockPermission({ tool: 'filesystem', level: 'allow-always' }),
+    createMockPermission({ tool: 'shell', level: 'allow-once' })
+  ];
+
+  const agentContext = mockAgentPermissions('developer', permissions);
+
+  expect(agentContext.hasPermission('filesystem')).toBe(true);
+  expect(agentContext.checkPermission('shell').level).toBe('allow-once');
 });
 
-// Test on all platforms
-testOnAllPlatforms('cross-platform function', (platform) => {
-  const result = myFunction();
-  expect(result).toBeDefined();
+// Comprehensive permission context testing
+it('should test permission contexts', () => {
+  const context = createMockPermissionContext({
+    preset: 'autonomous',
+    agents: {
+      developer: [{ tool: 'filesystem', level: 'allow-always' }]
+    }
+  });
+
+  expect(context.checkGlobalPermission('filesystem').allowed).toBe(true);
 });
 ```
 
@@ -77,6 +94,15 @@ testOnAllPlatforms('cross-platform function', (platform) => {
 - `PLATFORMS` - Platform name constants
 - `isValidPlatform(platform)` - Type guard for platforms
 - `Platform` - TypeScript type for valid platforms
+
+### Permission Mock Utilities
+- `createMockPermission(overrides)` - Create mock Permission objects
+- `createMockExtendedPermission(overrides)` - Create mock ExtendedPermission objects
+- `createMockPermissionQuery(overrides)` - Create mock PermissionQuery objects
+- `createMockToolPermissionResult(overrides)` - Create mock ToolPermissionResult objects
+- `mockAgentPermissions(agentName, permissions)` - Create mock agent permission contexts
+- `mockToolPermissions(toolName, permissions)` - Create mock tool permission contexts
+- `createMockPermissionContext(options)` - Create comprehensive permission contexts
 
 ## Examples
 

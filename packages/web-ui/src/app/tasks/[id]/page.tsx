@@ -142,10 +142,13 @@ export default function TaskDetailPage() {
         return {
           ...prev,
           usage: {
+            ...prev.usage,
             inputTokens: (usageData.inputTokens as number) || prev.usage.inputTokens,
             outputTokens: (usageData.outputTokens as number) || prev.usage.outputTokens,
             totalTokens: (usageData.totalTokens as number) || prev.usage.totalTokens,
             estimatedCost: (usageData.estimatedCost as number) || prev.usage.estimatedCost,
+            totalCostCents: (usageData.totalCostCents as number) || prev.usage.totalCostCents,
+            executionTimeMs: (usageData.executionTimeMs as number) || prev.usage.executionTimeMs,
           },
         }
       })

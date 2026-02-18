@@ -385,8 +385,7 @@ describe('useAgentHandoff - Enhanced Features Edge Cases', () => {
       // Unmount during active animation
       unmount();
 
-      // Should not throw errors or cause issues
-      expect(true).toBe(true); // If we get here, no errors were thrown
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 

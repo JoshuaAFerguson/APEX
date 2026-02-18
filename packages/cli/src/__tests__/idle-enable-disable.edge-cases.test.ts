@@ -356,8 +356,10 @@ daemon:
       // Should either handle gracefully or fail safely
       await idleCommand!.handler(mockContext, ['enable']);
 
-      // If it doesn't crash, that's a success
-      expect(true).toBe(true);
+      const calls = consoleSpy.mock.calls.map(call => call[0]);
+      expect(
+        calls.some(call => call.includes('Idle processing enabled') || call.includes('Failed to enable idle processing'))
+      ).toBe(true);
     });
   });
 
@@ -391,8 +393,8 @@ daemon:
       // Should fall back to status command
       await idleCommand!.handler(mockContext, []);
 
-      // Should not crash
-      expect(true).toBe(true);
+      const calls = consoleSpy.mock.calls.map(call => call[0]);
+      expect(calls.some(call => call.includes('Idle Processing Status'))).toBe(true);
     });
 
     it('should handle null/undefined arguments', async () => {
@@ -412,7 +414,8 @@ daemon:
       await idleCommand!.handler(mockContext, [undefined as any]);
 
       // Should handle gracefully without crashing
-      expect(true).toBe(true);
+      const calls = consoleSpy.mock.calls.map(call => call[0]);
+      expect(calls.some(call => call.includes('Idle Processing Status'))).toBe(true);
     });
   });
 

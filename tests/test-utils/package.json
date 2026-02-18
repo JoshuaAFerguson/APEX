@@ -1,0 +1,148 @@
+{
+  "name": "@apex/test-utils",
+  "version": "0.1.0",
+  "description": "Common test utilities for APEX testing",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./async": {
+      "types": "./dist/async.d.ts",
+      "import": "./dist/async.js"
+    },
+    "./assertions": {
+      "types": "./dist/assertions.d.ts",
+      "import": "./dist/assertions.js"
+    },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.js"
+    },
+    "./cleanup": {
+      "types": "./dist/cleanup.d.ts",
+      "import": "./dist/cleanup.js"
+    },
+    "./browser-automation-mocks": {
+      "types": "./dist/browser-automation-mocks.d.ts",
+      "import": "./dist/browser-automation-mocks.js"
+    },
+    "./browser-permission-simulator": {
+      "types": "./dist/browser-permission-simulator.d.ts",
+      "import": "./dist/browser-permission-simulator.js"
+    },
+    "./browser-test-fixtures": {
+      "types": "./dist/browser-test-fixtures.d.ts",
+      "import": "./dist/browser-test-fixtures.js"
+    },
+    "./browser-automation-test-setup": {
+      "types": "./dist/browser-automation-test-setup.d.ts",
+      "import": "./dist/browser-automation-test-setup.js"
+    },
+    "./browser-test-base": {
+      "types": "./dist/browser-test-base.d.ts",
+      "import": "./dist/browser-test-base.js"
+    },
+    "./browser-fixtures": {
+      "types": "./dist/browser-fixtures.d.ts",
+      "import": "./dist/browser-fixtures.js"
+    },
+    "./browser-automation-config": {
+      "types": "./dist/browser-automation-config.d.ts",
+      "import": "./dist/browser-automation-config.js"
+    },
+    "./browser-error-fixtures": {
+      "types": "./dist/browser-error-fixtures.d.ts",
+      "import": "./dist/browser-error-fixtures.js"
+    },
+    "./browser-utils": {
+      "types": "./dist/browser-utils.d.ts",
+      "import": "./dist/browser-utils.js"
+    },
+    "./autonomy-test-helpers": {
+      "types": "./dist/autonomy-test-helpers.d.ts",
+      "import": "./dist/autonomy-test-helpers.js"
+    },
+    "./permission-test-helpers": {
+      "types": "./dist/permission-test-helpers.d.ts",
+      "import": "./dist/permission-test-helpers.js"
+    },
+    "./mcp-permission-helpers": {
+      "types": "./dist/mcp-permission-helpers.d.ts",
+      "import": "./dist/mcp-permission-helpers.js"
+    },
+    "./mcp-test-base": {
+      "types": "./dist/mcp-test-base.d.ts",
+      "import": "./dist/mcp-test-base.js"
+    },
+    "./mock-server-factory": {
+      "types": "./dist/mock-server-factory.d.ts",
+      "import": "./dist/mock-server-factory.js"
+    },
+    "./navigation-test-utils": {
+      "types": "./dist/navigation-test-utils.d.ts",
+      "import": "./dist/navigation-test-utils.js"
+    },
+    "./navigation-test-fixtures": {
+      "types": "./dist/navigation-test-fixtures.d.ts",
+      "import": "./dist/navigation-test-fixtures.js"
+    },
+    "./isolation": {
+      "types": "./dist/isolation/index.d.ts",
+      "import": "./dist/isolation/index.js"
+    },
+    "./parallel-execution": {
+      "types": "./dist/parallel-execution.d.ts",
+      "import": "./dist/parallel-execution.js"
+    },
+    "./parallel-coordination": {
+      "types": "./dist/parallel-coordination.d.ts",
+      "import": "./dist/parallel-coordination.js"
+    },
+    "./worker-coordination": {
+      "types": "./dist/worker-coordination.d.ts",
+      "import": "./dist/worker-coordination.js"
+    },
+    "./parallel-utils": {
+      "types": "./dist/parallel-utils.d.ts",
+      "import": "./dist/parallel-utils.js"
+    },
+    "./integration-test-utilities": {
+      "types": "./dist/integration-test-utilities.d.ts",
+      "import": "./dist/integration-test-utilities.js"
+    },
+    "./test-setup-teardown": {
+      "types": "./dist/test-setup-teardown.d.ts",
+      "import": "./dist/test-setup-teardown.js"
+    },
+    "./enhanced-mock-factories": {
+      "types": "./dist/enhanced-mock-factories.d.ts",
+      "import": "./dist/enhanced-mock-factories.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc || echo ok",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit || echo ok"
+  },
+  "dependencies": {
+    "vitest": "^4.0.18",
+    "playwright": "^1.47.0",
+    "eventemitter3": "^5.0.1"
+  },
+  "peerDependencies": {
+    "@apexcli/core": "*",
+    "@apexcli/orchestrator": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

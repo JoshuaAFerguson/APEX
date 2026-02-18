@@ -1,0 +1,105 @@
+# Timeout Scenario Fixtures
+# Tools designed to test various timeout scenarios and edge cases
+
+# Tool with very short timeout
+- name: ShortTimeoutTool
+  description: Tool with minimal timeout for testing timeout handling
+  command: sleep
+  args:
+    - "1"  # Sleep for 1 second
+  timeoutMs: 100  # But timeout after 100ms
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with very long timeout
+- name: LongTimeoutTool
+  description: Tool with extended timeout for stress testing
+  command: echo
+  args:
+    - "long timeout test"
+  timeoutMs: 300000  # 5 minutes
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with default timeout (no explicit timeout set)
+- name: DefaultTimeoutTool
+  description: Tool using default timeout settings
+  command: echo
+  args:
+    - "default timeout"
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool that should timeout during execution
+- name: TimeoutDuringExecutionTool
+  description: Tool that times out during execution
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Starting...' && sleep {{input.duration}} && echo 'Completed'"
+  timeoutMs: 2000  # 2 second timeout
+  parameters:
+    type: object
+    properties:
+      duration:
+        type: integer
+        minimum: 1
+        maximum: 10
+        default: 5  # Default 5 seconds, longer than timeout
+        description: Duration to sleep in seconds
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with variable timeout based on input
+- name: VariableTimeoutTool
+  description: Tool with timeout that varies based on expected execution time
+  command: sh
+  args:
+    - "-c"
+    - "echo 'Processing {{input.complexity}} complexity task' && sleep {{input.sleep_time}}"
+  timeoutMs: 15000  # 15 second timeout
+  parameters:
+    type: object
+    properties:
+      complexity:
+        type: string
+        enum: ["low", "medium", "high"]
+        description: Task complexity level
+      sleep_time:
+        type: number
+        minimum: 0.1
+        maximum: 10.0
+        default: 1.0
+        description: Simulated processing time
+    required:
+      - complexity
+    additionalProperties: false
+  outputParser: text
+  enabled: true
+
+# Tool with minimum possible timeout
+- name: MinimalTimeoutTool
+  description: Tool with absolute minimum timeout
+  command: echo
+  args:
+    - "minimal"
+  timeoutMs: 1  # 1 millisecond - should complete but tests edge case
+  parameters:
+    type: object
+    properties: {}
+    additionalProperties: false
+  outputParser: text
+  enabled: true

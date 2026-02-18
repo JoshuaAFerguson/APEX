@@ -1,0 +1,340 @@
+{
+  "entries": [
+    {
+      "name": "filesystem",
+      "description": "File system operations for reading, writing, and managing files and directories. Provides secure access to local file system with configurable permissions.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-filesystem",
+      "serverConfig": {
+        "name": "filesystem",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-filesystem", "/tmp"],
+        "autoStart": true,
+        "capabilities": ["read_file", "write_file", "create_directory", "list_directory", "search_files"]
+      },
+      "capabilities": ["files", "directories", "search"],
+      "verified": true
+    },
+    {
+      "name": "git",
+      "description": "Git repository operations including commit history, branch management, and file tracking. Essential for version control workflows.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-git",
+      "serverConfig": {
+        "name": "git",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-git", "--repository", "."],
+        "autoStart": true,
+        "capabilities": ["git_log", "git_diff", "git_status", "git_commit", "git_branch"]
+      },
+      "capabilities": ["git", "version-control", "repositories"],
+      "verified": true
+    },
+    {
+      "name": "database",
+      "description": "SQL database operations for SQLite, PostgreSQL, and MySQL. Execute queries, manage schemas, and work with database connections.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/database",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-database",
+      "serverConfig": {
+        "name": "database",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-database"],
+        "autoStart": false,
+        "capabilities": ["query", "schema", "tables", "indexes"]
+      },
+      "capabilities": ["database", "sql", "query"],
+      "verified": true
+    },
+    {
+      "name": "web-search",
+      "description": "Web search capabilities powered by search engines. Retrieve real-time information from the internet with configurable search providers.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/web-search",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-web-search",
+      "serverConfig": {
+        "name": "web-search",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-web-search"],
+        "env": {
+          "SEARCH_API_KEY": ""
+        },
+        "autoStart": false,
+        "capabilities": ["search", "web_results", "snippets"]
+      },
+      "capabilities": ["web", "search", "real-time"],
+      "verified": true
+    },
+    {
+      "name": "browser-automation",
+      "description": "Automated browser interactions using Playwright. Navigate web pages, fill forms, click elements, and extract data from websites.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/browser",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-browser",
+      "serverConfig": {
+        "name": "browser-automation",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-browser"],
+        "autoStart": false,
+        "capabilities": ["navigate", "click", "type", "screenshot", "extract"]
+      },
+      "capabilities": ["browser", "automation", "web-scraping"],
+      "verified": true
+    },
+    {
+      "name": "time-tracking",
+      "description": "Time tracking and project management tools. Track work sessions, manage tasks, and generate productivity reports.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-time",
+      "serverConfig": {
+        "name": "time-tracking",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-time"],
+        "autoStart": true,
+        "capabilities": ["start_timer", "stop_timer", "log_time", "generate_report"]
+      },
+      "capabilities": ["time", "productivity", "tracking"],
+      "verified": true
+    },
+    {
+      "name": "slack-integration",
+      "description": "Slack workspace integration for sending messages, managing channels, and accessing team communications programmatically.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-slack",
+      "serverConfig": {
+        "name": "slack-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-slack"],
+        "env": {
+          "SLACK_BOT_TOKEN": "",
+          "SLACK_APP_TOKEN": ""
+        },
+        "autoStart": false,
+        "capabilities": ["send_message", "list_channels", "get_history", "upload_file"]
+      },
+      "capabilities": ["slack", "messaging", "team-communication"],
+      "verified": true
+    },
+    {
+      "name": "github-integration",
+      "description": "GitHub repository management including issues, pull requests, actions, and repository operations through the GitHub API.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-github",
+      "serverConfig": {
+        "name": "github-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_TOKEN": ""
+        },
+        "autoStart": false,
+        "capabilities": ["create_issue", "list_prs", "get_repo", "create_pr", "manage_workflow"]
+      },
+      "capabilities": ["github", "repositories", "ci-cd"],
+      "verified": true
+    },
+    {
+      "name": "email-client",
+      "description": "Email client capabilities for reading, sending, and managing emails across multiple providers (Gmail, Outlook, SMTP).",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/email",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-email",
+      "serverConfig": {
+        "name": "email-client",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-email"],
+        "env": {
+          "EMAIL_PROVIDER": "gmail",
+          "EMAIL_USERNAME": "",
+          "EMAIL_PASSWORD": ""
+        },
+        "autoStart": false,
+        "capabilities": ["send_email", "read_inbox", "search_emails", "manage_folders"]
+      },
+      "capabilities": ["email", "communication", "productivity"],
+      "verified": true
+    },
+    {
+      "name": "calendar-integration",
+      "description": "Calendar management for Google Calendar, Outlook, and other providers. Schedule meetings, manage events, and check availability.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/calendar",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-calendar",
+      "serverConfig": {
+        "name": "calendar-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-calendar"],
+        "env": {
+          "CALENDAR_PROVIDER": "google",
+          "CALENDAR_CREDENTIALS": ""
+        },
+        "autoStart": false,
+        "capabilities": ["create_event", "list_events", "update_event", "check_availability"]
+      },
+      "capabilities": ["calendar", "scheduling", "productivity"],
+      "verified": true
+    },
+    {
+      "name": "docker-management",
+      "description": "Docker container and image management. Build, run, stop containers, manage images, and monitor container health.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/docker",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-docker",
+      "serverConfig": {
+        "name": "docker-management",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-docker"],
+        "autoStart": false,
+        "capabilities": ["list_containers", "run_container", "stop_container", "build_image", "inspect_container"]
+      },
+      "capabilities": ["docker", "containers", "devops"],
+      "verified": true
+    },
+    {
+      "name": "kubernetes-operator",
+      "description": "Kubernetes cluster management and operations. Deploy applications, manage pods, services, and monitor cluster health.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/kubernetes",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-kubernetes",
+      "serverConfig": {
+        "name": "kubernetes-operator",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-kubernetes"],
+        "env": {
+          "KUBECONFIG": ""
+        },
+        "autoStart": false,
+        "capabilities": ["deploy_app", "list_pods", "get_logs", "scale_deployment", "monitor_cluster"]
+      },
+      "capabilities": ["kubernetes", "orchestration", "devops"],
+      "verified": true
+    },
+    {
+      "name": "aws-integration",
+      "description": "Amazon Web Services integration for managing EC2, S3, Lambda, and other AWS resources through the AWS SDK.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/aws",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-aws",
+      "serverConfig": {
+        "name": "aws-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-aws"],
+        "env": {
+          "AWS_ACCESS_KEY_ID": "",
+          "AWS_SECRET_ACCESS_KEY": "",
+          "AWS_REGION": "us-east-1"
+        },
+        "autoStart": false,
+        "capabilities": ["list_instances", "create_s3_bucket", "deploy_lambda", "manage_iam"]
+      },
+      "capabilities": ["aws", "cloud", "infrastructure"],
+      "verified": true
+    },
+    {
+      "name": "notion-integration",
+      "description": "Notion workspace integration for creating pages, managing databases, and organizing knowledge base content.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/notion",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-notion",
+      "serverConfig": {
+        "name": "notion-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-notion"],
+        "env": {
+          "NOTION_API_KEY": ""
+        },
+        "autoStart": false,
+        "capabilities": ["create_page", "query_database", "update_page", "search_content"]
+      },
+      "capabilities": ["notion", "knowledge-management", "productivity"],
+      "verified": true
+    },
+    {
+      "name": "jira-integration",
+      "description": "Atlassian Jira integration for project management, issue tracking, and agile workflow management.",
+      "version": "1.0.0",
+      "author": "Anthropic",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/jira",
+      "repository": "https://github.com/modelcontextprotocol/servers",
+      "installCommand": "npm install -g @modelcontextprotocol/server-jira",
+      "serverConfig": {
+        "name": "jira-integration",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@modelcontextprotocol/server-jira"],
+        "env": {
+          "JIRA_HOST": "",
+          "JIRA_USERNAME": "",
+          "JIRA_API_TOKEN": ""
+        },
+        "autoStart": false,
+        "capabilities": ["create_issue", "update_issue", "search_issues", "manage_sprint"]
+      },
+      "capabilities": ["jira", "project-management", "issue-tracking"],
+      "verified": true
+    }
+  ],
+  "categories": [
+    "Development",
+    "DevOps",
+    "Productivity",
+    "Communication",
+    "Cloud Services",
+    "Data Management",
+    "Web Automation"
+  ],
+  "featured": [
+    "filesystem",
+    "git",
+    "web-search",
+    "browser-automation",
+    "github-integration"
+  ]
+}

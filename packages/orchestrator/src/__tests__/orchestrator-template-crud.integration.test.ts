@@ -12,7 +12,7 @@ describe('ApexOrchestrator - Template CRUD Integration', () => {
   beforeEach(async () => {
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-template-integration-test-'));
     await fs.mkdir(path.join(testDir, '.apex'), { recursive: true });
-    orchestrator = new ApexOrchestrator(testDir);
+    orchestrator = new ApexOrchestrator({ projectPath: testDir });
     await orchestrator.initialize();
   });
 

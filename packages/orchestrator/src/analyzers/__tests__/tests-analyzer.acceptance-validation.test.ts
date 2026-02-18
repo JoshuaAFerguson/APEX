@@ -446,8 +446,8 @@ describe('TestsAnalyzer - Final Acceptance Criteria Validation', () => {
       // Top priority should be assertion-less (score 0.95) or at least very high
       expect(prioritized?.score).toBeGreaterThanOrEqual(0.9);
 
-      // ✅ AC4: All operations complete without errors (implicit by reaching here)
-      expect(true).toBe(true);
+      // ✅ AC4: All operations complete without errors (validated by a concrete top priority)
+      expect(prioritized?.priority).toBe('urgent');
 
       console.log('🎉 ALL ACCEPTANCE CRITERIA SATISFIED:');
       console.log('✅ AC1: Anti-patterns grouped by type and generate TaskCandidates');

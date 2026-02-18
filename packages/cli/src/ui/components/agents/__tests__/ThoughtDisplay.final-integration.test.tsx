@@ -655,8 +655,7 @@ describe('ThoughtDisplay Final Integration Validation', () => {
 
       expect(screen.queryByText('💭 final-validation thinking')).not.toBeInTheDocument();
 
-      // All criteria validated ✅
-      expect(true).toBe(true); // Test passes if we reach this point
+      expect(screen.getByText('final-validation')).toBeInTheDocument();
     });
   });
 });

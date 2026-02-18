@@ -845,15 +845,14 @@ describe('DiffViewer', () => {
 
   describe('Props Validation', () => {
     it('handles missing optional props gracefully', () => {
-      render(
+      const { container } = render(
         <DiffViewer
           oldContent="old"
           newContent="new"
         />
       );
 
-      // Should render without crashing
-      expect(true).toBe(true);
+      expect(container.textContent?.length).toBeGreaterThan(0);
     });
 
     it('handles very long lines gracefully', () => {

@@ -21,6 +21,45 @@ import {
   IterationEntry,
   IterationHistory,
   TaskSessionData,
+  PermissionLevelSchema,
+  PermissionSchema,
+  PermissionQuerySchema,
+  // New v0.5.0 permission schemas
+  DirectoryAccessConfigSchema,
+  BaseToolPermissionConfigSchema,
+  FilesystemToolConfigSchema,
+  ShellToolConfigSchema,
+  WebToolConfigSchema,
+  SearchToolConfigSchema,
+  ToolPermissionConfigSchema,
+  ExtendedPermissionSchema,
+  // Approval-related schemas
+  ApprovalCheckpointTypeSchema,
+  ApprovalGateSchema,
+  ApprovalStateSchema,
+  ApprovalStatusSchema,
+  GateStatusSchema,
+  ApprovalRequiredEventDataSchema,
+  ApprovalResponseEventDataSchema,
+  ApprovalDecisionRequestSchema,
+  ApprovalDecisionResponseSchema,
+  ApprovalConditionTypeSchema,
+  ApprovalOperationTypeSchema,
+  ApprovalConditionSchema,
+  ApprovalUrgencySchema,
+  ApprovalRuleSchema,
+  ApprovalRulesConfigSchema,
+  ApprovalPolicySchema,
+  type ApprovalCheckpointType,
+  type ApprovalGate,
+  type ApprovalState,
+  type ApprovalStatus,
+  type GateStatus,
+  type ApprovalRequiredEventData,
+  type ApprovalResponseEventData,
+  type ApprovalDecisionRequest,
+  type ApprovalDecisionResponse,
+  type Gate
 } from './types';
 
 describe.skip('AgentModelSchema', () => {
@@ -491,6 +530,7 @@ describe.skip('TaskStatusSchema', () => {
       'planning',
       'in-progress',
       'waiting-approval',
+      'awaiting-approval',
       'paused',
       'completed',
       'failed',
@@ -615,7 +655,7 @@ describe.skip('ApexConfigSchema', () => {
       },
     });
     expect(config.project.language).toBe('typescript');
-    expect(config.autonomy?.default).toBe('review-before-merge');
+    expect(config.autonomy?.level).toBe('review-before-merge');
     expect(config.agents?.enabled).toEqual(['planner', 'developer']);
     expect(config.git?.branchPrefix).toBe('feature/');
     expect(config.limits?.maxTokensPerTask).toBe(100000);
@@ -1545,7 +1585,7 @@ describe('ApexConfigSchema - Documentation Integration', () => {
         framework: 'nextjs',
       },
       autonomy: {
-        default: 'review-before-merge',
+        level: 'review-before-commit',
       },
       git: {
         branchPrefix: 'feature/',
@@ -1562,7 +1602,7 @@ describe('ApexConfigSchema - Documentation Integration', () => {
     expect(config.version).toBe('1.0');
     expect(config.project.name).toBe('test-project');
     expect(config.project.language).toBe('typescript');
-    expect(config.autonomy?.default).toBe('review-before-merge');
+    expect(config.autonomy?.level).toBe('review-before-commit');
     expect(config.git?.branchPrefix).toBe('feature/');
     expect(config.documentation?.enabled).toBe(false);
     expect(config.documentation?.outdatedDocs?.todoAgeThresholdDays).toBe(7);
@@ -1835,7 +1875,7 @@ describe('TestingAntiPattern Type', () => {
         file: '/cypress/integration/login.spec.js',
         line: 65,
         type: 'hardcoded-timeout',
-        description: 'Test uses hardcoded setTimeout(5000) which may cause flaky behavior',
+        description: 'Test uses hardcoded timeout via setTimeout(5000) which may cause flaky behavior',
         severity: 'medium',
         suggestion: 'Use dynamic waiting conditions or configurable timeout values'
       };
@@ -2464,8 +2504,8 @@ describe('Iteration History Types Exports', () => {
     expect(entry.id).toBe('test_001');
     expect(entry.feedback).toBe('Test feedback');
     expect(entry.timestamp).toBeInstanceOf(Date);
-    // Types don't exist at runtime, so we just verify the interface works
-    expect(typeof IterationEntry).toBeUndefined();
+    // Types (interfaces) don't exist at runtime, typeof returns 'undefined' as a string
+    expect(typeof IterationEntry).toBe('undefined');
   });
 
   it('should properly export IterationHistory type', () => {
@@ -2478,8 +2518,8 @@ describe('Iteration History Types Exports', () => {
     expect(Array.isArray(history.entries)).toBe(true);
     expect(history.entries).toHaveLength(0);
     expect(history.totalIterations).toBe(0);
-    // Types don't exist at runtime, so we just verify the interface works
-    expect(typeof IterationHistory).toBeUndefined();
+    // Types (interfaces) don't exist at runtime, typeof returns 'undefined' as a string
+    expect(typeof IterationHistory).toBe('undefined');
   });
 
   it('should properly export TaskSessionData with iterationHistory field', () => {
@@ -2501,8 +2541,8 @@ describe('Iteration History Types Exports', () => {
     expect(sessionData.iterationHistory).toBeDefined();
     expect(sessionData.iterationHistory?.entries).toHaveLength(1);
     expect(sessionData.iterationHistory?.totalIterations).toBe(1);
-    // Types don't exist at runtime, so we just verify the interface works
-    expect(typeof TaskSessionData).toBeUndefined();
+    // Types (interfaces) don't exist at runtime, typeof returns 'undefined' as a string
+    expect(typeof TaskSessionData).toBe('undefined');
   });
 
   it('should handle all iteration history type interfaces correctly', () => {
@@ -2535,5 +2575,1126 @@ describe('Iteration History Types Exports', () => {
     expect(sessionData.iterationHistory?.entries[0].stage).toBe('testing');
     expect(sessionData.iterationHistory?.entries[0].modifiedFiles).toEqual(['/test/file.ts']);
     expect(sessionData.iterationHistory?.totalIterations).toBe(1);
+  });
+});
+
+// ============================================================================
+// v0.5.0 Per-Tool Permission Configuration Tests
+// ============================================================================
+
+describe('DirectoryAccessConfigSchema', () => {
+  it('should accept minimal valid config', () => {
+    const config = DirectoryAccessConfigSchema.parse({});
+
+    expect(config.allowlist).toEqual([]);
+    expect(config.blocklist).toEqual([]);
+    expect(config.resolveSymlinks).toBe(true);
+    expect(config.maxDepth).toBe(0);
+    expect(config.defaultAllow).toBeUndefined();
+  });
+
+  it('should accept config with allowlist and blocklist', () => {
+    const config = DirectoryAccessConfigSchema.parse({
+      allowlist: ['/src/**', '/tests/**'],
+      blocklist: ['/node_modules/**', '/.git/**'],
+      defaultAllow: false,
+      resolveSymlinks: false,
+      maxDepth: 5
+    });
+
+    expect(config.allowlist).toEqual(['/src/**', '/tests/**']);
+    expect(config.blocklist).toEqual(['/node_modules/**', '/.git/**']);
+    expect(config.defaultAllow).toBe(false);
+    expect(config.resolveSymlinks).toBe(false);
+    expect(config.maxDepth).toBe(5);
+  });
+
+  it('should validate maxDepth is non-negative', () => {
+    expect(() => DirectoryAccessConfigSchema.parse({
+      maxDepth: -1
+    })).toThrow();
+
+    expect(() => DirectoryAccessConfigSchema.parse({
+      maxDepth: 0
+    })).not.toThrow();
+  });
+
+  it('should allow empty arrays for allowlist/blocklist', () => {
+    const config = DirectoryAccessConfigSchema.parse({
+      allowlist: [],
+      blocklist: []
+    });
+
+    expect(config.allowlist).toEqual([]);
+    expect(config.blocklist).toEqual([]);
+  });
+});
+
+describe('BaseToolPermissionConfigSchema', () => {
+  it('should accept minimal valid config with defaults', () => {
+    const config = BaseToolPermissionConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.timeout).toBe(0);
+    expect(config.requireConfirmation).toBe(false);
+    expect(config.rateLimitPerMinute).toBe(0);
+    expect(config.metadata).toBeUndefined();
+  });
+
+  it('should accept config with all fields', () => {
+    const config = BaseToolPermissionConfigSchema.parse({
+      enabled: false,
+      timeout: 30000,
+      requireConfirmation: true,
+      rateLimitPerMinute: 10,
+      metadata: {
+        reason: 'security policy',
+        approver: 'admin'
+      }
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.timeout).toBe(30000);
+    expect(config.requireConfirmation).toBe(true);
+    expect(config.rateLimitPerMinute).toBe(10);
+    expect(config.metadata).toEqual({
+      reason: 'security policy',
+      approver: 'admin'
+    });
+  });
+
+  it('should validate non-negative timeout', () => {
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      timeout: -1
+    })).toThrow();
+
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      timeout: 0
+    })).not.toThrow();
+  });
+
+  it('should validate non-negative rate limit', () => {
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      rateLimitPerMinute: -1
+    })).toThrow();
+
+    expect(() => BaseToolPermissionConfigSchema.parse({
+      rateLimitPerMinute: 0
+    })).not.toThrow();
+  });
+});
+
+describe('FilesystemToolConfigSchema', () => {
+  it('should extend base config with filesystem-specific fields', () => {
+    const config = FilesystemToolConfigSchema.parse({
+      enabled: true,
+      timeout: 5000,
+      directoryAccess: {
+        allowlist: ['/src/**'],
+        blocklist: ['/node_modules/**']
+      },
+      maxFileSize: 1048576, // 1MB
+      allowedExtensions: ['.ts', '.js', '.json'],
+      blockedExtensions: ['.exe', '.bin']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.timeout).toBe(5000);
+    expect(config.directoryAccess?.allowlist).toEqual(['/src/**']);
+    expect(config.maxFileSize).toBe(1048576);
+    expect(config.allowedExtensions).toEqual(['.ts', '.js', '.json']);
+    expect(config.blockedExtensions).toEqual(['.exe', '.bin']);
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = FilesystemToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.maxFileSize).toBe(0);
+    expect(config.allowedExtensions).toEqual([]);
+    expect(config.blockedExtensions).toEqual([]);
+  });
+
+  it('should validate non-negative maxFileSize', () => {
+    expect(() => FilesystemToolConfigSchema.parse({
+      maxFileSize: -1
+    })).toThrow();
+
+    expect(() => FilesystemToolConfigSchema.parse({
+      maxFileSize: 0
+    })).not.toThrow();
+  });
+});
+
+describe('ShellToolConfigSchema', () => {
+  it('should extend base config with shell-specific fields', () => {
+    const config = ShellToolConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/project/**'],
+        defaultAllow: false
+      },
+      blockedCommands: ['^rm -rf', '^sudo', 'format.*'],
+      allowElevatedPrivileges: false,
+      environment: {
+        PATH: '/usr/local/bin:/usr/bin',
+        NODE_ENV: 'development'
+      },
+      workingDirectory: '/project/workspace'
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.directoryAccess?.allowlist).toEqual(['/project/**']);
+    expect(config.blockedCommands).toEqual(['^rm -rf', '^sudo', 'format.*']);
+    expect(config.allowElevatedPrivileges).toBe(false);
+    expect(config.environment).toEqual({
+      PATH: '/usr/local/bin:/usr/bin',
+      NODE_ENV: 'development'
+    });
+    expect(config.workingDirectory).toBe('/project/workspace');
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = ShellToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.blockedCommands).toEqual([]);
+    expect(config.allowElevatedPrivileges).toBe(false);
+    expect(config.environment).toBeUndefined();
+    expect(config.workingDirectory).toBeUndefined();
+  });
+});
+
+describe('WebToolConfigSchema', () => {
+  it('should extend base config with web-specific fields', () => {
+    const config = WebToolConfigSchema.parse({
+      enabled: true,
+      allowedDomains: ['api.github.com', '*.stackoverflow.com'],
+      blockedDomains: ['malicious.com', 'spam.net'],
+      maxResponseSize: 5242880, // 5MB
+      followRedirects: false,
+      headers: {
+        'User-Agent': 'APEX/1.0',
+        'Accept': 'application/json'
+      }
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.allowedDomains).toEqual(['api.github.com', '*.stackoverflow.com']);
+    expect(config.blockedDomains).toEqual(['malicious.com', 'spam.net']);
+    expect(config.maxResponseSize).toBe(5242880);
+    expect(config.followRedirects).toBe(false);
+    expect(config.headers).toEqual({
+      'User-Agent': 'APEX/1.0',
+      'Accept': 'application/json'
+    });
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = WebToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.allowedDomains).toEqual([]);
+    expect(config.blockedDomains).toEqual([]);
+    expect(config.maxResponseSize).toBe(0);
+    expect(config.followRedirects).toBe(true);
+    expect(config.headers).toBeUndefined();
+  });
+
+  it('should validate non-negative maxResponseSize', () => {
+    expect(() => WebToolConfigSchema.parse({
+      maxResponseSize: -1
+    })).toThrow();
+
+    expect(() => WebToolConfigSchema.parse({
+      maxResponseSize: 0
+    })).not.toThrow();
+  });
+});
+
+describe('SearchToolConfigSchema', () => {
+  it('should extend base config with search-specific fields', () => {
+    const config = SearchToolConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/src/**', '/docs/**'],
+        blocklist: ['/node_modules/**']
+      },
+      maxResults: 500,
+      includePatterns: ['*.ts', '*.js'],
+      excludePatterns: ['*.test.*', '*.spec.*']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.directoryAccess?.allowlist).toEqual(['/src/**', '/docs/**']);
+    expect(config.maxResults).toBe(500);
+    expect(config.includePatterns).toEqual(['*.ts', '*.js']);
+    expect(config.excludePatterns).toEqual(['*.test.*', '*.spec.*']);
+  });
+
+  it('should accept minimal config with defaults', () => {
+    const config = SearchToolConfigSchema.parse({});
+
+    expect(config.enabled).toBe(true);
+    expect(config.maxResults).toBe(1000);
+    expect(config.includePatterns).toEqual([]);
+    expect(config.excludePatterns).toEqual([]);
+  });
+
+  it('should validate maxResults minimum value', () => {
+    expect(() => SearchToolConfigSchema.parse({
+      maxResults: 0
+    })).toThrow();
+
+    expect(() => SearchToolConfigSchema.parse({
+      maxResults: 1
+    })).not.toThrow();
+  });
+});
+
+describe('ToolPermissionConfigSchema', () => {
+  it('should accept FilesystemToolConfig', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: true,
+      directoryAccess: {
+        allowlist: ['/src/**']
+      },
+      maxFileSize: 1024000
+    });
+
+    expect(config.enabled).toBe(true);
+    expect((config as any).maxFileSize).toBe(1024000);
+  });
+
+  it('should accept ShellToolConfig', () => {
+    const config = ShellToolConfigSchema.parse({
+      enabled: false,
+      blockedCommands: ['^rm -rf'],
+      allowElevatedPrivileges: false
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.blockedCommands).toEqual(['^rm -rf']);
+  });
+
+  it('should accept WebToolConfig', () => {
+    const config = WebToolConfigSchema.parse({
+      enabled: true,
+      allowedDomains: ['github.com'],
+      maxResponseSize: 1048576
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.allowedDomains).toEqual(['github.com']);
+  });
+
+  it('should accept SearchToolConfig', () => {
+    const config = SearchToolConfigSchema.parse({
+      enabled: true,
+      maxResults: 100,
+      includePatterns: ['*.ts']
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.maxResults).toBe(100);
+  });
+
+  it('should accept BaseToolPermissionConfig as fallback', () => {
+    const config = ToolPermissionConfigSchema.parse({
+      enabled: false,
+      timeout: 10000,
+      requireConfirmation: true
+    });
+
+    expect(config.enabled).toBe(false);
+    expect(config.timeout).toBe(10000);
+    expect(config.requireConfirmation).toBe(true);
+  });
+});
+
+describe('ExtendedPermissionSchema', () => {
+  it('should extend base Permission with additional fields', () => {
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Write',
+      scope: '/project/**',
+      level: 'allow-always',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      config: {
+        enabled: true,
+        maxFileSize: 1048576,
+        allowedExtensions: ['.ts', '.js']
+      },
+      grantReason: 'Development work on project files',
+      grantedBy: 'user:admin',
+      tags: ['development', 'filesystem']
+    });
+
+    expect(permission.tool).toBe('Write');
+    expect(permission.scope).toBe('/project/**');
+    expect(permission.level).toBe('allow-always');
+    expect(permission.config?.enabled).toBe(true);
+    expect(permission.grantReason).toBe('Development work on project files');
+    expect(permission.grantedBy).toBe('user:admin');
+    expect(permission.tags).toEqual(['development', 'filesystem']);
+  });
+
+  it('should accept minimal permission without extended fields', () => {
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Read',
+      level: 'allow-once',
+      createdAt: new Date('2024-01-15T10:00:00Z')
+    });
+
+    expect(permission.tool).toBe('Read');
+    expect(permission.level).toBe('allow-once');
+    expect(permission.config).toBeUndefined();
+    expect(permission.grantReason).toBeUndefined();
+    expect(permission.grantedBy).toBeUndefined();
+    expect(permission.tags).toEqual([]);
+  });
+
+  it('should validate tool name is non-empty', () => {
+    expect(() => ExtendedPermissionSchema.parse({
+      tool: '',
+      level: 'allow-always',
+      createdAt: new Date()
+    })).toThrow();
+
+    expect(() => ExtendedPermissionSchema.parse({
+      tool: 'Bash',
+      level: 'allow-always',
+      createdAt: new Date()
+    })).not.toThrow();
+  });
+
+  it('should accept complex tool configurations', () => {
+    // Use ShellToolConfigSchema directly since ToolPermissionConfigSchema is a union
+    // that matches the first valid variant (stripping variant-specific fields)
+    const shellConfig = ShellToolConfigSchema.parse({
+      enabled: true,
+      timeout: 300000, // 5 minutes
+      directoryAccess: {
+        allowlist: ['/project/**'],
+        blocklist: ['/project/node_modules/**'],
+        defaultAllow: false
+      },
+      blockedCommands: ['^sudo', '^rm -rf /'],
+      allowElevatedPrivileges: false,
+      environment: {
+        NODE_ENV: 'development',
+        CI: 'false'
+      }
+    });
+
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'Bash',
+      scope: 'build-commands',
+      level: 'allow-always',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      config: shellConfig,
+      grantReason: 'Allow build and development commands within project directory',
+      grantedBy: 'system:auto-config',
+      tags: ['build', 'development', 'restricted']
+    });
+
+    expect(permission.tool).toBe('Bash');
+    expect(permission.scope).toBe('build-commands');
+    expect(permission.config?.enabled).toBe(true);
+    expect(permission.config?.timeout).toBe(300000);
+    expect(permission.tags).toEqual(['build', 'development', 'restricted']);
+  });
+
+  it('should handle expiry dates correctly', () => {
+    const expiryDate = new Date('2024-12-31T23:59:59Z');
+    const permission = ExtendedPermissionSchema.parse({
+      tool: 'WebSearch',
+      level: 'allow-once',
+      createdAt: new Date('2024-01-15T10:00:00Z'),
+      expiry: expiryDate
+    });
+
+    expect(permission.expiry).toEqual(expiryDate);
+  });
+});
+
+// ============================================================================
+// Edge Cases and Error Validation Tests
+// ============================================================================
+
+describe('Permission Schema Edge Cases', () => {
+  describe('DirectoryAccessConfigSchema edge cases', () => {
+    it('should handle very large maxDepth values', () => {
+      const config = DirectoryAccessConfigSchema.parse({
+        maxDepth: Number.MAX_SAFE_INTEGER
+      });
+
+      expect(config.maxDepth).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it('should handle glob patterns in allowlist/blocklist', () => {
+      const config = DirectoryAccessConfigSchema.parse({
+        allowlist: ['**/*.ts', '/src/**/{test,spec}/**'],
+        blocklist: ['**/node_modules/**', '**/.git/**', '**/.*']
+      });
+
+      expect(config.allowlist).toEqual(['**/*.ts', '/src/**/{test,spec}/**']);
+      expect(config.blocklist).toEqual(['**/node_modules/**', '**/.git/**', '**/.*']);
+    });
+  });
+
+  describe('ToolPermissionConfigSchema validation errors', () => {
+    it('should reject invalid timeout values', () => {
+      expect(() => BaseToolPermissionConfigSchema.parse({
+        timeout: -100
+      })).toThrow();
+    });
+
+    it('should reject invalid rate limits', () => {
+      expect(() => BaseToolPermissionConfigSchema.parse({
+        rateLimitPerMinute: -5
+      })).toThrow();
+    });
+
+    it('should reject invalid maxFileSize in FilesystemToolConfig', () => {
+      expect(() => FilesystemToolConfigSchema.parse({
+        maxFileSize: -1024
+      })).toThrow();
+    });
+
+    it('should reject invalid maxResults in SearchToolConfig', () => {
+      expect(() => SearchToolConfigSchema.parse({
+        maxResults: 0
+      })).toThrow();
+
+      expect(() => SearchToolConfigSchema.parse({
+        maxResults: -10
+      })).toThrow();
+    });
+  });
+
+  describe('ExtendedPermissionSchema validation', () => {
+    it('should reject empty tool names', () => {
+      expect(() => ExtendedPermissionSchema.parse({
+        tool: '',
+        level: 'allow-always',
+        createdAt: new Date()
+      })).toThrow();
+    });
+
+    it('should reject invalid permission levels', () => {
+      expect(() => ExtendedPermissionSchema.parse({
+        tool: 'Read',
+        level: 'invalid-level' as any,
+        createdAt: new Date()
+      })).toThrow();
+    });
+
+    it('should accept very complex configurations', () => {
+      const complexPermission = ExtendedPermissionSchema.parse({
+        tool: 'MultiTool',
+        scope: 'complex-scope-pattern/**/*.{ts,js,json}',
+        level: 'allow-always',
+        createdAt: new Date(),
+        expiry: new Date(Date.now() + 86400000), // 24 hours from now
+        config: {
+          enabled: true,
+          timeout: 120000,
+          requireConfirmation: false,
+          rateLimitPerMinute: 30,
+          metadata: {
+            complexity: 'high',
+            risk: 'medium',
+            auditRequired: true,
+            approvers: ['admin1', 'admin2'],
+            nested: {
+              deep: {
+                value: 'deeply nested config'
+              }
+            }
+          }
+        },
+        grantReason: 'Complex multi-step automation requiring various tool permissions',
+        grantedBy: 'system:workflow-engine',
+        tags: ['automation', 'complex', 'multi-tool', 'time-sensitive']
+      });
+
+      expect(complexPermission.tool).toBe('MultiTool');
+      expect(complexPermission.scope).toContain('complex-scope-pattern');
+      expect(complexPermission.config?.metadata?.nested?.deep?.value).toBe('deeply nested config');
+      expect(complexPermission.tags).toHaveLength(4);
+    });
+  });
+});
+
+describe('Approval Gate Types', () => {
+  describe('ApprovalCheckpointTypeSchema', () => {
+    it('should accept valid checkpoint types', () => {
+      expect(ApprovalCheckpointTypeSchema.parse('before-commit')).toBe('before-commit');
+      expect(ApprovalCheckpointTypeSchema.parse('before-deploy')).toBe('before-deploy');
+      expect(ApprovalCheckpointTypeSchema.parse('before-destructive')).toBe('before-destructive');
+      expect(ApprovalCheckpointTypeSchema.parse('before-network')).toBe('before-network');
+      expect(ApprovalCheckpointTypeSchema.parse('before-file-write')).toBe('before-file-write');
+      expect(ApprovalCheckpointTypeSchema.parse('deployment')).toBe('deployment');
+      expect(ApprovalCheckpointTypeSchema.parse('custom')).toBe('custom');
+    });
+
+    it('should reject invalid checkpoint types', () => {
+      expect(() => ApprovalCheckpointTypeSchema.parse('invalid-type')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse(null)).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse(undefined)).toThrow();
+      // Legacy invalid types that were incorrectly used before
+      expect(() => ApprovalCheckpointTypeSchema.parse('code-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('architecture-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('security-review')).toThrow();
+      expect(() => ApprovalCheckpointTypeSchema.parse('business-approval')).toThrow();
+    });
+  });
+
+  describe('ApprovalGateSchema', () => {
+    it('should parse a minimal valid approval gate', () => {
+      const validGate = {
+        type: 'before-commit',
+        name: 'Code Review Gate',
+        approvers: ['reviewer1'],
+        timeout: 60
+      };
+
+      const parsed = ApprovalGateSchema.parse(validGate);
+      expect(parsed.type).toBe('before-commit');
+      expect(parsed.name).toBe('Code Review Gate');
+      expect(parsed.approvers).toEqual(['reviewer1']);
+      expect(parsed.timeout).toBe(60);
+    });
+
+    it('should parse a comprehensive approval gate with all properties', () => {
+      const validGate = {
+        type: 'deployment',
+        name: 'Production Deployment Gate',
+        description: 'Requires approval for production deployments',
+        approvers: ['devops-lead', 'security-team'],
+        timeout: 120,
+        required: true,
+        autoApprove: false,
+        autoApproveOnTimeout: false,
+        minApprovals: 2,
+        tags: ['production', 'critical']
+      };
+
+      const parsed = ApprovalGateSchema.parse(validGate);
+      expect(parsed.type).toBe('deployment');
+      expect(parsed.name).toBe('Production Deployment Gate');
+      expect(parsed.description).toBe('Requires approval for production deployments');
+      expect(parsed.approvers).toEqual(['devops-lead', 'security-team']);
+      expect(parsed.timeout).toBe(120);
+      expect(parsed.required).toBe(true);
+      expect(parsed.autoApprove).toBe(false);
+      expect(parsed.minApprovals).toBe(2);
+      expect(parsed.tags).toEqual(['production', 'critical']);
+    });
+
+    it('should reject invalid approval gate configurations', () => {
+      // Missing required fields
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        // missing name, requiredApprovers, timeoutMinutes
+      })).toThrow();
+
+      // Invalid type
+      expect(() => ApprovalGateSchema.parse({
+        type: 'invalid-type',
+        name: 'Test Gate',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Empty name
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: '',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Empty requiredApprovers array
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: 'Test Gate',
+        requiredApprovers: [],
+        timeoutMinutes: 60
+      })).toThrow();
+
+      // Invalid timeout (negative)
+      expect(() => ApprovalGateSchema.parse({
+        type: 'code-review',
+        name: 'Test Gate',
+        requiredApprovers: ['approver1'],
+        timeoutMinutes: -1
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalStatusSchema', () => {
+    it('should accept valid approval statuses', () => {
+      expect(ApprovalStatusSchema.parse('pending')).toBe('pending');
+      expect(ApprovalStatusSchema.parse('approved')).toBe('approved');
+      expect(ApprovalStatusSchema.parse('denied')).toBe('denied');
+    });
+
+    it('should reject invalid approval statuses', () => {
+      expect(() => ApprovalStatusSchema.parse('rejected')).toThrow();
+      expect(() => ApprovalStatusSchema.parse('completed')).toThrow();
+      expect(() => ApprovalStatusSchema.parse('')).toThrow();
+      expect(() => ApprovalStatusSchema.parse(null)).toThrow();
+    });
+  });
+
+  describe('GateStatusSchema', () => {
+    it('should accept valid gate statuses', () => {
+      expect(GateStatusSchema.parse('pending')).toBe('pending');
+      expect(GateStatusSchema.parse('approved')).toBe('approved');
+      expect(GateStatusSchema.parse('rejected')).toBe('rejected');
+      expect(GateStatusSchema.parse('skipped')).toBe('skipped');
+      expect(GateStatusSchema.parse('timeout')).toBe('timeout');
+    });
+
+    it('should reject invalid gate statuses', () => {
+      expect(() => GateStatusSchema.parse('completed')).toThrow();
+      expect(() => GateStatusSchema.parse('failed')).toThrow();
+      expect(() => GateStatusSchema.parse('')).toThrow();
+    });
+  });
+
+  describe('ApprovalStateSchema', () => {
+    it('should parse a minimal valid approval state', () => {
+      const validState = {
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateName: 'Code Review',
+        status: 'pending',
+        requestedAt: new Date('2024-01-15T10:00:00Z')
+      };
+
+      const parsed = ApprovalStateSchema.parse(validState);
+      expect(parsed.id).toBe('approval-123');
+      expect(parsed.taskId).toBe('task-456');
+      expect(parsed.gateName).toBe('Code Review');
+      expect(parsed.status).toBe('pending');
+      expect(parsed.requestedAt).toEqual(new Date('2024-01-15T10:00:00Z'));
+    });
+
+    it('should parse a comprehensive approval state with all properties', () => {
+      const requestedAt = new Date('2024-01-15T10:00:00Z');
+      const respondedAt = new Date('2024-01-15T10:30:00Z');
+      const expiresAt = new Date('2024-01-15T12:00:00Z');
+
+      const validState = {
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateName: 'Deployment Gate',
+        status: 'approved',
+        approver: 'admin1',
+        requestedAt,
+        respondedAt,
+        comment: 'Approved for production deployment',
+        context: {
+          urgency: 'high',
+          environment: 'production'
+        },
+        stage: 'deploy',
+        agent: 'devops',
+        approvalsReceived: 1,
+        approvalsRequired: 1,
+        timeoutMinutes: 120,
+        expiresAt
+      };
+
+      const parsed = ApprovalStateSchema.parse(validState);
+      expect(parsed.id).toBe('approval-123');
+      expect(parsed.taskId).toBe('task-456');
+      expect(parsed.gateName).toBe('Deployment Gate');
+      expect(parsed.status).toBe('approved');
+      expect(parsed.approver).toBe('admin1');
+      expect(parsed.requestedAt).toEqual(requestedAt);
+      expect(parsed.respondedAt).toEqual(respondedAt);
+      expect(parsed.comment).toBe('Approved for production deployment');
+      expect(parsed.context?.urgency).toBe('high');
+      expect(parsed.context?.environment).toBe('production');
+      expect(parsed.timeoutMinutes).toBe(120);
+      expect(parsed.expiresAt).toEqual(expiresAt);
+    });
+
+    it('should reject invalid approval state configurations', () => {
+      // Missing required fields
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        // missing taskId, gateName, status, requestedAt
+      })).toThrow();
+
+      // Empty id
+      expect(() => ApprovalStateSchema.parse({
+        id: '',
+        taskId: 'task-456',
+        gateName: 'Code Review',
+        status: 'pending',
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Empty taskId
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: '',
+        gateName: 'Code Review',
+        status: 'pending',
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Empty gateName
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateName: '',
+        status: 'pending',
+        requestedAt: new Date()
+      })).toThrow();
+
+      // Invalid status
+      expect(() => ApprovalStateSchema.parse({
+        id: 'approval-123',
+        taskId: 'task-456',
+        gateName: 'Code Review',
+        status: 'invalid-status',
+        requestedAt: new Date()
+      })).toThrow();
+    });
+  });
+
+  describe('TaskStatusSchema with awaiting-approval', () => {
+    it('should include awaiting-approval as a valid task status', () => {
+      expect(TaskStatusSchema.parse('awaiting-approval')).toBe('awaiting-approval');
+    });
+
+    it('should accept all other existing task statuses', () => {
+      expect(TaskStatusSchema.parse('pending')).toBe('pending');
+      expect(TaskStatusSchema.parse('planning')).toBe('planning');
+      expect(TaskStatusSchema.parse('in-progress')).toBe('in-progress');
+      expect(TaskStatusSchema.parse('waiting-approval')).toBe('waiting-approval');
+      expect(TaskStatusSchema.parse('paused')).toBe('paused');
+      expect(TaskStatusSchema.parse('completed')).toBe('completed');
+      expect(TaskStatusSchema.parse('failed')).toBe('failed');
+      expect(TaskStatusSchema.parse('cancelled')).toBe('cancelled');
+    });
+  });
+
+  describe('ApprovalRequiredEventDataSchema', () => {
+    it('should parse valid approval required event data', () => {
+      const validEventData = {
+        taskId: 'task-123',
+        approvalId: 'approval-456',
+        gateName: 'Code Review Gate',
+        gateType: 'before-commit',
+        approvers: ['reviewer1', 'reviewer2'],
+        timeoutMinutes: 60,
+        timestamp: new Date('2024-01-15T10:00:00Z'),
+        expiresAt: new Date('2024-01-15T11:00:00Z'),
+        description: 'Please review the code changes',
+        context: {
+          branch: 'feature/new-feature',
+          pr: 'https://github.com/repo/pull/123'
+        },
+        blocking: true
+      };
+
+      const parsed = ApprovalRequiredEventDataSchema.parse(validEventData);
+      expect(parsed.taskId).toBe('task-123');
+      expect(parsed.approvalId).toBe('approval-456');
+      expect(parsed.gateName).toBe('Code Review Gate');
+      expect(parsed.gateType).toBe('before-commit');
+      expect(parsed.approvers).toEqual(['reviewer1', 'reviewer2']);
+      expect(parsed.timeoutMinutes).toBe(60);
+      expect(parsed.timestamp).toEqual(new Date('2024-01-15T10:00:00Z'));
+      expect(parsed.expiresAt).toEqual(new Date('2024-01-15T11:00:00Z'));
+      expect(parsed.description).toBe('Please review the code changes');
+      expect(parsed.context?.branch).toBe('feature/new-feature');
+      expect(parsed.blocking).toBe(true);
+    });
+
+    it('should reject invalid approval required event data', () => {
+      // Missing required fields
+      expect(() => ApprovalRequiredEventDataSchema.parse({
+        taskId: 'task-123',
+        // missing approvalId, gateName, gateType, timestamp
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalResponseEventDataSchema', () => {
+    it('should parse valid approval response event data', () => {
+      const validEventData = {
+        taskId: 'task-123',
+        approvalId: 'approval-456',
+        gateName: 'Code Review Gate',
+        gateType: 'before-commit',
+        approved: true,
+        approver: 'reviewer1',
+        comment: 'Code looks good, approved',
+        timestamp: new Date('2024-01-15T10:30:00Z'),
+        requestedAt: new Date('2024-01-15T10:00:00Z'),
+        responseTimeMs: 1800000,
+        approvalsReceived: 1,
+        approvalsRequired: 1,
+        allApprovalsReceived: true
+      };
+
+      const parsed = ApprovalResponseEventDataSchema.parse(validEventData);
+      expect(parsed.taskId).toBe('task-123');
+      expect(parsed.approvalId).toBe('approval-456');
+      expect(parsed.gateName).toBe('Code Review Gate');
+      expect(parsed.gateType).toBe('before-commit');
+      expect(parsed.approved).toBe(true);
+      expect(parsed.approver).toBe('reviewer1');
+      expect(parsed.comment).toBe('Code looks good, approved');
+      expect(parsed.timestamp).toEqual(new Date('2024-01-15T10:30:00Z'));
+      expect(parsed.requestedAt).toEqual(new Date('2024-01-15T10:00:00Z'));
+      expect(parsed.allApprovalsReceived).toBe(true);
+    });
+  });
+
+  describe('ApprovalDecisionRequestSchema', () => {
+    it('should parse valid approval decision request', () => {
+      const validRequest = {
+        approvalId: 'approval-123',
+        approver: 'reviewer1',
+        decision: 'approved',
+        comments: 'Code changes look good'
+      };
+
+      const parsed = ApprovalDecisionRequestSchema.parse(validRequest);
+      expect(parsed.approvalId).toBe('approval-123');
+      expect(parsed.approver).toBe('reviewer1');
+      expect(parsed.decision).toBe('approved');
+      expect(parsed.comments).toBe('Code changes look good');
+    });
+
+    it('should reject invalid approval decision request', () => {
+      // Invalid decision
+      expect(() => ApprovalDecisionRequestSchema.parse({
+        approvalId: 'approval-123',
+        approver: 'reviewer1',
+        decision: 'rejected', // should be 'denied'
+        comments: 'Not good'
+      })).toThrow();
+
+      // Missing required fields
+      expect(() => ApprovalDecisionRequestSchema.parse({
+        approvalId: 'approval-123',
+        // missing approver and decision
+      })).toThrow();
+    });
+  });
+
+  describe('ApprovalDecisionResponseSchema', () => {
+    it('should parse valid approval decision response', () => {
+      const validResponse = {
+        success: true,
+        approvalState: {
+          id: 'approval-123',
+          taskId: 'task-456',
+          gateName: 'Code Review',
+          status: 'approved',
+          requestedAt: new Date('2024-01-15T10:00:00Z')
+        },
+        willProceed: true
+      };
+
+      const parsed = ApprovalDecisionResponseSchema.parse(validResponse);
+      expect(parsed.success).toBe(true);
+      expect(parsed.approvalState?.id).toBe('approval-123');
+      expect(parsed.willProceed).toBe(true);
+    });
+
+    it('should parse error response', () => {
+      const errorResponse = {
+        success: false,
+        error: 'Approval not found',
+        willProceed: false
+      };
+
+      const parsed = ApprovalDecisionResponseSchema.parse(errorResponse);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBe('Approval not found');
+      expect(parsed.willProceed).toBe(false);
+    });
+  });
+
+  describe('Advanced Approval Schemas', () => {
+    describe('ApprovalConditionTypeSchema', () => {
+      it('should accept valid condition types', () => {
+        expect(ApprovalConditionTypeSchema.parse('file-pattern')).toBe('file-pattern');
+        expect(ApprovalConditionTypeSchema.parse('content-pattern')).toBe('content-pattern');
+        expect(ApprovalConditionTypeSchema.parse('operation')).toBe('operation');
+        expect(ApprovalConditionTypeSchema.parse('cost-threshold')).toBe('cost-threshold');
+        expect(ApprovalConditionTypeSchema.parse('token-threshold')).toBe('token-threshold');
+        expect(ApprovalConditionTypeSchema.parse('custom')).toBe('custom');
+      });
+    });
+
+    describe('ApprovalOperationTypeSchema', () => {
+      it('should accept valid operation types', () => {
+        expect(ApprovalOperationTypeSchema.parse('create')).toBe('create');
+        expect(ApprovalOperationTypeSchema.parse('modify')).toBe('modify');
+        expect(ApprovalOperationTypeSchema.parse('delete')).toBe('delete');
+        expect(ApprovalOperationTypeSchema.parse('execute')).toBe('execute');
+        expect(ApprovalOperationTypeSchema.parse('deploy')).toBe('deploy');
+        expect(ApprovalOperationTypeSchema.parse('commit')).toBe('commit');
+        expect(ApprovalOperationTypeSchema.parse('push')).toBe('push');
+        expect(ApprovalOperationTypeSchema.parse('merge')).toBe('merge');
+      });
+    });
+
+    describe('ApprovalUrgencySchema', () => {
+      it('should accept valid urgency levels', () => {
+        expect(ApprovalUrgencySchema.parse('low')).toBe('low');
+        expect(ApprovalUrgencySchema.parse('normal')).toBe('normal');
+        expect(ApprovalUrgencySchema.parse('high')).toBe('high');
+        expect(ApprovalUrgencySchema.parse('critical')).toBe('critical');
+      });
+    });
+
+    describe('ApprovalConditionSchema', () => {
+      it('should parse valid approval condition', () => {
+        const validCondition = {
+          type: 'file-pattern',
+          patterns: ['src/critical/**'],
+          description: 'Critical file changes require additional approval'
+        };
+
+        const parsed = ApprovalConditionSchema.parse(validCondition);
+        expect(parsed.type).toBe('file-pattern');
+        expect(parsed.patterns).toEqual(['src/critical/**']);
+        expect(parsed.description).toBe('Critical file changes require additional approval');
+      });
+    });
+
+    describe('ApprovalRuleSchema', () => {
+      it('should parse comprehensive approval rule', () => {
+        const validRule = {
+          id: 'rule-1',
+          name: 'Production Deployment Rule',
+          description: 'Rules for production deployments',
+          enabled: true,
+          conditions: [
+            {
+              type: 'operation',
+              operations: ['deploy'],
+              description: 'Deployment operations'
+            }
+          ],
+          approvers: ['devops-lead'],
+          minApprovals: 2,
+          urgency: 'high',
+          timeoutMinutes: 60,
+          requireAllConditions: true,
+          timeoutAction: 'reject',
+          tags: ['production', 'deployment'],
+          priority: 10
+        };
+
+        const parsed = ApprovalRuleSchema.parse(validRule);
+        expect(parsed.id).toBe('rule-1');
+        expect(parsed.name).toBe('Production Deployment Rule');
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.conditions).toHaveLength(1);
+        expect(parsed.approvers).toEqual(['devops-lead']);
+        expect(parsed.minApprovals).toBe(2);
+        expect(parsed.urgency).toBe('high');
+        expect(parsed.timeoutMinutes).toBe(60);
+        expect(parsed.requireAllConditions).toBe(true);
+        expect(parsed.timeoutAction).toBe('reject');
+        expect(parsed.tags).toEqual(['production', 'deployment']);
+        expect(parsed.priority).toBe(10);
+      });
+    });
+
+    describe('ApprovalRulesConfigSchema', () => {
+      it('should parse approval rules configuration', () => {
+        const validConfig = {
+          enabled: true,
+          rules: [
+            {
+              id: 'rule-1',
+              name: 'Code Review Rule',
+              conditions: [
+                {
+                  type: 'file-pattern',
+                  patterns: ['src/**']
+                }
+              ],
+              approvers: ['reviewer1']
+            }
+          ],
+          defaultTimeoutMinutes: 120,
+          notificationsEnabled: true,
+          notificationChannels: {
+            slack: 'https://hooks.slack.com/test',
+            email: ['reviewer@example.com']
+          }
+        };
+
+        const parsed = ApprovalRulesConfigSchema.parse(validConfig);
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.rules).toHaveLength(1);
+        expect(parsed.defaultTimeoutMinutes).toBe(120);
+        expect(parsed.notificationsEnabled).toBe(true);
+        expect(parsed.notificationChannels?.slack).toBe('https://hooks.slack.com/test');
+      });
+    });
+
+    describe('ApprovalPolicySchema', () => {
+      it('should parse approval policy', () => {
+        const validPolicy = {
+          id: 'policy-1',
+          name: 'Development Policy',
+          description: 'Approval policy for development workflows',
+          condition: 'branch == "main"',
+          action: 'require_approval',
+          severity: 'high',
+          enabled: true,
+          type: 'approval',
+          config: {
+            enabled: true,
+            rules: [
+              {
+                id: 'rule-1',
+                name: 'Main Branch Rule',
+                conditions: [
+                  {
+                    type: 'operation',
+                    operations: ['push', 'merge']
+                  }
+                ],
+                approvers: ['team-lead']
+              }
+            ],
+            defaultTimeoutMinutes: 60
+          },
+          metadata: {
+            version: '1.0',
+            author: 'devops-team'
+          }
+        };
+
+        const parsed = ApprovalPolicySchema.parse(validPolicy);
+        expect(parsed.id).toBe('policy-1');
+        expect(parsed.name).toBe('Development Policy');
+        expect(parsed.enabled).toBe(true);
+        expect(parsed.condition).toBe('branch == "main"');
+        expect(parsed.action).toBe('require_approval');
+        expect(parsed.severity).toBe('high');
+        expect(parsed.type).toBe('approval');
+        expect(parsed.config.rules).toHaveLength(1);
+        expect(parsed.metadata?.version).toBe('1.0');
+      });
+    });
   });
 });

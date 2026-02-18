@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   generateTaskId,
+  generateIdleTaskId,
+  generateTaskTemplateId,
+  generateApprovalId,
   slugify,
   generateBranchName,
   calculateCost,
   formatDuration,
+  formatElapsed,
   formatTokens,
   formatCost,
   parseSemver,
@@ -16,6 +20,7 @@ import {
   safeJsonParse,
   deepMerge,
   truncate,
+  truncateToolOutput,
   extractCodeBlocks,
   retry,
   createDeferred,
@@ -29,9 +34,11 @@ import {
   formatConflictReport,
   type SemVer,
   type UpdateType,
+  type TruncateOptions,
+  type TruncateResult,
 } from './utils';
 
-describe.skip('generateTaskId', () => {
+describe('generateTaskId', () => {
   it('should generate unique task IDs', () => {
     const id1 = generateTaskId();
     const id2 = generateTaskId();
@@ -51,7 +58,7 @@ describe.skip('generateTaskId', () => {
   });
 });
 
-describe.skip('slugify', () => {
+describe('slugify', () => {
   it('should convert to lowercase', () => {
     expect(slugify('Hello World')).toBe('hello-world');
   });
@@ -74,7 +81,7 @@ describe.skip('slugify', () => {
   });
 });
 
-describe.skip('generateBranchName', () => {
+describe('generateBranchName', () => {
   it('should combine prefix, task id, and description', () => {
     const branch = generateBranchName('apex/', 'task_abc123_def456', 'Add user auth');
     expect(branch).toMatch(/^apex\//);
@@ -87,7 +94,7 @@ describe.skip('generateBranchName', () => {
   });
 });
 
-describe.skip('calculateCost', () => {
+describe('calculateCost', () => {
   it('should calculate cost based on token usage', () => {
     // 1M input tokens at $3/M + 0 output = $3
     const cost = calculateCost(1_000_000, 0);
@@ -110,7 +117,7 @@ describe.skip('calculateCost', () => {
   });
 });
 
-describe.skip('formatDuration', () => {
+describe('formatDuration', () => {
   it('should format milliseconds', () => {
     expect(formatDuration(500)).toBe('500ms');
   });
@@ -128,7 +135,7 @@ describe.skip('formatDuration', () => {
   });
 });
 
-describe.skip('formatTokens', () => {
+describe('formatTokens', () => {
   it('should format with commas', () => {
     expect(formatTokens(1000000)).toBe('1,000,000');
   });
@@ -138,7 +145,7 @@ describe.skip('formatTokens', () => {
   });
 });
 
-describe.skip('formatCost', () => {
+describe('formatCost', () => {
   it('should format as USD with 4 decimal places', () => {
     expect(formatCost(1.2345)).toBe('$1.2345');
   });
@@ -152,7 +159,7 @@ describe.skip('formatCost', () => {
 // SEMANTIC VERSIONING TESTS
 // ============================================================================
 
-describe.skip('parseSemver', () => {
+describe('parseSemver', () => {
   // Valid versions
   it('should parse basic version', () => {
     const result = parseSemver('1.2.3');
@@ -284,7 +291,7 @@ describe.skip('parseSemver', () => {
   });
 });
 
-describe.skip('isPreRelease', () => {
+describe('isPreRelease', () => {
   it('should return true for prerelease versions', () => {
     expect(isPreRelease('1.0.0-alpha')).toBe(true);
     expect(isPreRelease('1.0.0-alpha.1')).toBe(true);
@@ -324,7 +331,7 @@ describe.skip('isPreRelease', () => {
   });
 });
 
-describe.skip('compareVersions', () => {
+describe('compareVersions', () => {
   // Basic comparisons
   it('should compare major versions', () => {
     expect(compareVersions('2.0.0', '1.0.0')).toBe(1);
@@ -427,7 +434,7 @@ describe.skip('compareVersions', () => {
   });
 });
 
-describe.skip('getUpdateType', () => {
+describe('getUpdateType', () => {
   it('should detect major updates', () => {
     expect(getUpdateType('1.0.0', '2.0.0')).toBe('major');
     expect(getUpdateType('1.5.10', '3.0.0')).toBe('major');
@@ -521,7 +528,7 @@ describe.skip('getUpdateType', () => {
   });
 });
 
-describe.skip('parseConventionalCommit', () => {
+describe('parseConventionalCommit', () => {
   it('should parse basic commit', () => {
     const result = parseConventionalCommit('feat: add new feature');
     expect(result).toEqual({
@@ -560,7 +567,7 @@ describe.skip('parseConventionalCommit', () => {
   });
 });
 
-describe.skip('createConventionalCommit', () => {
+describe('createConventionalCommit', () => {
   it('should create basic commit message', () => {
     const msg = createConventionalCommit('feat', 'add feature');
     expect(msg).toBe('feat: add feature');
@@ -582,7 +589,7 @@ describe.skip('createConventionalCommit', () => {
   });
 });
 
-describe.skip('safeJsonParse', () => {
+describe('safeJsonParse', () => {
   it('should parse valid JSON', () => {
     expect(safeJsonParse('{"a": 1}', null)).toEqual({ a: 1 });
   });
@@ -596,7 +603,7 @@ describe.skip('safeJsonParse', () => {
   });
 });
 
-describe.skip('deepMerge', () => {
+describe('deepMerge', () => {
   it('should merge simple objects', () => {
     const result = deepMerge({ a: 1 }, { b: 2 });
     expect(result).toEqual({ a: 1, b: 2 });
@@ -621,7 +628,7 @@ describe.skip('deepMerge', () => {
   });
 });
 
-describe.skip('truncate', () => {
+describe('truncate', () => {
   it('should truncate long strings', () => {
     expect(truncate('hello world', 8)).toBe('hello...');
   });
@@ -635,7 +642,7 @@ describe.skip('truncate', () => {
   });
 });
 
-describe.skip('extractCodeBlocks', () => {
+describe('extractCodeBlocks', () => {
   it('should extract code blocks', () => {
     const markdown = 'Some text\n```typescript\nconst x = 1;\n```\nMore text';
     const blocks = extractCodeBlocks(markdown);
@@ -663,7 +670,7 @@ describe.skip('extractCodeBlocks', () => {
   });
 });
 
-describe.skip('retry', () => {
+describe('retry', () => {
   it('should return result on first success', async () => {
     const fn = vi.fn().mockResolvedValue('success');
 
@@ -736,7 +743,7 @@ describe.skip('retry', () => {
   });
 });
 
-describe.skip('createDeferred', () => {
+describe('createDeferred', () => {
   it('should create a deferred that can be resolved', async () => {
     const deferred = createDeferred<string>();
 
@@ -771,7 +778,7 @@ describe.skip('createDeferred', () => {
   });
 });
 
-describe.skip('COMMIT_TYPES', () => {
+describe('COMMIT_TYPES', () => {
   it('should have all standard commit types', () => {
     expect(COMMIT_TYPES.feat).toBeDefined();
     expect(COMMIT_TYPES.fix).toBeDefined();
@@ -790,7 +797,7 @@ describe.skip('COMMIT_TYPES', () => {
   });
 });
 
-describe.skip('parseGitLog', () => {
+describe('parseGitLog', () => {
   it('should parse git log output', () => {
     const logOutput = `commit abc123def456789
 Author: John Doe <john@example.com>
@@ -838,7 +845,7 @@ Date:   Mon Jan 15 10:00:00 2025 -0800
   });
 });
 
-describe.skip('groupCommitsByType', () => {
+describe('groupCommitsByType', () => {
   it('should group commits by conventional type', () => {
     const entries = [
       {
@@ -895,7 +902,7 @@ describe.skip('groupCommitsByType', () => {
   });
 });
 
-describe.skip('generateChangelogMarkdown', () => {
+describe('generateChangelogMarkdown', () => {
   it('should generate markdown changelog', () => {
     const groups = [
       {
@@ -994,7 +1001,7 @@ describe.skip('generateChangelogMarkdown', () => {
   });
 });
 
-describe.skip('suggestCommitType', () => {
+describe('suggestCommitType', () => {
   it('should suggest test type for test files', () => {
     const files = ['src/utils.test.ts', 'tests/integration.spec.js'];
     expect(suggestCommitType(files)).toBe('test');
@@ -1035,7 +1042,7 @@ describe.skip('suggestCommitType', () => {
 // CONFLICT DETECTION TESTS
 // ============================================================================
 
-describe.skip('detectConflicts', () => {
+describe('detectConflicts', () => {
   it('should detect simple conflict markers', () => {
     const content = `line 1
 <<<<<<< HEAD
@@ -1118,7 +1125,7 @@ line 8`;
   });
 });
 
-describe.skip('suggestConflictResolution', () => {
+describe('suggestConflictResolution', () => {
   it('should suggest keep-incoming when current is empty', () => {
     const marker = {
       startLine: 1,
@@ -1193,7 +1200,7 @@ describe.skip('suggestConflictResolution', () => {
   });
 });
 
-describe.skip('formatConflictReport', () => {
+describe('formatConflictReport', () => {
   it('should return no conflicts message for empty array', () => {
     const report = formatConflictReport([]);
     expect(report).toBe('No conflicts detected.');
@@ -1222,5 +1229,232 @@ describe.skip('formatConflictReport', () => {
     expect(report).toContain('main');
     expect(report).toContain('feature');
     expect(report).toContain('lines 10-15');
+  });
+});
+
+describe('generateIdleTaskId', () => {
+  it('should generate unique idle task IDs', () => {
+    const id1 = generateIdleTaskId();
+    const id2 = generateIdleTaskId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with idle_ prefix', () => {
+    const id = generateIdleTaskId();
+    expect(id).toMatch(/^idle_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateIdleTaskId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('idle');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateIdleTaskId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('generateTaskTemplateId', () => {
+  it('should generate unique task template IDs', () => {
+    const id1 = generateTaskTemplateId();
+    const id2 = generateTaskTemplateId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with template_ prefix', () => {
+    const id = generateTaskTemplateId();
+    expect(id).toMatch(/^template_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateTaskTemplateId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('template');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateTaskTemplateId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('generateApprovalId', () => {
+  it('should generate unique approval IDs', () => {
+    const id1 = generateApprovalId();
+    const id2 = generateApprovalId();
+    expect(id1).not.toBe(id2);
+  });
+
+  it('should start with apr_ prefix', () => {
+    const id = generateApprovalId();
+    expect(id).toMatch(/^apr_/);
+  });
+
+  it('should have timestamp and random components', () => {
+    const id = generateApprovalId();
+    const parts = id.split('_');
+    expect(parts.length).toBe(3);
+    expect(parts[0]).toBe('apr');
+    expect(parts[1]).toMatch(/^[a-z0-9]+$/); // base36 timestamp
+    expect(parts[2]).toMatch(/^[a-f0-9]{8}$/); // hex random
+  });
+
+  it('should generate different IDs when called rapidly', () => {
+    const ids = Array.from({ length: 100 }, () => generateApprovalId());
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(100); // All should be unique
+  });
+});
+
+describe('formatElapsed', () => {
+  it('should format seconds correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:00:05Z');
+    expect(formatElapsed(start, end)).toBe('5s');
+  });
+
+  it('should format minutes and seconds correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:02:30Z');
+    expect(formatElapsed(start, end)).toBe('2m 30s');
+  });
+
+  it('should format hours and minutes correctly', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T12:05:00Z');
+    expect(formatElapsed(start, end)).toBe('2h 5m');
+  });
+
+  it('should format hours only when no remaining minutes', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T13:00:00Z');
+    expect(formatElapsed(start, end)).toBe('3h');
+  });
+
+  it('should format minutes only when no remaining seconds', () => {
+    const start = new Date('2024-01-01T10:00:00Z');
+    const end = new Date('2024-01-01T10:05:00Z');
+    expect(formatElapsed(start, end)).toBe('5m');
+  });
+
+  it('should show 0s for sub-second durations', () => {
+    const start = new Date('2024-01-01T10:00:00.000Z');
+    const end = new Date('2024-01-01T10:00:00.500Z');
+    expect(formatElapsed(start, end)).toBe('0s');
+  });
+
+  it('should handle negative durations gracefully', () => {
+    const start = new Date('2024-01-01T10:00:05Z');
+    const end = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(start, end)).toBe('0s');
+  });
+
+  it('should handle invalid dates gracefully', () => {
+    const invalidDate = new Date('invalid');
+    const validDate = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(invalidDate, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, invalidDate)).toBe('0s');
+    expect(formatElapsed(invalidDate, invalidDate)).toBe('0s');
+  });
+
+  it('should handle null/undefined dates gracefully', () => {
+    const validDate = new Date('2024-01-01T10:00:00Z');
+    expect(formatElapsed(null as any, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, null as any)).toBe('0s');
+    expect(formatElapsed(undefined as any, validDate)).toBe('0s');
+    expect(formatElapsed(validDate, undefined as any)).toBe('0s');
+  });
+
+  it('should use current time as default end time', () => {
+    const start = new Date(Date.now() - 5000); // 5 seconds ago
+    const result = formatElapsed(start);
+    // Should be approximately 5s (allowing for small timing differences)
+    expect(result).toMatch(/^[45]s$/);
+  });
+
+  it('should handle very large durations', () => {
+    const start = new Date('2024-01-01T00:00:00Z');
+    const end = new Date('2024-01-02T05:30:00Z');
+    expect(formatElapsed(start, end)).toBe('29h 30m');
+  });
+
+  it('should handle dates with millisecond precision', () => {
+    const start = new Date('2024-01-01T10:00:00.123Z');
+    const end = new Date('2024-01-01T10:00:02.456Z');
+    expect(formatElapsed(start, end)).toBe('2s');
+  });
+});
+
+describe('truncateToolOutput', () => {
+  it('should truncate long output', () => {
+    const longOutput = 'A'.repeat(15000);
+    const result = truncateToolOutput(longOutput, { maxLength: 1000 });
+
+    expect(result.truncated).toBe(true);
+    expect(result.originalLength).toBe(15000);
+    expect(result.truncatedLength).toBeLessThanOrEqual(1000);
+    expect(result.output).toMatch(/\[truncated\]$/);
+  });
+
+  it('should preserve short output', () => {
+    const shortOutput = 'Short text';
+    const result = truncateToolOutput(shortOutput);
+
+    expect(result.truncated).toBe(false);
+    expect(result.output).toBe(shortOutput);
+  });
+
+  it('should truncate JSON content preserving structure', () => {
+    const jsonOutput = JSON.stringify({
+      items: Array.from({ length: 1000 }, (_, i) => ({ id: i, value: `item-${i}` }))
+    }, null, 2);
+
+    const result = truncateToolOutput(jsonOutput, { maxLength: 500, preserveJson: true });
+
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedLength).toBeLessThanOrEqual(500);
+    // Should still be valid JSON or indicate truncation
+    expect(() => JSON.parse(result.output.replace(/\.\.\. \[truncated\]$/, ''))).not.toThrow();
+  });
+
+  it('should truncate at word boundaries when enabled', () => {
+    const text = 'This is a long sentence that should be truncated at word boundaries for better readability';
+    const result = truncateToolOutput(text, { maxLength: 40, wordBoundary: true });
+
+    expect(result.truncated).toBe(true);
+    expect(result.output).not.toMatch(/\w\.\.\./); // Should not cut words in half
+  });
+
+  it('should use custom suffix', () => {
+    const longOutput = 'A'.repeat(1000);
+    const result = truncateToolOutput(longOutput, { maxLength: 100, suffix: ' [TRUNCATED]' });
+
+    expect(result.output).toMatch(/\[TRUNCATED\]$/);
+  });
+
+  it('should handle null/undefined input gracefully', () => {
+    expect(truncateToolOutput(null as any)).toEqual({
+      output: '',
+      truncated: false,
+      originalLength: 0,
+      truncatedLength: 0
+    });
+
+    expect(truncateToolOutput(undefined as any)).toEqual({
+      output: '',
+      truncated: false,
+      originalLength: 0,
+      truncatedLength: 0
+    });
   });
 });

@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-18
+
+### Added
+
+- **Browser Automation:** Comprehensive headless browser testing with Playwright integration
+  - Navigate, click, type, scroll, hover operations
+  - Screenshot capture for visual debugging and regression testing
+  - Console log capture and runtime error detection
+  - Visual regression testing with screenshot comparison
+- **Permission System:** Fine-grained permission controls for all tool operations
+  - Three permission levels: allow-always, allow-once, deny
+  - Per-tool and per-directory permission configuration
+  - Permission presets: autonomous, review-all, read-only
+  - Dangerous operation warnings and elevated permissions
+  - Permission persistence across sessions
+- **Built-in Tools:** Complete Claude Code tool parity
+  - Read, Write, Edit, MultiEdit, Bash, Glob, Grep tools
+  - WebFetch, WebSearch, NotebookEdit, TodoWrite tools
+  - Tool visualization with syntax highlighting and timing
+  - Undo capability and dry-run mode for safe operations
+- **Autonomy Controls:** Intelligent resource management and safety controls
+  - Budget limits with cost tracking and warnings
+  - Token limits for input/output token management
+  - Time limits and idle timeout detection
+  - Change limits (files/lines modified) with approval gates
+  - Configurable approval gates for sensitive operations
+- **Code Quality Integration:** Automated code quality enforcement
+  - Lint-after-edit with automatic linting after file changes
+  - Auto-fix capabilities for syntax errors and imports
+  - Pre-edit validation to prevent syntax errors
+  - Compiler feedback loop with TypeScript integration
+  - Test-Driven Development (TDD) mode support
+- **Tool Extensions:** Extensible tool system architecture
+  - Custom tool development with TypeScript/JavaScript
+  - Tool hooks for pre/post execution processing
+  - Tool aliases for common operation patterns
+  - Model Context Protocol (MCP) server integration
+- **MCP Ecosystem:** Marketplace and easy installation
+  - MCP server discovery and installation
+  - Auto-configuration for standard tool patterns
+  - Community tool sharing and distribution
+- **Policy-as-Code:** Repository rules and governance
+  - File path allowlist/blocklist configuration
+  - Approval rules for sensitive operations
+  - Secret leak detection and prevention
+  - Configurable enforcement modes (enforce/audit/disabled)
+- **Integration Testing:** Comprehensive test suite for v0.5.0 features
+  - Browser + Permission system integration tests
+  - Multi-tool workflow with policy enforcement tests
+  - Permission preset + autonomy controls integration tests
+  - MCP + Permission system integration tests
+  - Code quality + tool actions + undo integration tests
+  - End-to-end workflow integration tests
+
+### Enhanced
+
+- **API Reference:** Updated with v0.5.0 feature documentation
+- **Documentation:** Complete guides for all new v0.5.0 capabilities
+  - Browser automation guide with usage examples
+  - Permission system deep dive and configuration
+  - Autonomy controls setup and best practices
+  - Tool extensions development guide
+  - Code quality integration patterns
+
+### Fixed
+
+- Resolved cyclic dependency between `@apex/test-utils` and production packages that blocked Turbo builds
+- Fixed duplicate export declarations in API middleware (`auth.ts`)
+- Fixed `workspace:*` protocol references incompatible with npm workspaces
+- Aligned vitest ecosystem package versions (`vitest`, `@vitest/browser`, `@vitest/coverage-v8`) to prevent peer dependency conflicts
+- Fixed TypeScript type mismatches in CLI permission event handlers
+- Fixed `no-case-declarations` lint errors in browser package test utilities
+- Fixed `no-this-alias` lint error in orchestrator repair loop host
+- Fixed boolean coercion issue in web-ui MultiSelect component (`maxSelections && expr` returning `0`)
+- Reverted accidental pnpm migration back to npm workspaces
+
+### Documentation
+
+- Added comprehensive documentation for all v0.5.0 features
+- Updated ROADMAP.md to mark v0.5.0 features as complete
+- Enhanced API reference with tool system capabilities
+
 ## [0.4.0] - 2025-12-26
 
 ### Added

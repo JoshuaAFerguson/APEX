@@ -1,0 +1,60 @@
+# Malformed YAML Fixtures
+# Note: This file contains VALID YAML that represents malformed tool configs
+# For testing actual YAML parse errors, use getRawFixture() with malformed strings
+
+# Not an object or array (just a string)
+# This comment documents that testing raw string input requires a different approach
+
+# Object without expected structure
+random_key: random_value
+another_key: 123
+nested:
+  foo: bar
+
+---
+# Array of non-object items
+- just a string
+- 12345
+- true
+- null
+
+---
+# Deeply nested but not a tool
+wrapper:
+  inner:
+    deeper:
+      name: NotATool
+      irrelevant: data
+
+---
+# Object with extra unexpected fields only
+unexpected_field_1: value1
+unexpected_field_2: value2
+completely_wrong: true
+
+---
+# Empty document
+# (this is actually valid YAML representing null/empty)
+
+---
+# Tool-like but with wrong structure
+- name: AlmostATool
+  props:  # Should be 'parameters' not 'props'
+    type: object
+    properties:
+      field:
+        type: string
+  cmd: echo  # Should be 'command' not 'cmd'
+  desc: Description  # Should be 'description' not 'desc'
+
+---
+# Mixed valid and invalid
+- name: ValidTool
+  description: This one is valid
+  command: echo
+  enabled: true
+- not_a_tool: true
+  random_data: here
+- name: AnotherValidTool
+  description: Also valid
+  command: pwd

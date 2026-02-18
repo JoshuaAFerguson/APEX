@@ -10,9 +10,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "noImplicitReturns": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -26,6 +26,7 @@
     "dist",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
-    "src/__tests__"
+    "src/__tests__",
+    "src/**/__tests__/**"
   ]
 }

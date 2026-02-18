@@ -113,7 +113,7 @@ describe('Task Interface - resumeAttempts Field', () => {
     });
 
     it('should work with different task statuses', () => {
-      const statuses: TaskStatus[] = ['pending', 'running', 'completed', 'failed', 'cancelled'];
+      const statuses: TaskStatus[] = ['pending', 'queued', 'planning', 'in-progress', 'waiting-approval', 'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'];
 
       for (const status of statuses) {
         const task = createValidTask({

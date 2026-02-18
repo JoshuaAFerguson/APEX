@@ -302,7 +302,7 @@ describe('HandoffIndicator - Enhanced Visual Feedback', () => {
           colorPhase,
           progress: 0.5,
         });
-        render(
+        const { getByText } = render(
           <HandoffIndicator
             animationState={animationState}
             agentColors={mockAgentColors}
@@ -310,9 +310,8 @@ describe('HandoffIndicator - Enhanced Visual Feedback', () => {
           />
         );
 
-        // Visual intensity tests would need more complex rendering setup
-        // to check actual style properties applied to text elements
-        expect(true).toBe(true); // Placeholder - actual implementation would check styles
+        expect(getByText('planner')).toBeDefined();
+        expect(getByText('developer')).toBeDefined();
       });
     });
   });

@@ -357,8 +357,7 @@ describe('AgentPanel - Parallel Execution Edge Cases', () => {
       // Unmount component during potential state update
       unmount();
 
-      // Should not cause any errors
-      expect(true).toBe(true); // Test passes if no errors thrown
+      expect(screen.queryByText('unmount-test')).not.toBeInTheDocument();
     });
 
     it('handles prop changes during component re-render cycles', () => {

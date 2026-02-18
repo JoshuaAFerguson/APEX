@@ -10,6 +10,7 @@ describe.skip('UI Config Performance Tests', () => {
         previewConfidence: 0.1 + (i % 9) * 0.1, // 0.1 to 0.9
         autoExecuteHighConfidence: i % 3 === 0,
         previewTimeout: 1000 + (i % 10) * 1000, // 1000 to 10000
+        diffPreview: i % 4 === 0, // Test diffPreview with different values
       }));
 
       const startTime = performance.now();

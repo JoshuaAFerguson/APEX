@@ -4,6 +4,7 @@
  */
 
 import React from 'react'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThoughtDisplay } from '../ThoughtDisplay'
@@ -54,7 +55,7 @@ Stack trace shows issue in data processing
 Root cause: Missing null check before string operation
 Fix: Add defensive programming checks`
 
-      const onToggle = jest.fn()
+      const onToggle = vi.fn()
 
       render(
         <ThoughtDisplay
@@ -134,7 +135,7 @@ This architecture should support:
     })
 
     it('should handle rapid toggle interactions', async () => {
-      const onToggle = jest.fn()
+      const onToggle = vi.fn()
 
       render(
         <ThoughtDisplay

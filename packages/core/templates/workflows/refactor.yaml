@@ -1,0 +1,33 @@
+name: refactor
+description: Code refactoring workflow
+trigger:
+  - manual
+  - apex:refactor
+
+stages:
+  - name: analysis
+    agent: architect
+    description: Analyze current code and plan refactoring
+    outputs:
+      - refactoring_plan
+
+  - name: refactor
+    agent: developer
+    description: Execute refactoring
+    dependsOn: [analysis]
+    outputs:
+      - code_changes
+
+  - name: testing
+    agent: tester
+    description: Verify no regressions
+    dependsOn: [refactor]
+    outputs:
+      - test_results
+
+  - name: review
+    agent: reviewer
+    description: Review refactored code
+    dependsOn: [refactor, testing]
+    outputs:
+      - review_findings

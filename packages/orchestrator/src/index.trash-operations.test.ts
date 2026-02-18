@@ -136,7 +136,7 @@ describe('ApexOrchestrator Trash Operations', () => {
       });
 
       it('should handle task with various statuses', async () => {
-        const statuses: TaskStatus[] = ['pending', 'in-progress', 'completed', 'failed'];
+        const statuses: TaskStatus[] = ['pending', 'queued', 'planning', 'in-progress', 'waiting-approval', 'awaiting-approval', 'paused', 'completed', 'failed', 'cancelled'];
 
         for (const status of statuses) {
           const task = createMockTask({ status });

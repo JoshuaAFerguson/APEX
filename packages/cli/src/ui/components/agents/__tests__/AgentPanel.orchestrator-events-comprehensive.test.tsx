@@ -752,7 +752,7 @@ describe('AgentPanel - Orchestrator Events Comprehensive Integration', () => {
       unmount();
 
       // If we reach here without errors, cleanup worked properly
-      expect(true).toBe(true);
+      expect(mockUseOrchestratorEvents).toHaveBeenCalledTimes(6);
     });
   });
 

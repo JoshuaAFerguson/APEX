@@ -483,7 +483,9 @@ describe('REPL Cross-Platform Acceptance Tests', () => {
       // ✅ 4. Unit tests verify behavior
       // Verified by: this comprehensive test suite
 
-      expect(true).toBe(true); // All criteria verified
+      const { getPlatformShell } = require('@apexcli/core');
+      const shellConfig = getPlatformShell();
+      expect(shellConfig).toHaveProperty('shell');
     });
   });
 });

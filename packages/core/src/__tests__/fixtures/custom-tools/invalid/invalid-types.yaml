@@ -1,0 +1,76 @@
+# Invalid Types Fixtures
+# Tool configurations with incorrect field types for error testing
+
+# Invalid name type (number instead of string)
+- name: 12345
+  description: Tool with numeric name
+  command: echo
+  enabled: true
+
+# Invalid description type (array instead of string)
+- name: InvalidDescType
+  description:
+    - line 1
+    - line 2
+  command: echo
+  enabled: true
+
+# Invalid command type (object instead of string)
+- name: InvalidCommandType
+  description: Tool with object command
+  command:
+    program: echo
+    path: /usr/bin/echo
+  enabled: true
+
+# Invalid args type (string instead of array)
+- name: InvalidArgsType
+  description: Tool with string args
+  command: echo
+  args: "--help"
+  enabled: true
+
+# Invalid outputParser value (not in enum)
+- name: InvalidOutputParser
+  description: Tool with invalid output parser
+  command: echo
+  outputParser: xml
+  enabled: true
+
+# Invalid timeoutMs type (string instead of number)
+- name: InvalidTimeoutType
+  description: Tool with string timeout
+  command: echo
+  timeoutMs: "5000"
+  enabled: true
+
+# Invalid enabled type (string instead of boolean)
+- name: InvalidEnabledType
+  description: Tool with string enabled
+  command: echo
+  enabled: "true"
+
+# Invalid env type (array instead of record)
+- name: InvalidEnvType
+  description: Tool with array env
+  command: echo
+  env:
+    - VAR1=value1
+    - VAR2=value2
+  enabled: true
+
+# Invalid parameters type (array instead of object)
+- name: InvalidParamsType
+  description: Tool with array parameters
+  command: echo
+  parameters:
+    - name: param1
+    - name: param2
+  enabled: true
+
+# Invalid workingDirectory type (number instead of string)
+- name: InvalidWorkDirType
+  description: Tool with numeric working directory
+  command: echo
+  workingDirectory: 12345
+  enabled: true
