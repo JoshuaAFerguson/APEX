@@ -9,6 +9,11 @@
  */
 
 import { z } from 'zod';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+import { getPlatformShell } from './shell-utils';
 import {
   GitStatus,
   GitStatusSchema,
@@ -16,6 +21,7 @@ import {
   GitChangedFileSchema,
   ProjectStructure,
   ProjectStructureSchema,
+  ProjectEntry,
   ConfigurationInfo,
   ConfigurationInfoSchema,
   TestFrameworkInfo,
@@ -25,6 +31,8 @@ import {
   ProjectContext,
   ProjectContextSchema
 } from './types';
+
+const execAsync = promisify(exec);
 
 // ============================================================================
 // Zod Schemas and Types
@@ -200,8 +208,222 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to git status information
    */
   async getGitStatus(): Promise<GitStatus> {
-    // TODO: Implement git status detection
-    return this.getEmptyGitStatus();
+    try {
+      // First check if this is a git repository
+      await execAsync('git rev-parse --git-dir', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+    } catch {
+      // Not a git repository
+      return this.getEmptyGitStatus();
+    }
+
+    const gitStatus: Partial<GitStatus> = {
+      isRepository: true,
+      branch: null,
+      remoteBranch: null,
+      ahead: 0,
+      behind: 0,
+      staged: [],
+      unstaged: [],
+      untracked: [],
+      hasConflicts: false,
+      isDirty: false,
+      stashCount: 0,
+      remotes: [],
+    };
+
+    try {
+      // Get current branch name
+      const branchResult = await execAsync('git rev-parse --abbrev-ref HEAD', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+      gitStatus.branch = branchResult.stdout.trim() === 'HEAD' ? null : branchResult.stdout.trim();
+    } catch {
+      // Branch detection failed, keep as null
+    }
+
+    try {
+      // Get remote tracking branch
+      if (gitStatus.branch) {
+        const remoteResult = await execAsync(`git rev-parse --abbrev-ref "${gitStatus.branch}@{upstream}"`, {
+          cwd: this.projectPath,
+          shell: getPlatformShell().shell,
+        });
+        gitStatus.remoteBranch = remoteResult.stdout.trim();
+      }
+    } catch {
+      // No remote tracking branch
+    }
+
+    try {
+      // Get ahead/behind counts if we have a remote branch
+      if (gitStatus.remoteBranch) {
+        const aheadBehindResult = await execAsync(`git rev-list --count --left-right HEAD...${gitStatus.remoteBranch}`, {
+          cwd: this.projectPath,
+          shell: getPlatformShell().shell,
+        });
+        const [ahead, behind] = aheadBehindResult.stdout.trim().split('\t').map(n => parseInt(n, 10));
+        gitStatus.ahead = ahead || 0;
+        gitStatus.behind = behind || 0;
+      }
+    } catch {
+      // Keep default values
+    }
+
+    try {
+      // Get file status
+      const statusResult = await execAsync('git status --porcelain=v1', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+
+      const lines = statusResult.stdout.trim().split('\n').filter(line => line.length > 0);
+      const staged: GitChangedFile[] = [];
+      const unstaged: GitChangedFile[] = [];
+      const untracked: string[] = [];
+
+      for (const line of lines) {
+        const statusCode = line.substring(0, 2);
+        const filePath = line.substring(3);
+
+        // Check for untracked files
+        if (statusCode === '??') {
+          untracked.push(filePath);
+          continue;
+        }
+
+        // Check for conflicts
+        if (statusCode.includes('U') || statusCode === 'AA' || statusCode === 'DD') {
+          gitStatus.hasConflicts = true;
+        }
+
+        // Parse staged changes (first character)
+        const stagedStatus = statusCode[0];
+        if (stagedStatus !== ' ' && stagedStatus !== '?') {
+          // Map git status codes to our enum values
+          let mappedStatus: GitChangedFile['status'];
+          switch (stagedStatus) {
+            case 'M':
+              mappedStatus = 'M'; // Modified
+              break;
+            case 'A':
+              mappedStatus = 'A'; // Added
+              break;
+            case 'D':
+              mappedStatus = 'D'; // Deleted
+              break;
+            case 'R':
+              mappedStatus = 'R'; // Renamed
+              break;
+            case 'C':
+              mappedStatus = 'C'; // Copied
+              break;
+            case 'U':
+              mappedStatus = 'U'; // Unmerged (conflict)
+              break;
+            default:
+              mappedStatus = 'M'; // Default to modified
+          }
+
+          staged.push({
+            path: filePath,
+            status: mappedStatus,
+          });
+        }
+
+        // Parse unstaged changes (second character)
+        const unstagedStatus = statusCode[1];
+        if (unstagedStatus !== ' ' && unstagedStatus !== '?') {
+          let mappedStatus: GitChangedFile['status'];
+          switch (unstagedStatus) {
+            case 'M':
+              mappedStatus = 'M'; // Modified
+              break;
+            case 'A':
+              mappedStatus = 'A'; // Added
+              break;
+            case 'D':
+              mappedStatus = 'D'; // Deleted
+              break;
+            case 'R':
+              mappedStatus = 'R'; // Renamed
+              break;
+            case 'C':
+              mappedStatus = 'C'; // Copied
+              break;
+            case 'U':
+              mappedStatus = 'U'; // Unmerged (conflict)
+              break;
+            default:
+              mappedStatus = 'M'; // Default to modified
+          }
+
+          unstaged.push({
+            path: filePath,
+            status: mappedStatus,
+          });
+        }
+      }
+
+      gitStatus.staged = staged;
+      gitStatus.unstaged = unstaged;
+      gitStatus.untracked = untracked;
+      gitStatus.isDirty = staged.length > 0 || unstaged.length > 0 || untracked.length > 0;
+    } catch {
+      // Keep default empty arrays
+    }
+
+    try {
+      // Get last commit information
+      const lastCommitResult = await execAsync('git log -1 --format="%H|%s|%ct"', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+      const [hash, message, timestamp] = lastCommitResult.stdout.trim().split('|');
+      gitStatus.lastCommitHash = hash.substring(0, 7); // Short hash
+      gitStatus.lastCommitMessage = message;
+      gitStatus.lastCommitTimestamp = new Date(parseInt(timestamp, 10) * 1000);
+    } catch {
+      // Keep undefined
+    }
+
+    try {
+      // Get stash count
+      const stashResult = await execAsync('git stash list', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+      gitStatus.stashCount = stashResult.stdout.trim().split('\n').filter(line => line.length > 0).length;
+    } catch {
+      // Keep default 0
+    }
+
+    try {
+      // Get remote list
+      const remotesResult = await execAsync('git remote -v', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+      const remoteLines = remotesResult.stdout.trim().split('\n').filter(line => line.length > 0);
+      const remotes = new Map<string, string>();
+
+      for (const line of remoteLines) {
+        const [name, url, type] = line.split(/\s+/);
+        // Only include fetch URLs to avoid duplicates
+        if (type === '(fetch)') {
+          remotes.set(name, url);
+        }
+      }
+
+      gitStatus.remotes = Array.from(remotes.entries()).map(([name, url]) => ({ name, url }));
+    } catch {
+      // Keep default empty array
+    }
+
+    return GitStatusSchema.parse(gitStatus);
   }
 
   /**

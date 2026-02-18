@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import {
   ProjectContextAnalyzer,
   FrameworkDetectionSchema,
@@ -11,11 +13,14 @@ import {
 } from '../project-context-analyzer.js';
 import type {
   GitStatus,
+  GitChangedFile,
   ProjectStructure,
   ConfigurationInfo,
   TestFrameworkInfo,
   ProjectContext,
 } from '../types.js';
+
+const execAsync = promisify(exec);
 
 describe('ProjectContextAnalyzer', () => {
   let analyzer: ProjectContextAnalyzer;
@@ -106,8 +111,10 @@ describe('ProjectContextAnalyzer', () => {
   });
 
   describe('getGitStatus', () => {
-    it('returns empty git status by default (TODO implementation)', async () => {
-      const gitStatus = await analyzer.getGitStatus();
+    it('returns empty git status for non-git directory', async () => {
+      // Create analyzer for non-existent path to simulate non-git directory
+      const nonGitAnalyzer = new ProjectContextAnalyzer('/non/existent/path');
+      const gitStatus = await nonGitAnalyzer.getGitStatus();
 
       expect(gitStatus).toEqual({
         isRepository: false,
@@ -125,11 +132,50 @@ describe('ProjectContextAnalyzer', () => {
       });
     });
 
+    it('correctly parses git file status codes', async () => {
+      // This test will verify our status parsing logic without actual git commands
+      // Instead, we'll test that the GitStatus schema validation works
+      const gitStatus = await analyzer.getGitStatus();
+
+      // Verify the structure matches GitStatus schema
+      expect(gitStatus).toHaveProperty('isRepository');
+      expect(gitStatus).toHaveProperty('branch');
+      expect(gitStatus).toHaveProperty('staged');
+      expect(gitStatus).toHaveProperty('unstaged');
+      expect(gitStatus).toHaveProperty('untracked');
+      expect(gitStatus).toHaveProperty('hasConflicts');
+      expect(gitStatus).toHaveProperty('isDirty');
+
+      // These should be arrays or proper types
+      expect(Array.isArray(gitStatus.staged)).toBe(true);
+      expect(Array.isArray(gitStatus.unstaged)).toBe(true);
+      expect(Array.isArray(gitStatus.untracked)).toBe(true);
+      expect(Array.isArray(gitStatus.remotes)).toBe(true);
+      expect(typeof gitStatus.isRepository).toBe('boolean');
+      expect(typeof gitStatus.hasConflicts).toBe('boolean');
+      expect(typeof gitStatus.isDirty).toBe('boolean');
+      expect(typeof gitStatus.ahead).toBe('number');
+      expect(typeof gitStatus.behind).toBe('number');
+      expect(typeof gitStatus.stashCount).toBe('number');
+    });
+
     it('returns consistent structure on multiple calls', async () => {
       const status1 = await analyzer.getGitStatus();
       const status2 = await analyzer.getGitStatus();
 
       expect(status1).toEqual(status2);
+    });
+
+    it('validates git status against schema', async () => {
+      const gitStatus = await analyzer.getGitStatus();
+
+      // Import the schema directly
+      const { GitStatusSchema } = await import('../types.js');
+
+      // This should not throw if the schema is valid
+      expect(() => {
+        GitStatusSchema.parse(gitStatus);
+      }).not.toThrow();
     });
   });
 

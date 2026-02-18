@@ -377,4 +377,63 @@ describe('ProjectContextAnalyzer Integration Tests', () => {
       });
     });
   });
+
+  describe('Git Status Integration', () => {
+    it('detects non-git directory correctly', async () => {
+      const analyzer = new ProjectContextAnalyzer(testProjectPath);
+      const gitStatus = await analyzer.getGitStatus();
+
+      expect(gitStatus.isRepository).toBe(false);
+      expect(gitStatus.branch).toBe(null);
+      expect(gitStatus.staged).toEqual([]);
+      expect(gitStatus.unstaged).toEqual([]);
+      expect(gitStatus.untracked).toEqual([]);
+      expect(gitStatus.hasConflicts).toBe(false);
+      expect(gitStatus.isDirty).toBe(false);
+      expect(gitStatus.remotes).toEqual([]);
+    });
+
+    it('returns consistent git status structure', async () => {
+      const analyzer = new ProjectContextAnalyzer(testProjectPath);
+      const status1 = await analyzer.getGitStatus();
+      const status2 = await analyzer.getGitStatus();
+
+      // Should be identical for the same directory
+      expect(status1).toEqual(status2);
+    });
+
+    it('validates returned git status against schema', async () => {
+      const analyzer = new ProjectContextAnalyzer(testProjectPath);
+      const gitStatus = await analyzer.getGitStatus();
+
+      const { GitStatusSchema } = await import('../types.js');
+
+      // Should not throw
+      expect(() => {
+        GitStatusSchema.parse(gitStatus);
+      }).not.toThrow();
+    });
+
+    it('handles git status properties correctly', async () => {
+      const analyzer = new ProjectContextAnalyzer(testProjectPath);
+      const gitStatus = await analyzer.getGitStatus();
+
+      // All properties should be properly typed
+      expect(typeof gitStatus.isRepository).toBe('boolean');
+      expect(typeof gitStatus.hasConflicts).toBe('boolean');
+      expect(typeof gitStatus.isDirty).toBe('boolean');
+      expect(typeof gitStatus.ahead).toBe('number');
+      expect(typeof gitStatus.behind).toBe('number');
+      expect(typeof gitStatus.stashCount).toBe('number');
+
+      // Branch can be string or null
+      expect(gitStatus.branch === null || typeof gitStatus.branch === 'string').toBe(true);
+
+      // Arrays should be arrays
+      expect(Array.isArray(gitStatus.staged)).toBe(true);
+      expect(Array.isArray(gitStatus.unstaged)).toBe(true);
+      expect(Array.isArray(gitStatus.untracked)).toBe(true);
+      expect(Array.isArray(gitStatus.remotes)).toBe(true);
+    });
+  });
 });
