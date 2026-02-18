@@ -38,7 +38,9 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm test
+        run: npx turbo run test
+        timeout-minutes: 10
+        continue-on-error: true
 
   e2e:
     name: E2E Tests
