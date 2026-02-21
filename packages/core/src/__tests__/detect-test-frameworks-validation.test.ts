@@ -165,6 +165,93 @@ describe('detectTestFrameworks() - Acceptance Criteria Validation', () => {
 
       expect(frameworkNames).toContain('Unittest');
     });
+
+    it('should detect Cargo Test framework', async () => {
+      const cargoToml = `
+[package]
+name = "test-project"
+version = "0.1.0"
+
+[dependencies]
+`;
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Cargo.toml'),
+        cargoToml
+      );
+
+      // Create tests directory
+      await fs.promises.mkdir(path.join(tempDir, 'tests'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'tests', 'integration_test.rs'),
+        '#[test] fn test_something() {}'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+      const frameworkNames = result.map(f => f.name);
+
+      expect(frameworkNames).toContain('Cargo Test');
+    });
+
+    it('should detect RSpec framework', async () => {
+      const rspecConfig = `
+--color
+--format documentation
+`;
+      await fs.promises.writeFile(
+        path.join(tempDir, '.rspec'),
+        rspecConfig
+      );
+
+      // Create spec directory
+      await fs.promises.mkdir(path.join(tempDir, 'spec'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'spec', 'example_spec.rb'),
+        'RSpec.describe "Example" do\nend'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+      const frameworkNames = result.map(f => f.name);
+
+      expect(frameworkNames).toContain('RSpec');
+    });
+
+    it('should detect JUnit framework', async () => {
+      const pomXml = `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>test-project</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pom.xml'),
+        pomXml
+      );
+
+      // Create test directory structure
+      await fs.promises.mkdir(path.join(tempDir, 'src', 'test', 'java'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'src', 'test', 'java', 'ExampleTest.java'),
+        'import org.junit.Test;\npublic class ExampleTest {\n    @Test\n    public void test() {}\n}'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+      const frameworkNames = result.map(f => f.name);
+
+      expect(frameworkNames).toContain('JUnit');
+    });
   });
 
   describe('ACCEPTANCE CRITERIA 2: Returns framework name, config file path, and test run command', () => {
@@ -238,6 +325,9 @@ describe('detectTestFrameworks() - Acceptance Criteria Validation', () => {
         Mocha: 'mocha',
         Playwright: 'playwright test',
         Cypress: 'cypress run',
+        'Cargo Test': 'cargo test',
+        RSpec: 'bundle exec rspec',
+        JUnit: 'mvn test',
       };
 
       result.forEach(framework => {
@@ -335,7 +425,10 @@ describe('detectTestFrameworks() - Acceptance Criteria Validation', () => {
         'AVA',
         'Tape',
         'QUnit',
-        'Unittest'
+        'Unittest',
+        'Cargo Test',
+        'RSpec',
+        'JUnit'
       ];
 
       // At least 6 of these should be present

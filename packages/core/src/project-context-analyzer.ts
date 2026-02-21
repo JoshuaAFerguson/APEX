@@ -1400,6 +1400,27 @@ export class ProjectContextAnalyzer {
         testIndicators: ['test_*.py', '*_test.py', 'tests/'],
         runCommand: 'python -m unittest',
       },
+      {
+        name: 'Cargo Test',
+        packageNames: [],  // Rust uses Cargo.toml, not package.json
+        configFiles: ['Cargo.toml'],
+        testIndicators: ['tests/', 'src/lib.rs', 'src/main.rs'],
+        runCommand: 'cargo test',
+      },
+      {
+        name: 'RSpec',
+        packageNames: [],  // Ruby uses Gemfile, not package.json
+        configFiles: ['.rspec', 'spec/spec_helper.rb', 'spec/rails_helper.rb'],
+        testIndicators: ['spec/', 'Gemfile'],
+        runCommand: 'bundle exec rspec',
+      },
+      {
+        name: 'JUnit',
+        packageNames: [],  // Java uses Maven/Gradle, not package.json
+        configFiles: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
+        testIndicators: ['src/test/java/', 'src/test/'],
+        runCommand: 'mvn test',
+      },
     ];
 
     // Load package.json to check for dependencies

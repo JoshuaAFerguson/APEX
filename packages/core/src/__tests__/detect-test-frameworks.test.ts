@@ -517,5 +517,173 @@ describe('detectTestFrameworks() - Comprehensive Test Suite', () => {
       expect(jestFramework?.configFile).toBe('jest.config.js');
       expect(jestFramework?.runCommand).toBe('npm test');
     });
+
+    it('should detect Cargo Test framework from Cargo.toml', async () => {
+      const cargoToml = `
+[package]
+name = "test-project"
+version = "0.1.0"
+
+[dependencies]
+`;
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Cargo.toml'),
+        cargoToml
+      );
+
+      // Create tests directory
+      await fs.promises.mkdir(path.join(tempDir, 'tests'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'tests', 'integration_test.rs'),
+        '#[test] fn test_something() {}'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+
+      expect(result).toContainEqual(
+        expect.objectContaining({
+          name: 'Cargo Test',
+          configFile: 'Cargo.toml',
+          runCommand: 'cargo test',
+        })
+      );
+    });
+
+    it('should detect RSpec framework from .rspec config', async () => {
+      const rspecConfig = `
+--color
+--format documentation
+`;
+      await fs.promises.writeFile(
+        path.join(tempDir, '.rspec'),
+        rspecConfig
+      );
+
+      // Create spec directory
+      await fs.promises.mkdir(path.join(tempDir, 'spec'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'spec', 'example_spec.rb'),
+        'RSpec.describe "Example" do\nend'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+
+      expect(result).toContainEqual(
+        expect.objectContaining({
+          name: 'RSpec',
+          configFile: '.rspec',
+          runCommand: 'bundle exec rspec',
+        })
+      );
+    });
+
+    it('should detect JUnit framework from pom.xml', async () => {
+      const pomXml = `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>test-project</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pom.xml'),
+        pomXml
+      );
+
+      // Create test directory structure
+      await fs.promises.mkdir(path.join(tempDir, 'src', 'test', 'java'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'src', 'test', 'java', 'ExampleTest.java'),
+        'import org.junit.Test;\npublic class ExampleTest {\n    @Test\n    public void test() {}\n}'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+
+      expect(result).toContainEqual(
+        expect.objectContaining({
+          name: 'JUnit',
+          configFile: 'pom.xml',
+          runCommand: 'mvn test',
+        })
+      );
+    });
+
+    it('should detect JUnit framework from build.gradle', async () => {
+      const buildGradle = `
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+}
+
+test {
+    useJUnitPlatform()
+}
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'build.gradle'),
+        buildGradle
+      );
+
+      // Create test directory structure
+      await fs.promises.mkdir(path.join(tempDir, 'src', 'test', 'java'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(tempDir, 'src', 'test', 'java', 'ExampleTest.java'),
+        'import org.junit.jupiter.api.Test;\nclass ExampleTest {\n    @Test\n    void test() {}\n}'
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+
+      expect(result).toContainEqual(
+        expect.objectContaining({
+          name: 'JUnit',
+          configFile: 'build.gradle',
+          runCommand: 'mvn test',
+        })
+      );
+    });
+
+    it('should detect RSpec from Gemfile', async () => {
+      const gemfile = `
+source 'https://rubygems.org'
+
+gem 'rspec', '~> 3.0'
+gem 'rails', '~> 7.0'
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile
+      );
+
+      const result = await analyzer.detectTestFrameworks();
+
+      expect(result).toContainEqual(
+        expect.objectContaining({
+          name: 'RSpec',
+          runCommand: 'bundle exec rspec',
+        })
+      );
+    });
   });
 });
