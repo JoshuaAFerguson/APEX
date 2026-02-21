@@ -10896,3 +10896,309 @@ export const ProjectContextSchema = z.object({
   })).optional().default([]),
 });
 export type ProjectContext = z.infer<typeof ProjectContextSchema>;
+
+// ============================================================================
+// Codebase Analysis Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Analysis of technology stack including languages, frameworks, and runtime
+ * @example
+ * ```typescript
+ * const stackAnalysis: StackAnalysis = {
+ *   primaryLanguage: 'TypeScript',
+ *   languages: [
+ *     { name: 'TypeScript', percentage: 85, files: 120 },
+ *     { name: 'JavaScript', percentage: 15, files: 20 }
+ *   ],
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'Node.js', version: '18.17.0', category: 'runtime' }
+ *   ],
+ *   buildTools: ['Vite', 'TypeScript'],
+ *   packageManagers: ['npm']
+ * };
+ * ```
+ */
+export const StackAnalysisSchema = z.object({
+  /** Primary programming language used in the codebase */
+  primaryLanguage: z.string(),
+
+  /** Breakdown of languages used with percentages and file counts */
+  languages: z.array(z.object({
+    name: z.string(),
+    percentage: z.number().min(0).max(100),
+    files: z.number().int().min(0),
+    extensions: z.array(z.string()).optional(),
+  })),
+
+  /** Detected frameworks and libraries with version information */
+  frameworks: z.array(z.object({
+    name: z.string(),
+    version: z.string().optional(),
+    category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'other']),
+    confidence: z.number().min(0).max(1).optional().default(1),
+  })),
+
+  /** Build tools and bundlers detected */
+  buildTools: z.array(z.string()),
+
+  /** Package managers in use */
+  packageManagers: z.array(z.enum(['npm', 'yarn', 'pnpm', 'bun'])),
+
+  /** Runtime environments */
+  runtimes: z.array(z.object({
+    name: z.string(),
+    version: z.string().optional(),
+    type: z.enum(['node', 'browser', 'deno', 'bun', 'other']),
+  })).optional().default([]),
+});
+export type StackAnalysis = z.infer<typeof StackAnalysisSchema>;
+
+/**
+ * Analysis of codebase architecture including components, layers, and patterns
+ * @example
+ * ```typescript
+ * const archAnalysis: ArchitectureAnalysis = {
+ *   pattern: 'layered',
+ *   components: [
+ *     { name: 'UserService', type: 'service', path: 'src/services/user.ts' },
+ *     { name: 'UserController', type: 'controller', path: 'src/controllers/user.ts' }
+ *   ],
+ *   layers: [
+ *     { name: 'presentation', description: 'UI components', paths: ['src/components'] },
+ *     { name: 'business', description: 'Business logic', paths: ['src/services'] }
+ *   ],
+ *   dependencies: { external: 25, internal: 45, circular: 2 }
+ * };
+ * ```
+ */
+export const ArchitectureAnalysisSchema = z.object({
+  /** Overall architectural pattern detected */
+  pattern: z.enum(['layered', 'microservices', 'mvc', 'mvp', 'mvvm', 'component-based', 'modular', 'monolithic', 'hexagonal', 'onion', 'clean', 'other']),
+
+  /** Key components identified in the codebase */
+  components: z.array(z.object({
+    name: z.string(),
+    type: z.enum(['component', 'service', 'controller', 'model', 'view', 'repository', 'factory', 'utility', 'middleware', 'hook', 'store', 'other']),
+    path: z.string(),
+    dependencies: z.array(z.string()).optional().default([]),
+    exports: z.array(z.string()).optional().default([]),
+    loc: z.number().int().min(0).optional(),
+  })),
+
+  /** Architectural layers or modules */
+  layers: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    paths: z.array(z.string()),
+    dependencies: z.array(z.string()).optional().default([]),
+  })),
+
+  /** Dependency analysis summary */
+  dependencies: z.object({
+    external: z.number().int().min(0),
+    internal: z.number().int().min(0),
+    circular: z.number().int().min(0),
+    unused: z.number().int().min(0).optional().default(0),
+  }),
+
+  /** Entry points to the application */
+  entryPoints: z.array(z.object({
+    path: z.string(),
+    type: z.enum(['main', 'cli', 'server', 'worker', 'test', 'other']),
+    description: z.string().optional(),
+  })).optional().default([]),
+});
+export type ArchitectureAnalysis = z.infer<typeof ArchitectureAnalysisSchema>;
+
+/**
+ * Analysis of coding conventions and style patterns
+ * @example
+ * ```typescript
+ * const conventionAnalysis: ConventionAnalysis = {
+ *   fileNaming: 'camelCase',
+ *   functionNaming: 'camelCase',
+ *   variableNaming: 'camelCase',
+ *   indentation: { type: 'spaces', size: 2 },
+ *   imports: { style: 'es6', grouping: 'type-separate' },
+ *   documentation: { style: 'jsdoc', coverage: 75 }
+ * };
+ * ```
+ */
+export const ConventionAnalysisSchema = z.object({
+  /** File naming convention pattern */
+  fileNaming: z.enum(['camelCase', 'PascalCase', 'kebab-case', 'snake_case', 'mixed', 'inconsistent']),
+
+  /** Function/method naming convention */
+  functionNaming: z.enum(['camelCase', 'PascalCase', 'snake_case', 'mixed', 'inconsistent']),
+
+  /** Variable naming convention */
+  variableNaming: z.enum(['camelCase', 'PascalCase', 'snake_case', 'SCREAMING_SNAKE_CASE', 'mixed', 'inconsistent']),
+
+  /** Class naming convention */
+  classNaming: z.enum(['PascalCase', 'camelCase', 'snake_case', 'mixed', 'inconsistent']).optional(),
+
+  /** Constant naming convention */
+  constantNaming: z.enum(['SCREAMING_SNAKE_CASE', 'camelCase', 'PascalCase', 'mixed', 'inconsistent']).optional(),
+
+  /** Indentation settings */
+  indentation: z.object({
+    type: z.enum(['spaces', 'tabs', 'mixed']),
+    size: z.number().int().min(1).max(8).optional(),
+  }),
+
+  /** Import/export style patterns */
+  imports: z.object({
+    style: z.enum(['es6', 'commonjs', 'amd', 'umd', 'mixed']),
+    grouping: z.enum(['none', 'type-separate', 'source-separate', 'alphabetical', 'custom']).optional(),
+    quotes: z.enum(['single', 'double', 'mixed']).optional(),
+  }),
+
+  /** Documentation patterns */
+  documentation: z.object({
+    style: z.enum(['jsdoc', 'tsdoc', 'inline', 'markdown', 'none', 'mixed']),
+    coverage: z.number().min(0).max(100),
+  }),
+
+  /** Code formatting patterns */
+  formatting: z.object({
+    lineLength: z.number().int().min(40).max(200).optional(),
+    semicolons: z.enum(['required', 'optional', 'mixed']).optional(),
+    quotes: z.enum(['single', 'double', 'backtick', 'mixed']).optional(),
+    trailingCommas: z.enum(['always', 'never', 'es5', 'mixed']).optional(),
+  }).optional(),
+});
+export type ConventionAnalysis = z.infer<typeof ConventionAnalysisSchema>;
+
+/**
+ * Analysis of technical debt including categorization and severity
+ * @example
+ * ```typescript
+ * const debtAnalysis: TechnicalDebtAnalysis = {
+ *   totalScore: 42,
+ *   categories: [
+ *     { category: 'code-smell', count: 15, severity: 'medium', examples: ['Large function in user.ts'] },
+ *     { category: 'duplication', count: 8, severity: 'high', examples: ['Repeated validation logic'] }
+ *   ],
+ *   hotspots: [
+ *     { path: 'src/legacy/old-api.js', score: 95, issues: ['outdated-dependency', 'no-tests'] }
+ *   ],
+ *   trends: { improving: true, changeRate: -5.2 }
+ * };
+ * ```
+ */
+export const TechnicalDebtAnalysisSchema = z.object({
+  /** Overall technical debt score (0-100, higher is worse) */
+  totalScore: z.number().min(0).max(100),
+
+  /** Breakdown by debt category */
+  categories: z.array(z.object({
+    category: z.enum([
+      'code-smell',
+      'duplication',
+      'complexity',
+      'outdated-dependency',
+      'security-vulnerability',
+      'performance',
+      'maintainability',
+      'testability',
+      'documentation',
+      'dead-code',
+      'technical-design',
+      'other'
+    ]),
+    count: z.number().int().min(0),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+    examples: z.array(z.string()).optional().default([]),
+    estimatedEffort: z.string().optional(), // e.g., "2 hours", "1 day", "1 week"
+  })),
+
+  /** Files or areas with highest technical debt */
+  hotspots: z.array(z.object({
+    path: z.string(),
+    score: z.number().min(0).max(100),
+    issues: z.array(z.string()),
+    loc: z.number().int().min(0).optional(),
+    lastModified: z.date().optional(),
+  })),
+
+  /** Metrics and trends */
+  metrics: z.object({
+    codeComplexity: z.number().min(0).optional(),
+    testCoverage: z.number().min(0).max(100).optional(),
+    duplicatedLinesPercent: z.number().min(0).max(100).optional(),
+    maintainabilityIndex: z.number().min(0).max(100).optional(),
+  }).optional(),
+
+  /** Trend analysis */
+  trends: z.object({
+    improving: z.boolean(),
+    changeRate: z.number(), // Percentage change in debt score
+    timeframe: z.string().optional().default('last 30 days'),
+  }).optional(),
+});
+export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
+
+/**
+ * Comprehensive codebase analysis combining all analysis types
+ * This is the main output type for codebase analysis operations
+ *
+ * @example
+ * ```typescript
+ * const analysis: CodebaseAnalysis = {
+ *   timestamp: new Date(),
+ *   projectPath: '/path/to/project',
+ *   stack: { primaryLanguage: 'TypeScript', ... },
+ *   architecture: { pattern: 'layered', ... },
+ *   conventions: { fileNaming: 'camelCase', ... },
+ *   technicalDebt: { totalScore: 42, ... },
+ *   summary: {
+ *     totalFiles: 150,
+ *     totalLines: 25000,
+ *     analysisVersion: '1.0.0'
+ *   }
+ * };
+ * ```
+ */
+export const CodebaseAnalysisSchema = z.object({
+  /** When the analysis was performed */
+  timestamp: z.date(),
+
+  /** Path to the analyzed project */
+  projectPath: z.string(),
+
+  /** Technology stack analysis */
+  stack: StackAnalysisSchema,
+
+  /** Architecture analysis */
+  architecture: ArchitectureAnalysisSchema,
+
+  /** Coding convention analysis */
+  conventions: ConventionAnalysisSchema,
+
+  /** Technical debt analysis */
+  technicalDebt: TechnicalDebtAnalysisSchema,
+
+  /** High-level summary metrics */
+  summary: z.object({
+    totalFiles: z.number().int().min(0),
+    totalLines: z.number().int().min(0),
+    analysisVersion: z.string(),
+    confidence: z.number().min(0).max(1).optional().default(1),
+    warnings: z.array(z.string()).optional().default([]),
+  }),
+
+  /** Metadata about the analysis process */
+  metadata: z.object({
+    analysisTools: z.array(z.string()).optional().default([]),
+    excludedPaths: z.array(z.string()).optional().default([]),
+    analysisTime: z.number().min(0).optional(), // Time in milliseconds
+    errors: z.array(z.object({
+      component: z.string(),
+      error: z.string(),
+      severity: z.enum(['warning', 'error']),
+    })).optional().default([]),
+  }).optional(),
+});
+export type CodebaseAnalysis = z.infer<typeof CodebaseAnalysisSchema>;
