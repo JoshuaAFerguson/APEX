@@ -121,6 +121,10 @@ export class ProjectContextAnalyzer {
   private readonly projectPath: string;
   private readonly options: Required<ProjectContextAnalyzerOptions>;
 
+  // Cache for expensive operations
+  private readonly cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  private static readonly DEFAULT_CACHE_TTL = 300000; // 5 minutes in milliseconds
+
   /**
    * Create a new ProjectContextAnalyzer instance
    * @param projectPath - Path to the project root directory
@@ -129,6 +133,57 @@ export class ProjectContextAnalyzer {
   constructor(projectPath: string, options: ProjectContextAnalyzerOptions = {}) {
     this.projectPath = projectPath;
     this.options = { ...DEFAULT_OPTIONS, ...options };
+  }
+
+  /**
+   * Get cached data if available and not expired
+   * @param key - Cache key
+   * @returns Cached data or undefined if not found or expired
+   */
+  private getCachedData<T>(key: string): T | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      return undefined;
+    }
+
+    const now = Date.now();
+    if (now - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      return undefined;
+    }
+
+    return entry.data as T;
+  }
+
+  /**
+   * Set data in cache with TTL
+   * @param key - Cache key
+   * @param data - Data to cache
+   * @param ttl - Time to live in milliseconds (default: 5 minutes)
+   */
+  private setCachedData<T>(key: string, data: T, ttl: number = ProjectContextAnalyzer.DEFAULT_CACHE_TTL): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl,
+    });
+  }
+
+  /**
+   * Clear all cached data
+   */
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  public getCacheStats(): { size: number; keys: string[] } {
+    return {
+      size: this.cache.size,
+      keys: Array.from(this.cache.keys()),
+    };
   }
 
   /**
@@ -160,6 +215,11 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to git status information
    */
   async getGitStatus(): Promise<GitStatus> {
+    const cacheKey = `git-status-${this.projectPath}`;
+    const cached = this.getCachedData<GitStatus>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     try {
       // First check if this is a git repository
       await execAsync('git rev-parse --git-dir', {
@@ -404,7 +464,9 @@ export class ProjectContextAnalyzer {
       // Keep default empty array
     }
 
-    return GitStatusSchema.parse(gitStatus);
+    const result = GitStatusSchema.parse(gitStatus);
+    this.setCachedData(cacheKey, result, 30000); // Cache git status for 30 seconds (shorter TTL as it changes frequently)
+    return result;
   }
 
   /**
@@ -412,6 +474,11 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to project structure information
    */
   async getProjectStructure(): Promise<ProjectStructure> {
+    const cacheKey = `project-structure-${this.projectPath}`;
+    const cached = this.getCachedData<ProjectStructure>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const structure: Partial<ProjectStructure> = {
       root: this.projectPath,
       totalFiles: 0,
@@ -470,7 +537,9 @@ export class ProjectContextAnalyzer {
       console.error('Error scanning project structure:', error);
     }
 
-    return ProjectStructureSchema.parse(structure);
+    const result = ProjectStructureSchema.parse(structure);
+    this.setCachedData(cacheKey, result); // Cache project structure for 5 minutes
+    return result;
   }
 
   /**
@@ -516,6 +585,11 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to framework detection results
    */
   async detectFrameworks(): Promise<FrameworkDetection> {
+    const cacheKey = `frameworks-${this.projectPath}`;
+    const cached = this.getCachedData<FrameworkDetection>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const detection: Partial<FrameworkDetection> = {
       frameworks: [],
       languages: [],
@@ -574,7 +648,9 @@ export class ProjectContextAnalyzer {
       detection.error = `Framework detection failed: ${error instanceof Error ? error.message : String(error)}`;
     }
 
-    return FrameworkDetectionSchema.parse(detection);
+    const result = FrameworkDetectionSchema.parse(detection);
+    this.setCachedData(cacheKey, result); // Cache framework detection for 5 minutes
+    return result;
   }
 
   /**
@@ -582,6 +658,11 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to list of configuration information
    */
   async getConfigurationInfoList(): Promise<ConfigurationInfo[]> {
+    const cacheKey = `configurations-${this.projectPath}`;
+    const cached = this.getCachedData<ConfigurationInfo[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const configurations: ConfigurationInfo[] = [];
 
     // Configuration file patterns to look for
@@ -692,7 +773,9 @@ export class ProjectContextAnalyzer {
       return a.name.localeCompare(b.name);
     });
 
-    return configurations.map(config => ConfigurationInfoSchema.parse(config));
+    const result = configurations.map(config => ConfigurationInfoSchema.parse(config));
+    this.setCachedData(cacheKey, result); // Cache configurations for 5 minutes
+    return result;
   }
 
   /**
@@ -1169,6 +1252,11 @@ export class ProjectContextAnalyzer {
    * @returns Promise resolving to list of test framework information
    */
   async getTestFrameworkInfoList(): Promise<TestFrameworkInfo[]> {
+    const cacheKey = `test-frameworks-${this.projectPath}`;
+    const cached = this.getCachedData<TestFrameworkInfo[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const testFrameworks: TestFrameworkInfo[] = [];
 
     // Test framework detection rules
@@ -1305,7 +1393,9 @@ export class ProjectContextAnalyzer {
       testFrameworks.push(...additionalTools);
     }
 
-    return testFrameworks.map(framework => TestFrameworkInfoSchema.parse(framework));
+    const result = testFrameworks.map(framework => TestFrameworkInfoSchema.parse(framework));
+    this.setCachedData(cacheKey, result); // Cache test frameworks for 5 minutes
+    return result;
   }
 
   /**
