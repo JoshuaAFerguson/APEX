@@ -3607,7 +3607,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Convert agent model to SDK model format
     const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                     agent.model === 'haiku' ? 'claude-3-5-haiku-20241022' :
+                     agent.model === 'haiku' ? 'claude-haiku-4-5-20251001' :
                      'claude-sonnet-4-20250514';
 
     // Check session limits before starting agent query

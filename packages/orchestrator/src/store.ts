@@ -2283,6 +2283,30 @@ export class TaskStore {
            JOIN tasks dep ON dep.id = d.depends_on_task_id
            WHERE d.task_id = t.id
            AND dep.status NOT IN ('completed', 'cancelled')
+         )
+         -- Sequential subtask ordering: if this task is a child of a sequential parent,
+         -- only consider it ready if ALL preceding siblings are completed/cancelled.
+         -- This prevents out-of-order execution of subtasks.
+         AND (
+           t.parent_task_id IS NULL
+           OR (
+             SELECT COALESCE(p.subtask_strategy, 'sequential')
+             FROM tasks p WHERE p.id = t.parent_task_id
+           ) != 'sequential'
+           OR NOT EXISTS (
+             SELECT 1
+             FROM tasks p, json_each(p.subtask_ids) AS earlier_entry
+             JOIN tasks earlier_task ON earlier_task.id = earlier_entry.value
+             WHERE p.id = t.parent_task_id
+             AND earlier_entry.key < (
+               SELECT current_entry.key
+               FROM tasks p2, json_each(p2.subtask_ids) AS current_entry
+               WHERE p2.id = t.parent_task_id
+               AND current_entry.value = t.id
+               LIMIT 1
+             )
+             AND earlier_task.status NOT IN ('completed', 'cancelled')
+           )
          ))
         OR
         -- Case 2: In-progress parent tasks with pending subtasks that need continued execution
@@ -2291,11 +2315,11 @@ export class TaskStore {
         (t.status = 'in-progress'
          AND t.subtask_ids IS NOT NULL
          AND t.subtask_ids != '[]'
-         -- Has pending subtasks
+         -- Has pending or paused subtasks (paused subtasks also need to be continued)
          AND EXISTS (
            SELECT 1 FROM tasks sub, json_each(t.subtask_ids) je
            WHERE je.value = sub.id
-           AND sub.status = 'pending'
+           AND sub.status IN ('pending', 'paused')
          )
          -- But no in-progress subtasks (otherwise it's actively being worked on)
          AND NOT EXISTS (

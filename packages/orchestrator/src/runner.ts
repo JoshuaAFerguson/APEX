@@ -781,8 +781,43 @@ export class DaemonRunner {
       const allPausedTasks = await this.store.getPausedTasksForResume();
       const resumedParentIds = new Set(pausedParentTasks.map(p => p.id));
 
-      // Filter out already-resumed parent tasks
-      const remainingTasks = allPausedTasks.filter(task => !resumedParentIds.has(task.id));
+      // Filter out already-resumed parent tasks AND subtasks of sequential parents.
+      // Sequential subtasks must not be individually resumed — their parent's
+      // continuePendingSubtasks() handles them in order. Individually resuming
+      // them here bypasses sequential ordering and causes out-of-order execution.
+      const sequentialParentIds = new Set<string>();
+      for (const pt of pausedParentTasks) {
+        const strategy = pt.subtaskStrategy || 'sequential';
+        if (strategy === 'sequential') {
+          sequentialParentIds.add(pt.id);
+        }
+      }
+      // Also check non-paused sequential parents (a subtask may be paused
+      // while its parent is in-progress or pending)
+      const remainingTasksPreFilter = allPausedTasks.filter(task => !resumedParentIds.has(task.id));
+      const remainingTasks: Task[] = [];
+      for (const task of remainingTasksPreFilter) {
+        if (task.parentTaskId) {
+          // Check if this subtask's parent uses sequential strategy
+          if (sequentialParentIds.has(task.parentTaskId)) {
+            this.log('debug', `Skipping individual resume of subtask ${task.id} - parent ${task.parentTaskId} uses sequential strategy`);
+            continue;
+          }
+          // Check parent strategy if not already cached
+          if (this.store) {
+            const parent = await this.store.getTask(task.parentTaskId);
+            if (parent) {
+              const parentStrategy = parent.subtaskStrategy || 'sequential';
+              if (parentStrategy === 'sequential') {
+                sequentialParentIds.add(task.parentTaskId);
+                this.log('debug', `Skipping individual resume of subtask ${task.id} - parent ${task.parentTaskId} uses sequential strategy`);
+                continue;
+              }
+            }
+          }
+        }
+        remainingTasks.push(task);
+      }
 
       if (remainingTasks.length > 0) {
         this.log('info', `Found ${remainingTasks.length} remaining paused task(s) for resume`);
@@ -858,6 +893,16 @@ export class DaemonRunner {
       const parentTask = await this.store.getTask(parentTaskId);
       if (!parentTask?.subtaskIds?.length) {
         this.log('debug', `Parent task ${parentTaskId} has no subtasks to resume`);
+        return;
+      }
+
+      // For sequential parents, do NOT individually resume subtasks.
+      // The parent's resumed workflow will call continuePendingSubtasks()
+      // which handles sequential ordering. Individually resuming subtasks
+      // here would bypass that ordering and cause out-of-order execution.
+      const strategy = parentTask.subtaskStrategy || 'sequential';
+      if (strategy === 'sequential') {
+        this.log('info', `Parent task ${parentTaskId} uses sequential strategy - skipping individual subtask resume (continuePendingSubtasks will handle ordering)`);
         return;
       }
 

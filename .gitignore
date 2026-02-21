@@ -38,13 +38,23 @@ pnpm-debug.log*
 
 # Test artifacts
 test_artifacts/
+test-artifacts/
+.apex-test/
 
 # Caches
 .cache/
 .eslintcache
 .vitest/
 
-#AI Tools
+# AI-generated reports (prevent coverage/analysis docs from being committed)
+*-coverage-report.md
+*-coverage-summary.md
+*-test-coverage*.md
+*-coverage-analysis*.md
+*-test-report*.md
+*-implementation-summary.md
+
+# AI Tools
 CLAUDE.md
 AGENTS.md
 GEMINI.md
@@ -53,4 +63,9 @@ GEMINI.md
 .zenflow/
 .codex/
 
+# Report output directories
 docs/reports/
+
+# Temp directories
+temp/
+:memory:/

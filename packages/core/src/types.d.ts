@@ -9785,6 +9785,430 @@ export interface HealthMetrics {
     restartHistory: RestartRecord[];
 }
 /**
+ * Severity levels for health check results
+ * Used to indicate the impact of check failures
+ * @example
+ * ```typescript
+ * const severity: CheckSeverity = 'error';
+ * const validSeverity = CheckSeveritySchema.parse('warning');
+ * ```
+ */
+export declare const CheckSeveritySchema: z.ZodEnum<["error", "warning", "info"]>;
+export type CheckSeverity = z.infer<typeof CheckSeveritySchema>;
+/**
+ * Result status for individual health checks
+ * @example
+ * ```typescript
+ * const status: CheckStatus = 'pass';
+ * const validStatus = CheckStatusSchema.parse('fail');
+ * ```
+ */
+export declare const CheckStatusSchema: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+export type CheckStatus = z.infer<typeof CheckStatusSchema>;
+/**
+ * Information about a development toolchain tool
+ * Captures version, location, and metadata for tools like node, npm, git
+ * @example
+ * ```typescript
+ * const toolcheck: ToolchainCheck = {
+ *   name: 'node',
+ *   currentVersion: '18.17.0',
+ *   requiredVersion: '16.0.0',
+ *   required: true,
+ *   path: '/usr/bin/node',
+ *   metadata: { arch: 'x64' }
+ * };
+ * ```
+ */
+export declare const ToolchainCheckSchema: z.ZodObject<{
+    /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+    name: z.ZodString;
+    /** Current installed version, or null if not installed */
+    currentVersion: z.ZodNullable<z.ZodString>;
+    /** Minimum required version */
+    requiredVersion: z.ZodOptional<z.ZodString>;
+    /** Whether this tool is required or optional */
+    required: z.ZodBoolean;
+    /** Path to the tool binary */
+    path: z.ZodOptional<z.ZodString>;
+    /** Additional metadata about the tool */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    required: boolean;
+    currentVersion: string | null;
+    path?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    requiredVersion?: string | undefined;
+}, {
+    name: string;
+    required: boolean;
+    currentVersion: string | null;
+    path?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    requiredVersion?: string | undefined;
+}>;
+export type ToolchainCheck = z.infer<typeof ToolchainCheckSchema>;
+/**
+ * Result of a single diagnostic check performed by the doctor command
+ * Contains all information needed to understand and act on the check result
+ * @example
+ * ```typescript
+ * const checkResult: DoctorCheckResult = {
+ *   id: 'node-version',
+ *   name: 'Node.js Version Check',
+ *   description: 'Verify Node.js meets minimum version requirements',
+ *   category: 'toolchain',
+ *   status: 'pass',
+ *   severity: 'error',
+ *   message: 'Node.js 18.17.0 meets requirement >= 16.0.0',
+ *   toolchain: { name: 'node', currentVersion: '18.17.0', required: true },
+ *   timestamp: new Date(),
+ *   durationMs: 150
+ * };
+ * ```
+ */
+export declare const DoctorCheckResultSchema: z.ZodObject<{
+    /** Unique identifier for this check */
+    id: z.ZodString;
+    /** Human-readable name of the check */
+    name: z.ZodString;
+    /** Detailed description of what this check validates */
+    description: z.ZodString;
+    /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+    category: z.ZodEnum<["toolchain", "config", "network", "permissions", "environment"]>;
+    /** Result status of the check */
+    status: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+    /** Severity if the check failed */
+    severity: z.ZodEnum<["error", "warning", "info"]>;
+    /** Human-readable message explaining the result */
+    message: z.ZodString;
+    /** Suggested fix if the check failed */
+    suggestion: z.ZodOptional<z.ZodString>;
+    /** Toolchain information if this is a toolchain check */
+    toolchain: z.ZodOptional<z.ZodObject<{
+        /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+        name: z.ZodString;
+        /** Current installed version, or null if not installed */
+        currentVersion: z.ZodNullable<z.ZodString>;
+        /** Minimum required version */
+        requiredVersion: z.ZodOptional<z.ZodString>;
+        /** Whether this tool is required or optional */
+        required: z.ZodBoolean;
+        /** Path to the tool binary */
+        path: z.ZodOptional<z.ZodString>;
+        /** Additional metadata about the tool */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    }, {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    }>>;
+    /** Timestamp when the check was performed */
+    timestamp: z.ZodDate;
+    /** Duration of the check in milliseconds */
+    durationMs: z.ZodNumber;
+    /** Additional details for debugging */
+    details: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    message: string;
+    status: "unknown" | "skip" | "fail" | "pass";
+    name: string;
+    description: string;
+    severity: "info" | "error" | "warning";
+    category: "network" | "environment" | "config" | "permissions" | "toolchain";
+    id: string;
+    durationMs: number;
+    toolchain?: {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    } | undefined;
+    suggestion?: string | undefined;
+    details?: Record<string, unknown> | undefined;
+}, {
+    timestamp: Date;
+    message: string;
+    status: "unknown" | "skip" | "fail" | "pass";
+    name: string;
+    description: string;
+    severity: "info" | "error" | "warning";
+    category: "network" | "environment" | "config" | "permissions" | "toolchain";
+    id: string;
+    durationMs: number;
+    toolchain?: {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    } | undefined;
+    suggestion?: string | undefined;
+    details?: Record<string, unknown> | undefined;
+}>;
+export type DoctorCheckResult = z.infer<typeof DoctorCheckResultSchema>;
+/**
+ * Aggregated health report containing all check results and system information
+ * Generated by the doctor command for comprehensive system diagnostics
+ * @example
+ * ```typescript
+ * const report: HealthReport = {
+ *   id: 'health-2024-01-15-123456',
+ *   timestamp: new Date(),
+ *   overallStatus: 'pass',
+ *   summary: { total: 5, passed: 4, failed: 1, warnings: 0, skipped: 0 },
+ *   checks: [checkResult1, checkResult2, ...],
+ *   system: {
+ *     platform: 'darwin',
+ *     arch: 'arm64',
+ *     nodeVersion: '18.17.0',
+ *     cwd: '/Users/dev/project'
+ *   },
+ *   durationMs: 2500,
+ *   apexVersion: '0.6.0'
+ * };
+ * ```
+ */
+export declare const HealthReportSchema: z.ZodObject<{
+    /** Unique identifier for this report */
+    id: z.ZodString;
+    /** Timestamp when the report was generated */
+    timestamp: z.ZodDate;
+    /** Overall health status */
+    overallStatus: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+    /** Summary counts */
+    summary: z.ZodObject<{
+        total: z.ZodNumber;
+        passed: z.ZodNumber;
+        failed: z.ZodNumber;
+        warnings: z.ZodNumber;
+        skipped: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        failed: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    }, {
+        failed: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    }>;
+    /** Individual check results */
+    checks: z.ZodArray<z.ZodObject<{
+        /** Unique identifier for this check */
+        id: z.ZodString;
+        /** Human-readable name of the check */
+        name: z.ZodString;
+        /** Detailed description of what this check validates */
+        description: z.ZodString;
+        /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+        category: z.ZodEnum<["toolchain", "config", "network", "permissions", "environment"]>;
+        /** Result status of the check */
+        status: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+        /** Severity if the check failed */
+        severity: z.ZodEnum<["error", "warning", "info"]>;
+        /** Human-readable message explaining the result */
+        message: z.ZodString;
+        /** Suggested fix if the check failed */
+        suggestion: z.ZodOptional<z.ZodString>;
+        /** Toolchain information if this is a toolchain check */
+        toolchain: z.ZodOptional<z.ZodObject<{
+            /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+            name: z.ZodString;
+            /** Current installed version, or null if not installed */
+            currentVersion: z.ZodNullable<z.ZodString>;
+            /** Minimum required version */
+            requiredVersion: z.ZodOptional<z.ZodString>;
+            /** Whether this tool is required or optional */
+            required: z.ZodBoolean;
+            /** Path to the tool binary */
+            path: z.ZodOptional<z.ZodString>;
+            /** Additional metadata about the tool */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        }, {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        }>>;
+        /** Timestamp when the check was performed */
+        timestamp: z.ZodDate;
+        /** Duration of the check in milliseconds */
+        durationMs: z.ZodNumber;
+        /** Additional details for debugging */
+        details: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }, {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }>, "many">;
+    /** System information */
+    system: z.ZodObject<{
+        platform: z.ZodString;
+        arch: z.ZodString;
+        nodeVersion: z.ZodString;
+        cwd: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    }, {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    }>;
+    /** Total duration of all checks in milliseconds */
+    durationMs: z.ZodNumber;
+    /** APEX version that generated this report */
+    apexVersion: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    system: {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    };
+    id: string;
+    durationMs: number;
+    overallStatus: "unknown" | "skip" | "fail" | "pass";
+    summary: {
+        failed: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    };
+    checks: {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }[];
+    apexVersion: string;
+}, {
+    timestamp: Date;
+    system: {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    };
+    id: string;
+    durationMs: number;
+    overallStatus: "unknown" | "skip" | "fail" | "pass";
+    summary: {
+        failed: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    };
+    checks: {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }[];
+    apexVersion: string;
+}>;
+export type HealthReport = z.infer<typeof HealthReportSchema>;
+/**
  * MCP Connection Configuration Schema (v0.5.0)
  * Configuration for MCP connection management including retry policies,
  * timeouts, connection pooling, and health check settings.
@@ -40074,9 +40498,9 @@ export declare const AuditLogEntrySchema: z.ZodObject<{
     sessionId?: string | undefined;
     error?: string | undefined;
     agent?: string | undefined;
+    durationMs?: number | undefined;
     previousState?: string | undefined;
     newState?: string | undefined;
-    durationMs?: number | undefined;
     correlationId?: string | undefined;
 }, {
     timestamp: Date;
@@ -40092,9 +40516,9 @@ export declare const AuditLogEntrySchema: z.ZodObject<{
     error?: string | undefined;
     success?: boolean | undefined;
     agent?: string | undefined;
+    durationMs?: number | undefined;
     previousState?: string | undefined;
     newState?: string | undefined;
-    durationMs?: number | undefined;
     correlationId?: string | undefined;
 }>;
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
@@ -41599,7 +42023,6 @@ export declare const TestReportSchema: z.ZodObject<{
     /** Version of the test report schema */
     schemaVersion: z.ZodDefault<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    reportId: string;
     summary: {
         timestamp: Date;
         executionTime: number;
@@ -41613,6 +42036,7 @@ export declare const TestReportSchema: z.ZodObject<{
         version?: string | undefined;
         pendingTests?: number | undefined;
     };
+    reportId: string;
     testResults: {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
@@ -41669,7 +42093,6 @@ export declare const TestReportSchema: z.ZodObject<{
         pageUrl?: string | undefined;
     }[] | undefined;
 }, {
-    reportId: string;
     summary: {
         timestamp: Date;
         executionTime: number;
@@ -41683,6 +42106,7 @@ export declare const TestReportSchema: z.ZodObject<{
         version?: string | undefined;
         pendingTests?: number | undefined;
     };
+    reportId: string;
     testResults: {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
@@ -41858,4 +42282,1287 @@ export declare const PermissionChangeEventSchema: z.ZodObject<{
 export type PermissionChangeEvent = z.infer<typeof PermissionChangeEventSchema>;
 export type { BrowserLifecycleState, BrowserLifecycleAware, BrowserResourceState, BrowserPermissionDeniedContext, } from './tools/browser/browser-permission-denied-error.js';
 export { BrowserPermissionDeniedError, isBrowserPermissionDeniedError, toBrowserPermissionDeniedError, } from './tools/browser/browser-permission-denied-error.js';
+/**
+ * Git file status indicator
+ * Represents the state of a file in a git repository
+ * - 'M': Modified - file has been changed
+ * - 'A': Added - file is staged for addition
+ * - 'D': Deleted - file is staged for deletion
+ * - 'R': Renamed - file has been renamed
+ * - 'C': Copied - file has been copied
+ * - 'U': Unmerged - file has merge conflicts
+ * - '?': Untracked - file is not tracked by git
+ * - '!': Ignored - file is ignored by git
+ */
+export declare const GitFileStatusSchema: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+export type GitFileStatus = z.infer<typeof GitFileStatusSchema>;
+/**
+ * Represents a file change in a git repository with its status
+ */
+export declare const GitChangedFileSchema: z.ZodObject<{
+    /** Relative path to the file from the repository root */
+    path: z.ZodString;
+    /** Git status indicator for this file */
+    status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+    /** Original path if the file was renamed (only present for renames) */
+    oldPath: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    oldPath?: string | undefined;
+}, {
+    path: string;
+    status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    oldPath?: string | undefined;
+}>;
+export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
+/**
+ * Git repository status information
+ * Provides comprehensive information about the current state of a git repository
+ * including branch info, tracking status, and file changes
+ *
+ * @example
+ * ```typescript
+ * const status: GitStatus = {
+ *   isRepository: true,
+ *   branch: 'feature/new-feature',
+ *   remoteBranch: 'origin/feature/new-feature',
+ *   ahead: 2,
+ *   behind: 0,
+ *   staged: [{ path: 'src/index.ts', status: 'M' }],
+ *   unstaged: [{ path: 'README.md', status: 'M' }],
+ *   untracked: ['temp.log'],
+ *   hasConflicts: false,
+ *   isDirty: true,
+ *   lastCommitHash: 'abc1234',
+ *   lastCommitMessage: 'Add new feature'
+ * };
+ * ```
+ */
+export declare const GitStatusSchema: z.ZodObject<{
+    /** Whether the path is a git repository */
+    isRepository: z.ZodBoolean;
+    /** Current branch name (null if in detached HEAD state) */
+    branch: z.ZodNullable<z.ZodString>;
+    /** Remote tracking branch (if any) */
+    remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** Number of commits ahead of the remote tracking branch */
+    ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Number of commits behind the remote tracking branch */
+    behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Files staged for commit */
+    staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }>, "many">>>;
+    /** Files with unstaged changes */
+    unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }>, "many">>>;
+    /** Untracked files (paths relative to repository root) */
+    untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether there are merge conflicts */
+    hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether the working directory has any changes (staged, unstaged, or untracked) */
+    isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Hash of the last commit (short SHA) */
+    lastCommitHash: z.ZodOptional<z.ZodString>;
+    /** Message of the last commit */
+    lastCommitMessage: z.ZodOptional<z.ZodString>;
+    /** Timestamp of the last commit */
+    lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+    /** Total number of stashes */
+    stashCount: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** List of configured remotes */
+    remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        url: string;
+    }, {
+        name: string;
+        url: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    isRepository: boolean;
+    branch: string | null;
+    ahead: number;
+    behind: number;
+    staged: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }[];
+    unstaged: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }[];
+    untracked: string[];
+    hasConflicts: boolean;
+    isDirty: boolean;
+    stashCount: number;
+    remotes: {
+        name: string;
+        url: string;
+    }[];
+    remoteBranch?: string | null | undefined;
+    lastCommitHash?: string | undefined;
+    lastCommitMessage?: string | undefined;
+    lastCommitTimestamp?: Date | undefined;
+}, {
+    isRepository: boolean;
+    branch: string | null;
+    remoteBranch?: string | null | undefined;
+    ahead?: number | undefined;
+    behind?: number | undefined;
+    staged?: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }[] | undefined;
+    unstaged?: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        oldPath?: string | undefined;
+    }[] | undefined;
+    untracked?: string[] | undefined;
+    hasConflicts?: boolean | undefined;
+    isDirty?: boolean | undefined;
+    lastCommitHash?: string | undefined;
+    lastCommitMessage?: string | undefined;
+    lastCommitTimestamp?: Date | undefined;
+    stashCount?: number | undefined;
+    remotes?: {
+        name: string;
+        url: string;
+    }[] | undefined;
+}>;
+export type GitStatus = z.infer<typeof GitStatusSchema>;
+/**
+ * Entry type in project structure
+ */
+export declare const ProjectEntryTypeSchema: z.ZodEnum<["file", "directory"]>;
+export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
+/**
+ * Represents a single entry (file or directory) in the project structure
+ */
+export declare const ProjectEntrySchema: any;
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
+/**
+ * Project structure information
+ * Provides an overview of the project's directory layout and key files
+ *
+ * @example
+ * ```typescript
+ * const structure: ProjectStructure = {
+ *   root: '/path/to/project',
+ *   totalFiles: 150,
+ *   totalDirectories: 25,
+ *   entries: [...],
+ *   hasPackageJson: true,
+ *   hasGitIgnore: true,
+ *   maxDepthScanned: 3
+ * };
+ * ```
+ */
+export declare const ProjectStructureSchema: z.ZodObject<{
+    /** Absolute path to the project root */
+    root: z.ZodString;
+    /** Total number of files in the scanned structure */
+    totalFiles: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Total number of directories in the scanned structure */
+    totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Hierarchical list of project entries */
+    entries: z.ZodDefault<z.ZodOptional<z.ZodArray<any, "many">>>;
+    /** Key configuration/manifest files detected at the root */
+    rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Common project directories detected (src, lib, test, etc.) */
+    commonDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether a package.json exists */
+    hasPackageJson: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a .gitignore exists */
+    hasGitIgnore: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a README file exists */
+    hasReadme: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a LICENSE file exists */
+    hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Maximum directory depth that was scanned */
+    maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+    /** Directories that were excluded from scanning */
+    excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when the structure was scanned */
+    scannedAt: z.ZodOptional<z.ZodDate>;
+}, "strip", z.ZodTypeAny, {
+    entries: any[];
+    root: string;
+    totalFiles: number;
+    totalDirectories: number;
+    rootFiles: string[];
+    commonDirectories: string[];
+    hasPackageJson: boolean;
+    hasGitIgnore: boolean;
+    hasReadme: boolean;
+    hasLicense: boolean;
+    excludedDirectories: string[];
+    scannedAt?: Date | undefined;
+    maxDepthScanned?: number | undefined;
+}, {
+    root: string;
+    entries?: any[] | undefined;
+    scannedAt?: Date | undefined;
+    totalFiles?: number | undefined;
+    totalDirectories?: number | undefined;
+    rootFiles?: string[] | undefined;
+    commonDirectories?: string[] | undefined;
+    hasPackageJson?: boolean | undefined;
+    hasGitIgnore?: boolean | undefined;
+    hasReadme?: boolean | undefined;
+    hasLicense?: boolean | undefined;
+    maxDepthScanned?: number | undefined;
+    excludedDirectories?: string[] | undefined;
+}>;
+export type ProjectStructure = z.infer<typeof ProjectStructureSchema>;
+/**
+ * Framework category classification
+ */
+export declare const FrameworkCategorySchema: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+export type FrameworkCategory = z.infer<typeof FrameworkCategorySchema>;
+/**
+ * Framework detection confidence level
+ */
+export declare const DetectionConfidenceSchema: z.ZodEnum<["high", "medium", "low"]>;
+export type DetectionConfidence = z.infer<typeof DetectionConfidenceSchema>;
+/**
+ * Information about a detected framework or library
+ *
+ * @example
+ * ```typescript
+ * const framework: FrameworkInfo = {
+ *   name: 'React',
+ *   version: '18.2.0',
+ *   category: 'frontend',
+ *   confidence: 'high',
+ *   detectedVia: 'package.json dependency',
+ *   language: 'typescript',
+ *   configFiles: ['tsconfig.json', 'vite.config.ts']
+ * };
+ * ```
+ */
+export declare const FrameworkInfoSchema: z.ZodObject<{
+    /** Framework or library name */
+    name: z.ZodString;
+    /** Detected version (if available) */
+    version: z.ZodOptional<z.ZodString>;
+    /** Framework category */
+    category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+    /** How confident the detection is */
+    confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+    /** How the framework was detected */
+    detectedVia: z.ZodOptional<z.ZodString>;
+    /** Primary programming language */
+    language: z.ZodOptional<z.ZodString>;
+    /** Related configuration files found */
+    configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether this is a dev dependency */
+    isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Additional metadata about the framework */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+    confidence: "high" | "medium" | "low";
+    configFiles: string[];
+    isDevDependency: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    language?: string | undefined;
+    detectedVia?: string | undefined;
+}, {
+    name: string;
+    category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    language?: string | undefined;
+    confidence?: "high" | "medium" | "low" | undefined;
+    detectedVia?: string | undefined;
+    configFiles?: string[] | undefined;
+    isDevDependency?: boolean | undefined;
+}>;
+export type FrameworkInfo = z.infer<typeof FrameworkInfoSchema>;
+/**
+ * Schema for framework detection results
+ * Identifies frameworks and libraries used in the project
+ *
+ * @example
+ * ```typescript
+ * const detection: FrameworkDetection = {
+ *   primary: { name: 'React', version: '18.2.0', category: 'frontend' },
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'TypeScript', version: '5.0.0', category: 'language' }
+ *   ],
+ *   primaryLanguage: 'typescript',
+ *   languages: [
+ *     { name: 'TypeScript', extensions: ['.ts', '.tsx'], percentage: 85 },
+ *     { name: 'JavaScript', extensions: ['.js', '.jsx'], percentage: 15 }
+ *   ],
+ *   runtime: 'node',
+ *   packageManager: 'npm'
+ * };
+ * ```
+ */
+export declare const FrameworkDetectionSchema: z.ZodObject<{
+    /** Primary framework (highest confidence) */
+    primary: z.ZodOptional<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>>;
+    /** All detected frameworks */
+    frameworks: z.ZodArray<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>, "many">;
+    /** Primary programming language */
+    primaryLanguage: z.ZodOptional<z.ZodString>;
+    /** All detected languages */
+    languages: z.ZodArray<z.ZodObject<{
+        /** Language name */
+        name: z.ZodString;
+        /** File extensions associated with this language */
+        extensions: z.ZodArray<z.ZodString, "many">;
+        /** Percentage of files using this language */
+        percentage: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }, {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }>, "many">;
+    /** Runtime environment (node, browser, deno, bun, etc.) */
+    runtime: z.ZodOptional<z.ZodString>;
+    /** Package manager detected */
+    packageManager: z.ZodOptional<z.ZodString>;
+    /** Error message if detection failed */
+    error: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }[];
+    languages: {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }[];
+    error?: string | undefined;
+    primary?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    } | undefined;
+    primaryLanguage?: string | undefined;
+    runtime?: string | undefined;
+    packageManager?: string | undefined;
+}, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }[];
+    languages: {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }[];
+    error?: string | undefined;
+    primary?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    } | undefined;
+    primaryLanguage?: string | undefined;
+    runtime?: string | undefined;
+    packageManager?: string | undefined;
+}>;
+export type FrameworkDetection = z.infer<typeof FrameworkDetectionSchema>;
+/**
+ * Configuration file format
+ */
+export declare const ConfigFormatSchema: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+export type ConfigFormat = z.infer<typeof ConfigFormatSchema>;
+/**
+ * Configuration file purpose/category
+ */
+export declare const ConfigPurposeSchema: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+export type ConfigPurpose = z.infer<typeof ConfigPurposeSchema>;
+/**
+ * Schema for individual configuration file info used in the project context analyzer
+ *
+ * @example
+ * ```typescript
+ * const configFile: ConfigFileInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   type: 'typescript',
+ *   exists: true,
+ *   description: 'TypeScript compiler configuration'
+ * };
+ * ```
+ */
+export declare const ConfigFileInfoSchema: z.ZodObject<{
+    /** Configuration file name */
+    name: z.ZodString;
+    /** File path relative to project root */
+    path: z.ZodString;
+    /** Configuration type/purpose */
+    type: z.ZodEnum<["package", "typescript", "eslint", "prettier", "babel", "webpack", "vite", "rollup", "jest", "vitest", "docker", "ci", "git", "editor", "environment", "other"]>;
+    /** Whether the file exists */
+    exists: z.ZodBoolean;
+    /** Brief description of what this config controls */
+    description: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    type: "environment" | "eslint" | "prettier" | "ci" | "package" | "docker" | "other" | "git" | "typescript" | "editor" | "babel" | "webpack" | "vite" | "rollup" | "jest" | "vitest";
+    path: string;
+    name: string;
+    exists: boolean;
+    description?: string | undefined;
+}, {
+    type: "environment" | "eslint" | "prettier" | "ci" | "package" | "docker" | "other" | "git" | "typescript" | "editor" | "babel" | "webpack" | "vite" | "rollup" | "jest" | "vitest";
+    path: string;
+    name: string;
+    exists: boolean;
+    description?: string | undefined;
+}>;
+export type ConfigFileInfo = z.infer<typeof ConfigFileInfoSchema>;
+/**
+ * Information about a detected configuration file
+ *
+ * @example
+ * ```typescript
+ * const config: ConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   keySettings: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export declare const ConfigurationInfoSchema: z.ZodObject<{
+    /** Configuration file name */
+    name: z.ZodString;
+    /** Relative path from project root */
+    path: z.ZodString;
+    /** File format */
+    format: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+    /** Configuration purpose/category */
+    purpose: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+    /** Whether the configuration file is syntactically valid */
+    isValid: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Validation error message if not valid */
+    validationError: z.ZodOptional<z.ZodString>;
+    /** Key settings extracted from the configuration (sanitized, no secrets) */
+    keySettings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    /** Whether this config extends another configuration */
+    extends: z.ZodOptional<z.ZodString>;
+    /** Size in bytes */
+    size: z.ZodOptional<z.ZodNumber>;
+    /** Last modified timestamp */
+    modifiedAt: z.ZodOptional<z.ZodDate>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    isValid: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | undefined;
+}, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    metadata?: Record<string, unknown> | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    isValid?: boolean | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | undefined;
+}>;
+export type ConfigurationInfo = z.infer<typeof ConfigurationInfoSchema>;
+/**
+ * Test runner type classification
+ */
+export declare const TestRunnerTypeSchema: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+export type TestRunnerType = z.infer<typeof TestRunnerTypeSchema>;
+/**
+ * Information about a detected test framework
+ *
+ * @example
+ * ```typescript
+ * const testFramework: TestFrameworkInfo = {
+ *   name: 'vitest',
+ *   version: '1.2.0',
+ *   type: 'unit',
+ *   configFile: 'vitest.config.ts',
+ *   testPatterns: ['**\/*.test.ts', '**\/*.spec.ts'],
+ *   testDirectory: 'src/__tests__',
+ *   runCommand: 'npm test',
+ *   coverageEnabled: true
+ * };
+ * ```
+ */
+export declare const TestFrameworkInfoSchema: z.ZodObject<{
+    /** Test framework name */
+    name: z.ZodString;
+    /** Detected version (if available) */
+    version: z.ZodOptional<z.ZodString>;
+    /** Type of testing this framework handles */
+    type: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+    /** Configuration file path (if detected) */
+    configFile: z.ZodOptional<z.ZodString>;
+    /** File patterns used to identify test files */
+    testPatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Primary test directory (if detected) */
+    testDirectory: z.ZodOptional<z.ZodString>;
+    /** Command to run tests */
+    runCommand: z.ZodOptional<z.ZodString>;
+    /** Whether code coverage is configured */
+    coverageEnabled: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Coverage tool used (istanbul, c8, etc.) */
+    coverageTool: z.ZodOptional<z.ZodString>;
+    /** Whether watch mode is available */
+    watchModeAvailable: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Related plugins/extensions detected */
+    plugins: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Number of test files detected */
+    testFileCount: z.ZodOptional<z.ZodNumber>;
+    /** Detected assertion library (if different from test runner) */
+    assertionLibrary: z.ZodOptional<z.ZodString>;
+    /** Detected mocking library (if any) */
+    mockingLibrary: z.ZodOptional<z.ZodString>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+    name: string;
+    testPatterns: string[];
+    coverageEnabled: boolean;
+    watchModeAvailable: boolean;
+    plugins: string[];
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    configFile?: string | undefined;
+    testDirectory?: string | undefined;
+    runCommand?: string | undefined;
+    coverageTool?: string | undefined;
+    testFileCount?: number | undefined;
+    assertionLibrary?: string | undefined;
+    mockingLibrary?: string | undefined;
+}, {
+    type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+    name: string;
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    testPatterns?: string[] | undefined;
+    configFile?: string | undefined;
+    testDirectory?: string | undefined;
+    runCommand?: string | undefined;
+    coverageEnabled?: boolean | undefined;
+    coverageTool?: string | undefined;
+    watchModeAvailable?: boolean | undefined;
+    plugins?: string[] | undefined;
+    testFileCount?: number | undefined;
+    assertionLibrary?: string | undefined;
+    mockingLibrary?: string | undefined;
+}>;
+export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
+/**
+ * Comprehensive project context combining all detection results
+ * This is the main type used for providing context to AI agents
+ *
+ * @example
+ * ```typescript
+ * const context: ProjectContext = {
+ *   gitStatus: { ... },
+ *   structure: { ... },
+ *   frameworks: [{ name: 'React', ... }],
+ *   configurations: [{ name: 'tsconfig.json', ... }],
+ *   testFrameworks: [{ name: 'vitest', ... }],
+ *   detectedAt: new Date()
+ * };
+ * ```
+ */
+export declare const ProjectContextSchema: z.ZodObject<{
+    /** Git repository status (if applicable) */
+    gitStatus: z.ZodOptional<z.ZodObject<{
+        /** Whether the path is a git repository */
+        isRepository: z.ZodBoolean;
+        /** Current branch name (null if in detached HEAD state) */
+        branch: z.ZodNullable<z.ZodString>;
+        /** Remote tracking branch (if any) */
+        remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        /** Number of commits ahead of the remote tracking branch */
+        ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Number of commits behind the remote tracking branch */
+        behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Files staged for commit */
+        staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** Files with unstaged changes */
+        unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** Untracked files (paths relative to repository root) */
+        untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether there are merge conflicts */
+        hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether the working directory has any changes (staged, unstaged, or untracked) */
+        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Hash of the last commit (short SHA) */
+        lastCommitHash: z.ZodOptional<z.ZodString>;
+        /** Message of the last commit */
+        lastCommitMessage: z.ZodOptional<z.ZodString>;
+        /** Timestamp of the last commit */
+        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+        /** Total number of stashes */
+        stashCount: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** List of configured remotes */
+        remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            url: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            url: string;
+        }, {
+            name: string;
+            url: string;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        isRepository: boolean;
+        branch: string | null;
+        ahead: number;
+        behind: number;
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[];
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        hasConflicts: boolean;
+        isDirty: boolean;
+        stashCount: number;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    }, {
+        isRepository: boolean;
+        branch: string | null;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[] | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        hasConflicts?: boolean | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        stashCount?: number | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+    }>>;
+    /** Project directory structure */
+    structure: z.ZodOptional<z.ZodObject<{
+        /** Absolute path to the project root */
+        root: z.ZodString;
+        /** Total number of files in the scanned structure */
+        totalFiles: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Total number of directories in the scanned structure */
+        totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Hierarchical list of project entries */
+        entries: z.ZodDefault<z.ZodOptional<z.ZodArray<any, "many">>>;
+        /** Key configuration/manifest files detected at the root */
+        rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Common project directories detected (src, lib, test, etc.) */
+        commonDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether a package.json exists */
+        hasPackageJson: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a .gitignore exists */
+        hasGitIgnore: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a README file exists */
+        hasReadme: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a LICENSE file exists */
+        hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Maximum directory depth that was scanned */
+        maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+        /** Directories that were excluded from scanning */
+        excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when the structure was scanned */
+        scannedAt: z.ZodOptional<z.ZodDate>;
+    }, "strip", z.ZodTypeAny, {
+        entries: any[];
+        root: string;
+        totalFiles: number;
+        totalDirectories: number;
+        rootFiles: string[];
+        commonDirectories: string[];
+        hasPackageJson: boolean;
+        hasGitIgnore: boolean;
+        hasReadme: boolean;
+        hasLicense: boolean;
+        excludedDirectories: string[];
+        scannedAt?: Date | undefined;
+        maxDepthScanned?: number | undefined;
+    }, {
+        root: string;
+        entries?: any[] | undefined;
+        scannedAt?: Date | undefined;
+        totalFiles?: number | undefined;
+        totalDirectories?: number | undefined;
+        rootFiles?: string[] | undefined;
+        commonDirectories?: string[] | undefined;
+        hasPackageJson?: boolean | undefined;
+        hasGitIgnore?: boolean | undefined;
+        hasReadme?: boolean | undefined;
+        hasLicense?: boolean | undefined;
+        maxDepthScanned?: number | undefined;
+        excludedDirectories?: string[] | undefined;
+    }>>;
+    /** Detected frameworks and libraries */
+    frameworks: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>, "many">>>;
+    /** Detected configuration files */
+    configurations: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Configuration file name */
+        name: z.ZodString;
+        /** Relative path from project root */
+        path: z.ZodString;
+        /** File format */
+        format: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+        /** Configuration purpose/category */
+        purpose: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+        /** Whether the configuration file is syntactically valid */
+        isValid: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Validation error message if not valid */
+        validationError: z.ZodOptional<z.ZodString>;
+        /** Key settings extracted from the configuration (sanitized, no secrets) */
+        keySettings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        /** Whether this config extends another configuration */
+        extends: z.ZodOptional<z.ZodString>;
+        /** Size in bytes */
+        size: z.ZodOptional<z.ZodNumber>;
+        /** Last modified timestamp */
+        modifiedAt: z.ZodOptional<z.ZodDate>;
+        /** Additional metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        isValid: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }, {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        isValid?: boolean | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }>, "many">>>;
+    /** Detected test frameworks */
+    testFrameworks: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Test framework name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Type of testing this framework handles */
+        type: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+        /** Configuration file path (if detected) */
+        configFile: z.ZodOptional<z.ZodString>;
+        /** File patterns used to identify test files */
+        testPatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Primary test directory (if detected) */
+        testDirectory: z.ZodOptional<z.ZodString>;
+        /** Command to run tests */
+        runCommand: z.ZodOptional<z.ZodString>;
+        /** Whether code coverage is configured */
+        coverageEnabled: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Coverage tool used (istanbul, c8, etc.) */
+        coverageTool: z.ZodOptional<z.ZodString>;
+        /** Whether watch mode is available */
+        watchModeAvailable: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Related plugins/extensions detected */
+        plugins: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Number of test files detected */
+        testFileCount: z.ZodOptional<z.ZodNumber>;
+        /** Detected assertion library (if different from test runner) */
+        assertionLibrary: z.ZodOptional<z.ZodString>;
+        /** Detected mocking library (if any) */
+        mockingLibrary: z.ZodOptional<z.ZodString>;
+        /** Additional metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        testPatterns: string[];
+        coverageEnabled: boolean;
+        watchModeAvailable: boolean;
+        plugins: string[];
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageTool?: string | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }, {
+        type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        testPatterns?: string[] | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageEnabled?: boolean | undefined;
+        coverageTool?: string | undefined;
+        watchModeAvailable?: boolean | undefined;
+        plugins?: string[] | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }>, "many">>>;
+    /** When the context was detected/generated */
+    detectedAt: z.ZodOptional<z.ZodDate>;
+    /** Errors encountered during detection */
+    errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        component: z.ZodString;
+        message: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        message: string;
+        component: string;
+    }, {
+        message: string;
+        component: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    errors: {
+        message: string;
+        component: string;
+    }[];
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }[];
+    configurations: {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        isValid: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }[];
+    testFrameworks: {
+        type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        testPatterns: string[];
+        coverageEnabled: boolean;
+        watchModeAvailable: boolean;
+        plugins: string[];
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageTool?: string | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }[];
+    detectedAt?: Date | undefined;
+    gitStatus?: {
+        isRepository: boolean;
+        branch: string | null;
+        ahead: number;
+        behind: number;
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[];
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        hasConflicts: boolean;
+        isDirty: boolean;
+        stashCount: number;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    } | undefined;
+    structure?: {
+        entries: any[];
+        root: string;
+        totalFiles: number;
+        totalDirectories: number;
+        rootFiles: string[];
+        commonDirectories: string[];
+        hasPackageJson: boolean;
+        hasGitIgnore: boolean;
+        hasReadme: boolean;
+        hasLicense: boolean;
+        excludedDirectories: string[];
+        scannedAt?: Date | undefined;
+        maxDepthScanned?: number | undefined;
+    } | undefined;
+}, {
+    errors?: {
+        message: string;
+        component: string;
+    }[] | undefined;
+    detectedAt?: Date | undefined;
+    frameworks?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }[] | undefined;
+    gitStatus?: {
+        isRepository: boolean;
+        branch: string | null;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[] | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        hasConflicts?: boolean | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        stashCount?: number | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+    } | undefined;
+    structure?: {
+        root: string;
+        entries?: any[] | undefined;
+        scannedAt?: Date | undefined;
+        totalFiles?: number | undefined;
+        totalDirectories?: number | undefined;
+        rootFiles?: string[] | undefined;
+        commonDirectories?: string[] | undefined;
+        hasPackageJson?: boolean | undefined;
+        hasGitIgnore?: boolean | undefined;
+        hasReadme?: boolean | undefined;
+        hasLicense?: boolean | undefined;
+        maxDepthScanned?: number | undefined;
+        excludedDirectories?: string[] | undefined;
+    } | undefined;
+    configurations?: {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        isValid?: boolean | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }[] | undefined;
+    testFrameworks?: {
+        type: "integration" | "other" | "visual" | "unit" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        testPatterns?: string[] | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageEnabled?: boolean | undefined;
+        coverageTool?: string | undefined;
+        watchModeAvailable?: boolean | undefined;
+        plugins?: string[] | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }[] | undefined;
+}>;
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;
 //# sourceMappingURL=types.d.ts.map

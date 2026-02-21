@@ -581,7 +581,7 @@ export class RepairLoop {
   private mapModel(model: string): string {
     switch (model) {
       case 'opus': return 'claude-opus-4-5-20251101';
-      case 'haiku': return 'claude-3-5-haiku-20241022';
+      case 'haiku': return 'claude-haiku-4-5-20251001';
       case 'sonnet':
       default: return 'claude-sonnet-4-20250514';
     }

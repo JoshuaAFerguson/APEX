@@ -2,10 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ToolParameterSchema = exports.JSONSchemaTypeSchema = exports.ExtendedPermissionSchema = exports.ToolConfigSchema = exports.ToolPermissionConfigSchema = exports.SearchToolConfigSchema = exports.BrowserSessionConfigSchema = exports.BrowserToolOutputSchema = exports.ScreenshotComparisonResultSchema = exports.BrowserToolInputSchema = exports.HoverParamsSchema = exports.ScrollParamsSchema = exports.GetHtmlParamsSchema = exports.GetTextParamsSchema = exports.GetAttributeParamsSchema = exports.WaitForSelectorParamsSchema = exports.SubmitParamsSchema = exports.EvaluateParamsSchema = exports.CompareScreenshotParamsSchema = exports.ScreenshotParamsSchema = exports.TypeParamsSchema = exports.ClickParamsSchema = exports.NavigateParamsSchema = exports.ScrollOptionsSchema = exports.CompareScreenshotOptionsSchema = exports.WaitOptionsSchema = exports.ScreenshotOptionsSchema = exports.TypeOptionsSchema = exports.ClickOptionsSchema = exports.MouseButtonSchema = exports.ElementStateSchema = exports.BrowserOperationSchema = exports.BrowserErrorSchema = exports.ConsoleMessageSchema = exports.StackFrameSchema = exports.ConsoleSeveritySchema = exports.BrowserToolConfigSchema = exports.WebToolConfigSchema = exports.ShellToolConfigSchema = exports.FilesystemToolConfigSchema = exports.BaseToolPermissionConfigSchema = exports.DirectoryAccessConfigSchema = exports.PermissionQuerySchema = exports.PermissionSchema = exports.PermissionLevelSchema = exports.ToolPermissionSchema = exports.ToolCategorySchema = exports.AgentDefinitionSchema = exports.AgentToolSchema = exports.AgentModelSchema = void 0;
 exports.AutoFixStageConfigSchema = exports.TypecheckConfigSchema = exports.PreEditValidationConfigSchema = exports.PreEditValidationModeSchema = exports.LinterConfigSchema = exports.LinterGlobalConfigSchema = exports.CustomLinterConfigSchema = exports.PrettierConfigSchema = exports.ESLintConfigSchema = exports.UIConfigSchema = exports.ModelsConfigSchema = exports.LimitsConfigSchema = exports.GitConfigSchema = exports.WorktreeConfigSchema = exports.WorktreeStatusSchema = exports.ProjectConfigSchema = exports.WorkflowDefinitionSchema = exports.IsolationConfigSchema = exports.WorkflowStageSchema = exports.WorkflowGateSchema = exports.AutonomyConfigSchema = exports.AgentAutonomyOverrideSchema = exports.RejectionBehaviorSchema = exports.TaskResourceLimitsSchema = exports.ApprovalGateSchema = exports.ApprovalCheckpointTypeSchema = exports.LegacyAutonomyLevelSchema = exports.AutonomyLevelSchema = exports.UndoOperationResultSchema = exports.UndoEventSchema = exports.UndoEventTypeSchema = exports.AliasParameterValidationResultSchema = exports.ExpandedToolAliasSchema = exports.ToolAliasConfigSchema = exports.ToolAliasSchema = exports.AliasParameterSchema = exports.AliasParameterTypeSchema = exports.ToolActionSnapshotSchema = exports.ToolActionRetentionConfigSchema = exports.ToolActionSchema = exports.FileSnapshotSchema = exports.ToolRegistryEntrySchema = exports.ToolExecutionSchema = exports.ToolInvocationSchema = exports.ToolResultSchema = exports.CustomToolConfigSchema = exports.CustomToolOutputParserSchema = exports.ToolDefinitionSchema = exports.ToolExampleSchema = exports.ToolParametersSchemaSchema = void 0;
-exports.MCPToolResultContentTypeSchema = exports.MCPToolInvocationRequestSchema = exports.ToolDiscoveryEventSchema = exports.ToolDiscoveryEventTypeSchema = exports.ToolRegistryStateSchema = exports.UnifiedToolRegistryEntrySchema = exports.MCPToolRegistryEntrySchema = exports.ToolSourceSchema = exports.ToolSourceTypeSchema = exports.MCPToolSchema = exports.MCPToolCapabilitiesSchema = exports.MCPToolSchemaSchema = exports.MCPConnectionEventSchema = exports.MCPConnectionEventTypeSchema = exports.MCPConnectionSchema = exports.MCPConnectionInfoSchema = exports.MCPConnectionStateSchema = exports.MCPInstallProgressSchema = exports.MCPInstallStageSchema = exports.MCPRegistryInstallationSchema = exports.MCPRegistryInstallConfigSchema = exports.MCPRegistryServerSchema = exports.MCPServerCategorySchema = exports.InstalledMCPServerSchema = exports.MCPInstallationSchema = exports.MCPInstallationStatusSchema = exports.MCPServerSchema = exports.MCPServerTemplateSchema = exports.MCPTemplateSchema = exports.MCPConfigSchema = exports.MCPToolsConfigSchema = exports.MCPMarketplaceSchema = exports.MCPMarketplaceSourceSchema = exports.MCPMarketplaceEntrySchema = exports.MCPServerConfigSchema = exports.MCPEnvironmentVarSchema = exports.MCPConnectionConfigSchema = exports.LoggingConfigSchema = exports.LogRotationConfigSchema = exports.LogLevelSchema = exports.DaemonConfigSchema = exports.StrategyWeightsSchema = exports.IdleTaskTypeSchema = exports.ServiceConfigSchema = exports.SecretScanningConfigSchema = exports.SecretScanningEnforcementModeSchema = exports.SecretScannerConfigSchema = exports.SecretDetectionBehaviorSchema = exports.SecretPatternSchema = exports.CodeQualityConfigSchema = void 0;
-exports.WRITE_TOOLS = exports.READ_ONLY_TOOLS = exports.ToolPermissionBehaviorSchema = exports.PermissionPresetSchema = exports.TodoWriteOutputSchema = exports.TodoWriteInputSchema = exports.TodoSchema = exports.TodoItemSchema = exports.TodoStatusSchema = exports.IdleTaskSchema = exports.TaskTemplateSchema = exports.DocumentationAnalysisConfigSchema = exports.OutdatedDocsConfigSchema = exports.VisualComparisonEventDataSchema = exports.PermissionNotificationSchema = exports.ApprovalDecisionResponseSchema = exports.ApprovalDecisionRequestSchema = exports.ApprovalResolvedEventDataSchema = exports.ApprovalDeniedEventDataSchema = exports.ApprovalGrantedEventDataSchema = exports.ApprovalResponseEventDataSchema = exports.ApprovalRequiredEventDataSchema = exports.ApprovalStateSchema = exports.ApprovalResponseSchema = exports.ApprovalRequestSchema = exports.ApprovalActionSchema = exports.ApprovalStatusSchema = exports.GateStatusSchema = exports.WorkspaceConfigSchema = exports.WorkspaceDefaultsSchema = exports.ContainerDefaultsSchema = exports.WorkspaceStrategySchema = exports.IsolationModeSchema = exports.ContainerStatusSchema = exports.ContainerConfigSchema = exports.ContainerNetworkModeSchema = exports.ResourceLimitsSchema = exports.TaskEffortSchema = exports.TaskPrioritySchema = exports.TaskStatusSchema = exports.ApexConfigSchema = exports.ApiAuthConfigSchema = exports.SlackIntegrationConfigSchema = exports.VisualRegressionConfigSchema = exports.TDDModeConfigSchema = exports.MCPInstallProgressV050Schema = exports.MCPInstallationV050Schema = exports.MCPServerV050Schema = exports.MCPToolInvocationResponseSchema = exports.MCPToolResultContentSchema = void 0;
-exports.BehaviorModeSchema = exports.PreHookResultSchema = exports.PreHookActionSchema = exports.PostHookContextSchema = exports.PreHookContextSchema = exports.ToolHookConfigSchema = exports.ToolHookDefinitionSchema = exports.ToolHookTypeSchema = exports.HookConfigSchema = exports.HookHandlerSchema = exports.HookTypeSchema = exports.GuardrailEvaluationResultSchema = exports.GuardrailViolationSchema = exports.GuardrailConfigSchema = exports.SecretScanResultSchema = exports.SecretDetectionSchema = exports.EnforcementModeSchema = exports.PolicyCheckOptionsSchema = exports.PolicyCheckContextSchema = exports.PolicyCheckResultSchema = exports.PolicyCheckStatusSchema = exports.TaskPolicyCheckResultSchema = exports.PolicyViolationEventSchema = exports.PolicyValidationResultSchema = exports.PolicyViolationSchema = exports.LegacyPolicySchema = exports.PolicySchema = exports.ApprovalPolicySchema = exports.TestPolicySchema = exports.PathPolicySchema = exports.PolicyRuleSchema = exports.PolicySeveritySchema = exports.PolicyConfigSchema = exports.PolicyEnforcementModeSchema = exports.ApprovalRulesConfigSchema = exports.ApprovalRuleSchema = exports.ApprovalUrgencySchema = exports.ApprovalConditionSchema = exports.ApprovalOperationTypeSchema = exports.ApprovalConditionTypeSchema = exports.RequiredTestsConfigSchema = exports.TestRequirementRuleSchema = exports.TestEnforcementLevelSchema = exports.AllowedPathsConfigSchema = exports.PathAccessModeSchema = exports.PermissionsConfigSchema = exports.PERMISSION_PRESET_CONFIGS = exports.PermissionPresetConfigSchema = exports.ToolPermissionRuleSchema = exports.ALL_TOOLS = void 0;
-exports.toBrowserPermissionDeniedError = exports.isBrowserPermissionDeniedError = exports.BrowserPermissionDeniedError = exports.PermissionChangeEventSchema = exports.PermissionDetailsSchema = exports.PermissionChangeTypeSchema = exports.TestReportSchema = exports.TestSummarySchema = exports.VisualRegressionSummarySchema = exports.TestResultSchema = exports.TestArtifactSchema = exports.TestVisualComparisonSchema = exports.ScreenshotResponseSchema = exports.ScreenshotElementRequestSchema = exports.ScreenshotFullPageRequestSchema = exports.ScreenshotViewportRequestSchema = exports.ToolErrorHookContextSchema = exports.ToolCompleteHookContextSchema = exports.ToolStartHookContextSchema = exports.CaptureRegionOptionsSchema = exports.CaptureElementOptionsSchema = exports.ScreenshotResultSchema = exports.ScreenshotOutputModeSchema = exports.ScreenshotFormatSchema = exports.ImageMetadataSchema = exports.ScreenshotComparisonOptionsSchema = exports.ApexRuleSchema = exports.RuleActionSchema = exports.RuleActionTypeSchema = exports.RuleConditionSchema = exports.RuleTriggerSchema = exports.RuleTriggerEventSchema = exports.AutoFixEventSchema = exports.AutoFixIssueDetailSchema = exports.AutoFixStatusSchema = exports.AutoFixEventTypeSchema = exports.AutoFixResultSchema = exports.AutoFixConfigSchema = exports.AuditLogEntrySchema = exports.AuditSeveritySchema = exports.AuditEventTypeSchema = exports.RepairLoopConfigSchema = exports.FixAttemptConfigSchema = exports.BackoffStrategySchema = exports.PostHookResultSchema = exports.BehaviorEventDataSchema = void 0;
+exports.UnifiedToolRegistryEntrySchema = exports.MCPToolRegistryEntrySchema = exports.ToolSourceSchema = exports.ToolSourceTypeSchema = exports.MCPToolSchema = exports.MCPToolCapabilitiesSchema = exports.MCPToolSchemaSchema = exports.MCPConnectionEventSchema = exports.MCPConnectionEventTypeSchema = exports.MCPConnectionSchema = exports.MCPConnectionInfoSchema = exports.MCPConnectionStateSchema = exports.MCPInstallProgressSchema = exports.MCPInstallStageSchema = exports.MCPRegistryInstallationSchema = exports.MCPRegistryInstallConfigSchema = exports.MCPRegistryServerSchema = exports.MCPServerCategorySchema = exports.InstalledMCPServerSchema = exports.MCPInstallationSchema = exports.MCPInstallationStatusSchema = exports.MCPServerSchema = exports.MCPServerTemplateSchema = exports.MCPTemplateSchema = exports.MCPConfigSchema = exports.MCPToolsConfigSchema = exports.MCPMarketplaceSchema = exports.MCPMarketplaceSourceSchema = exports.MCPMarketplaceEntrySchema = exports.MCPServerConfigSchema = exports.MCPEnvironmentVarSchema = exports.MCPConnectionConfigSchema = exports.HealthReportSchema = exports.DoctorCheckResultSchema = exports.ToolchainCheckSchema = exports.CheckStatusSchema = exports.CheckSeveritySchema = exports.LoggingConfigSchema = exports.LogRotationConfigSchema = exports.LogLevelSchema = exports.DaemonConfigSchema = exports.StrategyWeightsSchema = exports.IdleTaskTypeSchema = exports.ServiceConfigSchema = exports.SecretScanningConfigSchema = exports.SecretScanningEnforcementModeSchema = exports.SecretScannerConfigSchema = exports.SecretDetectionBehaviorSchema = exports.SecretPatternSchema = exports.CodeQualityConfigSchema = void 0;
+exports.TodoWriteInputSchema = exports.TodoSchema = exports.TodoItemSchema = exports.TodoStatusSchema = exports.IdleTaskSchema = exports.TaskTemplateSchema = exports.DocumentationAnalysisConfigSchema = exports.OutdatedDocsConfigSchema = exports.VisualComparisonEventDataSchema = exports.PermissionNotificationSchema = exports.ApprovalDecisionResponseSchema = exports.ApprovalDecisionRequestSchema = exports.ApprovalResolvedEventDataSchema = exports.ApprovalDeniedEventDataSchema = exports.ApprovalGrantedEventDataSchema = exports.ApprovalResponseEventDataSchema = exports.ApprovalRequiredEventDataSchema = exports.ApprovalStateSchema = exports.ApprovalResponseSchema = exports.ApprovalRequestSchema = exports.ApprovalActionSchema = exports.ApprovalStatusSchema = exports.GateStatusSchema = exports.WorkspaceConfigSchema = exports.WorkspaceDefaultsSchema = exports.ContainerDefaultsSchema = exports.WorkspaceStrategySchema = exports.IsolationModeSchema = exports.ContainerStatusSchema = exports.ContainerConfigSchema = exports.ContainerNetworkModeSchema = exports.ResourceLimitsSchema = exports.TaskEffortSchema = exports.TaskPrioritySchema = exports.TaskStatusSchema = exports.ApexConfigSchema = exports.ApiAuthConfigSchema = exports.SlackIntegrationConfigSchema = exports.VisualRegressionConfigSchema = exports.TDDModeConfigSchema = exports.MCPInstallProgressV050Schema = exports.MCPInstallationV050Schema = exports.MCPServerV050Schema = exports.MCPToolInvocationResponseSchema = exports.MCPToolResultContentSchema = exports.MCPToolResultContentTypeSchema = exports.MCPToolInvocationRequestSchema = exports.ToolDiscoveryEventSchema = exports.ToolDiscoveryEventTypeSchema = exports.ToolRegistryStateSchema = void 0;
+exports.ToolHookConfigSchema = exports.ToolHookDefinitionSchema = exports.ToolHookTypeSchema = exports.HookConfigSchema = exports.HookHandlerSchema = exports.HookTypeSchema = exports.GuardrailEvaluationResultSchema = exports.GuardrailViolationSchema = exports.GuardrailConfigSchema = exports.SecretScanResultSchema = exports.SecretDetectionSchema = exports.EnforcementModeSchema = exports.PolicyCheckOptionsSchema = exports.PolicyCheckContextSchema = exports.PolicyCheckResultSchema = exports.PolicyCheckStatusSchema = exports.TaskPolicyCheckResultSchema = exports.PolicyViolationEventSchema = exports.PolicyValidationResultSchema = exports.PolicyViolationSchema = exports.LegacyPolicySchema = exports.PolicySchema = exports.ApprovalPolicySchema = exports.TestPolicySchema = exports.PathPolicySchema = exports.PolicyRuleSchema = exports.PolicySeveritySchema = exports.PolicyConfigSchema = exports.PolicyEnforcementModeSchema = exports.ApprovalRulesConfigSchema = exports.ApprovalRuleSchema = exports.ApprovalUrgencySchema = exports.ApprovalConditionSchema = exports.ApprovalOperationTypeSchema = exports.ApprovalConditionTypeSchema = exports.RequiredTestsConfigSchema = exports.TestRequirementRuleSchema = exports.TestEnforcementLevelSchema = exports.AllowedPathsConfigSchema = exports.PathAccessModeSchema = exports.PermissionsConfigSchema = exports.PERMISSION_PRESET_CONFIGS = exports.PermissionPresetConfigSchema = exports.ToolPermissionRuleSchema = exports.ALL_TOOLS = exports.WRITE_TOOLS = exports.READ_ONLY_TOOLS = exports.ToolPermissionBehaviorSchema = exports.PermissionPresetSchema = exports.TodoWriteOutputSchema = void 0;
+exports.isBrowserPermissionDeniedError = exports.BrowserPermissionDeniedError = exports.PermissionChangeEventSchema = exports.PermissionDetailsSchema = exports.PermissionChangeTypeSchema = exports.TestReportSchema = exports.TestSummarySchema = exports.VisualRegressionSummarySchema = exports.TestResultSchema = exports.TestArtifactSchema = exports.TestVisualComparisonSchema = exports.ScreenshotResponseSchema = exports.ScreenshotElementRequestSchema = exports.ScreenshotFullPageRequestSchema = exports.ScreenshotViewportRequestSchema = exports.ToolErrorHookContextSchema = exports.ToolCompleteHookContextSchema = exports.ToolStartHookContextSchema = exports.CaptureRegionOptionsSchema = exports.CaptureElementOptionsSchema = exports.ScreenshotResultSchema = exports.ScreenshotOutputModeSchema = exports.ScreenshotFormatSchema = exports.ImageMetadataSchema = exports.ScreenshotComparisonOptionsSchema = exports.ApexRuleSchema = exports.RuleActionSchema = exports.RuleActionTypeSchema = exports.RuleConditionSchema = exports.RuleTriggerSchema = exports.RuleTriggerEventSchema = exports.AutoFixEventSchema = exports.AutoFixIssueDetailSchema = exports.AutoFixStatusSchema = exports.AutoFixEventTypeSchema = exports.AutoFixResultSchema = exports.AutoFixConfigSchema = exports.AuditLogEntrySchema = exports.AuditSeveritySchema = exports.AuditEventTypeSchema = exports.RepairLoopConfigSchema = exports.FixAttemptConfigSchema = exports.BackoffStrategySchema = exports.PostHookResultSchema = exports.BehaviorEventDataSchema = exports.BehaviorModeSchema = exports.PreHookResultSchema = exports.PreHookActionSchema = exports.PostHookContextSchema = exports.PreHookContextSchema = void 0;
+exports.ProjectContextSchema = exports.TestFrameworkInfoSchema = exports.TestRunnerTypeSchema = exports.ConfigurationInfoSchema = exports.ConfigFileInfoSchema = exports.ConfigPurposeSchema = exports.ConfigFormatSchema = exports.FrameworkDetectionSchema = exports.FrameworkInfoSchema = exports.DetectionConfidenceSchema = exports.FrameworkCategorySchema = exports.ProjectStructureSchema = exports.ProjectEntrySchema = exports.ProjectEntryTypeSchema = exports.GitStatusSchema = exports.GitChangedFileSchema = exports.GitFileStatusSchema = exports.toBrowserPermissionDeniedError = void 0;
 exports.migrateLegacyAutonomyLevel = migrateLegacyAutonomyLevel;
 exports.getToolBehaviorForPreset = getToolBehaviorForPreset;
 exports.isToolAllowedForPreset = isToolAllowedForPreset;
@@ -2454,6 +2455,153 @@ exports.LoggingConfigSchema = zod_1.z.object({
         'authorization',
         'ANTHROPIC_API_KEY',
     ]),
+});
+// ============================================================================
+// Doctor Health Check Types (v0.6.0)
+// ============================================================================
+/**
+ * Severity levels for health check results
+ * Used to indicate the impact of check failures
+ * @example
+ * ```typescript
+ * const severity: CheckSeverity = 'error';
+ * const validSeverity = CheckSeveritySchema.parse('warning');
+ * ```
+ */
+exports.CheckSeveritySchema = zod_1.z.enum(['error', 'warning', 'info']);
+/**
+ * Result status for individual health checks
+ * @example
+ * ```typescript
+ * const status: CheckStatus = 'pass';
+ * const validStatus = CheckStatusSchema.parse('fail');
+ * ```
+ */
+exports.CheckStatusSchema = zod_1.z.enum(['pass', 'fail', 'skip', 'unknown']);
+/**
+ * Information about a development toolchain tool
+ * Captures version, location, and metadata for tools like node, npm, git
+ * @example
+ * ```typescript
+ * const toolcheck: ToolchainCheck = {
+ *   name: 'node',
+ *   currentVersion: '18.17.0',
+ *   requiredVersion: '16.0.0',
+ *   required: true,
+ *   path: '/usr/bin/node',
+ *   metadata: { arch: 'x64' }
+ * };
+ * ```
+ */
+exports.ToolchainCheckSchema = zod_1.z.object({
+    /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+    name: zod_1.z.string(),
+    /** Current installed version, or null if not installed */
+    currentVersion: zod_1.z.string().nullable(),
+    /** Minimum required version */
+    requiredVersion: zod_1.z.string().optional(),
+    /** Whether this tool is required or optional */
+    required: zod_1.z.boolean(),
+    /** Path to the tool binary */
+    path: zod_1.z.string().optional(),
+    /** Additional metadata about the tool */
+    metadata: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+});
+/**
+ * Result of a single diagnostic check performed by the doctor command
+ * Contains all information needed to understand and act on the check result
+ * @example
+ * ```typescript
+ * const checkResult: DoctorCheckResult = {
+ *   id: 'node-version',
+ *   name: 'Node.js Version Check',
+ *   description: 'Verify Node.js meets minimum version requirements',
+ *   category: 'toolchain',
+ *   status: 'pass',
+ *   severity: 'error',
+ *   message: 'Node.js 18.17.0 meets requirement >= 16.0.0',
+ *   toolchain: { name: 'node', currentVersion: '18.17.0', required: true },
+ *   timestamp: new Date(),
+ *   durationMs: 150
+ * };
+ * ```
+ */
+exports.DoctorCheckResultSchema = zod_1.z.object({
+    /** Unique identifier for this check */
+    id: zod_1.z.string(),
+    /** Human-readable name of the check */
+    name: zod_1.z.string(),
+    /** Detailed description of what this check validates */
+    description: zod_1.z.string(),
+    /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+    category: zod_1.z.enum(['toolchain', 'config', 'network', 'permissions', 'environment']),
+    /** Result status of the check */
+    status: exports.CheckStatusSchema,
+    /** Severity if the check failed */
+    severity: exports.CheckSeveritySchema,
+    /** Human-readable message explaining the result */
+    message: zod_1.z.string(),
+    /** Suggested fix if the check failed */
+    suggestion: zod_1.z.string().optional(),
+    /** Toolchain information if this is a toolchain check */
+    toolchain: exports.ToolchainCheckSchema.optional(),
+    /** Timestamp when the check was performed */
+    timestamp: zod_1.z.date(),
+    /** Duration of the check in milliseconds */
+    durationMs: zod_1.z.number(),
+    /** Additional details for debugging */
+    details: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+});
+/**
+ * Aggregated health report containing all check results and system information
+ * Generated by the doctor command for comprehensive system diagnostics
+ * @example
+ * ```typescript
+ * const report: HealthReport = {
+ *   id: 'health-2024-01-15-123456',
+ *   timestamp: new Date(),
+ *   overallStatus: 'pass',
+ *   summary: { total: 5, passed: 4, failed: 1, warnings: 0, skipped: 0 },
+ *   checks: [checkResult1, checkResult2, ...],
+ *   system: {
+ *     platform: 'darwin',
+ *     arch: 'arm64',
+ *     nodeVersion: '18.17.0',
+ *     cwd: '/Users/dev/project'
+ *   },
+ *   durationMs: 2500,
+ *   apexVersion: '0.6.0'
+ * };
+ * ```
+ */
+exports.HealthReportSchema = zod_1.z.object({
+    /** Unique identifier for this report */
+    id: zod_1.z.string(),
+    /** Timestamp when the report was generated */
+    timestamp: zod_1.z.date(),
+    /** Overall health status */
+    overallStatus: exports.CheckStatusSchema,
+    /** Summary counts */
+    summary: zod_1.z.object({
+        total: zod_1.z.number(),
+        passed: zod_1.z.number(),
+        failed: zod_1.z.number(),
+        warnings: zod_1.z.number(),
+        skipped: zod_1.z.number(),
+    }),
+    /** Individual check results */
+    checks: zod_1.z.array(exports.DoctorCheckResultSchema),
+    /** System information */
+    system: zod_1.z.object({
+        platform: zod_1.z.string(),
+        arch: zod_1.z.string(),
+        nodeVersion: zod_1.z.string(),
+        cwd: zod_1.z.string(),
+    }),
+    /** Total duration of all checks in milliseconds */
+    durationMs: zod_1.z.number(),
+    /** APEX version that generated this report */
+    apexVersion: zod_1.z.string(),
 });
 // ============================================================================
 // MCP Configuration (v0.5.0)
@@ -6527,4 +6675,486 @@ var browser_permission_denied_error_js_1 = require("./tools/browser/browser-perm
 Object.defineProperty(exports, "BrowserPermissionDeniedError", { enumerable: true, get: function () { return browser_permission_denied_error_js_1.BrowserPermissionDeniedError; } });
 Object.defineProperty(exports, "isBrowserPermissionDeniedError", { enumerable: true, get: function () { return browser_permission_denied_error_js_1.isBrowserPermissionDeniedError; } });
 Object.defineProperty(exports, "toBrowserPermissionDeniedError", { enumerable: true, get: function () { return browser_permission_denied_error_js_1.toBrowserPermissionDeniedError; } });
+// ============================================================================
+// Project Context Types (v0.6.0)
+// ============================================================================
+/**
+ * Git file status indicator
+ * Represents the state of a file in a git repository
+ * - 'M': Modified - file has been changed
+ * - 'A': Added - file is staged for addition
+ * - 'D': Deleted - file is staged for deletion
+ * - 'R': Renamed - file has been renamed
+ * - 'C': Copied - file has been copied
+ * - 'U': Unmerged - file has merge conflicts
+ * - '?': Untracked - file is not tracked by git
+ * - '!': Ignored - file is ignored by git
+ */
+exports.GitFileStatusSchema = zod_1.z.enum(['M', 'A', 'D', 'R', 'C', 'U', '?', '!']);
+/**
+ * Represents a file change in a git repository with its status
+ */
+exports.GitChangedFileSchema = zod_1.z.object({
+    /** Relative path to the file from the repository root */
+    path: zod_1.z.string().min(1),
+    /** Git status indicator for this file */
+    status: exports.GitFileStatusSchema,
+    /** Original path if the file was renamed (only present for renames) */
+    oldPath: zod_1.z.string().optional(),
+});
+/**
+ * Git repository status information
+ * Provides comprehensive information about the current state of a git repository
+ * including branch info, tracking status, and file changes
+ *
+ * @example
+ * ```typescript
+ * const status: GitStatus = {
+ *   isRepository: true,
+ *   branch: 'feature/new-feature',
+ *   remoteBranch: 'origin/feature/new-feature',
+ *   ahead: 2,
+ *   behind: 0,
+ *   staged: [{ path: 'src/index.ts', status: 'M' }],
+ *   unstaged: [{ path: 'README.md', status: 'M' }],
+ *   untracked: ['temp.log'],
+ *   hasConflicts: false,
+ *   isDirty: true,
+ *   lastCommitHash: 'abc1234',
+ *   lastCommitMessage: 'Add new feature'
+ * };
+ * ```
+ */
+exports.GitStatusSchema = zod_1.z.object({
+    /** Whether the path is a git repository */
+    isRepository: zod_1.z.boolean(),
+    /** Current branch name (null if in detached HEAD state) */
+    branch: zod_1.z.string().nullable(),
+    /** Remote tracking branch (if any) */
+    remoteBranch: zod_1.z.string().nullable().optional(),
+    /** Number of commits ahead of the remote tracking branch */
+    ahead: zod_1.z.number().int().min(0).optional().default(0),
+    /** Number of commits behind the remote tracking branch */
+    behind: zod_1.z.number().int().min(0).optional().default(0),
+    /** Files staged for commit */
+    staged: zod_1.z.array(exports.GitChangedFileSchema).optional().default([]),
+    /** Files with unstaged changes */
+    unstaged: zod_1.z.array(exports.GitChangedFileSchema).optional().default([]),
+    /** Untracked files (paths relative to repository root) */
+    untracked: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Whether there are merge conflicts */
+    hasConflicts: zod_1.z.boolean().optional().default(false),
+    /** Whether the working directory has any changes (staged, unstaged, or untracked) */
+    isDirty: zod_1.z.boolean().optional().default(false),
+    /** Hash of the last commit (short SHA) */
+    lastCommitHash: zod_1.z.string().optional(),
+    /** Message of the last commit */
+    lastCommitMessage: zod_1.z.string().optional(),
+    /** Timestamp of the last commit */
+    lastCommitTimestamp: zod_1.z.date().optional(),
+    /** Total number of stashes */
+    stashCount: zod_1.z.number().int().min(0).optional().default(0),
+    /** List of configured remotes */
+    remotes: zod_1.z.array(zod_1.z.object({
+        name: zod_1.z.string(),
+        url: zod_1.z.string(),
+    })).optional().default([]),
+});
+// ============================================================================
+// Project Structure Types (v0.6.0)
+// ============================================================================
+/**
+ * Entry type in project structure
+ */
+exports.ProjectEntryTypeSchema = zod_1.z.enum(['file', 'directory']);
+/**
+ * Represents a single entry (file or directory) in the project structure
+ */
+exports.ProjectEntrySchema = zod_1.z.object({
+    /** Name of the file or directory */
+    name: zod_1.z.string().min(1),
+    /** Relative path from project root */
+    path: zod_1.z.string().min(1),
+    /** Whether this is a file or directory */
+    type: exports.ProjectEntryTypeSchema,
+    /** Size in bytes (for files only) */
+    size: zod_1.z.number().int().min(0).optional(),
+    /** Last modified timestamp */
+    modifiedAt: zod_1.z.date().optional(),
+    /** Child entries (for directories only) */
+    children: zod_1.z.lazy(() => zod_1.z.array(exports.ProjectEntrySchema)).optional(),
+});
+/**
+ * Project structure information
+ * Provides an overview of the project's directory layout and key files
+ *
+ * @example
+ * ```typescript
+ * const structure: ProjectStructure = {
+ *   root: '/path/to/project',
+ *   totalFiles: 150,
+ *   totalDirectories: 25,
+ *   entries: [...],
+ *   hasPackageJson: true,
+ *   hasGitIgnore: true,
+ *   maxDepthScanned: 3
+ * };
+ * ```
+ */
+exports.ProjectStructureSchema = zod_1.z.object({
+    /** Absolute path to the project root */
+    root: zod_1.z.string().min(1),
+    /** Total number of files in the scanned structure */
+    totalFiles: zod_1.z.number().int().min(0).optional().default(0),
+    /** Total number of directories in the scanned structure */
+    totalDirectories: zod_1.z.number().int().min(0).optional().default(0),
+    /** Hierarchical list of project entries */
+    entries: zod_1.z.array(exports.ProjectEntrySchema).optional().default([]),
+    /** Key configuration/manifest files detected at the root */
+    rootFiles: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Common project directories detected (src, lib, test, etc.) */
+    commonDirectories: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Whether a package.json exists */
+    hasPackageJson: zod_1.z.boolean().optional().default(false),
+    /** Whether a .gitignore exists */
+    hasGitIgnore: zod_1.z.boolean().optional().default(false),
+    /** Whether a README file exists */
+    hasReadme: zod_1.z.boolean().optional().default(false),
+    /** Whether a LICENSE file exists */
+    hasLicense: zod_1.z.boolean().optional().default(false),
+    /** Maximum directory depth that was scanned */
+    maxDepthScanned: zod_1.z.number().int().min(0).optional(),
+    /** Directories that were excluded from scanning */
+    excludedDirectories: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Timestamp when the structure was scanned */
+    scannedAt: zod_1.z.date().optional(),
+});
+// ============================================================================
+// Framework Detection Types (v0.6.0)
+// ============================================================================
+/**
+ * Framework category classification
+ */
+exports.FrameworkCategorySchema = zod_1.z.enum([
+    'frontend', // Frontend frameworks (React, Vue, Angular, etc.)
+    'backend', // Backend frameworks (Express, Fastify, NestJS, etc.)
+    'fullstack', // Full-stack frameworks (Next.js, Nuxt, etc.)
+    'testing', // Testing frameworks (Jest, Mocha, Vitest, etc.)
+    'build', // Build tools (Webpack, Vite, Rollup, etc.)
+    'mobile', // Mobile frameworks (React Native, Flutter, etc.)
+    'desktop', // Desktop frameworks (Electron, Tauri, etc.)
+    'other', // Other/unclassified frameworks
+]);
+/**
+ * Framework detection confidence level
+ */
+exports.DetectionConfidenceSchema = zod_1.z.enum([
+    'high', // Framework explicitly declared in manifest
+    'medium', // Framework detected via dependencies
+    'low', // Framework inferred from file patterns
+]);
+/**
+ * Information about a detected framework or library
+ *
+ * @example
+ * ```typescript
+ * const framework: FrameworkInfo = {
+ *   name: 'React',
+ *   version: '18.2.0',
+ *   category: 'frontend',
+ *   confidence: 'high',
+ *   detectedVia: 'package.json dependency',
+ *   language: 'typescript',
+ *   configFiles: ['tsconfig.json', 'vite.config.ts']
+ * };
+ * ```
+ */
+exports.FrameworkInfoSchema = zod_1.z.object({
+    /** Framework or library name */
+    name: zod_1.z.string().min(1),
+    /** Detected version (if available) */
+    version: zod_1.z.string().optional(),
+    /** Framework category */
+    category: exports.FrameworkCategorySchema,
+    /** How confident the detection is */
+    confidence: exports.DetectionConfidenceSchema.optional().default('medium'),
+    /** How the framework was detected */
+    detectedVia: zod_1.z.string().optional(),
+    /** Primary programming language */
+    language: zod_1.z.string().optional(),
+    /** Related configuration files found */
+    configFiles: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Whether this is a dev dependency */
+    isDevDependency: zod_1.z.boolean().optional().default(false),
+    /** Additional metadata about the framework */
+    metadata: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+});
+/**
+ * Schema for framework detection results
+ * Identifies frameworks and libraries used in the project
+ *
+ * @example
+ * ```typescript
+ * const detection: FrameworkDetection = {
+ *   primary: { name: 'React', version: '18.2.0', category: 'frontend' },
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'TypeScript', version: '5.0.0', category: 'language' }
+ *   ],
+ *   primaryLanguage: 'typescript',
+ *   languages: [
+ *     { name: 'TypeScript', extensions: ['.ts', '.tsx'], percentage: 85 },
+ *     { name: 'JavaScript', extensions: ['.js', '.jsx'], percentage: 15 }
+ *   ],
+ *   runtime: 'node',
+ *   packageManager: 'npm'
+ * };
+ * ```
+ */
+exports.FrameworkDetectionSchema = zod_1.z.object({
+    /** Primary framework (highest confidence) */
+    primary: exports.FrameworkInfoSchema.optional(),
+    /** All detected frameworks */
+    frameworks: zod_1.z.array(exports.FrameworkInfoSchema),
+    /** Primary programming language */
+    primaryLanguage: zod_1.z.string().optional(),
+    /** All detected languages */
+    languages: zod_1.z.array(zod_1.z.object({
+        /** Language name */
+        name: zod_1.z.string(),
+        /** File extensions associated with this language */
+        extensions: zod_1.z.array(zod_1.z.string()),
+        /** Percentage of files using this language */
+        percentage: zod_1.z.number().min(0).max(100),
+    })),
+    /** Runtime environment (node, browser, deno, bun, etc.) */
+    runtime: zod_1.z.string().optional(),
+    /** Package manager detected */
+    packageManager: zod_1.z.string().optional(),
+    /** Error message if detection failed */
+    error: zod_1.z.string().optional(),
+});
+// ============================================================================
+// Configuration Detection Types (v0.6.0)
+// ============================================================================
+/**
+ * Configuration file format
+ */
+exports.ConfigFormatSchema = zod_1.z.enum([
+    'json',
+    'yaml',
+    'toml',
+    'javascript',
+    'typescript',
+    'ini',
+    'env',
+    'xml',
+    'other',
+]);
+/**
+ * Configuration file purpose/category
+ */
+exports.ConfigPurposeSchema = zod_1.z.enum([
+    'package-manager', // package.json, Cargo.toml, etc.
+    'typescript', // tsconfig.json
+    'linting', // eslint, prettier, etc.
+    'testing', // jest.config, vitest.config, etc.
+    'build', // webpack.config, vite.config, etc.
+    'ci-cd', // .github/workflows, .gitlab-ci, etc.
+    'containerization', // Dockerfile, docker-compose, etc.
+    'environment', // .env files
+    'git', // .gitignore, .gitattributes
+    'editor', // .editorconfig, .vscode
+    'documentation', // README, CHANGELOG
+    'security', // .npmrc, .nvmrc
+    'other',
+]);
+/**
+ * Schema for individual configuration file info used in the project context analyzer
+ *
+ * @example
+ * ```typescript
+ * const configFile: ConfigFileInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   type: 'typescript',
+ *   exists: true,
+ *   description: 'TypeScript compiler configuration'
+ * };
+ * ```
+ */
+exports.ConfigFileInfoSchema = zod_1.z.object({
+    /** Configuration file name */
+    name: zod_1.z.string(),
+    /** File path relative to project root */
+    path: zod_1.z.string(),
+    /** Configuration type/purpose */
+    type: zod_1.z.enum([
+        'package',
+        'typescript',
+        'eslint',
+        'prettier',
+        'babel',
+        'webpack',
+        'vite',
+        'rollup',
+        'jest',
+        'vitest',
+        'docker',
+        'ci',
+        'git',
+        'editor',
+        'environment',
+        'other',
+    ]),
+    /** Whether the file exists */
+    exists: zod_1.z.boolean(),
+    /** Brief description of what this config controls */
+    description: zod_1.z.string().optional(),
+});
+/**
+ * Information about a detected configuration file
+ *
+ * @example
+ * ```typescript
+ * const config: ConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   keySettings: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+exports.ConfigurationInfoSchema = zod_1.z.object({
+    /** Configuration file name */
+    name: zod_1.z.string().min(1),
+    /** Relative path from project root */
+    path: zod_1.z.string().min(1),
+    /** File format */
+    format: exports.ConfigFormatSchema,
+    /** Configuration purpose/category */
+    purpose: exports.ConfigPurposeSchema,
+    /** Whether the configuration file is syntactically valid */
+    isValid: zod_1.z.boolean().optional().default(true),
+    /** Validation error message if not valid */
+    validationError: zod_1.z.string().optional(),
+    /** Key settings extracted from the configuration (sanitized, no secrets) */
+    keySettings: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+    /** Whether this config extends another configuration */
+    extends: zod_1.z.string().optional(),
+    /** Size in bytes */
+    size: zod_1.z.number().int().min(0).optional(),
+    /** Last modified timestamp */
+    modifiedAt: zod_1.z.date().optional(),
+    /** Additional metadata */
+    metadata: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+});
+// ============================================================================
+// Test Framework Detection Types (v0.6.0)
+// ============================================================================
+/**
+ * Test runner type classification
+ */
+exports.TestRunnerTypeSchema = zod_1.z.enum([
+    'unit', // Unit testing (Jest, Mocha, Vitest)
+    'integration', // Integration testing
+    'e2e', // End-to-end testing (Playwright, Cypress)
+    'component', // Component testing
+    'visual', // Visual regression testing
+    'performance', // Performance/load testing
+    'accessibility', // Accessibility testing
+    'other',
+]);
+/**
+ * Information about a detected test framework
+ *
+ * @example
+ * ```typescript
+ * const testFramework: TestFrameworkInfo = {
+ *   name: 'vitest',
+ *   version: '1.2.0',
+ *   type: 'unit',
+ *   configFile: 'vitest.config.ts',
+ *   testPatterns: ['**\/*.test.ts', '**\/*.spec.ts'],
+ *   testDirectory: 'src/__tests__',
+ *   runCommand: 'npm test',
+ *   coverageEnabled: true
+ * };
+ * ```
+ */
+exports.TestFrameworkInfoSchema = zod_1.z.object({
+    /** Test framework name */
+    name: zod_1.z.string().min(1),
+    /** Detected version (if available) */
+    version: zod_1.z.string().optional(),
+    /** Type of testing this framework handles */
+    type: exports.TestRunnerTypeSchema,
+    /** Configuration file path (if detected) */
+    configFile: zod_1.z.string().optional(),
+    /** File patterns used to identify test files */
+    testPatterns: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Primary test directory (if detected) */
+    testDirectory: zod_1.z.string().optional(),
+    /** Command to run tests */
+    runCommand: zod_1.z.string().optional(),
+    /** Whether code coverage is configured */
+    coverageEnabled: zod_1.z.boolean().optional().default(false),
+    /** Coverage tool used (istanbul, c8, etc.) */
+    coverageTool: zod_1.z.string().optional(),
+    /** Whether watch mode is available */
+    watchModeAvailable: zod_1.z.boolean().optional().default(false),
+    /** Related plugins/extensions detected */
+    plugins: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** Number of test files detected */
+    testFileCount: zod_1.z.number().int().min(0).optional(),
+    /** Detected assertion library (if different from test runner) */
+    assertionLibrary: zod_1.z.string().optional(),
+    /** Detected mocking library (if any) */
+    mockingLibrary: zod_1.z.string().optional(),
+    /** Additional metadata */
+    metadata: zod_1.z.record(zod_1.z.string(), zod_1.z.unknown()).optional(),
+});
+// ============================================================================
+// Aggregate Project Context Type (v0.6.0)
+// ============================================================================
+/**
+ * Comprehensive project context combining all detection results
+ * This is the main type used for providing context to AI agents
+ *
+ * @example
+ * ```typescript
+ * const context: ProjectContext = {
+ *   gitStatus: { ... },
+ *   structure: { ... },
+ *   frameworks: [{ name: 'React', ... }],
+ *   configurations: [{ name: 'tsconfig.json', ... }],
+ *   testFrameworks: [{ name: 'vitest', ... }],
+ *   detectedAt: new Date()
+ * };
+ * ```
+ */
+exports.ProjectContextSchema = zod_1.z.object({
+    /** Git repository status (if applicable) */
+    gitStatus: exports.GitStatusSchema.optional(),
+    /** Project directory structure */
+    structure: exports.ProjectStructureSchema.optional(),
+    /** Detected frameworks and libraries */
+    frameworks: zod_1.z.array(exports.FrameworkInfoSchema).optional().default([]),
+    /** Detected configuration files */
+    configurations: zod_1.z.array(exports.ConfigurationInfoSchema).optional().default([]),
+    /** Detected test frameworks */
+    testFrameworks: zod_1.z.array(exports.TestFrameworkInfoSchema).optional().default([]),
+    /** When the context was detected/generated */
+    detectedAt: zod_1.z.date().optional(),
+    /** Errors encountered during detection */
+    errors: zod_1.z.array(zod_1.z.object({
+        component: zod_1.z.string(),
+        message: zod_1.z.string(),
+    })).optional().default([]),
+});
 //# sourceMappingURL=types.js.map
