@@ -10416,6 +10416,25 @@ export const ProjectStructureSchema = z.object({
 
   /** Timestamp when the structure was scanned */
   scannedAt: z.date().optional(),
+
+  /** File count by extension */
+  filesByExtension: z.record(z.string(), z.number().int().min(0)).optional().default({}),
+
+  /** Top-level directories in the project root */
+  topLevelDirectories: z.array(z.string()).optional().default([]),
+
+  /** Detected important folders (src, test, docs) */
+  detectedFolders: z.object({
+    src: z.string().optional(),
+    test: z.string().optional(),
+    docs: z.string().optional(),
+  }).optional(),
+
+  /** Whether this appears to be a monorepo structure */
+  isMonorepo: z.boolean().optional().default(false),
+
+  /** Workspace packages if this is a monorepo */
+  workspaces: z.array(z.string()).optional(),
 });
 export type ProjectStructure = z.infer<typeof ProjectStructureSchema>;
 

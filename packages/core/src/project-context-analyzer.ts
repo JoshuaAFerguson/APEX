@@ -471,6 +471,44 @@ export class ProjectContextAnalyzer {
   }
 
   /**
+   * Analyze project structure with enhanced directory layout analysis
+   *
+   * This method provides detailed analysis including:
+   * - Directory layout analysis with top-level directories
+   * - File count by extension for understanding project composition
+   * - Detection of src/test/docs folders following common naming patterns
+   * - Monorepo structure identification and workspace discovery
+   *
+   * @returns Promise resolving to enhanced project structure information
+   */
+  async analyzeProjectStructure(): Promise<ProjectStructure> {
+    // Start with the basic structure from existing method
+    const basicStructure = await this.getProjectStructure();
+
+    // Enhance with additional analysis
+    const [
+      filesByExtension,
+      topLevelDirectories,
+      detectedFolders,
+      { isMonorepo, workspaces }
+    ] = await Promise.all([
+      this.analyzeFilesByExtension(),
+      this.getTopLevelDirectories(),
+      this.detectImportantFolders(),
+      this.analyzeMonorepoStructure()
+    ]);
+
+    return ProjectStructureSchema.parse({
+      ...basicStructure,
+      filesByExtension,
+      topLevelDirectories,
+      detectedFolders,
+      isMonorepo,
+      workspaces
+    });
+  }
+
+  /**
    * Detect frameworks and languages used in the project
    * @returns Promise resolving to framework detection results
    */
@@ -800,6 +838,290 @@ export class ProjectContextAnalyzer {
    */
   getOptions(): Readonly<Required<ProjectContextAnalyzerOptions>> {
     return this.options;
+  }
+
+  // ============================================================================
+  // Private Helper Methods for analyzeProjectStructure()
+  // ============================================================================
+
+  /**
+   * Analyze files by extension to understand project composition
+   */
+  private async analyzeFilesByExtension(): Promise<Record<string, number>> {
+    const extensionCounts: Record<string, number> = {};
+
+    const analyzeDirectory = async (dirPath: string, depth: number = 0): Promise<void> => {
+      if (depth >= this.options.maxDepth) {
+        return;
+      }
+
+      try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const entryPath = path.join(dirPath, entry.name);
+
+          // Skip hidden files/directories if not configured to include them
+          if (!this.options.includeHidden && entry.name.startsWith('.')) {
+            continue;
+          }
+
+          // Skip excluded directories
+          if (entry.isDirectory() && this.options.excludeDirectories.includes(entry.name)) {
+            continue;
+          }
+
+          if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            const extension = ext || '[no extension]';
+            extensionCounts[extension] = (extensionCounts[extension] || 0) + 1;
+          } else if (entry.isDirectory()) {
+            await analyzeDirectory(entryPath, depth + 1);
+          }
+        }
+      } catch (error) {
+        // Skip directories we can't read
+      }
+    };
+
+    await analyzeDirectory(this.projectPath);
+    return extensionCounts;
+  }
+
+  /**
+   * Get list of top-level directories in the project root
+   */
+  private async getTopLevelDirectories(): Promise<string[]> {
+    try {
+      const entries = await fs.promises.readdir(this.projectPath, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isDirectory())
+        .filter(entry => {
+          // Skip hidden directories if not configured to include them
+          if (!this.options.includeHidden && entry.name.startsWith('.')) {
+            return false;
+          }
+          // Skip excluded directories
+          return !this.options.excludeDirectories.includes(entry.name);
+        })
+        .map(entry => entry.name)
+        .sort();
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Detect important folders following common naming patterns
+   */
+  private async detectImportantFolders(): Promise<{ src?: string; test?: string; docs?: string } | undefined> {
+    const detectedFolders: { src?: string; test?: string; docs?: string } = {};
+
+    try {
+      const entries = await fs.promises.readdir(this.projectPath, { withFileTypes: true });
+      const directories = entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
+
+      // Define patterns for each folder type
+      const patterns = {
+        src: [
+          'src', 'source', 'lib', 'libs', 'packages', 'apps', 'app',
+          'components', 'modules', 'services'
+        ],
+        test: [
+          'test', 'tests', '__tests__', 'spec', '__spec__', 'e2e',
+          'testing', 'test-utils', 'cypress', 'playwright'
+        ],
+        docs: [
+          'docs', 'documentation', 'doc', 'guide', 'guides',
+          'examples', 'demo', 'demos', 'sample', 'samples'
+        ]
+      };
+
+      // Find best match for each folder type
+      for (const [folderType, possibleNames] of Object.entries(patterns)) {
+        for (const possibleName of possibleNames) {
+          const exactMatch = directories.find(dir => dir.toLowerCase() === possibleName.toLowerCase());
+          if (exactMatch) {
+            (detectedFolders as any)[folderType] = exactMatch;
+            break;
+          }
+        }
+
+        // If no exact match, look for directories containing the pattern
+        if (!(detectedFolders as any)[folderType]) {
+          for (const possibleName of possibleNames.slice(0, 3)) { // Only check primary names
+            const partialMatch = directories.find(dir =>
+              dir.toLowerCase().includes(possibleName.toLowerCase())
+            );
+            if (partialMatch) {
+              (detectedFolders as any)[folderType] = partialMatch;
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Return undefined if we can't read the directory
+      return undefined;
+    }
+
+    // Return undefined if no folders were detected
+    if (Object.keys(detectedFolders).length === 0) {
+      return undefined;
+    }
+
+    return detectedFolders;
+  }
+
+  /**
+   * Analyze monorepo structure and discover workspaces
+   */
+  private async analyzeMonorepoStructure(): Promise<{ isMonorepo: boolean; workspaces?: string[] }> {
+    let isMonorepo = false;
+    let workspaces: string[] | undefined;
+
+    try {
+      // Check package.json for workspace configuration
+      const packageJsonPath = path.join(this.projectPath, 'package.json');
+      try {
+        const packageJsonContent = await fs.promises.readFile(packageJsonPath, 'utf-8');
+        const packageJson = JSON.parse(packageJsonContent);
+
+        // Check for npm/yarn workspaces
+        if (packageJson.workspaces) {
+          isMonorepo = true;
+          if (Array.isArray(packageJson.workspaces)) {
+            workspaces = packageJson.workspaces;
+          } else if (packageJson.workspaces.packages && Array.isArray(packageJson.workspaces.packages)) {
+            workspaces = packageJson.workspaces.packages;
+          }
+        }
+      } catch (error) {
+        // package.json doesn't exist or is invalid, continue with other checks
+      }
+
+      // Check for pnpm workspace
+      if (!isMonorepo) {
+        try {
+          const pnpmWorkspacePath = path.join(this.projectPath, 'pnpm-workspace.yaml');
+          await fs.promises.access(pnpmWorkspacePath);
+          isMonorepo = true;
+
+          try {
+            const pnpmWorkspaceContent = await fs.promises.readFile(pnpmWorkspacePath, 'utf-8');
+            // Simple YAML parsing for packages array
+            const packagesMatch = pnpmWorkspaceContent.match(/packages:\s*\n((?:\s*-\s*[^\n]+\n)*)/);
+            if (packagesMatch) {
+              workspaces = packagesMatch[1]
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.startsWith('-'))
+                .map(line => line.substring(1).trim().replace(/^['"]|['"]$/g, ''))
+                .filter(Boolean);
+            }
+          } catch (error) {
+            // Could not parse pnpm-workspace.yaml, but it exists so it's still a monorepo
+          }
+        } catch (error) {
+          // pnpm-workspace.yaml doesn't exist
+        }
+      }
+
+      // Check for rush.json (Microsoft Rush monorepo)
+      if (!isMonorepo) {
+        try {
+          const rushJsonPath = path.join(this.projectPath, 'rush.json');
+          await fs.promises.access(rushJsonPath);
+          isMonorepo = true;
+
+          try {
+            const rushJsonContent = await fs.promises.readFile(rushJsonPath, 'utf-8');
+            const rushJson = JSON.parse(rushJsonContent);
+            if (rushJson.projects && Array.isArray(rushJson.projects)) {
+              workspaces = rushJson.projects.map((project: any) => project.projectFolder).filter(Boolean);
+            }
+          } catch (error) {
+            // Could not parse rush.json
+          }
+        } catch (error) {
+          // rush.json doesn't exist
+        }
+      }
+
+      // Check for lerna.json (Lerna monorepo)
+      if (!isMonorepo) {
+        try {
+          const lernaJsonPath = path.join(this.projectPath, 'lerna.json');
+          await fs.promises.access(lernaJsonPath);
+          isMonorepo = true;
+
+          try {
+            const lernaJsonContent = await fs.promises.readFile(lernaJsonPath, 'utf-8');
+            const lernaJson = JSON.parse(lernaJsonContent);
+            if (lernaJson.packages && Array.isArray(lernaJson.packages)) {
+              workspaces = lernaJson.packages;
+            }
+          } catch (error) {
+            // Could not parse lerna.json
+          }
+        } catch (error) {
+          // lerna.json doesn't exist
+        }
+      }
+
+      // Heuristic: Check for common monorepo structure patterns
+      if (!isMonorepo) {
+        const topLevelDirs = await this.getTopLevelDirectories();
+        const monorepoIndicators = [
+          'packages', 'apps', 'libs', 'modules', 'services',
+          'projects', 'workspaces', 'components'
+        ];
+
+        // If we have multiple top-level directories that look like packages
+        const indicatorCount = topLevelDirs.filter(dir =>
+          monorepoIndicators.includes(dir.toLowerCase())
+        ).length;
+
+        if (indicatorCount >= 1) {
+          // Check if these directories contain package.json files
+          let packageCount = 0;
+          for (const dir of topLevelDirs) {
+            if (monorepoIndicators.includes(dir.toLowerCase())) {
+              try {
+                const subDirs = await fs.promises.readdir(path.join(this.projectPath, dir), { withFileTypes: true });
+                for (const subDir of subDirs) {
+                  if (subDir.isDirectory()) {
+                    try {
+                      await fs.promises.access(path.join(this.projectPath, dir, subDir.name, 'package.json'));
+                      packageCount++;
+                    } catch (error) {
+                      // No package.json in this subdirectory
+                    }
+                  }
+                }
+              } catch (error) {
+                // Can't read this directory
+              }
+            }
+          }
+
+          // If we found multiple packages, it's likely a monorepo
+          if (packageCount >= 2) {
+            isMonorepo = true;
+            workspaces = topLevelDirs.filter(dir =>
+              monorepoIndicators.includes(dir.toLowerCase())
+            ).map(dir => `${dir}/*`);
+          }
+        }
+      }
+
+    } catch (error) {
+      // Default to not a monorepo if analysis fails
+    }
+
+    return { isMonorepo, workspaces };
   }
 
   // ============================================================================
